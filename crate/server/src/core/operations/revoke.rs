@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace};
 use time::OffsetDateTime;
@@ -328,10 +328,19 @@ async fn revoke_key_core(
     }
 
     kms.database
-        .update_object(owm.id(), owm.object(), owm.attributes(), None)
+        .atomic(
+            &kms.params.default_username,
+            &[
+                AtomicOperation::UpdateObject((
+                    owm.id().to_owned(),
+                    owm.object().clone(),
+                    owm.attributes().clone(),
+                    None,
+                )),
+                AtomicOperation::UpdateState((owm.id().to_owned(), state)),
+            ],
+        )
         .await?;
-
-    kms.database.update_state(owm.id(), state).await?;
 
     debug!("Object with unique identifier: {} revoked", owm.id());
 

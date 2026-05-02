@@ -33,6 +33,7 @@ use openssl::{
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use url::Url;
 use zeroize::Zeroizing;
 
 use super::GoogleCseConfig;
@@ -55,6 +56,50 @@ use crate::{
 const NONCE_LENGTH: usize = 12;
 const TAG_LENGTH: usize = 16;
 pub(crate) const GOOGLE_CSE_ID: &str = "google_cse";
+
+/// Validates that a KACLS URL is safe to call: must use HTTPS and must not
+/// target private/loopback IP ranges (SSRF mitigation).
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
+fn validate_kacls_url(url_str: &str) -> KResult<()> {
+    let parsed = Url::parse(url_str)
+        .map_err(|e| KmsError::InvalidRequest(format!("Invalid original_kacls_url: {e}")))?;
+
+    if parsed.scheme() != "https" {
+        return Err(KmsError::InvalidRequest(
+            "original_kacls_url must use HTTPS scheme".to_owned(),
+        ));
+    }
+
+    let host = parsed.host_str().ok_or_else(|| {
+        KmsError::InvalidRequest("original_kacls_url must contain a host".to_owned())
+    })?;
+
+    // Reject IP-based hosts that target private/loopback/link-local ranges
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        if ip.is_loopback()
+            || ip.is_unspecified()
+            || matches!(ip, std::net::IpAddr::V4(v4) if v4.is_private() || v4.is_link_local())
+        {
+            return Err(KmsError::InvalidRequest(
+                "original_kacls_url must not target private or loopback addresses".to_owned(),
+            ));
+        }
+    }
+
+    // Reject well-known internal hostnames
+    let lower = host.to_lowercase();
+    if lower == "localhost"
+        || lower.ends_with(".local")
+        || lower.ends_with(".internal")
+        || lower == "metadata.google.internal"
+    {
+        return Err(KmsError::InvalidRequest(
+            "original_kacls_url must not target internal hostnames".to_owned(),
+        ));
+    }
+
+    Ok(())
+}
 
 #[derive(PartialEq, Eq)]
 pub enum Role {
@@ -1030,6 +1075,9 @@ pub async fn rewrap(
     debug!("Generated JWT for original KACLS: {jwt:?}");
 
     // Call privileged unwrap on original KACLS
+    // SECURITY: Validate the URL to prevent SSRF attacks targeting internal services.
+    // Only HTTPS URLs are allowed, and private/loopback IP ranges are rejected.
+    validate_kacls_url(&request.original_kacls_url)?;
     let unwrap_request = PrivilegedUnwrapRequest {
         authentication: jwt,
         wrapped_key: request.wrapped_key.clone(),

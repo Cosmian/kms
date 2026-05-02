@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::{
         },
         time_normalize,
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::trace;
 
@@ -144,13 +144,23 @@ pub(crate) async fn activate(
     // Update the activation date in the "external" attributes
     owm.attributes_mut().activation_date = Some(activation_date);
 
-    // Update the object in the database
+    // Atomically update the object and its state in a single transaction
+    // to prevent TOCTOU races where a concurrent request could see an
+    // inconsistent intermediate state.
     kms.database
-        .update_object(owm.id(), owm.object(), owm.attributes(), None)
+        .atomic(
+            user,
+            &[
+                AtomicOperation::UpdateObject((
+                    owm.id().to_owned(),
+                    owm.object().clone(),
+                    owm.attributes().clone(),
+                    None,
+                )),
+                AtomicOperation::UpdateState((owm.id().to_owned(), State::Active)),
+            ],
+        )
         .await?;
-
-    // Update the state in the database (separate column)
-    kms.database.update_state(owm.id(), State::Active).await?;
 
     // All Objects are activated by default on the KMS, so simply answer OK
     Ok(ActivateResponse {

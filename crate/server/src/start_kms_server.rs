@@ -731,26 +731,37 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     });
 
     // Derive the session cookie encryption key.
-    // - If ui_session_salt is set, derive a deterministic key from it (required for
-    //   load-balanced multi-instance setups where all nodes must share the same key).
-    // - Otherwise, derive a stable key from the public URL using a built-in default salt.
-    //   This prevents the "cookie failed cryptographic checks" warnings that occur when
-    //   a random key is regenerated on every restart, invalidating existing browser cookies.
-    //   For single-instance deployments this is sufficient; for multi-instance setups
-    //   ui_session_salt must be configured to ensure all nodes share the same key.
-    let effective_salt = kms_server.params.ui_session_salt.as_deref().unwrap_or_else(|| {
-        // A08-2: Warn operators that the session key is derived from a predictable default salt.
-        // In single-instance deployments this is acceptable; for production or multi-instance
-        // setups, configure `ui_session_salt` (or KMS_UI_SESSION_SALT) with a strong random value
-        // to prevent cookie forgery if the deployment URL is publicly known.
-        warn!(
-            "ui_session_salt is not configured — session cookie key is derived from a predictable \
-             default salt and the public URL. Set `ui_session_salt` in the KMS configuration for \
-             production deployments to prevent cookie forgery."
-        );
-        "cosmian_kms_default_ui_session_key_v1"
-    });
-    let secret_key: Key = derive_session_key_from_url(&kms_public_url, effective_salt)?;
+    // - If ui_session_salt is set, use it directly (recommended for production).
+    // - Otherwise, derive a stable salt from server-side configuration (database params +
+    //   public URL). This is safe for load-balanced setups because all instances behind
+    //   the same LB share the same database configuration, producing identical keys.
+    //   External attackers cannot reproduce this because the DB connection string is private.
+    #[allow(clippy::option_if_let_else)]
+    let effective_salt_owned: String =
+        if let Some(salt) = kms_server.params.ui_session_salt.as_deref() {
+            salt.to_owned()
+        } else {
+            // Derive from DB params (shared across all instances) + public URL.
+            // This is stable across restarts and identical across LB instances.
+            let db_identity = kms_server
+                .params
+                .main_db_params
+                .as_ref()
+                .map_or_else(|| "no-db".to_owned(), |p| format!("{p}"));
+            let mut hasher = Hasher::new(MessageDigest::sha256())?;
+            hasher.update(b"cosmian_kms_session_salt_v2:")?;
+            hasher.update(db_identity.as_bytes())?;
+            hasher.update(b":")?;
+            hasher.update(kms_public_url.as_bytes())?;
+            let digest = hasher.finish()?;
+            warn!(
+                "ui_session_salt is not configured — deriving session key from \
+                 server configuration. For maximum security, set `ui_session_salt` \
+                 (or KMS_UI_SESSION_SALT) to a strong random value."
+            );
+            hex::encode(digest)
+        };
+    let secret_key: Key = derive_session_key_from_url(&kms_public_url, &effective_salt_owned)?;
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
@@ -841,7 +852,23 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         if enable_ms_dke {
             // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
+            // SECURITY: DKE endpoints MUST be authenticated to prevent unauthenticated
+            // decryption oracles. Microsoft's DKE protocol uses Azure AD tokens;
+            // we enforce the same auth stack as the main KMIP scope.
             let ms_dke_scope = web::scope("/ms_dke")
+                .wrap(EnsureAuth::new(
+                    kms_server_for_http.clone(),
+                    use_jwt_auth || use_cert_auth || use_api_token_auth,
+                ))
+                .wrap(Condition::new(
+                    use_api_token_auth,
+                    ApiTokenAuth::new(kms_server_for_http.clone()),
+                ))
+                .wrap(Condition::new(
+                    use_jwt_auth,
+                    JwtAuth::new(jwt_configurations.clone()),
+                ))
+                .wrap(Condition::new(use_cert_auth, TlsAuth))
                 .wrap(Cors::permissive())
                 .service(ms_dke::version)
                 .service(ms_dke::get_key)
@@ -977,12 +1004,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             );
         }
 
-        // Public endpoints (no authentication)
+        // Public endpoints (no authentication) — only health/version for connectivity checks.
+        // server-info is served from the authenticated default scope to prevent
+        // information disclosure (HSM model, slots, FIPS mode).
         app = app
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
-            .service(get_version)
-            .service(get_server_info);
+            .service(get_version);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
@@ -1021,6 +1049,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             })
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
+            .service(get_server_info)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)
             .service(access::list_accesses)

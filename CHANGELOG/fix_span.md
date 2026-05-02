@@ -26,6 +26,17 @@
 
 - Rewrite `SECURITY.md` with a comprehensive vulnerability disclosure list (17 entries from version 5.0.0 onward) following OpenSSL-style format with severity ratings, affected ranges, and mitigation guidance
 
+### Hardening fixes (VULN-01 to VULN-12)
+
+- **VULN-01**: Wrap MS DKE scope with full authentication middleware (EnsureAuth + JWT + TLS + API token) — previously unauthenticated ([#928](https://github.com/Cosmian/kms/pull/928))
+- **VULN-02**: Clear unwrap cache on key revocation/destruction to prevent stale key material from being used after state transitions ([#928](https://github.com/Cosmian/kms/pull/928))
+- **VULN-03**: Add SSRF validation on Google CSE `original_kacls_url` — reject non-HTTPS, private IPs, and internal hostnames ([#928](https://github.com/Cosmian/kms/pull/928))
+- **VULN-04**: Derive session salt from private server-side configuration (DB params + public URL) instead of a hardcoded default, preventing cookie forgery while remaining stable across restarts and load-balanced instances ([#928](https://github.com/Cosmian/kms/pull/928))
+- **VULN-05**: Use `AtomicOperation` in Activate and Revoke to prevent TOCTOU race conditions between object update and state change ([#928](https://github.com/Cosmian/kms/pull/928))
+- **VULN-06**: Move `/server-info` endpoint behind authentication middleware ([#928](https://github.com/Cosmian/kms/pull/928))
+- **VULN-07**: Return generic "Internal server error" for 5xx responses instead of leaking internal error details ([#928](https://github.com/Cosmian/kms/pull/928))
+- **VULN-12**: Mask sensitive fields (`api_token_id`, `google_cse_migration_key`, `key_wrapping_key`) in `ServerParams` Debug output ([#928](https://github.com/Cosmian/kms/pull/928))
+
 ## Bug Fixes
 
 ### Server concurrency under high load

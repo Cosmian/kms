@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use cosmian_kms_server::{
-    config::{ClapConfig, ServerParams, wizard::run_configure_wizard},
+    config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
+    core::KMS,
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
 };
@@ -64,15 +65,13 @@ async fn run() -> KResult<()> {
 
     // Reject plaintext OTLP endpoints unless explicitly allowed
     if let Some(url) = &clap_config.logging.otlp {
-        if url.starts_with("http://") && !clap_config.logging.otlp_allow_insecure {
-            return Err(cosmian_kms_server::error::KmsError::ServerError(
-                "OTLP endpoint uses plaintext HTTP which exposes telemetry data \
-                 (including encryption operation metadata) over an unencrypted channel. \
-                 Use https:// or set --otlp-allow-insecure / KMS_OTLP_ALLOW_INSECURE=true \
-                 if you accept this risk."
-                    .to_owned(),
-            ));
-        }
+        let otel_config = Some(OpenTelemetryConfig {
+            otlp_url: Some(url.clone()),
+            otlp_allow_insecure: clap_config.logging.otlp_allow_insecure,
+            enable_metering: clap_config.logging.enable_metering,
+            environment: clap_config.logging.environment.clone(),
+        });
+        KMS::validate_otlp_url(url, &otel_config)?;
     }
 
     // Initialize the tracing system

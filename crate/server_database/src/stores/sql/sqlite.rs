@@ -84,6 +84,7 @@ impl SqlitePool {
     ) -> DbResult<Self> {
         // Determine reader pool size: default to 2×CPUs capped at 10,
         // matching the MySQL/PostgreSQL backend pool sizing strategy.
+        // Note: total connections = num_readers + 1 (dedicated writer).
         let default_readers: usize = num_cpus::get().saturating_mul(2).min(10);
         let num_readers: usize = max_connections
             .and_then(|v| usize::try_from(v).ok())

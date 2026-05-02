@@ -29,8 +29,10 @@ use tokio::sync::RwLock;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use utimaco_pkcs11_loader::{UTIMACO_PKCS11_LIB, Utimaco};
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "linux")]
 const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
+#[cfg(target_os = "macos")]
+const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
 
 // Reuse a single HSM instance across multiple test servers (e.g. Utimaco) to
 // avoid re-initialization failures when starting several KMS instances in the
@@ -157,7 +159,7 @@ impl KMS {
 
     /// Validate that the OTLP URL is not using plaintext HTTP unless explicitly allowed.
     /// This prevents accidental exposure of telemetry data over unencrypted channels.
-    pub(crate) fn validate_otlp_url(
+    pub fn validate_otlp_url(
         otlp_url: &str,
         otel_params: &Option<OpenTelemetryConfig>,
     ) -> KResult<()> {
@@ -383,9 +385,10 @@ mod tests {
         Ok(())
     }
 
-    /// Regression test: no OTLP params means no OTLP validation error.
+    /// Regression test: no OTLP params means allow_insecure defaults to false,
+    /// so plaintext HTTP is rejected.
     #[test]
-    fn test_otlp_no_params_accepts_any_url() -> KResult<()> {
+    fn test_otlp_no_params_rejects_plaintext_http() -> KResult<()> {
         // With None otel_params, allow_insecure defaults to false
         let result = KMS::validate_otlp_url("http://localhost:4317", &None);
         assert!(

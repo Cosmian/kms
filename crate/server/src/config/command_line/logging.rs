@@ -15,7 +15,7 @@ pub struct LoggingConfig {
     /// The OTLP collector URL for gRPC
     /// (for instance, <https://localhost:4317>)
     /// If not set, the telemetry system will not be initialized.
-    /// Must use https:// or grpcs:// in production.
+    /// Must use https:// in production.
     /// Use --otlp-allow-insecure to permit plaintext http:// connections.
     #[clap(long, env("KMS_OTLP_URL"), verbatim_doc_comment)]
     pub otlp: Option<String>,
