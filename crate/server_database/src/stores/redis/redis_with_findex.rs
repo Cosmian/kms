@@ -360,11 +360,15 @@ impl ObjectsStore for RedisWithFindex {
         user: &str,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
+        // Track pending objects so that multiple operations on the same UID
+        // within this batch build on each other (e.g. UpdateObject then UpdateState).
+        // Without this, each operation would re-read from Redis and the last write
+        // would clobber previous modifications for the same UID.
+        let mut pending: HashMap<String, RedisDbObject> = HashMap::new();
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
         for operation in operations {
             match operation {
                 AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
-                    // TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_insert(
                             uid,
@@ -375,6 +379,7 @@ impl ObjectsStore for RedisWithFindex {
                             *state,
                         )
                         .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::Create((uid, object, attributes, tags)) => {
@@ -387,21 +392,50 @@ impl ObjectsStore for RedisWithFindex {
                             tags,
                         )
                         .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Create(uid, db_object));
                 }
                 AtomicOperation::Delete(uid) => {
+                    pending.remove(uid);
                     redis_operations.push(RedisOperation::Delete(uid.clone()));
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
-                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
-                    let db_object = self
-                        .prepare_object_for_update(uid, object, attributes, tags.as_ref())
-                        .await?;
+                    let mut db_object = if let Some(cached) = pending.get(uid) {
+                        cached.clone()
+                    } else {
+                        self.objects_db
+                            .object_get(uid)
+                            .await?
+                            .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?
+                    };
+                    db_object.object = object.clone();
+                    if tags.is_some() {
+                        db_object.tags.clone_from(tags);
+                    }
+                    db_object.attributes = Some(attributes.clone());
+                    // updates to the index
+                    let keywords = db_object.keywords();
+                    let indexed_uid = IndexedValue::from(uid.as_bytes());
+                    for keyword in keywords {
+                        self.findex
+                            .insert(keyword, [indexed_uid.clone()])
+                            .await
+                            .map_err(|e| db_error!(format!("Error while updating index: {e:?}")))?;
+                    }
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::UpdateState((uid, state)) => {
-                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
-                    let db_object = self.prepare_object_for_state_update(uid, *state).await?;
+                    let mut db_object = if let Some(cached) = pending.get(uid) {
+                        cached.clone()
+                    } else {
+                        self.objects_db
+                            .object_get(uid)
+                            .await?
+                            .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?
+                    };
+                    db_object.state = *state;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
             }
