@@ -62,7 +62,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Build static OpenSSL
         shell: pwsh
