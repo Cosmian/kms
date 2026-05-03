@@ -54,7 +54,7 @@ function Wait-ForKms {
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         try {
-            $resp = Invoke-WebRequest -Uri "${KMS_URL}/version" -Method GET -TimeoutSec 2 -ErrorAction SilentlyContinue
+            $resp = Invoke-WebRequest -Uri "${KMS_URL}/version" -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
             if ($resp.StatusCode -eq 200) { return $true }
         } catch { }
         Start-Sleep -Milliseconds 500
@@ -149,7 +149,7 @@ try {
     # Place ckms.toml next to the DLL so the KSP finds it automatically
     $CkmsToml = Join-Path $TARGET_DIR "ckms.toml"
     @"
-[kms_config.http_config]
+[http_config]
 server_url = "$KMS_URL"
 "@ | Set-Content -Path $CkmsToml -Encoding UTF8
     $env:CKMS_CONF = $CkmsToml
@@ -158,7 +158,7 @@ server_url = "$KMS_URL"
     # ── 4. Smoke-test: KMS is reachable ─────────────────────────────────
 
     Write-Step "Smoke-testing KMS endpoint"
-    $smokeResp = Invoke-WebRequest -Uri "${KMS_URL}/version" -Method GET -TimeoutSec 5
+    $smokeResp = Invoke-WebRequest -Uri "${KMS_URL}/version" -Method GET -TimeoutSec 5 -UseBasicParsing
     if ($smokeResp.StatusCode -ne 200) {
         Write-Error "KMS /version returned $($smokeResp.StatusCode)"
         exit 1

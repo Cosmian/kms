@@ -38,3 +38,11 @@
 ## Documentation
 
 - Replace ASCII text diagrams with Mermaid diagrams in `windows_cng_ksp.md` integration docs.
+
+## CI
+
+- Add `test_cng_ksp.ps1` end-to-end integration test script that builds the CNG KSP DLL,
+  starts a local KMS server, registers the KSP, runs the DLL surface verification tool,
+  Rust lib tests, and ckms CLI CNG commands.
+- Add `test-cng-ksp` job to `test_windows.yml` CI workflow to run the CNG KSP integration
+  tests on every PR and push.
