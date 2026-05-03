@@ -103,7 +103,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     permissions(&get_redis_with_findex().await?).await?;
     Box::pin(tags(&get_redis_with_findex().await?, false)).await?;
     tx_and_list(&get_redis_with_findex().await?).await?;
-    atomic(&get_redis_with_findex().await?).await?;
+    Box::pin(atomic(&get_redis_with_findex().await?)).await?;
     upsert(&get_redis_with_findex().await?).await?;
     crud(&get_redis_with_findex().await?).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
@@ -134,7 +134,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     permissions(&get_sqlite(&db_file).await?).await?;
     Box::pin(tags(&get_sqlite(&db_file).await?, true)).await?;
     tx_and_list(&get_sqlite(&db_file).await?).await?;
-    atomic(&get_sqlite(&db_file).await?).await?;
+    Box::pin(atomic(&get_sqlite(&db_file).await?)).await?;
     upsert(&get_sqlite(&db_file).await?).await?;
     crud(&get_sqlite(&db_file).await?).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
@@ -153,7 +153,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     permissions(&get_pgsql().await?).await?;
     Box::pin(tags(&get_pgsql().await?, true)).await?;
     tx_and_list(&get_pgsql().await?).await?;
-    atomic(&get_pgsql().await?).await?;
+    Box::pin(atomic(&get_pgsql().await?)).await?;
     upsert(&get_pgsql().await?).await?;
     crud(&get_pgsql().await?).await?;
     list_uids_for_tags_test(&get_pgsql().await?).await?;
@@ -179,7 +179,7 @@ pub(crate) async fn test_db_postgresql_multihost() -> DbResult<()> {
     // Verify that a multi-host connection string with target_session_attrs works
     let pg = get_pgsql_multihost().await?;
     crud(&pg).await?;
-    atomic(&pg).await?;
+    Box::pin(atomic(&pg)).await?;
     upsert(&pg).await?;
     Ok(())
 }
@@ -194,7 +194,7 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     permissions(&get_mysql().await?).await?;
     Box::pin(tags(&get_mysql().await?, true)).await?;
     tx_and_list(&get_mysql().await?).await?;
-    atomic(&get_mysql().await?).await?;
+    Box::pin(atomic(&get_mysql().await?)).await?;
     upsert(&get_mysql().await?).await?;
     crud(&get_mysql().await?).await?;
     list_uids_for_tags_test(&get_mysql().await?).await?;
