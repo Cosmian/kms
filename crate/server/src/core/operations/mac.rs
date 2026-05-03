@@ -44,7 +44,7 @@ fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult
 }
 
 pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
-    trace!("Mac: uid={:?}", request.unique_identifier);
+    trace!("uid={:?}", request.unique_identifier);
 
     let uid = request
         .unique_identifier
@@ -186,7 +186,7 @@ pub(super) async fn mac_verify(
     request: MACVerify,
     user: &str,
 ) -> KResult<MACVerifyResponse> {
-    trace!("MacVerify: uid={}", request.unique_identifier);
+    trace!("uid={}", request.unique_identifier);
     let UniqueIdentifier::TextString(uid) = &request.unique_identifier else {
         kms_bail!("MacVerify: unique_identifier must be a string")
     };

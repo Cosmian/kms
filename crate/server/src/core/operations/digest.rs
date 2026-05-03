@@ -24,7 +24,7 @@ pub(super) fn digest(object: &Object) -> KResult<Option<Digest>> {
         | Object::SymmetricKey(SymmetricKey { key_block })
         | Object::SplitKey(SplitKey { key_block, .. }) => {
             if let Some(key_value) = key_block.key_value.as_ref() {
-                trace!("digest: processing key_value");
+                trace!("processing key_value");
                 let bytes = match key_value {
                     KeyValue::ByteString(bytes) => bytes.to_vec(),
                     KeyValue::Structure { key_material, .. } => {

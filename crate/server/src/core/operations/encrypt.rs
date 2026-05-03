@@ -70,7 +70,7 @@ const EMPTY_SLICE: &[u8] = &[];
 
 pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
     trace!(
-        "Encrypt: uid={:?}, data_len={}",
+        "uid={:?}, data_len={}",
         request.unique_identifier,
         request.data.as_ref().map_or(0, |d| d.len())
     );
@@ -500,7 +500,7 @@ fn encrypt_with_symmetric_key(
         );
     } else {
         trace!(
-            "encrypt: plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}",
+            "plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}",
             plaintext.len(),
             nonce.len(),
             aad.len()

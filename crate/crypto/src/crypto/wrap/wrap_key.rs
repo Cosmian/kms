@@ -299,7 +299,7 @@ pub(super) fn wrap(
                         ciphertext.extend_from_slice(&authenticated_encryption_tag);
 
                         trace!(
-                            "wrap: nonce_len={}, tag_len={}",
+                            "nonce_len={}, tag_len={}",
                             nonce.len(),
                             authenticated_encryption_tag.len(),
                         );
