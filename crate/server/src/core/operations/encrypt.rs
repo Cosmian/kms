@@ -238,6 +238,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     }?;
 
     // Post-encryption: decrement usage limits if enforced.
+    let mut usage_limits_decremented = false;
     if let Ok(attrs) = unwrapped_owm.object_mut().attributes_mut() {
         if let Some(ref mut usage_limits) = attrs.usage_limits {
             if matches!(usage_limits.usage_limits_unit, cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UsageLimitsUnit::Byte) {
@@ -249,40 +250,45 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
                 if usage_limits.usage_limits_total < 0 {
                     usage_limits.usage_limits_total = 0;
                 }
+                usage_limits_decremented = true;
             }
         }
     }
 
-    // Copy updated usage limits from unwrapped_owm back to original owm for persistence
-    if let (Ok(unwrapped_attrs), Ok(original_attrs)) = (
-        unwrapped_owm.object().attributes(),
-        owm.object_mut().attributes_mut(),
-    ) {
-        if let Some(unwrapped_usage_limits) = unwrapped_attrs.usage_limits.as_ref() {
-            if let Some(ref mut original_usage_limits) = original_attrs.usage_limits {
-                original_usage_limits.usage_limits_total =
-                    unwrapped_usage_limits.usage_limits_total;
+    // Only persist to the database when usage limits were actually decremented.
+    // Skipping this UPDATE on the hot path (e.g. AWS XKS encrypt with no usage limits)
+    // eliminates row-level lock contention that severely degrades throughput under concurrency.
+    if usage_limits_decremented {
+        // Copy updated usage limits from unwrapped_owm back to original owm for persistence
+        if let (Ok(unwrapped_attrs), Ok(original_attrs)) = (
+            unwrapped_owm.object().attributes(),
+            owm.object_mut().attributes_mut(),
+        ) {
+            if let Some(unwrapped_usage_limits) = unwrapped_attrs.usage_limits.as_ref() {
+                if let Some(ref mut original_usage_limits) = original_attrs.usage_limits {
+                    original_usage_limits.usage_limits_total =
+                        unwrapped_usage_limits.usage_limits_total;
+                }
             }
         }
-    }
 
-    // Persist updated attributes (including possibly decremented UsageLimits) so subsequent
-    // operations observe the reduced remaining total. We ignore failure here only if the
-    // encryption itself succeeded; but propagate errors to surface DB issues.
-    if let Ok(attributes) = owm.object().attributes() {
-        if let Err(e) = kms
-            .database
-            .update_object(
-                owm.id(),
-                owm.object(),
-                attributes,
-                None, // tags unchanged
-            )
-            .await
-        {
-            return Err(KmsError::ServerError(format!(
-                "Encrypt: failed to persist updated usage limits: {e}"
-            )));
+        // Persist updated attributes (including decremented UsageLimits) so subsequent
+        // operations observe the reduced remaining total.
+        if let Ok(attributes) = owm.object().attributes() {
+            if let Err(e) = kms
+                .database
+                .update_object(
+                    owm.id(),
+                    owm.object(),
+                    attributes,
+                    None, // tags unchanged
+                )
+                .await
+            {
+                return Err(KmsError::ServerError(format!(
+                    "Encrypt: failed to persist updated usage limits: {e}"
+                )));
+            }
         }
     }
 
