@@ -1,12 +1,15 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, State},
+        kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, State},
         kmip_2_1::{
             KmipOperation,
             extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
             kmip_data_structures::{KeyValue, KeyWrappingSpecification},
             kmip_objects::{Object, ObjectType},
-            kmip_types::{EncodingOption, EncryptionKeyInformation, LinkType, UniqueIdentifier},
+            kmip_types::{
+                CryptographicParameters, EncodingOption, EncryptionKeyInformation, LinkType,
+                UniqueIdentifier,
+            },
         },
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
@@ -105,7 +108,14 @@ pub(crate) async fn wrap_and_cache(
         &KeyWrappingSpecification {
             encryption_key_information: Some(EncryptionKeyInformation {
                 unique_identifier: UniqueIdentifier::TextString(wrapping_key_id),
-                cryptographic_parameters: None,
+                // Explicitly use AESKeyWrapPadding (RFC 5649) for at-rest wrapping:
+                // it handles arbitrary key lengths (including < 16 bytes). The global
+                // default for Get-with-wrapping is NISTKeyWrap (RFC 3394) which
+                // requires input >= 16 bytes.
+                cryptographic_parameters: Some(CryptographicParameters {
+                    block_cipher_mode: Some(BlockCipherMode::AESKeyWrapPadding),
+                    ..CryptographicParameters::default()
+                }),
             }),
             encoding_option: Some(encoding),
             ..Default::default()

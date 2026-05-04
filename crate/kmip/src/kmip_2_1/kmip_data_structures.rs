@@ -35,8 +35,7 @@ use crate::{
     ttlv::{KmipFlavor, TTLV, TtlvDeserializer, to_ttlv},
 };
 
-#[derive(Clone, Eq, Serialize, Deserialize, PartialEq, Debug)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Clone, Default, Eq, Serialize, Deserialize, PartialEq, Debug)]
 pub struct DerivationParameters {
     /// Depends on the PRF.
     #[serde(skip_serializing_if = "Option::is_none")]
