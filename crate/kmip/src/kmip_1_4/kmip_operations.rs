@@ -27,7 +27,9 @@ use crate::{
     kmip_0::{
         kmip_data_structures::ValidationInformation,
         kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-        kmip_types::{AttestationType, Direction, KeyWrapType, RevocationReason},
+        kmip_types::{
+            AttestationType, CryptographicUsageMask, Direction, KeyWrapType, RevocationReason,
+        },
     },
     kmip_1_4::kmip_attributes::Attribute,
     kmip_2_1::{self, kmip_attributes::Attributes},
@@ -262,6 +264,17 @@ pub struct ReKey {
     pub template_attribute: Option<TemplateAttribute>,
 }
 
+impl From<ReKey> for kmip_2_1::kmip_operations::ReKey {
+    fn from(rekey: ReKey) -> Self {
+        Self {
+            unique_identifier: Some(rekey.unique_identifier.into()),
+            offset: rekey.offset,
+            attributes: rekey.template_attribute.map(Into::into),
+            protection_storage_masks: None,
+        }
+    }
+}
+
 /// Response to a Re-key request
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -271,6 +284,17 @@ pub struct ReKeyResponse {
     /// Template attributes applied to the new key
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ReKeyResponse> for ReKeyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::ReKeyResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            template_attribute: None,
+        })
+    }
 }
 
 /// 4.5 Re-key Key Pair
@@ -317,7 +341,7 @@ pub struct ReKeyKeyPairResponse {
 #[serde(rename_all = "PascalCase")]
 pub struct DeriveKey {
     /// Unique identifier of the object to derive from
-    pub object_unique_identifier: String,
+    pub unique_identifier: String,
     /// Information for the derivation process
     pub derivation_method: DerivationMethod,
     /// Parameters for derivation
@@ -326,6 +350,42 @@ pub struct DeriveKey {
     /// Template attributes for the new key/secret
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl From<DeriveKey> for kmip_2_1::kmip_operations::DeriveKey {
+    fn from(derive: DeriveKey) -> Self {
+        // KMIP 1.4 does not include ObjectType in the request; default to SymmetricKey
+        // per the spec which says DeriveKey creates "a symmetric key or secret data".
+        let object_type = derive
+            .template_attribute
+            .as_ref()
+            .and_then(|ta| ta.attribute.as_ref())
+            .and_then(|attrs| {
+                attrs.iter().find_map(|a| {
+                    if let Attribute::ObjectType(ot) = a {
+                        Some((*ot).into())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or(kmip_2_1::kmip_objects::ObjectType::SymmetricKey);
+        Self {
+            object_type,
+            object_unique_identifier: kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                derive.unique_identifier,
+            ),
+            derivation_method: derive.derivation_method.into(),
+            derivation_parameters: derive
+                .derivation_parameters
+                .map(Into::into)
+                .unwrap_or_default(),
+            attributes: derive
+                .template_attribute
+                .map(Into::into)
+                .unwrap_or_default(),
+        }
+    }
 }
 
 /// Response to a Derive Key request
@@ -337,6 +397,17 @@ pub struct DeriveKeyResponse {
     /// Template attributes applied
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::DeriveKeyResponse> for DeriveKeyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::DeriveKeyResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            template_attribute: None,
+        })
+    }
 }
 
 /// 4.7 Certify
@@ -534,6 +605,39 @@ impl Display for CheckResponse {
 impl fmt::Debug for CheckResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
+    }
+}
+
+impl From<Check> for kmip_2_1::kmip_operations::Check {
+    fn from(check: Check) -> Self {
+        Self {
+            unique_identifier: Some(kmip_2_1::kmip_types::UniqueIdentifier::TextString(
+                check.unique_identifier,
+            )),
+            usage_limits_count: check.usage_limits_count,
+            cryptographic_usage_mask: check
+                .cryptographic_usage_mask
+                .map(CryptographicUsageMask::from_bits_retain),
+            lease_time: check.lease_time,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::CheckResponse> for CheckResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::CheckResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value
+                .unique_identifier
+                .ok_or_else(|| {
+                    KmipError::NotSupported("CheckResponse: missing UniqueIdentifier".to_owned())
+                })?
+                .to_string(),
+            usage_limits_count: value.usage_limits_count,
+            cryptographic_usage_mask: value.cryptographic_usage_mask.map(|m| m.bits()),
+            lease_time: value.lease_time,
+        })
     }
 }
 
@@ -2520,13 +2624,12 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             Operation::CreateKeyPair(create_key_pair) => {
                 Self::CreateKeyPair(Box::new(create_key_pair.into()))
             }
+            Operation::Check(check) => Self::Check(check.into()),
             Operation::Decrypt(decrypt) => Self::Decrypt(Box::new((*decrypt).into())),
             Operation::DeleteAttribute(delete_attribute) => {
                 Self::DeleteAttribute(delete_attribute.into())
             }
-            // Operation::DeriveKey(derive_key) => {
-            //     Self::DeriveKey(derive_key.into())
-            // }
+            Operation::DeriveKey(derive_key) => Self::DeriveKey(derive_key.into()),
             Operation::Destroy(destroy) => Self::Destroy(destroy.into()),
             Operation::DiscoverVersions(discover_versions) => {
                 Self::DiscoverVersions(discover_versions)
@@ -2565,7 +2668,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             //     Self::Recover(recover.into())
             // }
             Operation::Register(register) => Self::Register(Box::new(register.into())),
-            // Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
+            Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
             // Operation::ReKeyKeyPair(rekey_key_pair) => {
             //     Self::ReKeyKeyPair(rekey_key_pair.into())
             // }
@@ -2607,9 +2710,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             // Operation::CertifyResponse(certify_response) => {
             //     Self::CertifyResponse(certify_response.into())
             // }
-            // Operation::CheckResponse(check_response) => {
-            //     Self::CheckResponse(check_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::CheckResponse(check_response) => {
+                Self::CheckResponse(check_response.try_into().context("CheckResponse")?)
+            }
             kmip_2_1::kmip_operations::Operation::CreateKeyPairResponse(
                 create_key_pair_response,
             ) => Self::CreateKeyPairResponse(
@@ -2630,9 +2733,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                     .try_into()
                     .context("DeleteAttributeResponse")?,
             ),
-            // Operation::DeriveKeyResponse(derive_key_response) => {
-            //     Self::DeriveKeyResponse(derive_key_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::DeriveKeyResponse(derive_key_response) => {
+                Self::DeriveKeyResponse(
+                    derive_key_response
+                        .try_into()
+                        .context("DeriveKeyResponse")?,
+                )
+            }
             kmip_2_1::kmip_operations::Operation::DestroyResponse(destroy_response) => {
                 Self::DestroyResponse(destroy_response.try_into().context("DestroyResponse")?)
             }
@@ -2724,9 +2831,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             //         rekey_key_pair_response.into(),
             //     )
             // }
-            // Operation::ReKeyResponse(rekey_response) => {
-            //     Self::ReKeyResponse(rekey_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::ReKeyResponse(rekey_response) => {
+                Self::ReKeyResponse(rekey_response.try_into().context("ReKeyResponse")?)
+            }
             kmip_2_1::kmip_operations::Operation::RevokeResponse(revoke_response) => {
                 Self::RevokeResponse(revoke_response.try_into().context("RevokeResponse")?)
             }
