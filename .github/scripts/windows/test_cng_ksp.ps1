@@ -1,5 +1,5 @@
-# ============================================================================
-# test_cng_ksp.ps1 — End-to-end CNG KSP integration tests on Windows.
+﻿# ============================================================================
+# test_cng_ksp.ps1 -- End-to-end CNG KSP integration tests on Windows.
 #
 # This script exercises the full Cosmian KMS CNG KSP integration:
 #   1. Build the CNG KSP DLL and verification tool
@@ -16,7 +16,7 @@
 #   - Administrator privileges (for registry write)
 #   - vcpkg with openssl_x64-windows-static (set OPENSSL_DIR or VCPKG_INSTALLATION_ROOT)
 #
-# No Azure account or Intune credentials are needed — this tests the CNG KSP
+# No Azure account or Intune credentials are needed -- this tests the CNG KSP
 # DLL against a local KMS server, not the Intune enrollment pipeline.
 #
 # Usage:
@@ -28,9 +28,8 @@
 # ============================================================================
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-$PSNativeCommandUseErrorActionPreference = $true
 
-# ── Configuration ────────────────────────────────────────────────────────────
+# -- Configuration ------------------------------------------------------------
 
 $KMS_PORT = 9998
 $KMS_URL = "http://127.0.0.1:${KMS_PORT}"
@@ -43,11 +42,24 @@ $PROFILE = if ($env:CNG_TEST_RELEASE -eq "1") { "release" } else { "debug" }
 $PROFILE_FLAG = if ($PROFILE -eq "release") { @("--release") } else { @() }
 $TARGET_DIR = "target\$PROFILE"
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# -- Helpers ------------------------------------------------------------------
 
 function Write-Step { param([string]$Msg) Write-Host "`n=== $Msg ===" -ForegroundColor Cyan }
 function Write-Ok { param([string]$Msg) Write-Host "  [OK] $Msg" -ForegroundColor Green }
 function Write-Fail { param([string]$Msg) Write-Host "  [FAIL] $Msg" -ForegroundColor Red }
+
+# Invoke a native program and throw only on non-zero exit code.
+# In PowerShell 5.1, cargo's stderr (build progress / warnings) is converted
+# to error records.  Wrapping in try/catch absorbs those records while still
+# letting us check the real exit code via $LASTEXITCODE.
+function Invoke-Native {
+    param([string]$Program, [string[]]$Arguments, [string]$FailMessage)
+    try { & $Program @Arguments } catch { }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "$FailMessage (exit code $LASTEXITCODE)"
+        exit $LASTEXITCODE
+    }
+}
 
 function Wait-ForKms {
     param([int]$TimeoutSec = 60)
@@ -73,7 +85,7 @@ function Start-KmsServer {
 
     $kmsExe = Join-Path $TARGET_DIR "cosmian_kms.exe"
     if (-not (Test-Path $kmsExe)) {
-        Write-Error "KMS server binary not found at $kmsExe — build it first."
+        Write-Error "KMS server binary not found at $kmsExe -- build it first."
         exit 1
     }
 
@@ -98,7 +110,14 @@ function Stop-KmsServer {
     }
 }
 
-# ── 0. OpenSSL environment ──────────────────────────────────────────────────
+# -- 0. OpenSSL environment --------------------------------------------------
+
+$IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if ($IsAdmin) {
+    Write-Host "Running as Administrator: registry steps will be executed."
+} else {
+    Write-Host "WARNING: Not running as Administrator. Registry register/unregister steps will be skipped." -ForegroundColor Yellow
+}
 
 if (-not $env:OPENSSL_DIR) {
     if ($env:VCPKG_INSTALLATION_ROOT) {
@@ -111,38 +130,34 @@ if ($env:OPENSSL_DIR) {
     Write-Host "WARNING: OPENSSL_DIR not set; build may fail if OpenSSL is not found." -ForegroundColor Yellow
 }
 
-# ── 1. Build ─────────────────────────────────────────────────────────────────
+# -- 1. Build -----------------------------------------------------------------
 
 Write-Step "Building KMS server, CNG KSP DLL, verification tool, and ckms CLI"
 
 # Build the server binary
-cargo build --bin cosmian_kms --features $FEATURES @PROFILE_FLAG
-if ($LASTEXITCODE -ne 0) { Write-Error "Failed to build KMS server"; exit 1 }
+Invoke-Native cargo (@("build", "--bin", "cosmian_kms", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build KMS server"
 
 # Build the CNG KSP DLL (cdylib)
-cargo build --package cosmian_kms_cng_ksp --features $FEATURES @PROFILE_FLAG
-if ($LASTEXITCODE -ne 0) { Write-Error "Failed to build CNG KSP DLL"; exit 1 }
+Invoke-Native cargo (@("build", "--package", "cosmian_kms_cng_ksp", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build CNG KSP DLL"
 
 $DllPath = Join-Path $TARGET_DIR "cosmian_kms_cng_ksp.dll"
 if (-not (Test-Path $DllPath)) { Write-Error "DLL not found: $DllPath"; exit 1 }
 Write-Ok "CNG KSP DLL built: $DllPath"
 
 # Build the verification tool
-cargo build --package cosmian_kms_cng_ksp_verify --features $FEATURES @PROFILE_FLAG
-if ($LASTEXITCODE -ne 0) { Write-Error "Failed to build cng_verify"; exit 1 }
+Invoke-Native cargo (@("build", "--package", "cosmian_kms_cng_ksp_verify", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build cng_verify"
 Write-Ok "cng_verify built"
 
 # Build ckms CLI
-cargo build --package ckms --features $FEATURES @PROFILE_FLAG
-if ($LASTEXITCODE -ne 0) { Write-Error "Failed to build ckms"; exit 1 }
+Invoke-Native cargo (@("build", "--package", "ckms", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build ckms"
 Write-Ok "ckms CLI built"
 
-# ── 2. Start KMS server ─────────────────────────────────────────────────────
+# -- 2. Start KMS server -----------------------------------------------------
 
 try {
     Start-KmsServer
 
-    # ── 3. Configure ckms.toml ───────────────────────────────────────────
+    # -- 3. Configure ckms.toml -------------------------------------------
 
     Write-Step "Writing ckms.toml for local KMS"
 
@@ -155,7 +170,7 @@ server_url = "$KMS_URL"
     $env:CKMS_CONF = $CkmsToml
     Write-Ok "ckms.toml written to $CkmsToml"
 
-    # ── 4. Smoke-test: KMS is reachable ─────────────────────────────────
+    # -- 4. Smoke-test: KMS is reachable ---------------------------------
 
     Write-Step "Smoke-testing KMS endpoint"
     $smokeResp = Invoke-WebRequest -Uri "${KMS_URL}/version" -Method GET -TimeoutSec 5 -UseBasicParsing
@@ -165,66 +180,55 @@ server_url = "$KMS_URL"
     }
     Write-Ok "KMS reachable at $KMS_URL"
 
-    # ── 5. Register the KSP ─────────────────────────────────────────────
+    # -- 5. Register the KSP (requires Administrator) --------------------
 
-    Write-Step "Registering CNG KSP in Windows registry"
     $ckmsExe = Join-Path $TARGET_DIR "ckms.exe"
-    & $ckmsExe cng register --dll (Resolve-Path $DllPath).Path
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "ckms cng register failed (are you running as Administrator?)"
-        exit 1
+    if ($IsAdmin) {
+        Write-Step "Registering CNG KSP in Windows registry"
+        Invoke-Native $ckmsExe @("cng", "register", "--dll", (Resolve-Path $DllPath).Path) "ckms cng register failed"
+        Write-Ok "KSP registered"
+
+        Invoke-Native $ckmsExe @("cng", "status") "ckms cng status failed"
+        Write-Ok "ckms cng status confirms registration"
+    } else {
+        Write-Step "Skipping KSP registry registration (not Administrator)"
+        Write-Host "  [SKIP] ckms cng register" -ForegroundColor Yellow
     }
-    Write-Ok "KSP registered"
 
-    # Verify registration
-    & $ckmsExe cng status
-    if ($LASTEXITCODE -ne 0) { Write-Error "ckms cng status failed"; exit 1 }
-    Write-Ok "ckms cng status confirms registration"
-
-    # ── 6. Run cng_verify tool (NCrypt DLL surface tests) ────────────────
+    # -- 6. Run cng_verify tool (NCrypt DLL surface tests) ----------------
 
     Write-Step "Running CNG KSP verification tool (DLL surface tests)"
     $verifyExe = Join-Path $TARGET_DIR "cosmian_kms_cng_ksp_verify.exe"
-    & $verifyExe --dll (Resolve-Path $DllPath).Path
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "cng_verify failed with exit code $LASTEXITCODE"
-        exit 1
-    }
+    Invoke-Native $verifyExe @("--dll", (Resolve-Path $DllPath).Path) "cng_verify failed"
     Write-Ok "cng_verify: all DLL surface tests passed"
 
-    # ── 7. Run Rust in-process lib tests ─────────────────────────────────
+    # -- 7. Run Rust in-process lib tests ---------------------------------
 
     Write-Step "Running Rust lib tests (cosmian_kms_cng_ksp)"
-    cargo test --lib --package cosmian_kms_cng_ksp --features $FEATURES -- --nocapture
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "cosmian_kms_cng_ksp lib tests failed"
-        exit 1
-    }
+    Invoke-Native cargo @("test", "--lib", "--package", "cosmian_kms_cng_ksp", "--features", $FEATURES, "--", "--nocapture") "cosmian_kms_cng_ksp lib tests failed"
     Write-Ok "Rust lib tests passed"
 
-    # ── 8. Validate ckms CLI CNG commands ────────────────────────────────
+    # -- 8. Validate ckms CLI CNG commands --------------------------------
 
     Write-Step "Validating ckms CLI CNG commands"
 
     # list-keys (should return at least 0 keys without error)
-    & $ckmsExe cng list-keys
-    if ($LASTEXITCODE -ne 0) { Write-Error "ckms cng list-keys failed"; exit 1 }
+    Invoke-Native $ckmsExe @("cng", "list-keys") "ckms cng list-keys failed"
     Write-Ok "ckms cng list-keys works"
 
     # status (already tested above, but confirm again after test operations)
-    & $ckmsExe cng status
-    if ($LASTEXITCODE -ne 0) { Write-Error "ckms cng status failed"; exit 1 }
+    Invoke-Native $ckmsExe @("cng", "status") "ckms cng status works"
     Write-Ok "ckms cng status works"
 
-    # ── 9. Check KMS server logs for errors ──────────────────────────────
+    # -- 9. Check KMS server logs for errors ------------------------------
 
     Write-Step "Checking KMS server logs for errors"
     $logErrors = @()
     if (Test-Path $KMS_LOG) {
-        $logErrors = Select-String -Path $KMS_LOG -Pattern "ERROR|PANIC" -CaseSensitive | Select-Object -First 10
+        $logErrors += @(Select-String -Path $KMS_LOG -Pattern "ERROR|PANIC" -CaseSensitive | Select-Object -First 10)
     }
     if (Test-Path "${KMS_LOG}.err") {
-        $logErrors += Select-String -Path "${KMS_LOG}.err" -Pattern "ERROR|PANIC" -CaseSensitive | Select-Object -First 10
+        $logErrors += @(Select-String -Path "${KMS_LOG}.err" -Pattern "ERROR|PANIC" -CaseSensitive | Select-Object -First 10)
     }
     if ($logErrors.Count -gt 0) {
         Write-Host "WARNING: KMS server logs contain errors:" -ForegroundColor Yellow
@@ -233,14 +237,19 @@ server_url = "$KMS_URL"
         Write-Ok "No ERROR/PANIC in KMS server logs"
     }
 
-    # ── 10. Unregister the KSP ──────────────────────────────────────────
+    # -- 10. Unregister the KSP ------------------------------------------
 
-    Write-Step "Unregistering CNG KSP"
-    & $ckmsExe cng unregister
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: ckms cng unregister failed (non-fatal)" -ForegroundColor Yellow
+    if ($IsAdmin) {
+        Write-Step "Unregistering CNG KSP"
+        try { & $ckmsExe cng unregister } catch { }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "WARNING: ckms cng unregister failed (non-fatal)" -ForegroundColor Yellow
+        } else {
+            Write-Ok "KSP unregistered"
+        }
     } else {
-        Write-Ok "KSP unregistered"
+        Write-Step "Skipping KSP unregistration (not Administrator)"
+        Write-Host "  [SKIP] ckms cng unregister" -ForegroundColor Yellow
     }
 }
 finally {
@@ -253,7 +262,7 @@ finally {
     }
 }
 
-# ── Summary ──────────────────────────────────────────────────────────────────
+# -- Summary ------------------------------------------------------------------
 
 Write-Host "`n==========================================" -ForegroundColor Green
 Write-Host "  CNG KSP integration tests PASSED" -ForegroundColor Green
