@@ -731,37 +731,28 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     });
 
     // Derive the session cookie encryption key.
-    // - If ui_session_salt is set, use it directly (recommended for production).
-    // - Otherwise, derive a stable salt from server-side configuration (database params +
-    //   public URL). This is safe for load-balanced setups because all instances behind
-    //   the same LB share the same database configuration, producing identical keys.
-    //   External attackers cannot reproduce this because the DB connection string is private.
-    #[allow(clippy::option_if_let_else)]
-    let effective_salt_owned: String =
-        if let Some(salt) = kms_server.params.ui_session_salt.as_deref() {
-            salt.to_owned()
-        } else {
-            // Derive from DB params (shared across all instances) + public URL.
-            // This is stable across restarts and identical across LB instances.
-            let db_identity = kms_server
-                .params
-                .main_db_params
-                .as_ref()
-                .map_or_else(|| "no-db".to_owned(), |p| format!("{p}"));
-            let mut hasher = Hasher::new(MessageDigest::sha256())?;
-            hasher.update(b"cosmian_kms_session_salt_v2:")?;
-            hasher.update(db_identity.as_bytes())?;
-            hasher.update(b":")?;
-            hasher.update(kms_public_url.as_bytes())?;
-            let digest = hasher.finish()?;
-            warn!(
-                "ui_session_salt is not configured — deriving session key from \
-                 server configuration. For maximum security, set `ui_session_salt` \
-                 (or KMS_UI_SESSION_SALT) to a strong random value."
-            );
-            hex::encode(digest)
-        };
-    let secret_key: Key = derive_session_key_from_url(&kms_public_url, &effective_salt_owned)?;
+    // - If ui_session_salt is set: derive a stable key tied to the public URL using PBKDF2.
+    //   This is deterministic across restarts and identical across load-balanced instances.
+    // - Otherwise: generate a random ephemeral key (secure but lost on restart).
+    //   Operators who need persistent sessions or load-balanced deployments MUST set
+    //   `ui_session_salt` (or KMS_UI_SESSION_SALT).
+    let secret_key: Key = if let Some(salt) = kms_server.params.ui_session_salt.as_deref() {
+        derive_session_key_from_url(&kms_public_url, salt)?
+    } else {
+        // No secret configured: generate a cryptographically random ephemeral key.
+        // This is secure, but sessions will be invalidated on every server restart.
+        warn!(
+            "ui_session_salt is not configured — using a randomly generated ephemeral \
+             session key. Sessions will be invalidated on server restart. For persistent \
+             sessions and load-balanced deployments, set `ui_session_salt` \
+             (or KMS_UI_SESSION_SALT) to a strong random secret value."
+        );
+        let mut key_bytes = [0_u8; 64];
+        openssl::rand::rand_bytes(&mut key_bytes).map_err(|e| {
+            KmsError::ServerError(format!("Failed to generate random session key: {e}"))
+        })?;
+        Key::from(key_bytes.as_ref())
+    };
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
@@ -815,7 +806,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .cookie_path("/".to_owned())
                     .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
-                    .cookie_same_site(actix_web::cookie::SameSite::Strict)
+                    .cookie_same_site(actix_web::cookie::SameSite::Lax)
                     .cookie_secure(true)
                     .session_lifecycle(
                         PersistentSession::default().session_ttl(Duration::hours(24)),

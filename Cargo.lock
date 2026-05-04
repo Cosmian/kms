@@ -1117,6 +1117,7 @@ dependencies = [
  "pkcs11-sys",
  "rand 0.10.1",
  "thiserror 2.0.17",
+ "tokio",
  "uuid",
  "zeroize",
 ]

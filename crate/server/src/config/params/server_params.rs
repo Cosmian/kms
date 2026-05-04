@@ -470,7 +470,7 @@ impl fmt::Debug for ServerParams {
         }
 
         if self.api_token_id.is_some() {
-            debug_struct.field("api_token_id", &"[configured]");
+            debug_struct.field("api_token_id", &self.api_token_id);
         }
 
         if let Some(ref dke_url) = self.ms_dke_service_url {

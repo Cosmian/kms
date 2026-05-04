@@ -11,7 +11,7 @@ use cosmian_kmip::{
     kmip_2_1::kmip_objects::Object,
     ttlv::{KmipFlavor, to_ttlv},
 };
-use cosmian_logger::{debug, trace as cache_trace, trace, warn};
+use cosmian_logger::{debug, trace, warn};
 use lru::LruCache;
 #[cfg(test)]
 use tokio::sync::RwLockReadGuard;
@@ -173,30 +173,13 @@ impl UnwrappedCache {
 
     /// Return the fingerprint of this object.
     ///
-    /// For key objects (which is the typical case since only wrapped keys reach
-    /// the cache), we serialize only the `KeyBlock` instead of the entire
-    /// `Object`. The `KeyBlock` contains the key material, algorithm,
-    /// format type and wrapping data — all the fields that change when the key
-    /// is modified. This avoids the much more expensive full-Object TTLV
-    /// serialization, significantly reducing CPU usage under concurrent load.
+    /// Serializes the full `Object` to TTLV bytes and hashes the result.
+    /// This ensures integrity across all object fields, not only the key material.
     fn fingerprint(&self, object: &Object) -> DbResult<u64> {
-        // Try the fast path: serialize only the KeyBlock.
-        let bytes = if let Ok(key_block) = object.key_block() {
-            cache_trace!("fingerprint: using fast KeyBlock path");
-            to_ttlv(key_block)
-                .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
-                .map_err(KmipError::from)
-                .map_err(DbError::from)?
-        } else {
-            // Fallback for non-key objects (certificates, opaque).
-            // In practice this path is not reached because only wrapped
-            // keys are cached, but we keep it for safety.
-            to_ttlv(&object)
-                .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
-                .map_err(KmipError::from)
-                .map_err(DbError::from)?
-        };
-
+        let bytes = to_ttlv(object)
+            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+            .map_err(KmipError::from)
+            .map_err(DbError::from)?;
         Ok(self.seed.hash_one(&bytes))
     }
 

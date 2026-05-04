@@ -205,21 +205,32 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     // plaintext length for logging
     let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
 
-    // Enforce UsageLimits (byte unit). The vector CS-BC-M-7-21 sets a UsageLimitsTotal=16 (bytes)
+    // Enforce UsageLimits. The vector CS-BC-M-7-21 sets a UsageLimitsTotal=16 (bytes)
     // and performs two 16-byte ECB encrypts expecting the second to fail with PermissionDenied.
-    // We implement a simple in-memory decrement persisted via attributes/state update.
+    // We implement a simple in-memory decrement persisted via attributes update.
     // NOTE: For durability a DB column would be better; for conformance tests this suffices.
-    if let Ok(attrs) = unwrapped_owm.object().attributes() {
-        if let Some(usage_limits) = attrs.usage_limits.as_ref() {
-            // Only enforce for Byte unit
-            if matches!(usage_limits.usage_limits_unit, UsageLimitsUnit::Byte) {
-                let remaining = usage_limits.usage_limits_total; // total remaining bytes allowed
-                let needed = i64::try_from(plaintext_len).map_or(i64::MAX, |v| v);
-                if remaining < needed {
-                    return Err(KmsError::Kmip21Error(
-                        ErrorReason::Permission_Denied,
-                        "DENIED".to_owned(),
-                    ));
+    {
+        let usage_limits = owm.attributes().usage_limits.as_ref();
+        if let Some(ul) = usage_limits {
+            match ul.usage_limits_unit {
+                UsageLimitsUnit::Byte => {
+                    let remaining = ul.usage_limits_total;
+                    let needed = i64::try_from(plaintext_len).map_or(i64::MAX, |v| v);
+                    if remaining < needed {
+                        return Err(KmsError::Kmip21Error(
+                            ErrorReason::Permission_Denied,
+                            "DENIED".to_owned(),
+                        ));
+                    }
+                }
+                // Object, Block, and Operation units: deny when exhausted
+                UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+                    if ul.usage_limits_total <= 0 {
+                        return Err(KmsError::Kmip21Error(
+                            ErrorReason::Permission_Denied,
+                            "DENIED".to_owned(),
+                        ));
+                    }
                 }
             }
         }
@@ -237,58 +248,42 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         }
     }?;
 
-    // Post-encryption: decrement usage limits if enforced.
+    // Post-encryption: decrement usage limits directly on owm.attributes_mut(), then persist.
+    // Operates on the original owm (which holds the wrapped key as stored in the DB) to avoid
+    // the copy-back pattern; no unwrapped_owm involvement needed for attribute persistence.
     let mut usage_limits_decremented = false;
-    if let Ok(attrs) = unwrapped_owm.object_mut().attributes_mut() {
-        if let Some(ref mut usage_limits) = attrs.usage_limits {
-            if matches!(usage_limits.usage_limits_unit, cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UsageLimitsUnit::Byte) {
-                if let Ok(p) = i64::try_from(plaintext_len) {
-                    usage_limits.usage_limits_total -= p;
-                } else {
-                    usage_limits.usage_limits_total = 0;
-                }
-                if usage_limits.usage_limits_total < 0 {
-                    usage_limits.usage_limits_total = 0;
-                }
+    if let Some(ref mut ul) = owm.attributes_mut().usage_limits {
+        match ul.usage_limits_unit {
+            UsageLimitsUnit::Byte => {
+                let p = i64::try_from(plaintext_len).unwrap_or(i64::MAX);
+                ul.usage_limits_total = (ul.usage_limits_total - p).max(0);
+                usage_limits_decremented = true;
+            }
+            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+                ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
                 usage_limits_decremented = true;
             }
         }
     }
 
-    // Only persist to the database when usage limits were actually decremented.
+    // Only persist when usage limits were actually decremented.
     // Skipping this UPDATE on the hot path (e.g. AWS XKS encrypt with no usage limits)
     // eliminates row-level lock contention that severely degrades throughput under concurrency.
     if usage_limits_decremented {
-        // Copy updated usage limits from unwrapped_owm back to original owm for persistence
-        if let (Ok(unwrapped_attrs), Ok(original_attrs)) = (
-            unwrapped_owm.object().attributes(),
-            owm.object_mut().attributes_mut(),
-        ) {
-            if let Some(unwrapped_usage_limits) = unwrapped_attrs.usage_limits.as_ref() {
-                if let Some(ref mut original_usage_limits) = original_attrs.usage_limits {
-                    original_usage_limits.usage_limits_total =
-                        unwrapped_usage_limits.usage_limits_total;
-                }
-            }
-        }
-
-        // Persist updated attributes (including decremented UsageLimits) so subsequent
-        // operations observe the reduced remaining total.
-        if let Ok(attributes) = owm.object().attributes() {
-            if let Err(e) = kms
-                .database
-                .update_object(
-                    owm.id(),
-                    owm.object(),
-                    attributes,
-                    None, // tags unchanged
-                )
-                .await
-            {
-                return Err(KmsError::ServerError(format!(
-                    "Encrypt: failed to persist updated usage limits: {e}"
-                )));
-            }
+        let attributes = owm.attributes().clone();
+        if let Err(e) = kms
+            .database
+            .update_object(
+                owm.id(),
+                owm.object(),
+                &attributes,
+                None, // tags unchanged
+            )
+            .await
+        {
+            return Err(KmsError::ServerError(format!(
+                "Encrypt: failed to persist updated usage limits: {e}"
+            )));
         }
     }
 
