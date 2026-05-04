@@ -90,16 +90,15 @@ pub(super) fn resolve_secret_uris(
 /// Build the list of all backends that are compiled in.
 /// Returns an empty `Vec` when no feature flags are enabled, which means
 /// `resolve_secret_uris` is a no-op and adds zero overhead at runtime.
+#[allow(clippy::vec_init_then_push)]
 pub(super) fn build_secret_backends() -> Vec<Box<dyn SecretBackend>> {
     #[allow(unused_mut)]
     let mut backends: Vec<Box<dyn SecretBackend>> = Vec::new();
 
     #[cfg(feature = "secret-vault")]
-    #[allow(clippy::vec_init_then_push)]
     backends.push(Box::new(vault::VaultBackend::new()));
 
     #[cfg(feature = "secret-aws")]
-    #[allow(clippy::vec_init_then_push)]
     backends.push(Box::new(aws::AwsSsmBackend::new()));
 
     #[cfg(feature = "secret-azure")]
@@ -256,7 +255,7 @@ mod aws {
     pub(super) struct AwsSsmBackend;
 
     impl AwsSsmBackend {
-        pub(super) fn new() -> Self {
+        pub(super) const fn new() -> Self {
             Self
         }
     }
@@ -493,7 +492,7 @@ mod azure {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use toml::Value;
 
@@ -601,9 +600,7 @@ mod tests {
             .unwrap_or_else(|_e| "ci-secret-value".to_owned());
 
         let backend = VaultBackend::new();
-        let resolved = backend
-            .resolve(&uri)
-            .unwrap_or_else(|e| panic!("Vault resolution failed: {e}"));
+        let resolved = backend.resolve(&uri).expect("Vault resolution failed");
         assert_eq!(
             resolved, expected,
             "Vault secret value mismatch: got '{resolved}', expected '{expected}'"
@@ -626,9 +623,7 @@ mod tests {
             .unwrap_or_else(|_e| "ci-secret-value".to_owned());
 
         let backend = AwsSsmBackend::new();
-        let resolved = backend
-            .resolve(&uri)
-            .unwrap_or_else(|e| panic!("AWS SSM resolution failed: {e}"));
+        let resolved = backend.resolve(&uri).expect("AWS SSM resolution failed");
         assert_eq!(
             resolved, expected,
             "AWS SSM secret value mismatch: got '{resolved}', expected '{expected}'"
@@ -652,9 +647,7 @@ mod tests {
             .unwrap_or_else(|_e| "ci-secret-value".to_owned());
 
         let backend = AzureKvBackend::new();
-        let resolved = backend
-            .resolve(&uri)
-            .unwrap_or_else(|e| panic!("Azure KV resolution failed: {e}"));
+        let resolved = backend.resolve(&uri).expect("Azure KV resolution failed");
         assert_eq!(
             resolved, expected,
             "Azure KV secret value mismatch: got '{resolved}', expected '{expected}'"
