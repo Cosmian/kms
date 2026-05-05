@@ -674,6 +674,48 @@ impl KmsClient {
         self.get_no_ttlv("/google_cse/status", None::<&()>).await
     }
 
+    // ── RBAC (Role-Based Access Control) ────────────────────────────────
+
+    /// Assign a role to a user.
+    /// Only privileged users (administrators) may call this endpoint.
+    pub async fn rbac_assign_role(
+        &self,
+        user_id: &str,
+        role: &str,
+    ) -> Result<serde_json::Value, KmsClientError> {
+        let body = serde_json::json!({ "user_id": user_id, "role": role });
+        self.post_no_ttlv("/rbac/roles", Some(&body)).await
+    }
+
+    /// Remove a role from a user.
+    /// Only privileged users (administrators) may call this endpoint.
+    pub async fn rbac_remove_role(
+        &self,
+        user_id: &str,
+        role: &str,
+    ) -> Result<serde_json::Value, KmsClientError> {
+        let body = serde_json::json!({ "user_id": user_id, "role": role });
+        self.delete_no_ttlv("/rbac/roles", &body).await
+    }
+
+    /// List the roles assigned to a specific user.
+    /// Only privileged users (administrators) may call this endpoint.
+    pub async fn rbac_list_user_roles(&self, user_id: &str) -> Result<Vec<String>, KmsClientError> {
+        self.get_no_ttlv(&format!("/rbac/roles/{user_id}"), None::<&()>)
+            .await
+    }
+
+    /// List all role assignments across all users.
+    /// Only privileged users (administrators) may call this endpoint.
+    pub async fn rbac_list_all_roles(&self) -> Result<Vec<serde_json::Value>, KmsClientError> {
+        self.get_no_ttlv("/rbac/roles", None::<&()>).await
+    }
+
+    /// Check whether RBAC enforcement is enabled on the server.
+    pub async fn rbac_status(&self) -> Result<serde_json::Value, KmsClientError> {
+        self.get_no_ttlv("/rbac/status", None::<&()>).await
+    }
+
     pub async fn get_no_ttlv<R, O>(
         &self,
         endpoint: &str,

@@ -6,6 +6,8 @@ import AccessListForm from "./actions/Access/AccessList";
 import AccessObtainedList from "./actions/Access/AccessObtained";
 import AccessRevokeForm from "./actions/Access/AccessRevoke";
 import AttributeDeleteForm from "./actions/Attributes/AttributeDelete";
+import RbacRoleManagement from "./actions/Rbac/RbacRoleManagement";
+import RbacStatus from "./actions/Rbac/RbacStatus";
 import AttributeGetForm from "./actions/Attributes/AttributeGet";
 import AttributeModifyForm from "./actions/Attributes/AttributeModify";
 import AttributeSetForm from "./actions/Attributes/AttributeSet";
@@ -325,6 +327,10 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="list" element={<AccessListForm />} />
                             <Route path="owned" element={<ObjectsOwnedList />} />
                             <Route path="obtained" element={<AccessObtainedList />} />
+                        </Route>
+                        <Route path="rbac">
+                            <Route path="roles" element={<RbacRoleManagement />} />
+                            <Route path="status" element={<RbacStatus />} />
                         </Route>
                         <Route path="certificates">
                             <Route path="certs/import" element={<CertificateImportForm />} />

@@ -14,7 +14,7 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
+    AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore, RoleStore,
 };
 use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
@@ -661,6 +661,89 @@ impl PermissionsStore for RedisWithFindex {
             .unwrap_or_default()
             .into_iter()
             .collect())
+    }
+}
+
+/// Redis key prefix for RBAC role assignments.
+const ROLE_ASSIGNMENTS_KEY: &str = "kms:rbac:roles";
+
+#[async_trait(?Send)]
+impl RoleStore for RedisWithFindex {
+    async fn assign_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        let key = format!("{ROLE_ASSIGNMENTS_KEY}:{user}");
+        let mut mgr = self.mgr.clone();
+        redis::cmd("SADD")
+            .arg(&key)
+            .arg(role)
+            .query_async::<()>(&mut mgr)
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "failed to assign role '{role}' to user '{user}': {e}"
+                ))
+            })?;
+        Ok(())
+    }
+
+    async fn remove_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        let key = format!("{ROLE_ASSIGNMENTS_KEY}:{user}");
+        let mut mgr = self.mgr.clone();
+        redis::cmd("SREM")
+            .arg(&key)
+            .arg(role)
+            .query_async::<()>(&mut mgr)
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!(
+                    "failed to remove role '{role}' from user '{user}': {e}"
+                ))
+            })?;
+        Ok(())
+    }
+
+    async fn list_user_roles(&self, user: &str) -> InterfaceResult<Vec<String>> {
+        let key = format!("{ROLE_ASSIGNMENTS_KEY}:{user}");
+        let mut mgr = self.mgr.clone();
+        let roles: Vec<String> = redis::cmd("SMEMBERS")
+            .arg(&key)
+            .query_async(&mut mgr)
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("failed to list roles for user '{user}': {e}"))
+            })?;
+        Ok(roles)
+    }
+
+    async fn list_all_role_assignments(&self) -> InterfaceResult<HashMap<String, Vec<String>>> {
+        let mut mgr = self.mgr.clone();
+        let pattern = format!("{ROLE_ASSIGNMENTS_KEY}:*");
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg(&pattern)
+            .query_async(&mut mgr)
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("failed to list role assignment keys: {e}"))
+            })?;
+
+        let prefix_len = ROLE_ASSIGNMENTS_KEY.len() + 1; // +1 for the ':'
+        let mut result: HashMap<String, Vec<String>> = HashMap::new();
+        for key in &keys {
+            if key.len() <= prefix_len {
+                continue;
+            }
+            let user = &key[prefix_len..];
+            let roles: Vec<String> = redis::cmd("SMEMBERS")
+                .arg(key)
+                .query_async(&mut mgr)
+                .await
+                .map_err(|e| {
+                    DbError::DatabaseError(format!("failed to get roles for key '{key}': {e}"))
+                })?;
+            if !roles.is_empty() {
+                result.insert(user.to_owned(), roles);
+            }
+        }
+        Ok(result)
     }
 }
 

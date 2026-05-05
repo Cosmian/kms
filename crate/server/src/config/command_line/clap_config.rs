@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    RbacConfig, WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -69,6 +69,7 @@ impl Default for ClapConfig {
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
+            rbac: RbacConfig::default(),
         }
     }
 }
@@ -202,6 +203,13 @@ pub struct ClapConfig {
     #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+
+    /// RBAC (Role-Based Access Control) configuration.
+    ///
+    /// Enable RBAC by setting `--rbac-policy-path` to a `.rego` file or directory.
+    /// Optionally delegate policy evaluation to an external OPA server via `--opa-url`.
+    #[clap(flatten)]
+    pub rbac: RbacConfig,
 }
 
 impl ClapConfig {
@@ -642,6 +650,8 @@ impl fmt::Debug for ClapConfig {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
         };
         let x = x.field("kmip", &self.kmip_policy);
+        let x = x.field("rbac_policy_path", &self.rbac.rbac_policy_path);
+        let x = x.field("opa_url", &self.rbac.opa_url);
 
         x.finish()
     }

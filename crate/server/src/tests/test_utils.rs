@@ -232,7 +232,12 @@ pub(crate) async fn test_app(
         .service(routes::access::grant_access)
         .service(routes::access::revoke_access)
         .service(routes::access::get_create_access)
-        .service(routes::access::get_privileged_access);
+        .service(routes::access::get_privileged_access)
+        .service(routes::rbac::assign_role)
+        .service(routes::rbac::remove_role)
+        .service(routes::rbac::list_user_roles)
+        .service(routes::rbac::list_all_roles)
+        .service(routes::rbac::rbac_status);
 
     let google_cse_jwt_config = google_cse_auth(None)
         .await
@@ -296,7 +301,12 @@ pub(crate) async fn test_app_with_clap_config(
         .service(routes::access::grant_access)
         .service(routes::access::revoke_access)
         .service(routes::access::get_create_access)
-        .service(routes::access::get_privileged_access);
+        .service(routes::access::get_privileged_access)
+        .service(routes::rbac::assign_role)
+        .service(routes::rbac::remove_role)
+        .service(routes::rbac::list_user_roles)
+        .service(routes::rbac::list_all_roles)
+        .service(routes::rbac::rbac_status);
 
     let google_cse_jwt_config = google_cse_auth(None)
         .await

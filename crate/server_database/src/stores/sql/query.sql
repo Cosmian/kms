@@ -46,6 +46,13 @@ CREATE TABLE IF NOT EXISTS tags (
         UNIQUE (id, tag)
 );
 
+-- name: create-table-role_assignments
+CREATE TABLE IF NOT EXISTS role_assignments (
+        userid VARCHAR(255),
+        role VARCHAR(128),
+        UNIQUE (userid, role)
+);
+
 -- name: clean-table-objects
 DELETE FROM objects;
 
@@ -54,6 +61,9 @@ DELETE FROM read_access;
 
 -- name: clean-table-tags
 DELETE FROM tags;
+
+-- name: clean-table-role_assignments
+DELETE FROM role_assignments;
 
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5);
@@ -135,3 +145,15 @@ ON objects.id = matched_tags.id;
 
 -- name: select-uids-from-tags
 SELECT id FROM tags WHERE tag IN (@TAGS) GROUP BY id HAVING COUNT(DISTINCT tag) = @LEN;
+
+-- name: insert-role_assignment
+INSERT INTO role_assignments (userid, role) VALUES ($1, $2) ON CONFLICT(userid, role) DO NOTHING;
+
+-- name: delete-role_assignment
+DELETE FROM role_assignments WHERE userid=$1 AND role=$2;
+
+-- name: select-user-roles
+SELECT role FROM role_assignments WHERE userid=$1;
+
+-- name: select-all-role_assignments
+SELECT userid, role FROM role_assignments ORDER BY userid, role;

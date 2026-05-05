@@ -7,7 +7,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, RoleStore,
 };
 use deadpool_postgres::{Config as PgConfig, ManagerConfig, Pool, RecyclingMethod};
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
@@ -326,6 +326,7 @@ impl PgPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-role_assignments",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -344,6 +345,7 @@ impl PgPool {
                 // Remove dependent rows first to avoid potential constraints if present
                 "clean-table-read_access",
                 "clean-table-tags",
+                "clean-table-role_assignments",
                 "clean-table-objects",
             ] {
                 let sql = tmp_loader.get_query(name)?;
@@ -981,6 +983,72 @@ impl PermissionsStore for PgPool {
                 }
             }
             Ok(perms)
+        })
+    }
+}
+
+#[async_trait(?Send)]
+impl RoleStore for PgPool {
+    async fn assign_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("insert-role_assignment"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&user, &role])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn remove_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("delete-role_assignment"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            client
+                .execute(&stmt, &[&user, &role])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            Ok(())
+        })
+    }
+
+    async fn list_user_roles(&self, user: &str) -> InterfaceResult<Vec<String>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-user-roles"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[&user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let roles: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+            Ok(roles)
+        })
+    }
+
+    async fn list_all_role_assignments(&self) -> InterfaceResult<HashMap<String, Vec<String>>> {
+        pg_retry!(self.pool, |client| {
+            let stmt = client
+                .prepare(get_pgsql_query!("select-all-role_assignments"))
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let rows = client
+                .query(&stmt, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut result: HashMap<String, Vec<String>> = HashMap::new();
+            for row in &rows {
+                let user: String = row.get(0);
+                let role: String = row.get(1);
+                result.entry(user).or_default().push(role);
+            }
+            Ok(result)
         })
     }
 }

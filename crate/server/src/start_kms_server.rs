@@ -62,7 +62,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, rbac, root_redirect,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -1028,6 +1028,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(rbac::assign_role)
+            .service(rbac::remove_role)
+            .service(rbac::list_user_roles)
+            .service(rbac::list_all_roles)
+            .service(rbac::rbac_status)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))

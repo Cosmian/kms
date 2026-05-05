@@ -160,15 +160,20 @@ pub(crate) async fn retrieve_object_for_operation(
 }
 
 /// Check if a user has permission to perform an operation on an object.
-///  If the user is the owner of the object, it will always return true.
-///  If the user has the `Get` permission, it will always return true.
-///  Otherwise, it will check the permissions in the database.
+///
+/// Authorization follows OR logic:
+///   1. **Owner check** — the object owner always has full access.
+///   2. **RBAC check** — if an RBAC engine is configured, the user's roles
+///      are loaded from the database and evaluated against the Rego policy.
+///   3. **ACL check** — existing per-object permission grants in the database.
+///
+/// Access is granted if *any* of the above checks succeed.
+///
 ///  # Arguments
 ///  * `user` - The user to check the permission for.
 ///  * `owm` - The object to check the permission on.
 ///  * `operation_type` - The operation to check the permission for.
 ///  * `kms` - The KMS instance.
-///  * `params` - The extra store params.
 ///  # Returns
 ///  * `Ok(true)` if the user has permission to perform the operation on the object.
 ///  * `Ok(false)` if the user does not have permission to perform the operation on the object.
@@ -178,15 +183,103 @@ pub(crate) async fn user_has_permission(
     operation_type: &KmipOperation,
     kms: &KMS,
 ) -> KResult<bool> {
+    // 1. Owner always has full access
     let id = match owm {
         Some(object) if user == object.owner() => return Ok(true),
         Some(object) => object.id(),
         None => "*",
     };
 
+    // 2. RBAC check (if engine is configured)
+    if let Some(ref rbac_engine) = kms.rbac_engine {
+        if rbac_check(rbac_engine.as_ref(), user, owm, operation_type, kms).await? {
+            return Ok(true);
+        }
+    }
+
+    // 3. Legacy ACL check
     let permissions = kms
         .database
         .list_user_operations_on_object(id, user, false)
         .await?;
     Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
+}
+
+/// Evaluate the RBAC engine for a given user, object, and operation.
+///
+/// Builds an [`RbacInput`] following the NIST SP 800-162 attribute model
+/// and delegates to the configured RBAC engine (embedded regorus or external OPA).
+async fn rbac_check(
+    engine: &(dyn cosmian_kms_rbac::RbacEngine + Sync + Send),
+    user: &str,
+    owm: Option<&ObjectWithMetadata>,
+    operation_type: &KmipOperation,
+    kms: &KMS,
+) -> KResult<bool> {
+    use cosmian_kms_rbac::{ActionAttrs, EnvironmentAttrs, RbacInput, ResourceAttrs, SubjectAttrs};
+
+    // Load user roles from the database
+    let roles = kms.database.list_user_roles(user).await.unwrap_or_default();
+    if roles.is_empty() {
+        // No roles assigned — RBAC cannot grant access
+        return Ok(false);
+    }
+
+    let is_privileged = kms
+        .params
+        .privileged_users
+        .as_ref()
+        .is_some_and(|pu| pu.contains(&user.to_owned()));
+
+    let is_owner = owm.is_some_and(|o| o.owner() == user);
+
+    let subject = SubjectAttrs {
+        user_id: user.to_owned(),
+        roles,
+        is_owner,
+        is_privileged,
+    };
+
+    // Convert KmipOperation to lowercase snake_case for Rego
+    let op_name = format!("{operation_type:?}")
+        .chars()
+        .fold(String::new(), |mut acc, c| {
+            if c.is_uppercase() && !acc.is_empty() {
+                acc.push('_');
+            }
+            acc.push(c.to_ascii_lowercase());
+            acc
+        });
+
+    let action = ActionAttrs { operation: op_name };
+
+    let resource = owm.map_or_else(ResourceAttrs::default, |obj| ResourceAttrs {
+        unique_identifier: Some(obj.id().to_owned()),
+        object_type: Some(format!("{:?}", obj.object().object_type())),
+        state: obj.attributes().state.map(|s| format!("{s:?}")),
+        owner: Some(obj.owner().to_owned()),
+        sensitive: obj.attributes().sensitive.unwrap_or(false),
+        extractable: obj.attributes().extractable.unwrap_or(true),
+    });
+
+    let environment = EnvironmentAttrs::default();
+
+    let input = RbacInput {
+        subject,
+        action,
+        resource,
+        environment,
+    };
+
+    match engine.evaluate(&input) {
+        Ok(allowed) => {
+            trace!("RBAC decision for user={user}, operation={operation_type:?}: {allowed}");
+            Ok(allowed)
+        }
+        Err(e) => {
+            warn!("RBAC evaluation error for user={user}: {e}");
+            // On RBAC error, fall through to ACL check
+            Ok(false)
+        }
+    }
 }

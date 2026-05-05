@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS tags
     PRIMARY KEY (id, tag)
 );
 
+-- name: create-table-role_assignments
+CREATE TABLE IF NOT EXISTS role_assignments
+(
+    userid VARCHAR(255) NOT NULL,
+    role   VARCHAR(128) NOT NULL,
+    PRIMARY KEY (userid, role)
+);
+
 -- name: clean-table-objects
 DELETE
 FROM objects;
@@ -66,6 +74,10 @@ FROM read_access;
 -- name: clean-table-tags
 DELETE
 FROM tags;
+
+-- name: clean-table-role_assignments
+DELETE
+FROM role_assignments;
 
 
 -- name: insert-objects
@@ -176,3 +188,15 @@ FROM tags
 WHERE tag IN (@TAGS)
 GROUP BY id
 HAVING COUNT(DISTINCT tag) = ?;
+
+-- name: insert-role_assignment
+INSERT IGNORE INTO role_assignments (userid, role) VALUES (?, ?);
+
+-- name: delete-role_assignment
+DELETE FROM role_assignments WHERE userid=? AND role=?;
+
+-- name: select-user-roles
+SELECT role FROM role_assignments WHERE userid=?;
+
+-- name: select-all-role_assignments
+SELECT userid, role FROM role_assignments ORDER BY userid, role;

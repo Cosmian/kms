@@ -216,6 +216,15 @@ const baseMenu: MenuItem[] = [
         ],
     },
     {
+        key: "rbac",
+        label: "RBAC",
+        icon: <TeamOutlined />,
+        children: [
+            { key: "rbac/roles", label: "Roles" },
+            { key: "rbac/status", label: "Status" },
+        ],
+    },
+    {
         key: "hyperscalers",
         label: "Hyperscalers",
         icon: <CloudOutlined />,
