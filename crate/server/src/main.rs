@@ -155,7 +155,7 @@ mod tests {
     use cosmian_kms_server::{
         config::{
             AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
-            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
+            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig, RbacConfig,
             SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
@@ -248,6 +248,7 @@ mod tests {
             force_default_username: false,
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             kmip_policy: KmipPolicyConfig::default(),
+            rbac: RbacConfig::default(),
             ms_dke_service_url: Some("[ms dke service url]".to_owned()),
             logging: LoggingConfig {
                 rust_log: Some("info,cosmian_kms=debug".to_owned()),

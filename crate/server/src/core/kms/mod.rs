@@ -40,6 +40,9 @@ static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
 
 use crate::{config::ServerParams, core::OtelMetrics, error::KmsError, kms_bail, result::KResult};
 
+/// Type alias for a thread-safe, dynamically dispatched RBAC engine.
+pub(crate) type BoxedRbacEngine = Box<dyn cosmian_kms_rbac::RbacEngine + Sync + Send>;
+
 /// Macro to instantiate an HSM with support for environment variable override
 /// Allows overriding PKCS#11 lib path via env for testing (falls back to default constant)
 #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
@@ -87,6 +90,11 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// Optional RBAC engine for role-based access control.
+    /// When enabled, authorization decisions consult OPA/Rego policies
+    /// in addition to the existing per-object ACL grants.
+    pub(crate) rbac_engine: Option<BoxedRbacEngine>,
 }
 
 impl KMS {
@@ -140,12 +148,16 @@ impl KMS {
             );
         }
 
+        // Initialize RBAC engine if configured
+        let rbac_engine = Self::instantiate_rbac_engine(&server_params)?;
+
         Ok(Self {
             params: server_params.clone(),
             database,
             crypto_oracles: RwLock::new(crypto_oracles),
             hsm: hsm.clone(),
             metrics: Self::create_otel_metrics(&server_params)?,
+            rbac_engine,
         })
     }
 
@@ -278,5 +290,38 @@ impl KMS {
             }
         };
         Ok(hsm)
+    }
+
+    /// Initialize the RBAC engine based on server configuration.
+    ///
+    /// Returns `None` if RBAC is not configured. When an external OPA URL is set,
+    /// the engine forwards decisions to the remote OPA server. Otherwise, the
+    /// embedded `regorus` Rego engine is used with policy files loaded from
+    /// `rbac_policy_path`.
+    fn instantiate_rbac_engine(server_params: &ServerParams) -> KResult<Option<BoxedRbacEngine>> {
+        if !server_params.rbac.is_enabled() {
+            return Ok(None);
+        }
+
+        // External OPA server takes precedence if both are set
+        if let Some(ref opa_url) = server_params.rbac.opa_url {
+            cosmian_logger::info!("RBAC: using external OPA server at {opa_url}");
+            let engine = cosmian_kms_rbac::ExternalOpaEngine::new(opa_url);
+            return Ok(Some(Box::new(engine)));
+        }
+
+        // Embedded regorus engine with Rego policy files
+        let policy_path = server_params.rbac.rbac_policy_path.as_deref();
+        cosmian_logger::info!(
+            "RBAC: loading Rego policy from {}",
+            policy_path.map_or("(default)", |p| p.to_str().unwrap_or("?"))
+        );
+
+        let engine = cosmian_kms_rbac::RegorusEngine::new(policy_path)
+            .map_err(|e| KmsError::ServerError(format!("RBAC: failed to create engine: {e}")))?;
+
+        cosmian_logger::info!("RBAC: embedded Rego engine initialized");
+
+        Ok(Some(Box::new(engine)))
     }
 }

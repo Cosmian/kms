@@ -11,7 +11,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, RoleStore,
 };
 use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
@@ -76,9 +76,11 @@ impl SqlitePool {
         let create_objects = pool.get_query("create-table-objects")?.to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
+        let create_role_assignments = pool.get_query("create-table-role_assignments")?.to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
+        let clean_role_assignments = pool.get_query("clean-table-role_assignments")?.to_owned();
         pool.conn
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
@@ -87,10 +89,12 @@ impl SqlitePool {
                     tx.execute(&create_objects, [])?;
                     tx.execute(&create_read_access, [])?;
                     tx.execute(&create_tags, [])?;
+                    tx.execute(&create_role_assignments, [])?;
                     if clear_database {
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
                         tx.execute(&clean_tags, [])?;
+                        tx.execute(&clean_role_assignments, [])?;
                     }
                     tx.commit()?;
                     Ok(())
@@ -772,6 +776,88 @@ impl SqlitePool {
             })
             .await
             .map_err(DbError::from)
+    }
+}
+
+#[async_trait(?Send)]
+impl RoleStore for SqlitePool {
+    async fn assign_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("insert-role_assignment"));
+        let user_s = user.to_owned();
+        let role_s = role.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute(&sql, params_from_iter([&user_s, &role_s]))?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn remove_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("delete-role_assignment"));
+        let user_s = user.to_owned();
+        let role_s = role.to_owned();
+        self.conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    c.execute(&sql, params_from_iter([&user_s, &role_s]))?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn list_user_roles(&self, user: &str) -> InterfaceResult<Vec<String>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("select-user-roles"));
+        let user_s = user.to_owned();
+        let roles = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<String>, rusqlite::Error> {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query(params_from_iter([&user_s]))?;
+                    let mut result = Vec::new();
+                    while let Some(r) = rows.next()? {
+                        let role: String = r.get(0)?;
+                        result.push(role);
+                    }
+                    Ok(result)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(roles)
+    }
+
+    async fn list_all_role_assignments(&self) -> InterfaceResult<HashMap<String, Vec<String>>> {
+        let sql = get_sqlite_query!("select-all-role_assignments").to_string();
+        let map = self
+            .conn
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    HashMap<String, Vec<String>>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut rows = stmt.query([])?;
+                    let mut result: HashMap<String, Vec<String>> = HashMap::new();
+                    while let Some(r) = rows.next()? {
+                        let user: String = r.get(0)?;
+                        let role: String = r.get(1)?;
+                        result.entry(user).or_default().push(role);
+                    }
+                    Ok(result)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(map)
     }
 }
 

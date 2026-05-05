@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig, RbacConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -155,6 +155,10 @@ pub struct ServerParams {
     /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
     /// applied automatically. Prevents unbounded DB queries and large response payloads.
     pub max_locate_items: u32,
+
+    /// RBAC (Role-Based Access Control) configuration.
+    /// When enabled, the KMS enforces role-based access control via OPA Rego policies.
+    pub rbac: RbacConfig,
 }
 
 /// Represents the server parameters.
@@ -378,6 +382,7 @@ impl ServerParams {
             rate_limit_per_second: conf.http.rate_limit_per_second,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_default(),
             max_locate_items: 1000,
+            rbac: conf.rbac,
         };
 
         debug!("{res:#?}");
@@ -596,6 +601,18 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
+
+        // RBAC configuration
+        if self.rbac.is_enabled() {
+            if let Some(ref policy_path) = self.rbac.rbac_policy_path {
+                debug_struct.field("rbac_policy_path", policy_path);
+            }
+            if let Some(ref opa_url) = self.rbac.opa_url {
+                debug_struct.field("opa_url", opa_url);
+            }
+        } else {
+            debug_struct.field("rbac", &"disabled");
+        }
 
         debug_struct.finish()
     }

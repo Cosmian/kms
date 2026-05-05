@@ -11,7 +11,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, RoleStore,
 };
 use cosmian_logger::{debug, trace};
 #[cfg(feature = "non-fips")]
@@ -249,6 +249,7 @@ impl MySqlPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-role_assignments",
         ] {
             let sql = MYSQL_QUERIES
                 .get(name)
@@ -262,6 +263,7 @@ impl MySqlPool {
                 "clean-table-objects",
                 "clean-table-read_access",
                 "clean-table-tags",
+                "clean-table-role_assignments",
             ] {
                 if let Some(sql) = MYSQL_QUERIES.get(name) {
                     conn.query_drop(sql).await.map_err(DbError::from)?;
@@ -713,6 +715,56 @@ impl PermissionsStore for MySqlPool {
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
         Ok(list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await?)
+    }
+}
+
+#[async_trait(?Send)]
+impl RoleStore for MySqlPool {
+    async fn assign_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(get_mysql_query!("insert-role_assignment"), (user, role))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn remove_role(&self, user: &str, role: &str) -> InterfaceResult<()> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        conn.exec_drop(get_mysql_query!("delete-role_assignment"), (user, role))
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn list_user_roles(&self, user: &str) -> InterfaceResult<Vec<String>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(get_mysql_query!("select-user-roles"), (user,))
+            .await
+            .map_err(DbError::from)?;
+        let roles = rows
+            .iter()
+            .map(|r| r.get::<String, _>(0).unwrap_or_default())
+            .collect();
+        Ok(roles)
+    }
+
+    async fn list_all_role_assignments(&self) -> InterfaceResult<HashMap<String, Vec<String>>> {
+        let mut conn = self.pool.get_conn().await.map_err(DbError::from)?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(
+                get_mysql_query!("select-all-role_assignments"),
+                mysql_async::Params::Empty,
+            )
+            .await
+            .map_err(DbError::from)?;
+        let mut result: HashMap<String, Vec<String>> = HashMap::new();
+        for row in &rows {
+            let user: String = row.get::<String, _>(0).unwrap_or_default();
+            let role: String = row.get::<String, _>(1).unwrap_or_default();
+            result.entry(user).or_default().push(role);
+        }
+        Ok(result)
     }
 }
 

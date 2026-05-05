@@ -25,6 +25,7 @@ pub mod google_cse;
 pub mod health;
 pub mod kmip;
 pub mod ms_dke;
+pub mod rbac;
 pub mod root_redirect;
 pub mod ui_auth;
 mod utils;
