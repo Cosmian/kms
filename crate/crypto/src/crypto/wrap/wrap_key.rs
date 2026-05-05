@@ -5,7 +5,10 @@ use cosmian_kmip::{
         kmip_objects::{
             Certificate, Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
         },
-        kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType, WrappingMethod},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, EncodingOption, KeyFormatType,
+            WrappingMethod,
+        },
     },
 };
 use cosmian_logger::{debug, trace};
@@ -116,7 +119,26 @@ pub fn wrap_object_with_key(
     // update the key block with the wrapped key
     let object_key_block = object.key_block_mut()?;
     object_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped_key)));
-    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
+    let mut kwd = key_wrapping_specification.get_key_wrapping_data();
+    // For symmetric wrapping keys, store the resolved block_cipher_mode in the
+    // KeyWrappingData so the unwrap path knows which algorithm was actually used.
+    // Old wrapped keys with block_cipher_mode=None will still unwrap with RFC 5649
+    // (backward compatibility).
+    if matches!(wrapping_key, Object::SymmetricKey { .. }) {
+        if let Some(ref mut eki) = kwd.encryption_key_information {
+            let current_mode = eki
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|p| p.block_cipher_mode);
+            if current_mode.is_none() {
+                let cp = eki
+                    .cryptographic_parameters
+                    .get_or_insert_with(CryptographicParameters::default);
+                cp.block_cipher_mode = Some(BlockCipherMode::NISTKeyWrap);
+            }
+        }
+    }
+    object_key_block.key_wrapping_data = Some(kwd);
 
     Ok(())
 }
