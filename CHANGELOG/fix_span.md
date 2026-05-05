@@ -72,10 +72,6 @@
 - Fix KMIP documentation generator to produce markdownlint-compliant output (blank lines after headings and before tables)
 - Update KMIP version-aware operation tables with corrected `N/A` entries for operations not defined in earlier KMIP versions
 
-Closes #902
-Closes #921
-Closes #926
-
 ### HSM Locate Name filter bypass (issue #935)
 
 - **VULN-13**: Fix HSM Locate leaking internal KEK when a `Name` attribute filter was provided — the filter was silently ignored for HSM keys, so `ObjectType=SymmetricKey` + `Name=<anything>` matched the server KEK even for non-HSM-admin users. `Name` (and `ApplicationSpecificInformation`) are now treated as unsupported HSM attributes: a Locate with such filters returns zero HSM results, matching KMIP semantics (no HSM key has a KMIP Name, therefore none can match). ([#935](https://github.com/Cosmian/kms/issues/935))
@@ -89,16 +85,7 @@ Closes #926
 - Fix AWS XKS handler bottleneck where a single CPU core was saturated under concurrent load due to `sigv4_verify()` — an HMAC-SHA256 computation over the full ~85 KB XKS request body — running synchronously on a tokio worker thread, preventing new connection acceptance. Moved to `tokio::task::spawn_blocking` so the CPU-bound work runs on the blocking thread pool and the async runtime stays free.
 - Fix all PKCS#11 FFI operations in `BaseHsm` (`create_key`, `create_keypair`, `export`, `delete`, `find`, `encrypt`, `decrypt`, `sign`, `get_key_type`, `get_key_metadata`, `generate_random`, `seed_random`) being called directly on tokio async threads, blocking the entire runtime on HSM I/O. All operations now run via `tokio::task::spawn_blocking`.
 
-### PR review fixes (Copilot + tbrezot)
-
-- `api_token_id` in `ServerParams` debug output now shows the actual UUID value instead of `"[configured]"` — the UID is not sensitive (it is not the token secret)
-- Session cookie key fallback: when `ui_session_salt` is not configured, the server now generates a cryptographically random 64-byte ephemeral key via `openssl::rand::rand_bytes` instead of deriving from configuration data (which could be public-only for SQLite deployments). Sessions are invalidated on restart in the unconfigured case; operators must set `ui_session_salt` for persistent/load-balanced sessions
-- `UnwrappedCache::fingerprint()` reverted to serialize the full `Object` (not just `KeyBlock`) to preserve the original integrity guarantee across all object fields
-- Removed unnecessary `validate_cache` calls from `Database::update_object`, `Database::create`, and the `Create`/`UpdateObject`/`Upsert` arms of `Database::atomic`. Key material is immutable in KMIP; the GC handles stale cache entries. Only state-transition `clear_cache` calls (revoke/destroy) are retained
-- Usage limits enforcement and decrement in `encrypt.rs` now handles all four `UsageLimitsUnit` variants (`Byte`, `Object`, `Block`, `Operation`). Decrement operates directly on `owm.attributes_mut()` without the previous copy-back through `unwrapped_owm`
-
-### AWS XKS `KMSInvalidStateException` under concurrent load
-
-- Fix a bug where unhandled error variants in the XKS `encrypt` and `decrypt` handlers fell into a `_` catch-all that returned `HttpResponse::from_error(KmsError)`, producing HTTP 422/500 responses with `text/html` bodies instead of the XKS JSON format required by the spec. AWS KMS could not parse these responses and surfaced them as `KMSInvalidStateException`. All `KmsError` variants are now explicitly mapped to the appropriate `XksErrorReply`: `Wrong_Key_Lifecycle_State` → `InvalidStateException`, `Permission_Denied` → `InvalidKeyUsageException`, `Item_Not_Found` → `KeyNotFoundException`, `Operation_Not_Supported` → `UnsupportedOperationException`, all other validation errors → `ValidationException`, and any remaining error → `InternalException` (with server-side logging).
-
+Closes #902
+Closes #921
+Closes #926
 Closes #935
