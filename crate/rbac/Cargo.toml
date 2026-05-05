@@ -22,7 +22,6 @@ doctest = false
 [features]
 
 [dependencies]
-cosmian_kmip = { path = "../kmip", version = "5.21.0", default-features = true }
 cosmian_logger = { workspace = true }
 regorus = { version = "0.9", default-features = false, features = ["std"] }
 reqwest = { workspace = true, features = ["json", "rustls-tls"] }
