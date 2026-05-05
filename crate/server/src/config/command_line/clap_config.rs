@@ -210,33 +210,44 @@ pub struct ClapConfig {
 /// is substituted. Returns an error message if a referenced variable is not set.
 fn interpolate_env_vars(content: &str) -> Result<String, String> {
     let mut result = String::with_capacity(content.len());
-    let mut chars = content.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '$' && chars.peek() == Some(&'{') {
-            chars.next(); // consume '{'
-            let mut var_name = String::new();
-            let mut closed = false;
-            for inner in chars.by_ref() {
-                if inner == '}' {
-                    closed = true;
-                    break;
+    // Process line-by-line so that TOML comment lines (first non-whitespace char is '#')
+    // are passed through verbatim.  This prevents examples inside comments from being
+    // mistakenly treated as env-var references (e.g. `# example: url = "${MY_VAR}"`).
+    for line in content.split_inclusive('\n') {
+        if line.trim_start().starts_with('#') {
+            result.push_str(line);
+            continue;
+        }
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '$' && chars.peek() == Some(&'{') {
+                chars.next(); // consume '{'
+                let mut var_name = String::new();
+                let mut closed = false;
+                for inner in chars.by_ref() {
+                    if inner == '}' {
+                        closed = true;
+                        break;
+                    }
+                    var_name.push(inner);
                 }
-                var_name.push(inner);
+                if !closed {
+                    return Err(format!(
+                        "Unclosed '${{' in config for variable: '{var_name}'"
+                    ));
+                }
+                if var_name.is_empty() {
+                    return Err("Empty variable name '${}' in config file".to_owned());
+                }
+                let value = std::env::var(&var_name).map_err(|_e| {
+                    format!(
+                        "Environment variable '{var_name}' referenced in config file is not set"
+                    )
+                })?;
+                result.push_str(&value);
+            } else {
+                result.push(c);
             }
-            if !closed {
-                return Err(format!(
-                    "Unclosed '${{' in config for variable: '{var_name}'"
-                ));
-            }
-            if var_name.is_empty() {
-                return Err("Empty variable name '${}' in config file".to_owned());
-            }
-            let value = std::env::var(&var_name).map_err(|_e| {
-                format!("Environment variable '{var_name}' referenced in config file is not set")
-            })?;
-            result.push_str(&value);
-        } else {
-            result.push(c);
         }
     }
     Ok(result)
@@ -1138,6 +1149,28 @@ mod tests {
             let result = super::interpolate_env_vars(input);
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("KMS_NONEXISTENT_VAR_XYZ"));
+        });
+    }
+
+    #[test]
+    fn interpolate_env_vars_comment_lines_skipped() {
+        with_clean_env(|| {
+            // ${VAR_NAME} and ${KMS_DB_PASSWORD} in comments must NOT trigger a missing-var error,
+            // even if those env vars are not set.  This mirrors the situation in pkg/kms.toml which
+            // contains illustrative examples inside TOML comment lines.
+            unsafe {
+                std::env::remove_var("VAR_NAME");
+                std::env::remove_var("KMS_DB_PASSWORD");
+            }
+            let input = "# using the ${VAR_NAME} syntax.\n\
+                         #   database_url = \"postgresql://kms:${KMS_DB_PASSWORD}@db.internal/kms\"\n\
+                         database_type = \"sqlite\"\n";
+            let result =
+                super::interpolate_env_vars(input).expect("comments should be skipped verbatim");
+            // Comment lines are preserved verbatim; the non-comment line is unchanged
+            assert!(result.contains("${VAR_NAME}"));
+            assert!(result.contains("${KMS_DB_PASSWORD}"));
+            assert!(result.contains("database_type = \"sqlite\""));
         });
     }
 
