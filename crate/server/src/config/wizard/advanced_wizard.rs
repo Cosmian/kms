@@ -212,6 +212,7 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
     } else {
         Some(session_salt)
     };
+    ui.enable = true;
 
     Ok(AdvancedConfig {
         workspace,

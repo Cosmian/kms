@@ -31,6 +31,8 @@ mod socket_wizard;
 mod tests;
 mod tls_wizard;
 
+use dialoguer::{Input, theme::ColorfulTheme};
+
 use crate::{
     config::{ClapConfig, UiConfig, get_default_config_path},
     error::KmsError,
@@ -84,14 +86,37 @@ pub fn run_configure_wizard() -> KResult<()> {
     println!("[3/9] TLS / Certificate configuration");
     println!("──────────────────────────────────────");
     let tls_result = tls_wizard::configure_tls()?;
-    let tls = tls_result.tls;
+    let mut tls = tls_result.tls;
     let has_clients_ca = tls.clients_ca_cert_file.is_some();
+    // Build default CORS origins now that TLS is known (determines scheme).
+    let scheme = http.scheme(&tls);
+    http.cors_allowed_origins = Some(http_wizard::default_cors_origins(scheme, http.port));
     println!();
 
     // ── [4/9] KMIP socket server ──────────────────────────────────────────────
     println!("[4/9] KMIP socket server configuration");
     println!("───────────────────────────────────────");
     let socket_server = socket_wizard::configure_socket_server(has_clients_ca)?;
+
+    // The KMIP socket server authenticates clients exclusively via mTLS.
+    // If it was just enabled but `clients_ca_cert_file` is not set, fix that now.
+    if socket_server.socket_server_start && tls.clients_ca_cert_file.is_none() {
+        if let Some(ca_cert) = tls_result.generated_ca_cert {
+            println!("  ℹ  KMIP socket server requires mTLS — enabling it automatically.");
+            println!("     clients_ca_cert_file = {}", ca_cert.display());
+            tls.clients_ca_cert_file = Some(ca_cert);
+        } else {
+            println!("  ⚠  The KMIP socket server requires mutual TLS (mTLS).");
+            println!(
+                "     Please provide the CA certificate that will be used to validate client certificates."
+            );
+            let ca: String = Input::with_theme(&ColorfulTheme::default())
+                .with_prompt("Clients CA certificate file path (--clients-ca-cert-file)")
+                .interact_text()
+                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            tls.clients_ca_cert_file = Some(std::path::PathBuf::from(ca));
+        }
+    }
     println!();
 
     // ── [5/9] Authentication ──────────────────────────────────────────────────
@@ -124,6 +149,14 @@ pub fn run_configure_wizard() -> KResult<()> {
     println!("─────────────────────────────────────────────");
     let advanced = advanced_wizard::configure_advanced(ui_config)?;
     println!();
+
+    // Prepend kms_public_url to CORS origins if it was set and is not already present.
+    if let Some(ref public_url) = advanced.kms_public_url {
+        let origins = http.cors_allowed_origins.get_or_insert_with(Vec::new);
+        if !origins.iter().any(|o| o == public_url) {
+            origins.insert(0, public_url.clone());
+        }
+    }
 
     // Assemble the final ClapConfig using struct-update syntax so that any
     // field added to ClapConfig in the future is automatically included with

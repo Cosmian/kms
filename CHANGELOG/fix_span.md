@@ -54,6 +54,10 @@
 - Implement read/write connection split for SQLite: dedicated writer connection + pool of reader connections (default: 2×CPU cores, capped at 10) leveraging WAL mode concurrent read support
 - Honor the previously ignored `max_connections` parameter for SQLite backends
 
+### PKCS#12 generation in FIPS mode
+
+- Make client PKCS#12 bundle generation macOS-only: PKCS12KDF is not available under the OpenSSL FIPS provider, so P12 generation is skipped on Linux/Windows where PEM files suffice for client certificate authentication ([#928](https://github.com/Cosmian/kms/pull/928))
+
 ## Build
 
 ### Dependency updates
@@ -88,4 +92,13 @@
 Closes #902
 Closes #921
 Closes #926
+
+### Race condition in `test_privileged_users` test
+
+- Fix intermittent `test_privileged_users` failure caused by a shared `OnceCell` (`ONCE_SERVER_WITH_PRIVILEGED_USERS`) being initialized by `privilege_bypass` tests (which register only the owner) before `test_privileged_users` could populate it with both the owner and `user.privileged@acme.com`. Added a dedicated `ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS` cell and `start_default_test_kms_server_with_multi_privileged_users()` function to isolate the two test server instances.
+
+### PKCS#11 loader `ensure_cdylib` feature forwarding
+
+- Fix `ensure_cdylib()` in `crate/clients/pkcs11/loader/src/tests.rs` always building with `--features non-fips` regardless of the active test profile. Now mirrors `ensure_binary.rs`: forwards `--features non-fips` only when the `non-fips` feature is active in the current compilation unit, and forwards `--release` when `debug_assertions` are disabled.
+
 Closes #935
