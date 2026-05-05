@@ -258,16 +258,9 @@ impl Database {
     }
 
     /// Update the state of an object in the database.
-    /// Also invalidates the unwrapped cache when the key transitions to a
-    /// non-active state (revoked, deactivated, destroyed) to prevent stale
-    /// cache entries from being used for cryptographic operations.
     pub async fn update_state(&self, uid: &str, state: State) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
-        db.update_state(uid, state).await?;
-        if !matches!(state, State::Active | State::PreActive) {
-            self.unwrapped_cache.clear_cache(uid).await;
-        }
-        Ok(())
+        Ok(db.update_state(uid, state).await?)
     }
 
     /// Delete an object from the database.
@@ -356,22 +349,15 @@ impl Database {
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
-                AtomicOperation::Create(..)
-                | AtomicOperation::UpdateObject(..)
-                | AtomicOperation::Upsert(..) => {
-                    // Key material is immutable. No eager cache invalidation needed;
-                    // the GC handles stale entries.
+                AtomicOperation::Create((uid, object, ..))
+                | AtomicOperation::UpdateObject((uid, object, ..))
+                | AtomicOperation::Upsert((uid, object, ..)) => {
+                    self.unwrapped_cache.validate_cache(uid, object).await?;
                 }
                 AtomicOperation::Delete(uid) => {
                     self.unwrapped_cache.clear_cache(uid).await;
                 }
-                AtomicOperation::UpdateState((uid, state)) => {
-                    // Clear cache when object transitions to a non-active state
-                    // (e.g. revoked, destroyed) to prevent serving stale plaintext
-                    if *state != State::Active && *state != State::PreActive {
-                        self.unwrapped_cache.clear_cache(uid).await;
-                    }
-                }
+                AtomicOperation::UpdateState(_) => {}
             }
         }
         Ok(ids)

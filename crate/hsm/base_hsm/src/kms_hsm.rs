@@ -63,32 +63,29 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         sensitive: bool,
     ) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
-        // Validate key parameters before spawning (pure computation, no FFI)
-        let key_size = match algorithm {
-            HsmKeyAlgorithm::AES => match key_length_in_bits {
-                128 => AesKeySize::Aes128,
-                256 => AesKeySize::Aes256,
-                x => {
-                    return Err(InterfaceError::Default(format!(
-                        "Invalid key length: {x} bits, for and HSM AES key"
-                    )));
-                }
-            },
-        };
-        let id_owned = id.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            if session.get_object_handle(&id_owned).is_ok() {
-                return Err(InterfaceError::Default(
-                    "A secret key with this id already exists".to_owned(),
-                ));
+        let session = slot.open_session(true)?;
+
+        if session.get_object_handle(id).is_ok() {
+            return Err(InterfaceError::Default(
+                "A secret key with this id already exists".to_owned(),
+            ));
+        }
+
+        match algorithm {
+            HsmKeyAlgorithm::AES => {
+                let key_size = match key_length_in_bits {
+                    128 => AesKeySize::Aes128,
+                    256 => AesKeySize::Aes256,
+                    x => {
+                        return Err(InterfaceError::Default(format!(
+                            "Invalid key length: {x} bits, for and HSM AES key"
+                        )));
+                    }
+                };
+                let _ = session.generate_aes_key(id, key_size, sensitive)?;
+                Ok(())
             }
-            Ok(session
-                .generate_aes_key(&id_owned, key_size, sensitive)
-                .map(|_| ())?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM create_key task panicked: {e}")))?
+        }
     }
 
     async fn create_keypair(
@@ -101,64 +98,55 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         sensitive: bool,
     ) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
-        // Validate key parameters before spawning (pure computation, no FFI)
-        let rsa_key_size = match algorithm {
-            HsmKeypairAlgorithm::RSA => match key_length_in_bits {
-                1024 => RsaKeySize::Rsa1024,
-                2048 => RsaKeySize::Rsa2048,
-                3072 => RsaKeySize::Rsa3072,
-                4096 => RsaKeySize::Rsa4096,
-                x => {
-                    return Err(InterfaceError::Default(format!(
-                        "Invalid key length: {x} bits, for and HSM RSA key (valid values are 1024, 2048, 3072, 4096)"
-                    )));
-                }
-            },
+        let session = slot.open_session(true)?;
+
+        if session.get_object_handle(sk_id).is_ok() {
+            return Err(InterfaceError::Default(
+                "A private key with this ID already exists".to_owned(),
+            ));
+        }
+        if session.get_object_handle(pk_id).is_ok() {
+            return Err(InterfaceError::Default(
+                "A public key with this ID and the '_pk' suffix already exists".to_owned(),
+            ));
+        }
+
+        let key_length_in_bits = match key_length_in_bits {
+            1024 => RsaKeySize::Rsa1024,
+            2048 => RsaKeySize::Rsa2048,
+            3072 => RsaKeySize::Rsa3072,
+            4096 => RsaKeySize::Rsa4096,
+            x => {
+                return Err(InterfaceError::Default(format!(
+                    "Invalid key length: {x} bits, for and HSM RSA key (valid values are 1024, \
+                     2048, 3072, 4096)"
+                )));
+            }
         };
-        let sk_id_owned = sk_id.to_vec();
-        let pk_id_owned = pk_id.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            if session.get_object_handle(&sk_id_owned).is_ok() {
-                return Err(InterfaceError::Default(
-                    "A private key with this ID already exists".to_owned(),
-                ));
+
+        match algorithm {
+            HsmKeypairAlgorithm::RSA => {
+                session.generate_rsa_key_pair(sk_id, pk_id, key_length_in_bits, sensitive)?;
+                Ok(())
             }
-            if session.get_object_handle(&pk_id_owned).is_ok() {
-                return Err(InterfaceError::Default(
-                    "A public key with this ID and the '_pk' suffix already exists".to_owned(),
-                ));
-            }
-            session.generate_rsa_key_pair(&sk_id_owned, &pk_id_owned, rsa_key_size, sensitive)?;
-            Ok(())
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM create_keypair task panicked: {e}")))?
+        }
     }
 
     async fn export(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<Option<HsmObject>> {
         let slot = self.get_slot(slot_id)?;
-        let object_id_owned = object_id.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handle = session.get_object_handle(&object_id_owned)?;
-            Ok(session.export_key(handle)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM export task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(object_id)?;
+        let object = session.export_key(handle)?;
+        Ok(object)
     }
 
     async fn delete(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
-        let object_id_owned = object_id.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handle = session.get_object_handle(&object_id_owned)?;
-            session.destroy_object(handle)?;
-            Ok(session.delete_object_handle(&object_id_owned)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM delete task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(object_id)?;
+        session.destroy_object(handle)?;
+        session.delete_object_handle(object_id)?;
+        Ok(())
     }
 
     async fn find(
@@ -167,21 +155,17 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         object_filter: HsmObjectFilter,
     ) -> InterfaceResult<Vec<Vec<u8>>> {
         let slot = self.get_slot(slot_id)?;
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handles = session.list_objects(object_filter)?;
-            let mut object_ids = Vec::with_capacity(handles.len());
-            for handle in handles {
-                if let Ok(Some(object_id)) = session.get_object_id(handle) {
-                    object_ids.push(object_id);
-                } else {
-                    debug!("Invalid object, skipping");
-                }
+        let session = slot.open_session(true)?;
+        let handles = session.list_objects(object_filter)?;
+        let mut object_ids = Vec::with_capacity(handles.len());
+        for handle in handles {
+            if let Ok(Some(object_id)) = session.get_object_id(handle) {
+                object_ids.push(object_id);
+            } else {
+                debug!("Invalid object, skipping");
             }
-            InterfaceResult::Ok(object_ids)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM find task panicked: {e}")))?
+        }
+        Ok(object_ids)
     }
 
     async fn encrypt(
@@ -191,20 +175,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         algorithm: CryptoAlgorithm,
         data: &[u8],
     ) -> InterfaceResult<EncryptedContent> {
-        // PKCS#11 FFI calls (C_OpenSession, C_FindObjects, C_Encrypt) are synchronous
-        // and potentially slow (HSM latency). Running them directly on the tokio
-        // executor thread would block the runtime and prevent it from accepting new
-        // connections or processing other tasks. Offload to the blocking thread pool.
         let slot = self.get_slot(slot_id)?;
-        let key_id_owned = key_id.to_vec();
-        let data_owned = data.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handle = session.get_object_handle(&key_id_owned)?;
-            Ok(session.encrypt(handle, algorithm.into(), &data_owned)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM encrypt task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let encrypted_content = session.encrypt(handle, algorithm.into(), data)?;
+        Ok(encrypted_content)
     }
 
     async fn decrypt(
@@ -215,15 +190,10 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &[u8],
     ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
         let slot = self.get_slot(slot_id)?;
-        let key_id_owned = key_id.to_vec();
-        let data_owned = data.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handle = session.get_object_handle(&key_id_owned)?;
-            Ok(session.decrypt(handle, algorithm.into(), &data_owned)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM decrypt task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let plaintext = session.decrypt(handle, algorithm.into(), data)?;
+        Ok(plaintext)
     }
 
     async fn sign(
@@ -234,15 +204,10 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         data: &[u8],
     ) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        let key_id_owned = key_id.to_vec();
-        let data_owned = data.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handle = session.get_object_handle(&key_id_owned)?;
-            Ok(session.sign(handle, algorithm.into(), &data_owned)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM sign task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let signature = session.sign(handle, algorithm.into(), data)?;
+        Ok(signature)
     }
 
     async fn get_key_type(
@@ -251,14 +216,10 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyType>> {
         let slot = self.get_slot(slot_id)?;
-        let key_id_owned = key_id.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handle = session.get_object_handle(&key_id_owned)?;
-            Ok(session.get_key_type(handle)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM get_key_type task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let key_type = session.get_key_type(handle)?;
+        Ok(key_type)
     }
 
     async fn get_key_metadata(
@@ -267,35 +228,24 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         key_id: &[u8],
     ) -> InterfaceResult<Option<KeyMetadata>> {
         let slot = self.get_slot(slot_id)?;
-        let key_id_owned = key_id.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            let handle = session.get_object_handle(&key_id_owned)?;
-            Ok(session.get_key_metadata(handle)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM get_key_metadata task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        let metadata = session.get_key_metadata(handle)?;
+        Ok(metadata)
     }
 
     async fn generate_random(&self, slot_id: usize, len: usize) -> InterfaceResult<Vec<u8>> {
         let slot = self.get_slot(slot_id)?;
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            Ok(session.generate_random(len)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM generate_random task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let bytes = session.generate_random(len)?;
+        Ok(bytes)
     }
 
     async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()> {
         let slot = self.get_slot(slot_id)?;
-        let seed_owned = seed.to_vec();
-        tokio::task::spawn_blocking(move || -> InterfaceResult<_> {
-            let session = slot.open_session(true)?;
-            Ok(session.seed_random(&seed_owned)?)
-        })
-        .await
-        .map_err(|e| InterfaceError::Default(format!("HSM seed_random task panicked: {e}")))?
+        let session = slot.open_session(true)?;
+        let () = session.seed_random(seed)?;
+        Ok(())
     }
 
     fn hsm_lib(&self) -> Option<&dyn std::any::Any> {

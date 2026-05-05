@@ -740,18 +740,16 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         derive_session_key_from_url(&kms_public_url, salt)?
     } else {
         // No secret configured: generate a cryptographically random ephemeral key.
-        // This is secure, but sessions will be invalidated on every server restart.
+        // This is secure, but sessions will be invalidated on every server restart
+        // and are not portable across load-balanced instances.
         warn!(
             "ui_session_salt is not configured — using a randomly generated ephemeral \
-             session key. Sessions will be invalidated on server restart. For persistent \
-             sessions and load-balanced deployments, set `ui_session_salt` \
-             (or KMS_UI_SESSION_SALT) to a strong random secret value."
+             session key. Sessions will be invalidated on server restart and are not \
+             portable across instances. For persistent sessions and load-balanced \
+             deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong \
+             random secret value."
         );
-        let mut key_bytes = [0_u8; 64];
-        openssl::rand::rand_bytes(&mut key_bytes).map_err(|e| {
-            KmsError::ServerError(format!("Failed to generate random session key: {e}"))
-        })?;
-        Key::from(key_bytes.as_ref())
+        Key::generate()
     };
 
     // Clone kms_server for HttpServer closure

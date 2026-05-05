@@ -26,6 +26,5 @@ lru = { workspace = true }
 pkcs11-sys = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt"] }
 uuid = { workspace = true, features = ["v4"] }
 zeroize = { workspace = true }
