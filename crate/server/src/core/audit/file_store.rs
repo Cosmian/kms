@@ -8,8 +8,8 @@
 //!   design avoids any mutex around the file and guarantees write order under
 //!   concurrent requests.
 //! * The middleware calls `enqueue()` which is a non-blocking `try_send`.  If the
-//!   channel is full (> 1024 buffered events) the draft is silently dropped and a
-//!   warning is logged — we never block the request path.
+//!   channel is full (> 1024 buffered events) the draft is silently dropped and an
+//!   error is logged — we never block the request path.
 //!
 //! Hash chain
 //! ==========
@@ -26,7 +26,7 @@ use std::{
 };
 
 use cosmian_kms_access::audit::{AuditEventDraft, AuditEventFull, AuditResult, compute_row_hash};
-use cosmian_logger::{debug, warn};
+use cosmian_logger::{debug, error, warn};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
@@ -81,15 +81,14 @@ impl AuditFileStore {
         match self.sender.try_send(draft) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(_)) => {
-                warn!("AuditFileStore: channel full, dropping audit event");
+                error!("AuditFileStore: channel full, dropping audit event");
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                warn!("AuditFileStore: writer task has stopped, audit event dropped");
+                error!("AuditFileStore: writer task has stopped, audit event dropped");
             }
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────
 
     /// Reads the last line of `path` (if any) to extract the last `id` and
     /// `row_hash` so the chain can be continued on restart.
@@ -178,7 +177,7 @@ async fn writer_loop(
                 next_id += 1;
             }
             Err(e) => {
-                warn!(
+                error!(
                     "AuditFileStore: failed to write event id={}: {e} — event dropped",
                     ev.id
                 );
@@ -211,11 +210,11 @@ fn write_event(file: &mut std::fs::File, event: &AuditEventFull) -> std::io::Res
     file.flush()
 }
 
-// ── Convenience constructors for the middleware ───────────────────────────────
 
 /// Builds an `AuditEventDraft` for a successful KMIP operation.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn make_success_draft(
+    timestamp: OffsetDateTime,
     operation: impl Into<String>,
     user: impl Into<String>,
     object_uid: Option<String>,
@@ -224,7 +223,7 @@ pub(crate) fn make_success_draft(
     duration_ms: u64,
 ) -> AuditEventDraft {
     AuditEventDraft {
-        timestamp: OffsetDateTime::now_utc(),
+        timestamp,
         operation: operation.into(),
         user: user.into(),
         object_uid,
@@ -238,6 +237,7 @@ pub(crate) fn make_success_draft(
 /// Builds an `AuditEventDraft` for a failed KMIP operation.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn make_failure_draft(
+    timestamp: OffsetDateTime,
     operation: impl Into<String>,
     user: impl Into<String>,
     object_uid: Option<String>,
@@ -247,7 +247,7 @@ pub(crate) fn make_failure_draft(
     reason: impl Into<String>,
 ) -> AuditEventDraft {
     AuditEventDraft {
-        timestamp: OffsetDateTime::now_utc(),
+        timestamp,
         operation: operation.into(),
         user: user.into(),
         object_uid,
@@ -255,5 +255,25 @@ pub(crate) fn make_failure_draft(
         client_ip,
         result: AuditResult::Failure(reason.into()),
         duration_ms,
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    // TODO: add tests for AuditFileStore::start, enqueue capacity behaviour, hash chain resumption
+    #[tokio::test]
+    async fn enqueue_drops_when_channel_full() {
+        todo!("verify enqueue silently drops events when the channel is at capacity")
+    }
+
+    #[tokio::test]
+    async fn chain_resumes_on_restart() {
+        todo!("verify start() reads the last row_hash from an existing log")
+    }
+
+    #[tokio::test]
+    async fn write_failure_does_not_advance_chain() {
+        todo!("verify a write error does not increment id or prev_hash")
     }
 }
