@@ -1861,7 +1861,6 @@ mod tests {
 
     // ── J1–J4: JWKS HTTPS URI validation (compiled out in `insecure` builds) ─
     #[cfg(not(feature = "insecure"))]
-    #[expect(clippy::unwrap_used)]
     mod jwks_https_guard {
         use super::*;
 
