@@ -87,6 +87,11 @@ pub fn verify_event(event: &AuditEventFull) -> bool {
 ///
 /// Note: this function does **not** call [`verify_event`]; call that
 /// separately to check the row's own integrity.
+///
+/// TODO: log rotation — when verifying a rotated file that starts from id > 0
+/// the caller must supply the tail hash of the previous file (or the CLI should
+/// expose a `--prev-hash` flag) so the first link is not treated as a fresh
+/// chain start.
 #[must_use]
 pub fn verify_chain_link(current: &AuditEventFull, prev: Option<&AuditEventFull>) -> bool {
     prev.map_or_else(

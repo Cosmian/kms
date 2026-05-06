@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use actix_web::{
-    HttpRequest, HttpResponse,
+    HttpMessage, HttpRequest, HttpResponse,
     http::header::CONTENT_TYPE,
     post,
     web::{Bytes, Data},
@@ -30,8 +30,45 @@ use crate::{
         operations::{dispatch, message},
     },
     error::KmsError,
+    middlewares::KmipOperationName,
     result::KResult,
 };
+
+/// Extracts the specific KMIP operation name from a TTLV for audit purposes.
+///
+/// * Single-operation requests (e.g. `"Encrypt"`, `"Create"`): returns `ttlv.tag`.
+/// * `RequestMessage` (batch): returns all `BatchItem` operation names joined with `+`
+///   (e.g. `"Create+Encrypt+Destroy"`), or `"Message"` if none can be found.
+fn extract_kmip_op_from_ttlv(ttlv: &TTLV) -> String {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::TTLValue;
+
+    if ttlv.tag != "RequestMessage" {
+        return ttlv.tag.clone();
+    }
+    if let TTLValue::Structure(items) = &ttlv.value {
+        let ops: Vec<String> = items
+            .iter()
+            .filter(|item| item.tag == "BatchItem")
+            .filter_map(|item| {
+                if let TTLValue::Structure(fields) = &item.value {
+                    fields.iter().find(|f| f.tag == "Operation").and_then(|f| {
+                        if let TTLValue::Enumeration(ev) = &f.value {
+                            Some(ev.name.clone())
+                        } else {
+                            None
+                        }
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !ops.is_empty() {
+            return ops.join("+"); // TODO: this is not standard, but it will be worked on in the future
+        }
+    }
+    "Message".to_owned()
+}
 
 /// When an Error occurs and generating an Error Response message fails, this message is sent
 /// with "Unknown Error" as the error message
@@ -157,6 +194,11 @@ pub(crate) async fn kmip_2_1_json(
     let user = kms.get_user(&req_http);
     debug!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
+    // Inject exact operation name for the audit middleware
+    req_http
+        .extensions_mut()
+        .insert(KmipOperationName(extract_kmip_op_from_ttlv(&ttlv)));
+
     let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 
     // Pre-allocate buffer to avoid repeated reallocations during JSON serialization.
@@ -269,6 +311,11 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
         "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, ttlv.tag.as_str(), user
     );
 
+    // Inject exact operation name for the audit middleware
+    req_http
+        .extensions_mut()
+        .insert(KmipOperationName(extract_kmip_op_from_ttlv(&ttlv)));
+
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
         let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
         handle_ttlv(&kms, ttlv, &user, major, minor)
@@ -289,6 +336,22 @@ pub(crate) async fn kmip_binary(
 ) -> HttpResponse {
     // Recover the user from the request
     let user = kms.get_user(&req_http);
+
+    // Inject exact operation name for the audit middleware by peeking at the TTLV.
+    // Note: handle_ttlv_bytes re-parses internally; the peek here is intentionally
+    // lightweight and only used for audit context.
+    if let Ok((major, _minor)) = TTLV::find_version(body.as_ref()) {
+        let flavor = if major == 1 {
+            KmipFlavor::Kmip1
+        } else {
+            KmipFlavor::Kmip2
+        };
+        if let Ok(ttlv) = TTLV::from_bytes(body.as_ref(), flavor) {
+            req_http
+                .extensions_mut()
+                .insert(KmipOperationName(extract_kmip_op_from_ttlv(&ttlv)));
+        }
+    }
 
     // Handle the TTLV bytes request
     let response_bytes = handle_ttlv_bytes(&user, body.as_ref(), &kms).await;
