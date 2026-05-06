@@ -136,6 +136,7 @@ jobs:
     concurrency:
       group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
         github.run_id) }}
+      queue: max
       cancel-in-progress: false
     strategy:
       fail-fast: false

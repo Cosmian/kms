@@ -101,7 +101,7 @@ if [ -n "$C2P_HOST" ] && [ -n "$C2P_PORT" ]; then
   done
   if [ "$HSM_REACHABLE" = false ]; then
     echo "Error: HSM service $C2P_HOST:$C2P_PORT is not reachable over the VPN"
-    exit 1
+    exit 0
   fi
 fi
 

@@ -59,6 +59,50 @@ KMS_HSM_ADMIN=alice@example.com,bob@example.com cosmian_kms ...
     HSM key without themselves being HSM admins.
     See [HSM keys and authorization](../configuration/authorization.md#hsm-keys-and-authorization) for details.
 
+## HSM key authorization model
+
+HSM keys follow a stricter permission model than regular KMS keys. The key principles are:
+
+- **HSM admins** are the only users who can **create** and **destroy** HSM keys.
+- **All HSM admins share ownership** of all HSM keys (any admin can grant, revoke, or destroy any HSM key).
+- **Non-admin users** can only use HSM keys they have been **explicitly granted** operations on.
+- The `Get` permission does **not** act as a wildcard for HSM keys — each operation must be granted individually.
+- **Locate** only returns HSM keys the user is authorized to see (all keys for admins, granted keys for non-admins).
+- The server **KEK** (Key Encryption Key) is a shared wrapping resource accessible to all users for wrapping/unwrapping, but direct cryptographic operations on the KEK itself require explicit grants.
+
+### Operations by role
+
+| Operation        | HSM Admin            | Non-admin (granted)          | Non-admin (no grant) |
+|------------------|----------------------|------------------------------|----------------------|
+| Create           | ✅                   | ❌                            | ❌                   |
+| CreateKeyPair    | ✅                   | ❌                            | ❌                   |
+| Destroy          | ✅                   | ❌ (cannot be granted)        | ❌                   |
+| Locate           | All HSM keys         | Granted keys only            | None                 |
+| Grant / Revoke   | ✅ (any HSM key)     | ❌                            | ❌                   |
+| Encrypt          | ✅                   | ✅                            | ❌                   |
+| Decrypt          | ✅                   | ✅                            | ❌                   |
+| Sign             | ✅                   | ✅                            | ❌                   |
+| Verify           | ✅                   | ✅                            | ❌                   |
+| Get / Export      | ✅                   | ✅ (metadata if sensitive)    | ❌                   |
+| Revoke (state)   | ❌ (not supported)   | ❌                            | ❌                   |
+
+### Grantable operations on HSM keys
+
+| Operation   | Can be granted? | Notes                                     |
+|-------------|-----------------|-------------------------------------------|
+| Encrypt     | ✅              | Symmetric (AES) and asymmetric (RSA)      |
+| Decrypt     | ✅              | Symmetric (AES) and asymmetric (RSA)      |
+| Sign        | ✅              | RSA private keys only                     |
+| Verify      | ✅              | RSA public keys only                      |
+| Get         | ✅              | Export key material or metadata            |
+| Destroy     | ❌              | Admin-only — irreversible hardware operation |
+| Revoke      | ❌              | HSM keys do not support state changes     |
+| Create      | ❌              | Admin-only — not a per-key grant           |
+
+!!! warning Get is not a wildcard for HSM keys
+    Unlike regular KMS keys, granting `Get` on an HSM key does **not** implicitly grant all other operations.
+    Each operation (`Encrypt`, `Decrypt`, `Sign`, etc.) must be granted individually.
+
 ## Creating a KMS key wrapped by an HSM key
 
 KMS Keys can be created wrapped by an HSM key, either manually or automatically.
@@ -329,7 +373,7 @@ key_encryption_key = "hsm::1::master_kek"
 Unlike KMS keys, HSM keys must not be revoked before being destroyed. The `Destroy` operation will remove the
 key from the HSM.
 
-Only HSM admin users, or a user granted the `Destroy` operation by an HSM admin, can destroy keys in the HSM.
+Only HSM admin users can destroy keys in the HSM. The `Destroy` operation cannot be delegated to non-admin users.
 
 To destroy the key `hsm::4::my_rsa_key`, the following command can be used:
 

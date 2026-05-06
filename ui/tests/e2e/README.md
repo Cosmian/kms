@@ -192,11 +192,50 @@ graph LR
 
 ```mermaid
 graph LR
-    A[Create sym key + RSA pair] --> B[Filter by SymmetricKey type]
-    B --> C[Filter by Active state]
-    C --> D[Filter by tag]
-    D --> E[Verify result counts]
+    A[Create sym key + RSA pair + EC pair] --> B[Filter by ObjectType]
+    B --> C[Filter by algorithm]
+    C --> D[Filter by cryptographic length]
+    D --> E[Filter by key format type]
+    E --> F[Filter by linked object ID]
+    F --> G[Combined filters]
+    G --> H[Verify table rendering]
 ```
+
+Covers six groups of locate filters:
+
+- **Basic**: filter by ObjectType (SymmetricKey), by State (Active), by tag
+- **Algorithm**: locate by AES, RSA, or ECDH (EC keys stored as ECDH by `build_algorithm_from_curve`)
+- **Cryptographic length**: locate by exact bit-length (256, 2048)
+- **Key format type**: locate by Raw, PKCS8, etc.
+- **Linked object IDs**: locate by private→public key link
+- **Combined**: ObjectType + algorithm + length simultaneously
+- **Table rendering**: columns (UID, Type, Key Format Type, State, Algorithm, Length) render correctly; UID links navigate to detail pages
+
+### locate-attributes
+
+```mermaid
+graph LR
+    A[Pre-created HSM keys] --> B[Locate SymmetricKey]
+    B --> C{Type = SymmetricKey?}
+    C -->|Yes| D[Pass]
+    B --> E{Key Format Type = Raw?}
+    E -->|Yes| F[Pass]
+    G[Create software keys] --> H[Locate each type]
+    H --> I{No N/A in Type column?}
+    I -->|Yes| J[Pass]
+```
+
+Validates that the Locate results table displays correct attribute values for both
+HSM and software keys. Specifically:
+
+- HSM keys show `SymmetricKey` type (not `N/A`)
+- HSM keys show `Raw` key format type (not `N/A`)
+- Software symmetric keys show correct type and format
+- RSA private keys show `PrivateKey` type and `PKCS1`/`PKCS8` format
+- EC private keys show `PrivateKey` type (format is not `N/A`)
+- All located objects have a valid Type value (no `N/A`)
+
+The HSM tests require `PLAYWRIGHT_HSM_KEY_COUNT > 0` (set by `test_ui.sh`).
 
 ### locate-hsm
 
@@ -207,6 +246,12 @@ graph LR
     C --> D{Both appear?}
     D -->|Yes| E[Pass]
     D -->|No| F[Fail]
+    G[3 slots × 3 prefixes] --> H[Locate all]
+    H --> I{All 3 found?}
+    I -->|Yes| J[Pass]
+    K[mTLS user cert] --> L[Locate HSM keys]
+    L --> M{0 HSM keys visible?}
+    M -->|Yes| N[Pass]
 ```
 
 Validates that HSM keys (created with the `hsm::` prefix) appear alongside
@@ -216,7 +261,36 @@ pre-created by `test_ui.sh` are discovered through table pagination.
 The inner `Locate – HSM keys (real SoftHSM2)` suite is skipped automatically
 when `PLAYWRIGHT_HSM_KEY_COUNT` is 0 (SoftHSM2 not available).
 
-## MAC
+Additional test groups:
+
+- **Multi-HSM prefix routing**: verifies that pre-created keys from all three
+  SoftHSM2 slots appear in Locate results using the three prefix styles:
+  `hsm::<slot>::`, `hsm::softhsm2::<slot>::`, and `hsm::softhsm2_1::<slot>::`.
+  Skipped when `PLAYWRIGHT_HSM_SLOT_ID_1/2/3` are unset.
+- **HSM access control (mTLS)**: connects as a non-admin user (via the user
+  mTLS certificate) and asserts that no HSM keys (`hsm::` prefix) are visible —
+  only the HSM admin (owner cert) can see them.
+
+### hsm-multi-keys
+
+```mermaid
+graph LR
+    A[Slot 1: hsm::slot1::name] --> B[Create key]
+    B --> C[Destroy key]
+    D[Slot 2: hsm::softhsm2::slot2::name] --> E[Create key]
+    E --> F[Destroy key]
+    G[Slot 3: hsm::softhsm2_1::slot3::name] --> H[Create key]
+    H --> I[Destroy key]
+    J[All 3 slots] --> K[Create 3 keys]
+    K --> L[Destroy 3 keys]
+```
+
+Tests end-to-end key creation and destruction for three independent SoftHSM2
+instances using both the legacy UID prefix (`hsm::<slot>::<name>`) and the new
+model-qualified prefixes (`hsm::softhsm2::<slot>::<name>` and
+`hsm::softhsm2_1::<slot>::<name>`). Slot IDs are passed via
+`PLAYWRIGHT_HSM_SLOT_ID_1/2/3` environment variables set by `test_ui.sh`.
+The suite is skipped automatically when any of the three slot IDs is unset.
 
 ### mac-flow
 

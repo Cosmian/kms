@@ -68,6 +68,9 @@ pub(crate) fn get_effective_state(owm: &ObjectWithMetadata) -> KResult<State> {
 ///
 /// The user is authorized if they own the object, or have been granted the specific
 /// `operation` **or** `Get` (which implies read-level access to the key).
+///
+/// For HSM keys (prefix-based UIDs), the `Get` wildcard is **not** applied — each
+/// operation must be explicitly granted.
 pub(crate) async fn is_user_authorized_for_operation(
     database: &Database,
     uid: &str,
@@ -80,6 +83,12 @@ pub(crate) async fn is_user_authorized_for_operation(
     let ops = database
         .list_user_operations_on_object(uid, user, false)
         .await?;
+
+    // HSM keys: each operation must be explicitly granted — no Get wildcard
+    if has_prefix(uid).is_some() {
+        return Ok(ops.iter().any(|p| *p == operation));
+    }
+
     Ok(ops
         .iter()
         .any(|p| *p == operation || *p == KmipOperation::Get))

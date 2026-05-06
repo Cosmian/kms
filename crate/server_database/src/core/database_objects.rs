@@ -73,8 +73,16 @@ impl Database {
     /// Return the object store for the given `uid`
     ///
     /// This function retrieves the appropriate object store based on the prefix of the `uid`.
-    /// If the `uid` contains a prefix separated by "::", it will look for a store registered with that prefix.
-    /// If no prefix is found, it will return the default object store.
+    ///
+    /// Prefix matching uses **longest-prefix wins**: all registered non-empty prefixes of the form
+    /// `"{prefix}::"` are tested against the start of `uid`, and the longest match is chosen.
+    /// This correctly handles multi-segment prefixes such as `"hsm::softhsm2"` which would
+    /// otherwise be shadowed by the shorter `"hsm"` prefix when using a plain `split_once`:
+    ///
+    /// - `"hsm::0::mykey"` → prefix `"hsm"` (legacy single-HSM format)
+    /// - `"hsm::softhsm2::0::mykey"` → prefix `"hsm::softhsm2"` (new multi-HSM format)
+    ///
+    /// If no registered prefix matches, the default object store (registered under `""`) is returned.
     ///
     /// # Arguments
     ///
@@ -88,30 +96,23 @@ impl Database {
     ///
     /// This function will return an error if no object store is found for the given prefix or if no default object store is available.
     async fn get_object_store(&self, uid: &str) -> DbResult<Arc<dyn ObjectsStore + Sync + Send>> {
-        // split the uid on the first ::
-        let splits = uid.split_once("::");
-        Ok(match splits {
-            Some((prefix, _rest)) => self
-                .objects
-                .read()
-                .await
-                .get(prefix)
-                .ok_or_else(|| {
-                    DbError::InvalidRequest(format!(
-                        "No object store available for UIDs prefixed with: {prefix}"
-                    ))
-                })?
-                .clone(),
-            None => self
-                .objects
-                .read()
-                .await
-                .get("")
-                .ok_or_else(|| {
-                    DbError::InvalidRequest("No default object store available".to_owned())
-                })?
-                .clone(),
-        })
+        let map = self.objects.read().await;
+        // Longest-prefix matching: find the registered prefix (non-empty) whose
+        // "<prefix>::" string is a prefix of `uid`, preferring the longest one.
+        let best = map
+            .keys()
+            .filter(|k| !k.is_empty())
+            .filter(|k| uid.starts_with(&format!("{k}::")))
+            .max_by_key(|k| k.len());
+        if let Some(prefix) = best {
+            if let Some(store) = map.get(prefix) {
+                return Ok(store.clone());
+            }
+        }
+        // No registered prefix matched – fall back to the default store.
+        map.get("")
+            .ok_or_else(|| DbError::InvalidRequest("No default object store available".to_owned()))
+            .map(Arc::clone)
     }
 
     /// Create the given Object in the database.

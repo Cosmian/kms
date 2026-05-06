@@ -12,11 +12,30 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     self, kmip_2_1::kmip_types::UniqueIdentifier,
 };
 use cosmian_logger::{debug, info};
+use serde::Serialize;
 
 use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission},
     result::KResult,
 };
+
+/// Return the username that the server resolves for the current request.
+/// Placed in the authenticated scope so that TLS/JWT/API-token middleware
+/// has already populated `AuthenticatedUser` before this handler runs.
+#[get("/me")]
+pub(crate) async fn get_current_user(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+) -> KResult<Json<CurrentUserResponse>> {
+    let user = kms.get_user(&req);
+    info!(user = user, "GET /me {user}");
+    Ok(Json(CurrentUserResponse { user }))
+}
+
+#[derive(Serialize)]
+pub(crate) struct CurrentUserResponse {
+    pub user: String,
+}
 
 /// List objects owned by the current user
 /// i.e., objects for which the user has full access

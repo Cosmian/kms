@@ -7,7 +7,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::trace;
 
-use crate::{core::KMS, result::KResult};
+use crate::{
+    core::{KMS, uid_utils::has_prefix},
+    result::KResult,
+};
 
 /// Server-side cap on Locate result sets (A04-3 / EXT2-4).
 ///
@@ -98,6 +101,33 @@ pub(crate) async fn locate(
         }
         uids
     };
+
+    // HSM key visibility filtering: non-admin users only see HSM keys they
+    // have been explicitly granted at least one operation on.
+    let is_hsm_admin = kms
+        .params
+        .hsm_instances
+        .iter()
+        .any(|inst| inst.admin.iter().any(|a| a == "*" || a == user));
+    if !is_hsm_admin {
+        let mut filtered = Vec::with_capacity(uids.len());
+        for uid in uids {
+            let uid_str = uid.as_str().unwrap_or_default();
+            if has_prefix(uid_str).is_some() {
+                // Check if user has any granted operation on this HSM key
+                let ops = kms
+                    .database
+                    .list_user_operations_on_object(uid_str, user, false)
+                    .await?;
+                if ops.is_empty() {
+                    trace!("Locate: filtering out HSM key {uid_str} — user {user} has no grants");
+                    continue;
+                }
+            }
+            filtered.push(uid);
+        }
+        uids = filtered;
+    }
 
     // Apply a server-side cap on result set size (A04-3 / EXT2-4).
     // The effective limit is the smaller of: client-supplied MaximumItems (if any)

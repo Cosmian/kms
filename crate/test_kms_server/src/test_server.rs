@@ -51,6 +51,12 @@ pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_KEK_SOFTHSM2: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_MULTI_HSM: OnceCell<TestsContext> = OnceCell::const_new();
+/// Dedicated cell for the three-SoftHSM2 multi-instance test server.
+/// Uses `hsm:` (old single config on slot 1) + two `[[hsm_instances]]` entries
+/// (new config on slots 2 and 3).  Slot IDs are read from `HSM_SLOT_ID_1/2/3`.
+pub(crate) static ONCE_SERVER_WITH_THREE_SOFTHSM2: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
 /// Dedicated cell for the `test_privileged_users` test which needs both the owner
 /// *and* a second privileged identity (`user.privileged@acme.com`) in the list.
@@ -568,7 +574,30 @@ pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'st
         })
         .await
         .unwrap_or_else(|e| {
-            error!("failed to start test server with multi privileged users: {e}");
+            error!("failed to start test server with multi softhsm2: {e}");
+            std::process::abort();
+        })
+}
+
+/// Privileged users.
+///
+/// Base configuration is loaded from `test_data/configs/server/test/privileged_users.toml`;
+/// the `privileged_users` field is injected from the argument.
+pub async fn start_default_test_kms_server_with_privileged_users(
+    privileged_users: Vec<String>,
+) -> &'static TestsContext {
+    trace!("Starting test server with privileged users");
+    ONCE_SERVER_WITH_PRIVILEGED_USERS
+        .get_or_try_init(|| async move {
+            let config_path =
+                root_dir().join("../../test_data/configs/server/test/privileged_users.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            config.privileged_users = Some(privileged_users);
+            start_server_from_config(config, &config_path).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with three softhsm2: {e}");
             std::process::abort();
         })
 }
