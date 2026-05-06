@@ -122,8 +122,16 @@ pub fn wrap_object_with_key(
     let mut kwd = key_wrapping_specification.get_key_wrapping_data();
     // For symmetric wrapping keys, store the resolved block_cipher_mode in the
     // KeyWrappingData so the unwrap path knows which algorithm was actually used.
-    // Old wrapped keys with block_cipher_mode=None will still unwrap with RFC 5649
-    // (backward compatibility).
+    //
+    // We use NISTKeyWrap (RFC 3394, AES Key Wrap without padding) as the default.
+    // This is confirmed correct by the VAST Data production logs:
+    // the PyKMIP-based VAST client calls `cryptography.hazmat.primitives.keywrap.
+    // aes_key_unwrap()`, which implements RFC 3394.  Using RFC 5649 (AES Key Wrap
+    // with Padding, `aes_key_unwrap_padded`) caused `InvalidUnwrap` errors on the
+    // VAST side because the two standards produce different wrapped output.
+    //
+    // NISTKeyWrap is also the KMIP spec default when no BlockCipherMode is specified
+    // (see KMIP 2.1 §4.26).
     if matches!(wrapping_key, Object::SymmetricKey { .. }) {
         if let Some(ref mut eki) = kwd.encryption_key_information {
             let current_mode = eki

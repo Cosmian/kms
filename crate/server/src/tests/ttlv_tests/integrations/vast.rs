@@ -257,6 +257,73 @@ fn destroy_key(client: &SocketClient, key_id: &str) {
     );
 }
 
+/// Create an AES-256 symmetric key with a `Name` attribute and return its `UniqueIdentifier`.
+/// This models the VAST Data `Create` call which sets a specific key name of the form
+/// `VAST_EKM_KEY_2_<encryption_group_uuid>_<index>`.
+fn create_aes_256_key_with_name(client: &SocketClient, key_name: &str) -> String {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_types::{
+        Name, NameType,
+    };
+
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Create,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Create(Create {
+                    object_type: ObjectType::SymmetricKey,
+                    template_attribute: TemplateAttribute {
+                        attribute: Some(vec![
+                            Attribute::CryptographicAlgorithm(CryptographicAlgorithm::AES),
+                            Attribute::CryptographicLength(256),
+                            Attribute::CryptographicUsageMask(
+                                CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+                            ),
+                            Attribute::Name(Name {
+                                name_value: key_name.to_owned(),
+                                name_type: NameType::UninterpretedTextString,
+                            }),
+                        ]),
+                    },
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("Create (with name): request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("Create (with name): expected V14 batch item");
+    };
+
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::Success,
+        "Create (with name): expected Success, got {:?}: {:?}",
+        batch_item.result_status,
+        batch_item.result_message
+    );
+
+    let Some(Operation::CreateResponse(cr)) = &batch_item.response_payload else {
+        panic!("Create (with name): expected CreateResponse payload");
+    };
+
+    cr.unique_identifier.clone()
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 /// VAST issues a KMIP 1.4 `ReKey` to rotate an active AES-256 symmetric key.
@@ -850,4 +917,175 @@ fn test_vast_get_dek_wrapped_by_kek() {
     // Cleanup
     destroy_key(&client, &dek_uid);
     destroy_key(&client, &kek_uid);
+}
+
+/// Non-regression test for the VAST Data production workflow observed in the
+/// VAST KMIP client logs (`kmip_client.log`).
+///
+/// VAST creates AES-256 keys with a structured name of the form:
+/// `VAST_EKM_KEY_2_<encryption_group_uuid>_<index>`
+/// and then:
+/// 1. Activates the key.
+/// 2. Uses `Locate` to find it by name (KMIP 1.4 `Attribute::Name` filter).
+/// 3. Uses `GetAttributes` to verify `State = Active` and `ActivationDate` is set.
+///
+/// This test ensures these three KMIP 1.4 operations work correctly in the
+/// context of the VAST integration.
+#[test]
+fn test_vast_workflow_create_locate_get_attributes() {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::{
+        kmip_attributes::State,
+        kmip_operations::{GetAttributes, Locate},
+        kmip_types::{Name, NameType},
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+
+    // Key name format from VAST production logs:
+    // VAST_EKM_KEY_2_<encryption_group_uuid>_<index>
+    let vast_key_name = "VAST_EKM_KEY_2_a9636868-fdd1-5ca0-af39-82e1a5c2cd50_0".to_owned();
+
+    // 1. Create an AES-256 key with the VAST-style Name attribute.
+    let key_uid = create_aes_256_key_with_name(&client, &vast_key_name);
+    info!("Created VAST-named key: {key_uid}");
+
+    // 2. Activate the key (required before Locate can find an Active key).
+    activate_key(&client, &key_uid);
+    info!("Activated key: {key_uid}");
+
+    // 3. Locate the key by Name — exactly as the VAST client calls `locate_by_name`.
+    let locate_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Locate,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Locate(Locate {
+                    maximum_items: None,
+                    storage_status_mask: None,
+                    object_group_member: None,
+                    attribute: Some(vec![Attribute::Name(Name {
+                        name_value: vast_key_name,
+                        name_type: NameType::UninterpretedTextString,
+                    })]),
+                    template_attribute: None,
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let locate_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &locate_request)
+        .expect("Locate: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(locate_item)) =
+        locate_response.batch_item.first()
+    else {
+        panic!("Locate: expected V14 batch item");
+    };
+
+    assert_eq!(
+        locate_item.result_status,
+        ResultStatusEnumeration::Success,
+        "Locate: expected Success, got {:?}: {:?}",
+        locate_item.result_status,
+        locate_item.result_message
+    );
+
+    let Some(Operation::LocateResponse(locate_resp)) = &locate_item.response_payload else {
+        panic!("Locate: expected LocateResponse payload");
+    };
+
+    let located_ids = locate_resp.unique_identifier.as_deref().unwrap_or(&[]);
+    assert!(
+        located_ids.contains(&key_uid),
+        "Locate: key {key_uid} not found in results {located_ids:?}"
+    );
+    info!("Locate returned {}: {:?}", located_ids.len(), located_ids);
+
+    // 4. GetAttributes — VAST checks State=Active and ActivationDate is set.
+    let get_attrs_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::GetAttributes,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::GetAttributes(GetAttributes {
+                    unique_identifier: Some(key_uid.clone()),
+                    attribute_name: Some(vec!["State".to_owned(), "Activation Date".to_owned()]),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let attrs_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &get_attrs_request)
+        .expect("GetAttributes: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(attrs_item)) =
+        attrs_response.batch_item.first()
+    else {
+        panic!("GetAttributes: expected V14 batch item");
+    };
+
+    assert_eq!(
+        attrs_item.result_status,
+        ResultStatusEnumeration::Success,
+        "GetAttributes: expected Success, got {:?}: {:?}",
+        attrs_item.result_status,
+        attrs_item.result_message
+    );
+
+    let Some(Operation::GetAttributesResponse(attrs_resp)) = &attrs_item.response_payload else {
+        panic!("GetAttributes: expected GetAttributesResponse payload");
+    };
+
+    let attributes = attrs_resp.attribute.as_deref().unwrap_or(&[]);
+
+    let state = attributes.iter().find_map(|a| {
+        if let Attribute::State(s) = a {
+            Some(*s)
+        } else {
+            None
+        }
+    });
+    assert_eq!(
+        state,
+        Some(State::Active),
+        "GetAttributes: expected State=Active, got {state:?}"
+    );
+
+    let has_activation_date = attributes
+        .iter()
+        .any(|a| matches!(a, Attribute::ActivationDate(_)));
+    assert!(
+        has_activation_date,
+        "GetAttributes: expected ActivationDate to be set after Activate"
+    );
+
+    info!(
+        "GetAttributes: State=Active, ActivationDate is set — VAST workflow verified for key {key_uid}"
+    );
+
+    // Cleanup
+    destroy_key(&client, &key_uid);
 }
