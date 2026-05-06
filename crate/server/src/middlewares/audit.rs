@@ -12,7 +12,10 @@
 //!   - CORS `OPTIONS` preflight requests are **not** audited (they bypass the
 //!     audit wrapper because CORS handles them first).
 //! * Operation name extraction: the path `/kmip/2_1` → "KMIP", enterprise
-//!   paths `/google_cse/…` → `"GoogleCSE"`, etc.
+//!   paths `/google_cse/…` → `"GoogleCSE"`, etc.  For KMIP requests the
+//!   route handler injects a `KmipOperationName` extension with the exact
+//!   operation (e.g. `"Encrypt"`, `"Create"`), which overrides the coarse
+//!   path-derived name.
 //! * User identity: read from `AuthenticatedUser` in request extensions.  If
 //!   absent (401 path) we record `"<unauthenticated>"`.
 //! * Duration: measured as wall-clock elapsed from the moment the inner
@@ -39,7 +42,7 @@ use time::OffsetDateTime;
 
 use crate::{
     core::audit::{AuditFileStore, make_failure_draft, make_success_draft},
-    middlewares::AuthenticatedUser,
+    middlewares::{AuthenticatedUser, KmipOperationName},
 };
 
 const UNAUTHENTICATED: &str = "<unauthenticated>";
@@ -142,9 +145,17 @@ where
                 .get::<AuthenticatedUser>()
                 .map_or(user, |u| u.username.clone());
 
+            // Prefer the exact KMIP operation name injected by the route handler
+            // (e.g. "Encrypt", "Create"); fall back to path-derived coarse name.
+            let final_operation = res
+                .request()
+                .extensions()
+                .get::<KmipOperationName>()
+                .map_or(operation, |k| k.0.clone());
+
             let draft: AuditEventDraft = if status.is_success() || status.is_redirection() {
                 make_success_draft(
-                    operation,
+                    final_operation,
                     final_user,
                     None, // object_uid resolved post-deserialization — not available here
                     None, // algorithm — same
@@ -158,7 +169,7 @@ where
                     status.canonical_reason().unwrap_or("Unknown")
                 );
                 make_failure_draft(
-                    operation,
+                    final_operation,
                     final_user,
                     None,
                     None,
