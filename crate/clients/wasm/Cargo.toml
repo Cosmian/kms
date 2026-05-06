@@ -27,7 +27,7 @@ default = ["getrandom/js"]
 [dependencies]
 base64 = { workspace = true }
 console_error_panic_hook = "0.1"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.21.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.22.0" }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 js-sys = "0.3.77"
 pem = { workspace = true }
