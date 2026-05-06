@@ -11,7 +11,8 @@ pub struct AuditFileConfig {
     ///
     /// When `--audit-enable` is set and this option is omitted, the file
     /// defaults to `<root-data-path>/audit.jsonl`.
-    #[clap(long, env = "KMS_AUDIT_FILE_PATH", verbatim_doc_comment)]
+    #[clap(long = "audit-file-path", env = "KMS_AUDIT_FILE_PATH", verbatim_doc_comment)]
+    #[serde(rename = "path")]
     pub audit_file_path: Option<PathBuf>,
 }
 
@@ -34,9 +35,11 @@ pub struct AuditConfig {
     /// When disabled (the default) no audit file is created and no background
     /// writer task is spawned.  The value can also be toggled at config-file
     /// level (`[audit] enable = true`).
-    #[clap(long, env = "KMS_AUDIT_ENABLE", default_value = "false")]
+    #[clap(long = "audit-enable", env = "KMS_AUDIT_ENABLE", default_value = "false")]
+    #[serde(rename = "enabled")]
     pub audit_enable: bool,
 
     #[clap(flatten)]
+    #[serde(rename = "file")]
     pub file: AuditFileConfig,
 }

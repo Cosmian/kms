@@ -12,9 +12,12 @@
 //!   - CORS `OPTIONS` preflight requests are **not** audited (they bypass the
 //!     audit wrapper because CORS handles them first).
 //! * Operation name extraction: the path `/kmip/2_1` → "KMIP", enterprise
-//!   paths `/google_cse/…` → `"GoogleCSE"`, etc.
+//!   paths `/google_cse/…` → `"GoogleCSE"`, etc.  For KMIP requests the
+//!   route handler injects a `KmipOperationName` extension with the exact
+//!   operation (e.g. `"Encrypt"`, `"Create"`), which overrides the coarse
+//!   path-derived name.
 //! * User identity: read from `AuthenticatedUser` in request extensions.  If
-//!   absent (401 path) we record `"<unauthenticated>"`.
+//!   absent (401 path) we record `"unauthenticated"`.
 //! * Duration: measured as wall-clock elapsed from the moment the inner
 //!   service `Future` is polled to completion.
 
@@ -39,13 +42,11 @@ use time::OffsetDateTime;
 
 use crate::{
     core::audit::{AuditFileStore, make_failure_draft, make_success_draft},
-    middlewares::AuthenticatedUser,
+    middlewares::{AuthenticatedUser, KmipOperationName},
 };
 
-const UNAUTHENTICATED: &str = "<unauthenticated>";
+const UNAUTHENTICATED: &str = "unauthenticated";
 
-/// Factory struct — cheaply cloneable (wraps an `Option<AuditFileStore>` where
-/// the store itself is already an `Arc` under the hood).
 #[derive(Clone)]
 pub(crate) struct AuditMiddleware {
     store: Option<AuditFileStore>,
@@ -101,7 +102,7 @@ where
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // ── Fast path: audit disabled ─────────────────────────────────────
+        // Fast path: audit disabled
         let store = match &self.store {
             None => {
                 let svc = self.service.clone();
@@ -113,7 +114,7 @@ where
             Some(s) => s.clone(),
         };
 
-        // ── Capture per-request context ───────────────────────────────────
+        // Capture per-request context
         let operation = extract_operation(req.path());
         let client_ip = extract_client_ip(&req);
 
@@ -142,9 +143,18 @@ where
                 .get::<AuthenticatedUser>()
                 .map_or(user, |u| u.username.clone());
 
+            // Prefer the exact KMIP operation name injected by the route handler
+            // (e.g. "Encrypt", "Create"); fall back to path-derived coarse name.
+            let final_operation = res
+                .request()
+                .extensions()
+                .get::<KmipOperationName>()
+                .map_or(operation, |k| k.0.clone());
+
             let draft: AuditEventDraft = if status.is_success() || status.is_redirection() {
                 make_success_draft(
-                    operation,
+                    timestamp,
+                    final_operation,
                     final_user,
                     None, // object_uid resolved post-deserialization — not available here
                     None, // algorithm — same
@@ -158,7 +168,8 @@ where
                     status.canonical_reason().unwrap_or("Unknown")
                 );
                 make_failure_draft(
-                    operation,
+                    timestamp,
+                    final_operation,
                     final_user,
                     None,
                     None,
@@ -168,10 +179,6 @@ where
                 )
             };
 
-            // Override the timestamp with the one captured before the inner call
-            // so the recorded time reflects request arrival, not response completion.
-            let draft = AuditEventDraft { timestamp, ..draft };
-
             store.enqueue(draft);
 
             Ok(res.map_into_left_body())
@@ -179,32 +186,24 @@ where
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Derives a human-readable operation name from the HTTP path.
+/// Derives an operation name from the HTTP path by taking the first path segment.
+///
+/// For KMIP requests the route handler injects a `KmipOperationName` extension with
+/// the exact operation name — this function only provides the fallback used when no
+/// extension is present (non-KMIP paths, or failures before dispatch).
 fn extract_operation(path: &str) -> String {
-    if path.contains("/kmip/") {
-        "KMIP".to_owned()
-    } else if path.contains("/google_cse") {
-        "GoogleCSE".to_owned()
-    } else if path.contains("/ms_dke") {
-        "MsDKE".to_owned()
-    } else if path.contains("/azure_ekm") {
-        "AzureEKM".to_owned()
-    } else if path.contains("/aws_xks") {
-        "AwsXKS".to_owned()
+    let segment = path.trim_start_matches('/').split('/').next().unwrap_or("");
+    if segment.is_empty() {
+        "unknown".to_owned()
     } else {
-        // strip leading slash and use first segment
-        path.trim_start_matches('/')
-            .split('/')
-            .next()
-            .unwrap_or("Unknown")
-            .to_owned()
+        segment.to_owned()
     }
 }
 
 /// Extracts the client IP from the `X-Forwarded-For` header or the peer address.
 fn extract_client_ip(req: &ServiceRequest) -> Option<String> {
+    // TODO: XFF header can be spoofed by clients when there is no trusted reverse
+    //       proxy in front of the KMS; validate against an IP allowlist in production.
     // Prefer `X-Forwarded-For` (set by load balancers / reverse proxies)
     if let Some(xff) = req.headers().get("x-forwarded-for") {
         if let Ok(val) = xff.to_str() {
@@ -218,4 +217,22 @@ fn extract_client_ip(req: &ServiceRequest) -> Option<String> {
         }
     }
     req.peer_addr().map(|addr| addr.ip().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operation_extraction_from_paths() {
+        assert_eq!(extract_operation("/kmip/2_1"), "kmip");
+        assert_eq!(extract_operation("/google_cse/digest"), "google_cse");
+        assert_eq!(extract_operation("/ms_dke/version"), "ms_dke");
+        assert_eq!(extract_operation("/azure_ekm/keys"), "azure_ekm");
+        assert_eq!(extract_operation("/aws_xks/healthcheck"), "aws_xks");
+        assert_eq!(extract_operation("/health"), "health");
+        assert_eq!(extract_operation("/v1/crypto/encrypt"), "v1");
+        assert_eq!(extract_operation("/"), "unknown");
+        assert_eq!(extract_operation(""), "unknown");
+    }
 }

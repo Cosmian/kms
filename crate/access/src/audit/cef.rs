@@ -46,7 +46,7 @@ pub fn to_cef_line(event: &AuditEventFull, kms_version: &str) -> String {
         sev = severity,
     );
 
-    // ── Extension key=value pairs ────────────────────────────────────────
+    // Extension key=value pairs
     let rt_ms = event.timestamp.unix_timestamp() * 1000 + i64::from(event.timestamp.millisecond());
 
     let mut ext = format!(
@@ -97,7 +97,6 @@ pub fn to_cef_line(event: &AuditEventFull, kms_version: &str) -> String {
     format!("{header}{ext}")
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
 
 fn cef_severity(result: &AuditResult) -> u8 {
     match result {
