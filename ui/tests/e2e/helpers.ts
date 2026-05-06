@@ -359,6 +359,29 @@ export async function createPqcKeyPair(page: Page, algorithm: string): Promise<{
 }
 
 /**
+ * Create a self-signed X.509 certificate by generating a new key pair in the
+ * Certificate Certify form (method 4: "Generate New Keypair").
+ *
+ * @param algorithm Visible algorithm label matching an entry in the Key Algorithm dropdown,
+ *                  e.g. "RSA 4096", "NIST P-256", "ML-DSA-44 (PQC)".
+ * @param subjectName X.509 subject name, e.g. "CN=E2E Test,O=Cosmian".
+ * @returns The certificate ID from the success message.
+ */
+export async function createCertificate(page: Page, algorithm: string, subjectName = "CN=E2E Test,O=Cosmian"): Promise<string> {
+    await gotoAndWait(page, "/ui/certificates/certs/certify");
+    // Choose method 4: Generate New Keypair (renders the algorithm dropdown)
+    await page.getByText("4. Generate New Keypair").click();
+    // selectOption already retries up to 30 s, so no extra wait is needed.
+    await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', subjectName);
+    await selectOption(page, "cert-algorithm-select", algorithm);
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/certificate successfully created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
+}
+
+/**
  * Upload a file to the first `FormUploadDragger` on the page.
  *
  * Because Ant Design's `Upload` component wraps a hidden `<input type="file">`,

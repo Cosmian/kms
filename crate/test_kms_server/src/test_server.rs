@@ -58,6 +58,8 @@ pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = On
 /// `ONCE_SERVER_WITH_PRIVILEGED_USERS` but only register the owner.
 pub(crate) static ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS: OnceCell<TestsContext> =
     OnceCell::const_new();
+#[cfg(feature = "non-fips")]
+pub(crate) static ONCE_PQC_TLS: OnceCell<TestsContext> = OnceCell::const_new();
 
 /// Ensure localhost bypasses any corporate proxy for tests.
 /// When `HTTP_PROXY`/`HTTPS_PROXY` are set, add standard loopback hosts
@@ -589,7 +591,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
         })
         .await
         .unwrap_or_else(|e| {
-            error!("failed to start test server with privileged users: {e}");
+            error!("failed to start test server with PQC TLS cert: {e}");
             std::process::abort();
         })
 }
