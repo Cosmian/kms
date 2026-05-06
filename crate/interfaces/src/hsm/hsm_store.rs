@@ -451,6 +451,29 @@ fn check_basic_compatibility(
         ));
     }
 
+    // HSM keys do not have KMIP Name attributes.  If the caller filters by Name,
+    // no HSM key can ever match — return empty rather than ignoring the filter
+    // and leaking unrelated internal keys (e.g. the server KEK). (issue #935)
+    if researched_attributes
+        .name
+        .as_ref()
+        .is_some_and(|names| !names.is_empty())
+    {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: name".to_owned(),
+        ));
+    }
+
+    // HSM keys do not carry ApplicationSpecificInformation; filter should return empty.
+    if researched_attributes
+        .application_specific_information
+        .is_some()
+    {
+        return Err(InterfaceError::Default(
+            "Unsupported attribute for HSMs: application_specific_information".to_owned(),
+        ));
+    }
+
     Ok(())
 }
 
@@ -691,5 +714,52 @@ fn to_object_with_metadata(
                 attributes,
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_kmip::kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_types::{Name, NameType},
+    };
+
+    use super::check_basic_compatibility;
+    use crate::InterfaceError;
+
+    /// Locate with a Name filter must not match any HSM key (issue #935):
+    /// HSM keys have no KMIP Name, so the filter should yield empty results
+    /// rather than silently ignoring the Name and leaking internal keys.
+    #[test]
+    fn test_name_filter_rejected_for_hsm() {
+        let attrs = Attributes {
+            name: Some(vec![Name {
+                name_value: "test-duplicate".to_owned(),
+                name_type: NameType::UninterpretedTextString,
+            }]),
+            ..Default::default()
+        };
+
+        let result = check_basic_compatibility("cosmian", &attrs, None);
+        assert!(
+            matches!(result, Err(InterfaceError::Default(ref msg)) if msg.contains("name")),
+            "Expected name attribute to be rejected for HSM, got: {result:?}"
+        );
+    }
+
+    /// Locate with no Name filter should be compatible (basic `SymmetricKey` search).
+    #[test]
+    fn test_no_name_filter_compatible() {
+        use cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
+        let attrs = Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Default::default()
+        };
+
+        let result = check_basic_compatibility("cosmian", &attrs, None);
+        assert!(
+            result.is_ok(),
+            "Expected ObjectType-only filter to be compatible with HSM, got: {result:?}"
+        );
     }
 }

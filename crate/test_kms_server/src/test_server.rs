@@ -47,6 +47,12 @@ pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
+/// Dedicated cell for the `test_privileged_users` test which needs both the owner
+/// *and* a second privileged identity (`user.privileged@acme.com`) in the list.
+/// A separate cell prevents the race with `privilege_bypass` tests that share
+/// `ONCE_SERVER_WITH_PRIVILEGED_USERS` but only register the owner.
+pub(crate) static ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS: OnceCell<TestsContext> =
+    OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 
@@ -609,6 +615,45 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
         error!("failed to start test server with utimaco hsm: {e}");
         std::process::abort();
     })
+}
+
+/// Privileged users — two distinct identities in the list.
+///
+/// Uses a dedicated [`ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS`] cell so that
+/// tests requiring both the owner *and* `user.privileged@acme.com` never share
+/// state with tests that only register the owner (e.g. `privilege_bypass`).
+pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'static TestsContext {
+    let privileged_users = vec![
+        "owner.client@acme.com".to_owned(),
+        "user.privileged@acme.com".to_owned(),
+    ];
+    trace!("Starting test server with multi privileged users");
+    ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS
+        .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 7)?;
+            let db_config = get_db_config(port, None);
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::HttpsWithClientCa,
+                jwt: JwtAuth::Enabled,
+                privileged_users: Some(privileged_users),
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing the server config (multi privileged users): {e}"
+                ))
+            })?;
+
+            start_from_server_params(server_params).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with multi privileged users: {e}");
+            std::process::abort();
+        })
 }
 
 /// Privileged users

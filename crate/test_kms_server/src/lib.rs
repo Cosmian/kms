@@ -8,6 +8,7 @@ pub use test_server::{
     ClientCertPolicy, JwtAuth as ServerJwtAuth, JwtPolicy, TestsContext, TlsMode as ServerTlsMode,
     build_server_params, build_server_params_full, start_default_test_kms_server,
     start_default_test_kms_server_with_cert_auth, start_default_test_kms_server_with_jwt_auth,
+    start_default_test_kms_server_with_multi_privileged_users,
     start_default_test_kms_server_with_non_revocable_key_ids,
     start_default_test_kms_server_with_privileged_users,
     start_default_test_kms_server_with_utimaco_and_kek,

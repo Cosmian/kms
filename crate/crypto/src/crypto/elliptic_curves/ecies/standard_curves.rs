@@ -88,7 +88,7 @@ pub(super) fn ecies_encrypt(
 
     // Compute shared secret from recipient public key `S = rQ`.
     let mut S = EcPoint::new(curve)?;
-    S.mul(curve, Q.public_key(), r.private_key(), &ctx)?;
+    S.mul2(curve, Q.public_key(), r.private_key(), &mut ctx)?;
 
     let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
     let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve, aead.nonce_size(), md)?;
@@ -148,7 +148,7 @@ pub(super) fn ecies_decrypt(
 
     // Compute secret key from recipient public key `S = rQ = rdG = dR`.
     let mut S = EcPoint::new(curve)?;
-    S.mul(curve, &R, d.private_key(), &ctx)?;
+    S.mul2(curve, &R, d.private_key(), &mut ctx)?;
 
     let iv = ecies_get_iv(d.public_key(), &R, curve, aead.nonce_size(), md)?;
     let key = ecies_get_key(&S, curve, aead.key_size(), md)?;

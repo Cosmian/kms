@@ -1,4 +1,3 @@
-use base64::{Engine, engine::general_purpose};
 use cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, PaddingMethod},
     kmip_2_1::{
@@ -218,7 +217,7 @@ pub(super) fn wrap(
         | Object::PrivateKey(PrivateKey { key_block })
         | Object::PublicKey(PublicKey { key_block })
         | Object::SymmetricKey(SymmetricKey { key_block }) => {
-            trace!("key_block: {}", key_block);
+            trace!("wrapping key: format={}", key_block.key_format_type);
             // wrap the wrapping key if necessary
             if key_block.key_wrapping_data.is_some() {
                 crypto_bail!(
@@ -300,9 +299,9 @@ pub(super) fn wrap(
                         ciphertext.extend_from_slice(&authenticated_encryption_tag);
 
                         trace!(
-                            "nonce: {}, tag: {}",
-                            general_purpose::STANDARD.encode(&nonce),
-                            general_purpose::STANDARD.encode(&authenticated_encryption_tag),
+                            "nonce_len={}, tag_len={}",
+                            nonce.len(),
+                            authenticated_encryption_tag.len(),
                         );
 
                         Ok(ciphertext)

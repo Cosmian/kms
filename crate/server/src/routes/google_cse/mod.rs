@@ -121,7 +121,7 @@ where
 {
     info!("POST /google_cse/{info_msg}");
     let request = request.into_inner();
-    trace!("{info_msg} request: {:?}", request);
+    trace!("{info_msg} request received");
     let cse_config = cse_config.into_inner();
     (request, cse_config)
 }

@@ -307,8 +307,10 @@ hostname = "0.0.0.0"
 rust_log = "info,cosmian_kms=info"
 
 # The OTLP collector URL for gRPC
-# (for instance, <http://localhost:4317>)
-# If not set, the telemetry system will not be initialized
+# (for instance, <https://localhost:4317>)
+# If not set, the telemetry system will not be initialized.
+# Must use https:// in production.
+# Use --otlp-allow-insecure to permit plaintext http:// connections.
 # otlp = "http://localhost:4317"
 
 # Do not log to stdout
