@@ -19,6 +19,7 @@ mod locate;
 mod migrate;
 mod ms_dke;
 mod mtls_db;
+mod rest_crypto;
 mod secret_data_tests;
 mod security_regression;
 mod test_modify_attribute;

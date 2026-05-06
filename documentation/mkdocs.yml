@@ -74,6 +74,7 @@ nav:
       - Other HSMs: hsm_support/other_hsms.md
   - Integrations:
       - API Endpoints: integrations/api.md
+      - REST Native Crypto API: integrations/rest_crypto_api.md
       - Cloud providers:
           - Amazon Web Services (AWS):
               - ECS Fargate: integrations/cloud_providers/aws/fargate.md
