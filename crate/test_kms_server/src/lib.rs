@@ -3,6 +3,8 @@ pub use cosmian_kms_server::{
     openssl_providers::init_openssl_providers_for_tests,
 };
 pub use test_jwt::AUTH0_TOKEN;
+#[cfg(feature = "non-fips")]
+pub use test_server::start_test_kms_server_with_pqc_tls;
 pub use test_server::{
     ApiTokenPolicy, AuthenticationOptions, BuildServerParamsOptions, ClientAuthOptions,
     ClientCertPolicy, JwtAuth as ServerJwtAuth, JwtPolicy, TestsContext, TlsMode as ServerTlsMode,
