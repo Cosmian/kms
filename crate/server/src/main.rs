@@ -370,8 +370,7 @@ mod tests {
             privileged_users: None,
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             print_default_config: false,
-            auto_rotation_check_interval_secs: 0,
-            keyset_warn_depth: 5,
+            ..ClapConfig::default()
         };
 
         let toml_string = r#"

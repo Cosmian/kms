@@ -191,6 +191,11 @@ pub struct ServerParams {
 
     /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
     pub jwks_endpoint: JwksEndpointConfig,
+
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
 }
 
 /// Represents the server parameters.
@@ -392,6 +397,16 @@ impl ServerParams {
             },
             keyset_warn_depth: conf.keyset_warn_depth,
             jwks_endpoint: conf.jwks_endpoint,
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
         };
 
         debug!("{res:#?}");
@@ -752,6 +767,7 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
+        debug_struct.field("audit_file_path", &self.audit_file_path);
 
         debug_struct.finish()
     }
