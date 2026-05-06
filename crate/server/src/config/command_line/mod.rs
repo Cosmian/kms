@@ -8,6 +8,7 @@ mod idp_auth_config;
 mod kmip_policy_config;
 mod logging;
 mod proxy_config;
+pub(super) mod secret_backends;
 mod socket_server_config;
 mod tls_config;
 mod ui_config;

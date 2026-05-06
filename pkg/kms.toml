@@ -1,6 +1,41 @@
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
+# Optional: path to a secrets file containing sensitive values (passwords, tokens, credentials).
+# The secrets file is a TOML file with the same structure as this file; its values are deep-merged
+# over this file at startup (secrets file takes precedence).
+# This allows keeping sensitive data in a separate, root-only file (e.g. mode 400) while sharing
+# the main config with teams.
+# Can also be set via the COSMIAN_KMS_SECRETS_CONF environment variable (takes precedence over this key).
+# Example:
+# secrets_file = "/etc/cosmian/secrets.toml"
+
+# Any string value in this file (and in the secrets file) can reference environment variables
+# using the ${VAR_NAME} syntax. The variable is resolved at startup and must be set.
+# Example:
+#   database_url = "postgresql://kms:${KMS_DB_PASSWORD}@db.internal/kms"
+
+# Phase-2: secret URI backends (requires building with the matching feature flag).
+# Any string value can use a secret URI instead of a literal; the value is fetched at startup.
+#
+# Scheme          Feature flag    Description
+# ─────────────── ─────────────── ──────────────────────────────────────────────
+# vault://        secret-vault    HashiCorp Vault KV-v2
+#                                 Format: vault://<mount>/<path>[#<field>]
+#                                 Required env: VAULT_ADDR, VAULT_TOKEN
+#                                 Example: vault://secret/kms/db#password
+#
+# aws-ssm://      secret-aws      AWS Systems Manager Parameter Store
+#                                 Format: aws-ssm://<region>/<parameter-name>
+#                                 Required: standard AWS credential chain
+#                                 Example: aws-ssm://eu-west-1/kms/prod/db-url
+#
+# azure-kv://     secret-azure    Azure Key Vault
+#                                 Format: azure-kv://<vault-name>/secrets/<name>[/<version>]
+#                                 Required env: AZURE_TENANT_ID, AZURE_CLIENT_ID,
+#                                               AZURE_CLIENT_SECRET
+#                                 Example: azure-kv://my-vault/secrets/kms-tls-p12
+
 # When an authentication method is provided, perform the authentication
 # but always use the default username instead of the one provided by the authentication method
 force_default_username = false
@@ -95,7 +130,7 @@ clear_database = false
 # The default is 15 minutes.
 # About 2/3 of the objects will be evicted after this time; the other 1/3 will be evicted
 # after a maximum of 150% of the time.
-unwrapped_cache_max_age = 15 # minutes
+unwrapped_cache_max_age = 15  # minutes
 
 # TLS configuration of the Socket server and HTTP server
 [tls]

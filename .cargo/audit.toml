@@ -9,4 +9,10 @@ ignore = [
   "RUSTSEC-2025-0009",
   "RUSTSEC-2025-0010",
   "RUSTSEC-2023-0071",
+  # rustls-webpki 0.101.7 via hyper-rustls 0.24 / rustls 0.21 (hyper 0.14 transitive dependency).
+  # KMS does not use CRLs, does not assert URI SANs, and exploiting wildcard name constraints
+  # requires certificate misissuance upstream.
+  "RUSTSEC-2026-0098",
+  "RUSTSEC-2026-0099",
+  "RUSTSEC-2026-0104",
 ]
