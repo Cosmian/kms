@@ -1,3 +1,6 @@
+mod audit;
+pub(crate) use audit::AuditMiddleware;
+
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;
 pub(crate) use tls_auth::{extract_peer_certificate, tls_auth_fn};
