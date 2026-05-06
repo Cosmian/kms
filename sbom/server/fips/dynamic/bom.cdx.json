@@ -2,9 +2,9 @@
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
   "version": 1,
-  "serialNumber": "urn:uuid:9e57fae4-1d47-4120-9392-733f86d321fa",
+  "serialNumber": "urn:uuid:45a7d2c2-94eb-4fc1-b511-12f49c22db5b",
   "metadata": {
-    "timestamp": "2026-04-21T14:48:59.021942+00:00",
+    "timestamp": "2026-05-06T14:54:09.807618+00:00",
     "properties": [
       {
         "name": "sbom_type",
@@ -20,19 +20,19 @@
     ],
     "component": {
       "type": "library",
-      "bom-ref": "/nix/store/9i91qsglq73nnzb3im6hwcqhamwc2x6s-cosmian-kms-server-dynamic-5.21.0.drv",
+      "bom-ref": "/nix/store/yfq7jvp8j818ac0nrkdwjwaj6hf4vzni-cosmian-kms-server-dynamic-5.22.0.drv",
       "name": "cosmian-kms-server-dynamic",
-      "version": "5.21.0",
-      "purl": "pkg:nix/cosmian-kms-server-dynamic@5.21.0",
-      "cpe": "cpe:2.3:a:cosmian-kms-server-dynamic:cosmian-kms-server-dynamic:5.21.0:*:*:*:*:*:*:*",
+      "version": "5.22.0",
+      "purl": "pkg:nix/cosmian-kms-server-dynamic@5.22.0",
+      "cpe": "cpe:2.3:a:cosmian-kms-server-dynamic:cosmian-kms-server-dynamic:5.22.0:*:*:*:*:*:*:*",
       "properties": [
         {
           "name": "nix:output_path",
-          "value": "/nix/store/ipbpg97j0rbx5hq073yln544s2bjdh7p-cosmian-kms-server-dynamic-5.21.0"
+          "value": "/nix/store/kxf2hsa9ak4pjyrdk57r05lj9kff2x1i-cosmian-kms-server-dynamic-5.22.0"
         },
         {
           "name": "nix:drv_path",
-          "value": "/nix/store/9i91qsglq73nnzb3im6hwcqhamwc2x6s-cosmian-kms-server-dynamic-5.21.0.drv"
+          "value": "/nix/store/yfq7jvp8j818ac0nrkdwjwaj6hf4vzni-cosmian-kms-server-dynamic-5.22.0.drv"
         }
       ]
     }
@@ -113,7 +113,7 @@
   ],
   "dependencies": [
     {
-      "ref": "/nix/store/9i91qsglq73nnzb3im6hwcqhamwc2x6s-cosmian-kms-server-dynamic-5.21.0.drv",
+      "ref": "/nix/store/yfq7jvp8j818ac0nrkdwjwaj6hf4vzni-cosmian-kms-server-dynamic-5.22.0.drv",
       "dependsOn": [
         "/nix/store/0ag6km30kmkx6p21ngr8n475jczc9yxy-openssl-3.6.2.drv"
       ]
@@ -231,6 +231,28 @@
     },
     {
       "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "CVE-2026-6238",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-6238",
+        "name": "NVD"
+      },
+      "ratings": [
+        {
+          "source": {
+            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-6238",
+            "name": "NVD"
+          },
+          "score": 6.5
+        }
+      ],
+      "tools": [
+        {
+          "name": "vulnix"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "id": "CVE-2024-2961",
       "source": {
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-2961",
@@ -262,6 +284,28 @@
         {
           "source": {
             "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-33601",
+            "name": "NVD"
+          },
+          "score": 7.3
+        }
+      ],
+      "tools": [
+        {
+          "name": "vulnix"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "CVE-2026-5435",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-5435",
+        "name": "NVD"
+      },
+      "ratings": [
+        {
+          "source": {
+            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-5435",
             "name": "NVD"
           },
           "score": 7.3
@@ -429,6 +473,28 @@
     },
     {
       "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "CVE-2026-5928",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-5928",
+        "name": "NVD"
+      },
+      "ratings": [
+        {
+          "source": {
+            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-5928",
+            "name": "NVD"
+          },
+          "score": 7.5
+        }
+      ],
+      "tools": [
+        {
+          "name": "vulnix"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
       "id": "CVE-2023-4911",
       "source": {
         "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-4911",
@@ -507,6 +573,28 @@
             "name": "NVD"
           },
           "score": 8.4
+        }
+      ],
+      "tools": [
+        {
+          "name": "vulnix"
+        }
+      ]
+    },
+    {
+      "bom-ref": "/nix/store/9lj1q8k38i7k8z4isnhb5j1h4n2hhjzm-glibc-2.34-210.drv",
+      "id": "CVE-2026-5450",
+      "source": {
+        "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-5450",
+        "name": "NVD"
+      },
+      "ratings": [
+        {
+          "source": {
+            "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-5450",
+            "name": "NVD"
+          },
+          "score": 9.8
         }
       ],
       "tools": [
