@@ -1,3 +1,6 @@
+mod audit;
+pub(crate) use audit::AuditMiddleware;
+
 mod tls_auth;
 pub(crate) use tls_auth::{TlsAuth, extract_peer_certificate};
 

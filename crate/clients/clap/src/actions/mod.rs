@@ -1,5 +1,6 @@
 pub mod access;
 pub mod attributes;
+pub mod audit;
 pub mod aws;
 pub mod azure;
 pub mod bench;

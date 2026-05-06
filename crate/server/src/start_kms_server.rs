@@ -51,7 +51,7 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, TlsAuth,
+        ApiTokenAuth, AuditMiddleware, EnsureAuth, JwksManager, JwtAuth, JwtConfig, TlsAuth,
         extract_peer_certificate,
     },
     result::{KResult, KResultHelper},
@@ -1000,6 +1000,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 JwtAuth::new(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
+            .wrap(AuditMiddleware::new(
+                kms_server_for_http.audit_store.clone(),
+            ))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
             // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
@@ -1199,6 +1202,7 @@ mod tests {
 
     // ── J1–J4: JWKS HTTPS URI validation (compiled out in `insecure` builds) ─
     #[cfg(not(feature = "insecure"))]
+    #[expect(clippy::unwrap_used)]
     mod jwks_https_guard {
         use super::*;
 

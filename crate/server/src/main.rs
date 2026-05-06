@@ -282,6 +282,7 @@ mod tests {
             non_revocable_key_id: None,
             privileged_users: None,
             print_default_config: false,
+            ..ClapConfig::default()
         };
 
         let toml_string = r#"

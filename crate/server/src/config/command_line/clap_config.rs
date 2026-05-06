@@ -9,8 +9,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    AuditConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig,
+    MainDBConfig, WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -69,6 +69,7 @@ impl Default for ClapConfig {
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
+            audit: AuditConfig::default(),
         }
     }
 }
@@ -202,6 +203,10 @@ pub struct ClapConfig {
     #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+
+    #[clap(flatten)]
+    #[serde(rename = "audit")]
+    pub audit: AuditConfig,
 }
 
 impl ClapConfig {
@@ -642,6 +647,7 @@ impl fmt::Debug for ClapConfig {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
         };
         let x = x.field("kmip", &self.kmip_policy);
+        let x = x.field("audit", &self.audit);
 
         x.finish()
     }

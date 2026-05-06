@@ -1,3 +1,4 @@
+mod audit_config;
 mod azure_ekm_config;
 mod clap_config;
 mod db;
@@ -13,6 +14,7 @@ mod tls_config;
 mod ui_config;
 mod workspace;
 
+pub use audit_config::{AuditConfig, AuditFileConfig};
 pub use azure_ekm_config::AzureEkmConfig;
 #[cfg(not(target_os = "windows"))]
 pub use clap_config::DEFAULT_COSMIAN_KMS_CONF;

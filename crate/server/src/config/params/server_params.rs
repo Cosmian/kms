@@ -155,6 +155,11 @@ pub struct ServerParams {
     /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
     /// applied automatically. Prevents unbounded DB queries and large response payloads.
     pub max_locate_items: u32,
+
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
 }
 
 /// Represents the server parameters.
@@ -378,6 +383,16 @@ impl ServerParams {
             rate_limit_per_second: conf.http.rate_limit_per_second,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_default(),
             max_locate_items: 1000,
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
         };
 
         debug!("{res:#?}");
@@ -596,6 +611,7 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
+        debug_struct.field("audit_file_path", &self.audit_file_path);
 
         debug_struct.finish()
     }

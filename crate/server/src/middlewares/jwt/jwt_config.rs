@@ -256,6 +256,7 @@ impl JwtConfig {
 
 #[cfg(test)]
 #[cfg(not(feature = "insecure"))]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use jsonwebtoken::Algorithm;
 
@@ -301,19 +302,19 @@ mod tests {
             ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::RS256),
             "RS256 must be in the allowlist"
         );
-        assert!(check_alg(Algorithm::RS256).is_ok());
+        check_alg(Algorithm::RS256).unwrap()
     }
 
     #[test]
     fn a05_es256_is_accepted() {
         assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::ES256));
-        assert!(check_alg(Algorithm::ES256).is_ok());
+        check_alg(Algorithm::ES256).unwrap()
     }
 
     #[test]
     fn a06_ps256_is_accepted() {
         assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::PS256));
-        assert!(check_alg(Algorithm::PS256).is_ok());
+        check_alg(Algorithm::PS256).unwrap()
     }
 
     /// Full coverage: every algorithm in the allowlist must be accepted.

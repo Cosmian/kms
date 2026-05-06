@@ -38,7 +38,13 @@ const OTHER_HSM_PKCS11_LIB: &str = "/lib/libkmshsm.so";
 #[cfg(any(all(target_os = "linux", target_arch = "x86_64"), target_os = "macos"))]
 static GLOBAL_HSM: OnceCell<Arc<dyn HSM + Send + Sync>> = OnceCell::const_new();
 
-use crate::{config::ServerParams, core::OtelMetrics, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    config::ServerParams,
+    core::{OtelMetrics, audit::AuditFileStore},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 /// Macro to instantiate an HSM with support for environment variable override
 /// Allows overriding PKCS#11 lib path via env for testing (falls back to default constant)
@@ -83,6 +89,9 @@ pub struct KMS {
 
     /// OTLP metrics collector (if enabled)
     pub(crate) metrics: Option<Arc<OtelMetrics>>,
+
+    /// Audit file store (if audit logging is enabled)
+    pub(crate) audit_store: Option<AuditFileStore>,
 
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
@@ -146,6 +155,7 @@ impl KMS {
             crypto_oracles: RwLock::new(crypto_oracles),
             hsm: hsm.clone(),
             metrics: Self::create_otel_metrics(&server_params)?,
+            audit_store: Self::create_audit_store(&server_params)?,
         })
     }
 
@@ -198,6 +208,16 @@ impl KMS {
                 .build();
 
             Ok(Some(Arc::new(OtelMetrics::new(meter_provider)?)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Starts the audit file store if audit logging is configured.
+    fn create_audit_store(server_params: &ServerParams) -> KResult<Option<AuditFileStore>> {
+        if let Some(ref path) = server_params.audit_file_path {
+            let store = AuditFileStore::start(path.clone())?;
+            Ok(Some(store))
         } else {
             Ok(None)
         }

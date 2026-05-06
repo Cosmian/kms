@@ -1090,7 +1090,11 @@ name = "cosmian_kms_access"
 version = "5.21.0"
 dependencies = [
  "cosmian_kmip",
+ "hex",
  "serde",
+ "serde_json",
+ "sha2",
+ "time",
 ]
 
 [[package]]

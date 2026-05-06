@@ -11,13 +11,13 @@ use super::cover_crypt::CovercryptCommands;
 use super::pqc::PqcCommands;
 use crate::{
     actions::{
-        access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
-        azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
-        console::Stdout, derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
-        google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacCommands,
-        opaque_object::OpaqueObjectCommands, rng::RngAction, rsa::RsaCommands,
-        secret_data::SecretDataCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        version::ServerVersionAction,
+        access::AccessAction, attributes::AttributesCommands, audit::AuditCommands,
+        aws::AwsCommands, azure::AzureCommands, bench::BenchAction,
+        certificates::CertificatesCommands, console::Stdout, derive_key::DeriveKeyAction,
+        elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
+        login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands, rng::RngAction,
+        rsa::RsaCommands, secret_data::SecretDataCommands, shared::LocateObjectsAction,
+        symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -34,6 +34,9 @@ pub enum ServerCommands {
 
 #[derive(Subcommand)]
 pub enum KmsActions {
+    #[command(subcommand)]
+    /// Inspect and verify the tamper-evident KMS audit log.
+    Audit(AuditCommands),
     #[command(subcommand)]
     AccessRights(AccessAction),
     #[command(subcommand)]
@@ -88,6 +91,9 @@ impl KmsActions {
         let mut new_config = kms_rest_client.config.clone();
 
         match self {
+            Self::Audit(action) => {
+                action.process()?;
+            }
             Self::AccessRights(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Attributes(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Aws(action) => Box::pin(action.process(kms_rest_client)).await?,
