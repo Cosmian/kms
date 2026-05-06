@@ -127,7 +127,7 @@ impl ObjectsStore for HsmStore {
                 Ok(Some(owm))
             }
             Ok(None) => Ok(None),
-            Err(e) if e.to_string().contains("sensitive") => {
+            Err(InterfaceError::Default(ref msg)) if msg.contains("sensitive") => {
                 // The key is non-extractable (sensitive flag set in PKCS#11).
                 // Build a metadata-only stub using get_key_metadata() so that
                 // attribute-only KMIP operations (ModifyAttribute, GetAttributes)

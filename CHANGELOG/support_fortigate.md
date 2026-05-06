@@ -9,9 +9,23 @@
 
 - Fix `ModifyAttribute` failing with "This key is sensitive and cannot be exported from the HSM" for non-extractable HSM-backed keys: `HsmStore::retrieve` now catches the sensitive-key export error and falls back to `get_key_metadata()` (no key material access) to build a metadata-only stub that satisfies attribute-only KMIP operations (e.g. `ModifyAttribute(Name)`, `GetAttributes`); `HsmStore::update_object` was also changed to return `Ok(())` for attribute updates instead of an error ([#933](https://github.com/Cosmian/kms/issues/933))
 
+## Testing
+
+### HSM non-regression tests
+
+- Add KMIP 1.2 protocol test vector for issue #933: replays the exact `ModifyAttribute(Name)` payload Synology DSM 7.2.2 sends on a sensitive HSM key ([#933](https://github.com/Cosmian/kms/issues/933))
+- Add integration test for issue #935: verifies `Locate` with a `Name` filter does not leak the server KEK or other unrelated HSM keys ([#935](https://github.com/Cosmian/kms/issues/935))
+
+## Refactor
+
+### HSM error handling
+
+- Use type-based pattern matching (`InterfaceError::Default(ref msg)`) instead of `e.to_string().contains(...)` for sensitive-key detection in `HsmStore::retrieve` ([#933](https://github.com/Cosmian/kms/issues/933))
+
 ### Web UI
 
 - Fix flaky Windows E2E tests: reduce `PLAYWRIGHT_WORKERS` from 10 to 4 on Windows CI to prevent the debug-build KMS server from being overwhelmed by concurrent crypto operations (which saturates the tokio reactor and causes actix-web to return HTTP 408 before reading request bodies); also add retry with exponential backoff to the `createHmacKey` test helper for transient 408/network errors ([#827](https://github.com/Cosmian/kms/pull/827))
 
 Closes #824
 Closes #933
+Closes #935

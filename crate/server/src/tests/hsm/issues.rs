@@ -37,7 +37,7 @@ use crate::{
     tests::{
         hsm::{
             EMPTY_TAGS, create_kek, create_sym_key, delete_key, export_object, hsm_clap_config,
-            revoke_key, send_message,
+            locate_keys, revoke_key, send_message,
         },
         test_utils::get_tmp_sqlite_path,
     },
@@ -305,6 +305,59 @@ pub(super) async fn test_hsm_modify_attribute_sensitive_key() -> KResult<()> {
         response.is_ok(),
         "ModifyAttribute failed for sensitive HSM key (issue #933): {:?}",
         response.unwrap_err()
+    );
+
+    // Cleanup.
+    delete_key(&kek_uid, &admin, &kms).await?;
+
+    Ok(())
+}
+
+/// Issue #935 — Locate with a Name filter must NOT return the server KEK.
+///
+/// Before the fix, HSM locate with a Name attribute would silently ignore
+/// the filter and return any available key — including the internal KEK —
+/// which was unexpected from both security and integration perspectives.
+/// The fix rejects Name-based filters for HSM keys (since PKCS#11 doesn't
+/// store KMIP Name attributes) and returns empty rather than leaking keys.
+pub(super) async fn test_hsm_locate_name_filter_does_not_leak_kek() -> KResult<()> {
+    let kek_uuid = Uuid::new_v4();
+    let admin = Uuid::new_v4().to_string();
+
+    let sqlite_path = get_tmp_sqlite_path();
+    let mut clap_config = hsm_clap_config(&admin, Some(kek_uuid))?;
+    clap_config.db.sqlite_path = sqlite_path;
+    let Some(kek_uid) = clap_config.key_encryption_key.clone() else {
+        return Err(KmsError::Default("Missing KEK".to_owned()));
+    };
+
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+
+    // Create the KEK in the HSM (simulates server-configured wrapping key).
+    create_kek(&kek_uid, &admin, &kms).await?;
+
+    // Locate with a Name filter that doesn't match anything: the server must
+    // NOT return the KEK or any other unrelated object.
+    let attrs_with_name = Attributes {
+        name: Some(vec![Name {
+            name_value: "nonexistent-key-name".to_owned(),
+            name_type: NameType::UninterpretedTextString,
+        }]),
+        ..Default::default()
+    };
+    let found = locate_keys(&admin, &kms, Some(attrs_with_name)).await?;
+    assert!(
+        found.is_empty(),
+        "Locate with Name filter must return empty for HSM keys (issue #935), \
+         but got: {found:?}"
+    );
+
+    // Also verify that a locate WITHOUT Name filter still returns the KEK
+    // (to confirm we didn't break basic locate functionality).
+    let found_all = locate_keys(&admin, &kms, None).await?;
+    assert!(
+        !found_all.is_empty(),
+        "Locate without Name filter should return at least the KEK"
     );
 
     // Cleanup.
