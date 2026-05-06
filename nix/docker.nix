@@ -374,6 +374,10 @@ pkgs.dockerTools.buildLayeredImage {
       "TZDIR=${pkgs.tzdata}/share/zoneinfo"
       "OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf"
       "OPENSSL_MODULES=/usr/local/cosmian/lib/ossl-modules"
+      # Default CORS origins for the Web UI served from the container itself.
+      # Covers IPv4 localhost (127.0.0.1, 0.0.0.0) and IPv6 equivalents (::1, [::]).
+      # Users can override by setting KMS_CORS_ALLOWED_ORIGINS at runtime.
+      "KMS_CORS_ALLOWED_ORIGINS=http://localhost:9998,http://127.0.0.1:9998,http://0.0.0.0:9998,http://[::1]:9998,http://[::]:9998"
     ];
 
     # Set working directory

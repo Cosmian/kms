@@ -58,7 +58,11 @@ use crate::{
 const EMPTY_SLICE: &[u8] = &[];
 
 pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
-    trace!("{}", serde_json::to_string(&request)?);
+    trace!(
+        "Decrypt: uid={:?}, data_len={}",
+        request.unique_identifier,
+        request.data.as_ref().map_or(0, Vec::len)
+    );
     let data = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
     })?;
@@ -589,7 +593,7 @@ fn decrypt_single_with_symmetric_key(
         tag,
         Some(padding_method),
     )?;
-    trace!("plaintext: {plaintext:?}");
+    trace!("plaintext length: {} bytes", plaintext.len());
     Ok(Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         data: Some(plaintext),

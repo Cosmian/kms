@@ -247,6 +247,7 @@ Legend:
 - N/A Not applicable (operation/attribute not defined in that KMIP version)
 
 ### KMIP Baseline Profile Compliance
+
 **Baseline Server:** ✅ Compliant (all 9 required + 18/18 optional)
 
 The Baseline Server profile (defined in KMIP Profiles v2.1 Section 4.1) requires:
@@ -325,6 +326,7 @@ If you spot a mismatch or want to extend coverage, please open an issue or PR.
 #### Managed Objects
 
 The following table shows managed object support across all KMIP versions.
+
 | Managed Object | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
 | -------------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | Certificate    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
@@ -338,6 +340,7 @@ The following table shows managed object support across all KMIP versions.
 | PGP Key        |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |   N/A   |
 
 Notes:
+
 - Opaque Object import support is present (see `import.rs`).
 - PGP Key types appear in digest and attribute handling but full object import/register is not implemented, hence ❌.
 - Template objects are deprecated in newer KMIP versions.
@@ -345,6 +348,7 @@ Notes:
 #### Base Objects
 
 The following table shows base object support across all KMIP versions.
+
 | Base Object | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
 | ----------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | Attribute                                |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |    ❌    |
@@ -373,6 +377,7 @@ The following table shows base object support across all KMIP versions.
 | Authenticated Encryption Tag             |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
 
 Notes:
+
 - AEAD Additional Data and Tag are supported in encrypt/decrypt APIs.
 - Nonce and RNG Parameter are used by symmetric encryption paths.
 - Base objects are fundamental structures present across all KMIP versions.
@@ -380,6 +385,7 @@ Notes:
 #### Transparent Key Structures
 
 The following table shows transparent key structure support across all KMIP versions.
+
 | Structure | 1.0 | 1.1 | 1.2 | 1.3 | 1.4 | 2.0 | 2.1 |
 | --------- | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | Symmetric Key            |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |    ✅    |
@@ -401,6 +407,7 @@ The following table shows transparent key structure support across all KMIP vers
 Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 #### Attributes
+
 | Attribute | Current |
 | --------- | ------: |
 | Activation Date                     |       ✅ |

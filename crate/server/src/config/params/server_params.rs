@@ -340,6 +340,7 @@ impl ServerParams {
             {
                 Some(OpenTelemetryConfig {
                     otlp_url: conf.logging.otlp,
+                    otlp_allow_insecure: conf.logging.otlp_allow_insecure,
                     enable_metering: conf.logging.enable_metering,
                     environment: conf.logging.environment,
                 })
@@ -468,8 +469,8 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("tls_params", tls);
         }
 
-        if let Some(ref token) = self.api_token_id {
-            debug_struct.field("api_token_id", token);
+        if self.api_token_id.is_some() {
+            debug_struct.field("api_token_id", &self.api_token_id);
         }
 
         if let Some(ref dke_url) = self.ms_dke_service_url {
@@ -489,7 +490,11 @@ impl fmt::Debug for ServerParams {
                 )
                 .field(
                     "google_cse_migration_key",
-                    &self.google_cse.google_cse_migration_key,
+                    &self
+                        .google_cse
+                        .google_cse_migration_key
+                        .as_ref()
+                        .map(|_| "[PEM key provided]"),
                 );
         } else {
             debug_struct.field("google_cse_enable", &self.google_cse.google_cse_enable);
@@ -551,8 +556,8 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("hsm_model", &"no HSM configured");
         }
 
-        if let Some(ref key) = self.key_wrapping_key {
-            debug_struct.field("key_wrapping_key", key);
+        if self.key_wrapping_key.is_some() {
+            debug_struct.field("key_wrapping_key", &"[configured]");
         }
 
         if let Some(ref proxy) = self.proxy_params {

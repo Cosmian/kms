@@ -622,7 +622,7 @@ grep -n "==\|compare\|ConstantTimeEq\|constant_time\|subtle\|ct_eq" \
 grep -n "CommonName\|CN\|SubjectAltName\|SAN\|subject\|peer_cert\|peer_certificate" \
   crate/server/src/middlewares/tls_auth.rs
 
-# Step 6 — Session fixation in UI auth: cookie must be HttpOnly, Secure, SameSite=Strict
+# Step 6 — Session fixation in UI auth: cookie must be HttpOnly, Secure, SameSite=Lax (OIDC requires Lax, not Strict)
 grep -rn "actix.session\|Session\|cookie\|HttpOnly\|Secure\|SameSite" \
   crate/server/src/routes/ui_auth.rs crate/server/src/middlewares/ --include="*.rs"
 

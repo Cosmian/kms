@@ -189,13 +189,31 @@ where
                 key: access_key.as_bytes().to_vec(),
             };
             let allowed_mismatch = Some(Duration::minutes(5));
-            if let Err(signature_error) = sigv4_verify(
-                &sigv4_req,
-                &signing_key,
-                allowed_mismatch,
-                params.region.as_str(),
-                params.service.as_str(),
-            ) {
+            // SigV4 verification computes HMAC-SHA256 over the entire request body.
+            // For large XKS payloads (e.g. 64 KB plaintext → ~85 KB JSON body), this is
+            // a non-trivial CPU-bound operation. Running it directly on the tokio worker
+            // thread blocks the executor and prevents it from accepting new TCP connections
+            // or processing other concurrent requests, causing connection-queue saturation
+            // under high concurrency. Offload to the blocking thread pool so the tokio
+            // runtime stays free to multiplex I/O across all pending requests.
+            let region_for_verify = params.region.clone();
+            let service_for_verify = params.service.clone();
+            let sigv4_result = tokio::task::spawn_blocking(move || {
+                sigv4_verify(
+                    &sigv4_req,
+                    &signing_key,
+                    allowed_mismatch,
+                    region_for_verify.as_str(),
+                    service_for_verify.as_str(),
+                )
+            })
+            .await
+            .map_err(|join_err| {
+                actix_web::error::ErrorInternalServerError(format!(
+                    "SigV4 verification task panicked: {join_err}"
+                ))
+            })?;
+            if let Err(signature_error) = sigv4_result {
                 tracing::warn!("SigV4 failure: {signature_error}");
                 let err: Self::Error = XksErrorReply {
                     errorName: XksErrorName::AuthenticationFailedException,
