@@ -207,6 +207,11 @@ pub struct ServerParams {
     /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
     pub jwks_endpoint: JwksEndpointConfig,
 
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
+
     // ── Vault-compatible API ──────────────────────────────────────────────────
     /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
     /// are registered at startup.  Defaults to `false`.
@@ -544,6 +549,16 @@ impl ServerParams {
             },
             keyset_warn_depth: conf.keyset_warn_depth,
             jwks_endpoint: conf.jwks_endpoint,
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
             // Vault-compatible API — opt-in via config file or CLI flags.
             vault_api_enabled: conf.vault.vault_api_enabled,
             vault_auth_verifier_url: conf
@@ -954,6 +969,7 @@ impl fmt::Debug for ServerParams {
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
         }
+        debug_struct.field("audit_file_path", &self.audit_file_path);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);

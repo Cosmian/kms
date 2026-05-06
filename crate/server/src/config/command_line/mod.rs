@@ -1,3 +1,4 @@
+mod audit_config;
 mod auth_verifier_config;
 mod azure_ekm_config;
 mod clap_config;
@@ -18,6 +19,7 @@ mod ui_config;
 mod vault_config;
 mod workspace;
 
+pub use audit_config::{AuditConfig, AuditFileConfig};
 pub use auth_verifier_config::AuthVerifierConfig;
 pub use azure_ekm_config::AzureEkmConfig;
 #[cfg(not(target_os = "windows"))]

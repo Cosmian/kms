@@ -9,9 +9,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AuthVerifierConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig,
-    KmipPolicyConfig, MainDBConfig, RolesConfig, WorkspaceConfig, logging::LoggingConfig,
-    secret_backends::SecretBackendConfig, ui_config::UiConfig, vault_config::VaultConfig,
+    AuditConfig, AuthVerifierConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
+    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, RolesConfig, WorkspaceConfig,
+    logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
+    vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -77,6 +78,7 @@ impl Default for ClapConfig {
             keyset_warn_depth: 5,
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
+            audit: AuditConfig::default(),
             vault: VaultConfig::default(),
         }
     }
@@ -268,6 +270,10 @@ pub struct ClapConfig {
 
     #[command(flatten)]
     pub jwks_endpoint: JwksEndpointConfig,
+
+    #[clap(flatten)]
+    #[serde(rename = "audit")]
+    pub audit: AuditConfig,
 
     /// Configuration for the Vault-compatible REST API (`/v1/transit/` and `/v1/<pki_mount>/`).
     #[command(flatten)]
@@ -754,6 +760,12 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = if self.auth_verifier.is_enabled() {
+            x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
+        } else {
+            x
+        };
+        let x = x.field("audit", &self.audit);
 
         x.finish()
     }
