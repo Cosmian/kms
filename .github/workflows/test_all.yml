@@ -130,11 +130,12 @@ jobs:
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
-    # proteccio hardware does not support concurrent connections from multiple CI runs;
-    # give it a fixed concurrency group so only one job runs at a time across all PRs.
+    # proteccio and crypt2pay hardware do not support concurrent connections from multiple CI runs;
+    # give them fixed concurrency groups so only one job runs at a time across all PRs.
     # utimaco and softhsm2 use a per-run group so they are never blocked by other PRs.
     concurrency:
-      group: ${{ matrix.hsm-type == 'proteccio' && 'hsm-proteccio' || format('hsm-{0}-{1}', matrix.hsm-type, github.run_id) }}
+      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
+        github.run_id) }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
