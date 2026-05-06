@@ -50,7 +50,7 @@ mod rsa_dek;
 mod search;
 mod secret_data_dek;
 mod symmetric_dek;
-mod test_helpers;
+pub(crate) mod test_helpers;
 
 /// The HSM simulator does not like tests in parallel,
 /// so we run them sequentially from here
@@ -86,6 +86,14 @@ async fn test_hsm_all() {
     Box::pin(issues::test_server_side_unwrap()).await.unwrap();
     info!("HSM: destroy_type_guard (issue #763)");
     Box::pin(issues::test_hsm_destroy_type_guard())
+        .await
+        .unwrap();
+    info!("HSM: modify_attribute_sensitive_key (issue #933)");
+    Box::pin(issues::test_hsm_modify_attribute_sensitive_key())
+        .await
+        .unwrap();
+    info!("HSM: locate_name_filter_does_not_leak_kek (issue #935)");
+    Box::pin(issues::test_hsm_locate_name_filter_does_not_leak_kek())
         .await
         .unwrap();
 }

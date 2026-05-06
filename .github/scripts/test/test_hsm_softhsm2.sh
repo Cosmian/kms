@@ -68,6 +68,27 @@ env \
 
 echo "SoftHSM2 KMS server tests completed successfully."
 
+# Run KMIP 1.2 TTLV integration test for issue #933 (non-fips only, as the
+# ttlv_tests module is gated behind #[cfg(feature = "non-fips")]).
+if [[ " ${FEATURES_FLAG[*]:-} " == *"non-fips"* ]]; then
+  echo "========================================="
+  echo "Running issue #933 KMIP 1.2 protocol test (SoftHSM2)"
+  echo "========================================="
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+    DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_MODEL="softhsm2" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    cargo test \
+    -p cosmian_kms_server \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    -- tests::ttlv_tests::integrations::synology_dsm::test_issue_933_modify_attribute_kmip12_payload --ignored --exact
+  echo "Issue #933 KMIP 1.2 test passed."
+fi
+
 env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \

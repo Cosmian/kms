@@ -4,11 +4,15 @@ use zeroize::Zeroizing;
 
 use crate::{
     SafeBigInt,
-    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_0::{
+        kmip_messages::{RequestMessage, RequestMessageBatchItemVersioned},
+        kmip_types::{CredentialType, CredentialValue, CryptographicUsageMask},
+    },
     kmip_1_4::{
         kmip_attributes::Attribute,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, TemplateAttribute},
         kmip_objects::{Object, PrivateKey, SymmetricKey},
+        kmip_operations::Locate,
         kmip_types::{
             CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType, Name, NameType,
             RecommendedCurve,
@@ -143,6 +147,156 @@ fn test_object_structured_sym() {
     );
 }
 
+/// Regression test for GitHub issue #824 (`FortiOS` 7.6.0 / `FortiGate` 40F support).
+///
+/// `FortiGate` sends KMIP 1.0 binary requests where credentials are nested correctly per spec:
+///   `RequestHeader { ... Authentication { Credential { CredentialType, CredentialValue } } ... }`
+///
+/// The old code modelled `authentication: Option<Vec<Credential>>` which caused the TTLV
+/// deserializer to look for `CredentialType` as a direct child of `Authentication`, skipping
+/// the `Credential` wrapper and failing with `missing field 'CredentialType'`.
+///
+/// The fix adds an `Authentication` wrapper struct so the deserialization matches the wire
+/// format: `Authentication { credential: Vec<Credential> }`.
+#[test]
+fn test_kmip_1_0_authentication_fortigate() {
+    use crate::ttlv::{KmipEnumerationVariant, TTLV, TTLValue, from_ttlv};
+
+    log_init(option_env!("RUST_LOG"));
+
+    // Build a minimal TTLV structure that mirrors what FortiGate 40F sends over the KMIP
+    // socket (port 5696):
+    // RequestMessage {
+    //   RequestHeader {
+    //     ProtocolVersion { Major=1, Minor=0 }
+    //     Authentication {
+    //       Credential {
+    //         CredentialType = UsernameAndPassword (0x1)
+    //         CredentialValue { Username="fg-client", Password="password" }
+    //       }
+    //     }
+    //     BatchCount = 1
+    //   }
+    //   BatchItem {
+    //     Operation = Locate (0x8)
+    //     RequestPayload { }
+    //   }
+    // }
+    let ttlv = TTLV {
+        tag: "RequestMessage".to_owned(),
+        value: TTLValue::Structure(vec![
+            TTLV {
+                tag: "RequestHeader".to_owned(),
+                value: TTLValue::Structure(vec![
+                    TTLV {
+                        tag: "ProtocolVersion".to_owned(),
+                        value: TTLValue::Structure(vec![
+                            TTLV {
+                                tag: "ProtocolVersionMajor".to_owned(),
+                                value: TTLValue::Integer(1),
+                            },
+                            TTLV {
+                                tag: "ProtocolVersionMinor".to_owned(),
+                                value: TTLValue::Integer(0),
+                            },
+                        ]),
+                    },
+                    TTLV {
+                        tag: "Authentication".to_owned(),
+                        value: TTLValue::Structure(vec![TTLV {
+                            tag: "Credential".to_owned(),
+                            value: TTLValue::Structure(vec![
+                                TTLV {
+                                    tag: "CredentialType".to_owned(),
+                                    value: TTLValue::Enumeration(KmipEnumerationVariant {
+                                        value: 0x0000_0001, // UsernameAndPassword
+                                        name: String::new(),
+                                    }),
+                                },
+                                TTLV {
+                                    tag: "CredentialValue".to_owned(),
+                                    value: TTLValue::Structure(vec![
+                                        TTLV {
+                                            tag: "Username".to_owned(),
+                                            value: TTLValue::TextString("fg-client".to_owned()),
+                                        },
+                                        TTLV {
+                                            tag: "Password".to_owned(),
+                                            value: TTLValue::TextString("password".to_owned()),
+                                        },
+                                    ]),
+                                },
+                            ]),
+                        }]),
+                    },
+                    TTLV {
+                        tag: "BatchCount".to_owned(),
+                        value: TTLValue::Integer(1),
+                    },
+                ]),
+            },
+            TTLV {
+                tag: "BatchItem".to_owned(),
+                value: TTLValue::Structure(vec![
+                    TTLV {
+                        tag: "Operation".to_owned(),
+                        value: TTLValue::Enumeration(KmipEnumerationVariant {
+                            value: 0x0000_0008, // Locate
+                            name: "Locate".to_owned(),
+                        }),
+                    },
+                    TTLV {
+                        tag: "RequestPayload".to_owned(),
+                        value: TTLValue::Structure(vec![]),
+                    },
+                ]),
+            },
+        ]),
+    };
+
+    let req: RequestMessage = from_ttlv(ttlv).expect(
+        "Failed to parse KMIP 1.0 RequestMessage with Authentication — FortiGate regression",
+    );
+
+    let auth = req
+        .request_header
+        .authentication
+        .expect("Authentication should be present");
+    assert_eq!(auth.credential.len(), 1, "Expected exactly one Credential");
+    let cred = &auth.credential[0];
+    assert_eq!(
+        cred.credential_type,
+        CredentialType::UsernameAndPassword,
+        "CredentialType should be UsernameAndPassword"
+    );
+    assert!(
+        matches!(
+            &cred.credential_value,
+            CredentialValue::UsernameAndPassword { username, password }
+            if username == "fg-client" && password.as_deref() == Some("password")
+        ),
+        "CredentialValue mismatch: {:?}",
+        cred.credential_value
+    );
+    assert_eq!(
+        req.request_header.protocol_version.protocol_version_major,
+        1
+    );
+    assert_eq!(
+        req.request_header.protocol_version.protocol_version_minor,
+        0
+    );
+    assert_eq!(req.request_header.batch_count, 1);
+    assert_eq!(req.batch_item.len(), 1);
+    let RequestMessageBatchItemVersioned::V14(item) = &req.batch_item[0] else {
+        panic!("Expected a KMIP 1.4 batch item for protocol version 1.x");
+    };
+    assert_eq!(
+        item.operation,
+        crate::kmip_1_4::kmip_types::OperationEnumeration::Locate
+    );
+}
+
 #[test]
 fn test_object_structured_rsa() {
     log_init(option_env!("RUST_LOG"));
@@ -190,5 +344,73 @@ fn test_object_structured_rsa() {
     assert_eq!(
         object, deserialized_object_json,
         "Deserialized Object from JSON does not match the original"
+    );
+}
+
+/// Regression test for GitHub issue #824 — Locate name filter silently dropped for
+/// `FortiGate` 40F clients.
+///
+/// `FortiGate` (`FortiOS` 7.6, KMIP 1.0/1.1 binary protocol) wraps its `Attribute` filter
+/// list inside a `TemplateAttribute` structure within the `RequestPayload`, rather than
+/// placing `Attribute` items directly at the payload level as KMIP 1.4 normally does.
+///
+/// Without the `template_attribute` field on `kmip_1_4::Locate`, the TTLV deserializer
+/// silently discards the wrapper and `locate.attribute` remains `None`.  As a result
+/// every Locate matched all objects owned by the user and `MaximumItems=1` always
+/// returned the same (first) key regardless of the `Name` filter requested.
+///
+/// This test verifies that:
+/// 1. A `Locate` struct with `template_attribute` round-trips through TTLV.
+/// 2. The `From<Locate> for kmip_2_1::Locate` conversion merges the template attribute
+///    filters into the KMIP 2.1 `Attributes`, so the server can perform name-based
+///    filtering correctly.
+#[test]
+fn test_locate_template_attribute_fortigate() {
+    log_init(option_env!("RUST_LOG"));
+
+    let key_name = "fg2-local-id-test-key";
+
+    // Simulate a FortiGate-style KMIP 1.0/1.1 Locate where filter attributes are
+    // wrapped in a TemplateAttribute instead of placed directly in the payload.
+    let locate_1_4 = Locate {
+        maximum_items: Some(1),
+        storage_status_mask: None,
+        object_group_member: None,
+        attribute: None, // no direct attributes — name filter arrives via TemplateAttribute
+        template_attribute: Some(TemplateAttribute {
+            attribute: Some(vec![Attribute::Name(Name {
+                name_value: key_name.to_owned(),
+                name_type: NameType::UninterpretedTextString,
+            })]),
+        }),
+    };
+
+    // Verify the struct round-trips through TTLV correctly.
+    let ttlv = to_ttlv(&locate_1_4).expect("Failed to serialize Locate to TTLV");
+    info!("Locate TTLV: {:#?}", ttlv);
+    let deserialized: Locate = from_ttlv(ttlv).expect("Failed to deserialize Locate from TTLV");
+
+    let ta = deserialized
+        .template_attribute
+        .expect("TemplateAttribute should survive the TTLV round-trip");
+    let attrs = ta
+        .attribute
+        .expect("TemplateAttribute.attribute should be present");
+    assert_eq!(attrs.len(), 1, "Expected exactly one filter attribute");
+    let Attribute::Name(name_attr) = &attrs[0] else {
+        panic!("Expected Name attribute, got {:?}", &attrs[0]);
+    };
+    assert_eq!(name_attr.name_value, key_name);
+    assert_eq!(name_attr.name_type, NameType::UninterpretedTextString);
+
+    // Verify the From conversion merges TemplateAttribute attributes into KMIP 2.1.
+    let locate_2_1: crate::kmip_2_1::kmip_operations::Locate = locate_1_4.into();
+    let names = locate_2_1
+        .attributes
+        .name
+        .expect("KMIP 2.1 Locate.attributes.name should contain the Name filter");
+    assert!(
+        names.iter().any(|n| n.name_value == key_name),
+        "KMIP 2.1 Attributes.name should contain '{key_name}'; got: {names:?}"
     );
 }
