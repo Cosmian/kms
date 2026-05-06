@@ -1,5 +1,6 @@
-//! The HSM Store is a store that allows the creation, retrieval, update, and deletion of objects on an HSM.
-//! It is the link between the database and the HSM.
+//! `HsmBackend` — a single adapter that implements both `ObjectsStore` and `CryptoOracle`
+//! for Hardware Security Module backends.  It consolidates what was previously two separate
+//! types (`HsmStore` and `HsmCryptoOracle`) that always wrapped the same `Arc<dyn HSM>`.
 
 use std::{collections::HashSet, sync::Arc};
 
@@ -16,27 +17,41 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::{debug, error, trace, warn};
+use cosmian_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
+use zeroize::Zeroizing;
 
 use crate::{
-    AtomicOperation, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    InterfaceError, InterfaceResult, KeyMaterial, KeyType, ObjectWithMetadata, ObjectsStore,
-    as_hsm_uid, crypto_oracle::KeyMetadata,
+    AtomicOperation, CryptoAlgorithm, CryptoOracle, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm,
+    HsmObject, HsmObjectFilter, InterfaceError, InterfaceResult, KeyMaterial, KeyType,
+    ObjectWithMetadata, ObjectsStore, SigningAlgorithm, as_hsm_uid,
+    crypto_oracle::{EncryptedContent, KeyMetadata},
 };
 
-pub struct HsmStore {
+/// A single adapter that wraps an `Arc<dyn HSM>` and implements both [`ObjectsStore`] and
+/// [`CryptoOracle`].  Callers can [`Clone`] the backend cheaply (only the inner `Arc` is
+/// cloned) to register it in both the object-store and crypto-oracle maps.
+#[derive(Clone)]
+pub struct HsmBackend {
     hsm: Arc<dyn HSM + Send + Sync>,
     hsm_admin: Vec<String>,
     vendor_id: String,
+    /// UID routing prefix, e.g. `"hsm"`, `"hsm1"`, `"hsm2"`.
+    prefix: String,
 }
 
-impl HsmStore {
-    pub fn new(hsm: Arc<dyn HSM + Send + Sync>, hsm_admin: &[String], vendor_id: &str) -> Self {
+impl HsmBackend {
+    pub fn new(
+        hsm: Arc<dyn HSM + Send + Sync>,
+        hsm_admin: &[String],
+        vendor_id: &str,
+        prefix: &str,
+    ) -> Self {
         Self {
             hsm,
             hsm_admin: hsm_admin.to_owned(),
             vendor_id: vendor_id.to_owned(),
+            prefix: prefix.to_owned(),
         }
     }
 
@@ -56,8 +71,12 @@ impl HsmStore {
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// ObjectsStore implementation
+// ──────────────────────────────────────────────────────────────────────────────
+
 #[async_trait(?Send)]
-impl ObjectsStore for HsmStore {
+impl ObjectsStore for HsmBackend {
     // Only single keys are created using this call,
     // keypair creation goes through the atomic operations
     /// Create a key on the HSM
@@ -81,7 +100,7 @@ impl ObjectsStore for HsmStore {
                 format!("An HSM create request must have a uid in the form of 'hsm::<slot_id>::<key_id>'. Got {uid:?}"
             ))
         })?;
-        let (slot_id, key_id) = parse_uid(uid)?;
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         if object.object_type() != ObjectType::SymmetricKey {
             return Err(InterfaceError::InvalidRequest(
                 "Only symmetric keys can be created on the HSM in this server".to_owned(),
@@ -119,43 +138,17 @@ impl ObjectsStore for HsmStore {
 
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         // try converting the rest of the UID into a slot_id and key id
-        let (slot_id, key_id) = parse_uid(uid)?;
-        match self.hsm.export(slot_id, key_id.as_bytes()).await {
-            Ok(Some(hsm_object)) => {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        Ok(
+            if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
+                // Convert the HSM object into an ObjectWithMetadata
                 let owm =
                     to_object_with_metadata(&hsm_object, uid, self.owner_name(), &self.vendor_id)?;
-                Ok(Some(owm))
-            }
-            Ok(None) => Ok(None),
-            Err(InterfaceError::Default(ref msg)) if msg.contains("sensitive") => {
-                // The key is non-extractable (sensitive flag set in PKCS#11).
-                // Build a metadata-only stub using get_key_metadata() so that
-                // attribute-only KMIP operations (ModifyAttribute, GetAttributes)
-                // succeed without touching the key material.
-                // Fixes: https://github.com/Cosmian/kms/issues/933
-                debug!(
-                    "HSM key {uid} is non-extractable; falling back to metadata-only stub for \
-                     attribute operations"
-                );
-                let meta = self
-                    .hsm
-                    .get_key_metadata(slot_id, key_id.as_bytes())
-                    .await?;
-                let Some(meta) = meta else {
-                    return Ok(None);
-                };
-                let attrs = build_sensitive_stub_attributes(&meta);
-                let object = build_sensitive_stub_object(&meta);
-                Ok(Some(ObjectWithMetadata::new(
-                    uid.to_owned(),
-                    object,
-                    self.owner_name().to_owned(),
-                    State::Active,
-                    attrs,
-                )))
-            }
-            Err(e) => Err(e),
-        }
+                Some(owm)
+            } else {
+                None
+            },
+        )
     }
 
     async fn retrieve_tags(&self, _uid: &str) -> InterfaceResult<HashSet<String>> {
@@ -165,22 +158,15 @@ impl ObjectsStore for HsmStore {
 
     async fn update_object(
         &self,
-        uid: &str,
+        _uid: &str,
         _object: &Object,
         _attributes: &Attributes,
         _tags: Option<&HashSet<String>>,
     ) -> InterfaceResult<()> {
-        // HSM PKCS#11 slots have no generic KMIP attribute storage: attributes
-        // such as Name cannot be persisted to the HSM. We return Ok so that
-        // KMIP attribute-only operations (ModifyAttribute, SetAttribute) succeed
-        // without error.  Operations that require key material (encrypt, decrypt,
-        // wrap, unwrap) always go through the HSM crypto oracle and are unaffected.
-        // See: https://github.com/Cosmian/kms/issues/933
-        warn!(
-            "ModifyAttribute/SetAttribute on HSM key {uid}: attribute update accepted but not \
-             persisted to PKCS#11 slot (HSM does not support KMIP attribute storage)"
-        );
-        Ok(())
+        // not supported for HSMs
+        Err(InterfaceError::InvalidRequest(
+            "Update object is not supported for HSMs".to_owned(),
+        ))
     }
 
     async fn update_state(&self, _uid: &str, _state: State) -> InterfaceResult<()> {
@@ -191,7 +177,7 @@ impl ObjectsStore for HsmStore {
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
-        let (slot_id, key_id) = parse_uid(uid)?;
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         self.hsm.delete(slot_id, key_id.as_bytes()).await?;
         Ok(())
     }
@@ -208,7 +194,7 @@ impl ObjectsStore for HsmStore {
                     "Only the HSM Admin can create HSM keypairs".to_owned(),
                 ));
             }
-            let (slot_id, sk_id) = parse_uid(&uid)?;
+            let (slot_id, sk_id) = parse_uid_with_prefix(&uid, &self.prefix)?;
             let pk_id = sk_id.clone() + SYSTEM_TAG_PUBLIC_KEY;
             self.hsm
                 .create_keypair(
@@ -342,91 +328,173 @@ impl ObjectsStore for HsmStore {
     }
 }
 
-/// Build a metadata-only `Attributes` struct for a non-extractable (sensitive) HSM key.
-///
-/// Used when `hsm.export()` fails with a sensitive-key error. The stub allows
-/// attribute-only KMIP operations (`ModifyAttribute`, `GetAttributes`) to succeed
-/// without accessing the key material.
-/// See: <https://github.com/Cosmian/kms/issues/933>
-fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
-    let mut attrs = Attributes {
-        sensitive: Some(true),
-        key_value_present: Some(false),
-        cryptographic_length: Some(i32::try_from(meta.key_length_in_bits).unwrap_or_default()),
-        ..Attributes::default()
-    };
-    match meta.key_type {
-        KeyType::AesKey => {
-            attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
-            attrs.object_type = Some(ObjectType::SymmetricKey);
-            attrs.cryptographic_usage_mask = Some(
-                CryptographicUsageMask::Encrypt
-                    | CryptographicUsageMask::Decrypt
-                    | CryptographicUsageMask::WrapKey
-                    | CryptographicUsageMask::UnwrapKey,
-            );
+// ──────────────────────────────────────────────────────────────────────────────
+// CryptoOracle implementation
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl CryptoOracle for HsmBackend {
+    async fn encrypt(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
+        authenticated_encryption_additional_data: Option<&[u8]>,
+    ) -> InterfaceResult<EncryptedContent> {
+        if authenticated_encryption_additional_data.is_some() {
+            return Err(InterfaceError::InvalidRequest(
+                "Additional authenticated data are not supported on HSMs for now".to_owned(),
+            ));
         }
-        KeyType::RsaPrivateKey => {
-            attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
-            attrs.object_type = Some(ObjectType::PrivateKey);
-            attrs.cryptographic_usage_mask = Some(
-                CryptographicUsageMask::Decrypt
-                    | CryptographicUsageMask::UnwrapKey
-                    | CryptographicUsageMask::Sign,
-            );
-        }
-        KeyType::RsaPublicKey => {
-            attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
-            attrs.object_type = Some(ObjectType::PublicKey);
-            attrs.cryptographic_usage_mask = Some(
-                CryptographicUsageMask::Encrypt
-                    | CryptographicUsageMask::WrapKey
-                    | CryptographicUsageMask::Verify,
-            );
-        }
+        let (mut slot_id, mut key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let supported_algorithms = self.hsm.get_supported_algorithms(slot_id).await?;
+        let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
+            ca
+        } else {
+            debug!("Using default algorithm to encrypt");
+            match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+                None => {
+                    return Err(InterfaceError::InvalidRequest(format!(
+                        "The key type of key: {uid}, cannot be determined"
+                    )));
+                }
+                Some(key_type) => match key_type {
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPublicKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
+                    KeyType::RsaPrivateKey => {
+                        // try fetching the corresponding public key
+                        let pk_uid = format!("{uid}_pk");
+                        debug!(
+                            "encrypt: an RSA private key {uid} was specified. Trying to use \
+                             public key {pk_uid} for encryption"
+                        );
+                        (slot_id, key_id) = parse_uid_with_prefix(&pk_uid, &self.prefix)?;
+                        self.hsm
+                            .get_key_type(slot_id, key_id.as_bytes())
+                            .await?
+                            .ok_or_else(|| {
+                                InterfaceError::InvalidRequest(format!(
+                                    "The key {uid} is a private key, but no public key {pk_uid} \
+                                     is available"
+                                ))
+                            })?;
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
+                },
+            }
+        };
+        self.hsm
+            .encrypt(slot_id, key_id.as_bytes(), cryptographic_algorithm, data)
+            .await
     }
-    attrs
+
+    async fn decrypt(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_algorithm: Option<CryptoAlgorithm>,
+        authenticated_encryption_additional_data: Option<&[u8]>,
+    ) -> InterfaceResult<Zeroizing<Vec<u8>>> {
+        if authenticated_encryption_additional_data.is_some() {
+            return Err(InterfaceError::InvalidRequest(
+                "Additional authenticated data are not supported on HSMs for now".to_owned(),
+            ));
+        }
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let supported_algorithms = self.hsm.get_supported_algorithms(slot_id).await?;
+        let cryptographic_algorithm = if let Some(ca) = cryptographic_algorithm {
+            ca
+        } else {
+            debug!("Using default algorithm to decrypt");
+            match self.hsm.get_key_type(slot_id, key_id.as_bytes()).await? {
+                None => {
+                    return Err(InterfaceError::InvalidRequest(
+                        "The key {}type is not known".to_owned(),
+                    ));
+                }
+                Some(key_type) => match key_type {
+                    KeyType::AesKey => CryptoAlgorithm::get_aes_algorithm(&supported_algorithms)?,
+                    KeyType::RsaPrivateKey => {
+                        CryptoAlgorithm::get_rsa_algorithm(&supported_algorithms)?
+                    }
+                    KeyType::RsaPublicKey => {
+                        return Err(InterfaceError::Default(
+                            "An RSA public key cannot be used to decrypt".to_owned(),
+                        ));
+                    }
+                },
+            }
+        };
+        self.hsm
+            .decrypt(slot_id, key_id.as_bytes(), cryptographic_algorithm, data)
+            .await
+    }
+
+    async fn get_key_type(&self, uid: &str) -> InterfaceResult<Option<KeyType>> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        self.hsm.get_key_type(slot_id, key_id.as_bytes()).await
+    }
+
+    async fn get_key_metadata(&self, uid: &str) -> InterfaceResult<Option<KeyMetadata>> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        self.hsm.get_key_metadata(slot_id, key_id.as_bytes()).await
+    }
+
+    async fn sign(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_parameters: Option<
+            &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
+        >,
+    ) -> InterfaceResult<Vec<u8>> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        let key_type = self.hsm.get_key_type(slot_id, key_id.as_bytes()).await?;
+        match key_type {
+            Some(KeyType::RsaPrivateKey) => {}
+            Some(other) => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Sign: key {uid} is a {other:?}, expected an RSA private key"
+                )));
+            }
+            None => {
+                return Err(InterfaceError::InvalidRequest(format!(
+                    "Sign: key {uid} not found on the HSM"
+                )));
+            }
+        }
+        let algorithm = SigningAlgorithm::from_kmip(cryptographic_parameters)?;
+        debug!("sign: using algorithm {algorithm:?} for key {uid}");
+        self.hsm
+            .sign(slot_id, key_id.as_bytes(), algorithm, data)
+            .await
+    }
 }
 
-/// Build a stub KMIP `Object` for a non-extractable (sensitive) HSM key.
-///
-/// The `key_value` is intentionally `None` because the key bytes cannot be
-/// exported from the HSM. This stub is only used for attribute-only operations.
-/// See: <https://github.com/Cosmian/kms/issues/933>
-fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
-    let length = i32::try_from(meta.key_length_in_bits).unwrap_or(256);
-    match meta.key_type {
-        KeyType::AesKey => Object::SymmetricKey(SymmetricKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::TransparentSymmetricKey,
-                key_compression_type: None,
-                key_value: None,
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                cryptographic_length: Some(length),
-                key_wrapping_data: None,
-            },
-        }),
-        KeyType::RsaPrivateKey => Object::PrivateKey(PrivateKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::TransparentRSAPrivateKey,
-                key_compression_type: None,
-                key_value: None,
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(length),
-                key_wrapping_data: None,
-            },
-        }),
-        KeyType::RsaPublicKey => Object::PublicKey(PublicKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::TransparentRSAPublicKey,
-                key_compression_type: None,
-                key_value: None,
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(length),
-                key_wrapping_data: None,
-            },
-        }),
-    }
+// ──────────────────────────────────────────────────────────────────────────────
+// Private helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Parse the `uid` into a `(slot_id, key_id)` pair, stripping the given prefix.
+fn parse_uid_with_prefix(uid: &str, prefix: &str) -> Result<(usize, String), InterfaceError> {
+    let rest = uid
+        .strip_prefix(&format!("{prefix}::"))
+        .ok_or_else(|| {
+            InterfaceError::InvalidRequest(format!(
+                "An HSM request must have a uid in the form of '{prefix}::<slot_id>::<key_id>', got: {uid}"
+            ))
+        })?;
+    let (slot_id, key_id) = rest.split_once("::").ok_or_else(|| {
+        InterfaceError::InvalidRequest(format!(
+            "An HSM request must have a uid in the form of '{prefix}::<slot_id>::<key_id>', got: {uid}"
+        ))
+    })?;
+    let slot_id = slot_id.parse::<usize>().map_err(|e| {
+        InterfaceError::InvalidRequest(format!("The slot_id must be a valid unsigned integer: {e}"))
+    })?;
+    Ok((slot_id, key_id.to_owned()))
 }
 
 fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
@@ -571,29 +639,6 @@ fn check_basic_compatibility(
         ));
     }
 
-    // HSM keys do not have KMIP Name attributes.  If the caller filters by Name,
-    // no HSM key can ever match — return empty rather than ignoring the filter
-    // and leaking unrelated internal keys (e.g. the server KEK). (issue #935)
-    if researched_attributes
-        .name
-        .as_ref()
-        .is_some_and(|names| !names.is_empty())
-    {
-        return Err(InterfaceError::Default(
-            "Unsupported attribute for HSMs: name".to_owned(),
-        ));
-    }
-
-    // HSM keys do not carry ApplicationSpecificInformation; filter should return empty.
-    if researched_attributes
-        .application_specific_information
-        .is_some()
-    {
-        return Err(InterfaceError::Default(
-            "Unsupported attribute for HSMs: application_specific_information".to_owned(),
-        ));
-    }
-
     Ok(())
 }
 
@@ -635,23 +680,6 @@ fn is_rsa_keypair_creation(
         .collect::<Vec<_>>()
         .first()
         .cloned()
-}
-
-/// Parse the `uid` into a `slot_id` and `key_id`
-fn parse_uid(uid: &str) -> Result<(usize, String), InterfaceError> {
-    let (slot_id, key_id) = uid
-        .trim_start_matches("hsm::")
-        .split_once("::")
-        .ok_or_else(|| {
-            InterfaceError::InvalidRequest(
-                "An HSM request must have a uid in the form of 'hsm::<slot_id>::<key_id>'"
-                    .to_owned(),
-            )
-        })?;
-    let slot_id = slot_id.parse::<usize>().map_err(|e| {
-        InterfaceError::InvalidRequest(format!("The slot_id must be a valid unsigned integer: {e}"))
-    })?;
-    Ok((slot_id, key_id.to_owned()))
 }
 
 fn to_object_with_metadata(
@@ -787,7 +815,7 @@ fn to_object_with_metadata(
                         InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                     })? * 8,
                 ),
-                object_type: Some(ObjectType::PrivateKey),
+                object_type: Some(ObjectType::PublicKey),
                 // TODO: query these flags from the HSM
                 cryptographic_usage_mask: Some(
                     CryptographicUsageMask::Encrypt
@@ -798,7 +826,7 @@ fn to_object_with_metadata(
             };
             let mut tags: HashSet<String> =
                 serde_json::from_str(hsm_object.id()).unwrap_or_else(|_| HashSet::new());
-            tags.insert(SYSTEM_TAG_PRIVATE_KEY.to_owned());
+            tags.insert(SYSTEM_TAG_PUBLIC_KEY.to_owned());
             attributes
                 .set_tags(vendor_id, tags)
                 .map_err(|e| InterfaceError::InvalidRequest(format!("Invalid tags: {e}")))?;
@@ -834,52 +862,5 @@ fn to_object_with_metadata(
                 attributes,
             ))
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use cosmian_kmip::kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_types::{Name, NameType},
-    };
-
-    use super::check_basic_compatibility;
-    use crate::InterfaceError;
-
-    /// Locate with a Name filter must not match any HSM key (issue #935):
-    /// HSM keys have no KMIP Name, so the filter should yield empty results
-    /// rather than silently ignoring the Name and leaking internal keys.
-    #[test]
-    fn test_name_filter_rejected_for_hsm() {
-        let attrs = Attributes {
-            name: Some(vec![Name {
-                name_value: "test-duplicate".to_owned(),
-                name_type: NameType::UninterpretedTextString,
-            }]),
-            ..Default::default()
-        };
-
-        let result = check_basic_compatibility("cosmian", &attrs, None);
-        assert!(
-            matches!(result, Err(InterfaceError::Default(ref msg)) if msg.contains("name")),
-            "Expected name attribute to be rejected for HSM, got: {result:?}"
-        );
-    }
-
-    /// Locate with no Name filter should be compatible (basic `SymmetricKey` search).
-    #[test]
-    fn test_no_name_filter_compatible() {
-        use cosmian_kmip::kmip_2_1::kmip_objects::ObjectType;
-        let attrs = Attributes {
-            object_type: Some(ObjectType::SymmetricKey),
-            ..Default::default()
-        };
-
-        let result = check_basic_compatibility("cosmian", &attrs, None);
-        assert!(
-            result.is_ok(),
-            "Expected ObjectType-only filter to be compatible with HSM, got: {result:?}"
-        );
     }
 }

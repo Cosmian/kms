@@ -46,6 +46,7 @@ use crate::{
 #[cfg(feature = "non-fips")]
 mod ec_dek;
 mod issues;
+mod multi_hsm;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
