@@ -371,9 +371,7 @@ mod tests {
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             auth_verifier: cosmian_kms_server::config::AuthVerifierConfig::default(),
             print_default_config: false,
-            auto_rotation_check_interval_secs: 0,
-            keyset_warn_depth: 5,
-            vault: cosmian_kms_server::config::VaultConfig::default(),
+            ..ClapConfig::default()
         };
 
         let toml_string = r#"
