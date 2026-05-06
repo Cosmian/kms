@@ -18,7 +18,7 @@ name: Release
 #      then polls until that run completes (the packaging CI publishes SBOMs
 #      to package.cosmian.com at last_build/release/<new_version>).
 #   8. Retrieves the generated SBOMs from package.cosmian.com and commits them.
-#   9. Git-flow finalisation (mirrors `git flow release finish`):
+#   9. Git-flow finalization (mirrors `git flow release finish`):
 #        a. Merges release/<new_version> into main (--no-ff).
 #        b. Creates the annotated tag X.Y.Z on main's merge commit.
 #           (conventional git-flow always tags the main merge commit, not the
@@ -432,7 +432,7 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Job 5 — Git-flow finalisation: merge into main, tag, merge into develop
+  # Job 5 — Git-flow finalization: merge into main, tag, merge into develop
   #
   # Conventional git-flow: `git flow release finish X.Y.Z`
   #   1. Merge release/<version> into main  (--no-ff)
