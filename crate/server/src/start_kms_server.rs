@@ -56,9 +56,9 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, api_token_middleware,
-        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
-        otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
+        AuditMiddleware, AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
+        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
@@ -1615,6 +1615,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     spire_default_username.clone(),
                 ),
             ))
+            // Tamper-evident audit logging: wraps every auth method above so both
+            // successful and failed authentication attempts are recorded (LIFO wrap order).
+            .wrap(AuditMiddleware::new(kms_server_for_http.audit_store.clone()))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
             // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
@@ -1837,6 +1840,7 @@ mod tests {
 
     // ── J1–J4: JWKS HTTPS URI validation (compiled out in `insecure` builds) ─
     #[cfg(not(feature = "insecure"))]
+    #[expect(clippy::unwrap_used)]
     mod jwks_https_guard {
         use super::*;
 
