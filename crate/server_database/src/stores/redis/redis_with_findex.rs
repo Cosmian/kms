@@ -227,32 +227,66 @@ impl RedisWithFindex {
         Ok((uid, db_object))
     }
 
+    /// Update Findex index entries: insert new keywords, delete stale ones.
+    async fn update_findex_keywords(
+        &self,
+        uid: &str,
+        old_keywords: &HashSet<Keyword>,
+        new_keywords: &HashSet<Keyword>,
+    ) -> DbResult<()> {
+        let indexed_uid = IndexedValue::from(uid.as_bytes());
+        // Insert keywords that are new or still present
+        for keyword in new_keywords {
+            self.findex
+                .insert(keyword.clone(), [indexed_uid.clone()])
+                .await?;
+        }
+        // Delete keywords that were removed
+        for keyword in old_keywords.difference(new_keywords) {
+            self.findex
+                .delete(keyword.clone(), [indexed_uid.clone()])
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Delete all Findex index entries for the given object.
+    async fn delete_findex_keywords(&self, uid: &str, keywords: &HashSet<Keyword>) -> DbResult<()> {
+        let indexed_uid = IndexedValue::from(uid.as_bytes());
+        for keyword in keywords {
+            self.findex
+                .delete(keyword.clone(), [indexed_uid.clone()])
+                .await?;
+        }
+        Ok(())
+    }
+
     async fn prepare_object_for_update(
         &self,
         uid: &str,
         object: &Object,
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
+        existing: Option<RedisDbObject>,
     ) -> DbResult<RedisDbObject> {
-        let mut db_object = self
-            .objects_db
-            .object_get(uid)
-            .await?
-            .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
+        let mut db_object = match existing {
+            Some(obj) => obj,
+            None => self
+                .objects_db
+                .object_get(uid)
+                .await?
+                .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?,
+        };
+        let old_keywords = db_object.keywords();
         db_object.object = object.clone();
         if tags.is_some() {
             db_object.tags = tags.cloned();
         }
         db_object.attributes = Some(attributes.clone());
 
-        // updates to the index;
-        // note: these are additions so some entries will be doubled but shat should not break the index
-        let keywords = db_object.keywords();
-        let indexed_uid = IndexedValue::from(uid.as_bytes());
-
-        for keyword in keywords {
-            self.findex.insert(keyword, [indexed_uid.clone()]).await?;
-        }
+        let new_keywords = db_object.keywords();
+        self.update_findex_keywords(uid, &old_keywords, &new_keywords)
+            .await?;
         Ok(db_object)
     }
 
@@ -260,14 +294,18 @@ impl RedisWithFindex {
         &self,
         uid: &str,
         state: State,
+        existing: Option<RedisDbObject>,
     ) -> DbResult<RedisDbObject> {
-        let mut db_object = self
-            .objects_db
-            .object_get(uid)
-            .await?
-            .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?;
+        let mut db_object = match existing {
+            Some(obj) => obj,
+            None => self
+                .objects_db
+                .object_get(uid)
+                .await?
+                .ok_or_else(|| DbError::ItemNotFound(uid.to_owned()))?,
+        };
         db_object.state = state;
-        // The state is not indexed, so no updates there
+        // The state is not indexed, so no Findex updates needed
         Ok(db_object)
     }
 }
@@ -336,20 +374,24 @@ impl ObjectsStore for RedisWithFindex {
         tags: Option<&HashSet<String>>,
     ) -> InterfaceResult<()> {
         let db_object = self
-            .prepare_object_for_update(uid, object, attributes, tags)
+            .prepare_object_for_update(uid, object, attributes, tags, None)
             .await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
-        let db_object = self.prepare_object_for_state_update(uid, state).await?;
+        let db_object = self
+            .prepare_object_for_state_update(uid, state, None)
+            .await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
-        if let Some(_db_object) = self.objects_db.object_get(uid).await? {
+        if let Some(db_object) = self.objects_db.object_get(uid).await? {
+            self.delete_findex_keywords(uid, &db_object.keywords())
+                .await?;
             self.objects_db.object_delete(uid).await?;
         }
         Ok(())
@@ -360,6 +402,11 @@ impl ObjectsStore for RedisWithFindex {
         user: &str,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
+        // Track pending objects so that multiple operations on the same UID
+        // within this batch build on each other (e.g. UpdateObject then UpdateState).
+        // Without this, each operation would re-read from Redis and the last write
+        // would clobber previous modifications for the same UID.
+        let mut pending: HashMap<String, RedisDbObject> = HashMap::new();
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
         for operation in operations {
             match operation {
@@ -375,6 +422,7 @@ impl ObjectsStore for RedisWithFindex {
                             *state,
                         )
                         .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::Create((uid, object, attributes, tags)) => {
@@ -387,21 +435,43 @@ impl ObjectsStore for RedisWithFindex {
                             tags,
                         )
                         .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Create(uid, db_object));
                 }
                 AtomicOperation::Delete(uid) => {
+                    // Clean up Findex entries before deleting the object
+                    let existing = pending.remove(uid);
+                    let db_object = match existing {
+                        Some(obj) => obj,
+                        None => {
+                            if let Some(obj) = self.objects_db.object_get(uid).await? {
+                                obj
+                            } else {
+                                redis_operations.push(RedisOperation::Delete(uid.clone()));
+                                continue;
+                            }
+                        }
+                    };
+                    self.delete_findex_keywords(uid, &db_object.keywords())
+                        .await?;
                     redis_operations.push(RedisOperation::Delete(uid.clone()));
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
                     // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    let existing = pending.remove(uid);
                     let db_object = self
-                        .prepare_object_for_update(uid, object, attributes, tags.as_ref())
+                        .prepare_object_for_update(uid, object, attributes, tags.as_ref(), existing)
                         .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::UpdateState((uid, state)) => {
                     // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
-                    let db_object = self.prepare_object_for_state_update(uid, *state).await?;
+                    let existing = pending.remove(uid);
+                    let db_object = self
+                        .prepare_object_for_state_update(uid, *state, existing)
+                        .await?;
+                    pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
             }

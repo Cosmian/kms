@@ -24,11 +24,12 @@
 // test_kms_server, tokio, serial_test) are only compiled and run in non-fips
 // mode.  In fips mode this file compiles as an empty module.
 #[cfg(feature = "non-fips")]
+#[expect(clippy::expect_used)]
 mod pin_auth {
     //! Test the full PKCS#11 sequence with OIDC / JWT bearer-token
     //! authentication (mode 2: `pkcs11_use_pin_as_access_token = true`).
 
-    use std::{env, ffi::c_void, ptr};
+    use std::{env, ffi::c_void, process::Command, ptr, sync::Once};
 
     use libloading::Library;
     use pkcs11_sys::{CK_FUNCTION_LIST, CK_INVALID_HANDLE, CKR_OK};
@@ -44,13 +45,6 @@ mod pin_auth {
 
     /// Returns the expected path to the `cosmian_pkcs11` cdylib for the
     /// current platform.
-    ///
-    /// `COSMIAN_PKCS11_LIB_DIR` is set at compile time by `build.rs` (derived
-    /// from `OUT_DIR`) and points to the same `target/{profile}/` directory
-    /// where `cargo build -p cosmian_pkcs11 --features non-fips` places its
-    /// output.  When running `cargo test-non-fips` (which builds the whole
-    /// workspace), the cdylib will already be present by the time this test
-    /// runs.
     fn pkcs11_lib_path() -> std::path::PathBuf {
         let dir = env!("COSMIAN_PKCS11_LIB_DIR");
         #[cfg(target_os = "macos")]
@@ -61,6 +55,60 @@ mod pin_auth {
         return std::path::PathBuf::from(dir).join("cosmian_pkcs11.dll");
         #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         panic!("unsupported platform for PKCS#11 cdylib path");
+    }
+
+    /// Builds the `cosmian_pkcs11` cdylib if it is not already present.
+    ///
+    /// `cargo test --lib` does not produce cdylib artifacts, so this function
+    /// invokes `cargo build -p cosmian_pkcs11` and mirrors the exact feature
+    /// set and profile of the running test binary:
+    ///
+    /// - `--features non-fips` is forwarded only when the `non-fips` feature
+    ///   is active in the current compilation unit (detected via `#[cfg]`).
+    /// - `--release` is forwarded when `debug_assertions` are disabled.
+    ///
+    /// This mirrors the approach used by `ensure_binary.rs` for the `ckms`
+    /// binary. The build runs at most once per test-process via a `Once` guard.
+    fn ensure_cdylib() -> std::path::PathBuf {
+        static BUILD_ONCE: Once = Once::new();
+        let lib_path = pkcs11_lib_path();
+
+        if !lib_path.exists() {
+            BUILD_ONCE.call_once(|| {
+                let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+                let mut cmd = Command::new(&cargo);
+                cmd.arg("build").arg("-p").arg("cosmian_pkcs11");
+
+                // Match the profile of the running test binary.
+                if !cfg!(debug_assertions) {
+                    cmd.arg("--release");
+                }
+
+                // Forward the active feature set so the cdylib matches what
+                // the test expects.  This block is compiled away entirely in
+                // FIPS mode (though this module is itself gated on non-fips).
+                #[cfg(feature = "non-fips")]
+                {
+                    cmd.arg("--features").arg("non-fips");
+                }
+
+                let status = cmd
+                    .status()
+                    .expect("failed to invoke `cargo build -p cosmian_pkcs11`");
+                assert!(
+                    status.success(),
+                    "cargo build -p cosmian_pkcs11 failed (exit code: {:?})",
+                    status.code()
+                );
+            });
+        }
+
+        assert!(
+            lib_path.exists(),
+            "cosmian_pkcs11 cdylib not found at {} after build attempt",
+            lib_path.display()
+        );
+        lib_path
     }
 
     /// Full PKCS#11 sequence with OIDC / JWT bearer-token authentication.
@@ -111,14 +159,7 @@ mod pin_auth {
         unsafe { env::set_var("CKMS_CONF", &conf_file) };
 
         // ── D: Load the cdylib ───────────────────────────────────────────────
-        let lib_path = pkcs11_lib_path();
-        assert!(
-            lib_path.exists(),
-            "cosmian_pkcs11 cdylib not found at {}: run `cargo build -p \
-             cosmian_pkcs11 --features non-fips` first, or use `cargo \
-             test-non-fips` which builds all workspace members",
-            lib_path.display()
-        );
+        let lib_path = ensure_cdylib();
         let lib = unsafe { Library::new(&lib_path) }.expect("failed to open cosmian_pkcs11 cdylib");
 
         // ── E: C_GetFunctionList ─────────────────────────────────────────────
@@ -203,12 +244,7 @@ mod pin_auth {
         unsafe { env::set_var("CKMS_CONF", &conf_file) };
 
         // ── C: Load cdylib and initialise ───────────────────────────────────
-        let lib_path = pkcs11_lib_path();
-        assert!(
-            lib_path.exists(),
-            "cdylib not found at {}",
-            lib_path.display()
-        );
+        let lib_path = ensure_cdylib();
         let lib = unsafe { Library::new(&lib_path) }.expect("load cdylib");
 
         let func_list_ptr = call_get_function_list(&lib).expect("C_GetFunctionList");
@@ -291,12 +327,7 @@ mod pin_auth {
         unsafe { env::set_var("CKMS_CONF", &conf_file) };
 
         // ── C: Load cdylib and initialise ───────────────────────────────────
-        let lib_path = pkcs11_lib_path();
-        assert!(
-            lib_path.exists(),
-            "cdylib not found at {}",
-            lib_path.display()
-        );
+        let lib_path = ensure_cdylib();
         let lib = unsafe { Library::new(&lib_path) }.expect("load cdylib");
 
         let func_list_ptr = call_get_function_list(&lib).expect("C_GetFunctionList");

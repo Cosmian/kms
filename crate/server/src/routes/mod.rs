@@ -36,14 +36,32 @@ impl actix_web::error::ResponseError for KmsError {
 
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
 
-            Self::Database(_)
-            | Self::ConversionError(_)
+            // Database errors that indicate a client conflict (e.g. duplicate key)
+            // should be 422, not 500.
+            Self::Database(db_err) => {
+                let msg = db_err.to_string();
+                if msg.contains("already exist") {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            }
+
+            // ServerError is used generically; check for client-facing validation messages
+            Self::ServerError(msg) => {
+                if msg.contains("not supported") || msg.contains("Not Supported") {
+                    StatusCode::UNPROCESSABLE_ENTITY
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            }
+
+            Self::ConversionError(_)
             | Self::CryptographicError(_)
             | Self::Redis(_)
             | Self::Findex(_)
             | Self::Certificate(_)
             | Self::Tls(_)
-            | Self::ServerError(_)
             | Self::Default(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
             Self::Kmip21Error(..)
@@ -70,9 +88,17 @@ impl actix_web::error::ResponseError for KmsError {
             warn!("{status_code} - {message}");
         }
 
+        // For 5xx errors, return a generic message to avoid leaking internal
+        // details (database errors, file paths, stack traces) to clients.
+        let body = if status_code >= StatusCode::INTERNAL_SERVER_ERROR {
+            "Internal server error".to_owned()
+        } else {
+            message
+        };
+
         HttpResponseBuilder::new(status_code)
             .insert_header((header::CONTENT_TYPE, "text/html; charset=utf-8"))
-            .body(message)
+            .body(body)
     }
 }
 

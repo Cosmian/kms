@@ -26,6 +26,7 @@ Basic HTTP server configuration with default settings.
 [http]
 port = 9998
 hostname = "0.0.0.0"
+cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
 ```
 
 **Use case:** Development, testing, or internal networks where TLS is not required.
@@ -56,10 +57,30 @@ API token authentication using a symmetric key.
 ```toml
 # API token authentication configuration
 [http]
+port = 9998
+hostname = "0.0.0.0"
+cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
 api_token_id = "test-symmetric-key-id"
 ```
 
 **Use case:** Service-to-service authentication or when using a pre-shared symmetric key for authentication.
+
+---
+
+### [cors-configuration](#cors-configuration) {#cors-configuration}
+
+Cross-Origin Resource Sharing (CORS) configuration for browser clients.
+
+```toml
+# CORS configuration for browser-based clients
+[http]
+port = 9998
+hostname = "0.0.0.0"
+# Allow the bundled Web UI and any Vite dev server running on the same machine
+cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
+```
+
+**Use case:** When a browser-based client (e.g. the bundled Web UI or a Vite dev server) runs on a different origin from the KMS server. In production behind a load balancer, set this to your public URL. Leave unset to restrict to same-origin only.
 
 ---
 
@@ -122,6 +143,9 @@ Multi-factor authentication combining JWT tokens and API token authentication.
 jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,frontend,cli"]
 
 [http]
+port = 9998
+hostname = "0.0.0.0"
+cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
 api_token_id = "test-symmetric-key-id"
 ```
 
@@ -295,6 +319,7 @@ kms_public_url = "https://kms.example.com"
 [http]
 port = 443
 hostname = "0.0.0.0"
+cors_allowed_origins = ["https://kms.example.com"]
 
 [tls]
 # For FIPS mode (default build):
@@ -332,6 +357,7 @@ kms_public_url = "https://kms-ui.example.com"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+cors_allowed_origins = ["https://kms-ui.example.com"]
 
 # UI configuration: static assets served from this folder
 [ui_config]
@@ -361,6 +387,7 @@ kms_public_url = "https://kms-cluster.example.com"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+cors_allowed_origins = ["https://kms-cluster.example.com"]
 
 [tls]
 # For FIPS mode (default build):
@@ -455,6 +482,7 @@ Development configuration with detailed debugging.
 [http]
 port = 9998
 hostname = "127.0.0.1"
+cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
 
 [logging]
 rust_log = "debug,cosmian_kms_server=trace,actix_web=debug"
@@ -475,6 +503,7 @@ Configuration for integration testing environments.
 [http]
 port = 19998
 hostname = "127.0.0.1"
+cors_allowed_origins = ["http://localhost:19998", "http://127.0.0.1:19998"]
 
 [db]
 database_type = "sqlite"

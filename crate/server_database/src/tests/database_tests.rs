@@ -214,6 +214,61 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
             .state(),
         State::Deactivated
     );
+
+    // Test UpdateObject + UpdateState in the same atomic call (revoke scenario).
+    // This verifies that UpdateState builds on the result of UpdateObject rather
+    // than re-reading from the store, which would clobber the object changes.
+    let uid_3 = Uuid::new_v4().to_string();
+    let mut symmetric_key = vec![0; 32];
+    rng.fill_bytes(&mut symmetric_key);
+    let symmetric_key_3 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        symmetric_key.as_slice(),
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    db.create(
+        Some(uid_3.clone()),
+        owner,
+        &symmetric_key_3,
+        symmetric_key_3.attributes()?,
+        &HashSet::new(),
+    )
+    .await?;
+
+    // Simulate revoke: UpdateObject with deactivated attributes + UpdateState
+    let mut deactivated_attrs = symmetric_key_3.attributes()?.clone();
+    deactivated_attrs.state = Some(State::Deactivated);
+    let mut deactivated_object = symmetric_key_3.clone();
+    deactivated_object.attributes_mut()?.state = Some(State::Deactivated);
+
+    db.atomic(
+        owner,
+        &[
+            AtomicOperation::UpdateObject((
+                uid_3.clone(),
+                deactivated_object,
+                deactivated_attrs.clone(),
+                None,
+            )),
+            AtomicOperation::UpdateState((uid_3.clone(), State::Deactivated)),
+        ],
+    )
+    .await?;
+
+    let owm = db
+        .retrieve(&uid_3)
+        .await?
+        .expect("uid_3 should be in the db");
+    assert_eq!(owm.state(), State::Deactivated);
+    // Verify internal object attributes also reflect deactivated state
+    let obj_attrs = owm.object().attributes()?;
+    assert_eq!(obj_attrs.state, Some(State::Deactivated));
+
+    db.delete(&uid_3).await?;
+
     Ok(())
 }
 

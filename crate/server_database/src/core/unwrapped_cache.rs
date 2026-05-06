@@ -172,19 +172,15 @@ impl UnwrappedCache {
     }
 
     /// Return the fingerprint of this object.
+    ///
+    /// Serializes the full `Object` to TTLV bytes and hashes the result.
+    /// This ensures integrity across all object fields, not only the key material.
     fn fingerprint(&self, object: &Object) -> DbResult<u64> {
-        to_ttlv(&object)
+        let bytes = to_ttlv(object)
             .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
             .map_err(KmipError::from)
-            .map_err(DbError::from)
-            .map(|bytes| {
-                // SAFETY: the fingerprint is 64-bit strong, but uses a truly
-                // random secret seed per instance thus making the fingerprint
-                // unguessable which prevents attackers from leveraging
-                // pre-computation to create targeted collisions leading to
-                // undetectable cache corruption.
-                self.seed.hash_one(&bytes)
-            })
+            .map_err(DbError::from)?;
+        Ok(self.seed.hash_one(&bytes))
     }
 
     /// Validate the cache for a given object.
@@ -250,10 +246,10 @@ impl UnwrappedCache {
             },
         );
 
-        self.access_timestamps
-            .write()
-            .await
-            .insert(uid, Instant::now());
+        // Use the mpsc channel for timestamp updates instead of acquiring a
+        // second write lock. This eliminates sequential lock contention under
+        // high concurrency.
+        self.record_access(&uid).await?;
 
         Ok(())
     }

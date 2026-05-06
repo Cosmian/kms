@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use cosmian_kms_server::{
-    config::{ClapConfig, ServerParams, wizard::run_configure_wizard},
+    config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
+    core::KMS,
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
 };
@@ -61,6 +62,17 @@ async fn run() -> KResult<()> {
     }
 
     let info_only = clap_config.info;
+
+    // Reject plaintext OTLP endpoints unless explicitly allowed
+    if let Some(url) = &clap_config.logging.otlp {
+        let otel_config = Some(OpenTelemetryConfig {
+            otlp_url: Some(url.clone()),
+            otlp_allow_insecure: clap_config.logging.otlp_allow_insecure,
+            enable_metering: clap_config.logging.enable_metering,
+            environment: clap_config.logging.environment.clone(),
+        });
+        KMS::validate_otlp_url(url, &otel_config)?;
+    }
 
     // Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
@@ -260,6 +272,7 @@ mod tests {
                 enable_metering: false,
                 environment: Some("development".to_owned()),
                 ansi_colors: false,
+                otlp_allow_insecure: false,
             },
             info: false,
             hsm: cosmian_kms_server::config::HsmConfig {

@@ -403,19 +403,35 @@ pub struct Locate {
     /// to match those in a candidate object (according to the matching rules defined above).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute: Option<Vec<Attribute>>,
+
+    /// KMIP 1.0/1.1 clients (e.g. `FortiGate` 40F running `FortiOS` 7.6) wrap their
+    /// filter attributes inside a `TemplateAttribute` structure instead of placing
+    /// them directly at the `Locate` request payload level.
+    ///
+    /// Without this field the TTLV deserializer silently discards the wrapper and
+    /// all filter criteria are lost, causing every Locate to match all objects owned
+    /// by the authenticated user — and `MaximumItems=1` always returns the same
+    /// first key regardless of the requested `Name`. See GitHub issue #824.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_attribute: Option<TemplateAttribute>,
 }
 
 impl From<Locate> for kmip_2_1::kmip_operations::Locate {
     fn from(locate: Locate) -> Self {
-        let attributes: Attributes = locate
+        // Collect filter attributes from both the direct `Attribute` list and
+        // the `TemplateAttribute` wrapper used by KMIP 1.0/1.1 clients.
+        let mut all_attrs: Vec<kmip_2_1::kmip_attributes::Attribute> = locate
             .attribute
-            .map(|v| {
-                v.into_iter()
-                    .map(Into::into)
-                    .collect::<Vec<kmip_2_1::kmip_attributes::Attribute>>()
-                    .into()
-            })
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        if let Some(ta) = locate.template_attribute {
+            if let Some(ta_attrs) = ta.attribute {
+                all_attrs.extend(ta_attrs.into_iter().map(Into::into));
+            }
+        }
+        let attributes: Attributes = all_attrs.into();
         Self {
             maximum_items: locate.maximum_items,
             storage_status_mask: None,

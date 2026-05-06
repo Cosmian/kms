@@ -8,7 +8,7 @@ use cosmian_logger::{log_init, trace};
 use serial_test::serial;
 use tempfile::TempDir;
 #[cfg(not(feature = "non-fips"))]
-use test_kms_server::start_default_test_kms_server_with_privileged_users;
+use test_kms_server::start_default_test_kms_server_with_multi_privileged_users;
 use test_kms_server::{init_test_logging, start_default_test_kms_server_with_cert_auth};
 
 #[cfg(not(feature = "non-fips"))]
@@ -868,11 +868,7 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
 pub(crate) async fn test_privileged_users() -> KmsCliResult<()> {
     init_test_logging();
     // log_init(Some("info,cosmian_kms=debug"));
-    let ctx = start_default_test_kms_server_with_privileged_users(vec![
-        "owner.client@acme.com".to_owned(),
-        "user.privileged@acme.com".to_owned(),
-    ])
-    .await;
+    let ctx = start_default_test_kms_server_with_multi_privileged_users().await;
 
     // By default privileged users can create or import objects
     let key_id = gen_key(&ctx.get_owner_client()).await?;

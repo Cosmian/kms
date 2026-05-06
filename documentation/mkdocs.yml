@@ -109,6 +109,7 @@ nav:
           - Snowflake Native App: integrations/databases/snowflake_native_app/index.md
           - User Defined Function for PySpark, Databricks,... in Python: integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md
       - Other:
+          - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
           - PyKMIP: integrations/pykmip.md
           - S/MIME Email encryption: integrations/smime.md

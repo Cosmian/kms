@@ -415,6 +415,7 @@ flowchart TB
 - **PROTECCIO_IP**: Proteccio HSM IP address
 - **PROTECCIO_PASSWORD**: Proteccio HSM password
 - **PROTECCIO_SLOT**: Proteccio HSM slot
+- **CRYPT2PAY_PASSWORD**: Crypt2pay HSM password
 
 ### Google CSE Secrets
 

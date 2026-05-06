@@ -4,12 +4,13 @@
 )]
 //! Build script for `cosmian_pkcs11_verify`.
 //!
-//! Determines the workspace `target/{profile}/` directory from `OUT_DIR` and
-//! emits it as the compile-time environment variable `COSMIAN_PKCS11_LIB_DIR`.
-//! The integration test in `src/tests.rs` reads this variable to locate the
-//! `libcosmian_pkcs11.{dylib,so,dll}` cdylib that must have been built before
-//! running the tests (e.g. via `cargo test-non-fips`, which builds all workspace
-//! members including `cosmian_pkcs11`).
+//! Emits the compile-time env var `COSMIAN_PKCS11_LIB_DIR` pointing to the
+//! `target/{profile}/` directory where the `cosmian_pkcs11` cdylib is expected.
+//!
+//! The cdylib itself is built on-demand by the test helper `ensure_cdylib()`
+//! in `src/tests.rs`.  `cargo test --lib` only produces rlib artifacts and does
+//! NOT write the `.dylib`/`.so`/`.dll` to `target/{profile}/`, so the tests
+//! invoke `cargo build -p cosmian_pkcs11` themselves before loading the library.
 //!
 //! The `cargo:rerun-if-changed` directives tell Cargo to re-run this script —
 //! and therefore re-emit `COSMIAN_PKCS11_LIB_DIR` — whenever the provider
@@ -30,7 +31,7 @@ fn main() {
         target_profile_dir.display()
     );
 
-    // Rebuild this script (and re-emit the env var) when provider sources change.
+    // Rebuild when provider sources change.
     println!("cargo:rerun-if-changed=../provider/src");
     println!("cargo:rerun-if-changed=../provider/Cargo.toml");
 }

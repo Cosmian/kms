@@ -12,5 +12,6 @@ echo "========================================="
 bash "$SCRIPT_DIR/test_hsm_softhsm2.sh" "$@"
 bash "$SCRIPT_DIR/test_hsm_utimaco.sh" "$@"
 bash "$SCRIPT_DIR/test_hsm_proteccio.sh" "$@"
+bash "$SCRIPT_DIR/test_hsm_crypt2pay.sh" "$@"
 
 echo "All HSM tests completed successfully."

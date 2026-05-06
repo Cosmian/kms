@@ -13,6 +13,10 @@ use crate::{config::TlsConfig, error::KmsError, result::KResult};
 
 pub struct TlsWizardResult {
     pub tls: TlsConfig,
+    /// CA certificate path when a self-signed PKI was generated.
+    /// Available regardless of whether mTLS was enabled, so that the socket
+    /// server step can enable `clients_ca_cert_file` automatically.
+    pub generated_ca_cert: Option<PathBuf>,
     /// Populated when self-signed certs were generated; clients need the CA
     /// cert to authenticate the server.
     pub generated_client_cert: Option<PathBuf>,
@@ -30,6 +34,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
     if !enable_tls {
         return Ok(TlsWizardResult {
             tls: TlsConfig::default(),
+            generated_ca_cert: None,
             generated_client_cert: None,
         });
     }
@@ -134,6 +139,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
                 #[cfg(feature = "non-fips")]
                 tls_p12_password: None,
             },
+            generated_ca_cert: Some(paths.ca_cert),
             generated_client_cert: if enable_mtls {
                 Some(paths.client_cert)
             } else {
@@ -184,6 +190,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
                     },
                     tls_cipher_suites: cipher_suites,
                 },
+                generated_ca_cert: None,
                 generated_client_cert: None,
             });
         }
@@ -234,6 +241,7 @@ pub fn configure_tls() -> KResult<TlsWizardResult> {
             #[cfg(feature = "non-fips")]
             tls_p12_password: None,
         },
+        generated_ca_cert: None,
         generated_client_cert: None,
     })
 }

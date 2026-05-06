@@ -146,8 +146,7 @@ impl Database {
             .get_object_store(uid.as_deref().unwrap_or_default())
             .await?;
         let uid = db.create(uid, owner, object, attributes, tags).await?;
-        // Clear the cache for the unwrapped key (if any)
-        self.unwrapped_cache.validate_cache(&uid, object).await?;
+        // New objects never have a cache entry; nothing to invalidate.
         Ok(uid)
     }
 
@@ -253,7 +252,8 @@ impl Database {
     ) -> DbResult<()> {
         let db = self.get_object_store(uid).await?;
         db.update_object(uid, object, attributes, tags).await?;
-        self.unwrapped_cache.validate_cache(uid, object).await?;
+        // Key material is immutable; only attributes change via update_object.
+        // The GC clears stale unwrap-cache entries; no eager invalidation needed here.
         Ok(())
     }
 

@@ -98,10 +98,10 @@ pub struct Version {
 }
 
 pub fn random_label() -> String {
-    use rand::{Rng, distr::Alphanumeric};
+    use rand::{RngExt, distr::Alphanumeric};
     String::from("bumpkey ")
         + &rand::rng()
-            .sample_iter(&Alphanumeric)
+            .sample_iter(Alphanumeric)
             .take(32)
             .map(char::from)
             .collect::<String>()
