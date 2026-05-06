@@ -22,7 +22,6 @@ use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
 
 use crate::error::result::KmsCliResult;
 
-// ── Top-level enum ────────────────────────────────────────────────────────────
 
 /// Commands for managing and inspecting the KMS audit log.
 ///
@@ -49,7 +48,6 @@ impl AuditCommands {
     }
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
 
 /// Output format for `ckms audit export`.
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
@@ -117,8 +115,7 @@ impl ExportAuditAction {
             })
             .transpose()?;
 
-        let file =
-            std::fs::File::open(&self.path).map_err(crate::error::KmsCliError::IoError)?;
+        let file = std::fs::File::open(&self.path).map_err(crate::error::KmsCliError::IoError)?;
 
         let reader = BufReader::new(file);
         let stdout = std::io::stdout();
@@ -156,7 +153,6 @@ impl ExportAuditAction {
     }
 }
 
-// ── Verify ────────────────────────────────────────────────────────────────────
 
 /// Verify the SHA-256 hash chain of the audit log file.
 ///
@@ -183,6 +179,9 @@ pub struct VerifyAuditAction {
     /// Print a summary line for every event even when the chain is valid.
     #[clap(long, default_value = "false")]
     pub verbose: bool,
+    // TODO: add a `--prev-hash` option (hex string) so that rotated files
+    //       can be verified by supplying the row_hash of the last event in
+    //       the preceding file segment.
 }
 
 impl VerifyAuditAction {
@@ -192,8 +191,7 @@ impl VerifyAuditAction {
     /// Returns an error if the file cannot be opened or read, or if a broken
     /// hash-chain link is detected (exit code 1).
     pub fn run(&self) -> KmsCliResult<()> {
-        let file =
-            std::fs::File::open(&self.path).map_err(crate::error::KmsCliError::IoError)?;
+        let file = std::fs::File::open(&self.path).map_err(crate::error::KmsCliError::IoError)?;
 
         let reader = BufReader::new(file);
         let mut prev: Option<AuditEventFull> = None;

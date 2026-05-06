@@ -306,19 +306,19 @@ mod tests {
             ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::RS256),
             "RS256 must be in the allowlist"
         );
-        check_alg(Algorithm::RS256).unwrap()
+        assert!(check_alg(Algorithm::RS256).is_ok());
     }
 
     #[test]
     fn a05_es256_is_accepted() {
         assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::ES256));
-        check_alg(Algorithm::ES256).unwrap()
+        assert!(check_alg(Algorithm::ES256).is_ok());
     }
 
     #[test]
     fn a06_ps256_is_accepted() {
         assert!(ALLOWED_JWT_ALGORITHMS.contains(&Algorithm::PS256));
-        check_alg(Algorithm::PS256).unwrap()
+        assert!(check_alg(Algorithm::PS256).is_ok());
     }
 
     /// Full coverage: every algorithm in the allowlist must be accepted.
@@ -334,6 +334,7 @@ mod tests {
 
     /// Error message quality: rejection must mention "not permitted".
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn rejection_error_message_quality() {
         let result = check_alg(Algorithm::HS256);
         assert!(result.is_err());
