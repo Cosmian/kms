@@ -34,9 +34,13 @@ pub struct HttpConfig {
     pub rate_limit_per_second: Option<u32>,
 
     /// Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
-    /// Use this to allow browser-based clients (e.g. a Vite dev server) that run on a different
-    /// port or host from the KMS server. In production, leave unset to restrict to same-origin
-    /// only (the KMS serves its own UI). Example: `http://127.0.0.1:5173`.
+    /// Required for any Web UI deployment: the browser Fetch API sends an `Origin` header on
+    /// every POST request — even when the page is served by the KMS itself — and actix-cors
+    /// rejects it unless the exact origin appears in this list.
+    /// The value must match byte-for-byte what the user types in the browser address bar
+    /// (scheme + hostname + port). The server bind address (`0.0.0.0`) and the server IP
+    /// are not equivalent to a DNS hostname. The Docker image pre-populates loopback
+    /// addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
     #[clap(
         long,
         env = "KMS_CORS_ALLOWED_ORIGINS",

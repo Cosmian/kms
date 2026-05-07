@@ -244,9 +244,13 @@ hostname = "0.0.0.0"
 # rate_limit_per_second = 100
 
 # Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
-# Use this to allow browser-based clients (e.g. a Vite dev server) that run on a different
-# port or host from the KMS server. In production, leave unset to restrict to same-origin
-# only (the KMS serves its own UI). Example: `http://127.0.0.1:5173`.
+# Required for any Web UI deployment: the browser Fetch API sends an `Origin` header on
+# every POST request — even when the page is served by the KMS itself — and actix-cors
+# rejects it unless the exact origin appears in this list.
+# The value must match byte-for-byte what the user types in the browser address bar
+# (scheme + hostname + port). The server bind address (`0.0.0.0`) and the server IP
+# are not equivalent to a DNS hostname. The Docker image pre-populates loopback
+# addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
 # cors_allowed_origins = ["<origin-1>", "<origin-2>"]
 
 # If using a forward proxy for outbound JWKS requests,
@@ -388,15 +392,28 @@ aws_xks_enable = false
 Cross-Origin Resource Sharing (CORS) controls which browser origins are allowed
 to make requests to the KMS HTTP API.
 
-**Default behavior (no configuration needed for most deployments):**
-the `[http]` section ships with an empty `cors_allowed_origins` list, which
-restricts the KMIP API to same-origin requests only. Because the KMS already
-serves its own Web UI from the same host and port, production deployments
-typically do not need to change this setting.
+**You must configure `cors_allowed_origins` for any Web UI deployment.**
 
-Only set `cors_allowed_origins` when a browser client runs on a **different**
-origin from the KMS server — for example a Vite dev server during development,
-or a custom front-end hosted on a separate domain.
+Although the KMS serves its own Web UI from the same host and port, the
+browser's Fetch API sends an `Origin` header on every non-GET/HEAD request
+(including `POST`) — even when the request originates from the same page.  The
+actix-cors middleware compares this header against the explicit allow-list and
+returns HTTP 400 if the value is not present.  There is no DNS resolution or
+network-interface expansion: the comparison is a byte-for-byte string match.
+
+This means `cors_allowed_origins` must contain the **exact URL** the user
+types in the browser's address bar — scheme, hostname, and port all included.
+Configuring `0.0.0.0` (the bind address) or the server's IP address does **not**
+match a hostname-based origin such as `http://kms.example.com:9998`, and vice
+versa.
+
+The Docker image pre-populates the list with common loopback addresses
+(`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `[::]` on port 9998) so that
+browser access from the same machine works out-of-the-box.  Any other hostname,
+IP address, or port must be added explicitly.
+
+CLI clients (`ckms`, scripts, curl) do not send an `Origin` header and are
+not affected by this setting.
 
 ```toml
 [http]
@@ -419,9 +436,15 @@ The same list can be provided via the environment variable
     - **Never use a wildcard (`*`).**  `actix-cors` rejects a wildcard when
       `supports_credentials()` is active, and a wildcard CORS policy would
       expose every user's keys to any website on the internet.
-    - **Omit this field entirely in production** unless your architecture
-      genuinely requires a cross-origin browser client.  When the KMS serves
-      its own UI (the default), no extra origin is needed.
+    - **Add every URL users will type in their browser** — scheme, hostname,
+      and port must all match exactly.  `0.0.0.0` (bind address) and the
+      server's IP address are not interchangeable with the DNS hostname used
+      by the browser.
+    - **Security note:** while a user is authenticated to the KMS, avoid
+      browsing untrusted sites in the same browser session.  CORS is a
+      browser-enforced defense in depth; its effectiveness depends on the
+      browser correctly implementing the same-origin policy, which cannot be
+      guaranteed across all browser versions and configurations.
 
     **Enterprise integration scopes are not affected by this setting.**
     The Google CSE, Microsoft DKE, and AWS XKS endpoints retain their own
