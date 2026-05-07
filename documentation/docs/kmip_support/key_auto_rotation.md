@@ -280,7 +280,7 @@ cosmian_kms \
   --hsm-model softhsm2 \
   --hsm-slot 0 \
   --hsm-password 12345678 \
-  --key-encryption-key "hsm::softhsm2::0::my-kek" \
+  --key-encryption-key "hsm::0::my-kek" \
   --auto-rotation-check-interval-secs 300
 ```
 

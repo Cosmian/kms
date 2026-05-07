@@ -4,14 +4,14 @@ In addition to managing its keys, Cosmian KMS can act as a proxy to an HSM, stor
 
 ## HSM keys
 
-HSM keys are prefixed keys. They are created with a unique identifier that is prefixed by the `hsm` keyword, the
-HSM model name, and the slot number in the form:
+HSM keys are prefixed keys. They are created with a unique identifier that is prefixed by the `hsm` keyword and the
+slot number in the form:
 
 ```shell
-hsm::<model>::<slot_number>::<key_identifier>
+hsm::<slot_number>::<key_identifier>
 ```
 
-For instance, the key `hsm::utimaco::1::mykey` is stored in the Utimaco HSM slot 1 with the identifier `mykey`. Technically, the identifier
+For instance, the key `hsm::1::mykey` is stored in the HSM slot 1 with the identifier `mykey`. Technically, the identifier
 is stored in the `LABEL` field of the key object in the HSM.
 
 !!! warning Labels must be unique within a slot
@@ -76,11 +76,11 @@ The user creating the key must be the HSM admin (see above) or have been granted
     the HSM admin.  This allows non-admin users to create their own KMS keys wrapped by the server KEK.
 
 For instance, the following command creates a 256-bit AES key wrapped by the HSM RSA (public) key
-`hsm::utimaco::4::my_rsa_key_pk`:
+`hsm::4::my_rsa_key_pk`:
 
 ```shell
 > ckms sym keys create --algorithm aes --number-of-bits 256 --sensitive \
-  --wrapping-key-id hsm::utimaco::4::my_rsa_key_pk my_sym_key
+  --wrapping-key-id hsm::4::my_rsa_key_pk my_sym_key
 The symmetric key was successfully generated.
       Unique identifier: my_sym_key
 ```
@@ -113,7 +113,7 @@ This controls which KMIP object types are automatically unwrapped when retrieved
 
 ```toml
 # Force all keys to be wrapped by an HSM key
-key_encryption_key = "hsm::utimaco::4::master_kek"
+key_encryption_key = "hsm::4::master_kek"
 
 # Automatically unwrap symmetric keys and secret data when retrieved
 default_unwrap_type = ["SymmetricKey", "SecretData"]
@@ -162,7 +162,7 @@ In this case, an ephemeral symmetric key (the Data Encryption Key, DEK) is gener
 The DEK is then encrypted/wrapped with RFC4659 (a.k.a NIST AES Key Wrap) with the key `my_sym_key`,
 called the Key Encryption Key, KEK.
 The wrapping of the DEK by the KEK is stored at the beginning of the encrypted file.
-At rest, in the KMS database, `my_sym_key` is stored encrypted/wrapped with the HSM key `hsm::utimaco::4::my_rsa_key_pk`.
+At rest, in the KMS database, `my_sym_key` is stored encrypted/wrapped with the HSM key `hsm::4::my_rsa_key_pk`.
 
 To decrypt a large file with the KEK `my_sym_key` client side, the following command can be used:
 
@@ -187,7 +187,7 @@ This is transparent to the caller and works even when the HSM key is marked `sen
 ckms sym keys export --key-id my_sym_key /tmp/my_sym_key_wrapped.json
 
 # Unwrap it using the HSM KEK — the KMS handles the decryption server-side
-ckms sym keys unwrap --unwrap-key-id hsm::utimaco::4::master_kek \
+ckms sym keys unwrap --unwrap-key-id hsm::4::master_kek \
   /tmp/my_sym_key_wrapped.json /tmp/my_sym_key_unwrapped.json
 ```
 
@@ -213,30 +213,30 @@ Some KMIP operations can be performed directly via the KMS server API on the HSM
 ### Create
 
 Create a new key in the HSM. The key unique must be provided on the request and must follow the
-`hsm::<model>::<slot_number>::<key_identifier>` format described above.
+`hsm::<slot_number>::<key_identifier>` format described above.
 Only HSM admin users can create keys directly in the HSM (see [HSM admin](#hsm-admin) above).
 
 RSA and AES keys are supported.
 
 When creating an RSA key, the `key_identifier` will be that of the private key. The corresponding public key will be
 automatically created and stored in the HSM with the same `key_identifier` but with the `_pk` suffix, for example,
-the public key of the `hsm::utimaco::1::mykey` private key will be created with a unique identifier `hsm::utimaco::1::mykey_pk`.
+the public key of the `hsm::1::mykey` private key will be created with a unique identifier `hsm::1::mykey_pk`.
 
 Create an RSA 4096-bit key on the HSM slot 4, with the KMS CLI:
 
 ```shell
-❯ ckms rsa keys create --size_in_bits 4096 --sensitive hsm::utimaco::4::my_rsa_key
+❯ ckms rsa keys create --size_in_bits 4096 --sensitive hsm::4::my_rsa_key
 The RSA key pair has been created.
-      Public key unique identifier: hsm::utimaco::4::my_rsa_key_pk
-      Private key unique identifier: hsm::utimaco::4::my_rsa_key
+      Public key unique identifier: hsm::4::my_rsa_key_pk
+      Private key unique identifier: hsm::4::my_rsa_key
 ```
 
 Create an AES 256-bit key on HSM slot 4, with the KMS CLI:
 
 ```shell
-❯ ckms sym keys create --algorithm aes --number-of-bits 256 --sensitive hsm::utimaco::4::my_aes_key
+❯ ckms sym keys create --algorithm aes --number-of-bits 256 --sensitive hsm::4::my_aes_key
 The symmetric key was successfully generated.
-   Unique identifier: hsm::utimaco::4::my_aes_key
+   Unique identifier: hsm::4::my_aes_key
 ```
 
 Keys should be flagged as `sensitive` when created in the HSM, so that the private key or symmetric key cannot be
@@ -251,7 +251,7 @@ entirely. This is useful for pre-provisioning a master KEK before the KMS server
 the Cosmian PKCS#11 integration does not yet support key generation.
 
 The `LABEL` set with `--label` becomes the `<key_identifier>` part of the Cosmian KMS unique identifier
-`hsm::<model>::<slot_number>::<label>`.
+`hsm::<slot_number>::<label>`.
 
 ##### Step 1 — List available slots
 
@@ -302,8 +302,8 @@ pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
   --label my_rsa_key
 ```
 
-The private key label becomes `hsm::utimaco::4::my_rsa_key` in Cosmian KMS. For RSA key pairs, Cosmian KMS
-appends `_pk` to the label to build the public key identifier: `hsm::utimaco::4::my_rsa_key_pk`.
+The private key label becomes `hsm::4::my_rsa_key` in Cosmian KMS. For RSA key pairs, Cosmian KMS
+appends `_pk` to the label to build the public key identifier: `hsm::4::my_rsa_key_pk`.
 
 ##### Step 4 — Verify the objects are visible
 
@@ -316,12 +316,12 @@ pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
   --list-objects
 ```
 
-The AES key created above will then be addressable in Cosmian KMS as `hsm::utimaco::1::master_kek`
+The AES key created above will then be addressable in Cosmian KMS as `hsm::1::master_kek`
 and can immediately be used as a KEK:
 
 ```toml
 # kms.toml
-key_encryption_key = "hsm::utimaco::1::master_kek"
+key_encryption_key = "hsm::1::master_kek"
 ```
 
 ### Destroy
@@ -331,20 +331,20 @@ key from the HSM.
 
 Only HSM admin users, or a user granted the `Destroy` operation by an HSM admin, can destroy keys in the HSM.
 
-To destroy the key `hsm::utimaco::4::my_rsa_key`, the following command can be used:
+To destroy the key `hsm::4::my_rsa_key`, the following command can be used:
 
 ```shell
-❯ ckms rsa keys destroy --key-id hsm::utimaco::4::my_rsa_key
+❯ ckms rsa keys destroy --key-id hsm::4::my_rsa_key
 Successfully destroyed the key.
-      Unique identifier: hsm::utimaco::4::mykey
+      Unique identifier: hsm::4::mykey
 ```
 
-To destroy the corresponding public key `hsm::utimaco::4::my_rsa_key_pk`, the following command can be used:
+To destroy the corresponding public key `hsm::4::my_rsa_key_pk`, the following command can be used:
 
 ```shell
-❯ ckms rsa keys destroy --key-id hsm::utimaco::4::my_rsa_key_pk
+❯ ckms rsa keys destroy --key-id hsm::4::my_rsa_key_pk
 Successfully destroyed the object.
-   Unique identifier: hsm::utimaco::4::my_rsa_key_pk
+   Unique identifier: hsm::4::my_rsa_key_pk
 ```
 
 ### Get - Export
@@ -355,29 +355,29 @@ Only HSM admin users, or a user granted the `Get` operation by an HSM admin, can
 Private or symmetric keys marked as `sensitive` cannot be retrieved from the HSM.
 The public key of a key pair can always be retrieved.
 
-To export the public key `hsm::utimaco::4::my_rsa_key_pk` in PKCS#8 PEM format, the following command can be used:
+To export the public key `hsm::4::my_rsa_key_pk` in PKCS#8 PEM format, the following command can be used:
 
 ```shell
-❯ ckms rsa keys export --key-id hsm::utimaco::4::my_rsa_key_pk --key-format pkcs8-pem /tmp/pubkey.pem
-The key hsm::utimaco::4::my_rsa_key_pk of type PublicKey was exported to "/tmp/pubkey.pem"
-   Unique identifier: hsm::utimaco::4::my_rsa_key_pk
+❯ ckms rsa keys export --key-id hsm::4::my_rsa_key_pk --key-format pkcs8-pem /tmp/pubkey.pem
+The key hsm::4::my_rsa_key_pk of type PublicKey was exported to "/tmp/pubkey.pem"
+   Unique identifier: hsm::4::my_rsa_key_pk
 ```
 
-To export the private key `hsm::utimaco::4::mykey` in PKCS#8 PEM format, the following command can be used:
+To export the private key `hsm::4::mykey` in PKCS#8 PEM format, the following command can be used:
 
 ```shell
-❯ ckms rsa keys export --key-id hsm::utimaco::4::my_rsa_key --key-format pkcs8-pem /tmp/privkey.pem
-The key hsm::utimaco::4::my_rsa_key of type PrivateKey was exported to "/tmp/privkey.pem"
-   Unique identifier: hsm::utimaco::4::my_rsa_key
+❯ ckms rsa keys export --key-id hsm::4::my_rsa_key --key-format pkcs8-pem /tmp/privkey.pem
+The key hsm::4::my_rsa_key of type PrivateKey was exported to "/tmp/privkey.pem"
+   Unique identifier: hsm::4::my_rsa_key
 ```
 
-To export the symmetric key `hsm::utimaco::4::my_aes_key` in raw format (i.e., raw bytes),
+To export the symmetric key `hsm::4::my_aes_key` in raw format (i.e., raw bytes),
 the following command can be used:
 
 ```shell
-❯ ckms sym keys export --key-id hsm::utimaco::4::my_aes_key --key-format raw /tmp/symkey.raw
-The key hsm::utimaco::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw"
-   Unique identifier: hsm::utimaco::4::my_aes_key
+❯ ckms sym keys export --key-id hsm::4::my_aes_key --key-format raw /tmp/symkey.raw
+The key hsm::4::my_aes_key of type SymmetricKey was exported to "/tmp/symkey.raw"
+   Unique identifier: hsm::4::my_aes_key
 ```
 
 ### Encrypt
@@ -393,19 +393,19 @@ When using RSA, the maximum message size in bytes is:
 - PKCS#1 v1.5: (key size in bits / 8) - 11
 - OAEP: (key size in bits / 8) - 66
 
-To encrypt a message with the public key `hsm::utimaco::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm, the following
+To encrypt a message with the public key `hsm::4::my_rsa_key_pk` and the CKM RSA PKCS OAEP algorithm, the following
 command can be used:
 
 ```shell
-❯ ckms rsa encrypt --key-id hsm::utimaco::4::my_rsa_key_pk --encryption-algorithm ckm-rsa-pkcs-oaep \
+❯ ckms rsa encrypt --key-id hsm::4::my_rsa_key_pk --encryption-algorithm ckm-rsa-pkcs-oaep \
 /tmp/secret.txt
 The encrypted file is available at "/tmp/secret.enc"
 ```
 
-To encrypt a message using AES GCM with the symmetric key `hsm::utimaco::4::my_aes_key`, the following command can be used:
+To encrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, the following command can be used:
 
 ```shell
-❯ ckms sym encrypt --key-id hsm::utimaco::4::my_aes_key --data-encryption-algorithm aes-gcm /tmp/secret.txt
+❯ ckms sym encrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm aes-gcm /tmp/secret.txt
 The encrypted file is available at "/tmp/secret.enc"
 ```
 
@@ -418,18 +418,18 @@ For symmetric keys, only AES GCM is supported. CKM_RSA_PKCS_OAEP and the now-dep
 used, CKM_RSA_PKCS (v1.5) are supported for RSA keys. The hashing algorithm is fixed to SHA256.
 
 To decrypt a message with the private key
-key `hsm::utimaco::4::my_rsa_key` and the CKM RSA PKCS OAEP algorithm, the following command can be used:
+key `hsm::4::hsm::4::my_rsa_key` and the CKM RSA PKCS OAEP algorithm, the following command can be used:
 
 ```shell
-❯ ckms rsa decrypt --key-id hsm::utimaco::4::my_rsa_key --encryption-algorithm ckm-rsa-pkcs-oaep \
+❯ ckms rsa decrypt --key-id hsm::4::my_rsa_key --encryption-algorithm ckm-rsa-pkcs-oaep \
   --output-file /tmp/secret.recovered.txt /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.plain"
 ```
 
-To decrypt a message using AES GCM with the symmetric key `hsm::utimaco::4::my_aes_key`, the following command can be used:
+To decrypt a message using AES GCM with the symmetric key `hsm::4::my_aes_key`, the following command can be used:
 
 ```shell
-> ckms sym decrypt --key-id hsm::utimaco::4::my_aes_key --data-encryption-algorithm aes-gcm \
+> ckms sym decrypt --key-id hsm::4::my_aes_key --data-encryption-algorithm aes-gcm \
   --output-file /tmp/secret.recovered.txt /tmp/secret.enc
 The decrypted file is available at "/tmp/secret.recovered.txt"
 ```

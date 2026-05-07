@@ -15,7 +15,6 @@ import {
     SolutionOutlined,
     TeamOutlined,
     ToolOutlined,
-    UsbOutlined,
     WindowsOutlined,
 } from "@ant-design/icons";
 
@@ -219,12 +218,6 @@ const baseMenu: MenuItem[] = [
             { key: "access-rights/owned", label: "Owned" },
             { key: "access-rights/obtained", label: "Obtained" },
         ],
-    },
-    {
-        key: "hsm-status",
-        label: "HSM Status",
-        icon: <UsbOutlined />,
-        collapsedlabel: "HSM",
     },
     {
         key: "hyperscalers",
