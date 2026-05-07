@@ -213,6 +213,7 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::Certify => {
                                     Operation::Certify(map.next_value()?)
                                 }
+                                OperationEnumeration::Check => Operation::Check(map.next_value()?),
                                 OperationEnumeration::Create => {
                                     Operation::Create(map.next_value()?)
                                 }
@@ -221,6 +222,10 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 }
                                 OperationEnumeration::ReKeyKeyPair => {
                                     Operation::ReKeyKeyPair(map.next_value()?)
+                                }
+                                OperationEnumeration::ReKey => Operation::ReKey(map.next_value()?),
+                                OperationEnumeration::ReCertify => {
+                                    Operation::ReCertify(map.next_value()?)
                                 }
                                 OperationEnumeration::Decrypt => {
                                     Operation::Decrypt(map.next_value()?)
@@ -271,6 +276,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::DeleteAttribute => {
                                     Operation::DeleteAttribute(map.next_value()?)
                                 }
+                                OperationEnumeration::DeriveKey => {
+                                    Operation::DeriveKey(map.next_value()?)
+                                }
                                 OperationEnumeration::Query => Operation::Query(map.next_value()?),
                                 OperationEnumeration::Register => {
                                     Operation::Register(map.next_value()?)
@@ -312,11 +320,6 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                     return Err(de::Error::custom(
                                         "unsupported KMIP 1 operation: Put",
                                     ));
-                                }
-                                x => {
-                                    return Err(de::Error::custom(format!(
-                                        "unsupported KMIP 1 operation: {x:?}"
-                                    )));
                                 }
                             });
                         }

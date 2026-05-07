@@ -1,9 +1,12 @@
 use std::path::PathBuf;
 
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::{
-        kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
+    cosmian_kmip::{
+        kmip_0::kmip_types::BlockCipherMode,
+        kmip_2_1::{
+            kmip_objects::Object,
+            kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
+        },
     },
     kmip_2_1::{
         extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
@@ -250,14 +253,26 @@ async fn test_import_export_wrap_private_key(
                 .unique_identifier,
             *wrapping_key_uid
         );
-        assert!(
-            wrapped_key_wrapping_data
-                .encryption_key_information
-                .clone()
-                .unwrap()
-                .cryptographic_parameters
-                .is_none()
-        );
+        if matches!(unwrapping_key, Object::SymmetricKey { .. }) {
+            assert_eq!(
+                wrapped_key_wrapping_data
+                    .encryption_key_information
+                    .clone()
+                    .unwrap()
+                    .cryptographic_parameters
+                    .and_then(|cp| cp.block_cipher_mode),
+                Some(BlockCipherMode::NISTKeyWrap)
+            );
+        } else {
+            assert!(
+                wrapped_key_wrapping_data
+                    .encryption_key_information
+                    .clone()
+                    .unwrap()
+                    .cryptographic_parameters
+                    .is_none()
+            );
+        }
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
         trace!(
             "wrapped_private_key: key_block after unwrapping: {}",

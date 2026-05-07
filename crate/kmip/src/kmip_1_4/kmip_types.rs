@@ -626,6 +626,43 @@ pub enum DerivationMethod {
     ASYMMETRIC_KEY = 0x8,
 }
 
+impl From<DerivationMethod> for kmip_2_1::kmip_types::DerivationMethod {
+    fn from(val: DerivationMethod) -> Self {
+        match val {
+            DerivationMethod::PBKDF2 => Self::PBKDF2,
+            DerivationMethod::HASH => Self::HASH,
+            DerivationMethod::HMAC => Self::HMAC,
+            DerivationMethod::ENCRYPT => Self::ENCRYPT,
+            DerivationMethod::NIST800_108_C => Self::NIST800_108C,
+            DerivationMethod::NIST800_108_F => Self::NIST800_108F,
+            DerivationMethod::NIST800_108_DPI => Self::NIST800_108DPI,
+            DerivationMethod::ASYMMETRIC_KEY => Self::Asymmetric_Key,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_types::DerivationMethod> for DerivationMethod {
+    type Error = KmipError;
+
+    fn try_from(val: kmip_2_1::kmip_types::DerivationMethod) -> Result<Self, Self::Error> {
+        Ok(match val {
+            kmip_2_1::kmip_types::DerivationMethod::PBKDF2 => Self::PBKDF2,
+            kmip_2_1::kmip_types::DerivationMethod::HASH => Self::HASH,
+            kmip_2_1::kmip_types::DerivationMethod::HMAC => Self::HMAC,
+            kmip_2_1::kmip_types::DerivationMethod::ENCRYPT => Self::ENCRYPT,
+            kmip_2_1::kmip_types::DerivationMethod::NIST800_108C => Self::NIST800_108_C,
+            kmip_2_1::kmip_types::DerivationMethod::NIST800_108F => Self::NIST800_108_F,
+            kmip_2_1::kmip_types::DerivationMethod::NIST800_108DPI => Self::NIST800_108_DPI,
+            kmip_2_1::kmip_types::DerivationMethod::Asymmetric_Key => Self::ASYMMETRIC_KEY,
+            other => {
+                return Err(KmipError::NotSupported(format!(
+                    "DerivationMethod {other:?} is not supported in KMIP 1.4"
+                )));
+            }
+        })
+    }
+}
+
 /// KMIP 1.4 Certificate Request Type Enumeration
 #[kmip_enum]
 pub enum CertificateRequestType {
