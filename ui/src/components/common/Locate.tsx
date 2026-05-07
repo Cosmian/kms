@@ -1,10 +1,15 @@
-import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag } from "antd";
+import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Tooltip } from "antd";
 import type { TableColumnsType } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+
+const formatUnixDate = (unixMs: number): string => {
+    const d = new Date(unixMs);
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+};
 
 interface LocateObjectRow {
     object_id: string;
@@ -147,7 +152,7 @@ const LocateForm: React.FC = () => {
                         ]);
                         const m = extractMeta(parsed);
                         // HSM keys are always Active; use that as default when state is missing
-                        const isHsm = uid.startsWith("hsm::");
+                        const isHsm = /^hsm[0-9]*::/.test(uid);
                         return {
                             object_id: uid,
                             attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -159,7 +164,7 @@ const LocateForm: React.FC = () => {
                     console.error(`Error fetching Get for ${uid}:`, e);
                 }
                 // Fallback: HSM keys default to Active
-                return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : undefined } as LocatedRow;
+                return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : undefined } as LocatedRow;
             }),
         );
         return rows;
@@ -271,7 +276,7 @@ const LocateForm: React.FC = () => {
                     // Always run KMIP Locate to capture HSM keys that may not appear in /access/owned
                     const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
                     // HSM keys from Locate are always Active; include them even if not in owned set
-                    const hsmLocatedIds = locatedIds.filter((id) => id.startsWith("hsm::"));
+                    const hsmLocatedIds = locatedIds.filter((id) => /^hsm[0-9]*::/.test(id));
                     const ownedIds = new Set(ownedFiltered.map((o) => o.id));
 
                     if (!hasOtherCriteria) {
@@ -325,7 +330,7 @@ const LocateForm: React.FC = () => {
                     }
 
                     // Intersect Locate results with owned set, but keep HSM keys that Locate found
-                    let intersection = locatedIds.filter((id) => ownedIds.has(id) || id.startsWith("hsm::"));
+                    let intersection = locatedIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
 
                     // Fallback: if KFT provided but intersection is empty, drop KFT server-side and filter locally
                     if (keyFormatType && intersection.length === 0) {
@@ -338,7 +343,7 @@ const LocateForm: React.FC = () => {
                                 idToken,
                                 serverUrl,
                             );
-                            intersection = fbIds.filter((id) => ownedIds.has(id) || id.startsWith("hsm::"));
+                            intersection = fbIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
                         } catch (e) {
                             console.warn("State+KFT fallback Locate without KFT failed:", e);
                         }
@@ -374,7 +379,7 @@ const LocateForm: React.FC = () => {
                             } catch (e) {
                                 console.error(`Error fetching Get for ${uid}:`, e);
                             }
-                            return { object_id: uid, state: uid.startsWith("hsm::") ? "Active" : stateVal } as LocatedRow;
+                            return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : stateVal } as LocatedRow;
                         }),
                     );
                     // Enforce KFT filter client-side if provided
@@ -874,6 +879,54 @@ const LocateForm: React.FC = () => {
                                                     <Tag color={state === "Active" ? "green" : "orange"}>{state || "Unknown"}</Tag>
                                                 </Space>
                                             ),
+                                        },
+                                        {
+                                            title: "Date",
+                                            key: "date",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) => {
+                                                const da = (a.meta?.["rotate_date"] ??
+                                                    a.meta?.["initial_date"] ??
+                                                    a.meta?.["activation_date"] ??
+                                                    a.meta?.["original_creation_date"]) as number | undefined;
+                                                const db = (b.meta?.["rotate_date"] ??
+                                                    b.meta?.["initial_date"] ??
+                                                    b.meta?.["activation_date"] ??
+                                                    b.meta?.["original_creation_date"]) as number | undefined;
+                                                return (da ?? 0) - (db ?? 0);
+                                            },
+                                            defaultSortOrder: "descend" as const,
+                                            render: (row: LocateObjectRow) => {
+                                                const rotateDate = row.meta?.["rotate_date"] as number | undefined;
+                                                const initialDate = row.meta?.["initial_date"] as number | undefined;
+                                                const activationDate = row.meta?.["activation_date"] as number | undefined;
+                                                const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
+                                                const dateValue = rotateDate ?? initialDate ?? activationDate ?? originalCreationDate;
+                                                if (!dateValue) {
+                                                    if (/^hsm[0-9]*::/.test(row.object_id)) {
+                                                        return (
+                                                            <Tooltip title="HSM-resident keys have no creation date stored in the PKCS#11 token">
+                                                                <span style={{ color: "#bbb", fontSize: "12px" }}>HSM</span>
+                                                            </Tooltip>
+                                                        );
+                                                    }
+                                                    return <span style={{ color: "#bbb" }}>—</span>;
+                                                }
+                                                const label = rotateDate
+                                                    ? "Last rotation"
+                                                    : initialDate
+                                                      ? "Created"
+                                                      : activationDate
+                                                        ? "Activated"
+                                                        : "Created";
+                                                return (
+                                                    <Tooltip title={`${label}: ${formatUnixDate(dateValue)}`}>
+                                                        <span style={{ fontSize: "12px", whiteSpace: "nowrap" }}>
+                                                            {rotateDate && <span style={{ color: "#1677ff" }}>↻ </span>}
+                                                            {formatUnixDate(dateValue)}
+                                                        </span>
+                                                    </Tooltip>
+                                                );
+                                            },
                                         },
                                         {
                                             title: "Actions",

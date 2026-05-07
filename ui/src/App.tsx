@@ -36,6 +36,7 @@ import LocateForm from "./components/common/Locate";
 import LoginPage from "./pages/LoginPage";
 import MainLayout from "./components/layout/MainLayout";
 import NotFoundPage from "./pages/NotFoundPage";
+import HsmStatus from "./actions/Objects/HsmStatus";
 import DestroyForm from "./actions/Objects/ObjectsDestroy";
 import ObjectsOwnedList from "./actions/Objects/ObjectsOwned";
 import RevokeForm from "./actions/Objects/ObjectsRevoke";
@@ -326,6 +327,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="owned" element={<ObjectsOwnedList />} />
                             <Route path="obtained" element={<AccessObtainedList />} />
                         </Route>
+                        <Route path="hsm-status" element={<HsmStatus />} />
                         <Route path="certificates">
                             <Route path="certs/import" element={<CertificateImportForm />} />
                             <Route path="certs/export" element={<CertificateExportForm />} />

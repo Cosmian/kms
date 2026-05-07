@@ -8,8 +8,8 @@ pub use crypto_oracle::{
 };
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    HSM, HsmCryptoOracle, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
-    HsmStore, KeyMaterial, RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
+    HSM, HsmBackend, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial,
+    RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
 
@@ -24,7 +24,12 @@ pub enum KeyType {
 
 #[macro_export]
 macro_rules! as_hsm_uid {
+    // Old format: hsm::<slot_id>::<key_id>
     ($slot:expr, $uuid:expr) => {
         format!("hsm::{}::{}", $slot, $uuid)
+    };
+    // New format: hsm::<model>::<slot_id>::<key_id>
+    ($model:expr, $slot:expr, $uuid:expr) => {
+        format!("hsm::{}::{}::{}", $model, $slot, $uuid)
     };
 }

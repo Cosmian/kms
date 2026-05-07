@@ -112,14 +112,14 @@ info = false
 # `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
 # `Smartcard HSM`, and `SoftHSM2` are natively supported.
 # Other HSMs are supported too; specify `other` and check the documentation
-# hsm_model = "<hsm_name>" # the name of the HSM model (see HSMs documentation)
+# hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
 # List of KMS usernames that are granted HSM admin privileges.
 # HSM admins can create, destroy, and potentially export objects on the HSM.
 # Use `"*"` as the only entry to grant all authenticated users admin access.
 # Repeat the option or use a comma-separated list to specify multiple admins:
 #   `--hsm-admin alice@example.com --hsm-admin bob@example.com`
 #   or set `KMS_HSM_ADMIN=alice@example.com,bob@example.com`
-# hsm_admin = ["admin"]   # list of HSM admin users; use ["*"] to allow all users to perform HSM operations
+# hsm_admin    = ["admin"]            # KMS users with admin rights on this HSM
 # HSM slot number. The slots used must be listed.
 # Repeat this option to specify multiple slots
 # while specifying a password for each slot (or an empty string for no password)
@@ -128,12 +128,34 @@ info = false
 #   --hsm-slot 1 --hsm-password password1 \
 #   --hsm-slot 2 --hsm-password password2
 # ```
-# hsm_slot = [1, 2, ...] # slot numbers
+# hsm_slot     = [0]                  # PKCS#11 slot indices
 # Password for the user logging in to the HSM Slot specified with `--hsm_slot`
 # Provide an empty string for no password
 # see `--hsm_slot` for more information.
 # Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
-# hsm_password = ["<password_of_1st_slot1>", "<password_of_2bd_slot2>", ...] # corresponding user slot passwords/pins
+# hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
+#
+# ── New multi-instance format ─────────────────────────────────────────────────
+# Uses the new UID convention: hsm::<model>::<slot_id>::<key_id>
+# To connect HSMs, declare one [[hsm_instances]] section per device.
+# `Trustway Proteccio`, `Trustway Crypt2pay`, `Utimaco General Purpose HSM`,
+# `Smartcard HSM`, and `SoftHSM2` are natively supported.
+# Other HSMs are supported too; specify `other` and check the documentation.
+#
+# The first entry gets the routing prefix "hsm::<model>", the second
+# "hsm::<model>_1", etc. Object UIDs take the form "<prefix>::<slot>::<key-id>".
+#
+## [[hsm_instances]]
+## hsm_model    = "softhsm2"           # softhsm2 | utimaco | proteccio | crypt2pay | smartcardhsm | other
+## hsm_admin    = ["tech@example.com"] # KMS users with admin rights on this HSM
+## hsm_slot     = [0]                  # PKCS#11 slot indices (use softhsm2-util --show-slots to list them)
+## hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
+#
+## [[hsm_instances]]
+## hsm_model    = "utimaco"
+## hsm_admin    = ["tech@example.com"]
+## hsm_slot     = [0, 1]
+## hsm_password = ["slot0pass", "slot1pass"]
 
 # Force all newly created and imported keys to be wrapped by the key specified in this field.
 # This is most useful to ensure that an HSM key wraps all keys in the KMS database.
@@ -379,6 +401,22 @@ azure_ekm_enable = false
 aws_xks_enable = false
 
 [kmip.allowlists]
+
+[notifications.smtp]
+# The KMS HTTP server port
+port = 0
+
+
+[notifications.renewal]
+strategy = "time_before_renewal"
+# Days before scheduled renewal at which a warning email is sent.
+#
+# Only used when `strategy = "time_before_renewal"`. Values are sorted descending internally; duplicates are ignored. Default: `[30, 7, 1]` — 1 month, 1 week, and 1 day before renewal.
+#
+# Example: `warn_before_renewal_days = [90, 30, 14, 7, 1]`
+warn_before_renewal_days = [30, 7, 1]
+notify_on_success = true
+notify_on_failure = true
 ```
 
 ---

@@ -7,16 +7,28 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub(super) const UID_PREFIX_SEPARATOR: &str = "::";
-
-/// Determine whether the unique identifier has a prefix or not
-/// # Arguments
-///  * `uid` - A string slice representing the unique identifier
-/// # Returns
-/// * `Option` - A tuple of two string slices, the first one is the prefix and the second one is the full uid
+/// Determine whether the unique identifier has a crypto-oracle prefix.
+///
+/// Supports two HSM UID formats:
+/// - Old: `hsm::<slot_id>::<key_id>` → prefix = `"hsm"`
+/// - New: `hsm::<model>::<slot_id>::<key_id>` → prefix = `"hsm::<model>"`
+///
+/// The disambiguation is based on the first segment after `"hsm::"`: if it
+/// parses as a `usize` it is the old (slot-first) format; otherwise it is
+/// the model name.
 pub(super) fn has_prefix(uid: &str) -> Option<&str> {
-    uid.split_once(UID_PREFIX_SEPARATOR)
-        .map(|(prefix, _)| prefix)
+    if let Some(rest) = uid.strip_prefix("hsm::") {
+        if let Some(pos) = rest.find("::") {
+            let first_segment = &rest[..pos];
+            // Old format: hsm::<slot_id>::<key_id> (slot_id is a number)
+            if first_segment.parse::<usize>().is_ok() {
+                return Some("hsm");
+            }
+            // New format: hsm::<model>::<slot>::<key> → prefix = "hsm::<model>"
+            return Some(&uid[..5 + pos]);
+        }
+    }
+    None
 }
 
 /// Determine the list of possible UIDs from a Unique Identifier,

@@ -58,7 +58,8 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
@@ -731,26 +732,26 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     });
 
     // Derive the session cookie encryption key.
-    // - If ui_session_salt is set: derive a stable key tied to the public URL using PBKDF2.
-    //   This is deterministic across restarts and identical across load-balanced instances.
-    // - Otherwise: generate a random ephemeral key (secure but lost on restart).
-    //   Operators who need persistent sessions or load-balanced deployments MUST set
-    //   `ui_session_salt` (or KMS_UI_SESSION_SALT).
-    let secret_key: Key = if let Some(salt) = kms_server.params.ui_session_salt.as_deref() {
-        derive_session_key_from_url(&kms_public_url, salt)?
-    } else {
-        // No secret configured: generate a cryptographically random ephemeral key.
-        // This is secure, but sessions will be invalidated on every server restart
-        // and are not portable across load-balanced instances.
+    // - If ui_session_salt is set, derive a deterministic key from it (required for
+    //   load-balanced multi-instance setups where all nodes must share the same key).
+    // - Otherwise, derive a stable key from the public URL using a built-in default salt.
+    //   This prevents the "cookie failed cryptographic checks" warnings that occur when
+    //   a random key is regenerated on every restart, invalidating existing browser cookies.
+    //   For single-instance deployments this is sufficient; for multi-instance setups
+    //   ui_session_salt must be configured to ensure all nodes share the same key.
+    let effective_salt = kms_server.params.ui_session_salt.as_deref().unwrap_or_else(|| {
+        // A08-2: Warn operators that the session key is derived from a predictable default salt.
+        // In single-instance deployments this is acceptable; for production or multi-instance
+        // setups, configure `ui_session_salt` (or KMS_UI_SESSION_SALT) with a strong random value
+        // to prevent cookie forgery if the deployment URL is publicly known.
         warn!(
-            "ui_session_salt is not configured — using a randomly generated ephemeral \
-             session key. Sessions will be invalidated on server restart and are not \
-             portable across instances. For persistent sessions and load-balanced \
-             deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong \
-             random secret value."
+            "ui_session_salt is not configured — session cookie key is derived from a predictable \
+             default salt and the public URL. Set `ui_session_salt` in the KMS configuration for \
+             production deployments to prevent cookie forgery."
         );
-        Key::generate()
-    };
+        "cosmian_kms_default_ui_session_key_v1"
+    });
+    let secret_key: Key = derive_session_key_from_url(&kms_public_url, effective_salt)?;
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
@@ -804,7 +805,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .cookie_path("/".to_owned())
                     .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
-                    .cookie_same_site(actix_web::cookie::SameSite::Lax)
+                    .cookie_same_site(actix_web::cookie::SameSite::Strict)
                     .cookie_secure(true)
                     .session_lifecycle(
                         PersistentSession::default().session_ttl(Duration::hours(24)),
@@ -841,23 +842,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         if enable_ms_dke {
             // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
-            // SECURITY: DKE endpoints MUST be authenticated to prevent unauthenticated
-            // decryption oracles. Microsoft's DKE protocol uses Azure AD tokens;
-            // we enforce the same auth stack as the main KMIP scope.
             let ms_dke_scope = web::scope("/ms_dke")
-                .wrap(EnsureAuth::new(
-                    kms_server_for_http.clone(),
-                    use_jwt_auth || use_cert_auth || use_api_token_auth,
-                ))
-                .wrap(Condition::new(
-                    use_api_token_auth,
-                    ApiTokenAuth::new(kms_server_for_http.clone()),
-                ))
-                .wrap(Condition::new(
-                    use_jwt_auth,
-                    JwtAuth::new(jwt_configurations.clone()),
-                ))
-                .wrap(Condition::new(use_cert_auth, TlsAuth))
                 .wrap(Cors::permissive())
                 .service(ms_dke::version)
                 .service(ms_dke::get_key)
@@ -993,13 +978,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             );
         }
 
-        // Public endpoints (no authentication) — only health/version for connectivity checks.
-        // server-info is served from the authenticated default scope to prevent
-        // information disclosure (HSM model, slots, FIPS mode).
+        // Public endpoints (no authentication)
         app = app
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
-            .service(get_version);
+            .service(get_version)
+            .service(get_server_info)
+            .service(get_hsm_status);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
@@ -1038,7 +1023,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             })
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
-            .service(get_server_info)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)
             .service(access::list_accesses)

@@ -19,6 +19,21 @@ use crate::{
     routes::aws_xks::AwsXksParams,
 };
 
+/// Resolved parameters for a single HSM instance, derived from either
+/// the CLI `--hsm-*` flags (single instance) or a TOML `[[hsm]]` entry.
+#[derive(Clone, Debug)]
+pub struct HsmInstanceParams {
+    /// HSM model string (e.g. `"softhsm2"`, `"utimaco"`).
+    pub model: String,
+    /// KMS usernames with admin access to this HSM instance.
+    pub admin: Vec<String>,
+    /// Slot-number → optional PIN mapping passed to `BaseHsm::instantiate`.
+    pub slot_passwords: HashMap<usize, Option<String>>,
+    /// Routing prefix for object UIDs managed by this instance.
+    /// Format: `"hsm::<model>"` (e.g. `"hsm::softhsm2"`, `"hsm::utimaco"`).
+    pub prefix: String,
+}
+
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
@@ -102,15 +117,9 @@ pub struct ServerParams {
     /// The URL should be something like <https://cse.my_domain.com/ms_dke>
     pub ms_dke_service_url: Option<String>,
 
-    /// List of KMS usernames that are granted HSM admin privileges.
-    /// Use `["*"]` to grant all authenticated users admin access.
-    pub hsm_admin: Vec<String>,
-
-    /// The HSM model, if any
-    pub hsm_model: Option<String>,
-
-    /// HSM slot passwords number
-    pub slot_passwords: HashMap<usize, Option<String>>,
+    /// Configured HSM instances (zero, one, or many).
+    /// Index 0 uses prefix `"hsm"`, index N uses prefix `"hsmN"` (N ≥ 1).
+    pub hsm_instances: Vec<HsmInstanceParams>,
 
     /// The Key Wrapping Key, if any
     pub key_wrapping_key: Option<String>,
@@ -219,20 +228,52 @@ impl ServerParams {
 
         let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
 
-        let slot_passwords: HashMap<usize, Option<String>> = conf
-            .hsm
-            .hsm_slot
-            .iter()
-            .zip(&conf.hsm.hsm_password)
-            .map(|(s, p)| {
-                let password = if p == "<NO_LOGIN>" {
-                    None
+        // Build HSM instances from config.
+        // If `conf.hsm_instances` is non-empty (TOML [[hsm]] array) use it directly;
+        // otherwise fall back to the legacy flat CLI fields.
+        // Build HSM instances from two sources:
+        //
+        // 1. Legacy flat config (`conf.hsm`): uses the old UID format `hsm::<slot>::<key>`
+        //    with prefix "hsm". This preserves backward compatibility for existing deployments.
+        //
+        // 2. New TOML array (`conf.hsm_instances`): uses the new UID format
+        //    `hsm::<model>::<slot>::<key>` with prefix "hsm::<model>".
+        //    When multiple instances share the same model, disambiguate with a
+        //    numeric suffix: "hsm::<model>", "hsm::<model>_1", "hsm::<model>_2", …
+        let hsm_instances: Vec<HsmInstanceParams> = {
+            let mut instances = Vec::new();
+
+            // Legacy flat config → prefix "hsm" (old format: hsm::<slot>::<key>)
+            if !conf.hsm.hsm_slot.is_empty() {
+                instances.push(HsmInstanceParams {
+                    model: conf.hsm.hsm_model.clone(),
+                    admin: conf.hsm.hsm_admin.clone(),
+                    slot_passwords: conf.hsm.slot_passwords(),
+                    prefix: "hsm".to_owned(),
+                });
+            }
+
+            // New TOML array → prefix "hsm::<model>" (new format: hsm::<model>::<slot>::<key>)
+            let mut model_counts: HashMap<String, usize> = HashMap::new();
+            for inst in conf.hsm_instances.iter().filter(|i| !i.hsm_slot.is_empty()) {
+                let model_lower = inst.hsm_model.to_lowercase();
+                let count = model_counts.entry(model_lower.clone()).or_insert(0);
+                let prefix = if *count == 0 {
+                    format!("hsm::{model_lower}")
                 } else {
-                    Some(p.clone())
+                    format!("hsm::{model_lower}_{count}")
                 };
-                (*s, password)
-            })
-            .collect();
+                *count += 1;
+                instances.push(HsmInstanceParams {
+                    model: inst.hsm_model.clone(),
+                    admin: inst.hsm_admin.clone(),
+                    slot_passwords: inst.slot_passwords(),
+                    prefix,
+                });
+            }
+
+            instances
+        };
 
         let kmip_policy_id: Option<String> = conf
             .kmip_policy
@@ -293,13 +334,7 @@ impl ServerParams {
             api_token_id: conf.http.api_token_id,
             google_cse: conf.google_cse_config,
             ms_dke_service_url: conf.ms_dke_service_url,
-            hsm_admin: conf.hsm.hsm_admin,
-            hsm_model: if slot_passwords.is_empty() {
-                None
-            } else {
-                Some(conf.hsm.hsm_model)
-            },
-            slot_passwords,
+            hsm_instances,
             key_wrapping_key: conf.key_encryption_key,
             default_unwrap_types: conf
                 .default_unwrap_type
@@ -539,21 +574,22 @@ impl fmt::Debug for ServerParams {
             debug_struct.field("azure_ekm_enable", &self.azure_ekm.azure_ekm_enable);
         }
 
-        if self.hsm_model.is_some() {
-            debug_struct
-                .field("hsm_admin", &self.hsm_admin)
-                .field("hsm_model", &self.hsm_model);
-            // Display slot passwords: mask actual passwords, show slot index
-            for (slot, password) in &self.slot_passwords {
-                let masked = if password.is_some() {
-                    "***"
-                } else {
-                    "<NO_LOGIN>"
-                };
-                debug_struct.field(&format!("hsm_slot_{slot}"), &masked);
-            }
+        if self.hsm_instances.is_empty() {
+            debug_struct.field("hsm_instances", &"no HSM configured");
         } else {
-            debug_struct.field("hsm_model", &"no HSM configured");
+            for inst in &self.hsm_instances {
+                debug_struct
+                    .field(&format!("[{}] model", inst.prefix), &inst.model)
+                    .field(&format!("[{}] admin", inst.prefix), &inst.admin);
+                for (slot, password) in &inst.slot_passwords {
+                    let masked = if password.is_some() {
+                        "***"
+                    } else {
+                        "<NO_LOGIN>"
+                    };
+                    debug_struct.field(&format!("[{}] slot_{slot}", inst.prefix), &masked);
+                }
+            }
         }
 
         if self.key_wrapping_key.is_some() {
