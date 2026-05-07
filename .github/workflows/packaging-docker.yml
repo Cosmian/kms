@@ -167,6 +167,9 @@ jobs:
       - name: Test Docker image
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+          ORACLE_DEMO_PASS: ${{ (matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04') && secrets.ORACLE_DEMO_PASS || '' }}
+          ORACLE_WALLET_PASS: ${{ (matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04') && secrets.ORACLE_WALLET_PASS || '' }}
+          COSMIAN_HSM_PIN: ${{ (matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04') && secrets.COSMIAN_HSM_PIN || '' }}
         run: |
           bash .github/scripts/test/test_docker_image.sh
 
