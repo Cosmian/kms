@@ -1,7 +1,7 @@
 ---
 site_name: KMS Clients
 site_url: https://docs.cosmian.com/kms_clients/
-copyright: © Copyright 2018-2026 Cosmian. All rights reserved
+copyright: © Copyright 2018-2026 Eviden. All rights reserved
 dev_addr: localhost:8004
 theme:
   name: material
@@ -9,7 +9,7 @@ theme:
   font:
     text: Open Sans
   favicon: docs/favicon.png
-  logo: docs/images/docslogo-2x.png
+  logo: docs/eviden-logo-orange.svg
   custom_dir: theme_overrides
   features:
     - content.tabs.link
@@ -46,7 +46,8 @@ markdown_extensions:
   - markdown_include.include:
       base_path: docs
       inheritHeadingDepth: true
-extra_javascript: #see this for Katex: https://squidfunk.github.io/mkdocs-material/reference/math/#katex
+extra_javascript:
+  #see this for Katex: https://squidfunk.github.io/mkdocs-material/reference/math/#katex
   - javascripts/katex.js
   - https://unpkg.com/katex@0/dist/katex.min.js
   - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
