@@ -1,5 +1,7 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -36,6 +38,8 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
 use cosmian_logger::{debug, info, trace};
+#[cfg(feature = "non-fips")]
+use openssl::x509::extension::KeyUsage;
 use openssl::{
     asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
@@ -587,7 +591,31 @@ async fn issuer_for_self_signed_certificate<'a>(
             }
         }
         Subject::KeypairAndSubjectName(unique_identifier, keypair_data, subject_name) => {
-            // the user is creating a self-signed certificate from a key pair
+            // ML-KEM / hybrid KEM keys are KEM-only algorithms — they do not support digital
+            // signatures and therefore cannot issue self-signed certificates.
+            // The caller must supply issuer_private_key_id + issuer_certificate_id pointing to
+            // a signing CA (RSA / EC / ML-DSA / SLH-DSA).
+            #[cfg(feature = "non-fips")]
+            if let Object::PrivateKey(pk) = &keypair_data.private_key_object {
+                if let Some(
+                    CryptographicAlgorithm::MLKEM_512
+                    | CryptographicAlgorithm::MLKEM_768
+                    | CryptographicAlgorithm::MLKEM_1024
+                    | CryptographicAlgorithm::X25519MLKEM768
+                    | CryptographicAlgorithm::X448MLKEM1024
+                    | CryptographicAlgorithm::ConfigurableKEM,
+                ) = pk.key_block.cryptographic_algorithm
+                {
+                    kms_bail!(KmsError::InvalidRequest(
+                        "KEM keys (ML-KEM, X25519MLKEM768, X448MLKEM1024, ConfigurableKEM) \
+                         do not support digital signatures and cannot issue self-signed \
+                         certificates. Provide issuer_private_key_id and \
+                         issuer_certificate_id pointing to a signing CA \
+                         (RSA/EC/ML-DSA/SLH-DSA)."
+                            .to_owned()
+                    ))
+                }
+            }
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
                 kmip_private_key_to_openssl(&keypair_data.private_key_object)?,
@@ -617,6 +645,81 @@ fn create_subject_key_identifier_value(subject: &Subject) -> KResult<Asn1Integer
         openssl::bn::BigNum::from_slice(&serial_number_bytes)?.as_ref(),
     )?;
     Ok(serial_number)
+}
+
+/// RFC 9881 (ML-DSA) / RFC 9935 (ML-KEM): extract the KMIP `CryptographicAlgorithm` from a
+/// Subject that represents a fresh keypair or standalone public key. Returns `None` for
+/// CSR-based and re-certification cases (they already carry RFC-compliant extensions).
+#[cfg(feature = "non-fips")]
+const fn subject_pqc_algorithm(subject: &Subject) -> Option<CryptographicAlgorithm> {
+    match subject {
+        Subject::PublicKeyAndSubjectName(_, owm, _) => {
+            if let Object::PublicKey(pk) = owm.object() {
+                pk.key_block.cryptographic_algorithm
+            } else {
+                None
+            }
+        }
+        Subject::KeypairAndSubjectName(_, keypair, _) => {
+            if let Object::PublicKey(pk) = &keypair.public_key_object {
+                pk.key_block.cryptographic_algorithm
+            } else {
+                None
+            }
+        }
+        Subject::X509Req(..) | Subject::Certificate(..) => None,
+    }
+}
+
+/// Build the RFC-mandated critical keyUsage extension for a PQC algorithm.
+///
+/// - RFC 9881 §4.2 (ML-DSA): `digitalSignature` (and MUST be critical)
+/// - draft-ietf-lamps-x509-slh-dsa §4.2 (SLH-DSA): `digitalSignature`
+/// - RFC 9935 §4.2 (ML-KEM, hybrid KEM): `keyEncipherment` only (MUST be critical)
+///
+/// Returns `None` for non-PQC algorithms (RSA, EC, `EdDSA`) — no automatic extension.
+#[cfg(feature = "non-fips")]
+fn pqc_rfc_key_usage(
+    algo: CryptographicAlgorithm,
+) -> KResult<Option<openssl::x509::X509Extension>> {
+    let extension = match algo {
+        // RFC 9881: ML-DSA certificates keyUsage MUST include digitalSignature
+        CryptographicAlgorithm::MLDSA_44
+        | CryptographicAlgorithm::MLDSA_65
+        | CryptographicAlgorithm::MLDSA_87
+        // draft-ietf-lamps-x509-slh-dsa: SLH-DSA signature algorithms
+        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => Some(
+            KeyUsage::new()
+                .critical()
+                .digital_signature()
+                .build()?,
+        ),
+        // RFC 9935: ML-KEM / hybrid KEM certificates keyUsage MUST be keyEncipherment only
+        CryptographicAlgorithm::MLKEM_512
+        | CryptographicAlgorithm::MLKEM_768
+        | CryptographicAlgorithm::MLKEM_1024
+        | CryptographicAlgorithm::X25519MLKEM768
+        | CryptographicAlgorithm::X448MLKEM1024
+        | CryptographicAlgorithm::ConfigurableKEM => Some(
+            KeyUsage::new()
+                .critical()
+                .key_encipherment()
+                .build()?,
+        ),
+        _ => None, // RSA, EC, EdDSA — not covered by RFC 9881/9935
+    };
+    Ok(extension)
 }
 
 fn build_and_sign_certificate(
@@ -672,6 +775,16 @@ fn build_and_sign_certificate(
         .into_iter()
         .try_for_each(|extension| x509_builder.append_extension(extension))?;
 
+    // RFC 9881 (ML-DSA/SLH-DSA) / RFC 9935 (ML-KEM): automatically add the RFC-mandated
+    // critical keyUsage extension for fresh PQC key certifications.
+    // CSR-based and re-certification cases already carry extensions from the original object.
+    #[cfg(feature = "non-fips")]
+    if let Some(algo) = subject_pqc_algorithm(subject) {
+        if let Some(ku_ext) = pqc_rfc_key_usage(algo)? {
+            x509_builder.append_extension(ku_ext)?;
+        }
+    }
+
     // Extensions supplied using an extension attribute
     // This requires knowing the issuer certificate
     if let Some(extensions) = attributes.remove_x509_extension_file(vendor_id) {
@@ -684,10 +797,12 @@ fn build_and_sign_certificate(
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
 
-    let digest = match subject.public_key()?.id() {
-        Id::ED25519 | Id::ED448 => MessageDigest::null(), // EdDSA does not use a digest
-        // Default to SHA-256 for other algorithms
-        _ => MessageDigest::sha256(),
+    // The digest must match the *issuer's signing key* type, not the subject key.
+    // RSA and EC (ECDSA) require an explicit external digest; EdDSA and PQC algorithms
+    // (ML-DSA, SLH-DSA) handle their digest internally and must receive a null digest.
+    let digest = match issuer.private_key().id() {
+        Id::RSA | Id::EC => MessageDigest::sha256(),
+        _ => MessageDigest::null(), // EdDSA, ML-DSA, SLH-DSA — internal digest
     };
 
     // Set the issuer name and private key
