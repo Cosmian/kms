@@ -45,6 +45,12 @@ test.describe("Locate filters", () => {
         await tagsInput.click();
         await page.keyboard.type("nonexistent-tag-xyz-9999");
         await page.keyboard.press("Enter");
+        // Wait for the tag chip to be committed to the Ant Design Select's React state
+        // before submitting. Without this wait, a React 18 state-batching race can cause
+        // the form to submit with an empty tags array, returning all objects instead of 0.
+        await page
+            .locator(".ant-select-selector .ant-select-selection-item-content", { hasText: "nonexistent-tag-xyz-9999" })
+            .waitFor({ state: "visible", timeout: 5_000 });
         const text = await submitAndWaitForResponse(page);
         // Should either show 0 results or an error
         expect(text).toMatch(/0 object|error|no object|not found/i);

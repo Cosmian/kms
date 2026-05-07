@@ -38,6 +38,9 @@ async fn test_view_access_structure() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         }
         .run(ctx.get_owner_client()),
     )
@@ -94,6 +97,9 @@ async fn test_edit_access_structure() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         }
         .run(ctx.get_owner_client()),
     )

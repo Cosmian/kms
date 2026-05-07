@@ -46,17 +46,14 @@ pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+pub(crate) static ONCE_SERVER_WITH_KEK_SOFTHSM2: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = OnceCell::const_new();
-/// Dedicated cell for the `test_privileged_users` test which needs both the owner
-/// *and* a second privileged identity (`user.privileged@acme.com`) in the list.
-/// A separate cell prevents the race with `privilege_bypass` tests that share
-/// `ONCE_SERVER_WITH_PRIVILEGED_USERS` but only register the owner.
 pub(crate) static ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS: OnceCell<TestsContext> =
     OnceCell::const_new();
 
 const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
 
-fn resolve_test_port(preferred_port: u16) -> Result<u16, KmsClientError> {
+pub fn resolve_test_port(preferred_port: u16) -> Result<u16, KmsClientError> {
     if TcpListener::bind(("127.0.0.1", preferred_port)).is_ok() {
         return Ok(preferred_port);
     }
@@ -617,41 +614,139 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
     })
 }
 
-/// Privileged users — two distinct identities in the list.
-///
-/// Uses a dedicated [`ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS`] cell so that
-/// tests requiring both the owner *and* `user.privileged@acme.com` never share
-/// state with tests that only register the owner (e.g. `privilege_bypass`).
-pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'static TestsContext {
-    let privileged_users = vec![
-        "owner.client@acme.com".to_owned(),
-        "user.privileged@acme.com".to_owned(),
-    ];
-    trace!("Starting test server with multi privileged users");
-    ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS
-        .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 7)?;
-            let db_config = get_db_config(port, None);
+/// Create a KEK in a temporary `SoftHSM2`-backed `SQLite` database, then return
+/// the workspace path and key UID.  Compatible with Linux and macOS
+/// (wherever `SoftHSM2` is installed).
+async fn create_kek_in_db_softhsm2() -> Result<(PathBuf, String), KmsClientError> {
+    let port = 20001_u16;
+    let workspace_dir = std::env::temp_dir().join(format!("kms_test_workspace_softhsm2_{port}"));
+    let kek_id = "hsm::0::softhsm2_kek";
 
-            let server_params = build_server_params_full(BuildServerParamsOptions {
+    let db_config = MainDBConfig {
+        database_type: Some("sqlite".to_owned()),
+        clear_database: true,
+        ..MainDBConfig::default()
+    };
+
+    let ctx = start_test_server_with_options(
+        db_config.clone(),
+        port,
+        AuthenticationOptions {
+            client: ClientAuthOptions {
+                jwt: JwtPolicy::AutoDefault,
+                ..Default::default()
+            },
+            server_params: Some(build_server_params_full(BuildServerParamsOptions {
+                workspace_dir: Some(workspace_dir.clone()),
                 db_config,
                 port,
-                tls: TlsMode::HttpsWithClientCa,
-                jwt: JwtAuth::Enabled,
-                privileged_users: Some(privileged_users),
+                tls: TlsMode::PlainHttp,
+                jwt: JwtAuth::Disabled,
+                hsm: Some(HsmConfig {
+                    hsm_model: "softhsm2".to_owned(),
+                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
+                    hsm_slot: vec![0],
+                    hsm_password: vec!["12345678".to_owned()],
+                }),
                 ..Default::default()
-            })
-            .map_err(|e| {
-                KmsClientError::Default(format!(
-                    "failed initializing the server config (multi privileged users): {e}"
-                ))
-            })?;
+            })?),
+        },
+        None,
+        None,
+    )
+    .await?;
 
+    // Create the KEK in SoftHSM2 (fast path: skip if it already exists).
+    let get_attr_request = GetAttributes {
+        unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
+        attribute_reference: None,
+    };
+    if ctx
+        .get_owner_client()
+        .get_attributes(get_attr_request)
+        .await
+        .is_err()
+    {
+        let create_request = Create {
+            object_type: ObjectType::SymmetricKey,
+            attributes: Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(256),
+                cryptographic_usage_mask: Some(
+                    CryptographicUsageMask::Encrypt
+                        | CryptographicUsageMask::Decrypt
+                        | CryptographicUsageMask::WrapKey
+                        | CryptographicUsageMask::UnwrapKey,
+                ),
+                object_type: Some(ObjectType::SymmetricKey),
+                unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
+                activation_date: Some(time_normalize()?),
+                ..Default::default()
+            },
+            protection_storage_masks: None,
+        };
+        ctx.get_owner_client().create(create_request).await?;
+    }
+
+    ctx.stop_server().await?;
+
+    Ok((workspace_dir, kek_id.to_owned()))
+}
+
+async fn create_server_params_with_kek_softhsm2(port: u16) -> Result<ServerParams, KmsClientError> {
+    let (workspace_dir, kek_id) = create_kek_in_db_softhsm2().await?;
+    trace!(
+        "SoftHSM2 key encryption key created: {kek_id} in workspace {}",
+        workspace_dir.display()
+    );
+
+    let db_config = get_db_config(port, Some(&workspace_dir));
+    let reuse_db_config = MainDBConfig {
+        clear_database: false,
+        ..db_config
+    };
+
+    build_server_params_full(BuildServerParamsOptions {
+        workspace_dir: Some(workspace_dir),
+        db_config: reuse_db_config,
+        port,
+        tls: TlsMode::PlainHttp,
+        jwt: JwtAuth::Disabled,
+        hsm: Some(HsmConfig {
+            hsm_model: "softhsm2".to_owned(),
+            hsm_admin: vec!["tech@cosmian.com".to_owned()],
+            hsm_slot: vec![0],
+            hsm_password: vec!["12345678".to_owned()],
+        }),
+        key_encryption_key: Some(kek_id),
+        ..Default::default()
+    })
+    .map_err(|e| {
+        KmsClientError::Default(format!(
+            "failed initializing the server config (softhsm2 KEK): {e}"
+        ))
+    })
+}
+
+/// KMS server backed by `SoftHSM2` with a key-encryption key (KEK).
+///
+/// All KMS objects are stored in `SQLite` wrapped by the KEK living in the HSM.
+/// Compatible with Linux and macOS wherever `SoftHSM2` is installed.
+///
+/// # Panics
+/// Aborts the process if the server fails to start.
+#[allow(clippy::unwrap_used)]
+pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static TestsContext {
+    trace!("Starting test server with SoftHSM2 HSM and KEK");
+    ONCE_SERVER_WITH_KEK_SOFTHSM2
+        .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 7)?;
+            let server_params = create_server_params_with_kek_softhsm2(port).await?;
             start_from_server_params(server_params).await
         })
         .await
         .unwrap_or_else(|e| {
-            error!("failed to start test server with multi privileged users: {e}");
+            error!("failed to start test server with softhsm2 KEK: {e}");
             std::process::abort();
         })
 }
@@ -686,6 +781,45 @@ pub async fn start_default_test_kms_server_with_privileged_users(
         .await
         .unwrap_or_else(|e| {
             error!("failed to start test server with privileged users: {e}");
+            std::process::abort();
+        })
+}
+
+/// Privileged users — two distinct identities in the list.
+///
+/// Uses a dedicated [`ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS`] cell so that
+/// tests requiring both the owner *and* `user.privileged@acme.com` never share
+/// state with tests that only register the owner (e.g. `privilege_bypass`).
+pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'static TestsContext {
+    let privileged_users = vec![
+        "owner.client@acme.com".to_owned(),
+        "user.privileged@acme.com".to_owned(),
+    ];
+    trace!("Starting test server with multi privileged users");
+    ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS
+        .get_or_try_init(|| async move {
+            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 8)?;
+            let db_config = get_db_config(port, None);
+
+            let server_params = build_server_params_full(BuildServerParamsOptions {
+                db_config,
+                port,
+                tls: TlsMode::HttpsWithClientCa,
+                jwt: JwtAuth::Enabled,
+                privileged_users: Some(privileged_users),
+                ..Default::default()
+            })
+            .map_err(|e| {
+                KmsClientError::Default(format!(
+                    "failed initializing the server config (multi privileged users): {e}"
+                ))
+            })?;
+
+            start_from_server_params(server_params).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with multi privileged users: {e}");
             std::process::abort();
         })
 }
@@ -797,6 +931,8 @@ pub struct BuildServerParamsOptions {
     pub non_revocable_key_id: Option<Vec<String>>,
     pub hsm: Option<HsmConfig>,
     pub key_encryption_key: Option<String>,
+    /// Seconds between auto-rotation cron checks.  0 = disabled (default).
+    pub auto_rotation_check_interval_secs: u64,
 }
 
 impl std::fmt::Debug for BuildServerParamsOptions {
@@ -816,6 +952,10 @@ impl std::fmt::Debug for BuildServerParamsOptions {
                 "key_encryption_key",
                 &self.key_encryption_key.as_ref().map(|_| "<provided>"),
             )
+            .field(
+                "auto_rotation_check_interval_secs",
+                &self.auto_rotation_check_interval_secs,
+            )
             .finish()
     }
 }
@@ -834,6 +974,7 @@ impl Default for BuildServerParamsOptions {
             non_revocable_key_id: None,
             hsm: None,
             key_encryption_key: None,
+            auto_rotation_check_interval_secs: 0,
         }
     }
 }
@@ -1067,6 +1208,11 @@ pub fn build_server_params_full(
             Some(vec!["All"].into_iter().map(String::from).collect())
         } else {
             None
+        },
+        auto_rotation_check_interval_secs: if opts.auto_rotation_check_interval_secs > 0 {
+            opts.auto_rotation_check_interval_secs
+        } else {
+            10
         },
         ..ClapConfig::default()
     };

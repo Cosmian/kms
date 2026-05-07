@@ -7,6 +7,7 @@ pub mod core;
 pub mod cron;
 pub mod error;
 pub mod middlewares;
+pub mod notifications;
 pub mod openssl_providers;
 pub mod result;
 pub mod routes;

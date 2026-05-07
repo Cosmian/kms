@@ -3,7 +3,7 @@ use cosmian_kms_client::KmsClient;
 
 use self::{
     create_key::CreateKeyAction, destroy_key::DestroyKeyAction, rekey::ReKeyAction,
-    revoke_key::RevokeKeyAction,
+    revoke_key::RevokeKeyAction, set_rotation_policy::SetRotationPolicyAction,
 };
 use crate::{
     actions::shared::{
@@ -17,12 +17,14 @@ pub mod create_key;
 pub mod destroy_key;
 pub mod rekey;
 pub mod revoke_key;
+pub mod set_rotation_policy;
 
 /// Create, destroy, import, and export symmetric keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
     Create(CreateKeyAction),
     ReKey(ReKeyAction),
+    SetRotationPolicy(SetRotationPolicyAction),
     Export(ExportSecretDataOrKeyAction),
     Import(ImportSecretDataOrKeyAction),
     Wrap(WrapSecretDataOrKeyAction),
@@ -38,6 +40,9 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::ReKey(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::SetRotationPolicy(action) => {
                 action.run(kms_rest_client).await?;
             }
             Self::Export(action) => {

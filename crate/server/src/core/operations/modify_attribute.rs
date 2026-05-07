@@ -389,6 +389,16 @@ pub(crate) async fn modify_attribute(
         }
         Attribute::RotateInterval(rotate_interval) => {
             trace!("ModifyAttribute: Rotate Interval: {}", rotate_interval);
+            // 0 disables auto-rotation; otherwise enforce a minimum of 1 day (86400s).
+            // The `insecure` feature (dev/test only) skips this check so that
+            // fast-cycling lifecycle tests can use tiny intervals.
+            #[cfg(not(feature = "insecure"))]
+            if rotate_interval != 0 && rotate_interval < 86400 {
+                return Err(KmsError::InvalidRequest(format!(
+                    "ModifyAttribute: rotate_interval must be 0 (disabled) or at least 86400 \
+                     (1 day); got {rotate_interval}"
+                )));
+            }
             attributes.rotate_interval = Some(rotate_interval);
         }
         Attribute::RotateLatest(rotate_latest) => {

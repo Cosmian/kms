@@ -103,7 +103,8 @@ allow = [
   "Unicode-3.0",
   "CC0-1.0",
   "BUSL-1.1",
-  "GPL-3.0-or-later", # legacy dependency note
+  "0BSD",                           # quoted_printable (transitive dep of lettre)
+  "GPL-3.0-or-later",               # legacy dependency note
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

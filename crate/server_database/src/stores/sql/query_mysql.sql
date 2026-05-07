@@ -176,3 +176,73 @@ FROM tags
 WHERE tag IN (@TAGS)
 GROUP BY id
 HAVING COUNT(DISTINCT tag) = ?;
+
+-- name: create-table-notifications
+CREATE TABLE IF NOT EXISTS notifications
+(
+    id         BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id    VARCHAR(255) NOT NULL,
+    event_type VARCHAR(64)  NOT NULL,
+    message    TEXT         NOT NULL,
+    object_id  VARCHAR(255),
+    created_at VARCHAR(64)  NOT NULL,
+    read_at    VARCHAR(64)
+);
+
+-- name: clean-table-notifications
+DELETE FROM notifications;
+
+-- name: health-check
+SELECT 1;
+
+-- name: find-wrapped-by-objects
+SELECT DISTINCT objects.id, objects.state, objects.attributes
+FROM objects
+LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
+WHERE (objects.owner = ? OR read_access.userid = ?)
+  AND (
+    JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ?
+    OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ?
+    OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ?
+    OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ?
+    OR JSON_UNQUOTE(JSON_EXTRACT(objects.object, '$.PGPKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier')) = ?
+  );
+
+-- name: find-due-for-rotation
+SELECT objects.id, objects.attributes
+FROM objects
+WHERE objects.state = 'Active'
+  AND JSON_EXTRACT(objects.attributes, '$.RotateInterval') IS NOT NULL
+  AND CAST(JSON_UNQUOTE(JSON_EXTRACT(objects.attributes, '$.RotateInterval')) AS UNSIGNED) > 0;
+
+-- name: insert-notification
+INSERT INTO notifications (user_id, event_type, message, object_id, created_at)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: last-insert-id
+SELECT LAST_INSERT_ID();
+
+-- name: list-notifications
+SELECT id, user_id, event_type, message, object_id, created_at, read_at
+FROM notifications WHERE user_id = ?
+ORDER BY (read_at IS NULL) DESC, created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: count-unread-notifications
+SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL;
+
+-- name: mark-notification-read
+UPDATE notifications SET read_at = ?
+WHERE id = ? AND user_id = ? AND read_at IS NULL;
+
+-- name: row-count
+SELECT ROW_COUNT();
+
+-- name: mark-all-notifications-read
+UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL;
+
+-- name: set-session-isolation-level
+SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+-- name: set-session-lock-timeout
+SET SESSION innodb_lock_wait_timeout=10;

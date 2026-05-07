@@ -322,6 +322,16 @@ pub(crate) async fn set_attribute(
         }
         Attribute::RotateInterval(rotate_interval) => {
             trace!("Set Attribute: Rotate Interval: {}", rotate_interval);
+            // 0 disables auto-rotation; otherwise enforce a minimum of 1 day (86400s).
+            // The `insecure` feature (dev/test only) skips this check so that
+            // fast-cycling lifecycle tests can use tiny intervals.
+            #[cfg(not(feature = "insecure"))]
+            if rotate_interval != 0 && rotate_interval < 86400 {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: rotate_interval must be 0 (disabled) or at least 86400 \
+                     (1 day); got {rotate_interval}"
+                )));
+            }
             attributes.rotate_interval = Some(rotate_interval);
         }
         Attribute::RotateLatest(rotate_latest) => {
@@ -376,9 +386,14 @@ pub(crate) async fn set_attribute(
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = owm.object_mut().attributes_mut()?;
-            *object_attributes = attributes.clone();
-            debug!("Set Object Attribute: {}", object_attributes);
+            // For wrapped keys, `attributes_mut()` returns an error because the key
+            // block holds a ByteString (ciphertext), not a Structure. In that case,
+            // skip the embedded key-block update; the attribute is persisted in the
+            // metadata column by `update_object` below.
+            if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
+                *object_attributes = attributes.clone();
+                debug!("Set Object Attribute: {}", object_attributes);
+            }
         }
         _ => {
             trace!(
