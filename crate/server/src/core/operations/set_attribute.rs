@@ -323,9 +323,9 @@ pub(crate) async fn set_attribute(
         Attribute::RotateInterval(rotate_interval) => {
             trace!("Set Attribute: Rotate Interval: {}", rotate_interval);
             // 0 disables auto-rotation; otherwise enforce a minimum of 1 day (86400s).
-            // The `insecure` feature (dev/test only) skips this check so that
+            // The `insecure` feature and test builds skip this check so that
             // fast-cycling lifecycle tests can use tiny intervals.
-            #[cfg(not(feature = "insecure"))]
+            #[cfg(not(any(feature = "insecure", test)))]
             if rotate_interval != 0 && rotate_interval < 86400 {
                 return Err(KmsError::InvalidRequest(format!(
                     "SetAttribute: rotate_interval must be 0 (disabled) or at least 86400 \
