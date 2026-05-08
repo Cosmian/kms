@@ -1,3 +1,4 @@
+#![allow(clippy::manual_let_else, clippy::option_if_let_else)]
 /// Windows CNG Key Storage Provider (KSP) function table implementation.
 ///
 /// This module defines the `NCRYPT_KEY_STORAGE_FUNCTION_TABLE` exported via
@@ -183,7 +184,7 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> KspResult<String> {
     }
     #[allow(clippy::as_conversions)]
     let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    String::from_utf16(slice).map_err(|_| KspError::StringConversion)
+    String::from_utf16(slice).map_err(|_e| KspError::StringConversion)
 }
 
 /// Parse a CNG hash algorithm name (wide string) into a `HashingAlgorithm`.
@@ -310,7 +311,7 @@ unsafe extern "system" fn open_key(
 
     let ctx = CngKeyCtx::new_persisted(
         Arc::clone(&prov.client),
-        priv_uid.clone(),
+        priv_uid,
         None,
         algorithm,
         name,
@@ -656,6 +657,7 @@ unsafe extern "system" fn sign_hash(
     pcb_result: *mut u32,
     dw_flags: u32,
 ) -> SecurityStatus {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
     if pb_hash_value.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
@@ -669,29 +671,27 @@ unsafe extern "system" fn sign_hash(
     };
     let hash = unsafe { std::slice::from_raw_parts(pb_hash_value, cb_hash_value as usize) };
 
-    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
-
     // dw_flags: BCRYPT_PAD_PSS = 0x8, BCRYPT_PAD_PKCS1 = 0x2
     let (padding, hash_alg, salt_len) = match dw_flags & 0xF {
         x if x == BCRYPT_PAD_PSS => {
             // Read hash algorithm and salt length from BCRYPT_PSS_PADDING_INFO
-            let (alg, salt) = if !pv_padding_info.is_null() {
-                let info = unsafe { &*(pv_padding_info as *const BcryptPssPaddingInfo) };
-                let alg = unsafe { parse_hash_alg_from_wide(info.psz_alg_id) };
-                (alg, Some(info.cb_salt as i32))
+            let (alg, salt) = if pv_padding_info.is_null() {
+                (None, Some(i32::try_from(hash.len()).unwrap_or(0)))
             } else {
-                (None, Some(hash.len() as i32))
+                let info = unsafe { &*(pv_padding_info.cast::<BcryptPssPaddingInfo>()) };
+                let alg = unsafe { parse_hash_alg_from_wide(info.psz_alg_id) };
+                (alg, Some(i32::try_from(info.cb_salt).unwrap_or(0)))
             };
             let alg = alg.unwrap_or_else(|| hash_alg_from_digest_len(hash.len()));
             (Some(PaddingMethod::PSS), alg, salt)
         }
         x if x == BCRYPT_PAD_PKCS1 => {
             // Read hash algorithm from BCRYPT_PKCS1_PADDING_INFO
-            let alg = if !pv_padding_info.is_null() {
-                let info = unsafe { &*(pv_padding_info as *const BcryptPkcs1PaddingInfo) };
-                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
-            } else {
+            let alg = if pv_padding_info.is_null() {
                 None
+            } else {
+                let info = unsafe { &*(pv_padding_info.cast::<BcryptPkcs1PaddingInfo>()) };
+                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
             };
             let alg = alg.unwrap_or_else(|| hash_alg_from_digest_len(hash.len()));
             (Some(PaddingMethod::PKCS1v15), alg, None)
@@ -724,6 +724,7 @@ unsafe extern "system" fn verify_signature(
     cb_signature: u32,
     dw_flags: u32,
 ) -> SecurityStatus {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
     if pb_hash_value.is_null() || pb_signature.is_null() {
         return NTE_INVALID_PARAMETER;
     }
@@ -742,26 +743,24 @@ unsafe extern "system" fn verify_signature(
     let hash = unsafe { std::slice::from_raw_parts(pb_hash_value, cb_hash_value as usize) };
     let signature = unsafe { std::slice::from_raw_parts(pb_signature, cb_signature as usize) };
 
-    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::PaddingMethod;
-
     let (padding, hash_alg, salt_len) = match dw_flags & 0xF {
         x if x == BCRYPT_PAD_PSS => {
-            let (alg, salt) = if !pv_padding_info.is_null() {
-                let info = unsafe { &*(pv_padding_info as *const BcryptPssPaddingInfo) };
-                let alg = unsafe { parse_hash_alg_from_wide(info.psz_alg_id) };
-                (alg, Some(info.cb_salt as i32))
+            let (alg, salt) = if pv_padding_info.is_null() {
+                (None, Some(i32::try_from(hash.len()).unwrap_or(0)))
             } else {
-                (None, Some(hash.len() as i32))
+                let info = unsafe { &*(pv_padding_info.cast::<BcryptPssPaddingInfo>()) };
+                let alg = unsafe { parse_hash_alg_from_wide(info.psz_alg_id) };
+                (alg, Some(i32::try_from(info.cb_salt).unwrap_or(0)))
             };
             let alg = alg.unwrap_or_else(|| hash_alg_from_digest_len(hash.len()));
             (Some(PaddingMethod::PSS), alg, salt)
         }
         x if x == BCRYPT_PAD_PKCS1 => {
-            let alg = if !pv_padding_info.is_null() {
-                let info = unsafe { &*(pv_padding_info as *const BcryptPkcs1PaddingInfo) };
-                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
-            } else {
+            let alg = if pv_padding_info.is_null() {
                 None
+            } else {
+                let info = unsafe { &*(pv_padding_info.cast::<BcryptPkcs1PaddingInfo>()) };
+                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
             };
             let alg = alg.unwrap_or_else(|| hash_alg_from_digest_len(hash.len()));
             (Some(PaddingMethod::PKCS1v15), alg, None)
@@ -806,6 +805,9 @@ unsafe extern "system" fn encrypt(
     pcb_result: *mut u32,
     dw_flags: u32,
 ) -> SecurityStatus {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::{
+        HashingAlgorithm, PaddingMethod,
+    };
     if pb_input.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
@@ -820,17 +822,14 @@ unsafe extern "system" fn encrypt(
     };
     let plaintext = unsafe { std::slice::from_raw_parts(pb_input, cb_input as usize) };
 
-    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::{
-        HashingAlgorithm, PaddingMethod,
-    };
     let (padding, hash_alg) = match dw_flags & 0xF {
         x if x == BCRYPT_PAD_OAEP => {
             // Read hash algorithm from BCRYPT_OAEP_PADDING_INFO
-            let alg = if !pv_padding_info.is_null() {
-                let info = unsafe { &*(pv_padding_info as *const BcryptOaepPaddingInfo) };
-                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
-            } else {
+            let alg = if pv_padding_info.is_null() {
                 None
+            } else {
+                let info = unsafe { &*(pv_padding_info.cast::<BcryptOaepPaddingInfo>()) };
+                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
             };
             (
                 PaddingMethod::OAEP,
@@ -862,6 +861,9 @@ unsafe extern "system" fn decrypt(
     pcb_result: *mut u32,
     dw_flags: u32,
 ) -> SecurityStatus {
+    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::{
+        HashingAlgorithm, PaddingMethod,
+    };
     if pb_input.is_null() || pcb_result.is_null() {
         return NTE_INVALID_PARAMETER;
     }
@@ -875,16 +877,13 @@ unsafe extern "system" fn decrypt(
     };
     let ciphertext = unsafe { std::slice::from_raw_parts(pb_input, cb_input as usize) };
 
-    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::{
-        HashingAlgorithm, PaddingMethod,
-    };
     let (padding, hash_alg) = match dw_flags & 0xF {
         x if x == BCRYPT_PAD_OAEP => {
-            let alg = if !pv_padding_info.is_null() {
-                let info = unsafe { &*(pv_padding_info as *const BcryptOaepPaddingInfo) };
-                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
-            } else {
+            let alg = if pv_padding_info.is_null() {
                 None
+            } else {
+                let info = unsafe { &*(pv_padding_info.cast::<BcryptOaepPaddingInfo>()) };
+                unsafe { parse_hash_alg_from_wide(info.psz_alg_id) }
             };
             (
                 PaddingMethod::OAEP,
@@ -999,10 +998,6 @@ unsafe extern "system" fn enum_algorithms(
     pp_alg_list: *mut *mut NCryptAlgorithmName,
     _dw_flags: u32,
 ) -> SecurityStatus {
-    if pdw_alg_count.is_null() || pp_alg_list.is_null() {
-        return NTE_INVALID_PARAMETER;
-    }
-
     // Algorithm definitions: (name, operations)
     // Operations: SIGN=1, DECRYPT=2 (asymmetric encryption), ENCRYPT=4
     struct AlgDef {
@@ -1025,6 +1020,9 @@ unsafe extern "system" fn enum_algorithms(
     static ECDH_P384_W: &[u16] = &[0x45, 0x43, 0x44, 0x48, 0x5F, 0x50, 0x33, 0x38, 0x34, 0x00]; // "ECDH_P384\0"
     static ECDH_P521_W: &[u16] = &[0x45, 0x43, 0x44, 0x48, 0x5F, 0x50, 0x35, 0x32, 0x31, 0x00]; // "ECDH_P521\0"
 
+    if pdw_alg_count.is_null() || pp_alg_list.is_null() {
+        return NTE_INVALID_PARAMETER;
+    }
     let all_algs: &[AlgDef] = &[
         AlgDef {
             name: RSA_W,
@@ -1078,7 +1076,8 @@ unsafe extern "system" fn enum_algorithms(
     let count = filtered.len();
     let layout = std::alloc::Layout::array::<NCryptAlgorithmName>(count)
         .unwrap_or(std::alloc::Layout::new::<NCryptAlgorithmName>());
-    let ptr = unsafe { std::alloc::alloc_zeroed(layout) } as *mut NCryptAlgorithmName;
+    #[allow(clippy::cast_ptr_alignment)]
+    let ptr = unsafe { std::alloc::alloc_zeroed(layout).cast::<NCryptAlgorithmName>() };
     if ptr.is_null() {
         return NTE_FAIL;
     }
@@ -1086,7 +1085,7 @@ unsafe extern "system" fn enum_algorithms(
     for (i, alg) in filtered.iter().enumerate() {
         unsafe {
             let entry = &mut *ptr.add(i);
-            entry.pszName = alg.name.as_ptr() as *mut u16;
+            entry.pszName = alg.name.as_ptr().cast_mut();
             entry.dwClass = alg.ops;
             entry.dwAlgOperations = alg.ops;
             entry.dwFlags = 0;
@@ -1094,7 +1093,7 @@ unsafe extern "system" fn enum_algorithms(
     }
 
     unsafe {
-        *pdw_alg_count = count as u32;
+        *pdw_alg_count = u32::try_from(count).unwrap_or(u32::MAX);
         *pp_alg_list = ptr;
     }
     ERROR_SUCCESS
@@ -1118,11 +1117,11 @@ unsafe extern "system" fn enum_keys(
     };
 
     // Use enum state as index into a heap-allocated Vec of names
-    let idx_ptr = pp_enum_state as *mut *mut usize;
+    let idx_ptr = pp_enum_state.cast::<*mut usize>();
     let idx: usize = if idx_ptr.is_null() || unsafe { *idx_ptr }.is_null() {
         0
     } else {
-        unsafe { *(*idx_ptr as *mut usize) }
+        unsafe { **idx_ptr }
     };
 
     let keys = match backend::list_cng_keys(&prov.client) {
@@ -1144,7 +1143,8 @@ unsafe extern "system" fn enum_keys(
     // callers call NCryptFreeBuffer which is a no-op in our impl.
     let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
     let leaked = wide.into_boxed_slice();
-    let ptr = Box::into_raw(leaked) as *mut NCryptKeyName;
+    #[allow(clippy::cast_ptr_alignment)]
+    let ptr = Box::into_raw(leaked).cast::<NCryptKeyName>();
     unsafe {
         *pp_key_name = ptr;
     }
@@ -1153,7 +1153,7 @@ unsafe extern "system" fn enum_keys(
     if !idx_ptr.is_null() {
         let new_idx = Box::new(idx + 1);
         unsafe {
-            *idx_ptr = Box::into_raw(new_idx) as *mut usize;
+            *idx_ptr = Box::into_raw(new_idx);
         }
     }
 
@@ -1298,6 +1298,7 @@ unsafe extern "system" fn verify_claim(
 #[cfg(windows)]
 fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm{
     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
+#[allow(clippy::match_same_arms)]
     match len {
         20 => HashingAlgorithm::SHA1,
         28 => HashingAlgorithm::SHA224,

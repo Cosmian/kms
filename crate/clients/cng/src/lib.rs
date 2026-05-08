@@ -173,7 +173,7 @@ pub unsafe extern "system" fn GetKeyStorageInterface(
     cosmian_logger::debug!("CNG KSP GetKeyStorageInterface called");
 
     unsafe {
-        *pp_function_table = &provider::KSP_FUNCTION_TABLE;
+        *pp_function_table = std::ptr::addr_of!(provider::KSP_FUNCTION_TABLE);
     }
     crate::error::ERROR_SUCCESS
 }

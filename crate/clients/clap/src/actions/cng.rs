@@ -62,7 +62,7 @@ const CNG_KSP_TAG: &str = "cng-ksp";
 // ─── Register ─────────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, clippy::ptr_arg)]
 fn register(dll: &PathBuf) -> KmsCliResult<()> {
     let dll_str = dll
         .to_str()
@@ -80,6 +80,7 @@ fn register(dll: &PathBuf) -> KmsCliResult<()> {
 }
 
 #[cfg(not(windows))]
+#[allow(clippy::ptr_arg)]
 fn register(_dll: &PathBuf) -> KmsCliResult<()> {
     Err(KmsCliError::Default(
         "CNG KSP registration is only supported on Windows".to_owned(),
@@ -106,7 +107,7 @@ fn unregister() -> KmsCliResult<()> {
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 #[cfg(windows)]
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, clippy::unnecessary_wraps)]
 fn status() -> KmsCliResult<()> {
     if ksp_is_registered() {
         println!("Cosmian KMS CNG KSP: REGISTERED");
@@ -190,8 +191,8 @@ fn write_ksp_registry(dll_path: &str) -> Result<(), String> {
             REG_OPTION_NON_VOLATILE,
             KEY_WRITE,
             std::ptr::null(),
-            &mut hkey,
-            &mut disposition,
+            &raw mut hkey,
+            &raw mut disposition,
         );
         if status != 0 {
             return Err(format!(
@@ -252,7 +253,7 @@ fn delete_ksp_registry() -> Result<(), String> {
             base_w.as_ptr(),
             0,
             KEY_ALL_ACCESS,
-            &mut hroot,
+            &raw mut hroot,
         );
         if status != 0 {
             return Err(format!(
@@ -289,7 +290,7 @@ fn ksp_is_registered() -> bool {
             key_path_w.as_ptr(),
             0,
             KEY_READ,
-            &mut hkey,
+            &raw mut hkey,
         );
         if status != 0 {
             return false;

@@ -60,8 +60,8 @@ pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
             REG_OPTION_NON_VOLATILE,
             KEY_WRITE,
             std::ptr::null(),
-            &mut hkey,
-            &mut disposition,
+            &raw mut hkey,
+            &raw mut disposition,
         );
         if status != 0 {
             return Err(format!(
@@ -121,7 +121,7 @@ pub fn unregister_ksp() -> Result<(), String> {
             key_path.as_ptr(),
             0,
             KEY_ALL_ACCESS,
-            &mut hroot,
+            &raw mut hroot,
         );
         if status != 0 {
             return Err(format!(
@@ -155,7 +155,7 @@ pub fn is_ksp_registered() -> bool {
             key_path_w.as_ptr(),
             0,
             KEY_READ,
-            &mut hkey,
+            &raw mut hkey,
         );
         if status != 0 {
             return false;

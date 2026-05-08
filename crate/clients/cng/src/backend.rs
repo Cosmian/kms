@@ -25,7 +25,8 @@ use ckms::{
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicDomainParameters,
                     CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType,
-                    RecommendedCurve, UniqueIdentifier, ValidityIndicator, VendorAttributeReference,
+                    RecommendedCurve, UniqueIdentifier, ValidityIndicator,
+                    VendorAttributeReference,
                 },
             },
             time_normalize,

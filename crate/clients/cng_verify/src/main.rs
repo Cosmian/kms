@@ -1,4 +1,4 @@
-//! # Cosmian CNG KSP Verification Tool
+﻿//! # Cosmian CNG KSP Verification Tool
 //!
 //! Standalone binary that loads `cosmian_kms_cng_ksp.dll` at runtime and
 //! exercises the KSP through the standard Windows `NCrypt` API surface — exactly
@@ -59,6 +59,7 @@ mod win {
     // ── NCrypt/SECURITY_STATUS constants ─────────────────────────────────
 
     const ERROR_SUCCESS: i32 = 0;
+    #[allow(clippy::cast_possible_wrap, clippy::as_conversions)]
     const NTE_NO_KEY: i32 = 0x8009_0008_u32 as i32;
 
     // BCrypt padding flags
@@ -118,7 +119,7 @@ mod win {
         to_wide("ECDSA_P521")
     }
 
-    /// The NCrypt property name for key length ("Length\0").
+    /// The `NCrypt` property name for key length (`"Length\0"`).
     fn ncrypt_length_property() -> Vec<u16> {
         to_wide("Length")
     }
@@ -134,6 +135,14 @@ mod win {
     impl KspDll {
         /// Load the DLL and obtain the function table.
         pub(crate) fn load(dll_path: &str) -> Result<Self, String> {
+            // GetKeyStorageInterface function pointer type (declared before any let-bindings
+            // to avoid the `items_after_statements` lint).
+            type GetKeyStorageInterfaceFn = unsafe extern "system" fn(
+                *const u16,
+                *mut *const NCRYPT_KEY_STORAGE_FUNCTION_TABLE,
+                u32,
+            ) -> i32;
+
             let wide_path = to_wide(dll_path);
             let handle = unsafe { LoadLibraryW(wide_path.as_ptr()) };
             if handle.is_null() {
@@ -150,16 +159,11 @@ mod win {
             })?;
 
             // Cast to the GetKeyStorageInterface signature
-            type GetKeyStorageInterfaceFn = unsafe extern "system" fn(
-                *const u16,
-                *mut *const NCRYPT_KEY_STORAGE_FUNCTION_TABLE,
-                u32,
-            ) -> i32;
             let get_interface: GetKeyStorageInterfaceFn = unsafe { std::mem::transmute(proc) };
 
             let mut table_ptr: *const NCRYPT_KEY_STORAGE_FUNCTION_TABLE = ptr::null();
             let provider_name = to_wide("Cosmian KMS Key Storage Provider");
-            let status = unsafe { get_interface(provider_name.as_ptr(), &mut table_ptr, 0) };
+            let status = unsafe { get_interface(provider_name.as_ptr(), &raw mut table_ptr, 0) };
             if status != ERROR_SUCCESS || table_ptr.is_null() {
                 unsafe { FreeLibrary(handle) };
                 return Err(format!("GetKeyStorageInterface returned 0x{status:08X}"));
@@ -178,12 +182,12 @@ mod win {
 
     // ── NCrypt helper wrappers ───────────────────────────────────────────
 
-    /// Open the provider, returning the NCRYPT_PROV_HANDLE.
+    /// Open the provider, returning the `NCRYPT_PROV_HANDLE`.
     pub(crate) fn open_provider(dll: &KspDll) -> Result<usize, String> {
         let open_fn = dll.table.OpenProvider.ok_or("OpenProvider not in table")?;
         let provider_name = to_wide("Cosmian KMS Key Storage Provider");
         let mut h_provider: usize = 0;
-        let status = unsafe { open_fn(&mut h_provider, provider_name.as_ptr(), 0) };
+        let status = unsafe { open_fn(&raw mut h_provider, provider_name.as_ptr(), 0) };
         if status != ERROR_SUCCESS {
             return Err(format!("OpenProvider: 0x{status:08X}"));
         }
@@ -213,7 +217,7 @@ mod win {
         let status = unsafe {
             create_fn(
                 h_provider,
-                &mut h_key,
+                &raw mut h_key,
                 alg.as_ptr(),
                 wide_name.as_ptr(),
                 0,
@@ -278,7 +282,7 @@ mod win {
                 ptr::null(),     // pParameterList
                 ptr::null_mut(), // pb_output (null for size query)
                 0,               // cb_output
-                &mut cb_result,
+                &raw mut cb_result,
                 0, // flags
             )
         };
@@ -287,7 +291,7 @@ mod win {
         }
 
         // Second call: get data
-        let mut buf = vec![0u8; cb_result as usize];
+        let mut buf = vec![0_u8; usize::try_from(cb_result).map_err(|e| format!("buffer size conversion failed: {e}"))?];
         let status = unsafe {
             export_fn(
                 h_provider,
@@ -297,14 +301,14 @@ mod win {
                 ptr::null(),
                 buf.as_mut_ptr(),
                 cb_result,
-                &mut cb_result,
+                &raw mut cb_result,
                 0,
             )
         };
         if status != ERROR_SUCCESS {
             return Err(format!("ExportKey (data): 0x{status:08X}"));
         }
-        buf.truncate(cb_result as usize);
+        buf.truncate(usize::try_from(cb_result).map_err(|e| format!("buffer size conversion failed: {e}"))?);
         Ok(buf)
     }
 
@@ -327,12 +331,12 @@ mod win {
             sign_fn(
                 h_provider,
                 h_key,
-                &padding_info as *const _ as *const _,
+                (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 ptr::null_mut(),
                 0,
-                &mut cb_sig,
+                &raw mut cb_sig,
                 BCRYPT_PAD_PKCS1,
             )
         };
@@ -340,24 +344,24 @@ mod win {
             return Err(format!("SignHash PKCS1 (size): 0x{status:08X}"));
         }
 
-        let mut sig = vec![0u8; cb_sig as usize];
+        let mut sig = vec![0_u8; usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?];
         let status = unsafe {
             sign_fn(
                 h_provider,
                 h_key,
-                &padding_info as *const _ as *const _,
+                (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 sig.as_mut_ptr(),
                 cb_sig,
-                &mut cb_sig,
+                &raw mut cb_sig,
                 BCRYPT_PAD_PKCS1,
             )
         };
         if status != ERROR_SUCCESS {
             return Err(format!("SignHash PKCS1 (sign): 0x{status:08X}"));
         }
-        sig.truncate(cb_sig as usize);
+        sig.truncate(usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?);
         Ok(sig)
     }
 
@@ -381,12 +385,12 @@ mod win {
             sign_fn(
                 h_provider,
                 h_key,
-                &padding_info as *const _ as *const _,
+                (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 ptr::null_mut(),
                 0,
-                &mut cb_sig,
+                &raw mut cb_sig,
                 BCRYPT_PAD_PSS,
             )
         };
@@ -394,24 +398,24 @@ mod win {
             return Err(format!("SignHash PSS (size): 0x{status:08X}"));
         }
 
-        let mut sig = vec![0u8; cb_sig as usize];
+        let mut sig = vec![0_u8; usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?];
         let status = unsafe {
             sign_fn(
                 h_provider,
                 h_key,
-                &padding_info as *const _ as *const _,
+                (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 sig.as_mut_ptr(),
                 cb_sig,
-                &mut cb_sig,
+                &raw mut cb_sig,
                 BCRYPT_PAD_PSS,
             )
         };
         if status != ERROR_SUCCESS {
             return Err(format!("SignHash PSS (sign): 0x{status:08X}"));
         }
-        sig.truncate(cb_sig as usize);
+        sig.truncate(usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?);
         Ok(sig)
     }
 
@@ -432,10 +436,10 @@ mod win {
                 h_key,
                 ptr::null(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 ptr::null_mut(),
                 0,
-                &mut cb_sig,
+                &raw mut cb_sig,
                 0, // no padding flag
             )
         };
@@ -446,24 +450,24 @@ mod win {
         // Pad the buffer: ECDSA signatures have variable DER length,
         // and the second sign call may produce a slightly larger signature.
         let buf_size = cb_sig + 16;
-        let mut sig = vec![0u8; buf_size as usize];
+        let mut sig = vec![0_u8; usize::try_from(buf_size).map_err(|e| format!("buffer size conversion failed: {e}"))?];
         let status = unsafe {
             sign_fn(
                 h_provider,
                 h_key,
                 ptr::null(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 sig.as_mut_ptr(),
                 buf_size,
-                &mut cb_sig,
+                &raw mut cb_sig,
                 0,
             )
         };
         if status != ERROR_SUCCESS {
             return Err(format!("SignHash ECDSA (sign): 0x{status:08X}"));
         }
-        sig.truncate(cb_sig as usize);
+        sig.truncate(usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?);
         Ok(sig)
     }
 
@@ -489,11 +493,11 @@ mod win {
             verify_fn(
                 h_provider,
                 h_key,
-                &padding_info as *const _ as *const _,
+                (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 signature.as_ptr(),
-                signature.len() as u32,
+                u32::try_from(signature.len()).map_err(|e| format!("signature length conversion failed: {e}"))?,
                 BCRYPT_PAD_PKCS1,
             )
         };
@@ -519,9 +523,9 @@ mod win {
                 h_key,
                 ptr::null(),
                 hash.as_ptr(),
-                hash.len() as u32,
+                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
                 signature.as_ptr(),
-                signature.len() as u32,
+                u32::try_from(signature.len()).map_err(|e| format!("signature length conversion failed: {e}"))?,
                 0,
             )
         };
@@ -550,11 +554,11 @@ mod win {
                 h_provider,
                 h_key,
                 plaintext.as_ptr(),
-                plaintext.len() as u32,
-                &padding_info as *const _ as *const _,
+                u32::try_from(plaintext.len()).map_err(|e| format!("plaintext length conversion failed: {e}"))?,
+                (&raw const padding_info).cast(),
                 ptr::null_mut(),
                 0,
-                &mut cb_out,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
@@ -562,24 +566,24 @@ mod win {
             return Err(format!("Encrypt OAEP (size): 0x{status:08X}"));
         }
 
-        let mut ct = vec![0u8; cb_out as usize];
+        let mut ct = vec![0_u8; usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?];
         let status = unsafe {
             encrypt_fn(
                 h_provider,
                 h_key,
                 plaintext.as_ptr(),
-                plaintext.len() as u32,
-                &padding_info as *const _ as *const _,
+                u32::try_from(plaintext.len()).map_err(|e| format!("plaintext length conversion failed: {e}"))?,
+                (&raw const padding_info).cast(),
                 ct.as_mut_ptr(),
                 cb_out,
-                &mut cb_out,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
         if status != ERROR_SUCCESS {
             return Err(format!("Encrypt OAEP (encrypt): 0x{status:08X}"));
         }
-        ct.truncate(cb_out as usize);
+        ct.truncate(usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?);
         Ok(ct)
     }
 
@@ -605,11 +609,11 @@ mod win {
                 h_provider,
                 h_key,
                 ciphertext.as_ptr(),
-                ciphertext.len() as u32,
-                &padding_info as *const _ as *const _,
+                u32::try_from(ciphertext.len()).map_err(|e| format!("ciphertext length conversion failed: {e}"))?,
+                (&raw const padding_info).cast(),
                 ptr::null_mut(),
                 0,
-                &mut cb_out,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
@@ -617,24 +621,24 @@ mod win {
             return Err(format!("Decrypt OAEP (size): 0x{status:08X}"));
         }
 
-        let mut pt = vec![0u8; cb_out as usize];
+        let mut pt = vec![0_u8; usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?];
         let status = unsafe {
             decrypt_fn(
                 h_provider,
                 h_key,
                 ciphertext.as_ptr(),
-                ciphertext.len() as u32,
-                &padding_info as *const _ as *const _,
+                u32::try_from(ciphertext.len()).map_err(|e| format!("ciphertext length conversion failed: {e}"))?,
+                (&raw const padding_info).cast(),
                 pt.as_mut_ptr(),
                 cb_out,
-                &mut cb_out,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
         if status != ERROR_SUCCESS {
             return Err(format!("Decrypt OAEP (decrypt): 0x{status:08X}"));
         }
-        pt.truncate(cb_out as usize);
+        pt.truncate(usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?);
         Ok(pt)
     }
 
@@ -653,7 +657,7 @@ mod win {
         let open_fn = dll.table.OpenKey.ok_or("OpenKey not in table")?;
         let wide_name = to_wide(name);
         let mut h_key: usize = 0;
-        let status = unsafe { open_fn(h_provider, &mut h_key, wide_name.as_ptr(), 0, 0) };
+        let status = unsafe { open_fn(h_provider, &raw mut h_key, wide_name.as_ptr(), 0, 0) };
         if status != ERROR_SUCCESS {
             return Err(format!("OpenKey({name}): 0x{status:08X}"));
         }
@@ -669,6 +673,7 @@ mod win {
 
     // ── Test output helpers ──────────────────────────────────────────────
 
+    #[allow(clippy::print_stdout)]
     fn step_ok(name: &str) {
         println!("  [OK]   {name}");
     }
@@ -692,7 +697,7 @@ mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_RSAKEY_BLOB>() {
             return Err(format!("RSA public blob too small: {} bytes", blob.len()));
         }
-        let header = unsafe { &*(blob.as_ptr() as *const BCRYPT_RSAKEY_BLOB) };
+        let header = unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_RSAKEY_BLOB>()) };
         if header.Magic != KSP_RSAPUBLIC_MAGIC {
             return Err(format!("Bad RSA blob magic: 0x{:08X}", header.Magic));
         }
@@ -819,7 +824,7 @@ mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_ECCKEY_BLOB>() {
             return Err(format!("EC public blob too small: {} bytes", blob.len()));
         }
-        let header = unsafe { &*(blob.as_ptr() as *const BCRYPT_ECCKEY_BLOB) };
+        let header = unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_ECCKEY_BLOB>()) };
         if header.dwMagic != BCRYPT_ECDSA_PUBLIC_P256_MAGIC {
             return Err(format!("Bad EC P-256 blob magic: 0x{:08X}", header.dwMagic));
         }
@@ -920,7 +925,7 @@ mod win {
         let open_fn = dll.table.OpenKey.ok_or("OpenKey not in table")?;
         let wide_name = to_wide("verify-destroy");
         let mut h_key2: usize = 0;
-        let status = unsafe { open_fn(h_provider, &mut h_key2, wide_name.as_ptr(), 0, 0) };
+        let status = unsafe { open_fn(h_provider, &raw mut h_key2, wide_name.as_ptr(), 0, 0) };
         if status == ERROR_SUCCESS {
             free_key(dll, h_provider, h_key2);
             return Err("key should not be found after DeleteKey".to_owned());
@@ -936,8 +941,24 @@ mod win {
 
     // ── Runner ───────────────────────────────────────────────────────────
 
+    // Type alias to avoid `very_complex_type` lint on the test vector.
+    type VerifyFn = fn(&KspDll, usize) -> Result<(), String>;
+
     pub(crate) fn run_all(dll: &KspDll, h_provider: usize) -> usize {
-        let tests: Vec<(&str, fn(&KspDll, usize) -> Result<(), String>)> = vec![
+        #[allow(clippy::print_stdout)]
+        let run_test = |name: &str, test_fn: VerifyFn| {
+            println!("── {name} ──");
+            match test_fn(dll, h_provider) {
+                Ok(()) => { println!("  => PASS\n"); false }
+                Err(e) => {
+                    step_fail(name, &e);
+                    println!("  => FAIL\n");
+                    true
+                }
+            }
+        };
+
+        let tests: Vec<(&str, VerifyFn)> = vec![
             ("RSA key pair + sign + export + lookup", verify_rsa_key_pair),
             ("RSA encrypt / decrypt (OAEP)", verify_rsa_encrypt_decrypt),
             ("RSA-PSS sign", verify_rsa_pss_sign),
@@ -957,14 +978,8 @@ mod win {
 
         let mut failures = 0;
         for (name, test_fn) in &tests {
-            println!("── {name} ──");
-            match test_fn(dll, h_provider) {
-                Ok(()) => println!("  => PASS\n"),
-                Err(e) => {
-                    step_fail(name, &e);
-                    println!("  => FAIL\n");
-                    failures += 1;
-                }
+            if run_test(name, *test_fn) {
+                failures += 1;
             }
         }
         failures
@@ -982,7 +997,7 @@ mod win {
 
         // Try next to the current exe
         if let Ok(exe) = std::env::current_exe() {
-            let dir = exe.parent().unwrap_or(std::path::Path::new("."));
+            let dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
             let candidate = dir.join("cosmian_kms_cng_ksp.dll");
             if candidate.exists() {
                 return Ok(candidate.to_string_lossy().into_owned());
@@ -1002,6 +1017,7 @@ mod win {
 
     // ── Entry point ──────────────────────────────────────────────────────
 
+    #[allow(clippy::print_stdout)]
     pub(crate) fn run() -> ExitCode {
         cosmian_logger::log_init(None);
 
@@ -1059,6 +1075,12 @@ mod win {
 
 #[cfg(all(test, windows))]
 mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::print_stdout,
+        clippy::unwrap_used,
+    )]
     use std::path::Path;
 
     fn find_test_dll() -> String {
@@ -1075,7 +1097,7 @@ mod tests {
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
-            .unwrap_or(Path::new("."));
+            .unwrap_or_else(|| Path::new("."));
         let candidate = ws_root
             .join("target")
             .join("debug")
