@@ -1649,3 +1649,221 @@ async fn test_pqc_ca_signature_verification() -> KmsCliResult<()> {
 
     Ok(())
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RFC 9881 (ML-DSA) and RFC 9935 (ML-KEM) key usage extension compliance tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// RFC 9881 §4: ML-DSA certificates MUST include a critical keyUsage extension
+/// containing `digitalSignature`.
+///
+/// OID reference: id-ml-dsa-44 = 2.16.840.1.101.3.4.3.17
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9881_ml_dsa_key_usage_critical_digital_signature() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9881 KU Test".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9881 KU Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // Find the keyUsage extension (OID 2.5.29.15)
+    let ku_ext = cert
+        .tbs_certificate
+        .extensions()
+        .iter()
+        .find(|e| e.oid == oid!(2.5.29.15))
+        .expect("RFC 9881: keyUsage extension must be present in ML-DSA certificates");
+
+    // RFC 9881 §4: the keyUsage extension MUST be critical
+    assert!(
+        ku_ext.critical,
+        "RFC 9881: keyUsage extension must be critical for ML-DSA certificates"
+    );
+
+    // digitalSignature must be set (x509_parser flags bit 0 = value 1)
+    if let ParsedExtension::KeyUsage(ku) = ku_ext.parsed_extension() {
+        assert!(
+            ku.flags & 1 != 0,
+            "RFC 9881: keyUsage must include digitalSignature (bit 0) for ML-DSA certificates, \
+             got flags={}",
+            ku.flags
+        );
+    } else {
+        panic!(
+            "Expected ParsedExtension::KeyUsage, got {:?}",
+            ku_ext.parsed_extension()
+        );
+    }
+
+    Ok(())
+}
+
+/// RFC 9935 §5: ML-KEM certificates MUST have a critical keyUsage extension
+/// containing `keyEncipherment` ONLY — no other key usage bits may be set.
+///
+/// OID reference: id-alg-ml-kem-512 = 2.16.840.1.101.3.4.4.1
+/// The certificate must be CA-issued (ML-KEM cannot self-sign).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9935_ml_kem_key_usage_critical_key_encipherment_only() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await?;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9935 KU Test".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9935 KU Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // Find the keyUsage extension (OID 2.5.29.15)
+    let ku_ext = cert
+        .tbs_certificate
+        .extensions()
+        .iter()
+        .find(|e| e.oid == oid!(2.5.29.15))
+        .expect("RFC 9935: keyUsage extension must be present in ML-KEM certificates");
+
+    // RFC 9935 §5: the keyUsage extension MUST be critical
+    assert!(
+        ku_ext.critical,
+        "RFC 9935: keyUsage extension must be critical for ML-KEM certificates"
+    );
+
+    if let ParsedExtension::KeyUsage(ku) = ku_ext.parsed_extension() {
+        // keyEncipherment must be set (x509_parser flags bit 2 = value 4)
+        assert!(
+            ku.flags & 4 != 0,
+            "RFC 9935: keyUsage must include keyEncipherment (bit 2) for ML-KEM certificates, \
+             got flags={}",
+            ku.flags
+        );
+        // RFC 9935 §5: keyEncipherment MUST be the ONLY bit set
+        assert_eq!(
+            ku.flags, 4,
+            "RFC 9935: keyUsage must contain ONLY keyEncipherment (flags=4) for ML-KEM \
+             certificates, got flags={}",
+            ku.flags
+        );
+    } else {
+        panic!(
+            "Expected ParsedExtension::KeyUsage, got {:?}",
+            ku_ext.parsed_extension()
+        );
+    }
+
+    Ok(())
+}
+
+/// RFC 9935 §3: verify that a CA-issued ML-KEM-512 certificate carries the correct
+/// `SubjectPublicKeyInfo` OID: `id-alg-ml-kem-512` (`2.16.840.1.101.3.4.4.1`).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9935_ml_kem_spki_oid() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await?;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9935 SPKI OID Test".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9935 SPKI OID Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // id-alg-ml-kem-512 per RFC 9935 / NIST FIPS 203
+    let ml_kem_512_oid = oid!(2.16.840.1.101.3.4.4.1);
+    assert_eq!(
+        cert.tbs_certificate.subject_pki.algorithm.algorithm, ml_kem_512_oid,
+        "SubjectPublicKeyInfo algorithm OID must be id-alg-ml-kem-512 \
+         (2.16.840.1.101.3.4.4.1) per RFC 9935 §3"
+    );
+
+    Ok(())
+}
+
+/// Non-regression: ML-DSA-87 self-signed certificate must carry a critical keyUsage
+/// extension with digitalSignature, consistent with RFC 9881.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9881_ml_dsa_87_key_usage() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa87,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9881 ML-DSA-87 KU".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9881 ML-DSA-87 KU").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    let ku_ext = cert
+        .tbs_certificate
+        .extensions()
+        .iter()
+        .find(|e| e.oid == oid!(2.5.29.15))
+        .expect("RFC 9881: keyUsage extension must be present in ML-DSA-87 certificates");
+
+    assert!(
+        ku_ext.critical,
+        "RFC 9881: keyUsage must be critical for ML-DSA-87 certificates"
+    );
+    if let ParsedExtension::KeyUsage(ku) = ku_ext.parsed_extension() {
+        assert!(
+            ku.flags & 1 != 0,
+            "RFC 9881: keyUsage must include digitalSignature for ML-DSA-87, got flags={}",
+            ku.flags
+        );
+    } else {
+        panic!(
+            "Expected ParsedExtension::KeyUsage, got {:?}",
+            ku_ext.parsed_extension()
+        );
+    }
+
+    Ok(())
+}
