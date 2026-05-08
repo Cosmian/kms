@@ -17,6 +17,7 @@ use ckms::{
                 extra::tagging::{VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
                 kmip_attributes::Attributes,
                 kmip_objects::Object,
+                kmip_objects::ObjectType,
                 kmip_operations::{
                     CreateKeyPair, Decrypt, Destroy, Encrypt, GetAttributes, Locate, Revoke, Sign,
                     SignatureVerify,
@@ -24,8 +25,7 @@ use ckms::{
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicDomainParameters,
                     CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType,
-                    RecommendedCurve, UniqueIdentifier, ValidityIndicator,
-                    VendorAttributeReference,
+                    RecommendedCurve, UniqueIdentifier, ValidityIndicator, VendorAttributeReference,
                 },
             },
             time_normalize,
@@ -78,6 +78,10 @@ pub fn locate_key_by_name(client: &KmsClient, name: &str) -> KspResult<String> {
         attrs
             .set_tags(VENDOR_ID_COSMIAN, [tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
+        // Filter to private keys only: both private and public keys share the
+        // same CNG name tag, so without this filter the Locate response may
+        // return either key depending on DB ordering.
+        attrs.object_type = Some(ObjectType::PrivateKey);
         let locate = Locate {
             attributes: attrs,
             ..Default::default()

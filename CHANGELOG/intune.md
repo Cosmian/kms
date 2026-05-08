@@ -46,3 +46,12 @@
   Rust lib tests, and ckms CLI CNG commands.
 - Add `test-cng-ksp` job to `test_windows.yml` CI workflow to run the CNG KSP integration
   tests on every PR and push.
+
+## Bug Fixes
+
+### CNG KSP
+
+- Fix `test_locate_key_by_name` non-deterministic failure on Redis-findex: `locate_key_by_name`
+  now filters by `ObjectType::PrivateKey` in addition to the CNG name tag, so it no longer
+  returns the public key (which shares the same tag) when Redis returns keys in non-deterministic
+  order. ([#924](https://github.com/Cosmian/kms/pull/924))
