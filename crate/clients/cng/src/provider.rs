@@ -1298,7 +1298,7 @@ unsafe extern "system" fn verify_claim(
 #[cfg(windows)]
 fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm{
     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
-#[allow(clippy::match_same_arms)]
+    #[allow(clippy::match_same_arms)]
     match len {
         20 => HashingAlgorithm::SHA1,
         28 => HashingAlgorithm::SHA224,

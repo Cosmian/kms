@@ -1,4 +1,4 @@
-﻿//! # Cosmian CNG KSP Verification Tool
+//! # Cosmian CNG KSP Verification Tool
 //!
 //! Standalone binary that loads `cosmian_kms_cng_ksp.dll` at runtime and
 //! exercises the KSP through the standard Windows `NCrypt` API surface — exactly
@@ -291,7 +291,11 @@ mod win {
         }
 
         // Second call: get data
-        let mut buf = vec![0_u8; usize::try_from(cb_result).map_err(|e| format!("buffer size conversion failed: {e}"))?];
+        let mut buf = vec![
+            0_u8;
+            usize::try_from(cb_result)
+                .map_err(|e| format!("buffer size conversion failed: {e}"))?
+        ];
         let status = unsafe {
             export_fn(
                 h_provider,
@@ -308,7 +312,10 @@ mod win {
         if status != ERROR_SUCCESS {
             return Err(format!("ExportKey (data): 0x{status:08X}"));
         }
-        buf.truncate(usize::try_from(cb_result).map_err(|e| format!("buffer size conversion failed: {e}"))?);
+        buf.truncate(
+            usize::try_from(cb_result)
+                .map_err(|e| format!("buffer size conversion failed: {e}"))?,
+        );
         Ok(buf)
     }
 
@@ -333,7 +340,8 @@ mod win {
                 h_key,
                 (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 ptr::null_mut(),
                 0,
                 &raw mut cb_sig,
@@ -344,14 +352,19 @@ mod win {
             return Err(format!("SignHash PKCS1 (size): 0x{status:08X}"));
         }
 
-        let mut sig = vec![0_u8; usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?];
+        let mut sig = vec![
+            0_u8;
+            usize::try_from(cb_sig)
+                .map_err(|e| format!("buffer size conversion failed: {e}"))?
+        ];
         let status = unsafe {
             sign_fn(
                 h_provider,
                 h_key,
                 (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 sig.as_mut_ptr(),
                 cb_sig,
                 &raw mut cb_sig,
@@ -361,7 +374,9 @@ mod win {
         if status != ERROR_SUCCESS {
             return Err(format!("SignHash PKCS1 (sign): 0x{status:08X}"));
         }
-        sig.truncate(usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?);
+        sig.truncate(
+            usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?,
+        );
         Ok(sig)
     }
 
@@ -387,7 +402,8 @@ mod win {
                 h_key,
                 (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 ptr::null_mut(),
                 0,
                 &raw mut cb_sig,
@@ -398,14 +414,19 @@ mod win {
             return Err(format!("SignHash PSS (size): 0x{status:08X}"));
         }
 
-        let mut sig = vec![0_u8; usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?];
+        let mut sig = vec![
+            0_u8;
+            usize::try_from(cb_sig)
+                .map_err(|e| format!("buffer size conversion failed: {e}"))?
+        ];
         let status = unsafe {
             sign_fn(
                 h_provider,
                 h_key,
                 (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 sig.as_mut_ptr(),
                 cb_sig,
                 &raw mut cb_sig,
@@ -415,7 +436,9 @@ mod win {
         if status != ERROR_SUCCESS {
             return Err(format!("SignHash PSS (sign): 0x{status:08X}"));
         }
-        sig.truncate(usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?);
+        sig.truncate(
+            usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?,
+        );
         Ok(sig)
     }
 
@@ -436,7 +459,8 @@ mod win {
                 h_key,
                 ptr::null(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 ptr::null_mut(),
                 0,
                 &raw mut cb_sig,
@@ -450,14 +474,19 @@ mod win {
         // Pad the buffer: ECDSA signatures have variable DER length,
         // and the second sign call may produce a slightly larger signature.
         let buf_size = cb_sig + 16;
-        let mut sig = vec![0_u8; usize::try_from(buf_size).map_err(|e| format!("buffer size conversion failed: {e}"))?];
+        let mut sig = vec![
+            0_u8;
+            usize::try_from(buf_size)
+                .map_err(|e| format!("buffer size conversion failed: {e}"))?
+        ];
         let status = unsafe {
             sign_fn(
                 h_provider,
                 h_key,
                 ptr::null(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 sig.as_mut_ptr(),
                 buf_size,
                 &raw mut cb_sig,
@@ -467,7 +496,9 @@ mod win {
         if status != ERROR_SUCCESS {
             return Err(format!("SignHash ECDSA (sign): 0x{status:08X}"));
         }
-        sig.truncate(usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?);
+        sig.truncate(
+            usize::try_from(cb_sig).map_err(|e| format!("buffer size conversion failed: {e}"))?,
+        );
         Ok(sig)
     }
 
@@ -495,9 +526,11 @@ mod win {
                 h_key,
                 (&raw const padding_info).cast(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 signature.as_ptr(),
-                u32::try_from(signature.len()).map_err(|e| format!("signature length conversion failed: {e}"))?,
+                u32::try_from(signature.len())
+                    .map_err(|e| format!("signature length conversion failed: {e}"))?,
                 BCRYPT_PAD_PKCS1,
             )
         };
@@ -523,9 +556,11 @@ mod win {
                 h_key,
                 ptr::null(),
                 hash.as_ptr(),
-                u32::try_from(hash.len()).map_err(|e| format!("hash length conversion failed: {e}"))?,
+                u32::try_from(hash.len())
+                    .map_err(|e| format!("hash length conversion failed: {e}"))?,
                 signature.as_ptr(),
-                u32::try_from(signature.len()).map_err(|e| format!("signature length conversion failed: {e}"))?,
+                u32::try_from(signature.len())
+                    .map_err(|e| format!("signature length conversion failed: {e}"))?,
                 0,
             )
         };
@@ -554,7 +589,8 @@ mod win {
                 h_provider,
                 h_key,
                 plaintext.as_ptr(),
-                u32::try_from(plaintext.len()).map_err(|e| format!("plaintext length conversion failed: {e}"))?,
+                u32::try_from(plaintext.len())
+                    .map_err(|e| format!("plaintext length conversion failed: {e}"))?,
                 (&raw const padding_info).cast(),
                 ptr::null_mut(),
                 0,
@@ -566,13 +602,18 @@ mod win {
             return Err(format!("Encrypt OAEP (size): 0x{status:08X}"));
         }
 
-        let mut ct = vec![0_u8; usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?];
+        let mut ct = vec![
+            0_u8;
+            usize::try_from(cb_out)
+                .map_err(|e| format!("buffer size conversion failed: {e}"))?
+        ];
         let status = unsafe {
             encrypt_fn(
                 h_provider,
                 h_key,
                 plaintext.as_ptr(),
-                u32::try_from(plaintext.len()).map_err(|e| format!("plaintext length conversion failed: {e}"))?,
+                u32::try_from(plaintext.len())
+                    .map_err(|e| format!("plaintext length conversion failed: {e}"))?,
                 (&raw const padding_info).cast(),
                 ct.as_mut_ptr(),
                 cb_out,
@@ -583,7 +624,9 @@ mod win {
         if status != ERROR_SUCCESS {
             return Err(format!("Encrypt OAEP (encrypt): 0x{status:08X}"));
         }
-        ct.truncate(usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?);
+        ct.truncate(
+            usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?,
+        );
         Ok(ct)
     }
 
@@ -609,7 +652,8 @@ mod win {
                 h_provider,
                 h_key,
                 ciphertext.as_ptr(),
-                u32::try_from(ciphertext.len()).map_err(|e| format!("ciphertext length conversion failed: {e}"))?,
+                u32::try_from(ciphertext.len())
+                    .map_err(|e| format!("ciphertext length conversion failed: {e}"))?,
                 (&raw const padding_info).cast(),
                 ptr::null_mut(),
                 0,
@@ -621,13 +665,18 @@ mod win {
             return Err(format!("Decrypt OAEP (size): 0x{status:08X}"));
         }
 
-        let mut pt = vec![0_u8; usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?];
+        let mut pt = vec![
+            0_u8;
+            usize::try_from(cb_out)
+                .map_err(|e| format!("buffer size conversion failed: {e}"))?
+        ];
         let status = unsafe {
             decrypt_fn(
                 h_provider,
                 h_key,
                 ciphertext.as_ptr(),
-                u32::try_from(ciphertext.len()).map_err(|e| format!("ciphertext length conversion failed: {e}"))?,
+                u32::try_from(ciphertext.len())
+                    .map_err(|e| format!("ciphertext length conversion failed: {e}"))?,
                 (&raw const padding_info).cast(),
                 pt.as_mut_ptr(),
                 cb_out,
@@ -638,7 +687,9 @@ mod win {
         if status != ERROR_SUCCESS {
             return Err(format!("Decrypt OAEP (decrypt): 0x{status:08X}"));
         }
-        pt.truncate(usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?);
+        pt.truncate(
+            usize::try_from(cb_out).map_err(|e| format!("buffer size conversion failed: {e}"))?,
+        );
         Ok(pt)
     }
 
@@ -697,7 +748,8 @@ mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_RSAKEY_BLOB>() {
             return Err(format!("RSA public blob too small: {} bytes", blob.len()));
         }
-        let header = unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_RSAKEY_BLOB>()) };
+        let header =
+            unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_RSAKEY_BLOB>()) };
         if header.Magic != KSP_RSAPUBLIC_MAGIC {
             return Err(format!("Bad RSA blob magic: 0x{:08X}", header.Magic));
         }
@@ -824,7 +876,8 @@ mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_ECCKEY_BLOB>() {
             return Err(format!("EC public blob too small: {} bytes", blob.len()));
         }
-        let header = unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_ECCKEY_BLOB>()) };
+        let header =
+            unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_ECCKEY_BLOB>()) };
         if header.dwMagic != BCRYPT_ECDSA_PUBLIC_P256_MAGIC {
             return Err(format!("Bad EC P-256 blob magic: 0x{:08X}", header.dwMagic));
         }
@@ -949,7 +1002,10 @@ mod win {
         let run_test = |name: &str, test_fn: VerifyFn| {
             println!("── {name} ──");
             match test_fn(dll, h_provider) {
-                Ok(()) => { println!("  => PASS\n"); false }
+                Ok(()) => {
+                    println!("  => PASS\n");
+                    false
+                }
                 Err(e) => {
                     step_fail(name, &e);
                     println!("  => FAIL\n");
@@ -1079,7 +1135,7 @@ mod tests {
         clippy::expect_used,
         clippy::panic,
         clippy::print_stdout,
-        clippy::unwrap_used,
+        clippy::unwrap_used
     )]
     use std::path::Path;
 
