@@ -525,3 +525,22 @@ export async function createDerivableSymKey(): Promise<string> {
     }
     return idItem.value;
 }
+
+/**
+ * Create a self-signed certificate using the "Generate New Keypair" method
+ * and return the certificate UUID.
+ *
+ * @param algorithm Visible label in the algorithm dropdown, e.g. "RSA 2048",
+ *                  "NIST P-256", "ML-DSA-44 (PQC)".
+ */
+export async function createCertificate(page: Page, algorithm: string): Promise<string> {
+    await gotoAndWait(page, "/ui/certificates/certs/certify");
+    await page.getByText("4. Generate New Keypair").click();
+    await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=E2E Test,O=Cosmian");
+    await selectOption(page, "cert-algorithm-select", algorithm);
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/certificate successfully created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
+}
