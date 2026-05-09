@@ -46,6 +46,11 @@
   Rust lib tests, and ckms CLI CNG commands.
 - Add `test-cng-ksp` job to `test_windows.yml` CI workflow to run the CNG KSP integration
   tests on every PR and push.
+- Package `cosmian_kms_cng_ksp.dll` and `cosmian_kms_cng_ksp_verify.exe` into a ZIP archive
+  (`cosmian-cng-ksp-non-fips-static-openssl_<version>_windows-x86_64.zip`) built and uploaded
+  by the Windows CI pipeline (`build_windows.yml`), mirroring the `cosmian_pkcs11` ZIP
+  packaging. The archive is published to `package.cosmian.com` and to GitHub Release assets
+  on tagged builds. ([#924](https://github.com/Cosmian/kms/pull/924))
 
 ## Bug Fixes
 

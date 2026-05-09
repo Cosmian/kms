@@ -141,6 +141,44 @@ function BuildProject {
         Write-Host "CLI installer: $($_.Name)"
     }
 
+    # -------------------------------------------------------------------------
+    # Build CNG KSP DLL and verify tool
+    # -------------------------------------------------------------------------
+    Invoke-NativeCommand cargo build --release --package cosmian_kms_cng_ksp --package cosmian_kms_cng_ksp_verify --features "non-fips"
+
+    # -------------------------------------------------------------------------
+    # Package CNG KSP as ZIP
+    # -------------------------------------------------------------------------
+    $cargoToml = Get-Content -Raw "Cargo.toml"
+    $version = ""
+    $inWorkspace = $false
+    foreach ($line in $cargoToml -split "`n") {
+        if ($line -match '^\[workspace\.package\]') { $inWorkspace = $true; continue }
+        if ($inWorkspace -and $line -match '^version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
+        if ($inWorkspace -and $line -match '^\[') { break }
+    }
+    if (-not $version) { throw "Unable to parse version from Cargo.toml" }
+    $arch = "x86_64"
+    $zipName = "cosmian-cng-ksp-non-fips-static-openssl_${version}_windows-${arch}.zip"
+
+    $zipStaging = "target\release\cng-ksp-staging"
+    New-Item -ItemType Directory -Path $zipStaging -Force | Out-Null
+    Remove-Item -Path "$zipStaging\*" -Force -ErrorAction SilentlyContinue
+    Copy-Item -Force "target\release\cosmian_kms_cng_ksp.dll" "$zipStaging\"
+    Copy-Item -Force "target\release\cosmian_kms_cng_ksp_verify.exe" "$zipStaging\"
+    if (Test-Path "nix\signing-keys\cosmian-kms-public.asc") {
+        Copy-Item -Force "nix\signing-keys\cosmian-kms-public.asc" "$zipStaging\"
+    }
+
+    $zipPath = "target\release\$zipName"
+    if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
+    Compress-Archive -Path "$zipStaging\*" -DestinationPath $zipPath
+    Write-Host "CNG KSP ZIP: $zipPath"
+
+    Get-ChildItem -Path "target\release" -Filter "cosmian-cng-ksp-*.zip" | ForEach-Object {
+        Write-Host "CNG KSP archive: $($_.Name)"
+    }
+
     exit 0
 }
 

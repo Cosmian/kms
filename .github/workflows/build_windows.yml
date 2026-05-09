@@ -117,6 +117,7 @@ jobs:
             README.md
             target/release/cosmian-kms-server*.exe
             target/release/cosmian-kms-cli*.exe
+            target/release/cosmian-cng-ksp-*.zip
           retention-days: 1
           if-no-files-found: error
 
@@ -144,6 +145,10 @@ jobs:
           $cliExe = Get-ChildItem -Recurse -Filter "cosmian-kms-cli*.exe" | Select-Object -First 1
           if ($null -eq $cliExe) { Write-Error "CLI installer not found"; exit 1 }
           Write-Host "CLI installer present: $($cliExe.FullName)"
+
+          $cngZip = Get-ChildItem -Recurse -Filter "cosmian-cng-ksp-*.zip" | Select-Object -First 1
+          if ($null -eq $cngZip) { Write-Error "CNG KSP zip not found"; exit 1 }
+          Write-Host "CNG KSP zip present: $($cngZip.FullName)"
 
   publish-windows-release:
     name: ${{ inputs.archive-name }} - publish assets
@@ -188,7 +193,7 @@ jobs:
           while IFS= read -r -d '' exe; do
             echo "Uploading ${exe} to ${DEST_DIR}"
             scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa "$exe" "cosmian@package.cosmian.com:${DEST_DIR}"
-          done < <(find . -maxdepth 3 -type f \( -name 'cosmian-kms-server*.exe' -o -name 'cosmian-kms-cli*.exe' \) -print0)
+          done < <(find . -maxdepth 3 -type f \( -name 'cosmian-kms-server*.exe' -o -name 'cosmian-kms-cli*.exe' -o -name 'cosmian-cng-ksp-*.zip' \) -print0)
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/')
@@ -197,4 +202,5 @@ jobs:
           files: |
             cosmian-kms-server*.exe
             cosmian-kms-cli*.exe
+            cosmian-cng-ksp-*.zip
             ./nix/signing-keys/cosmian-kms-public.asc
