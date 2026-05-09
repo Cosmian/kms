@@ -40,7 +40,7 @@
 //! ## Installation
 //!
 //! ```powershell
-//! ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"
+//! ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
 //! ```
 
 use std::path::PathBuf;
@@ -127,7 +127,7 @@ fn initialize_logging(log_home: Option<String>) {
         if let Ok(file) = std::fs::File::options()
             .create(true)
             .append(true)
-            .open(home_path.join("cosmian_cng_ksp.log"))
+            .open(home_path.join("cosmian_cng.log"))
         {
             let _subscriber = fmt::Subscriber::builder()
                 .with_writer(std::sync::Mutex::new(file))

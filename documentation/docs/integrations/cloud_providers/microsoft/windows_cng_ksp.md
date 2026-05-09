@@ -1,9 +1,9 @@
-# Windows CNG Key Storage Provider (KSP)
+﻿# Windows CNG Key Storage Provider (KSP)
 
-> **Microsoft Intune integration** — The Cosmian KMS CNG KSP integrates natively
+> **Microsoft Intune integration** â€” The Cosmian KMS CNG KSP integrates natively
 > with [Microsoft Intune](https://learn.microsoft.com/en-us/mem/intune/fundamentals/what-is-intune)
 > SCEP and PKCS certificate profiles. When Intune provisions a device certificate,
-> the private key is created and permanently stored in Cosmian KMS — never on the
+> the private key is created and permanently stored in Cosmian KMS â€” never on the
 > endpoint. See the [Intune integration section](#microsoft-intune-integration)
 > for setup details.
 
@@ -14,7 +14,7 @@ sequenceDiagram
     participant Admin as IT Administrator
     participant Intune as Microsoft Intune<br/>(Cloud UEM)
     participant Endpoint as Windows Endpoint<br/>(Intune-managed)
-    participant KSP as cosmian_kms_cng_ksp.dll<br/>(CNG KSP)
+    participant KSP as cosmian_cng.dll<br/>(CNG KSP)
     participant KMS as Cosmian KMS<br/>(KMIP 2.1)
     participant SCEP as SCEP / PKCS<br/>Certificate Authority
 
@@ -37,17 +37,17 @@ sequenceDiagram
 
 ## What is it?
 
-Cosmian KMS provides a Windows **CNG Key Storage Provider (KSP)** DLL —
-`cosmian_kms_cng_ksp.dll` — that stores private keys inside Cosmian KMS rather
+Cosmian KMS provides a Windows **CNG Key Storage Provider (KSP)** DLL â€”
+`cosmian_cng.dll` â€” that stores private keys inside Cosmian KMS rather
 than the local Windows machine store.
 
 A **Key Storage Provider** is a pluggable module defined by the Windows
 **Cryptography API: Next Generation (CNG)** framework (introduced in Windows
 Vista / Server 2008). CNG replaces the older CAPI (CryptoAPI). Any application
-that calls the standard `NCrypt*` family of functions — including the Windows
-certificate enrollment engine, Schannel (TLS), and Code Signing — automatically
+that calls the standard `NCrypt*` family of functions â€” including the Windows
+certificate enrollment engine, Schannel (TLS), and Code Signing â€” automatically
 uses whichever KSP is associated with a given key, with no application changes
-required. By deploying `cosmian_kms_cng_ksp.dll`, all private key material is
+required. By deploying `cosmian_cng.dll`, all private key material is
 kept inside Cosmian KMS: it never exists on the device disk.
 
 ---
@@ -56,11 +56,11 @@ kept inside Cosmian KMS: it never exists on the device disk.
 
 | Need | How the KSP addresses it |
 |---|---|
-| **Private-key protection** | Keys are generated and stored exclusively inside Cosmian KMS — never on the endpoint disk or in the Windows registry. |
+| **Private-key protection** | Keys are generated and stored exclusively inside Cosmian KMS â€” never on the endpoint disk or in the Windows registry. |
 | **FIPS 140-3 compliance** | Cosmian KMS is FIPS 140-3 validated. All cryptographic operations (sign, decrypt, key generation) are executed by the KMS, not by Windows. |
 | **Centralised audit trail** | Every sign / decrypt operation is logged in the KMS with user identity, timestamp, and key identifier. |
 | **Key revocation** | Revoking a key in the KMS immediately blocks all devices using it, without requiring an MDM policy push. |
-| **Zero-touch provisioning** | Works natively with Microsoft Intune SCEP and PKCS certificate profiles — no custom enrollment agent is needed. |
+| **Zero-touch provisioning** | Works natively with Microsoft Intune SCEP and PKCS certificate profiles â€” no custom enrollment agent is needed. |
 | **Export prevention** | Export policy is disabled by default (`NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG` is off), so private keys cannot be extracted from the device. |
 
 ---
@@ -115,7 +115,7 @@ SECURITY_STATUS GetKeyStorageInterface(
 );
 ```
 
-`cosmian_kms_cng_ksp.dll` implements this interface entirely in Rust. When
+`cosmian_cng.dll` implements this interface entirely in Rust. When
 Windows loads the DLL, it calls `GetKeyStorageInterface` to obtain the function
 table, and from that point on every `NCrypt*` call is handled by the
 corresponding Rust function.
@@ -125,14 +125,14 @@ corresponding Rust function.
 ```mermaid
 sequenceDiagram
     participant App as Windows Application<br/>(Intune SCEP, MMC, certutil)
-    participant DLL as cosmian_kms_cng_ksp.dll
+    participant DLL as cosmian_cng.dll
     participant KMS as Cosmian KMS<br/>(HTTPS / KMIP 2.1)
 
-    App->>DLL: NCrypt* call<br/>(OpenStorageProvider, SignHash, …)
-    Note over DLL: 1. Validate handle (magic check)<br/>2. Translate NCrypt params → KMIP request<br/>3. Block on shared Tokio runtime
-    DLL->>KMS: KMIP operation<br/>(CreateKeyPair, Sign, Decrypt, …)
+    App->>DLL: NCrypt* call<br/>(OpenStorageProvider, SignHash, â€¦)
+    Note over DLL: 1. Validate handle (magic check)<br/>2. Translate NCrypt params â†’ KMIP request<br/>3. Block on shared Tokio runtime
+    DLL->>KMS: KMIP operation<br/>(CreateKeyPair, Sign, Decrypt, â€¦)
     KMS-->>DLL: KMIP response
-    Note over DLL: 4. Translate KMS response → NCrypt buffer<br/>5. Return SECURITY_STATUS
+    Note over DLL: 4. Translate KMS response â†’ NCrypt buffer<br/>5. Return SECURITY_STATUS
     DLL-->>App: SECURITY_STATUS + output buffer
 ```
 
@@ -144,11 +144,11 @@ Windows for certificate construction.
 
 | Windows concept | Rust type | What it holds |
 |---|---|---|
-| `NCRYPT_PROV_HANDLE` | `CngProviderCtx` (heap box → raw `usize`) | Shared `Arc<KmsClient>`, provider config path |
-| `NCRYPT_KEY_HANDLE` | `CngKeyCtx` (heap box → raw `usize`) | Key state (`Persisted` or `Pending`), `Arc<KmsClient>` |
+| `NCRYPT_PROV_HANDLE` | `CngProviderCtx` (heap box â†’ raw `usize`) | Shared `Arc<KmsClient>`, provider config path |
+| `NCRYPT_KEY_HANDLE` | `CngKeyCtx` (heap box â†’ raw `usize`) | Key state (`Persisted` or `Pending`), `Arc<KmsClient>` |
 
 Both types carry a magic number (`0xC05_1A_AC`) that is validated on every
-handle dereference — a stale or forged handle returns `NTE_INVALID_HANDLE`
+handle dereference â€” a stale or forged handle returns `NTE_INVALID_HANDLE`
 instead of causing undefined behaviour.
 
 ### Key lifecycle
@@ -174,7 +174,7 @@ flowchart LR
     subgraph Key Operations
         G[SignHash] -->|digested_data = pre-hashed input| H[KMS Sign]
         I[Decrypt] --> J[KMS Decrypt]
-        K[ExportKey] -->|SPKI DER → BCRYPT blob| L[KMS export public key only]
+        K[ExportKey] -->|SPKI DER â†’ BCRYPT blob| L[KMS export public key only]
         M[DeleteKey] -->|revoke + destroy both key UUIDs| N[KMS Destroy]
     end
 ```
@@ -193,7 +193,7 @@ Each key is tagged in the KMS with two vendor tags (namespace `Cosmian`):
 The DLL reads `ckms.toml` using the same search order as the `ckms` CLI:
 
 1. Path in the `CKMS_CONF` environment variable.
-2. `ckms.toml` in the same directory as `cosmian_kms_cng_ksp.dll`.
+2. `ckms.toml` in the same directory as `cosmian_cng.dll`.
 3. `%APPDATA%\.cosmian\ckms.toml`.
 
 The configuration file supports bearer-token OAuth 2.0, mTLS (PKCS#12 client
@@ -216,7 +216,7 @@ certificate), or unauthenticated (for local dev/test only).
 
 ```mermaid
 flowchart LR
-    App["Windows Application<br/>(Intune SCEP, MMC, certutil)"] -->|NCrypt API calls| DLL["cosmian_kms_cng_ksp.dll<br/><br/>NCRYPT_KEY_STORAGE_FUNCTION_TABLE<br/>GetKeyStorageInterface()"]
+    App["Windows Application<br/>(Intune SCEP, MMC, certutil)"] -->|NCrypt API calls| DLL["cosmian_cng.dll<br/><br/>NCRYPT_KEY_STORAGE_FUNCTION_TABLE<br/>GetKeyStorageInterface()"]
     DLL -->|"CreateKeyPair / Sign / Decrypt<br/>Locate / Destroy"| KMS["Cosmian KMS<br/>(REST / KMIP 2.1)"]
     style DLL fill:#f5f5f5,stroke:#333
     style KMS fill:#e8f4e8,stroke:#2d7d2d
@@ -245,14 +245,14 @@ flowchart LR
 Build from source (Windows, requires Rust + MSVC):
 
 ```powershell
-cargo build --release --package cosmian_kms_cng_ksp --features non-fips
-# Output: target\release\cosmian_kms_cng_ksp.dll
+cargo build --release --package cosmian_cng --features non-fips
+# Output: target\release\cosmian_cng.dll
 ```
 
 Place the DLL in an installation directory, e.g.:
 
 ```text
-C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll
+C:\Program Files\Cosmian\Kms\cosmian_cng.dll
 ```
 
 ### 2. Configure KMS connection
@@ -271,14 +271,14 @@ server_url = "https://kms.example.com:9998"
 The DLL searches for `ckms.toml` in this order:
 
 1. Path set in `CKMS_CONF` environment variable.
-2. `ckms.toml` in the same directory as `cosmian_kms_cng_ksp.dll`.
+2. `ckms.toml` in the same directory as `cosmian_cng.dll`.
 3. `%APPDATA%\.cosmian\ckms.toml`.
 
 ### 3. Register the KSP (requires Administrator)
 
 ```powershell
 # From an elevated PowerShell prompt:
-ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"
+ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
 ```
 
 This writes the following registry key:
@@ -286,7 +286,7 @@ This writes the following registry key:
 ```text
 HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
     Cosmian KMS Key Storage Provider\
-        DllFileName  REG_SZ  "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"
+        DllFileName  REG_SZ  "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
         Capabilities REG_DWORD  2  (NCRYPT_IMPL_SOFTWARE_FLAG)
 ```
 
@@ -359,8 +359,8 @@ DLL (when the DLL directory is writable), or to stderr.
 
 Each key created through the KSP is tagged in the KMS with:
 
-- `cng-ksp` — identifies all KSP-managed keys.
-- `cng-ksp::<key_name>` — identifies the key by its CNG name (the string
+- `cng-ksp` â€” identifies all KSP-managed keys.
+- `cng-ksp::<key_name>` â€” identifies the key by its CNG name (the string
   passed to `NCryptCreatePersistedKey` / `NCryptOpenKey`).
 
 Use `ckms cng list-keys` or the standard `ckms locate` command to find keys:
@@ -379,7 +379,7 @@ ckms locate --tag "cng-ksp::my-key"
   be exported in plaintext.
 - Use mTLS or bearer-token authentication in `ckms.toml` for production deployments.
 - Run `ckms cng register` as Administrator. The DLL path stored in the registry
-  is read by the Windows LSASS process — only trusted, signed DLLs should be
+  is read by the Windows LSASS process â€” only trusted, signed DLLs should be
   registered.
 - Consider restricting read access to `ckms.toml` so that unprivileged users
   cannot extract the KMS server URL or client certificate.
@@ -391,7 +391,7 @@ ckms locate --tag "cng-ksp::my-key"
 [Microsoft Intune](https://learn.microsoft.com/en-us/mem/intune/fundamentals/what-is-intune)
 is Microsoft's cloud-based **Unified Endpoint Management (UEM)** service. It
 lets IT administrators manage devices (Windows, macOS, iOS, Android) and enforce
-security policies — including deploying certificates — without on-premises
+security policies â€” including deploying certificates â€” without on-premises
 infrastructure. When Intune provisions a certificate on a Windows endpoint, the
 private key is generated locally via a **Key Storage Provider**. By default
 Windows uses its built-in software KSP, which stores keys in the registry.
@@ -399,7 +399,7 @@ Windows uses its built-in software KSP, which stores keys in the registry.
 With the Cosmian KMS CNG KSP registered on the device, Intune can be configured
 to use it instead: the private key is created and permanently stored in Cosmian
 KMS rather than on the device. This gives the organisation centralised custody,
-FIPS 140-3 compliance, real-time revocation, and a full audit trail — all
+FIPS 140-3 compliance, real-time revocation, and a full audit trail â€” all
 without any change to the Intune enrollment workflow itself.
 
 ### SCEP certificate profile
@@ -447,7 +447,7 @@ requiring a certificate revocation list (CRL) propagation delay.
 
 ## Integration testing
 
-The CNG KSP is tested at three levels — all runnable without Azure credentials
+The CNG KSP is tested at three levels â€” all runnable without Azure credentials
 or an Intune tenant.
 
 ### Prerequisites
@@ -459,15 +459,15 @@ or an Intune tenant.
 | **Administrator privileges** | Required to write the KSP registry key under `HKLM`. |
 | **vcpkg with `openssl_x64-windows-static`** | Set `OPENSSL_DIR` or `VCPKG_INSTALLATION_ROOT`. |
 
-No Azure account, Intune license, or SCEP infrastructure is needed — all tests
+No Azure account, Intune license, or SCEP infrastructure is needed â€” all tests
 run against a **local Cosmian KMS server** with a SQLite backend.
 
 ### Test layers
 
 | Layer | What it tests | Runner | Location |
 |---|---|---|---|
-| **Rust lib tests** | Backend functions (`backend::create_rsa_key_pair`, `sign_hash`, `list_cng_keys`, …) via an in-process KMS | `cargo test --lib -p cosmian_kms_cng_ksp` | `crate/clients/cng/src/tests.rs` |
-| **DLL surface tests** | Loads `cosmian_kms_cng_ksp.dll` at runtime, calls `GetKeyStorageInterface`, exercises every `NCrypt*` function pointer against a live KMS | `cosmian_kms_cng_ksp_verify.exe` | `crate/clients/cng_verify/src/main.rs` |
+| **Rust lib tests** | Backend functions (`backend::create_rsa_key_pair`, `sign_hash`, `list_cng_keys`, â€¦) via an in-process KMS | `cargo test --lib -p cosmian_cng` | `crate/clients/cng/src/tests.rs` |
+| **DLL surface tests** | Loads `cosmian_cng.dll` at runtime, calls `GetKeyStorageInterface`, exercises every `NCrypt*` function pointer against a live KMS | `cosmian_cng_verify.exe` | `crate/clients/cng_verify/src/main.rs` |
 | **CLI commands** | `ckms cng register`, `status`, `list-keys`, `unregister` | PowerShell assertions | `.github/scripts/windows/test_cng_ksp.ps1` |
 
 ### Running the full test suite
@@ -499,15 +499,15 @@ The **cng_verify** tool exercises the following NCrypt operations against a live
 
 | Test | Operations exercised |
 |---|---|
-| RSA key pair + sign + export + lookup | `CreatePersistedKey` → `SetKeyProperty` → `FinalizeKey` → `ExportKey` → `OpenKey` → `SignHash` (PKCS1v15) → `DeleteKey` |
-| RSA encrypt / decrypt (OAEP) | `Encrypt` → `Decrypt` (round-trip validation) |
+| RSA key pair + sign + export + lookup | `CreatePersistedKey` â†’ `SetKeyProperty` â†’ `FinalizeKey` â†’ `ExportKey` â†’ `OpenKey` â†’ `SignHash` (PKCS1v15) â†’ `DeleteKey` |
+| RSA encrypt / decrypt (OAEP) | `Encrypt` â†’ `Decrypt` (round-trip validation) |
 | RSA-PSS sign | `SignHash` with PSS padding + salt |
-| RSA signature verify | `SignHash` → `VerifySignature` (valid + invalid hash) |
-| EC P-256 key pair + sign + export | `CreatePersistedKey` → `FinalizeKey` → `ExportKey` → `SignHash` (ECDSA) → `DeleteKey` |
-| ECDSA signature verify (P-256) | `SignHash` → `VerifySignature` |
-| EC P-384 key pair + sign | `CreatePersistedKey` → `FinalizeKey` → `ExportKey` → `SignHash` (SHA-384) |
-| EC P-521 key pair + export | `CreatePersistedKey` → `FinalizeKey` → `ExportKey` |
-| DeleteKey + verify gone | `DeleteKey` → `OpenKey` (expect `NTE_NO_KEY`) |
+| RSA signature verify | `SignHash` â†’ `VerifySignature` (valid + invalid hash) |
+| EC P-256 key pair + sign + export | `CreatePersistedKey` â†’ `FinalizeKey` â†’ `ExportKey` â†’ `SignHash` (ECDSA) â†’ `DeleteKey` |
+| ECDSA signature verify (P-256) | `SignHash` â†’ `VerifySignature` |
+| EC P-384 key pair + sign | `CreatePersistedKey` â†’ `FinalizeKey` â†’ `ExportKey` â†’ `SignHash` (SHA-384) |
+| EC P-521 key pair + export | `CreatePersistedKey` â†’ `FinalizeKey` â†’ `ExportKey` |
+| DeleteKey + verify gone | `DeleteKey` â†’ `OpenKey` (expect `NTE_NO_KEY`) |
 
 ### Environment variables
 
@@ -515,16 +515,16 @@ The **cng_verify** tool exercises the following NCrypt operations against a live
 |---|---|---|
 | `CKMS_CONF` | `<target_dir>/ckms.toml` | Path to the KMS client configuration file |
 | `OPENSSL_DIR` | Auto-detected from vcpkg | OpenSSL static library directory |
-| `VCPKG_INSTALLATION_ROOT` | — | Fallback for `OPENSSL_DIR` |
+| `VCPKG_INSTALLATION_ROOT` | â€” | Fallback for `OPENSSL_DIR` |
 | `CNG_TEST_RELEASE` | `0` | Set to `1` to build and test in release mode |
-| `RUST_LOG` | `cosmian_kms_server=info,cosmian_kms_cng_ksp=debug` | Log verbosity for KMS server and DLL |
+| `RUST_LOG` | `cosmian_kms_server=info,cosmian_cng=debug` | Log verbosity for KMS server and DLL |
 | `COSMIAN_CNG_KSP_LOGGING_LEVEL` | `info` | DLL-specific logging (trace/debug/info/warn/error) |
 
 ### Testing the Intune enrollment flow
 
-The automated tests above validate the **CNG KSP DLL itself** — the same code
+The automated tests above validate the **CNG KSP DLL itself** â€” the same code
 path that Intune SCEP uses when it calls `NCryptCreatePersistedKey` and
-`NCryptSignHash`. To test the full **Intune → endpoint → KMS** flow you need:
+`NCryptSignHash`. To test the full **Intune â†’ endpoint â†’ KMS** flow you need:
 
 | Requirement | Purpose |
 |---|---|

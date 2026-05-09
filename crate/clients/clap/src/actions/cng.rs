@@ -21,9 +21,9 @@ pub enum CngCommands {
     /// Requires elevated (Administrator) privileges.
     ///
     /// Example:
-    ///   `ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_kms_cng_ksp.dll"`
+    ///   `ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll""`
     Register {
-        /// Full path to the `cosmian_kms_cng_ksp.dll` file.
+        /// Full path to the `cosmian_cng.dll` file.
         #[arg(long, short = 'd')]
         dll: PathBuf,
     },
@@ -55,7 +55,7 @@ impl CngCommands {
     }
 }
 
-// ─── KMS tag prefix (mirrored from cosmian_kms_cng_ksp::backend) ─────────────
+// ─── KMS tag prefix (mirrored from cosmian_cng::backend) ─────────────
 
 const CNG_KSP_TAG: &str = "cng-ksp";
 

@@ -1,4 +1,4 @@
-
+﻿
 ##  ckms
 
 Command Line Interface used to manage the Cosmian KMS server.
@@ -1718,7 +1718,7 @@ Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
 ### Usage
 `ckms cng register [options]`
 ### Arguments
-`--dll [-d] <DLL>` Full path to the `cosmian_kms_cng_ksp.dll` file
+`--dll [-d] <DLL>` Full path to the `cosmian_cng.dll` file
 
 
 

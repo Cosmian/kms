@@ -1,7 +1,7 @@
-/// Build script for `cosmian_kms_cng_ksp_verify`.
+/// Build script for `cosmian_cng_verify`.
 ///
-/// Checks that the `cosmian_kms_cng_ksp` DLL exists in the target directory.
-/// The DLL must be built separately (via `cargo build -p cosmian_kms_cng_ksp`)
+/// Checks that the `cosmian_cng` DLL exists in the target directory.
+/// The DLL must be built separately (via `cargo build -p cosmian_cng`)
 /// because nested `cargo build` calls from build scripts deadlock on the target
 /// directory lock.
 fn main() {
@@ -35,12 +35,12 @@ fn main() {
     let dll_path = ws_root
         .join("target")
         .join(profile)
-        .join("cosmian_kms_cng_ksp.dll");
+        .join("cosmian_cng.dll");
 
     if !dll_path.exists() {
         println!(
-            "cargo::warning=cosmian_kms_cng_ksp.dll not found at {}. \
-             Build it first with: cargo build -p cosmian_kms_cng_ksp",
+            "cargo::warning=cosmian_cng.dll not found at {}. \
+             Build it first with: cargo build -p cosmian_cng",
             dll_path.display()
         );
     }

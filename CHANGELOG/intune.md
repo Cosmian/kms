@@ -1,4 +1,4 @@
-## Features
+﻿## Features
 
 ### CNG KSP
 
@@ -9,11 +9,11 @@
   vendor tag attribute (`cosmian:tag`) so that `extract_cng_name_from_tags` can resolve the
   CNG key name (the default `attribute_reference: None` excludes the tag vendor attribute).
 - Fix feature propagation: add `test_kms_server/non-fips` to the `non-fips` feature of the
-  `cosmian_kms_cng_ksp` crate so that `cosmian_kms_server_database` is compiled with the
+  `cosmian_cng` crate so that `cosmian_kms_server_database` is compiled with the
   correct `non-fips` features when running single-crate tests.
 - Add `revoke_key` backend function and update all test cleanup to revoke keys before
   destroying them (KMIP requires Active keys to be revoked before destruction).
-- Add `cosmian_kms_cng_ksp_verify` standalone tool that loads and exercises all CNG KSP
+- Add `cosmian_cng_verify` standalone tool that loads and exercises all CNG KSP
   backend functions (RSA/EC key creation, signing, encryption, key listing, export, and
   lifecycle management).
 - Implement `verify_signature` backend function using the KMIP `SignatureVerify` operation,
@@ -29,9 +29,9 @@
 - Update `delete_key` to revoke both private and public keys before destroying them.
 - Add EC P-384 and P-521 key pair creation and signing tests.
 - Add RSA-PSS signing, RSA/ECDSA signature verification, and RSA OAEP encrypt/decrypt tests.
-- Fix `encrypt` using private key UID instead of public key UID — added `pub_uid()` accessor
+- Fix `encrypt` using private key UID instead of public key UID â€” added `pub_uid()` accessor
   to `CngKeyCtx` and updated the encrypt function in `provider.rs` to use it.
-- Rewrite `cosmian_kms_cng_ksp_verify` to dynamically load the CNG KSP DLL and call exported
+- Rewrite `cosmian_cng_verify` to dynamically load the CNG KSP DLL and call exported
   NCrypt functions through the `NCRYPT_KEY_STORAGE_FUNCTION_TABLE`, instead of linking
   directly to the backend module. This verifies the DLL as an external consumer would.
 
@@ -46,11 +46,19 @@
   Rust lib tests, and ckms CLI CNG commands.
 - Add `test-cng-ksp` job to `test_windows.yml` CI workflow to run the CNG KSP integration
   tests on every PR and push.
-- Package `cosmian_kms_cng_ksp.dll` and `cosmian_kms_cng_ksp_verify.exe` into a ZIP archive
-  (`cosmian-cng-ksp-non-fips-static-openssl_<version>_windows-x86_64.zip`) built and uploaded
+- Package `cosmian_cng.dll` and `cosmian_cng_verify.exe` into a ZIP archive
+  (`cosmian-cng-non-fips-static-openssl_<version>_windows-x86_64.zip`) built and uploaded
   by the Windows CI pipeline (`build_windows.yml`), mirroring the `cosmian_pkcs11` ZIP
   packaging. The archive is published to `package.cosmian.com` and to GitHub Release assets
   on tagged builds. ([#924](https://github.com/Cosmian/kms/pull/924))
+
+## Refactor
+
+### CNG KSP
+
+- Rename crate `cosmian_kms_cng_ksp` → `cosmian_cng` and `cosmian_kms_cng_ksp_verify` →
+  `cosmian_cng_verify`: shorter names, consistent with `cosmian_pkcs11` naming; DLL artifact
+  becomes `cosmian_cng.dll` and binary becomes `cosmian_cng_verify.exe`. ([#924](https://github.com/Cosmian/kms/pull/924))
 
 ## Bug Fixes
 

@@ -1,5 +1,5 @@
 [package]
-name = "cosmian_kms_cng_ksp_verify"
+name = "cosmian_cng_verify"
 version.workspace = true
 authors.workspace = true
 categories.workspace = true
@@ -11,7 +11,7 @@ rust-version.workspace = true
 description = "Standalone verification tool for the Cosmian CNG KSP DLL"
 
 [[bin]]
-name = "cosmian_kms_cng_ksp_verify"
+name = "cosmian_cng_verify"
 path = "src/main.rs"
 
 [lints]

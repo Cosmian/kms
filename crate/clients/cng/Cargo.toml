@@ -1,5 +1,5 @@
 [package]
-name = "cosmian_kms_cng_ksp"
+name = "cosmian_cng"
 version.workspace = true
 authors.workspace = true
 categories.workspace = true
@@ -15,7 +15,7 @@ workspace = true
 
 # Build a DLL that Windows CNG can load as a Key Storage Provider
 [lib]
-name = "cosmian_kms_cng_ksp"
+name = "cosmian_cng"
 crate-type = ["cdylib", "rlib"]
 # doc test linking as a separate binary is extremely slow
 doctest = false

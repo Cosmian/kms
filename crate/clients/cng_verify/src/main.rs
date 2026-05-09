@@ -1,6 +1,6 @@
 //! # Cosmian CNG KSP Verification Tool
 //!
-//! Standalone binary that loads `cosmian_kms_cng_ksp.dll` at runtime and
+//! Standalone binary that loads `cosmian_cng.dll` at runtime and
 //! exercises the KSP through the standard Windows `NCrypt` API surface — exactly
 //! like any external CNG caller would.
 //!
@@ -13,10 +13,10 @@
 //!
 //! ```powershell
 //! # The DLL must be in the same directory or on PATH:
-//! cosmian_kms_cng_ksp_verify
+//! cosmian_cng_verify
 //!
 //! # Or specify an explicit DLL path:
-//! cosmian_kms_cng_ksp_verify --dll "C:\path\to\cosmian_kms_cng_ksp.dll"
+//! cosmian_cng_verify --dll "C:\path\to\cosmian_cng.dll"
 //! ```
 //!
 //! The tool exits with code 0 on success and 1 on any failure.
@@ -1054,7 +1054,7 @@ mod win {
         // Try next to the current exe
         if let Ok(exe) = std::env::current_exe() {
             let dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
-            let candidate = dir.join("cosmian_kms_cng_ksp.dll");
+            let candidate = dir.join("cosmian_cng.dll");
             if candidate.exists() {
                 return Ok(candidate.to_string_lossy().into_owned());
             }
@@ -1062,13 +1062,13 @@ mod win {
 
         // Try in target/debug and target/release
         for profile in &["debug", "release"] {
-            let candidate = format!("target\\{profile}\\cosmian_kms_cng_ksp.dll");
+            let candidate = format!("target\\{profile}\\cosmian_cng.dll");
             if std::path::Path::new(&candidate).exists() {
                 return Ok(candidate);
             }
         }
 
-        Err("Could not find cosmian_kms_cng_ksp.dll. Use --dll <path> to specify.".to_owned())
+        Err("Could not find cosmian_cng.dll. Use --dll <path> to specify.".to_owned())
     }
 
     // ── Entry point ──────────────────────────────────────────────────────
@@ -1142,7 +1142,7 @@ mod tests {
     fn find_test_dll() -> String {
         // The build.rs ensures the DLL is built; look in target/debug
         for profile in &["debug", "release"] {
-            let candidate = format!("target\\{profile}\\cosmian_kms_cng_ksp.dll");
+            let candidate = format!("target\\{profile}\\cosmian_cng.dll");
             if Path::new(&candidate).exists() {
                 return candidate;
             }
@@ -1157,12 +1157,12 @@ mod tests {
         let candidate = ws_root
             .join("target")
             .join("debug")
-            .join("cosmian_kms_cng_ksp.dll");
+            .join("cosmian_cng.dll");
         if candidate.exists() {
             return candidate.to_string_lossy().into_owned();
         }
         panic!(
-            "cosmian_kms_cng_ksp.dll not found — run `cargo build -p cosmian_kms_cng_ksp` first"
+            "cosmian_cng.dll not found — run `cargo build -p cosmian_cng` first"
         );
     }
 
