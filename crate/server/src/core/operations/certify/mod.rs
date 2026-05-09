@@ -1,7 +1,10 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
 #[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+    extra::VENDOR_ATTR_X509_EXTENSION,
+    kmip_types::{CryptographicAlgorithm, VendorAttributeValue},
+};
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -688,16 +691,51 @@ const fn subject_pqc_algorithm(subject: &Subject) -> Option<CryptographicAlgorit
     }
 }
 
+/// Return `true` when the vendor extension-config attribute marks this certificate as a CA
+/// (`basicConstraints=CA:TRUE` or `basicConstraints=critical,CA:TRUE`).
+///
+/// This is used in `build_and_sign_certificate` to decide whether to include the
+/// `keyCertSign` and `cRLSign` bits in the RFC-mandated PQC `keyUsage` extension.
+/// RFC 5280 §4.2.1.3 requires `keyCertSign` when `keyUsage` is present *and* the
+/// certificate will be used to verify certificate signatures in path validation.
+/// OpenSSL's `X509_verify_cert` enforces this check.
+#[cfg(feature = "non-fips")]
+fn extension_config_is_ca(attributes: &Attributes, vendor_id: &str) -> bool {
+    attributes
+        .vendor_attributes
+        .as_ref()
+        .and_then(|vas| {
+            vas.iter().find(|va| {
+                va.vendor_identification == vendor_id
+                    && va.attribute_name == VENDOR_ATTR_X509_EXTENSION
+            })
+        })
+        .and_then(|va| {
+            if let VendorAttributeValue::ByteString(ref b) = va.attribute_value {
+                Some(String::from_utf8_lossy(b).to_uppercase())
+            } else {
+                None
+            }
+        })
+        .is_some_and(|upper| upper.contains("CA:TRUE"))
+}
+
 /// Build the RFC-mandated critical keyUsage extension for a PQC algorithm.
 ///
-/// - RFC 9881 §4.2 (ML-DSA): `digitalSignature` (and MUST be critical)
-/// - draft-ietf-lamps-x509-slh-dsa §4.2 (SLH-DSA): `digitalSignature`
-/// - RFC 9935 §4.2 (ML-KEM, hybrid KEM): `keyEncipherment` only (MUST be critical)
+/// - RFC 9881 §4.2 (ML-DSA): `digitalSignature` MUST be critical.
+///   For CA certificates (`is_ca=true`), `keyCertSign` and `cRLSign` are also included
+///   (RFC 9881 allows any combination of digitalSignature, nonRepudiation, keyCertSign,
+///   cRLSign; RFC 5280 §4.2.1.3 *requires* keyCertSign when the cert is a CA and keyUsage
+///   is present — OpenSSL enforces this in `X509_verify_cert`).
+/// - draft-ietf-lamps-x509-slh-dsa §4.2 (SLH-DSA): same rule as ML-DSA.
+/// - RFC 9935 §4.2 (ML-KEM, hybrid KEM): `keyEncipherment` only (MUST be critical).
+///   ML-KEM certs can never be CAs; `is_ca` is ignored for KEM algorithms.
 ///
 /// Returns `None` for non-PQC algorithms (RSA, EC, `EdDSA`) — no automatic extension.
 #[cfg(feature = "non-fips")]
 fn pqc_rfc_key_usage(
     algo: CryptographicAlgorithm,
+    is_ca: bool,
 ) -> KResult<Option<openssl::x509::X509Extension>> {
     let extension = match algo {
         // RFC 9881: ML-DSA certificates keyUsage MUST include digitalSignature
@@ -716,12 +754,16 @@ fn pqc_rfc_key_usage(
         | CryptographicAlgorithm::SLHDSA_SHAKE_192s
         | CryptographicAlgorithm::SLHDSA_SHAKE_192f
         | CryptographicAlgorithm::SLHDSA_SHAKE_256s
-        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => Some(
-            KeyUsage::new()
-                .critical()
-                .digital_signature()
-                .build()?,
-        ),
+        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => {
+            let mut ku = KeyUsage::new();
+            ku.critical().digital_signature();
+            if is_ca {
+                // RFC 5280 §4.2.1.3: keyCertSign required for CA certs with keyUsage present.
+                // RFC 9881 explicitly allows keyCertSign and cRLSign for ML-DSA CA certs.
+                ku.key_cert_sign().crl_sign();
+            }
+            Some(ku.build()?)
+        }
         // RFC 9935: ML-KEM / hybrid KEM certificates keyUsage MUST be keyEncipherment only
         CryptographicAlgorithm::MLKEM_512
         | CryptographicAlgorithm::MLKEM_768
@@ -795,9 +837,14 @@ fn build_and_sign_certificate(
     // RFC 9881 (ML-DSA/SLH-DSA) / RFC 9935 (ML-KEM): automatically add the RFC-mandated
     // critical keyUsage extension for fresh PQC key certifications.
     // CSR-based and re-certification cases already carry extensions from the original object.
+    //
+    // For CA certificates (basicConstraints=CA:TRUE in the extension config),
+    // keyCertSign and cRLSign are added in addition to digitalSignature so that
+    // OpenSSL's X509_verify_cert accepts the cert as a signing CA (RFC 5280 §4.2.1.3).
     #[cfg(feature = "non-fips")]
     if let Some(algo) = subject_pqc_algorithm(subject) {
-        if let Some(ku_ext) = pqc_rfc_key_usage(algo)? {
+        let is_ca = extension_config_is_ca(&attributes, vendor_id);
+        if let Some(ku_ext) = pqc_rfc_key_usage(algo, is_ca)? {
             x509_builder.append_extension(ku_ext)?;
         }
     }
