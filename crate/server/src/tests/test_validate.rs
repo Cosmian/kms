@@ -324,12 +324,14 @@ mod pqc_validate_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
         extra::{VENDOR_ATTR_X509_EXTENSION, tagging::VENDOR_ID_COSMIAN},
         kmip_attributes::Attributes,
-        kmip_operations::{Certify, GetAttributes, Validate},
+        kmip_objects::{Certificate, Object},
+        kmip_operations::{Certify, Get, GetAttributes, Validate},
         kmip_types::{
             CertificateAttributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
             UniqueIdentifier, ValidityIndicator, VendorAttribute, VendorAttributeValue,
         },
     };
+    use x509_parser::prelude::{FromDer, X509Certificate};
 
     use crate::{
         config::ServerParams, core::KMS, error::KmsError, result::KResult,
@@ -1444,6 +1446,67 @@ authorityKeyIdentifier=keyid:always,issuer
         };
         let res = Box::pin(kms.validate(req, owner)).await?;
         assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
+        Ok(())
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // noRevAvail tests (RFC 9608)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Self-signed ML-DSA-44 certificate automatically gets id-pe-noRevAvail
+    /// (OID 1.3.6.1.5.5.7.1.56, RFC 9608) because it has no CRL DP.
+    /// Chain validation must succeed (CRL check is skipped due to noRevAvail).
+    #[tokio::test]
+    async fn test_validate_pqc_self_signed_has_no_rev_avail() -> KResult<()> {
+        // OID 1.3.6.1.5.5.7.1.56 — id-pe-noRevAvail (RFC 9608)
+        // DER value bytes (without tag/length): 2B 06 01 05 05 07 01 38
+        const NO_REV_AVAIL: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x38];
+        let kms = make_kms().await?;
+        let owner = "pqc_test_owner";
+
+        // Certify a self-signed ML-DSA-44 cert with no crlDistributionPoints.
+        let (cert_id, _sk_id) = pqc_certify(
+            &kms,
+            owner,
+            CryptographicAlgorithm::MLDSA_44,
+            "ML-DSA-44 noRevAvail Root",
+            None,
+            None,
+            PQC_ROOT_EXT,
+        )
+        .await?;
+
+        // Retrieve the certificate DER bytes.
+        let get_response = kms
+            .get(
+                Get {
+                    unique_identifier: Some(UniqueIdentifier::TextString(cert_id.clone())),
+                    ..Get::default()
+                },
+                owner,
+            )
+            .await?;
+        let cert_der = match get_response.object {
+            Object::Certificate(Certificate {
+                certificate_value, ..
+            }) => certificate_value,
+            other => panic!("expected Certificate, got: {other:?}"),
+        };
+
+        // Parse the DER and assert that id-pe-noRevAvail (OID 1.3.6.1.5.5.7.1.56) is present.
+        let (_, parsed) =
+            X509Certificate::from_der(&cert_der).expect("failed to parse certificate DER");
+        let has_no_rev_avail = parsed
+            .extensions()
+            .iter()
+            .any(|ext| ext.oid.as_bytes() == NO_REV_AVAIL);
+        assert!(
+            has_no_rev_avail,
+            "expected id-pe-noRevAvail extension (OID 1.3.6.1.5.5.7.1.56) in self-signed cert"
+        );
+
+        // Chain validation must succeed: noRevAvail triggers CRL skip in verify_crls.
+        assert_chain_valid(&kms, owner, &[&cert_id]).await;
         Ok(())
     }
 }

@@ -19,6 +19,7 @@ use openssl::{
         store::X509StoreBuilder,
     },
 };
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::{
     config::ProxyParams,
@@ -602,6 +603,23 @@ async fn get_crl_bytes(
 ///
 /// # Errors
 ///
+/// Returns `true` if the certificate carries the `id-pe-noRevAvail` extension
+/// (OID 1.3.6.1.5.5.7.1.56, RFC 9608), which signals that no revocation
+/// information is available. When present, CRL fetching is skipped for this cert.
+fn cert_has_no_rev_avail(cert: &X509) -> bool {
+    // OID 1.3.6.1.5.5.7.1.56 — id-pe-noRevAvail (RFC 9608)
+    // Encoded as DER value bytes (without tag/length): 2B 06 01 05 05 07 01 38
+    const NO_REV_AVAIL: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x38];
+    let Ok(der) = cert.to_der() else { return false };
+    let Ok((_, parsed)) = X509Certificate::from_der(&der) else {
+        return false;
+    };
+    parsed
+        .extensions()
+        .iter()
+        .any(|ext| ext.oid.as_bytes() == NO_REV_AVAIL)
+}
+
 /// This function will return an error in the following cases:
 /// * If a certificate is found to be revoked or removed from the CRL.
 /// * If there is an issue deserializing a CRL.
@@ -636,6 +654,14 @@ pub(crate) async fn verify_crls(
                 }
             }
         }
+        // RFC 9608 §4: skip CRL checks for certificates that carry id-pe-noRevAvail.
+        // The extension signals that no revocation information is available; a
+        // relying party MUST NOT reject the certificate for lack of a CRL/OCSP response.
+        if cert_has_no_rev_avail(certificate) {
+            debug!("[{idx}] Certificate carries id-pe-noRevAvail (RFC 9608): skipping CRL check");
+            continue;
+        }
+
         if let Some(crl_dp) = certificate.crl_distribution_points() {
             let crl_size = crl_dp.len();
             let mut uri_list = Vec::with_capacity(crl_size);

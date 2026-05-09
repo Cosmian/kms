@@ -155,7 +155,6 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [manual]
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
@@ -181,6 +180,7 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: cbom
         name: Release - generate CBOM

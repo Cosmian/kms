@@ -1867,3 +1867,107 @@ async fn test_rfc9881_ml_dsa_87_key_usage() -> KmsCliResult<()> {
 
     Ok(())
 }
+
+/// RFC 9608: A self-signed ML-DSA-44 certificate without crlDistributionPoints
+/// must automatically carry the id-pe-noRevAvail extension (OID 1.3.6.1.5.5.7.1.56).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_self_signed_no_rev_avail() -> KmsCliResult<()> {
+    // OID 1.3.6.1.5.5.7.1.56 — id-pe-noRevAvail (RFC 9608)
+    // DER value bytes (without tag/length): 2B 06 01 05 05 07 01 38
+    const NO_REV_AVAIL: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x38];
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = noRevAvail Test".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "noRevAvail Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    let has_no_rev_avail = cert
+        .extensions()
+        .iter()
+        .any(|ext| ext.oid.as_bytes() == NO_REV_AVAIL);
+    assert!(
+        has_no_rev_avail,
+        "RFC 9608: id-pe-noRevAvail (OID 1.3.6.1.5.5.7.1.56) must be auto-added to \
+         self-signed certs with no crlDistributionPoints"
+    );
+
+    Ok(())
+}
+
+/// AIA extension fix: a certificate issued with an authorityInfoAccess entry in
+/// the extension config must carry the AIA extension (OID 1.3.6.1.5.5.7.1.1).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_with_aia_extension() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    // Create an ML-DSA-44 CA to be able to issue a leaf cert (AIA requires issuer context).
+    let ca_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = AIA Test CA".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+    let (_, ca_attrs, _) = fetch_pqc_certificate(ctx, &ca_cert_id, "AIA Test CA").await;
+    let ca_sk_id = ca_attrs.get_link(LinkType::PrivateKeyLink).unwrap();
+
+    // Write extension config with authorityInfoAccess to a temp file.
+    let tmp_dir = TempDir::new().unwrap();
+    let ext_file = tmp_dir.path().join("aia_ext.cnf");
+    std::fs::write(
+        &ext_file,
+        b"[v3_ca]\nauthorityInfoAccess=OCSP;URI:http://ocsp.example.com/\n",
+    )
+    .unwrap();
+
+    // Issue a leaf cert with the AIA extension config.
+    let leaf_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa65,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = AIA Test Leaf".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id.to_string()),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        certificate_extensions: Some(ext_file),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &leaf_cert_id, "AIA Test Leaf").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // OID 1.3.6.1.5.5.7.1.1 — authorityInfoAccess
+    let has_aia = cert
+        .extensions()
+        .iter()
+        .any(|ext| ext.oid == oid!(1.3.6.1.5.5.7.1.1));
+    assert!(
+        has_aia,
+        "authorityInfoAccess extension (OID 1.3.6.1.5.5.7.1.1) must be present when \
+         specified in certificate_extensions config"
+    );
+
+    Ok(())
+}

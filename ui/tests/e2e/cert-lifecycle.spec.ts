@@ -10,7 +10,17 @@
  */
 import { expect, test } from "@playwright/test";
 import * as fs from "fs";
-import { createRsaKeyPair, gotoAndWait, submitAndWaitForDownload, submitAndWaitForResponse, uploadFile, writeTempFile } from "./helpers";
+import {
+    createCertificate,
+    createRsaKeyPair,
+    gotoAndWait,
+    submitAndWaitForDownload,
+    submitAndWaitForResponse,
+    uploadFile,
+    writeTempFile,
+} from "./helpers";
+
+const FIPS_MODE = process.env.PLAYWRIGHT_FIPS_MODE === "true";
 
 const PLAINTEXT = "Hello Cosmian KMS – Certificate E2E roundtrip test!";
 
@@ -57,6 +67,18 @@ test.describe("Certificate certify + validate", () => {
         await page.fill('input[placeholder="Enter certificate ID"]', "00000000-0000-0000-0000-000000000000");
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/error|not found/i);
+    });
+
+    // RFC 9608: self-signed ML-DSA-44 cert has no CRL DP so noRevAvail is auto-added;
+    // the KMS skips CRL fetching for it and the chain validates as Valid.
+    test("RFC 9608 – ML-DSA-44 self-signed cert with noRevAvail validates", async ({ page }) => {
+        test.skip(FIPS_MODE, "PQC not available in FIPS mode");
+        const certId = await createCertificate(page, "ML-DSA-44 (PQC)");
+
+        await gotoAndWait(page, "/ui/certificates/certs/validate");
+        await page.fill('input[placeholder="Enter certificate ID"]', certId);
+        const valText = await submitAndWaitForResponse(page);
+        expect(valText).toMatch(/valid/i);
     });
 });
 

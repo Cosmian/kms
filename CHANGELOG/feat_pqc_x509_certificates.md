@@ -45,6 +45,24 @@
 
 ### 📚 Documentation
 
+- **Post-Quantum X.509 certificates — RFC references updated**: the `pqc_x509_certificates.md` page now references finalized RFCs: SLH-DSA row changed from `draft-ietf-lamps-x509-slh-dsa` to **RFC 9909** (published March 2025); **RFC 9608** (`id-pe-noRevAvail`) added to the standards table; hyperlinks added for RFC 9881, 9935, 9909, 9608, and RFC 5280.
+- **New section — Revocation handling**: documents CRL distribution points (existing), AIA / `authorityInfoAccess` (now unblocked, see fix below), `id-pe-noRevAvail` for offline/self-signed PKI (auto-added by this release), and OCSP as future work.
+- **New section — Composite PQC (future)**: explains the classical→PQC migration rationale (dual signatures for backward compatibility) and references `draft-ietf-lamps-pq-composite-sigs-19`; no implementation in this release.
+
+### 🚀 Features (continued)
+
+- **Server — `id-pe-noRevAvail` auto-generation (RFC 9608)**: `build_and_sign_certificate` now automatically adds the `id-pe-noRevAvail` extension (OID 1.3.6.1.5.5.7.1.56) to every **self-signed** certificate that carries no `crlDistributionPoints` in its extension config. Applies to **all algorithms** (RSA, EC, ML-DSA, SLH-DSA, …), not only PQC. The extension signals to relying parties that no revocation information is available so they must not reject the certificate for lack of a CRL or OCSP response.
+- **Server — CRL skip for `noRevAvail` certificates**: `verify_crls` now calls the new `cert_has_no_rev_avail(cert)` helper; if the extension is present, the CRL fetch is skipped for that certificate.
+- **Server — `authorityInfoAccess` (AIA) extension support fixed**: the `x509_extensions.rs` parser now handles the `authorityInfoAccess` key (OID 1.3.6.1.5.5.7.1.1) via `Nid::INFO_ACCESS`, unblocking the previously commented-out `// Nid????` placeholder. Value format: `OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt`.
+- **Server — `noRevAvail` extension config support**: the `x509_extensions.rs` parser now also handles a `noRevAvail` key in the `[v3_ca]` section, allowing explicit opt-in via `--certificate-extensions` (e.g., for CA-issued certs that also have no CRL DP).
+
+### 🧪 Testing (continued)
+
+- **Server — `test_validate_pqc_self_signed_has_no_rev_avail`**: verifies that a self-signed ML-DSA-44 cert automatically carries OID 1.3.6.1.5.5.7.1.56 in its extensions (parsed with x509-parser) and that `Validate` returns `Valid` (CRL check skipped due to noRevAvail).
+- **CLI — `test_certify_pqc_self_signed_no_rev_avail`**: verifies that a self-signed ML-DSA-44 cert exported from the KMS carries OID 1.3.6.1.5.5.7.1.56.
+- **CLI — `test_certify_with_aia_extension`**: verifies that specifying `authorityInfoAccess=OCSP;URI:…` in `--certificate-extensions` produces a cert with AIA OID 1.3.6.1.5.5.7.1.1.
+- **E2E — `cert-lifecycle.spec.ts`**: added "RFC 9608 – ML-DSA-44 self-signed cert with noRevAvail validates" test: creates a self-signed ML-DSA-44 cert via the UI then validates it (confirms CRL skip works end-to-end).
+
 - **New page — Post-Quantum X.509 Certificates**: added `documentation/docs/use_cases/pqc_x509_certificates.md` covering RFC 9881 (ML-DSA), RFC 9935 (ML-KEM), and draft-ietf-lamps-x509-slh-dsa (SLH-DSA) with OID tables, CLI examples, key usage requirements, cross-algorithm PKI guidance, and OpenSSL verification instructions.
 - **Updated `_certify.md`**: added a PQC section describing ML-DSA, SLH-DSA, and ML-KEM certificate issuance with links to the new PQC X.509 documentation page.
 

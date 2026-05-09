@@ -44,11 +44,11 @@ use cosmian_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
 use openssl::x509::extension::KeyUsage;
 use openssl::{
-    asn1::{Asn1Integer, Asn1Time},
+    asn1::{Asn1Integer, Asn1Object, Asn1OctetString, Asn1Time},
     hash::MessageDigest,
     pkey::Id,
     sha::Sha1,
-    x509::{X509, X509Req},
+    x509::{X509, X509Extension, X509Req},
 };
 
 use crate::{
@@ -849,16 +849,39 @@ fn build_and_sign_certificate(
         }
     }
 
-    // Extensions supplied using an extension attribute
-    // This requires knowing the issuer certificate
-    if let Some(extensions) = attributes.remove_x509_extension_file(vendor_id) {
-        let extensions_as_str = String::from_utf8(extensions)?;
-        debug!("OpenSSL Extensions: {}", extensions_as_str);
-        // Create a new X509V3Context object for the issuer certificate
-        let context = x509_builder.x509v3_context(issuer.certificate(), None);
-        x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
-            .into_iter()
-            .try_for_each(|extension| x509_builder.append_extension(extension))?;
+    // Extensions supplied using an extension attribute.
+    // Also tracks whether a crlDistributionPoints was supplied (used below for noRevAvail).
+    // This requires knowing the issuer certificate.
+    let ext_conf_has_cdp =
+        if let Some(extensions) = attributes.remove_x509_extension_file(vendor_id) {
+            let extensions_as_str = String::from_utf8(extensions)?;
+            debug!("OpenSSL Extensions: {}", extensions_as_str);
+            let has_cdp = extensions_as_str.contains("crlDistributionPoints");
+            // Create a new X509V3Context object for the issuer certificate
+            let context = x509_builder.x509v3_context(issuer.certificate(), None);
+            x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
+                .into_iter()
+                .try_for_each(|extension| x509_builder.append_extension(extension))?;
+            has_cdp
+        } else {
+            false
+        };
+
+    // RFC 9608 §4: auto-add id-pe-noRevAvail (OID 1.3.6.1.5.5.7.1.56) for self-signed
+    // certificates that carry no CRL distribution points. Applies to ALL algorithms.
+    // Signals to relying parties that no revocation information is available so they
+    // should not reject the certificate for lack of a CRL or OCSP response.
+    // OpenSSL does not register this OID so we build the extension via new_from_der().
+    // The extension value per RFC 9608 §4.3.1 is NULL (DER: 05 00).
+    let is_self_signed = matches!(issuer, Issuer::PrivateKeyAndSubjectName(..));
+    if is_self_signed && !ext_conf_has_cdp {
+        let oid = Asn1Object::from_str("1.3.6.1.5.5.7.1.56")?;
+        let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
+        x509_builder.append_extension(X509Extension::new_from_der(
+            oid.as_ref(),
+            false,
+            val.as_ref(),
+        )?)?;
     }
 
     // The digest must match the *issuer's signing key* type, not the subject key.

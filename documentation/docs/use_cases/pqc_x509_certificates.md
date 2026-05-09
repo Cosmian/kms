@@ -8,9 +8,17 @@ and **ML-KEM** (CRYSTALS-Kyber).
 
 | Algorithm family | X.509 standard  | NIST standard   | Key usage                                      |
 | ---------------- | --------------- | --------------- | ---------------------------------------------- |
-| ML-DSA           | RFC 9881        | FIPS 204        | `digitalSignature` (critical)                  |
-| SLH-DSA          | draft-ietf-lamps-x509-slh-dsa | FIPS 205 | `digitalSignature` (critical)         |
-| ML-KEM           | RFC 9935        | FIPS 203        | `keyEncipherment` only (critical)              |
+| ML-DSA           | [RFC 9881](https://www.rfc-editor.org/rfc/rfc9881) | FIPS 204 | `digitalSignature` (critical)     |
+| SLH-DSA          | [RFC 9909](https://www.rfc-editor.org/rfc/rfc9909) | FIPS 205 | `digitalSignature` (critical)     |
+| ML-KEM           | [RFC 9935](https://www.rfc-editor.org/rfc/rfc9935) | FIPS 203 | `keyEncipherment` only (critical) |
+
+Additional standards used by the KMS implementation:
+
+| Standard | Description |
+| -------- | ----------- |
+| [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280) | Internet X.509 Public Key Infrastructure Certificate and CRL Profile |
+| [RFC 9608](https://www.rfc-editor.org/rfc/rfc9608) | `id-pe-noRevAvail` — No Revocation Available extension for offline/self-signed PKI |
+| [draft-ietf-lamps-pq-composite-sigs](https://datatracker.ietf.org/doc/draft-ietf-lamps-pq-composite-sigs/) | Composite PQC signatures (IETF LAMPS WG, in progress) |
 
 These algorithms are **quantum-resistant**: they remain secure even against adversaries equipped
 with large-scale quantum computers.
@@ -25,7 +33,7 @@ with large-scale quantum computers.
 | ML-DSA-65  | `2.16.840.1.101.3.4.3.18`   |
 | ML-DSA-87  | `2.16.840.1.101.3.4.3.19`   |
 
-### SLH-DSA — signing (draft-ietf-lamps-x509-slh-dsa)
+### SLH-DSA — signing (RFC 9909)
 
 | Variant              | OID                        |
 | -------------------- | -------------------------- |
@@ -58,7 +66,7 @@ with large-scale quantum computers.
 
 ### ML-DSA and SLH-DSA (signing algorithms)
 
-Per RFC 9881 §4 and draft-ietf-lamps-x509-slh-dsa §4:
+Per RFC 9881 §4 and RFC 9909 §4:
 
 - The `keyUsage` extension **MUST** be present and **MUST** be critical.
 - It **MUST** include `digitalSignature`.
@@ -245,6 +253,57 @@ All standard KMIP certificate lifecycle operations work with PQC certificates:
 | `Revoke`  | Revoke a PQC certificate                                |
 | `Destroy` | Permanently delete a PQC certificate and its keys       |
 
+## Revocation handling
+
+### CRL distribution points
+
+To include a CRL distribution point in a certificate, add a
+`crlDistributionPoints` entry in the extension config file passed via
+`--certificate-extensions`:
+
+```ini
+[ v3_ext ]
+crlDistributionPoints=URI:http://ca.example.com/crl.pem
+```
+
+### Authority Information Access (AIA)
+
+The AIA extension (`authorityInfoAccess`, OID 1.3.6.1.5.5.7.1.1) can be added
+via the extension config file to point to an OCSP responder or CA issuer:
+
+```ini
+[ v3_ext ]
+authorityInfoAccess=OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt
+```
+
+### No Revocation Available (`id-pe-noRevAvail`, RFC 9608)
+
+For **self-signed certificates** (no issuer key provided) that do not carry a
+CRL distribution point, the KMS automatically adds the
+`id-pe-noRevAvail` extension (OID 1.3.6.1.5.5.7.1.56, RFC 9608). This signals
+to relying parties that no revocation information is available for this
+certificate, and that they should not reject it for lack of a CRL or OCSP
+response.
+
+This behavior applies to **all algorithms** (RSA, EC, ML-DSA, SLH-DSA, …),
+not only PQC.
+
+Example — generated extension as seen by OpenSSL:
+
+```text
+X509v3 extensions:
+    X509v3 No Revocation Information Available:
+```
+
+When validating a chain, the KMS skips CRL fetching for any certificate that
+carries this extension.
+
+### OCSP (future)
+
+OCSP checking (RFC 6960) is not yet implemented. It is planned as future work.
+
+---
+
 ## Technical notes
 
 ### Digest algorithm selection
@@ -276,3 +335,40 @@ encode as SPKI, and therefore cannot currently be embedded in X.509 certificates
 The serial number is derived from the SHA-1 hash of the subject public key DER
 (SubjectPublicKeyInfo), truncated to 20 bytes with the high bit cleared to ensure
 a positive ASN.1 integer encoding (per RFC 5280 §4.1.2.2).
+
+## Composite PQC signatures (future)
+
+During the classical-to-quantum migration period, **composite PQC signatures**
+combine a classical signature (e.g. ECDSA-P256) and a PQC signature
+(e.g. ML-DSA-44) in a single X.509 certificate. A relying party that understands
+only the classical algorithm can still verify the certificate, while one that
+understands PQC benefits from the quantum-resistant signature as well.
+
+The IETF LAMPS working group is standardising this approach in
+[draft-ietf-lamps-pq-composite-sigs](https://datatracker.ietf.org/doc/draft-ietf-lamps-pq-composite-sigs/).
+Planned composite variants include:
+
+- `MLDSA44-ECDSA-P256-SHA256`
+- `MLDSA65-ECDSA-P384-SHA512`
+- `MLDSA87-ECDSA-P384-SHA512`
+- `MLDSA44-Ed25519-SHA512`
+
+Cosmian KMS plans to support composite PQC certificates in a future release once
+the draft reaches RFC status.
+
+---
+
+## Summary
+
+Cosmian KMS provides **full PQC X.509 lifecycle support** built on **OpenSSL 3.6**:
+
+| Capability | Detail |
+| --- | --- |
+| **Certificate generation** | ML-DSA-44/65/87, all 12 SLH-DSA variants, ML-KEM-512/768/1024 via KMIP `Certify` |
+| **Certificate validation** | Full chain verification (root → intermediate → leaf) via KMIP `Validate`; PQC signatures verified by OpenSSL 3.6 |
+| **RFC-compliant key usage** | Critical `keyUsage` extensions set automatically: `digitalSignature` for ML-DSA/SLH-DSA (RFC 9881/9909), `keyEncipherment` for ML-KEM (RFC 9935) |
+| **Revocation handling** | `id-pe-noRevAvail` auto-added to self-signed certs (RFC 9608); AIA / `authorityInfoAccess` supported in extension config |
+| **PKI hierarchy** | Cross-algorithm chains: any ML-DSA or SLH-DSA CA can sign any PQC or classical leaf; ML-KEM leaves require a separate signing CA |
+| **Crypto backend** | OpenSSL 3.6.0 built from source with FIPS provider; PQC algorithms available in non-FIPS (`--features non-fips`) mode |
+
+In short: if OpenSSL 3.6 can generate or verify a PQC certificate, Cosmian KMS exposes that capability over the KMIP 2.1 API, the `ckms` CLI, and the Web UI.
