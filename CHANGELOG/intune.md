@@ -1,4 +1,4 @@
-﻿## Features
+## Features
 
 ### CNG KSP
 
@@ -29,7 +29,7 @@
 - Update `delete_key` to revoke both private and public keys before destroying them.
 - Add EC P-384 and P-521 key pair creation and signing tests.
 - Add RSA-PSS signing, RSA/ECDSA signature verification, and RSA OAEP encrypt/decrypt tests.
-- Fix `encrypt` using private key UID instead of public key UID â€” added `pub_uid()` accessor
+- Fix `encrypt` using private key UID instead of public key UID â€" added `pub_uid()` accessor
   to `CngKeyCtx` and updated the encrypt function in `provider.rs` to use it.
 - Rewrite `cosmian_cng_verify` to dynamically load the CNG KSP DLL and call exported
   NCrypt functions through the `NCRYPT_KEY_STORAGE_FUNCTION_TABLE`, instead of linking
@@ -68,3 +68,7 @@
   now filters by `ObjectType::PrivateKey` in addition to the CNG name tag, so it no longer
   returns the public key (which shares the same tag) when Redis returns keys in non-deterministic
   order. ([#924](https://github.com/Cosmian/kms/pull/924))
+
+### Testing
+
+- Fix flaky `test_privileged_users` (and other tests using `start_default_test_kms_server_with_privileged_users`) in CI: increase the channel `recv_timeout` from 25 s to 60 s in `start_test_kms_server`, `socket_server`, and `ttlv_tests` to prevent spurious "timed out waiting on channel" failures under CI load. ([#924](https://github.com/Cosmian/kms/pull/924))

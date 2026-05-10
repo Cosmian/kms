@@ -16,8 +16,7 @@ use ckms::{
             kmip_2_1::{
                 extra::tagging::{VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
                 kmip_attributes::Attributes,
-                kmip_objects::Object,
-                kmip_objects::ObjectType,
+                kmip_objects::{Object, ObjectType},
                 kmip_operations::{
                     CreateKeyPair, Decrypt, Destroy, Encrypt, GetAttributes, Locate, Revoke, Sign,
                     SignatureVerify,
