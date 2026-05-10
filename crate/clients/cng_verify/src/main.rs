@@ -1154,16 +1154,11 @@ mod tests {
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
             .unwrap_or_else(|| Path::new("."));
-        let candidate = ws_root
-            .join("target")
-            .join("debug")
-            .join("cosmian_cng.dll");
+        let candidate = ws_root.join("target").join("debug").join("cosmian_cng.dll");
         if candidate.exists() {
             return candidate.to_string_lossy().into_owned();
         }
-        panic!(
-            "cosmian_cng.dll not found — run `cargo build -p cosmian_cng` first"
-        );
+        panic!("cosmian_cng.dll not found — run `cargo build -p cosmian_cng` first");
     }
 
     /// Write a minimal `ckms.toml` that the DLL will read via `CKMS_CONF`.

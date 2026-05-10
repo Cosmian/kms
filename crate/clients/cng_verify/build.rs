@@ -32,10 +32,7 @@ fn main() {
     else {
         return;
     };
-    let dll_path = ws_root
-        .join("target")
-        .join(profile)
-        .join("cosmian_cng.dll");
+    let dll_path = ws_root.join("target").join(profile).join("cosmian_cng.dll");
 
     if !dll_path.exists() {
         println!(
