@@ -76,6 +76,17 @@ const FpeDecryptForm: React.FC = () => {
         setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         try {
+            // Validate tweak format before anything else so the error is always visible.
+            if (values.tweak) {
+                if (values.tweak.length % 2 !== 0) {
+                    setRes("Error: Tweak must have an even number of hex digits.");
+                    return;
+                }
+                if (!/^[0-9a-fA-F]+$/.test(values.tweak)) {
+                    setRes("Error: Tweak must contain only hex characters (0-9 a-f A-F).");
+                    return;
+                }
+            }
             if (id == undefined) {
                 setRes("Error: Missing key identifier.");
                 return;
