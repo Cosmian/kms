@@ -211,3 +211,110 @@ test.describe("Tokenize — Scale Number", () => {
         expect(text).toMatch(/Result:\s*-?\d+(\.\d+)?/);
     });
 });
+
+// ── Hash — Argon2 ──────────────────────────────────────────────────────────
+
+test.describe("Tokenize — Hash Argon2", () => {
+    test("Argon2 hash with salt returns a non-empty base64 digest", async ({ page }) => {
+        test.skip(FIPS_MODE, "Tokenize endpoints not available in FIPS mode");
+
+        await gotoAndWait(page, "/ui/tokenize/hash");
+        await page.fill('input[placeholder="e.g. hello world"]', "test argon2");
+        await selectOption(page, "hash-method-select", "Argon2 (password hashing)");
+        // Argon2 requires a base64-encoded salt
+        await page.fill('input[placeholder="e.g. c2FsdA=="]', "c2FsdA=="); // base64 of "salt"
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/Result:\s*[A-Za-z0-9+/=]+/);
+    });
+});
+
+// ── Noise — additional distributions and data types ────────────────────────
+
+test.describe("Tokenize — Noise (Laplace on integer)", () => {
+    test("Laplace noise on an integer returns a finite number", async ({ page }) => {
+        test.skip(FIPS_MODE, "Tokenize endpoints not available in FIPS mode");
+
+        await gotoAndWait(page, "/ui/tokenize/noise");
+        await page.fill('input[placeholder="e.g. 42.5 or 2023-04-07T12:34:56+02:00"]', "42");
+        await selectOption(page, "noise-method-select", "Laplace");
+        // Laplace uses mean / std_dev InputNumber parameters
+        await page.fill('input[placeholder="e.g. 0"]', "0");
+        await page.fill('input[placeholder="e.g. 1.0"]', "3.0");
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/Result:\s*-?\d+(\.\d+)?/);
+    });
+});
+
+test.describe("Tokenize — Noise (Uniform with bounds on float)", () => {
+    test("Uniform noise with explicit bounds returns a number within range", async ({ page }) => {
+        test.skip(FIPS_MODE, "Tokenize endpoints not available in FIPS mode");
+
+        await gotoAndWait(page, "/ui/tokenize/noise");
+        await page.fill('input[placeholder="e.g. 42.5 or 2023-04-07T12:34:56+02:00"]', "50.0");
+        await selectOption(page, "noise-method-select", "Uniform");
+        // Uniform uses min/max bounds (InputNumber fields with placeholder "e.g. -5" and "e.g. 5")
+        await page.fill('input[placeholder="e.g. -5"]', "-10");
+        await page.fill('input[placeholder="e.g. 5"]', "10");
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/Result:\s*-?\d+(\.\d+)?/);
+    });
+});
+
+test.describe("Tokenize — Noise (Gaussian on date)", () => {
+    test("Gaussian noise on a date returns a valid RFC3339 date", async ({ page }) => {
+        test.skip(FIPS_MODE, "Tokenize endpoints not available in FIPS mode");
+
+        await gotoAndWait(page, "/ui/tokenize/noise");
+        await page.fill('input[placeholder="e.g. 42.5 or 2023-04-07T12:34:56+02:00"]', "2023-04-07T12:00:00+00:00");
+        // Switch data_type to date
+        await selectOption(page, "noise-datatype-select", "Date (RFC3339)");
+        await page.fill('input[placeholder="e.g. 0"]', "0");
+        await page.fill('input[placeholder="e.g. 1.0"]', "3600"); // noise in seconds
+        const text = await submitAndWaitForResponse(page);
+        // Expect a valid ISO date string
+        expect(text).toMatch(/Result:\s*\d{4}-\d{2}-\d{2}T/);
+    });
+});
+
+// ── Aggregate Number — Float ───────────────────────────────────────────────
+
+test.describe("Tokenize — Aggregate Number (float)", () => {
+    test("rounds 3.14159 with power_of_ten=-1 to 3.1", async ({ page }) => {
+        test.skip(FIPS_MODE, "Tokenize endpoints not available in FIPS mode");
+
+        await gotoAndWait(page, "/ui/tokenize/aggregate-number");
+        await selectOption(page, "aggnumber-datatype-select", "Float");
+        await page.fill('input[placeholder="e.g. 1234"]', "3.14159");
+        // power_of_ten = -1 rounds to tenths; InputNumber placeholder is "e.g. 2"
+        await page.fill('input[placeholder="e.g. 2"]', "-1");
+        const text = await submitAndWaitForResponse(page);
+        // Result should be 3.1 (rounded to nearest 0.1)
+        expect(text).toMatch(/Result:\s*3\.1/);
+    });
+});
+
+// ── Aggregate Date — additional time units ─────────────────────────────────
+
+test.describe("Tokenize — Aggregate Date (Day precision)", () => {
+    test("truncates date to Day precision", async ({ page }) => {
+        test.skip(FIPS_MODE, "Tokenize endpoints not available in FIPS mode");
+
+        await gotoAndWait(page, "/ui/tokenize/aggregate-date");
+        await page.fill('input[placeholder="e.g. 2023-04-07T12:34:56+02:00"]', "2023-04-07T12:34:56+02:00");
+        await selectOption(page, "aggdate-timeunit-select", "Day");
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/2023-04-07T00:00:00/);
+    });
+});
+
+test.describe("Tokenize — Aggregate Date (Month precision)", () => {
+    test("truncates date to Month precision", async ({ page }) => {
+        test.skip(FIPS_MODE, "Tokenize endpoints not available in FIPS mode");
+
+        await gotoAndWait(page, "/ui/tokenize/aggregate-date");
+        await page.fill('input[placeholder="e.g. 2023-04-07T12:34:56+02:00"]', "2023-04-07T12:34:56+02:00");
+        await selectOption(page, "aggdate-timeunit-select", "Month");
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/2023-04-01T00:00:00/);
+    });
+});

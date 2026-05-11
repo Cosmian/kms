@@ -1347,7 +1347,8 @@ Possible values:  `"true", "false"` [default: `"false"`]
 Encrypt data using AES-256 FF1 format-preserving encryption through KMIP
 
 ### Usage
-`ckms fpe encrypt [options]`
+`ckms fpe encrypt [options] [FILE]
+`
 ### Arguments
 `--key-id [-k] <KEY_ID>` The FPE key unique identifier
 
@@ -1357,13 +1358,13 @@ Encrypt data using AES-256 FF1 format-preserving encryption through KMIP
 
 Possible values:  `"text", "integer", "float"` [default: `"text"`]
 
-`--alphabet <ALPHABET>` The alphabet preset or custom alphabet string
+`--alphabet <ALPHABET>` The alphabet to use for encryption/decryption
 
 `--tweak <TWEAK>` Optional tweak bytes as a hex string
 
-`--input-file <INPUT_FILE>` Read the input from a file instead of stdin
+` <FILE>` Input file to read from. If not specified, reads from stdin
 
-`--output-file <OUTPUT_FILE>` Write the output to a file instead of stdout
+`--output-file [-o] <OUTPUT_FILE>` Write the output to a file instead of stdout
 
 
 
@@ -1374,7 +1375,8 @@ Possible values:  `"text", "integer", "float"` [default: `"text"`]
 Decrypt data using AES-256 FF1 format-preserving encryption through KMIP
 
 ### Usage
-`ckms fpe decrypt [options]`
+`ckms fpe decrypt [options] [FILE]
+`
 ### Arguments
 `--key-id [-k] <KEY_ID>` The FPE key unique identifier
 
@@ -1384,13 +1386,13 @@ Decrypt data using AES-256 FF1 format-preserving encryption through KMIP
 
 Possible values:  `"text", "integer", "float"` [default: `"text"`]
 
-`--alphabet <ALPHABET>` The alphabet preset or custom alphabet string
+`--alphabet <ALPHABET>` The alphabet to use for encryption/decryption
 
 `--tweak <TWEAK>` Optional tweak bytes as a hex string
 
-`--input-file <INPUT_FILE>` Read the input from a file instead of stdin
+` <FILE>` Input file to read from. If not specified, reads from stdin
 
-`--output-file <OUTPUT_FILE>` Write the output to a file instead of stdout
+`--output-file [-o] <OUTPUT_FILE>` Write the output to a file instead of stdout
 
 
 

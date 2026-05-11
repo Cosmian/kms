@@ -14,7 +14,7 @@ FIPS mode because they exercise algorithms that are not NIST-approved:
 | `pqc-key-flow`    | ML-KEM, ML-DSA, SLH-DSA are non-FIPS              |
 | `pqc-encaps-sign` | ML-KEM, ML-DSA, SLH-DSA, Hybrid KEMs are non-FIPS |
 | `fpe`             | FPE-FF1 is a non-FIPS algorithm                   |
-| `tokenize`        | Anonymization endpoints are non-FIPS only          |
+| `tokenize`        | Anonymization endpoints are non-FIPS only         |
 
 In addition, specific individual tests inside otherwise-FIPS-compatible spec files
 are skipped because the underlying algorithm is not FIPS 140-3 approved:

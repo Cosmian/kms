@@ -669,6 +669,15 @@ fn get_key_and_cipher(
         ));
     }
     let key_block = owm.object().key_block()?;
+    // Prevent FPE_FF1 keys from being misused for standard symmetric operations.
+    // FPE_FF1 encryption is handled before this point; reaching here with an FPE_FF1
+    // key means the caller explicitly requested a different algorithm, which is a misuse.
+    if key_block.cryptographic_algorithm().copied() == Some(CryptographicAlgorithm::FPE_FF1) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "an FPE_FF1 key may only be used for FPE_FF1 encrypt operations".to_owned(),
+        ));
+    }
     let key_bytes = key_block.key_bytes()?;
     let aead = match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {

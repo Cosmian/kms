@@ -667,6 +667,15 @@ fn get_aead_and_key(
     request: &Decrypt,
 ) -> Result<(Zeroizing<Vec<u8>>, SymCipher), KmsError> {
     let key_block = owm.object().key_block()?;
+    // Prevent FPE_FF1 keys from being misused for standard symmetric operations.
+    // FPE_FF1 decryption is handled before this point; reaching here with an FPE_FF1
+    // key means the caller explicitly requested a different algorithm, which is a misuse.
+    if key_block.cryptographic_algorithm().copied() == Some(CryptographicAlgorithm::FPE_FF1) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "an FPE_FF1 key may only be used for FPE_FF1 decrypt operations".to_owned(),
+        ));
+    }
     // recover the cryptographic algorithm from the request or the key block or default to AES
     let cryptographic_algorithm = request
         .cryptographic_parameters

@@ -1,6 +1,5 @@
 use std::{collections::HashMap, fmt::Display};
 
-use aes::Aes256;
 use itertools::Itertools;
 
 use super::{
@@ -310,7 +309,7 @@ impl Alphabet {
             return Err(FPEError::KeySize(key.len(), KEY_LENGTH));
         }
 
-        let fpe_ff = FF1h::<Aes256>::new(
+        let fpe_ff = FF1h::new(
             key,
             u32::try_from(self.alphabet_len())
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?,
@@ -352,7 +351,7 @@ impl Alphabet {
         }
         let (stripped_input, non_alphabet_chars) = self.rebase(ciphertext);
 
-        let fpe_ff = FF1h::<Aes256>::new(
+        let fpe_ff = FF1h::new(
             key,
             u32::try_from(self.alphabet_len())
                 .map_err(|e| FPEError::ConversionError(e.to_string()))?,

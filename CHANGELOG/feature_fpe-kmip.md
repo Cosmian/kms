@@ -28,10 +28,17 @@
 
 - Add FPE E2E Playwright tests: navigation smoke tests for all 7 FPE pages, key creation, encrypt/decrypt roundtrip with numeric alphabet.
 - Add FPE routes to E2E sitemap tests.
+- Add FPE tweak validation E2E tests: reject odd-length tweak, reject non-hex tweak, and successful roundtrip with valid even-length hex tweak — for both encrypt and decrypt forms.
+- Add FPE integer and float data type roundtrip E2E tests.
+- Add anonymization E2E tests: Argon2 hash with salt, Laplace noise on integer, Uniform noise on float with explicit bounds, Gaussian noise on date, aggregate number for float type, aggregate date with Day and Month precision.
 
 ## Security
 
 - Remove stale RUSTSEC-2026-0097 advisory ignore from `deny.toml` — `rand 0.8.6` (already in `Cargo.lock`) is patched.
+- Validate FPE tweak input in the Web UI (`FpeEncrypt`, `FpeDecrypt`): reject odd-length or non-hex strings before building the KMIP request to prevent silent `NaN → 0` byte corruption from `parseInt`.
+- Guard FPE_FF1 keys against algorithm-confusion misuse: `encrypt_with_symmetric_key` and `decrypt_single_with_symmetric_key` now reject any attempt to use an FPE_FF1 key with a different cryptographic algorithm (e.g. AES) explicitly overridden in the request.
+- Replace `aes`, `cbc`, `cipher` RustCrypto crates in the FPE implementation with the project-standard OpenSSL backend (`openssl::symm`): removes third-party cryptographic primitives from the CBOM and ensures AES-256-CBC-MAC used internally by FF1 is audited under the same OpenSSL 3.6 build as the rest of the server.
+- KMIP policy audit for FPE and anonymization: confirmed no weak algorithm exposure — FPE uses AES-256 (enforced), anonymization hash only accepts SHA2/SHA3/Argon2, FPE_FF1 is restricted to non-FIPS mode throughout.
 
 ## Documentation
 

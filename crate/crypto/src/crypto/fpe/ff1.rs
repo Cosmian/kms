@@ -1,12 +1,40 @@
 use core::{cmp, fmt};
 
-use cipher::{
-    Block, BlockCipher, BlockEncrypt, BlockEncryptMut, InnerIvInit, KeyInit, Unsigned,
-    generic_array::GenericArray,
-};
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, identities::Zero};
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use openssl::symm::{Cipher, Crypter, Mode};
+use zeroize::{Zeroize, Zeroizing};
+
+/// AES-256 block length in bytes (NIST SP 800-38G mandates a 128-bit block cipher for FF1).
+const BLOCK_LEN: usize = 16;
+/// AES-256 key length in bytes.
+const KEY_LEN: usize = 32;
+
+/// Encrypt a single 128-bit block with AES-256-ECB via OpenSSL (no padding).
+///
+/// The key and block lengths are invariants enforced by the call sites; an
+/// OpenSSL error here would indicate a programming error, so we propagate it
+/// as a string rather than exposing the full `ErrorStack` type to callers.
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
+fn aes256_ecb_block(key: &[u8; KEY_LEN], block: &[u8; BLOCK_LEN]) -> [u8; BLOCK_LEN] {
+    // OpenSSL's Crypter::update writes at most input_len + block_len bytes.
+    let mut out = [0_u8; 2 * BLOCK_LEN];
+    let mut cr = Crypter::new(Cipher::aes_256_ecb(), Mode::Encrypt, key, None)
+        // Invariant: key is KEY_LEN bytes and AES-256-ECB is always available.
+        .expect("AES-256-ECB init");
+    cr.pad(false); // exact-block input — no PKCS#7 padding
+    let n1 = cr.update(block, &mut out).expect("AES-256-ECB update");
+    let n2 = cr.finalize(&mut out[n1..]).expect("AES-256-ECB finalize");
+    debug_assert_eq!(
+        n1 + n2,
+        BLOCK_LEN,
+        "AES-256-ECB must output exactly one block"
+    );
+    let mut result = [0_u8; BLOCK_LEN];
+    result.copy_from_slice(&out[..BLOCK_LEN]);
+    out.zeroize();
+    result
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct InvalidRadix(pub(crate) u32);
@@ -22,9 +50,9 @@ impl std::error::Error for InvalidRadix {}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FF1Error {
     InvalidRadix(InvalidRadix),
+    /// Key length must be exactly 32 bytes (AES-256).
     InvalidKeyLength,
     InsufficientFeistelRounds,
-    InvalidBlockSize,
 }
 
 impl From<InvalidRadix> for FF1Error {
@@ -38,16 +66,10 @@ impl fmt::Display for FF1Error {
         match self {
             Self::InvalidRadix(e) => e.fmt(f),
             Self::InvalidKeyLength => {
-                write!(f, "Invalid key length for the chosen cipher")
+                write!(f, "Invalid key length for AES-256-FF1: expected 32 bytes")
             }
             Self::InsufficientFeistelRounds => {
                 write!(f, "FF1fr requires at least 8 Feistel rounds")
-            }
-            Self::InvalidBlockSize => {
-                write!(
-                    f,
-                    "FF1 requires a 128-bit (16-byte) block cipher (NIST SP 800-38G §4.3)"
-                )
             }
         }
     }
@@ -210,103 +232,126 @@ pub(crate) trait NumeralString: Sized {
     fn str_radix(x: Self::Num, radix: u32, m: usize) -> Self;
 }
 
+/// CBC-MAC pseudo-random function used by FF1 (NIST SP 800-38G §4.2).
+///
+/// Processes arbitrary-length data aligned to 16-byte blocks and exposes the
+/// last ciphertext block as output.  The zero IV required by the standard is
+/// set at construction time.  Cloneable so each Feistel round can fork from
+/// the common prefix computed before the loop.
 #[derive(Clone)]
-struct Prf<CIPH: BlockCipher + BlockEncrypt + ZeroizeOnDrop> {
-    state: cbc::Encryptor<CIPH>,
-    buf: Block<CIPH>,
+struct Prf {
+    /// AES-256 key (zeroised on drop).
+    key: [u8; KEY_LEN],
+    /// Running CBC state: previous ciphertext block (starts as zero IV).
+    state: [u8; BLOCK_LEN],
+    /// Accumulation buffer for the next input block.
+    buf: [u8; BLOCK_LEN],
+    /// Bytes written to `buf` so far.
     offset: usize,
 }
 
-impl<CIPH: BlockCipher + BlockEncrypt + ZeroizeOnDrop> Drop for Prf<CIPH> {
+impl Drop for Prf {
     fn drop(&mut self) {
+        self.key.zeroize();
+        self.state.zeroize();
         self.buf.zeroize();
     }
 }
 
-impl<CIPH: BlockCipher + BlockEncrypt + Clone + ZeroizeOnDrop> Prf<CIPH> {
-    fn new(ciph: &CIPH) -> Self {
-        let ciph = ciph.clone();
+impl Prf {
+    const fn new(key: &[u8; KEY_LEN]) -> Self {
         Self {
-            state: cbc::Encryptor::inner_iv_init(ciph, GenericArray::from_slice(&[0; 16])),
-            buf: Block::<CIPH>::default(),
+            key: *key,
+            state: [0_u8; BLOCK_LEN], // zero IV per NIST SP 800-38G §4.2
+            buf: [0_u8; BLOCK_LEN],
             offset: 0,
         }
     }
 
+    #[allow(clippy::indexing_slicing)]
     fn update(&mut self, mut data: &[u8]) {
         while !data.is_empty() {
-            let to_read = cmp::min(self.buf.len() - self.offset, data.len());
-            let (src, rest) = data.split_at(to_read);
-            let (_, dst) = self.buf.split_at_mut(self.offset);
-            let (dst, _) = dst.split_at_mut(to_read);
-            dst.copy_from_slice(src);
+            let to_read = cmp::min(BLOCK_LEN - self.offset, data.len());
+            self.buf[self.offset..self.offset + to_read].copy_from_slice(&data[..to_read]);
             self.offset += to_read;
-            data = rest;
+            data = &data[to_read..];
 
-            if self.offset == self.buf.len() {
-                self.state
-                    .encrypt_blocks_mut(core::slice::from_mut(&mut self.buf));
+            if self.offset == BLOCK_LEN {
+                // CBC: XOR plaintext block with previous ciphertext block, then ECB-encrypt.
+                for (b, s) in self.buf.iter_mut().zip(self.state.iter()) {
+                    *b ^= s;
+                }
+                self.state = aes256_ecb_block(&self.key, &self.buf);
+                self.buf = [0_u8; BLOCK_LEN];
                 self.offset = 0;
             }
         }
     }
 
-    fn output(&self) -> &Block<CIPH> {
+    fn output(&self) -> &[u8; BLOCK_LEN] {
         debug_assert_eq!(self.offset, 0, "output() called before block boundary");
-        &self.buf
+        &self.state
     }
 }
 
-fn generate_s<'a, CIPH: BlockEncrypt>(
-    ciph: &'a CIPH,
-    r: &'a Block<CIPH>,
-    d: usize,
-) -> impl Iterator<Item = u8> + 'a {
-    r.clone()
-        .into_iter()
-        .chain(
-            (1_u128..u128::try_from(d.div_ceil(16)).unwrap_or(u128::MAX)).flat_map(move |j| {
-                let mut block = r.clone();
-                for (b, j) in block.iter_mut().zip(j.to_be_bytes().iter()) {
-                    *b ^= j;
-                }
-                ciph.encrypt_block(&mut block);
-                block.into_iter()
-            }),
-        )
-        .take(d)
+/// Compute the S byte-string per NIST SP 800-38G §6.1 step 8.
+///
+/// S = R || `CIPH_K`(R XOR \[1\]_16) || `CIPH_K`(R XOR \[2\]_16) || ...
+/// truncated to `d` bytes, where each `[j]_16` is j big-endian–encoded into
+/// 16 bytes XOR'd element-wise with R.
+fn generate_s(key: &[u8; KEY_LEN], r: &[u8; BLOCK_LEN], d: usize) -> Vec<u8> {
+    let mut s = Vec::with_capacity(d);
+    s.extend_from_slice(r);
+    let num_extra = d.div_ceil(BLOCK_LEN).saturating_sub(1);
+    for j in 1_u128..=u128::try_from(num_extra).unwrap_or(u128::MAX) {
+        let mut block = *r;
+        for (b, j_byte) in block.iter_mut().zip(j.to_be_bytes().iter()) {
+            *b ^= j_byte;
+        }
+        let encrypted = aes256_ecb_block(key, &block);
+        block.zeroize();
+        s.extend_from_slice(&encrypted);
+    }
+    s.truncate(d);
+    s
 }
 
-pub(crate) type FF1h<CIPH> = FF1fr<18, CIPH>;
+pub(crate) type FF1h = FF1fr<18>;
 
-pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + ZeroizeOnDrop> {
-    ciph: CIPH,
+/// FF1 Format-Preserving Encryption with a fixed number of Feistel rounds and
+/// AES-256 as the underlying block cipher (NIST SP 800-38G §6).
+///
+/// The generic constant `FEISTEL_ROUNDS` must be ≥ 8 (NIST minimum).
+/// `FF1h` is the standard alias with 18 rounds.
+pub(crate) struct FF1fr<const FEISTEL_ROUNDS: u8> {
+    /// AES-256 key — zeroised when the struct is dropped.
+    key: Zeroizing<[u8; KEY_LEN]>,
     radix: Radix,
 }
 
-impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + KeyInit + ZeroizeOnDrop>
-    FF1fr<FEISTEL_ROUNDS, CIPH>
-{
+impl<const FEISTEL_ROUNDS: u8> Drop for FF1fr<FEISTEL_ROUNDS> {
+    fn drop(&mut self) {
+        // Zeroizing<> handles the key; nothing else to explicitly wipe.
+    }
+}
+
+impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
     pub(crate) fn new(key: &[u8], radix: u32) -> Result<Self, FF1Error> {
         if FEISTEL_ROUNDS < 8 {
             return Err(FF1Error::InsufficientFeistelRounds);
         }
-        if CIPH::BlockSize::USIZE != 16 {
-            return Err(FF1Error::InvalidBlockSize);
-        }
-        // `new_from_slice` returns `cipher::InvalidLength` which is a unit struct
-        // carrying no information beyond "wrong length" — already encoded in the variant.
-        let ciph = CIPH::new_from_slice(key)
-            .ok()
-            .ok_or(FF1Error::InvalidKeyLength)?;
+        // FF1 mandates a 128-bit (16-byte) block cipher; AES-256 satisfies this.
+        // We keep the check for parity with the original API and clear error messages.
+        let key_arr: [u8; KEY_LEN] = key.try_into().map_err(|_e| FF1Error::InvalidKeyLength)?;
         let radix = Radix::from_u32(radix)?;
-        Ok(Self { ciph, radix })
+        Ok(Self {
+            key: Zeroizing::new(key_arr),
+            radix,
+        })
     }
 }
 
-impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + ZeroizeOnDrop>
-    FF1fr<FEISTEL_ROUNDS, CIPH>
-{
+impl<const FEISTEL_ROUNDS: u8> FF1fr<FEISTEL_ROUNDS> {
     // Variable names (n, t, u, v, b, d, p, c, i) match NIST SP 800-38G §6 exactly
     // to allow line-by-line verification against the specification.
     #[allow(clippy::many_single_char_names)]
@@ -346,7 +391,7 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + Zeroiz
             1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
         ];
 
-        let mut prf = Prf::new(&self.ciph);
+        let mut prf = Prf::new(&self.key);
         prf.update(&p);
         prf.update(tweak);
         let padding = (16 - (t + b + 1) % 16) % 16;
@@ -357,10 +402,10 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + Zeroiz
             let mut prf = prf.clone();
             prf.update(&[i]);
             prf.update(x_b.num_radix(self.radix.to_u32()).to_bytes(b).as_ref());
-            let r = prf.output();
+            let r = *prf.output();
 
-            let s = generate_s(&self.ciph, r, d);
-            let y = NS::Num::from_bytes(s);
+            let s = generate_s(&self.key, &r, d);
+            let y = NS::Num::from_bytes(s.into_iter());
             let m = if i.is_multiple_of(2) { u } else { v };
 
             let c = x_a
@@ -415,7 +460,7 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + Zeroiz
             1, 2, 1, r1, r2, r3, 10, u_byte, n0, n1, n2, n3, t0, t1, t2, t3,
         ];
 
-        let mut prf = Prf::new(&self.ciph);
+        let mut prf = Prf::new(&self.key);
         prf.update(&p);
         prf.update(tweak);
         let padding = (16 - (t + b + 1) % 16) % 16;
@@ -427,10 +472,10 @@ impl<const FEISTEL_ROUNDS: u8, CIPH: BlockCipher + BlockEncrypt + Clone + Zeroiz
             let mut prf = prf.clone();
             prf.update(&[i]);
             prf.update(x_a.num_radix(self.radix.to_u32()).to_bytes(b).as_ref());
-            let r = prf.output();
+            let r = *prf.output();
 
-            let s = generate_s(&self.ciph, r, d);
-            let y = NS::Num::from_bytes(s);
+            let s = generate_s(&self.key, &r, d);
+            let y = NS::Num::from_bytes(s.into_iter());
             let m = if i.is_multiple_of(2) { u } else { v };
 
             let c = x_b

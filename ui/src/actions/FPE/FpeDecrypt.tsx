@@ -48,8 +48,20 @@ function buildAuthenticatedData(dataType: string, alphabet?: string): Uint8Array
     return undefined;
 }
 
-/** Decode a hex string to a Uint8Array. */
+const HEX_RE = /^[0-9a-fA-F]*$/;
+
+/**
+ * Validate and decode a hex string to Uint8Array.
+ * Returns undefined if the input is empty.
+ * Throws if the length is odd or contains non-hex characters.
+ */
 function hexToBytes(hex: string): Uint8Array {
+    if (hex.length % 2 !== 0) {
+        throw new Error("Tweak hex string must have an even number of characters.");
+    }
+    if (!HEX_RE.test(hex)) {
+        throw new Error("Tweak contains invalid hex characters (only 0-9 a-f A-F are allowed).");
+    }
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
         bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
@@ -70,6 +82,14 @@ const FpeDecryptForm: React.FC = () => {
             responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
+
+    useEffect(() => {
+        if (dataType === "text") {
+            form.setFieldValue("alphabet", "alpha_numeric");
+        } else if (dataType === "integer") {
+            form.setFieldValue("alphabet", "numeric");
+        }
+    }, [dataType, form]);
 
     const onFinish = async (values: FpeDecryptFormData) => {
         setIsLoading(true);
@@ -164,21 +184,13 @@ const FpeDecryptForm: React.FC = () => {
                         </Form.Item>
 
                         {dataType === "text" && (
-                            <Form.Item
-                                name="alphabet"
-                                label="Alphabet"
-                                help="Must match the alphabet used during encryption"
-                            >
+                            <Form.Item name="alphabet" label="Alphabet" help="Must match the alphabet used during encryption">
                                 <Select data-testid="fpe-alphabet-select" options={ALPHABET_PRESETS} />
                             </Form.Item>
                         )}
 
                         {dataType === "integer" && (
-                            <Form.Item
-                                name="alphabet"
-                                label="Radix Alphabet"
-                                help="Must match the radix alphabet used during encryption"
-                            >
+                            <Form.Item name="alphabet" label="Radix Alphabet" help="Must match the radix alphabet used during encryption">
                                 <Select
                                     data-testid="fpe-alphabet-select"
                                     options={[
@@ -189,7 +201,23 @@ const FpeDecryptForm: React.FC = () => {
                             </Form.Item>
                         )}
 
-                        <Form.Item name="tweak" label="Tweak (hex)" help="Must match the tweak used during encryption">
+                        <Form.Item
+                            name="tweak"
+                            label="Tweak (hex)"
+                            help="Must match the tweak used during encryption"
+                            rules={[
+                                {
+                                    validator(_, value) {
+                                        if (!value) return Promise.resolve();
+                                        if (value.length % 2 !== 0)
+                                            return Promise.reject(new Error("Tweak must have an even number of hex digits."));
+                                        if (!/^[0-9a-fA-F]+$/.test(value))
+                                            return Promise.reject(new Error("Tweak must contain only hex characters (0-9 a-f A-F)."));
+                                        return Promise.resolve();
+                                    },
+                                },
+                            ]}
+                        >
                             <Input placeholder="e.g. aabbccdd" />
                         </Form.Item>
                     </Card>
