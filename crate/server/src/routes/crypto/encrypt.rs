@@ -8,7 +8,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::Encrypt, kmip_types::UniqueIdentifier,
 };
 use cosmian_logger::trace;
-use serde_json::json;
 use zeroize::Zeroizing;
 
 use super::{
@@ -36,12 +35,12 @@ pub(crate) async fn encrypt(
     let kmip_params = jose_to_kmip_params(&body.alg, Some(&body.enc))?;
     let plaintext = b64_decode("data", &body.data)?;
 
-    let protected_header = json!({
-        "alg": body.alg,
-        "enc": body.enc,
-        "kid": body.kid,
-    });
-    let protected_json = protected_header.to_string();
+    // Deterministic JSON serialization — field order is fixed (alg, enc, kid)
+    // to ensure cross-server AAD consistency and interoperability.
+    let protected_json = format!(
+        r#"{{"alg":"{}","enc":"{}","kid":"{}"}}"#,
+        body.alg, body.enc, body.kid
+    );
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
     // RFC 7516 §5.1 step 14

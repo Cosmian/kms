@@ -7,14 +7,16 @@ use actix_web::{
     test,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::CryptographicUsageMask;
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-    kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, SymmetricKey},
-    kmip_operations::ImportResponse,
-    kmip_types::{CryptographicAlgorithm, KeyFormatType},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::CryptographicUsageMask,
+    kmip_2_1::{
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, SymmetricKey},
+        kmip_operations::ImportResponse,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    },
 };
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
