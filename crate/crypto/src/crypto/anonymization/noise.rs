@@ -1,7 +1,8 @@
 use chrono::{DateTime, TimeZone};
-use cosmian_crypto_core::{CsRng, reexport::rand_core::SeedableRng};
-use rand::{CryptoRng, Rng};
-use rand_distr::{Distribution, Normal, Standard, StandardNormal, Uniform, num_traits::Float};
+use rand::{Rng, rngs::StdRng};
+use rand_distr::{
+    Distribution, Normal, StandardNormal, StandardUniform, Uniform, num_traits::Float,
+};
 
 use super::{AnoError, datetime_to_rfc3339};
 
@@ -18,10 +19,10 @@ where
 impl<F> NoiseMethod<F>
 where
     F: Float + rand_distr::uniform::SampleUniform,
-    Standard: Distribution<F>,
+    StandardUniform: Distribution<F>,
     StandardNormal: Distribution<F>,
 {
-    fn sample<R: CryptoRng + Rng + ?Sized>(&self, rng: &mut R) -> F {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> F {
         match self {
             Self::Gaussian(distr) => distr.sample(rng),
             Self::Laplace(distr) => distr.sample(rng),
@@ -68,7 +69,7 @@ impl<F: Float> Laplace<F> {
 
 impl<F: Float> Distribution<F> for Laplace<F>
 where
-    Standard: Distribution<F>,
+    StandardUniform: Distribution<F>,
 {
     /// Generates a random number following the Laplace distribution.
     ///
@@ -77,12 +78,12 @@ where
     /// * `rng` - The random number generator used to generate the number.
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> F {
         // Clamp p away from 0 to prevent ln(0) = -inf.
-        // rng.gen() samples [0, 1); p == 0 is possible but astronomically rare.
+        // StandardUniform samples [0, 1); p == 0 is possible but astronomically rare.
         let p: F = {
-            let raw: F = rng.r#gen();
+            let raw: F = StandardUniform.sample(rng);
             if raw == F::zero() { F::epsilon() } else { raw }
         };
-        if rng.gen_bool(0.5) {
+        if rng.next_u32() & 1 == 0 {
             self.mean - self.beta * F::ln(F::one() - p)
         } else {
             self.mean + self.beta * F::ln(p)
@@ -96,13 +97,13 @@ where
     rand_distr::StandardNormal: rand_distr::Distribution<F>,
 {
     method: NoiseMethod<F>,
-    rng: CsRng,
+    rng: StdRng,
 }
 
 impl<F> NoiseGenerator<F>
 where
     F: Float + rand_distr::uniform::SampleUniform,
-    Standard: Distribution<F>,
+    StandardUniform: Distribution<F>,
     StandardNormal: Distribution<F>,
 {
     /// Instantiate a `NoiseGenerator` using mean and standard deviation.
@@ -141,7 +142,7 @@ where
         }?;
         Ok(Self {
             method,
-            rng: CsRng::from_entropy(),
+            rng: rand::make_rng(),
         })
     }
 
@@ -190,14 +191,14 @@ where
                     })?);
                 Ok(NoiseMethod::Laplace(Laplace::<F>::new(mean, beta)?))
             }
-            "Uniform" => Ok(NoiseMethod::Uniform(Uniform::new(min_bound, max_bound))),
+            "Uniform" => Ok(NoiseMethod::Uniform(Uniform::new(min_bound, max_bound)?)),
             _ => Err(AnoError::AnonymizationError(format!(
                 "No supported distribution {method_name}."
             ))),
         }?;
         Ok(Self {
             method,
-            rng: CsRng::from_entropy(),
+            rng: rand::make_rng(),
         })
     }
 

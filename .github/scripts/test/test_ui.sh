@@ -162,6 +162,16 @@ CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}"
 kms_bin="${CARGO_TARGET_DIR}/debug/cosmian_kms"
 ckms_bin="${CARGO_TARGET_DIR}/debug/ckms"
 
+# ── Find free ports (avoids conflicts with parallel test runs on the same host) ──
+# Allocate TCP ports dynamically so that concurrent test sessions on the same
+# machine (e.g. tests from different branches) do not collide on well-known ports.
+_get_free_port() {
+  python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); p=s.getsockname()[1]; s.close(); print(p)"
+}
+KMS_PORT=$(_get_free_port)
+VITE_PORT=$(_get_free_port)
+echo "==> Using dynamic ports: KMS=${KMS_PORT}, Vite=${VITE_PORT}"
+
 # ── 3. Install JS deps and build UI ─────────────────────────────────────────
 ensure_pnpm
 
@@ -169,12 +179,12 @@ echo "==> Installing UI dependencies …"
 rm -rf "${UI_DIR}/node_modules"
 run_ui run_pnpm install --frozen-lockfile
 
-echo "==> Building UI (VITE_KMS_URL=https://127.0.0.1:9998, VITE_DEV_MODE=true) …"
+echo "==> Building UI (VITE_KMS_URL=https://127.0.0.1:${KMS_PORT}, VITE_DEV_MODE=true) …"
 (cd "${UI_DIR}" && {
   chmod -R u+w dist >/dev/null 2>&1 || true
   rm -rf dist >/dev/null 2>&1 || true
 })
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="https://127.0.0.1:9998" VITE_DEV_MODE="true" pnpm run build:vite)
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="https://127.0.0.1:${KMS_PORT}" VITE_DEV_MODE="true" pnpm run build:vite)
 
 # ── 4. Install Playwright's Chromium browser ─────────────────────────────────
 echo "==> Installing Playwright Chromium browser …"
@@ -195,23 +205,11 @@ cleanup() {
   [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; }
   [ -n "${PREVIEW_PID:-}" ] && { kill "${PREVIEW_PID}" 2>/dev/null || true; }
   # Kill any remaining node/vite child processes that outlived pnpm.
-  fuser -k 5173/tcp 2>/dev/null || true
+  fuser -k "${VITE_PORT}/tcp" 2>/dev/null || true
   rm -rf "${SQLITE_DIR}"
   [ -n "${SOFTHSM2_HOME:-}" ] && rm -rf "${SOFTHSM2_HOME}"
 }
 trap cleanup EXIT INT TERM
-
-# Kill any leftover KMS server from a previous interrupted run.
-if lsof -ti :9998 >/dev/null 2>&1; then
-  echo "==> Killing stale process on port 9998 …"
-  lsof -ti :9998 | xargs kill -9 2>/dev/null || true
-  sleep 1
-fi
-if lsof -ti :5173 >/dev/null 2>&1; then
-  echo "==> Killing stale process on port 5173 …"
-  lsof -ti :5173 | xargs kill -9 2>/dev/null || true
-  sleep 1
-fi
 
 KMS_LOG="${SQLITE_DIR}/kms-server.log"
 KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
@@ -228,7 +226,7 @@ OWNER_KEY="${CERT_DIR}/owner/owner.client.acme.com.key"
 # Using --config bypasses the default-path detection that errors when
 # /etc/cosmian/kms.toml exists alongside extra CLI arguments (macOS dev
 # machines).  ui_index_html_folder is intentionally omitted: the UI is
-# served by the Vite preview process on port 5173; omitting this flag also
+# served by the Vite preview process on port ${VITE_PORT}; omitting this flag also
 # avoids a known actix-files interaction that causes the server to exit
 # immediately after worker initialization on Linux CI.
 #
@@ -266,8 +264,8 @@ clear_database = true
 
 [http]
 hostname = "127.0.0.1"
-port = 9998
-cors_allowed_origins = ["http://127.0.0.1:5173"]
+port = ${KMS_PORT}
+cors_allowed_origins = ["http://127.0.0.1:${VITE_PORT}"]
 
 [tls]
 tls_cert_file = "${SERVER_CERT}"
@@ -275,7 +273,7 @@ tls_key_file = "${SERVER_KEY}"
 clients_ca_cert_file = "${CLIENTS_CA_CERT}"
 HSMEOF
 
-echo "==> Starting KMS server with SoftHSM2 (port 9998) …"
+echo "==> Starting KMS server with SoftHSM2 (port ${KMS_PORT}) …"
 env \
   PATH="${PATH}" \
   LD_LIBRARY_PATH="${_LD}" \
@@ -297,7 +295,7 @@ for _i in $(seq 1 300); do
     --cert "${OWNER_CERT}" --key "${OWNER_KEY}" \
     -o /dev/null -w "%{http_code}" \
     -X POST -H "Content-Type: application/json" -d '{}' \
-    "https://127.0.0.1:9998/kmip/2_1" 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
+    "https://127.0.0.1:${KMS_PORT}/kmip/2_1" 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
     echo "    KMS ready after ${_i}s"
     break
   fi
@@ -324,7 +322,7 @@ cat >"${CKMS_CONF_FILE}" <<CKMSEOF
 print_json = false
 
 [http_config]
-server_url = "https://127.0.0.1:9998"
+server_url = "https://127.0.0.1:${KMS_PORT}"
 accept_invalid_certs = true
 tls_client_pem_cert_path = "${OWNER_CERT}"
 tls_client_pem_key_path = "${OWNER_KEY}"
@@ -360,9 +358,9 @@ _create_hsm_key "hsm::softhsm2_1::${SOFTHSM2_HSM_SLOT_ID_3}::pw_locate_aes3_${TS
 echo "==> HSM test keys created."
 
 # ── 7. Start Vite preview server ────────────────────────────────────────────
-echo "==> Starting Vite preview server (port 5173) …"
+echo "==> Starting Vite preview server (port ${VITE_PORT}) …"
 VITE_PREVIEW_LOG="${SQLITE_DIR}/vite-preview.log"
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm exec vite preview --port 5173 --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES pnpm exec vite preview --port "${VITE_PORT}" --host 127.0.0.1 --strictPort) >"${VITE_PREVIEW_LOG}" 2>&1 &
 PREVIEW_PID=$!
 
 echo "==> Waiting for Vite preview to be ready …"
@@ -378,8 +376,8 @@ for i in $(seq 1 60); do
   # Use bash /dev/tcp instead of nc/curl to avoid OpenSSL initialisation
   # failures caused by the FIPS LD_PRELOAD bootstrap, and to avoid
   # relying on nc which is not in the Nix shell PATH.
-  if (echo >/dev/tcp/127.0.0.1/5173) 2>/dev/null; then
-    echo "    Vite preview ready after ${i}s (port open)"
+  if (echo >"/dev/tcp/127.0.0.1/${VITE_PORT}") 2>/dev/null; then
+    echo "    Vite preview ready after ${i}s (port ${VITE_PORT} open)"
     break
   fi
   if [ "${i}" -eq 60 ]; then
@@ -397,14 +395,14 @@ echo "==> Running Playwright E2E tests (workers=${PLAYWRIGHT_WORKERS:-10}) …"
 TEST_EXIT=0
 PW_ENV=(
   CI=true
-  PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173"
+  PLAYWRIGHT_BASE_URL="http://127.0.0.1:${VITE_PORT}"
   PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-10}"
   PLAYWRIGHT_HSM_KEY_COUNT=3
   PLAYWRIGHT_HSM_SLOT_ID_1="${SOFTHSM2_HSM_SLOT_ID}"
   PLAYWRIGHT_HSM_SLOT_ID_2="${SOFTHSM2_HSM_SLOT_ID_2}"
   PLAYWRIGHT_HSM_SLOT_ID_3="${SOFTHSM2_HSM_SLOT_ID_3}"
   PLAYWRIGHT_CERT_DIR="${CERT_DIR}"
-  PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
+  PLAYWRIGHT_KMS_URL="https://127.0.0.1:${KMS_PORT}"
 )
 if [ "${VARIANT}" = "fips" ]; then
   PW_ENV+=(PLAYWRIGHT_FIPS_MODE=true)

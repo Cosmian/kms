@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use cosmian_crypto_core::CsRng;
-use rand::{RngCore, SeedableRng};
+use rand::RngExt;
 use regex::Regex;
 
 use super::AnoError;
@@ -22,11 +21,11 @@ impl WordTokenizer {
     /// * `target_words`: words to be replaced by tokens.
     pub fn new(target_words: &[&str]) -> Result<Self, AnoError> {
         let mut mapping = HashMap::with_capacity(target_words.len());
-        let mut rng = CsRng::from_entropy();
+        let mut rng = rand::rng();
 
         for word in target_words {
             let mut uuid = [0; 16];
-            rng.try_fill_bytes(&mut uuid)?;
+            rng.fill(&mut uuid);
             mapping.insert(word.to_lowercase(), hex::encode_upper(uuid));
         }
         Ok(Self {

@@ -924,9 +924,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         #[cfg(feature = "non-fips")]
         {
+            // Middleware registration order: LAST registered = runs FIRST.
+            // Cors must run first to handle OPTIONS preflights before auth checks.
+            // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
+            // AuthenticatedUser before EnsureAuth verifies it.
             let tokenize_scope = web::scope("/tokenize")
                 .app_data(web::JsonConfig::default().limit(65_536))
-                .wrap(Cors::permissive())
                 .wrap(Condition::new(
                     use_jwt_auth || use_cert_auth || use_api_token_auth,
                     EnsureAuth::new(
@@ -934,6 +937,16 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                         use_cert_auth,
                     ),
                 ))
+                .wrap(Condition::new(
+                    use_api_token_auth,
+                    ApiTokenAuth::new(kms_server_for_http.clone()),
+                ))
+                .wrap(Condition::new(
+                    use_jwt_auth,
+                    JwtAuth::new(jwt_configurations.clone()),
+                ))
+                .wrap(Condition::new(use_cert_auth, TlsAuth))
+                .wrap(Cors::permissive())
                 .service(tokenize::hash)
                 .service(tokenize::noise)
                 .service(tokenize::word_mask)

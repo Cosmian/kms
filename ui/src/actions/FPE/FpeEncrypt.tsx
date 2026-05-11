@@ -48,8 +48,20 @@ function buildAuthenticatedData(dataType: string, alphabet?: string): Uint8Array
     return undefined;
 }
 
-/** Decode a hex string to a Uint8Array. */
+const HEX_RE = /^[0-9a-fA-F]*$/;
+
+/**
+ * Validate and decode a hex string to Uint8Array.
+ * Returns undefined if the input is empty.
+ * Throws if the length is odd or contains non-hex characters.
+ */
 function hexToBytes(hex: string): Uint8Array {
+    if (hex.length % 2 !== 0) {
+        throw new Error("Tweak hex string must have an even number of characters.");
+    }
+    if (!HEX_RE.test(hex)) {
+        throw new Error("Tweak contains invalid hex characters (only 0-9 a-f A-F are allowed).");
+    }
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
         bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
@@ -70,6 +82,14 @@ const FpeEncryptForm: React.FC = () => {
             responseRef.current.scrollIntoView({ behavior: "smooth" });
         }
     }, [res]);
+
+    useEffect(() => {
+        if (dataType === "text") {
+            form.setFieldValue("alphabet", "alpha_numeric");
+        } else if (dataType === "integer") {
+            form.setFieldValue("alphabet", "numeric");
+        }
+    }, [dataType, form]);
 
     const onFinish = async (values: FpeEncryptFormData) => {
         setIsLoading(true);
@@ -119,6 +139,8 @@ const FpeEncryptForm: React.FC = () => {
                 } else {
                     setRes("Error: Empty response from server.");
                 }
+            } else {
+                setRes("Error: No response from server.");
             }
         } catch (e) {
             setRes(`Error: ${e}`);
@@ -166,12 +188,7 @@ const FpeEncryptForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <Form.Item
-                            name="dataType"
-                            label="Data Type"
-                            rules={[{ required: true }]}
-                            help="The type of data being encrypted"
-                        >
+                        <Form.Item name="dataType" label="Data Type" rules={[{ required: true }]} help="The type of data being encrypted">
                             <Select data-testid="fpe-datatype-select" options={DATA_TYPES} />
                         </Form.Item>
 

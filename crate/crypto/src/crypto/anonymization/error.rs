@@ -14,10 +14,10 @@ pub enum AnoError {
     /// An Argon2 hashing failure.
     #[error("Argon2 error: {0}")]
     Argon2(String),
-    /// A random number generator failure.
-    #[error(transparent)]
-    Rand(#[from] rand::Error),
     /// A normal distribution parameter error.
     #[error(transparent)]
     NormalDistribution(#[from] rand_distr::NormalError),
+    /// A uniform distribution parameter error.
+    #[error(transparent)]
+    UniformDistribution(#[from] rand_distr::uniform::Error),
 }

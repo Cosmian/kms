@@ -8,7 +8,7 @@
 )]
 use num_bigint::BigUint;
 use num_traits::{Num, ToPrimitive};
-use rand::{Rng, RngCore, SeedableRng, thread_rng};
+use rand::RngExt;
 use rand_chacha::ChaCha20Rng;
 use rand_distr::Alphanumeric;
 
@@ -17,9 +17,9 @@ use super::{Alphabet, FPEError, Float, Integer, KEY_LENGTH, decrypt_fpe, encrypt
 /// Generate a random key using a cryptographically
 /// secure random number generator that is suitable for use with FPE
 fn random_key() -> [u8; 32] {
-    let mut rng = ChaCha20Rng::from_entropy();
+    let mut rng = rand::make_rng::<ChaCha20Rng>();
     let mut key = [0_u8; KEY_LENGTH];
-    rng.fill_bytes(&mut key);
+    rng.fill(&mut key);
     key
 }
 
@@ -280,8 +280,8 @@ fn fpe_ff1_names() -> Result<(), FPEError> {
 #[test]
 fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
     for _ in 0..100 {
-        let plaintext_len = thread_rng().gen_range(8..257);
-        let plaintext: String = thread_rng()
+        let plaintext_len = rand::rng().random_range(8..257);
+        let plaintext: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(plaintext_len)
             .map(char::from)
@@ -294,12 +294,12 @@ fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
 
 fn fpe_number_u64_(radix: u32, min_length: usize) -> Result<(), FPEError> {
     let key = random_key();
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for _i in 0..20 {
-        let digits = rng.gen_range(min_length..min_length + 9);
+        let digits = rng.random_range(min_length..min_length + 9);
         let itg = Integer::instantiate(radix, digits)?;
         for _j in 0..10 {
-            let value = rng.gen_range(0..itg.max_value.to_u64().unwrap());
+            let value = rng.random_range(0..itg.max_value.to_u64().unwrap());
             let ciphertext = itg.encrypt(&key, &[], value)?;
             assert!(ciphertext <= itg.max_value().to_u64().unwrap());
             assert_eq!(itg.decrypt(&key, &[], ciphertext)?, value);
@@ -322,14 +322,14 @@ fn fpe_number_u64() -> Result<(), FPEError> {
 #[test]
 fn fpe_number_big_uint() -> Result<(), FPEError> {
     let key = random_key();
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     for radix in 2..=16 {
         let base = BigUint::from(radix);
         for _i in 0..20 {
-            let digits = rng.gen_range(24..32);
+            let digits = rng.random_range(24..32);
             let number = Integer::instantiate(radix, digits)?;
             for _j in 0..10 {
-                let exponent = rng.gen_range(0..digits - 1);
+                let exponent = rng.random_range(0..digits - 1);
                 let value = base.pow(exponent.to_u32().unwrap());
                 let ciphertext = number.encrypt_big(&key, &[], &value)?;
                 assert!(ciphertext <= number.max_value());
@@ -344,10 +344,10 @@ fn fpe_number_big_uint() -> Result<(), FPEError> {
 #[test]
 fn fpe_float() -> Result<(), FPEError> {
     let key = random_key();
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     let float = Float::instantiate()?;
     for _i in 0..1000 {
-        let value = rng.gen_range(0.0..f64::MAX);
+        let value = rng.random_range(0.0..f64::MAX);
         let ciphertext = float.encrypt(&key, &[], value)?;
         assert_eq!(float.decrypt(&key, &[], ciphertext)?, value);
     }

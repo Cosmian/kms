@@ -1,6 +1,6 @@
 use actix_web::{HttpResponse, post, web::Json};
 use base64::{Engine as _, engine::general_purpose};
-use cosmian_kms_crypto::crypto::anonymization::{
+use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::anonymization::{
     AnoError, DateAggregator, HashMethod, Hasher, NoiseGenerator, NumberAggregator, NumberScaler,
     TimeUnit, WordMasker, WordPatternMasker, WordTokenizer,
 };
