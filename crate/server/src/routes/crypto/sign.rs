@@ -10,12 +10,11 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_types::{LinkType, UniqueIdentifier},
 };
 use cosmian_logger::trace;
-use serde_json::json;
 use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, CryptoResult, SignRequest, SignResponse as CryptoSignResponse, b64_decode,
-    b64_encode, jose_to_kmip_params,
+    b64_encode, ecdsa_coord_size, ecdsa_der_to_p1363, jose_to_kmip_params,
 };
 use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
 
@@ -49,11 +48,9 @@ pub(crate) async fn sign(
             .get_link(LinkType::PublicKeyLink)
             .map_or_else(|| body.kid.clone(), |l| l.to_string())
     };
-    let protected_header = json!({
-        "alg": body.alg,
-        "kid": signing_kid,
-    });
-    let protected_json = protected_header.to_string();
+    // Deterministic JSON serialization — field order is fixed (alg, kid)
+    // to ensure consistent JWS protected headers across server instances.
+    let protected_json = format!(r#"{{"alg":"{}","kid":"{}"}}"#, body.alg, signing_kid);
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
     b64_decode("data", &body.data)?;
@@ -80,8 +77,16 @@ pub(crate) async fn sign(
         CryptoApiError::InternalError("Sign response missing signature_data".to_owned())
     })?;
 
+    // RFC 7518 §3.4: ECDSA JWS signatures must be in fixed-size r||s (IEEE P1363) format,
+    // not the DER/ASN.1 encoding returned by the KMIP sign operation.
+    let jose_signature = if let Some(coord_size) = ecdsa_coord_size(&body.alg) {
+        ecdsa_der_to_p1363(&signature_bytes, coord_size)?
+    } else {
+        signature_bytes
+    };
+
     Ok(Json(CryptoSignResponse {
         protected: protected_b64,
-        signature: b64_encode(&signature_bytes),
+        signature: b64_encode(&jose_signature),
     }))
 }

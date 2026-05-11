@@ -9,10 +9,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 };
 use cosmian_logger::trace;
 
-use super::encrypt::build_jwe_aad;
 use super::{
     CryptoApiError, CryptoResult, DecryptRequest, DecryptResponse as CryptoDecryptResponse,
-    b64_decode, b64_encode, jose_to_kmip_params,
+    b64_decode, b64_encode, encrypt::build_jwe_aad, jose_to_kmip_params,
 };
 use crate::core::KMS;
 
@@ -80,8 +79,24 @@ pub(crate) async fn decrypt(
     let kmip_params = jose_to_kmip_params(&alg, Some(&enc))?;
 
     let iv_bytes = b64_decode("iv", &body.iv)?;
+    // AES-GCM mandates a 96-bit (12-byte) IV.  Non-96-bit IVs cause OpenSSL to
+    // use GHASH to reduce the IV, which weakens the security guarantees.
+    if iv_bytes.len() != 12 {
+        return Err(CryptoApiError::BadRequest(format!(
+            "GCM initialization vector must be exactly 96 bits (12 bytes), got {} bytes",
+            iv_bytes.len()
+        )));
+    }
     let ciphertext_bytes = b64_decode("ciphertext", &body.ciphertext)?;
     let tag_bytes = b64_decode("tag", &body.tag)?;
+    // JOSE GCM always uses 128-bit (16-byte) authentication tags (RFC 7518 §4.7).
+    // Accepting shorter tags would increase forgery probability.
+    if tag_bytes.len() != 16 {
+        return Err(CryptoApiError::BadRequest(format!(
+            "GCM authentication tag must be exactly 128 bits (16 bytes), got {} bytes",
+            tag_bytes.len()
+        )));
+    }
 
     // RFC 7516 §5.2 step 15
     let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;

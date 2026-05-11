@@ -58,17 +58,21 @@ impl actix_web::error::ResponseError for CryptoApiError {
 
     fn error_response(&self) -> HttpResponse {
         let status = self.status_code();
+        // Sanitize 403/404/500 error messages to prevent information leakage.
+        // Internal details (key UIDs, DB paths, user names) are logged server-side
+        // but never returned to the HTTP caller.
         let (error_code, description) = match self {
             Self::BadRequest(msg) => ("bad_request", msg.as_str()),
             Self::UnsupportedAlgorithm(msg) => ("unsupported_algorithm", msg.as_str()),
-            Self::Forbidden(msg) => ("forbidden", msg.as_str()),
-            Self::NotFound(msg) => ("not_found", msg.as_str()),
             Self::CryptoFailure(msg) => ("crypto_failure", msg.as_str()),
-            Self::InternalError(msg) => ("internal_error", msg.as_str()),
+            Self::Forbidden(_) => ("forbidden", "Access denied"),
+            Self::NotFound(_) => ("not_found", "Key not found"),
+            Self::InternalError(_) => ("internal_error", "Internal server error"),
         };
 
-        if status >= StatusCode::INTERNAL_SERVER_ERROR {
-            warn!("{status} - {description}");
+        if status >= StatusCode::BAD_REQUEST {
+            // Log the original (unsanitized) message for server-side debugging.
+            warn!("{status} - {}", self);
         }
 
         let body = CryptoErrorBody {
