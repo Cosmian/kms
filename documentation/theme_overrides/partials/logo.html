@@ -16,18 +16,18 @@
 
       // Set the logo based on the view-mode
       if (viewMode === "dark") {
-          logoElement.src = "/cosmian-logo-doc-light.svg";  // Dark mode logo
+          logoElement.src = "/eviden-logo-black.svg";  // Dark mode logo
       } else {
-          logoElement.src = "/cosmian-logo-doc-black.svg";  // Light mode logo
+          logoElement.src = "/eviden-logo-orange.svg";  // Light mode logo
       }
 
       // Optionally, add an event listener to detect theme changes dynamically
       const observer = new MutationObserver(() => {
           const newViewMode = localStorage.getItem("docs.cosmian.com::view-mode");
           if (newViewMode === "dark") {
-              logoElement.src = "/cosmian-logo-doc-light.svg";
+              logoElement.src = "/eviden-logo-black.svg";
           } else {
-              logoElement.src = "/cosmian-logo-doc-black.svg";
+              logoElement.src = "/eviden-logo-orange.svg";
           }
       });
 

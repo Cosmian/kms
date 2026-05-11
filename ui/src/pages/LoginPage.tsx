@@ -79,11 +79,11 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                     {isLoading ? (
                         <Spin size="large" />
                     ) : auth ? (
-                        <Button ghost block className="hover:decoration-purple-700" onClick={handleLogin} loading={isLoading}>
+                        <Button type="primary" block onClick={handleLogin} loading={isLoading}>
                             LOGIN
                         </Button>
                     ) : (
-                        <Button ghost block className="hover:decoration-purple-700" onClick={handleAccessKms} loading={isLoading}>
+                        <Button type="primary" block onClick={handleAccessKms} loading={isLoading}>
                             ACCESS KMS
                         </Button>
                     )}
