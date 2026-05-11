@@ -71,7 +71,11 @@ pub fn list_jwt_configurations(
         .map(|url| JwtConfig {
             jwt_issuer_uri: url.clone(),
             jwks: jwks_manager.clone(),
-            jwt_audience: None, // audience will be validated post-decode against configured lists
+            // KACLS-to-KACLS migration tokens always carry `aud: "kacls-migration"`.
+            // Setting the expected audience here ensures `validate_authentication_token`
+            // calls `Validation::set_audience`, which makes jsonwebtoken 10.x accept
+            // the token instead of rejecting it with InvalidAudience.
+            jwt_audience: Some(vec!["kacls-migration".to_owned()]),
         })
         .collect::<Vec<_>>()
 }
@@ -161,6 +165,15 @@ pub(super) fn decode_jwt_authorization_token(
     // Allow tokens to omit some standard claims (e.g., iat, nbf), but handle exp explicitly.
     validation.required_spec_claims.clear();
     validation.set_issuer(&[&jwt_config.jwt_issuer_uri]);
+
+    // jsonwebtoken 10.x defaults to validate_aud = true and rejects tokens that
+    // carry an `aud` claim when no expected audience is configured. Set the
+    // expected audience from the JwtConfig so the library accepts the token.
+    if let Some(ref jwt_audience) = jwt_config.jwt_audience {
+        validation.set_audience(jwt_audience.as_slice());
+    } else {
+        validation.validate_aud = false;
+    }
 
     #[cfg(all(not(test), not(feature = "insecure")))]
     {
@@ -264,6 +277,24 @@ pub async fn validate_cse_authentication_token(
             break;
         }
     }
+
+    // If no config matched, refresh the JWKS and retry once.
+    // The KACLS `/certs` key may have been evicted during a periodic refresh
+    // failure (the JwksManager replaces the entire map on each refresh).
+    if decoded_token.is_none() {
+        if let Some(first) = cse_config.authentication.first() {
+            first.jwks.refresh().await?;
+        }
+        for idp_config in cse_config.authentication.iter() {
+            if let Ok(token) = idp_config.validate_authentication_token(authentication_token, false)
+            {
+                decoded_token = Some(token);
+                working_jwt_config = Some(idp_config);
+                break;
+            }
+        }
+    }
+
     let authentication_token = decoded_token.ok_or_else(|| {
         KmsError::Unauthorized(
             "Fail to decode authentication token with the given config".to_owned(),
@@ -467,9 +498,18 @@ pub(super) async fn validate_tokens(
 #[cfg(test)]
 #[expect(clippy::unwrap_used, unsafe_code, clippy::indexing_slicing)]
 mod tests {
-    use std::sync::Arc;
+    use std::{collections::HashMap, sync::Arc};
 
+    use base64::{Engine, engine::general_purpose};
     use cosmian_logger::{debug, info, log_init, trace};
+    use jsonwebtoken::{
+        Algorithm, EncodingKey, Header, encode,
+        jwk::{
+            CommonParameters, Jwk, JwkSet, KeyAlgorithm, PublicKeyUse, RSAKeyParameters, RSAKeyType,
+        },
+    };
+    use openssl::rsa::Rsa;
+    use serde::Serialize;
 
     use crate::{
         config::IdpAuthConfig,
@@ -478,11 +518,396 @@ mod tests {
             self,
             jwt::{
                 JWKS_URI, JWT_ISSUER_URI, decode_jwt_authorization_token, jwt_authorization_config,
+                validate_cse_authentication_token,
             },
             operations::WrapRequest,
         },
         tests::google_cse::utils::generate_google_jwt,
     };
+
+    /// Claims structure matching a real Google CSE authorization token (Gmail).
+    #[derive(Serialize)]
+    struct GoogleCseAuthzClaims {
+        iss: String,
+        aud: String,
+        email: String,
+        resource_name: String,
+        role: String,
+        kacls_url: String,
+        perimeter_id: String,
+        iat: usize,
+        exp: usize,
+        message_id: String,
+        spki_hash: String,
+        spki_hash_algorithm: String,
+        kacls_owner_domain: String,
+    }
+
+    /// Minimal claims for negative tests.
+    #[derive(Serialize)]
+    struct MinimalClaims {
+        iss: String,
+        aud: String,
+        email: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        role: Option<String>,
+        iat: usize,
+        exp: usize,
+    }
+
+    fn now_usize() -> usize {
+        usize::try_from(chrono::Utc::now().timestamp()).unwrap()
+    }
+
+    /// Build a `JwksManager` pre-loaded with a single RSA public key (no HTTP fetch).
+    fn build_jwks_manager_with_key(
+        kid: &str,
+        rsa: &Rsa<openssl::pkey::Private>,
+    ) -> Arc<JwksManager> {
+        let n = rsa.n().to_vec();
+        let e = rsa.e().to_vec();
+
+        let jwk = Jwk {
+            common: CommonParameters {
+                public_key_use: Some(PublicKeyUse::Signature),
+                key_algorithm: Some(KeyAlgorithm::RS256),
+                key_id: Some(kid.to_owned()),
+                ..Default::default()
+            },
+            algorithm: jsonwebtoken::jwk::AlgorithmParameters::RSA(RSAKeyParameters {
+                key_type: RSAKeyType::RSA,
+                n: general_purpose::URL_SAFE_NO_PAD.encode(n),
+                e: general_purpose::URL_SAFE_NO_PAD.encode(e),
+            }),
+        };
+
+        let jwk_set = JwkSet { keys: vec![jwk] };
+
+        let mut map = HashMap::new();
+        map.insert("test".to_owned(), jwk_set);
+
+        let manager = JwksManager {
+            uris: vec![],
+            jwks: std::sync::RwLock::new(map),
+            last_update: std::sync::RwLock::new(Some(chrono::Utc::now())),
+            proxy_params: None,
+        };
+
+        Arc::new(manager)
+    }
+
+    /// Helper: build a signed JWT with the given claims, kid, and RSA private key.
+    fn sign_test_jwt<T: Serialize>(
+        kid: &str,
+        claims: &T,
+        rsa: &Rsa<openssl::pkey::Private>,
+    ) -> String {
+        let der = rsa.private_key_to_der().unwrap();
+        let encoding_key = EncodingKey::from_rsa_der(&der);
+
+        let mut header = Header::new(Algorithm::RS256);
+        header.kid = Some(kid.to_owned());
+
+        encode(&header, claims, &encoding_key).unwrap()
+    }
+
+    /// Non-regression test for the Google CSE authorization token audience
+    /// validation bug (jsonwebtoken 10.x). Tokens with `aud: "cse-authorization"`
+    /// must be accepted when the configured audience matches.
+    ///
+    /// This reproduces the exact token structure from the issue report: a Google
+    /// Gmail CSE authorization token with standard fields like `role`, `kacls_url`,
+    /// `resource_name`, `spki_hash`, `kacls_owner_domain`, etc.
+    #[test]
+    fn test_cse_authorization_token_with_audience_is_accepted() {
+        log_init(option_env!("RUST_LOG"));
+
+        let kid = "test-kid-001";
+        let issuer = "gsuitecse-tokenissuer-gmail@system.gserviceaccount.com";
+
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
+
+        let jwt_config = Arc::new(JwtConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks: jwks_manager,
+            jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+        });
+
+        let now = now_usize();
+        let claims = GoogleCseAuthzClaims {
+            iss: issuer.to_owned(),
+            aud: "cse-authorization".to_owned(),
+            email: "user@example.com".to_owned(),
+            resource_name:
+                "//gmail.googleapis.com/gmail/users/user%40example.com/settings/cse/keypairs/abc123"
+                    .to_owned(),
+            role: "decrypter".to_owned(),
+            kacls_url: "https://kms.example.com/google_cse".to_owned(),
+            perimeter_id: String::new(),
+            iat: now,
+            exp: now + 3600,
+            message_id: "msg-id-12345".to_owned(),
+            spki_hash: "dGVzdC1zcGtpLWhhc2g".to_owned(),
+            spki_hash_algorithm: "SHA-256".to_owned(),
+            kacls_owner_domain: "example.com".to_owned(),
+        };
+
+        let token = sign_test_jwt(kid, &claims, &rsa);
+
+        // This was failing before the fix with:
+        // "Cannot validate token: InvalidAudience"
+        let result = decode_jwt_authorization_token(&jwt_config, &token);
+        assert!(
+            result.is_ok(),
+            "decode_jwt_authorization_token should accept a token with aud matching the configured audience, got: {:?}",
+            result.err()
+        );
+
+        let (user_claim, _headers) = result.unwrap();
+        assert_eq!(user_claim.email.as_deref(), Some("user@example.com"));
+        assert_eq!(user_claim.aud, Some(vec!["cse-authorization".to_owned()]));
+        assert_eq!(user_claim.role.as_deref(), Some("decrypter"));
+        assert_eq!(
+            user_claim.kacls_url.as_deref(),
+            Some("https://kms.example.com/google_cse")
+        );
+        assert_eq!(
+            user_claim.resource_name.as_deref(),
+            Some(
+                "//gmail.googleapis.com/gmail/users/user%40example.com/settings/cse/keypairs/abc123"
+            )
+        );
+        assert_eq!(user_claim.spki_hash.as_deref(), Some("dGVzdC1zcGtpLWhhc2g"));
+        assert_eq!(user_claim.spki_hash_algorithm.as_deref(), Some("SHA-256"));
+    }
+
+    /// Verify that a token with a *wrong* audience is rejected.
+    #[test]
+    fn test_cse_authorization_token_wrong_audience_rejected() {
+        log_init(option_env!("RUST_LOG"));
+
+        let kid = "test-kid-002";
+        let issuer = "gsuitecse-tokenissuer-gmail@system.gserviceaccount.com";
+
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
+
+        let jwt_config = Arc::new(JwtConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks: jwks_manager,
+            jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+        });
+
+        let now = now_usize();
+        let claims = MinimalClaims {
+            iss: issuer.to_owned(),
+            aud: "wrong-audience".to_owned(),
+            email: "user@example.com".to_owned(),
+            role: Some("decrypter".to_owned()),
+            iat: now,
+            exp: now + 3600,
+        };
+
+        let token = sign_test_jwt(kid, &claims, &rsa);
+
+        let result = decode_jwt_authorization_token(&jwt_config, &token);
+        assert!(
+            result.is_err(),
+            "should reject a token whose audience does not match the configured one"
+        );
+    }
+
+    /// Verify that tokens work when no audience is configured (`validate_aud` disabled).
+    #[test]
+    fn test_cse_authorization_token_no_configured_audience() {
+        log_init(option_env!("RUST_LOG"));
+
+        let kid = "test-kid-003";
+        let issuer = "gsuitecse-tokenissuer-drive@system.gserviceaccount.com";
+
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
+
+        let jwt_config = Arc::new(JwtConfig {
+            jwt_issuer_uri: issuer.to_owned(),
+            jwks: jwks_manager,
+            jwt_audience: None,
+        });
+
+        let now = now_usize();
+        let claims = MinimalClaims {
+            iss: issuer.to_owned(),
+            aud: "any-audience".to_owned(),
+            email: "user@example.com".to_owned(),
+            role: Some("reader".to_owned()),
+            iat: now,
+            exp: now + 3600,
+        };
+
+        let token = sign_test_jwt(kid, &claims, &rsa);
+
+        let result = decode_jwt_authorization_token(&jwt_config, &token);
+        assert!(
+            result.is_ok(),
+            "should accept a token when no audience is configured, got: {:?}",
+            result.err()
+        );
+    }
+
+    /// Verify that wrong issuer is rejected.
+    #[test]
+    fn test_cse_authorization_token_wrong_issuer_rejected() {
+        log_init(option_env!("RUST_LOG"));
+
+        let kid = "test-kid-004";
+        let expected_issuer = "gsuitecse-tokenissuer-gmail@system.gserviceaccount.com";
+
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
+
+        let jwt_config = Arc::new(JwtConfig {
+            jwt_issuer_uri: expected_issuer.to_owned(),
+            jwks: jwks_manager,
+            jwt_audience: Some(vec!["cse-authorization".to_owned()]),
+        });
+
+        let now = now_usize();
+        let claims = MinimalClaims {
+            iss: "wrong-issuer@system.gserviceaccount.com".to_owned(),
+            aud: "cse-authorization".to_owned(),
+            email: "user@example.com".to_owned(),
+            role: None,
+            iat: now,
+            exp: now + 3600,
+        };
+
+        let token = sign_test_jwt(kid, &claims, &rsa);
+
+        let result = decode_jwt_authorization_token(&jwt_config, &token);
+        assert!(result.is_err(), "should reject a token with a wrong issuer");
+    }
+
+    /// Claims matching a KACLS-to-KACLS migration JWT created by `create_jwt`.
+    #[derive(Serialize)]
+    struct KaclsMigrationClaims {
+        iss: String,
+        aud: String,
+        exp: usize,
+        iat: usize,
+        kacls_url: String,
+        resource_name: String,
+    }
+
+    /// Non-regression test for the KACLS-to-KACLS migration authentication flow
+    /// (issue #947). When KMS-A calls `privilegedunwrap` on KMS-B, the JWT sent
+    /// by KMS-A must be accepted by `validate_cse_authentication_token` on KMS-B.
+    ///
+    /// The token has `aud: "kacls-migration"` and is signed by KMS-A's migration
+    /// RSA key. KMS-B's whitelist config must have a matching expected audience.
+    #[tokio::test]
+    async fn test_kacls_migration_authentication_token_accepted() {
+        log_init(option_env!("RUST_LOG"));
+
+        let kid = "kacls-migration-kid-001";
+        let kms_a_url = "https://kms-a.example.com/google_cse";
+        let kms_b_url = "https://kms-b.example.com/google_cse";
+
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
+
+        // Build the whitelist JwtConfig as list_jwt_configurations would
+        let whitelist_config = JwtConfig {
+            jwt_issuer_uri: kms_a_url.to_owned(),
+            jwks: jwks_manager.clone(),
+            jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+        };
+
+        let cse_config = super::GoogleCseConfig {
+            authentication: vec![whitelist_config].into(),
+            authorization: HashMap::new(),
+        };
+
+        let now = now_usize();
+        let claims = KaclsMigrationClaims {
+            iss: kms_a_url.to_owned(),
+            aud: "kacls-migration".to_owned(),
+            exp: now + 3600,
+            iat: now,
+            kacls_url: kms_b_url.to_owned(),
+            resource_name: "//googleapis.com/drive/files/test-file-id".to_owned(),
+        };
+
+        let token = sign_test_jwt(kid, &claims, &rsa);
+
+        let result = validate_cse_authentication_token(
+            &token,
+            &Some(cse_config),
+            kms_b_url,
+            "default_user",
+            Some("//googleapis.com/drive/files/test-file-id".to_owned()),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "KACLS migration authentication token should be accepted, got: {:?}",
+            result.err()
+        );
+        // For privilegedunwrap, the returned user is the default username
+        assert_eq!(result.unwrap(), "default_user");
+    }
+
+    /// Verify that a KACLS migration token with a wrong audience is rejected
+    /// (post-decode audience check on Drive resources).
+    #[tokio::test]
+    async fn test_kacls_migration_token_wrong_audience_rejected() {
+        log_init(option_env!("RUST_LOG"));
+
+        let kid = "kacls-migration-kid-002";
+        let kms_a_url = "https://kms-a.example.com/google_cse";
+        let kms_b_url = "https://kms-b.example.com/google_cse";
+
+        let rsa = Rsa::generate(2048).unwrap();
+        let jwks_manager = build_jwks_manager_with_key(kid, &rsa);
+
+        let whitelist_config = JwtConfig {
+            jwt_issuer_uri: kms_a_url.to_owned(),
+            jwks: jwks_manager.clone(),
+            jwt_audience: Some(vec!["kacls-migration".to_owned()]),
+        };
+
+        let cse_config = super::GoogleCseConfig {
+            authentication: vec![whitelist_config].into(),
+            authorization: HashMap::new(),
+        };
+
+        let now = now_usize();
+        let claims = KaclsMigrationClaims {
+            iss: kms_a_url.to_owned(),
+            aud: "wrong-audience".to_owned(),
+            exp: now + 3600,
+            iat: now,
+            kacls_url: kms_b_url.to_owned(),
+            resource_name: "//googleapis.com/drive/files/test-file-id".to_owned(),
+        };
+
+        let token = sign_test_jwt(kid, &claims, &rsa);
+
+        let result = validate_cse_authentication_token(
+            &token,
+            &Some(cse_config),
+            kms_b_url,
+            "default_user",
+            Some("//googleapis.com/drive/files/test-file-id".to_owned()),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "KACLS migration token with wrong audience should be rejected"
+        );
+    }
 
     #[ignore = "Requires Google CSE credentials; not available in CI"]
     #[tokio::test]
