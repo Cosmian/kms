@@ -77,7 +77,9 @@ nav:
       - Cloud providers:
           - Amazon Web Services (AWS):
               - ECS Fargate: integrations/cloud_providers/aws/fargate.md
-              - External Key Store (XKS): integrations/cloud_providers/aws/xks.md
+              - External Key Store (XKS):
+                  - XKS integration: integrations/cloud_providers/aws/xks.md
+                  - XKS migration: integrations/cloud_providers/aws/xks_migration.md
               - BYOK (Bring Your Own Key): integrations/cloud_providers/aws/byok.md
           - Microsoft Azure:
               - BYOK (Bring Your Own Key): integrations/cloud_providers/azure/byok.md
