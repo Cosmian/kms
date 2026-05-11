@@ -222,7 +222,7 @@ test.describe("Tokenize — Hash Argon2", () => {
         await page.fill('input[placeholder="e.g. hello world"]', "test argon2");
         await selectOption(page, "hash-method-select", "Argon2 (password hashing)");
         // Argon2 requires a base64-encoded salt
-        await page.fill('input[placeholder="e.g. c2FsdA=="]', "c2FsdA=="); // base64 of "salt"
+        await page.fill('input[placeholder="e.g. c2FsdA=="]', "c2FsdHNhbHQ="); // base64 of "saltsalt" (8 bytes, meets Argon2 minimum)
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/Result:\s*[A-Za-z0-9+/=]+/);
     });
@@ -271,8 +271,8 @@ test.describe("Tokenize — Noise (Gaussian on date)", () => {
         await page.fill('input[placeholder="e.g. 0"]', "0");
         await page.fill('input[placeholder="e.g. 1.0"]', "3600"); // noise in seconds
         const text = await submitAndWaitForResponse(page);
-        // Expect a valid ISO date string
-        expect(text).toMatch(/Result:\s*\d{4}-\d{2}-\d{2}T/);
+        // Expect a valid ISO date string (may be JSON-quoted depending on serialization)
+        expect(text).toMatch(/Result:\s*"?\d{4}-\d{2}-\d{2}T/);
     });
 });
 
