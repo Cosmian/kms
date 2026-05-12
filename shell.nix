@@ -178,8 +178,8 @@ pkgs.mkShell {
   ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
   ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
-  # k8s-hsm-kmsv2 integration test: Go toolchain (CGo is already provided by pkgs.gcc)
-  ++ pkgs.lib.optionals withK8sHsm [ pkgs.go ];
+  # k8s-hsm-kmsv2 integration test: Go toolchain (CGo is already provided by pkgs.gcc) + git for cloning
+  ++ pkgs.lib.optionals withK8sHsm [ pkgs.go pkgs.git ];
 
   shellHook = ''
     set -eo pipefail
