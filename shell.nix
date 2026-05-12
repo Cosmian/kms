@@ -42,6 +42,8 @@ let
   withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
   # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
+  # k8s-hsm-kmsv2 integration test: Go toolchain + CGo + SoftHSM2
+  withK8sHsm = (builtins.getEnv "WITH_K8S_HSM") == "1";
 
   rustToolchain =
     if withWasm then
@@ -175,7 +177,9 @@ pkgs.mkShell {
   # OpenSSH PKCS#11 test: include openssh so ssh-keygen is available on Linux CI
   ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
-  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ];
+  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
+  # k8s-hsm-kmsv2 integration test: Go toolchain (CGo is already provided by pkgs.gcc)
+  ++ pkgs.lib.optionals withK8sHsm [ pkgs.go ];
 
   shellHook = ''
     set -eo pipefail

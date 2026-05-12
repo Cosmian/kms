@@ -33,6 +33,7 @@ jobs:
           - gcp_cmek
           - openssh
           - luks
+          - k8s-hsm
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -52,6 +53,9 @@ jobs:
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
+            features: fips
+          # k8s-hsm-kmsv2 uses SoftHSM2 (non-FIPS); no FIPS mode needed
+          - type: k8s-hsm
             features: fips
 
     steps:

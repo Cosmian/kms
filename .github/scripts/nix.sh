@@ -36,6 +36,7 @@ usage() {
       pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
       openssh                Run OpenSSH PKCS#11 integration tests (non-FIPS)
       luks                   Run LUKS disk-encryption PKCS#11 integration tests
+      k8s-hsm                Run Kubernetes KMS v2 HSM plugin integration tests (non-FIPS, SoftHSM2)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
@@ -91,6 +92,7 @@ usage() {
     $0 --variant non-fips test pykmip     # PyKMIP operations + Synology DSM simulation
     $0 --variant non-fips test openssh    # OpenSSH PKCS#11 integration tests
     $0 test luks                          # LUKS disk-encryption PKCS#11 tests
+    $0 --variant non-fips test k8s-hsm    # Kubernetes KMS v2 plugin (SoftHSM2 backend)
     $0 test hsm                 # both SoftHSM2 + Utimaco + Proteccio
     $0 test hsm softhsm2        # SoftHSM2 only
     $0 test hsm utimaco         # Utimaco only
@@ -509,6 +511,9 @@ test_command() {
   luks)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
     ;;
+  k8s-hsm)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_k8s_hsm.sh"
+    ;;
   ui)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
     ;;
@@ -544,7 +549,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, k8s-hsm, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -568,6 +573,11 @@ test_command() {
   # For LUKS disk-encryption PKCS#11 tests, ensure opensc (pkcs11-tool) is present on Linux CI
   if [ "$TEST_TYPE" = "luks" ]; then
     export WITH_LUKS=1
+  fi
+  # For k8s-hsm-kmsv2 tests, include SoftHSM2 (PKCS#11 backend) and Go toolchain
+  if [ "$TEST_TYPE" = "k8s-hsm" ]; then
+    export WITH_HSM=1
+    export WITH_K8S_HSM=1
   fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
@@ -604,6 +614,7 @@ test_command() {
         --keep WITH_PYTHON \
         --keep WITH_OPENSSH \
         --keep WITH_LUKS \
+        --keep WITH_K8S_HSM \
         --keep VARIANT \
         --keep LINK \
         --keep RELEASE_FLAG \
