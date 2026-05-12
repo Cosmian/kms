@@ -179,7 +179,7 @@ jobs:
             --enable-ssh-root \
             --disable-ssh-auth \
             --enable-rosenpass=false
-          timeout 60 bash -c 'until nc -z oracle.netbird.selfhosted 22 2>/dev/null; do sleep 2; done'
+          timeout 60 bash -c 'until ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ec2-user@oracle.netbird.selfhosted true 2>/dev/null; do sleep 2; done'
           echo "Connected to Netbird, oracle host is reachable"
 
       - name: Test Docker image
