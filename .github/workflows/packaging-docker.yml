@@ -164,6 +164,16 @@ jobs:
           echo "Tagging local image for test: ${{ steps.image_info.outputs.image_name }} -> $first"
           docker tag "${{ steps.image_info.outputs.image_name }}" "$first"
 
+      - name: Connect to Netbird (non-fips amd64 only)
+        if: matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
+        env:
+          NETBIRD_SETUP_KEY: ${{ secrets.NETBIRD_SETUP_KEY }}
+        run: |
+          curl -fsSL https://pkgs.netbird.io/install.sh | sh
+          netbird up --management-url https://netbird.cosmian.com --setup-key "${NETBIRD_SETUP_KEY}"
+          timeout 60 bash -c 'until nc -z oracle.netbird.selfhosted 22 2>/dev/null; do sleep 2; done'
+          echo "Connected to Netbird, oracle host is reachable"
+
       - name: Test Docker image
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
@@ -173,6 +183,10 @@ jobs:
           COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
         run: |
           bash .github/scripts/test/test_docker_image.sh
+
+      - name: Disconnect from Netbird (non-fips amd64 only)
+        if: always() && matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
+        run: netbird down || true
 
       - name: Select tag for output
         id: pick
