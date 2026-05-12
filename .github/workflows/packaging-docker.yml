@@ -170,7 +170,15 @@ jobs:
           NETBIRD_SETUP_KEY: ${{ secrets.NETBIRD_SETUP_KEY }}
         run: |
           curl -fsSL https://pkgs.netbird.io/install.sh | sh
-          netbird up --management-url https://netbird.cosmian.com --setup-key "${NETBIRD_SETUP_KEY}"
+          [[ -n "${NETBIRD_SETUP_KEY}" ]] || { echo "ERROR: NETBIRD_SETUP_KEY secret is not set"; exit 1; }
+          netbird up \
+            --setup-key "${NETBIRD_SETUP_KEY}" \
+            --management-url https://netbird.cosmian.com \
+            --log-level warning \
+            --allow-server-ssh \
+            --enable-ssh-root \
+            --disable-ssh-auth \
+            --enable-rosenpass=false
           timeout 60 bash -c 'until nc -z oracle.netbird.selfhosted 22 2>/dev/null; do sleep 2; done'
           echo "Connected to Netbird, oracle host is reachable"
 
