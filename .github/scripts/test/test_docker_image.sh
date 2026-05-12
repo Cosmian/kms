@@ -187,18 +187,18 @@ if [[ "${RUN_ORACLE_TESTS:-false}" == "true" ]]; then
     TAG_ONLY="${DOCKER_IMAGE_NAME##*:}"
 
     echo "Copy upgrade script to oracle"
-    scp -o StrictHostKeyChecking=no \
-        .github/scripts/oracle/upgrade-kms.sh \
-        ec2-user@oracle.netbird.selfhosted:/tmp/upgrade-kms.sh
+    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+        'cat > /tmp/upgrade-kms.sh' \
+        < .github/scripts/oracle/upgrade-kms.sh
 
     echo "Run KMS upgrade on oracle"
     ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
         bash /tmp/upgrade-kms.sh "${TAG_ONLY}"
 
     echo "Copy smoke test script to oracle"
-    scp -o StrictHostKeyChecking=no \
-        .github/scripts/oracle/smoke-test-tde.sh \
-        ec2-user@oracle.netbird.selfhosted:/tmp/smoke-test-tde.sh
+    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+        'cat > /tmp/smoke-test-tde.sh' \
+        < .github/scripts/oracle/smoke-test-tde.sh
 
     echo "Run TDE smoke test on oracle"
     ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
