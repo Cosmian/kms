@@ -21,13 +21,15 @@ PASSED=0
 
 # ── KMS health check ──────────────────────────────────────────────────────────
 
-echo "==> KMS health check (/version)"
+echo "==> KMS health check"
 docker ps | grep cosmian-kms \
   || { echo "ERROR: cosmian-kms container is not running" >&2; exit 1; }
+running_image=$(docker inspect cosmian-kms --format '{{.Config.Image}}')
+echo "Running image: ${running_image}"
+echo "${running_image}" | grep -q "${TAG_ONLY}" \
+  || { echo "ERROR: cosmian-kms is running image '${running_image}', expected tag '${TAG_ONLY}'" >&2; exit 1; }
 response=$(curl -sf http://localhost:9998/version)
 echo "Version response: ${response}"
-echo "${response}" | grep -q "${TAG_ONLY}" \
-  || { echo "ERROR: /version response does not contain expected tag '${TAG_ONLY}'" >&2; exit 1; }
 echo "Health check passed"
 PASSED=$((PASSED + 1))
 
