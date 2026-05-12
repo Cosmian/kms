@@ -11,7 +11,7 @@ set -euo pipefail
 TAG_ONLY="${1:?TAG_ONLY (arg 1) is required}"
 
 cd /opt/cosmian-kms
-TMPDIR=/tmp sed -i "s|ghcr.io/cosmian/kms:.*|ghcr.io/cosmian/kms:${TAG_ONLY}|" docker-compose.yml
+sudo sed -i "s|ghcr.io/cosmian/kms:.*|ghcr.io/cosmian/kms:${TAG_ONLY}|" docker-compose.yml
 docker compose pull kms
 docker compose up -d kms
 
