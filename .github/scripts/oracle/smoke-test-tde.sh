@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # smoke-test-tde.sh — TDE proof script for the Oracle KMS integration
 #
-# Usage: bash smoke-test-tde.sh <DEMO_PASS> <TAG_ONLY> <ORACLE_WALLET_PASS> <COSMIAN_HSM_PIN>
+# Usage: bash smoke-test-tde.sh <ORACLE_KMS_DEMO_USER_PASS> <TAG_ONLY> <ORACLE_TDE_WALLET_PASS> <COSMIAN_HSM_PIN>
 #
 # Runs entirely on the remote Oracle server (copied there via scp).
 # Exits non-zero if any proof fails.
 
 set -euo pipefail
 
-DEMO_PASS="${1:?DEMO_PASS (arg 1) is required}"
+ORACLE_KMS_DEMO_USER_PASS="${1:?ORACLE_KMS_DEMO_USER_PASS (arg 1) is required}"
 TAG_ONLY="${2:?TAG_ONLY (arg 2) is required}"
-ORACLE_WALLET_PASS="${3:?ORACLE_WALLET_PASS (arg 3) is required}"
+ORACLE_TDE_WALLET_PASS="${3:?ORACLE_TDE_WALLET_PASS (arg 3) is required}"
 COSMIAN_HSM_PIN="${4:?COSMIAN_HSM_PIN (arg 4) is required}"
 
 ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
@@ -106,11 +106,11 @@ ORACLEBASH
 )
 PORT="${PORT:-1521}"
 echo "Oracle listener port: ${PORT}"
-output=$(sudo -u oracle bash -s -- "${DEMO_PASS}" "${PORT}" <<'ORACLEBASH'
+output=$(sudo -u oracle bash -s -- "${ORACLE_KMS_DEMO_USER_PASS}" "${PORT}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
-DEMO_PASS="$1"
+ORACLE_KMS_DEMO_USER_PASS="$1"
 PORT="$2"
-"$ORACLE_HOME/bin/sqlplus" -s "kms_demo/${DEMO_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
+"$ORACLE_HOME/bin/sqlplus" -s "kms_demo/${ORACLE_KMS_DEMO_USER_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
 SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
 SELECT full_name FROM DEMO_PERSONS ORDER BY id;
 EXIT;
@@ -146,16 +146,16 @@ echo "==> PROOF 6: Full wallet migration (Cosmian K1 → Oracle wallet → Cosmi
 
 # PRE-MIGRATION SETUP: create and open the Oracle software wallet
 echo "  Creating Oracle software wallet..."
-sudo -u oracle bash -s -- "${ORACLE_WALLET_PASS}" <<'ORACLEBASH'
+sudo -u oracle bash -s -- "${ORACLE_TDE_WALLET_PASS}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
-ORACLE_WALLET_PASS="$1"
+ORACLE_TDE_WALLET_PASS="$1"
 "$ORACLE_HOME/bin/sqlplus" -s / as sysdba <<SQLEOF
 SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
 ADMINISTER KEY MANAGEMENT CREATE KEYSTORE '/opt/oracle/admin/FREE/wallet'
-  IDENTIFIED BY '${ORACLE_WALLET_PASS}';
+  IDENTIFIED BY '${ORACLE_TDE_WALLET_PASS}';
 ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN
-  IDENTIFIED BY '${ORACLE_WALLET_PASS}'
+  IDENTIFIED BY '${ORACLE_TDE_WALLET_PASS}'
   CONTAINER=ALL;
 EXIT;
 SQLEOF
@@ -202,15 +202,15 @@ echo "  K1_KEY_VERSION=${K1_KEY_VERSION}"
 # ── Step 6a — Migrate FROM Cosmian (K1) TO Oracle software wallet ─────────────
 
 echo "==> PROOF 6a: Cosmian (K1) → Oracle software wallet"
-sudo -u oracle bash -s -- "${ORACLE_WALLET_PASS}" "${COSMIAN_HSM_PIN}" <<'ORACLEBASH'
+sudo -u oracle bash -s -- "${ORACLE_TDE_WALLET_PASS}" "${COSMIAN_HSM_PIN}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
-ORACLE_WALLET_PASS="$1"
+ORACLE_TDE_WALLET_PASS="$1"
 COSMIAN_HSM_PIN="$2"
 "$ORACLE_HOME/bin/sqlplus" -s / as sysdba <<SQLEOF
 SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
 ADMINISTER KEY MANAGEMENT USE KEYSTORE '/opt/oracle/admin/FREE/wallet'
-  IDENTIFIED BY '${ORACLE_WALLET_PASS}'
+  IDENTIFIED BY '${ORACLE_TDE_WALLET_PASS}'
   REVERSE MIGRATE USING '${COSMIAN_HSM_PIN}'
   WITH BACKUP USING 'pre_migration_backup'
   CONTAINER=ALL;
@@ -236,11 +236,11 @@ echo "${wallet_6a}" | grep -q "OPEN" \
   || { echo "ERROR: STATUS is not OPEN after reverse migration" >&2; exit 1; }
 
 # Assert 6a: data intact under K1
-output_6a=$(sudo -u oracle bash -s -- "${DEMO_PASS}" "${PORT}" <<'ORACLEBASH'
+output_6a=$(sudo -u oracle bash -s -- "${ORACLE_KMS_DEMO_USER_PASS}" "${PORT}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
-DEMO_PASS="$1"
+ORACLE_KMS_DEMO_USER_PASS="$1"
 PORT="$2"
-"$ORACLE_HOME/bin/sqlplus" -s "kms_demo/${DEMO_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
+"$ORACLE_HOME/bin/sqlplus" -s "kms_demo/${ORACLE_KMS_DEMO_USER_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
 SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
 SELECT full_name FROM DEMO_PERSONS ORDER BY id;
 EXIT;
@@ -265,11 +265,11 @@ PASSED=$((PASSED + 1))
 # ── Step 6b — Generate NEW master key K2 in Cosmian ──────────────────────────
 
 echo "==> PROOF 6b: Oracle wallet → New Cosmian K2"
-sudo -u oracle bash -s -- "${COSMIAN_HSM_PIN}" "${ORACLE_WALLET_PASS}" <<'ORACLEBASH'
+sudo -u oracle bash -s -- "${COSMIAN_HSM_PIN}" "${ORACLE_TDE_WALLET_PASS}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
 COSMIAN_HSM_PIN="$1"
-ORACLE_WALLET_PASS="$2"
+ORACLE_TDE_WALLET_PASS="$2"
 "$ORACLE_HOME/bin/sqlplus" -s / as sysdba <<SQLEOF
 SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
 ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=HSM' SCOPE=BOTH;
@@ -278,7 +278,7 @@ ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN
   CONTAINER=ALL;
 ADMINISTER KEY MANAGEMENT SET ENCRYPTION KEY
   IDENTIFIED BY '${COSMIAN_HSM_PIN}'
-  MIGRATE USING '${ORACLE_WALLET_PASS}'
+  MIGRATE USING '${ORACLE_TDE_WALLET_PASS}'
   WITH BACKUP USING 'new_cosmian_key_k2'
   CONTAINER=ALL;
 EXIT;
@@ -344,11 +344,11 @@ echo "${wallet_6b}" | grep -q "OPEN" \
   || { echo "ERROR: KEY_VERSION not incremented — TEK not re-wrapped under K2" >&2; exit 1; }
 
 # Assert 6b: data still readable under K2
-output_6b=$(sudo -u oracle bash -s -- "${DEMO_PASS}" "${PORT}" <<'ORACLEBASH'
+output_6b=$(sudo -u oracle bash -s -- "${ORACLE_KMS_DEMO_USER_PASS}" "${PORT}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
-DEMO_PASS="$1"
+ORACLE_KMS_DEMO_USER_PASS="$1"
 PORT="$2"
-"$ORACLE_HOME/bin/sqlplus" -s "kms_demo/${DEMO_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
+"$ORACLE_HOME/bin/sqlplus" -s "kms_demo/${ORACLE_KMS_DEMO_USER_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
 SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
 SELECT full_name FROM DEMO_PERSONS ORDER BY id;
 EXIT;

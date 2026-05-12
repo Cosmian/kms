@@ -181,8 +181,8 @@ echo "Oracle TDE HSM test completed successfully"
 
 # === Oracle TDE remote upgrade and smoke test ===
 # SSH into the remote Oracle server and verify the new KMS image works end-to-end.
-# Only runs when ORACLE_DEMO_PASS is set (non-fips amd64 CI runs only).
-if [[ -n "${ORACLE_DEMO_PASS:-}" ]]; then
+# Only runs on non-fips amd64 (RUN_ORACLE_TESTS=true), set by the CI matrix.
+if [[ "${RUN_ORACLE_TESTS:-false}" == "true" ]]; then
     echo "Running Oracle TDE remote upgrade and smoke test"
     TAG_ONLY="${DOCKER_IMAGE_NAME##*:}"
 
@@ -203,7 +203,7 @@ if [[ -n "${ORACLE_DEMO_PASS:-}" ]]; then
     echo "Run TDE smoke test on oracle"
     ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
         bash /tmp/smoke-test-tde.sh \
-            "${ORACLE_DEMO_PASS}" "${TAG_ONLY}" "${ORACLE_WALLET_PASS}" "${COSMIAN_HSM_PIN}"
+            "${ORACLE_KMS_DEMO_USER_PASS}" "${TAG_ONLY}" "${ORACLE_TDE_WALLET_PASS}" "${COSMIAN_HSM_PIN}"
 
     echo "Cleanup smoke test script on oracle"
     ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \

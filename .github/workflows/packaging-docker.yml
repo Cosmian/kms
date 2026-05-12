@@ -164,29 +164,13 @@ jobs:
           echo "Tagging local image for test: ${{ steps.image_info.outputs.image_name }} -> $first"
           docker tag "${{ steps.image_info.outputs.image_name }}" "$first"
 
-      - name: Resolve Oracle secrets (non-fips amd64 only)
-        id: oracle_secrets
-        env:
-          ORACLE_DEMO_PASS: ${{ secrets.ORACLE_DEMO_PASS }}
-          ORACLE_WALLET_PASS: ${{ secrets.ORACLE_WALLET_PASS }}
-          COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
-        run: |
-          if [[ "${{ matrix.features }}" == "non-fips" && "${{ matrix.runner }}" == "ubuntu-24.04" ]]; then
-            echo "oracle_demo_pass=${ORACLE_DEMO_PASS}" >> "$GITHUB_OUTPUT"
-            echo "oracle_wallet_pass=${ORACLE_WALLET_PASS}" >> "$GITHUB_OUTPUT"
-            echo "cosmian_hsm_pin=${COSMIAN_HSM_PIN}" >> "$GITHUB_OUTPUT"
-          else
-            echo "oracle_demo_pass=" >> "$GITHUB_OUTPUT"
-            echo "oracle_wallet_pass=" >> "$GITHUB_OUTPUT"
-            echo "cosmian_hsm_pin=" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Test Docker image
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
-          ORACLE_DEMO_PASS: ${{ steps.oracle_secrets.outputs.oracle_demo_pass }}
-          ORACLE_WALLET_PASS: ${{ steps.oracle_secrets.outputs.oracle_wallet_pass }}
-          COSMIAN_HSM_PIN: ${{ steps.oracle_secrets.outputs.cosmian_hsm_pin }}
+          RUN_ORACLE_TESTS: ${{ matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04' }}
+          ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
+          ORACLE_TDE_WALLET_PASS: ${{ secrets.ORACLE_TDE_WALLET_PASS }}
+          COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
         run: |
           bash .github/scripts/test/test_docker_image.sh
 
