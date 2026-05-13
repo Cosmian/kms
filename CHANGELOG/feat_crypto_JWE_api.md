@@ -35,4 +35,8 @@
   wired into CI as `jose` test type (non-fips only) ([#929](https://github.com/Cosmian/kms/pull/929))
 - Added regression tests for GCM IV/tag length validation, `alg: "none"` rejection ([#929](https://github.com/Cosmian/kms/pull/929))
 
+## Refactor
+
+- Replaced `String` algorithm fields with `JoseAlgorithm` / `JoseEncAlgorithm` enums in crypto route handlers — invalid algorithm values are now rejected at deserialization time (400) instead of handler level (422). Added custom `JsonConfig` error handler for consistent JSON error responses ([#929](https://github.com/Cosmian/kms/pull/929))
+
 Closes #868

@@ -41,7 +41,7 @@ pub(crate) async fn mac(
     trace!(user = user, "POST /v1/crypto/mac kid={}", body.kid);
 
     let data_bytes = b64_decode("data", &body.data)?;
-    let kmip_params = jose_to_kmip_params(&body.alg, None)?;
+    let kmip_params = jose_to_kmip_params(body.alg, None)?;
 
     if let Some(ref expected_mac_b64) = body.mac {
         let expected_mac_bytes = b64_decode("mac", expected_mac_b64)?;

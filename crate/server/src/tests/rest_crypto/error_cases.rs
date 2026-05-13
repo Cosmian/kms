@@ -35,10 +35,13 @@ async fn test_unknown_encrypt_alg_returns_422() -> KResult<()> {
         .set_json(&json!({"kid": kid, "alg": "RSA-OAEP-256", "enc": "A256GCM", "data": "dGVzdA"}))
         .to_request();
     let resp = test::call_service(&app, req).await;
+    // With typed JoseAlgorithm enum, unknown alg values are rejected at
+    // serde deserialization time (400 Bad Request) rather than at handler
+    // level (422). This is expected — the enum enforces valid values.
     assert_eq!(
         resp.status(),
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "unsupported alg should return 422"
+        StatusCode::BAD_REQUEST,
+        "unsupported alg should return 400 (serde rejects unknown enum variant)"
     );
     Ok(())
 }
@@ -65,10 +68,13 @@ async fn test_unknown_sign_alg_returns_422() -> KResult<()> {
         .set_json(&json!({"kid": kid, "alg": "XYZ-UNKNOWN", "data": "dGVzdA"}))
         .to_request();
     let resp = test::call_service(&app, req).await;
+    // With typed JoseAlgorithm enum, unknown alg values are rejected at
+    // serde deserialization time (400 Bad Request) rather than at handler
+    // level (422). This is expected — the enum enforces valid values.
     assert_eq!(
         resp.status(),
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "unsupported alg should return 422"
+        StatusCode::BAD_REQUEST,
+        "unsupported alg should return 400 (serde rejects unknown enum variant)"
     );
     Ok(())
 }

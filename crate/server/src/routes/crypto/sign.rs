@@ -60,7 +60,7 @@ pub(crate) async fn sign(
     let signing_input = format!("{protected_b64}.{payload_b64}");
     let signing_input_bytes = signing_input.as_bytes().to_vec();
 
-    let kmip_params = jose_to_kmip_params(&body.alg, None)?;
+    let kmip_params = jose_to_kmip_params(body.alg, None)?;
     let sign_req = KmipSign {
         unique_identifier: Some(UniqueIdentifier::TextString(body.kid.clone())),
         cryptographic_parameters: Some(kmip_params),
@@ -79,7 +79,7 @@ pub(crate) async fn sign(
 
     // RFC 7518 §3.4: ECDSA JWS signatures must be in fixed-size r||s (IEEE P1363) format,
     // not the DER/ASN.1 encoding returned by the KMIP sign operation.
-    let jose_signature = if let Some(coord_size) = ecdsa_coord_size(&body.alg) {
+    let jose_signature = if let Some(coord_size) = ecdsa_coord_size(body.alg) {
         ecdsa_der_to_p1363(&signature_bytes, coord_size)?
     } else {
         signature_bytes
