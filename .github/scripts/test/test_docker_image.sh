@@ -203,7 +203,7 @@ if [[ "${RUN_ORACLE_TESTS:-false}" == "true" ]]; then
     echo "Run TDE smoke test on oracle"
     ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
         bash /tmp/smoke-test-tde.sh \
-            "${ORACLE_KMS_DEMO_USER_PASS}" "${TAG_ONLY}" "${ORACLE_TDE_WALLET_PASS}" "${COSMIAN_HSM_PIN}"
+            "${ORACLE_KMS_DEMO_USER_PASS}" "${TAG_ONLY}" "${COSMIAN_HSM_PIN}"
 
     echo "Cleanup smoke test script on oracle"
     ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
