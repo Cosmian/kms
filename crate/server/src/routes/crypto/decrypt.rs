@@ -11,7 +11,8 @@ use cosmian_logger::trace;
 
 use super::{
     CryptoApiError, CryptoResult, DecryptRequest, DecryptResponse as CryptoDecryptResponse,
-    b64_decode, b64_encode, encrypt::build_jwe_aad, jose_to_kmip_params,
+    JoseAlgorithm, JoseEncAlgorithm, b64_decode, b64_encode, encrypt::build_jwe_aad,
+    jose_to_kmip_params,
 };
 use crate::core::KMS;
 
@@ -46,19 +47,20 @@ pub(crate) async fn decrypt(
         })?
         .to_owned();
 
-    let alg = header_json
+    let alg: JoseAlgorithm = header_json
         .get("alg")
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'alg' field".to_owned())
         })?
-        .to_owned();
+        .parse()
+        .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
     // Validate encrypted_key now that alg is known.
     // 'dir' transmits no key material — encrypted_key must be absent or empty.
     // Future key-wrapping algs (RSA-OAEP, ECDH-ES) will have a non-empty encrypted_key;
     // add a new branch here rather than removing this guard.
-    if alg == "dir" {
+    if alg == JoseAlgorithm::Dir {
         if let Some(ref ek) = body.encrypted_key {
             if !ek.is_empty() {
                 return Err(CryptoApiError::BadRequest(
@@ -68,15 +70,16 @@ pub(crate) async fn decrypt(
         }
     }
 
-    let enc = header_json
+    let enc: JoseEncAlgorithm = header_json
         .get("enc")
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'enc' field".to_owned())
         })?
-        .to_owned();
+        .parse()
+        .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
-    let kmip_params = jose_to_kmip_params(&alg, Some(&enc))?;
+    let kmip_params = jose_to_kmip_params(alg, Some(enc))?;
 
     let iv_bytes = b64_decode("iv", &body.iv)?;
     // AES-GCM mandates a 96-bit (12-byte) IV.  Non-96-bit IVs cause OpenSSL to

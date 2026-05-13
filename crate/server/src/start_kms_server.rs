@@ -1003,6 +1003,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         // REST Native Crypto API — /v1/crypto/*
         let crypto_scope = web::scope("/v1/crypto")
+            .app_data(
+                web::JsonConfig::default()
+                    .error_handler(crypto::crypto_json_error_handler),
+            )
             .wrap(EnsureAuth::new(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,

@@ -11,8 +11,9 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use cosmian_logger::trace;
 
 use super::{
-    CryptoApiError, CryptoResult, VerifyRequest, VerifyResponse as CryptoVerifyResponse,
-    b64_decode, ecdsa_coord_size, ecdsa_p1363_to_der, jose_to_kmip_params,
+    CryptoApiError, CryptoResult, JoseAlgorithm, VerifyRequest,
+    VerifyResponse as CryptoVerifyResponse, b64_decode, ecdsa_coord_size, ecdsa_p1363_to_der,
+    jose_to_kmip_params,
 };
 use crate::core::KMS;
 
@@ -49,24 +50,26 @@ pub(crate) async fn verify(
         })?
         .to_owned();
 
-    let alg = header_json
+    let alg_str = header_json
         .get("alg")
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
             CryptoApiError::BadRequest("Protected header missing required 'alg' field".to_owned())
-        })?
-        .to_owned();
+        })?;
 
     // RFC 7515 §4.1.1 / RFC 8725 §2.1: explicitly reject the "none" algorithm.
-    // Currently `jose_to_kmip_params` would return `UnsupportedAlgorithm`, but
-    // an explicit guard makes the security intent clear and avoids regression if
-    // new algorithm entries are added in the future.
-    if alg == "none" {
+    // This guard runs before enum parsing so the security intent is clear even if
+    // new algorithm entries are added to JoseAlgorithm in the future.
+    if alg_str == "none" {
         return Err(CryptoApiError::UnsupportedAlgorithm(
             "alg 'none' is not permitted — all payloads must be cryptographically protected"
                 .to_owned(),
         ));
     }
+
+    let alg: JoseAlgorithm = alg_str
+        .parse()
+        .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
     b64_decode("data", &body.data)?;
 
@@ -77,12 +80,12 @@ pub(crate) async fn verify(
     let signature_bytes = b64_decode("signature", &body.signature)?;
     // RFC 7518 §3.4: ECDSA JWS signatures are in fixed-size r||s (IEEE P1363) format.
     // The KMIP SignatureVerify operation expects DER/ASN.1 encoding.
-    let kmip_signature = if ecdsa_coord_size(&alg).is_some() {
+    let kmip_signature = if ecdsa_coord_size(alg).is_some() {
         ecdsa_p1363_to_der(&signature_bytes)?
     } else {
         signature_bytes
     };
-    let kmip_params = jose_to_kmip_params(&alg, None)?;
+    let kmip_params = jose_to_kmip_params(alg, None)?;
     let verify_req = SignatureVerify {
         unique_identifier: Some(UniqueIdentifier::TextString(kid.clone())),
         cryptographic_parameters: Some(kmip_params),

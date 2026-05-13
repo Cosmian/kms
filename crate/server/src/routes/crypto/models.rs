@@ -1,14 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+use super::algorithm::{JoseAlgorithm, JoseEncAlgorithm};
+
 /// POST /v1/crypto/encrypt — request
 #[derive(Debug, Deserialize)]
 pub(crate) struct EncryptRequest {
     /// KMS object UID of the symmetric key
     pub(crate) kid: String,
     /// JOSE `alg` identifier — `/v1/crypto` currently supports only `"dir"` (direct key agreement)
-    pub(crate) alg: String,
+    pub(crate) alg: JoseAlgorithm,
     /// JOSE `enc` content-encryption algorithm identifier (e.g. `"A256GCM"`)
-    pub(crate) enc: String,
+    pub(crate) enc: JoseEncAlgorithm,
     /// Plaintext as base64url (no padding)
     pub(crate) data: String,
     /// Additional Authenticated Data as base64url (no padding), optional
@@ -65,7 +67,7 @@ pub(crate) struct SignRequest {
     /// KMS object UID of the private key
     pub(crate) kid: String,
     /// JOSE `alg` identifier (e.g. `"RS256"`, `"ES256"`, `"EdDSA"`)
-    pub(crate) alg: String,
+    pub(crate) alg: JoseAlgorithm,
     /// Payload bytes as base64url — this becomes the detached JWS payload
     pub(crate) data: String,
 }
@@ -105,7 +107,7 @@ pub(crate) struct MacRequest {
     /// KMS object UID of the HMAC key
     pub(crate) kid: String,
     /// JOSE `alg` identifier (e.g. `"HS256"`, `"HS384"`, `"HS512"`)
-    pub(crate) alg: String,
+    pub(crate) alg: JoseAlgorithm,
     /// Message bytes as base64url
     pub(crate) data: String,
     /// Expected MAC as base64url — when present, perform verify; when absent, compute

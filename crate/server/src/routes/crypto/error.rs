@@ -1,4 +1,4 @@
-use actix_web::{HttpResponse, HttpResponseBuilder, http::StatusCode, web::Json};
+use actix_web::{HttpRequest, HttpResponse, HttpResponseBuilder, http::StatusCode, web::Json};
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::ErrorReason;
 use cosmian_logger::warn;
 use serde::Serialize;
@@ -129,3 +129,17 @@ pub(crate) fn b64_encode(bytes: &[u8]) -> String {
 
 /// Convenience type alias used by handler functions.
 pub(crate) type CryptoResult<T> = Result<Json<T>, CryptoApiError>;
+
+/// Custom JSON deserialization error handler for `/v1/crypto/*` routes.
+///
+/// When serde rejects a request body (e.g. unknown `JoseAlgorithm` variant),
+/// actix-web's default handler returns a plain-text 400. This handler wraps
+/// the error in our standard `CryptoErrorBody` JSON format instead, so clients
+/// get a consistent `{"error": "bad_request", "description": "..."}` response.
+#[allow(clippy::needless_pass_by_value)] // signature imposed by actix-web JsonConfig::error_handler
+pub(crate) fn crypto_json_error_handler(
+    err: actix_web::error::JsonPayloadError,
+    _req: &HttpRequest,
+) -> actix_web::Error {
+    CryptoApiError::BadRequest(format!("Invalid request body: {err}")).into()
+}

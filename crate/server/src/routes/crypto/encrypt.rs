@@ -12,7 +12,7 @@ use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, CryptoResult, EncryptRequest, EncryptResponse as CryptoEncryptResponse,
-    b64_decode, b64_encode, jose_to_kmip_params,
+    JoseAlgorithm, b64_decode, b64_encode, jose_to_kmip_params,
 };
 use crate::core::KMS;
 
@@ -32,7 +32,7 @@ pub(crate) async fn encrypt(
 
     trace!(user = user, "POST /v1/crypto/encrypt kid={}", body.kid);
 
-    let kmip_params = jose_to_kmip_params(&body.alg, Some(&body.enc))?;
+    let kmip_params = jose_to_kmip_params(body.alg, Some(body.enc))?;
     let plaintext = b64_decode("data", &body.data)?;
 
     // Deterministic JSON serialization — field order is fixed (alg, enc, kid)
@@ -76,8 +76,8 @@ pub(crate) async fn encrypt(
     // For 'dir': no key material is transmitted — encrypted_key is always empty.
     // Future key-wrapping algs (RSA-OAEP, ECDH-ES) must populate encrypted_key here;
     // add a new branch rather than inheriting String::new() silently.
-    debug_assert_eq!(
-        body.alg, "dir",
+    debug_assert!(
+        body.alg == JoseAlgorithm::Dir,
         "encrypted_key must be populated for non-dir key management algs"
     );
     Ok(Json(CryptoEncryptResponse {
