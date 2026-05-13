@@ -192,14 +192,14 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 
 ### 🗄️ Database Integrations
 
-| Product             | Integration                                                                                                                                                                           | Status |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Oracle Database     | TDE via PKCS#11 ([docs](./documentation/docs/integrations/databases/oracle_tde.md))                                                                                                  | ✅      |
-| MongoDB             | CSFLE / Queryable Encryption via KMIP ([docs](./documentation/docs/integrations/databases/mongodb.md))                                                                                | ✅      |
-| MySQL Enterprise    | TDE via KMIP ([docs](./documentation/docs/integrations/databases/mysql.md))                                                                                                          | ✅      |
-| Percona PostgreSQL  | TDE via KMIP ([docs](./documentation/docs/integrations/databases/percona.md))                                                                                                        | ✅      |
-| Microsoft SQL Server | External Key Management (EKM) via PKCS#11 ([docs](./documentation/docs/integrations/databases/ms_sql_server.md))                                                                    | ✅      |
-| Snowflake           | Native App — column-level encryption via KMIP ([docs](./documentation/docs/integrations/databases/snowflake_native_app/index.md))                                                    | ✅      |
+| Product             | Integration                                                                                                                                                                           | KMIP Version | Status |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
+| Oracle Database     | TDE via PKCS#11 ([docs](./documentation/docs/integrations/databases/oracle_tde.md))                                                                                                  | —            | ✅      |
+| MongoDB             | CSFLE / Queryable Encryption via KMIP ([docs](./documentation/docs/integrations/databases/mongodb.md))                                                                                | 1.0          | ✅      |
+| MySQL Enterprise    | TDE via KMIP ([docs](./documentation/docs/integrations/databases/mysql.md))                                                                                                          | 1.1          | ✅      |
+| Percona PostgreSQL  | TDE via KMIP ([docs](./documentation/docs/integrations/databases/percona.md))                                                                                                        | 1.4          | ✅      |
+| Microsoft SQL Server | External Key Management (EKM) via PKCS#11 ([docs](./documentation/docs/integrations/databases/ms_sql_server.md))                                                                    | —            | ✅      |
+| Snowflake           | Native App — column-level encryption via KMIP ([docs](./documentation/docs/integrations/databases/snowflake_native_app/index.md))                                                    | 2.1          | ✅      |
 
 ### 💿 Disk Encryption
 
@@ -211,21 +211,21 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 
 ### 💾 Storage Integrations
 
-| Product                | Integration                                                                                                                                                          | Status |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/integrations/storage/vcenter.md))                                                                                            | ✅      |
-| Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/integrations/storage/synology_dsm.md))                                                                           | ✅      |
-| Veeam Backup           | Backup encryption key management via KMIP ([docs](./documentation/docs/integrations/storage/veeam.md))                                                                        | ✅      |
-| Big Data / Python UDFs | Bulk encrypt/decrypt for PySpark / Databricks ([docs](./documentation/docs/integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md))             | ✅      |
+| Product                | Integration                                                                                                                                                          | KMIP Version | Status |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
+| VMware vCenter         | Trust Key Provider ([docs](./documentation/docs/integrations/storage/vcenter.md))                                                                                            | 1.1          | ✅      |
+| Synology DSM           | NAS volume encryption via KMIP ([docs](./documentation/docs/integrations/storage/synology_dsm.md))                                                                           | 1.2          | ✅      |
+| Veeam Backup           | Backup encryption key management via KMIP ([docs](./documentation/docs/integrations/storage/veeam.md))                                                                        | 1.4          | ✅      |
+| Big Data / Python UDFs | Bulk encrypt/decrypt for PySpark / Databricks ([docs](./documentation/docs/integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md))             | —            | ✅      |
 
 ### 🔗 Other Integrations
 
-| Product  | Integration                                                                                                                  | Status |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------- | ------ |
-| FortiGate / FortiOS | External KMS via KMIP 1.0–1.4 ([docs](./documentation/docs/integrations/fortigate.md))                         | ✅      |
-| OpenSSH  | Certificate-based authentication ([docs](./documentation/docs/integrations/openssh.md))                                     | ✅      |
-| S/MIME   | Email encryption ([docs](./documentation/docs/integrations/smime.md))                                                        | ✅      |
-| PyKMIP   | PyKMIP-compatible interface for testing and Synology DSM ([docs](./documentation/docs/integrations/pykmip.md))               | ✅      |
+| Product  | Integration                                                                                                                  | KMIP Version | Status |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------ | ------ |
+| FortiGate / FortiOS | External KMS via KMIP 1.0–1.4 ([docs](./documentation/docs/integrations/fortigate.md))                         | 1.0          | ✅      |
+| OpenSSH  | Certificate-based authentication ([docs](./documentation/docs/integrations/openssh.md))                                     | —            | ✅      |
+| S/MIME   | Email encryption ([docs](./documentation/docs/integrations/smime.md))                                                        | —            | ✅      |
+| PyKMIP   | PyKMIP-compatible interface for testing and Synology DSM ([docs](./documentation/docs/integrations/pykmip.md))               | 1.2          | ✅      |
 
 ---
 

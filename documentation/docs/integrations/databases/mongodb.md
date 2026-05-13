@@ -2,6 +2,16 @@
 
 This guide walks through the manual setup process for enabling Client-Side Field Level Encryption in MongoDB using a KMIP-compatible Key Management System (KMS).
 
+## Overview
+
+| Item | Details |
+|------|---------|
+| **Protocol** | KMIP 1.0 over TCP/TLS with mutual certificate authentication |
+| **Port** | 5696 (IANA-registered KMIP port) |
+| **Key type** | AES-256 symmetric key |
+| **MongoDB version** | MongoDB Enterprise 6.0 and above |
+| **Cosmian KMS feature** | Requires non-FIPS build |
+
 ---
 
 ## Prerequisites

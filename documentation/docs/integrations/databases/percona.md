@@ -2,6 +2,16 @@
 
 This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` extension to use Cosmian KMS for transparent data encryption (TDE).
 
+## Overview
+
+| Item | Details |
+|------|---------|
+| **Protocol** | KMIP 1.4 over TCP/TLS with mutual certificate authentication |
+| **Port** | 5696 (IANA-registered KMIP port) |
+| **Key type** | AES-128 symmetric key |
+| **PostgreSQL version** | Percona Server for PostgreSQL 17.x and above |
+| **Cosmian KMS feature** | Works with both FIPS and non-FIPS builds |
+
 [TOC]
 
 ---

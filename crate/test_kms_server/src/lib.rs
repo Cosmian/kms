@@ -13,12 +13,15 @@ pub use test_server::{
     start_default_test_kms_server_with_privileged_users,
     start_default_test_kms_server_with_utimaco_and_kek,
     start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
-    start_test_server_with_options,
+    start_test_server_from_toml, start_test_server_with_options,
 };
+pub use vector_runner::{run_test_vector, run_test_vector_with_context};
 
 mod test_server;
 
 mod test_jwt;
+
+pub mod vector_runner;
 
 use std::sync::Once;
 

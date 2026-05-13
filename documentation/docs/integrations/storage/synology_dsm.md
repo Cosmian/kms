@@ -12,7 +12,7 @@ and optionally HSM-backed key store.
 
 | Item | Details |
 |------|---------|
-| **Protocol** | KMIP 1.x over TCP/TLS with mutual certificate authentication |
+| **Protocol** | KMIP 1.2 over TCP/TLS with mutual certificate authentication |
 | **Port** | 5696 (IANA-registered KMIP port) |
 | **Key type** | AES-256 symmetric key |
 | **DSM version** | DSM 7.1 and above |
