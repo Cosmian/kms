@@ -1,6 +1,6 @@
 import { Button, Card, Space, Table, Tag } from "antd";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "../../contexts/useAuth";
 import { getNoTTLVRequest } from "../../utils/utils";
 
 interface AccessRight {

@@ -33,6 +33,8 @@ mod custom_headers_tests;
 mod derive_key;
 mod elliptic_curve;
 mod forward_proxy_tests;
+#[cfg(feature = "non-fips")]
+mod fpe;
 mod google_cmd;
 mod hash;
 mod hsm;

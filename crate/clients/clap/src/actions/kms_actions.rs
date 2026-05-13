@@ -8,7 +8,11 @@ use cosmian_kms_client::{KmsClient, KmsClientConfig};
 #[cfg(feature = "non-fips")]
 use super::cover_crypt::CovercryptCommands;
 #[cfg(feature = "non-fips")]
+use super::fpe::FpeCommands;
+#[cfg(feature = "non-fips")]
 use super::pqc::PqcCommands;
+#[cfg(feature = "non-fips")]
+use super::tokenize::TokenizeCommands;
 use crate::{
     actions::{
         access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
@@ -48,7 +52,13 @@ pub enum KmsActions {
     Cc(CovercryptCommands),
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
+    Fpe(FpeCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
     Pqc(PqcCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
+    Tokenize(TokenizeCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
     DeriveKey(DeriveKeyAction),
@@ -96,7 +106,11 @@ impl KmsActions {
             #[cfg(feature = "non-fips")]
             Self::Cc(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
+            Self::Fpe(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
             Self::Pqc(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
+            Self::Tokenize(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }

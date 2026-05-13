@@ -40,7 +40,7 @@ num-bigint-dig = { workspace = true, features = [
 ] }
 num-traits = { workspace = true }
 quick-xml = { version = "0.31", features = ["serialize"] }
-regex = { version = "1" }
+regex = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }

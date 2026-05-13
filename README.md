@@ -22,7 +22,7 @@ The **Cosmian KMS** presents some unique features, such as:
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
-The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Please refer to the list of [supported algorithms](./documentation/docs/algorithms.md).
+The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt), and FF1 format-preserving encryption in non-FIPS mode. Please refer to the list of [supported algorithms](./documentation/docs/certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
 As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use their public keys to encrypt and decrypt data. Certificates can be exported under various formats, including _PKCS#12_ modern and legacy flavor, to be used in various applications, such as in _S/MIME_ encrypted emails.
 

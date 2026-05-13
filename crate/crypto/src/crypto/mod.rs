@@ -9,11 +9,15 @@ pub use password_derivation::FIPS_MIN_SALT_SIZE;
 
 use crate::error::CryptoError;
 
+#[cfg(feature = "non-fips")]
+pub mod anonymization;
 pub mod certificates;
 #[cfg(feature = "non-fips")]
 pub mod cover_crypt;
 pub mod dh_shared_keys;
 pub mod elliptic_curves;
+#[cfg(feature = "non-fips")]
+pub mod fpe;
 #[cfg(feature = "non-fips")]
 pub mod kem;
 pub mod password_derivation;

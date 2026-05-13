@@ -1144,6 +1144,84 @@ pub fn encrypt_ec_ttlv_request(
     serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
 }
 
+// FPE (Format-Preserving Encryption) requests
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn create_fpe_key_ttlv_request(
+    key_id: Option<String>,
+    tags: Vec<String>,
+    sensitive: bool,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let mut all_tags = tags;
+    if !all_tags.iter().any(|tag| tag == "fpe-ff1") {
+        all_tags.push("fpe-ff1".to_owned());
+    }
+    let key_id = key_id
+        .filter(|s| !s.is_empty())
+        .map(UniqueIdentifier::TextString);
+    let request = symmetric_key_create_request(
+        vendor_id,
+        key_id,
+        256,
+        CryptographicAlgorithm::FPE_FF1,
+        &all_tags,
+        sensitive,
+        None,
+    )
+    .map_err(|e| JsValue::from_str(&format!("FPE key request creation failed: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn encrypt_fpe_ttlv_request(
+    key_unique_identifier: &str,
+    plaintext: Vec<u8>,
+    tweak: Option<Vec<u8>>,
+    authenticated_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = encrypt_request(
+        key_unique_identifier,
+        None,
+        plaintext,
+        tweak,
+        authenticated_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::FPE_FF1),
+            ..CryptographicParameters::default()
+        }),
+    )
+    .map_err(|e| JsValue::from_str(&format!("FPE encryption failed: {e}")))?;
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn decrypt_fpe_ttlv_request(
+    key_unique_identifier: &str,
+    ciphertext: Vec<u8>,
+    tweak: Option<Vec<u8>>,
+    authenticated_data: Option<Vec<u8>>,
+) -> Result<JsValue, JsValue> {
+    let request = decrypt_request(
+        key_unique_identifier,
+        tweak,
+        ciphertext,
+        None,
+        authenticated_data,
+        Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::FPE_FF1),
+            ..CryptographicParameters::default()
+        }),
+    );
+    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
+    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+}
+
 #[wasm_bindgen]
 pub fn parse_encrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
     parse_ttlv_response::<EncryptResponse>(response)
