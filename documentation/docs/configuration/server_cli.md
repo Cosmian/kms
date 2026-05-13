@@ -525,6 +525,76 @@ Options:
 
           [env: KMS_POLICY_ID=]
 
+      --auto-rotation-check-interval-secs <AUTO_ROTATION_CHECK_INTERVAL_SECS>
+          Interval in seconds between background auto-rotation checks.
+          Set to 0 (default) to disable the auto-rotation background task.
+
+          [default: 0]
+
+      --smtp-host <HOST>
+          SMTP server hostname (e.g. smtp.example.com). If not set, email notifications are disabled
+
+          [env: KMS_SMTP_HOST=]
+
+      --smtp-port <smtp_port>
+          SMTP server port (default: 587 for STARTTLS)
+
+          [env: KMS_SMTP_PORT=]
+          [default: 587]
+
+      --smtp-username <USERNAME>
+          SMTP authentication username
+
+          [env: KMS_SMTP_USERNAME=]
+
+      --smtp-password <PASSWORD>
+          SMTP authentication password
+
+          [env: KMS_SMTP_PASSWORD=]
+
+      --smtp-from <FROM>
+          Sender address for notification emails (e.g. kms-alerts@example.com)
+
+          [env: KMS_SMTP_FROM=]
+
+      --smtp-to <TO>
+          Comma-separated list of recipient email addresses for notifications
+
+          [env: KMS_SMTP_TO=]
+
+      --renewal-notification-strategy <STRATEGY>
+          Notification strategy.
+
+          | Value | Behaviour |
+          |-------|-----------|
+          | `time_before_renewal` | Emit warning emails at each interval in `warn_before_renewal_days` |
+          | `rotation_only` | Only send success/failure notification after rotation |
+          | `silent` | Suppress all renewal-related notifications |
+
+          [env: KMS_RENEWAL_NOTIFICATION_STRATEGY=]
+          [default: time_before_renewal]
+          [possible values: time_before_renewal, rotation_only, silent]
+
+      --warn-before-renewal-days <WARN_BEFORE_RENEWAL_DAYS>
+          Days before scheduled renewal at which a warning email is sent.
+
+          Only used when `strategy = "time_before_renewal"`. Values are sorted descending internally; duplicates are ignored. Default: `[30, 7, 1]` — 1 month, 1 week, and 1 day before renewal.
+
+          Example: `warn_before_renewal_days = [90, 30, 14, 7, 1]`
+
+          [env: KMS_WARN_BEFORE_RENEWAL_DAYS=]
+          [default: 30 7 1]
+
+      --notify-on-renewal-success
+          Send a notification after successful key renewal. Default: `true`
+
+          [env: KMS_NOTIFY_ON_RENEWAL_SUCCESS=]
+
+      --notify-on-renewal-failure
+          Send a notification after a failed key renewal attempt. Default: `true`
+
+          [env: KMS_NOTIFY_ON_RENEWAL_FAILURE=]
+
   -h, --help
           Print help (see a summary with '-h')
 

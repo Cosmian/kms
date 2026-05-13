@@ -55,6 +55,7 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 strum = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-postgres = { version = "0.7", features = [
   "with-uuid-1",

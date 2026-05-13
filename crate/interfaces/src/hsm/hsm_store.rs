@@ -16,7 +16,7 @@ use cosmian_kmip::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cosmian_logger::{debug, error, trace, warn};
+use cosmian_logger::{debug, error, trace};
 use num_bigint_dig::{BigInt, Sign};
 
 use crate::{
@@ -120,42 +120,16 @@ impl ObjectsStore for HsmStore {
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         // try converting the rest of the UID into a slot_id and key id
         let (slot_id, key_id) = parse_uid(uid)?;
-        match self.hsm.export(slot_id, key_id.as_bytes()).await {
-            Ok(Some(hsm_object)) => {
+        Ok(
+            if let Some(hsm_object) = self.hsm.export(slot_id, key_id.as_bytes()).await? {
+                // Convert the HSM object into an ObjectWithMetadata
                 let owm =
                     to_object_with_metadata(&hsm_object, uid, self.owner_name(), &self.vendor_id)?;
-                Ok(Some(owm))
-            }
-            Ok(None) => Ok(None),
-            Err(InterfaceError::Default(ref msg)) if msg.contains("sensitive") => {
-                // The key is non-extractable (sensitive flag set in PKCS#11).
-                // Build a metadata-only stub using get_key_metadata() so that
-                // attribute-only KMIP operations (ModifyAttribute, GetAttributes)
-                // succeed without touching the key material.
-                // Fixes: https://github.com/Cosmian/kms/issues/933
-                debug!(
-                    "HSM key {uid} is non-extractable; falling back to metadata-only stub for \
-                     attribute operations"
-                );
-                let meta = self
-                    .hsm
-                    .get_key_metadata(slot_id, key_id.as_bytes())
-                    .await?;
-                let Some(meta) = meta else {
-                    return Ok(None);
-                };
-                let attrs = build_sensitive_stub_attributes(&meta);
-                let object = build_sensitive_stub_object(&meta);
-                Ok(Some(ObjectWithMetadata::new(
-                    uid.to_owned(),
-                    object,
-                    self.owner_name().to_owned(),
-                    State::Active,
-                    attrs,
-                )))
-            }
-            Err(e) => Err(e),
-        }
+                Some(owm)
+            } else {
+                None
+            },
+        )
     }
 
     async fn retrieve_tags(&self, _uid: &str) -> InterfaceResult<HashSet<String>> {
@@ -165,22 +139,15 @@ impl ObjectsStore for HsmStore {
 
     async fn update_object(
         &self,
-        uid: &str,
+        _uid: &str,
         _object: &Object,
         _attributes: &Attributes,
         _tags: Option<&HashSet<String>>,
     ) -> InterfaceResult<()> {
-        // HSM PKCS#11 slots have no generic KMIP attribute storage: attributes
-        // such as Name cannot be persisted to the HSM. We return Ok so that
-        // KMIP attribute-only operations (ModifyAttribute, SetAttribute) succeed
-        // without error.  Operations that require key material (encrypt, decrypt,
-        // wrap, unwrap) always go through the HSM crypto oracle and are unaffected.
-        // See: https://github.com/Cosmian/kms/issues/933
-        warn!(
-            "ModifyAttribute/SetAttribute on HSM key {uid}: attribute update accepted but not \
-             persisted to PKCS#11 slot (HSM does not support KMIP attribute storage)"
-        );
-        Ok(())
+        // not supported for HSMs
+        Err(InterfaceError::InvalidRequest(
+            "Update object is not supported for HSMs".to_owned(),
+        ))
     }
 
     async fn update_state(&self, _uid: &str, _state: State) -> InterfaceResult<()> {
@@ -339,93 +306,6 @@ impl ObjectsStore for HsmStore {
         }
 
         Ok(uids)
-    }
-}
-
-/// Build a metadata-only `Attributes` struct for a non-extractable (sensitive) HSM key.
-///
-/// Used when `hsm.export()` fails with a sensitive-key error. The stub allows
-/// attribute-only KMIP operations (`ModifyAttribute`, `GetAttributes`) to succeed
-/// without accessing the key material.
-/// See: <https://github.com/Cosmian/kms/issues/933>
-fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
-    let mut attrs = Attributes {
-        sensitive: Some(true),
-        key_value_present: Some(false),
-        cryptographic_length: Some(i32::try_from(meta.key_length_in_bits).unwrap_or_default()),
-        ..Attributes::default()
-    };
-    match meta.key_type {
-        KeyType::AesKey => {
-            attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::AES);
-            attrs.object_type = Some(ObjectType::SymmetricKey);
-            attrs.cryptographic_usage_mask = Some(
-                CryptographicUsageMask::Encrypt
-                    | CryptographicUsageMask::Decrypt
-                    | CryptographicUsageMask::WrapKey
-                    | CryptographicUsageMask::UnwrapKey,
-            );
-        }
-        KeyType::RsaPrivateKey => {
-            attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
-            attrs.object_type = Some(ObjectType::PrivateKey);
-            attrs.cryptographic_usage_mask = Some(
-                CryptographicUsageMask::Decrypt
-                    | CryptographicUsageMask::UnwrapKey
-                    | CryptographicUsageMask::Sign,
-            );
-        }
-        KeyType::RsaPublicKey => {
-            attrs.cryptographic_algorithm = Some(CryptographicAlgorithm::RSA);
-            attrs.object_type = Some(ObjectType::PublicKey);
-            attrs.cryptographic_usage_mask = Some(
-                CryptographicUsageMask::Encrypt
-                    | CryptographicUsageMask::WrapKey
-                    | CryptographicUsageMask::Verify,
-            );
-        }
-    }
-    attrs
-}
-
-/// Build a stub KMIP `Object` for a non-extractable (sensitive) HSM key.
-///
-/// The `key_value` is intentionally `None` because the key bytes cannot be
-/// exported from the HSM. This stub is only used for attribute-only operations.
-/// See: <https://github.com/Cosmian/kms/issues/933>
-fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
-    let length = i32::try_from(meta.key_length_in_bits).unwrap_or(256);
-    match meta.key_type {
-        KeyType::AesKey => Object::SymmetricKey(SymmetricKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::TransparentSymmetricKey,
-                key_compression_type: None,
-                key_value: None,
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                cryptographic_length: Some(length),
-                key_wrapping_data: None,
-            },
-        }),
-        KeyType::RsaPrivateKey => Object::PrivateKey(PrivateKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::TransparentRSAPrivateKey,
-                key_compression_type: None,
-                key_value: None,
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(length),
-                key_wrapping_data: None,
-            },
-        }),
-        KeyType::RsaPublicKey => Object::PublicKey(PublicKey {
-            key_block: KeyBlock {
-                key_format_type: KeyFormatType::TransparentRSAPublicKey,
-                key_compression_type: None,
-                key_value: None,
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                cryptographic_length: Some(length),
-                key_wrapping_data: None,
-            },
-        }),
     }
 }
 

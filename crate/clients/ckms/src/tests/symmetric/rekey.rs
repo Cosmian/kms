@@ -77,21 +77,21 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
         ..Default::default()
     })?;
 
-    // and refresh it
+    // and rekey it — must produce a NEW unique identifier
     let id_2 = rekey_symmetric_key(&owner_client_conf_path, &id)?;
 
-    assert_eq!(id, id_2);
+    assert_ne!(id, id_2, "rekey must produce a new unique identifier");
 
-    // Export as default (JsonTTLV with Raw Key Format Type)
+    // Export new key (id_2) to compare material
     export_key(ExportKeyParams {
         cli_conf_path: owner_client_conf_path,
         sub_command: "sym".to_owned(),
-        key_id: id,
+        key_id: id_2,
         key_file: tmp_path.join("aes_sym_2").to_str().unwrap().to_owned(),
         ..Default::default()
     })?;
 
-    // Compare the symmetric key bytes
+    // Rekey must produce fresh key material
     let old_object = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym"))?;
     let new_object = read_object_from_json_ttlv_file(&tmp_path.join("aes_sym_2"))?;
     assert_ne!(
@@ -99,8 +99,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
         new_object.key_block()?.key_bytes()?
     );
 
-    // Compare the attributes
-    assert!(old_object.attributes()? == new_object.attributes()?);
+    // Cryptographic parameters must be preserved
     assert_eq!(
         new_object.attributes()?.cryptographic_length.unwrap(),
         i32::try_from(AES_KEY_SIZE).unwrap()

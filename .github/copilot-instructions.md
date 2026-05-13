@@ -273,6 +273,20 @@ bash .github/scripts/nix.sh docker --variant non-fips --load --test
 
 The UI must be seen as a mirror of the `ckms` CLI tool. All features added to the `ckms` CLI tool or development must be synced on the Web UI.
 
+### Mandatory UI mirroring checklist
+
+Whenever a new feature or operation is added to `ckms` (the CLI tool under `crate/clients/ckms/`), **the same feature must be implemented in the Web UI** before the work is considered complete. The required steps are:
+
+1. **WASM bindings** (`crate/wasm/src/wasm.rs`): add a `#[wasm_bindgen]` function that builds the KMIP TTLV request and a corresponding `parse_*_ttlv_response` function. Use the existing `rekey_ttlv_request` / `parse_rekey_ttlv_response` functions as a model.
+2. **WASM TypeScript declarations** (`ui/src/wasm/pkg/cosmian_kms_client_wasm.d.ts`): add the matching TypeScript function signatures next to the new Rust functions. The `.d.ts` is a pre-built artefact and must be updated manually whenever new WASM functions are added.
+3. **React component** (`ui/src/`): create a new `<Feature>.tsx` file that builds the form, calls the WASM function, and displays the response. Follow the pattern of existing components (e.g. `SymKeysReKey.tsx`, `SymKeysCreate.tsx`).
+4. **Menu entry** (`ui/src/menuItems.tsx`): add a `{ key: "<section>/...", label: "..." }` item under the correct parent.
+5. **Route** (`ui/src/App.tsx`): import the new component and add the matching `<Route>` inside the correct `<Route path="<section>">` block.
+6. **E2E Playwright test** (`ui/tests/e2e/`): create or extend a `*.spec.ts` file that navigates to the page, fills the form, and asserts the response. Use `data-testid="submit-btn"` and `data-testid="response-output"` for targeting.
+7. **E2E README** (`ui/tests/e2e/README.md`): update the test coverage table.
+
+Failing to mirror a CLI feature in the UI is treated as an incomplete implementation.
+
 ### Running UI tests
 
 ```bash

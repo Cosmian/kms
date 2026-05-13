@@ -312,6 +312,16 @@ impl ObjectsDB {
         pipeline.query_async::<()>(&mut self.mgr.clone()).await?;
         Ok(res)
     }
+
+    /// Scan all Redis keys matching a pattern (e.g. `do::*`).
+    /// Returns the matching key strings (including the prefix).
+    pub(crate) async fn scan_keys(&self, pattern: &str) -> DbResult<Vec<String>> {
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg(pattern)
+            .query_async(&mut self.mgr.clone())
+            .await?;
+        Ok(keys)
+    }
 }
 
 pub(crate) enum RedisOperation {

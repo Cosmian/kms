@@ -8,7 +8,9 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
-use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+use cosmian_kms_interfaces::{
+    InterfaceResult, Notification, NotificationsStore, ObjectsStore, PermissionsStore,
+};
 #[cfg(feature = "non-fips")]
 use redis::AsyncCommands;
 use tokio::sync::RwLock;
@@ -43,6 +45,9 @@ pub struct Database {
     ///
     /// This enables server-side `/health` checks without exposing internal store types.
     health: Arc<dyn DatabaseHealth + Sync + Send>,
+
+    /// Notification store — persists auto-rotation event records.
+    notifications: Arc<dyn NotificationsStore + Sync + Send>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,6 +107,7 @@ impl Database {
                 let health = Arc::new(SqliteHealthProbe::new(db.clone()));
                 Ok(Self::new(
                     db.clone(),
+                    db.clone(),
                     db,
                     cache_max_age,
                     MainDbKind::Sqlite,
@@ -112,6 +118,7 @@ impl Database {
                 let db = Arc::new(PgPool::instantiate(url, clear_db_on_start, *max_conns).await?);
                 let health = Arc::new(PgHealthProbe::new(db.clone()));
                 Ok(Self::new(
+                    db.clone(),
                     db.clone(),
                     db,
                     cache_max_age,
@@ -125,6 +132,7 @@ impl Database {
                 );
                 let health = Arc::new(MySqlHealthProbe::new(db.clone()));
                 Ok(Self::new(
+                    db.clone(),
                     db.clone(),
                     db,
                     cache_max_age,
@@ -155,6 +163,7 @@ impl Database {
                 Ok(Self::new(
                     db.clone(),
                     db,
+                    Arc::new(NoopNotificationsStore),
                     cache_max_age,
                     MainDbKind::RedisFindex,
                     health,
@@ -180,6 +189,7 @@ impl Database {
     fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
+        notifications_store: Arc<dyn NotificationsStore + Sync + Send>,
         cache_max_age: Duration,
         kind: MainDbKind,
         health: Arc<dyn DatabaseHealth + Sync + Send>,
@@ -188,6 +198,7 @@ impl Database {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
             unwrapped_cache: UnwrappedCache::new(cache_max_age),
+            notifications: notifications_store,
             kind,
             health,
         }
@@ -282,5 +293,112 @@ impl DatabaseHealth for RedisFindexHealthProbe {
         } else {
             Err(format!("unexpected redis ping response: {pong}"))
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// No-op notifications store (used by Redis-findex backend)
+// ---------------------------------------------------------------------------
+
+#[allow(dead_code)]
+struct NoopNotificationsStore;
+
+#[async_trait::async_trait(?Send)]
+impl NotificationsStore for NoopNotificationsStore {
+    async fn create_notification(
+        &self,
+        _user_id: &str,
+        _event_type: &str,
+        _message: &str,
+        _object_id: Option<&str>,
+        _created_at: time::OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        Ok(0)
+    }
+
+    async fn list_notifications(
+        &self,
+        _user_id: &str,
+        _limit: i64,
+        _offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        Ok(vec![])
+    }
+
+    async fn count_unread(&self, _user_id: &str) -> InterfaceResult<i64> {
+        Ok(0)
+    }
+
+    async fn mark_read(
+        &self,
+        _id: i64,
+        _user_id: &str,
+        _now: time::OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        Ok(false)
+    }
+
+    async fn mark_all_read(
+        &self,
+        _user_id: &str,
+        _now: time::OffsetDateTime,
+    ) -> InterfaceResult<()> {
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Database notification wrapper methods
+// ---------------------------------------------------------------------------
+
+impl Database {
+    /// Persist a new notification event for a user.
+    pub async fn create_notification(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        message: &str,
+        object_id: Option<&str>,
+        created_at: time::OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        self.notifications
+            .create_notification(user_id, event_type, message, object_id, created_at)
+            .await
+    }
+
+    /// List notifications for a user (most recent first, unread first).
+    pub async fn list_notifications(
+        &self,
+        user_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        self.notifications
+            .list_notifications(user_id, limit, offset)
+            .await
+    }
+
+    /// Count unread notifications for a user.
+    pub async fn count_unread_notifications(&self, user_id: &str) -> InterfaceResult<i64> {
+        self.notifications.count_unread(user_id).await
+    }
+
+    /// Mark a single notification as read. Returns `false` if not found or not owned by user.
+    pub async fn mark_notification_read(
+        &self,
+        id: i64,
+        user_id: &str,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        self.notifications.mark_read(id, user_id, now).await
+    }
+
+    /// Mark all notifications as read for a user.
+    pub async fn mark_all_notifications_read(
+        &self,
+        user_id: &str,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<()> {
+        self.notifications.mark_all_read(user_id, now).await
     }
 }

@@ -372,6 +372,22 @@ pub fn parse_selected_attributes_flatten(
                     );
                 }
             }
+            "initial_date" => {
+                if let Some(v) = attributes.initial_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                    );
+                }
+            }
+            "original_creation_date" => {
+                if let Some(v) = attributes.original_creation_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                    );
+                }
+            }
             "cryptographic_algorithm" => {
                 if let Some(v) = attributes.cryptographic_algorithm.as_ref() {
                     results.insert(
@@ -479,6 +495,54 @@ pub fn parse_selected_attributes_flatten(
                     );
                 }
             }
+            "rotate_interval" => {
+                if let Some(v) = attributes.rotate_interval.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_name" => {
+                if let Some(v) = attributes.rotate_name.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_offset" => {
+                if let Some(v) = attributes.rotate_offset.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_date" => {
+                if let Some(v) = attributes.rotate_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_generation" => {
+                if let Some(v) = attributes.rotate_generation.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_latest" => {
+                if let Some(v) = attributes.rotate_latest.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v).unwrap_or_default(),
+                    );
+                }
+            }
             _x => {}
         }
     }
@@ -553,6 +617,20 @@ pub fn build_selected_attribute(
             name_value: attribute_value,
             name_type: NameType::UninterpretedTextString,
         }),
+
+        "rotate_interval" => {
+            let interval = attribute_value
+                .parse::<i32>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateInterval(interval)
+        }
+        "rotate_name" => Attribute::RotateName(attribute_value),
+        "rotate_offset" => {
+            let offset = attribute_value
+                .parse::<i32>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateOffset(offset)
+        }
 
         _ => {
             return Err(UtilsError::Default(format!(

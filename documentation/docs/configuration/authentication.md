@@ -320,3 +320,100 @@ Note: the trailing `/` is required in the issuer URI. The JWKS URI will default 
 ```sh
 --jwt-auth-provider="https://<OKTA_TENANT_NAME>.com,https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys,<OKTA_CLIENT_ID>"
 ```
+
+---
+
+## Break-Glass / Local Authentication
+
+> **Operational best practice**: always configure TLS client certificate authentication
+> in addition to any OIDC/JWT-based method. The certificate acts as a *local,
+> out-of-band* authentication path that remains available even when the identity
+> provider is unreachable or misconfigured.
+
+### Why you need a break-glass path
+
+OIDC-based authentication depends on an external identity provider (Google, Entra,
+Auth0, Okta…).  If that provider is:
+
+- temporarily unavailable (outage, maintenance window, DNS failure),
+- misconfigured (wrong tenant, expired signing key in JWKS),
+- not reachable from the KMS host (network segmentation, firewall rule change),
+
+then **no OIDC client can authenticate**, including the administrators who would
+normally fix the misconfiguration.  A locally-issued client certificate is entirely
+self-contained and does not contact any external service at validation time, so it
+provides an independent recovery path — the *break-glass* account.
+
+### Recommended setup
+
+1. **Issue a break-glass administrator client certificate** from a local CA that you
+   control.  Keep the private key and certificate in a hardware token or an offline
+   vault rather than on the KMS host itself.
+
+    ```bash
+    # Create a local CA (done once; store securely)
+    openssl genrsa -out local_ca.key 4096
+    openssl req -x509 -new -nodes -key local_ca.key -sha256 \
+        -days 3650 -out local_ca.crt \
+        -subj "/CN=KMS Break-Glass CA"
+
+    # Issue an administrator client certificate
+    openssl genrsa -out admin_breakglass.key 2048
+    openssl req -new -key admin_breakglass.key \
+        -out admin_breakglass.csr \
+        -subj "/CN=kms-admin@yourcompany.com"
+    openssl x509 -req -in admin_breakglass.csr \
+        -CA local_ca.crt -CAkey local_ca.key -CAcreateserial \
+        -out admin_breakglass.crt -days 730 -sha256
+    ```
+
+2. **Start the KMS server with both authentication methods** enabled:
+
+    ```toml
+    [tls]
+    tls_cert_file            = "server.crt"
+    tls_key_file             = "server.key"
+    clients_ca_cert_file     = "local_ca.crt"   # break-glass CA
+
+    [idp_auth]
+    jwt_auth_provider = ["https://accounts.google.com,https://www.googleapis.com/oauth2/v3/certs,my-audience"]
+    ```
+
+    Most day-to-day logins will proceed via JWT; the client certificate path acts
+    as a silent fallback and is only used when a certificate is actually presented.
+
+3. **Use the break-glass certificate** from the `ckms` CLI when OIDC is unavailable:
+
+    ```bash
+    ckms --url https://kms.example.com:9998 \
+         --cert admin_breakglass.crt \
+         --key  admin_breakglass.key \
+         sym keys list
+    ```
+
+4. **Protect the break-glass material** as you would any privileged secret:
+    - Store the private key (`admin_breakglass.key`) in an HSM, air-gapped vault, or a
+      hardware token such as a YubiKey.
+    - Rotate the certificate before its expiry date.
+    - Audit its use via server logs — every request authenticated by certificate will
+      show the CN (`kms-admin@yourcompany.com` in the example) in the audit trail.
+
+### Emergency recovery steps
+
+If the primary OIDC authentication path fails:
+
+1. Present the break-glass certificate to verify connectivity:
+
+    ```bash
+    curl --cert admin_breakglass.crt --key admin_breakglass.key \
+         --cacert server_ca.crt \
+         -X POST -H "Content-Type: application/json" -d '{}' \
+         https://kms.example.com:9998/kmip/2_1
+    # Expect HTTP 422 (not 401) — you are authenticated.
+    ```
+
+2. Diagnose the OIDC configuration with `ckms` or direct API calls.
+3. Fix the OIDC misconfiguration and restart or reload the server configuration.
+4. Once OIDC is restored, log the break-glass access in your incident management
+   system and rotate the break-glass certificate if it was used in a potentially
+   compromised environment.

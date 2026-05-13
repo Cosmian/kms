@@ -16,6 +16,9 @@ pub(crate) async fn test_create_master_key_pair() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         }
         .run(ctx.get_owner_client()),
     )

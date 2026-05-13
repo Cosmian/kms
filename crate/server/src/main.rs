@@ -166,7 +166,7 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
+            AzureEkmConfig, ClapConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
             KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
             SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
         },
@@ -275,12 +275,7 @@ mod tests {
                 otlp_allow_insecure: false,
             },
             info: false,
-            hsm: cosmian_kms_server::config::HsmConfig {
-                hsm_model: String::new(),
-                hsm_admin: vec![],
-                hsm_slot: vec![],
-                hsm_password: vec![],
-            },
+            hsm: HsmConfig::default(),
             aws_xks_config: AwsXksConfig {
                 aws_xks_enable: true,
                 aws_xks_region: Some("us-east-1".to_owned()),
@@ -294,6 +289,8 @@ mod tests {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            auto_rotation_check_interval_secs: 0,
+            notifications: cosmian_kms_server::config::NotificationsConfig::default(),
             print_default_config: false,
         };
 
@@ -303,10 +300,6 @@ default_username = "[default username]"
 force_default_username = false
 ms_dke_service_url = "[ms dke service url]"
 info = false
-hsm_model = ""
-hsm_admin = []
-hsm_slot = []
-hsm_password = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 

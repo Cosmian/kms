@@ -1,5 +1,6 @@
 mod activate;
 mod add_attribute;
+mod auto_rotate;
 mod certify;
 mod check;
 mod create;
@@ -39,6 +40,7 @@ mod validate;
 
 pub(crate) use activate::activate;
 pub(crate) use add_attribute::add_attribute;
+pub(crate) use auto_rotate::{dispatch_renewal_warnings, run_auto_rotation};
 pub(crate) use certify::certify;
 pub(crate) use check::check;
 pub(crate) use create::create;

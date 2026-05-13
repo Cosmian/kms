@@ -41,6 +41,23 @@ graph LR
     D --> E[Destroy]
 ```
 
+### sym-rotation-flow
+
+```mermaid
+graph LR
+    A[Create AES key] --> B[Re-Key]
+    B --> C{New UID returned}
+    A --> D[Set rotation interval]
+    D --> E{Policy updated}
+    A --> F[Set rotation name]
+    A --> G[Disable rotation interval=0]
+    N[Navigate] --> H[RSA set-rotation-policy page]
+    N --> I[EC set-rotation-policy page]
+    N --> J[PQC set-rotation-policy page]
+```
+
+Covers `sym/keys/re-key` (KMIP `ReKey`) and `sym/keys/set-rotation-policy` (`SetAttribute` with `rotate_interval`, `rotate_name`, `rotate_offset`). Also verifies that the rotation policy page renders correctly for RSA, EC, and PQC key types.
+
 ### symmetric-encrypt-decrypt
 
 ```mermaid

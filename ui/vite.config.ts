@@ -20,6 +20,7 @@ const apiProxy: Record<string, { target: string; secure: boolean }> = {
     "/download-cli": proxyOpts,
     "/version": proxyOpts,
     "/health": proxyOpts,
+    "/notifications": proxyOpts, // KMS notification endpoints (/notifications, /notifications/count, etc.)
 };
 
 // https://vite.dev/config/

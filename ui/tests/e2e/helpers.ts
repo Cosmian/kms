@@ -62,6 +62,17 @@ export async function submitAndWaitForResponse(page: Page): Promise<string> {
 }
 
 /**
+ * Clicks the "Set Rotation Policy" button and waits for a response panel to appear.
+ * Returns the text content of the response panel.
+ */
+export async function setPolicyAndWaitForResponse(page: Page): Promise<string> {
+    await page.click('[data-testid="set-rotation-policy-btn"]');
+    const responseEl = page.locator('[data-testid="response-output"]');
+    await responseEl.waitFor({ state: "visible", timeout: UI_RESPONSE_TIMEOUT });
+    return (await responseEl.textContent()) ?? "";
+}
+
+/**
  * Like `submitAndWaitForResponse` but additionally intercepts the file
  * download that operations such as Export / Encrypt trigger via a synthetic
  * `<a download>` click.
@@ -513,4 +524,23 @@ export async function createDerivableSymKey(): Promise<string> {
         throw new Error(`createDerivableSymKey: no UniqueIdentifier in response: ${JSON.stringify(json)}`);
     }
     return idItem.value;
+}
+
+/**
+ * Create a self-signed certificate using the "Generate New Keypair" method
+ * and return the certificate UUID.
+ *
+ * @param algorithm Visible label in the algorithm dropdown, e.g. "RSA 2048",
+ *                  "NIST P-256", "ML-DSA-44 (PQC)".
+ */
+export async function createCertificate(page: Page, algorithm: string): Promise<string> {
+    await gotoAndWait(page, "/ui/certificates/certs/certify");
+    await page.getByText("4. Generate New Keypair").click();
+    await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=E2E Test,O=Cosmian");
+    await selectOption(page, "cert-algorithm-select", algorithm);
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/certificate successfully created/i);
+    const id = extractUuid(text);
+    expect(id).not.toBeNull();
+    return id!;
 }

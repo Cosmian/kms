@@ -1,7 +1,7 @@
 import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
 import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
 import HashMapDisplay from "../../components/common/HashMapDisplay";
+import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import { get_attributes_ttlv_request, parse_get_attributes_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 
@@ -64,6 +64,30 @@ const ATTRIBUTE_NAMES = [
     {
         value: "child_id",
         label: "Child ID",
+    },
+    {
+        value: "rotate_interval",
+        label: "Rotate Interval",
+    },
+    {
+        value: "rotate_name",
+        label: "Rotate Name",
+    },
+    {
+        value: "rotate_offset",
+        label: "Rotate Offset",
+    },
+    {
+        value: "rotate_date",
+        label: "Rotate Date",
+    },
+    {
+        value: "rotate_generation",
+        label: "Rotate Generation",
+    },
+    {
+        value: "rotate_latest",
+        label: "Rotate Latest",
     },
 ];
 

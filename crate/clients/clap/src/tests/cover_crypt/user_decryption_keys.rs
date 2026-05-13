@@ -20,6 +20,9 @@ pub(crate) async fn test_user_decryption_key() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())
@@ -53,6 +56,9 @@ pub(crate) async fn test_user_decryption_key_error() -> KmsCliResult<()> {
             tags: vec![],
             sensitive: false,
             wrapping_key_id: None,
+            rotate_interval: None,
+            rotate_name: None,
+            rotate_offset: None,
         };
         let key_ids = Box::pin(action.run(ctx.get_owner_client())).await?;
         (key_ids.0.to_string(), key_ids.1.to_string())

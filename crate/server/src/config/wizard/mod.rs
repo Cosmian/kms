@@ -129,7 +129,8 @@ pub fn run_configure_wizard() -> KResult<()> {
     // ── [6/9] HSM ─────────────────────────────────────────────────────────────
     println!("[6/9] Hardware Security Module (HSM) configuration");
     println!("───────────────────────────────────────────────────");
-    let hsm = hsm_wizard::configure_hsm()?;
+    let hsm_config = hsm_wizard::configure_hsm()?;
+    let hsm = hsm_config;
     println!();
 
     // ── [7/9] Logging ─────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    NotificationsConfig, WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -69,6 +69,8 @@ impl Default for ClapConfig {
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
+            auto_rotation_check_interval_secs: 0,
+            notifications: NotificationsConfig::default(),
         }
     }
 }
@@ -202,6 +204,16 @@ pub struct ClapConfig {
     #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// Set to 0 (default) to disable the auto-rotation background task.
+    #[clap(long, default_value = "0", verbatim_doc_comment)]
+    pub auto_rotation_check_interval_secs: u64,
+
+    /// Notification settings (SMTP email, renewal strategy).
+    #[clap(flatten)]
+    #[serde(default)]
+    pub notifications: NotificationsConfig,
 }
 
 impl ClapConfig {
@@ -642,6 +654,11 @@ impl fmt::Debug for ClapConfig {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
         };
         let x = x.field("kmip", &self.kmip_policy);
+        let x = x.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
+        let x = x.field("notifications", &self.notifications);
 
         x.finish()
     }

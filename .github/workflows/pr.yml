@@ -10,9 +10,24 @@ on:
   workflow_call:
   workflow_dispatch:
 jobs:
+  # Auto-regenerate Nix vendor hashes for PRs so packaging can succeed
+  # without manual intervention.  Commits updated hash files back to the PR
+  # branch when they change; the next CI run will then package with correct hashes.
+  # Skipped for tag pushes, workflow_call (release.yml manages hashes there),
+  # and draft PRs.
+  update-nix-hashes:
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    uses: ./.github/workflows/update-nix-hashes.yml
+    secrets: inherit
+    with:
+      branch: ${{ github.head_ref }}
+      commit_message: 'build: update Nix vendor hashes'
+
   # Run packaging for PRs
   packaging:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: [update-nix-hashes]
+    # Run even when update-nix-hashes is skipped (non-PR events).
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
     with:

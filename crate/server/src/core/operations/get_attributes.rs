@@ -552,6 +552,23 @@ pub(crate) async fn get_attributes(
         owm.id(),
         res.get_tags(kms.vendor_id())
     );
+    // Cosmian-proprietary rotation policy fields are stored authoritatively in the metadata
+    // column (`owm.attributes()`), NOT in the key block.  We must read them directly from
+    // `owm.attributes()` here instead of from the merged `attributes` variable above.
+    //
+    // Why: `SetAttribute(RotateInterval=N)` writes the value into BOTH the key block AND the
+    // metadata column (see set_attribute.rs).  Later, `rekey.rs` sets `rotate_interval=Some(0)`
+    // in the metadata column only (it passes `owm.object().clone()` — the stale key block — to
+    // `UpdateObject`).  The merge above uses `overwrite=false`, so the key-block value shadows
+    // the metadata update.  Reading from `owm.attributes()` bypasses that shadowing and always
+    // returns the most-recent value regardless of what is embedded in the key block.
+    let meta = owm.attributes();
+    res.rotate_interval = meta.rotate_interval;
+    res.rotate_name.clone_from(&meta.rotate_name);
+    res.rotate_offset = meta.rotate_offset;
+    res.rotate_date = meta.rotate_date;
+    res.rotate_generation = meta.rotate_generation;
+    res.rotate_latest = meta.rotate_latest;
     trace!("Get Attributes: Response: {}", res);
     Ok(GetAttributesResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),

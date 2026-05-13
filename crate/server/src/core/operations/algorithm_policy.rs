@@ -760,15 +760,19 @@ fn validate_hashing_algorithm(
     Ok(())
 }
 
-/// Like [`validate_hashing_algorithm`] but permits SHA-1 and SHA-224 when used in a MAC
-/// (HMAC) context. NIST SP 800-131A Rev. 2 Table 7 marks HMAC-SHA-1 and HMAC-SHA-224
-/// as "Acceptable", so only the truly broken digests (MD2/MD4/MD5) are denied here.
+/// Like [`validate_hashing_algorithm`] but applies ANSSI-aligned rules for MAC (HMAC) context.
+/// ANSSI v3.00 forbids HMAC-SHA-1 and HMAC-SHA-224 for new applications, so they are denied
+/// here unconditionally alongside the truly broken digests (MD2/MD4/MD5).
 fn validate_hashing_algorithm_for_mac(
     hash: HashingAlgorithm,
     whitelist: Option<&HashSet<HashingAlgorithm>>,
 ) -> KResult<()> {
     match hash {
-        HashingAlgorithm::MD2 | HashingAlgorithm::MD4 | HashingAlgorithm::MD5 => {
+        HashingAlgorithm::MD2
+        | HashingAlgorithm::MD4
+        | HashingAlgorithm::MD5
+        | HashingAlgorithm::SHA1
+        | HashingAlgorithm::SHA224 => {
             return deny(
                 ErrorReason::Constraint_Violation,
                 format!("Deprecated hash for MAC: {hash}"),

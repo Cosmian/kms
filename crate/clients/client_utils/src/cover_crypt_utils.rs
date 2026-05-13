@@ -3,10 +3,10 @@ use cosmian_kmip::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, CreateKeyPair},
+        kmip_operations::{Create, CreateKeyPair, ReKeyKeyPair},
         kmip_types::{
             CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-            VendorAttribute, VendorAttributeValue,
+            UniqueIdentifier, VendorAttribute, VendorAttributeValue,
         },
     },
     time_normalize,
@@ -98,4 +98,49 @@ pub fn build_create_covercrypt_usk_request<T: IntoIterator<Item = impl AsRef<str
     };
 
     Ok(request)
+}
+
+/// Build a `ReKeyKeyPair` request to re-key a Covercrypt access policy.
+///
+/// This triggers the re-keying of all active user decryption keys (USKs) that
+/// match the given `access_policy` expression. USKs that have been revoked or
+/// destroyed are not re-keyed.
+///
+/// # Arguments
+/// * `vendor_id` – the vendor identification string (from `set_vendor_id`)
+/// * `msk_uid` – unique identifier of the Covercrypt Master Secret Key
+/// * `access_policy` – boolean expression of attributes to re-key, e.g.
+///   `"Department::HR && Security Level::Confidential"`
+pub fn build_rekey_cc_keypair_request(
+    vendor_id: &str,
+    msk_uid: &str,
+    access_policy: &str,
+) -> Result<ReKeyKeyPair, UtilsError> {
+    // Serialize the action as JSON bytes, mirroring `RekeyEditAction::RekeyAccessPolicy`
+    // from `cosmian_kms_crypto::crypto::cover_crypt::attributes`.
+    let action_json = format!(
+        r#"{{"RekeyAccessPolicy":{}}}"#,
+        serde_json::json!(access_policy)
+    );
+    let action_bytes = action_json.into_bytes();
+
+    let vendor_attribute = VendorAttribute {
+        vendor_identification: vendor_id.to_owned(),
+        attribute_name: VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION.to_owned(),
+        attribute_value: VendorAttributeValue::ByteString(action_bytes),
+    };
+
+    let attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+        key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
+        vendor_attributes: Some(vec![vendor_attribute]),
+        ..Attributes::default()
+    };
+
+    Ok(ReKeyKeyPair {
+        private_key_unique_identifier: Some(UniqueIdentifier::TextString(msk_uid.to_owned())),
+        private_key_attributes: Some(attributes),
+        ..ReKeyKeyPair::default()
+    })
 }

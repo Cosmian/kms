@@ -88,6 +88,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 - HSM-first: optional HSM key-wrapping and vendor modules (Utimaco, SmartCard-HSM, Proteccio, Crypt2pay…).
 - Cloud-native: official Docker image, simple horizontal scaling, and OpenTelemetry observability.
 - End-to-end: server, CLI, and web UI for a complete developer and operator experience.
+- **Key auto-rotation**: policy-driven background rotation for plain, wrapped, and wrapping keys — see [Key Auto-Rotation Policy](./documentation/docs/kmip_support/key_auto_rotation.md).
 
 ## 🎯 Top Use Cases
 

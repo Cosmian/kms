@@ -5,6 +5,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
+use time::OffsetDateTime;
 
 use crate::{InterfaceResult, ObjectWithMetadata};
 
@@ -102,4 +103,31 @@ pub trait ObjectsStore {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Return (uid, state, attributes) for every object whose
+    /// `key_wrapping_data.encryption_key_information.unique_identifier` equals
+    /// `wrapping_key_uid`. Used by key rotation to re-wrap all objects protected by
+    /// the rotated key.
+    ///
+    /// The default implementation returns an empty list; backends that support
+    /// JSON-based object storage should override this with an efficient query.
+    async fn find_wrapped_by(
+        &self,
+        _wrapping_key_uid: &str,
+        _user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        Ok(vec![])
+    }
+
+    /// Return UIDs of all Active objects that have a `rotate_interval > 0` and whose
+    /// next rotation instant is ≤ `now`.
+    ///
+    /// The next rotation instant is computed as:
+    /// - `rotate_date + rotate_interval`  (if `rotate_date` is set), or
+    /// - `initial_date + rotate_offset`   (if `rotate_date` is None and `rotate_offset` is set)
+    ///
+    /// The default implementation returns an empty list; backends should override.
+    async fn find_due_for_rotation(&self, _now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
+        Ok(vec![])
+    }
 }

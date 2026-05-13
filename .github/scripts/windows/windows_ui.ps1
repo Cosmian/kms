@@ -130,7 +130,10 @@ function Build-UI {
                 Write-Host "Using pnpm as package manager"
             }
             else {
-                Write-Host "Warning: pnpm-lock.yaml found but pnpm not installed. Using npm instead."
+                Write-Host "pnpm-lock.yaml found but pnpm not installed. Installing pnpm globally via npm..."
+                npm install -g pnpm
+                $packageManager = "pnpm"
+                Write-Host "pnpm installed successfully"
             }
         }
 

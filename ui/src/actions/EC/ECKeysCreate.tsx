@@ -3,8 +3,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { parse_set_attribute_ttlv_response, set_attribute_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import RotationPolicyFields, {
+    type RotationPolicyFormValues,
+    applyRotationPolicy,
+    rotationIntervalToSeconds,
+} from "../Keys/RotationPolicyFields";
 
-interface ECKeyCreateFormData {
+interface ECKeyCreateFormData extends RotationPolicyFormValues {
     privateKeyId?: string;
     curve: string;
     tags: string[];
@@ -65,6 +71,18 @@ const ECKeyCreateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
+                // Apply rotation policy on the private key if specified
+                await applyRotationPolicy(
+                    result.PrivateKeyUniqueIdentifier,
+                    rotationIntervalToSeconds(values.rotateIntervalValue, values.rotateIntervalUnit),
+                    values.rotateName,
+                    rotationIntervalToSeconds(values.rotateOffsetValue, values.rotateOffsetUnit),
+                    sendKmipRequest,
+                    parse_set_attribute_ttlv_response,
+                    set_attribute_ttlv_request,
+                    idToken,
+                    serverUrl,
+                );
                 setRes(
                     `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
                 );
@@ -133,6 +151,10 @@ const ECKeyCreateForm: React.FC = () => {
                         <Form.Item name="sensitive" valuePropName="checked" help="If set, the private key will not be exportable">
                             <Checkbox>Sensitive</Checkbox>
                         </Form.Item>
+                    </Card>
+
+                    <Card>
+                        <RotationPolicyFields />
                     </Card>
 
                     <Form.Item>
