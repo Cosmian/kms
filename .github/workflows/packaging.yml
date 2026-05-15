@@ -304,6 +304,49 @@ jobs:
               cosmian@package.cosmian.com:"${remote_dir}/"
           done
 
+  publish-monitoring:
+    name: Publish monitoring stack archive
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Create monitoring archive
+        run: |
+          zip -r cosmian-kms-monitoring.zip monitoring/
+
+      - name: Push to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          REMOTE_DIR="/mnt/package/kms/${BRANCH}/monitoring"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            cosmian-kms-monitoring.zip \
+            cosmian@package.cosmian.com:"${REMOTE_DIR}/"
+
+      - name: Publish GitHub Release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: cosmian-kms-monitoring.zip
+
   cargo-publish:
     uses: ./.github/workflows/cargo-publish.yml
     with:
