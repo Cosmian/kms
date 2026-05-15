@@ -1749,11 +1749,12 @@ pub enum OperationEnumeration {
 
 /// An Enumeration object indicating whether the certificate chain is valid,
 /// invalid, or unknown.
+/// KMIP 2.1 spec §11.61 Table 492: Valid=0x01, Invalid=0x02, Unknown=0x03.
 #[kmip_enum]
 pub enum ValidityIndicator {
-    Valid = 0x0000_0000,
-    Invalid = 0x0000_0001,
-    Unknown = 0x0000_0002,
+    Valid = 0x0000_0001,
+    Invalid = 0x0000_0002,
+    Unknown = 0x0000_0003,
 }
 
 impl ValidityIndicator {

@@ -406,6 +406,7 @@ impl TryFrom<u32> for ObjectType {
 #[kmip_enum]
 pub enum CryptographicAlgorithm {
     DES = 0x1,
+    #[strum(serialize = "THREE_DES", serialize = "ThreeES")]
     ThreeES = 0x2,
     AES = 0x3,
     RSA = 0x4,
