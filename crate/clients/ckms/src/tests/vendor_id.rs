@@ -10,52 +10,28 @@ use cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::{
     kmip_types::{AttributeReference, CryptographicAlgorithm, Tag, UniqueIdentifier},
     requests::symmetric_key_create_request,
 };
-use test_kms_server::{
-    AuthenticationOptions, BuildServerParamsOptions, MainDBConfig, build_server_params_full,
-    start_test_server_with_options,
-};
+use test_kms_server::{TestClientOptions, start_test_server_with_patch, test_config_path};
 
 use crate::error::result::CosmianResult;
 
 const TEST_VENDOR_ID: &str = "test_vendor_id";
-/// Port offset +7 from `DEFAULT_KMS_SERVER_PORT` (9998).
-/// Offsets 0-6 and 20 are already reserved by `test_kms_server` singleton servers.
-const TEST_PORT: u16 = 9998 + 7;
 
 /// Verify that a KMS server configured with a custom `vendor_identification`
 /// stores KMIP `VendorAttribute` entries under that custom vendor ID rather
 /// than the default `"cosmian"` one.
 #[tokio::test]
 pub(crate) async fn test_vendor_id_in_vendor_attributes() -> CosmianResult<()> {
-    // 1. Build server params with a custom vendor_identification.
-    //    `BuildServerParamsOptions` has no `vendor_identification` field, so we
-    //    mutate the returned `ServerParams` directly.
-    let mut server_params = build_server_params_full(BuildServerParamsOptions {
-        db_config: MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            clear_database: true,
-            ..MainDBConfig::default()
+    // 1. Start a test KMS server with a custom vendor_identification patched in.
+    let mut ctx = start_test_server_with_patch(
+        &test_config_path("auth_plain.toml"),
+        |config| {
+            config.vendor_identification = TEST_VENDOR_ID.to_owned();
         },
-        port: TEST_PORT,
-        ..Default::default()
-    })?;
-    server_params.vendor_identification = TEST_VENDOR_ID.to_owned();
-
-    // 2. Start the test KMS server.  The `db_config` first argument is ignored
-    //    when `AuthenticationOptions.server_params` is `Some`.
-    let mut ctx = start_test_server_with_options(
-        MainDBConfig::default(),
-        TEST_PORT,
-        AuthenticationOptions {
-            server_params: Some(server_params),
-            ..Default::default()
-        },
-        None,
-        None,
+        TestClientOptions::default(),
     )
     .await?;
 
-    // 3. Override the client's vendor_id to match the server's custom value.
+    // 2. Override the client's vendor_id to match the server's custom value.
     ctx.owner_client_config.vendor_id = TEST_VENDOR_ID.to_owned();
     let client = ctx.get_owner_client();
 
