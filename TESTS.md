@@ -161,23 +161,49 @@ sequenceDiagram
     participant K as KMS Server
     participant D as Database
 
-    T->>R: run_test_vector("vectors/fips/symmetric/aes_gcm")
-    R->>R: Load manifest.toml
-    R->>R: Resolve server config<br/>(default or per-vector)
-    R->>S: start_test_server_from_toml(config)
-    S->>S: Load TOML → ClapConfig
-    S->>S: Override port = 0 (OS-assigned)
-    S->>K: Start KMS on assigned port
-    K->>D: Initialize SQLite DB
+    alt Isolated server (run_test_vector)
+        T->>R: run_test_vector("vectors/fips/symmetric/aes_gcm")
+        R->>R: Load manifest.toml
+        R->>R: Resolve server config<br/>(default or per-vector)
+        R->>S: start_test_server_from_toml(config)
+        S->>S: Load TOML → ClapConfig
+        S->>S: Override port = 0 (OS-assigned)
+        S->>K: Start KMS on assigned port
+        K->>D: Initialize SQLite DB
+    else Shared server (run_test_vector_with_context)
+        T->>R: run_test_vector_with_context(dir, context)
+        R->>R: Load manifest.toml
+        Note over R,K: Reuses pre-existing TestsContext
+    end
 
     loop For each step in manifest
         R->>R: Load step_N_request.json
         R->>R: Substitute {{captures}}
-        R->>K: POST /kmip/2_1 (TTLV)
-        K-->>R: Response (TTLV)
-        R->>R: Assert success/failure
-        R->>R: Assert structural fields
-        R->>R: Capture output variables
+        alt wire_format = "json"
+            alt raw_request = false
+                R->>R: Wrap bare op in RequestMessage envelope
+            else raw_request = true
+                R->>R: Use JSON as-is (batched/custom header)
+            end
+            R->>K: POST /kmip/2_1 (JSON TTLV)
+            K-->>R: Response (JSON)
+        else wire_format = "binary"
+            R->>R: Wrap in RequestMessage (or raw)
+            R->>R: JSON → TTLV struct → binary bytes
+            R->>K: POST /kmip (application/octet-stream)
+            K-->>R: Response (binary TTLV)
+            R->>R: binary → TTLV struct → JSON
+        end
+        alt assert_success = true
+            R->>R: Assert ResultStatus == "Success"
+            R->>R: Assert structural fields (assert_fields)
+            R->>R: Assert fields absent (assert_fields_absent)
+            R->>R: Capture output variables
+        else assert_success = false
+            R->>R: Assert failure (HTTP error or ResultStatus != Success)
+            R->>R: Optionally check assert_error_reason
+            R->>R: Optionally check assert_error_contains
+        end
     end
 
     R-->>T: Pass/Fail

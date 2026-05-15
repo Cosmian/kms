@@ -39,12 +39,6 @@ pub(crate) fn https_clap_config() -> ClapConfig {
 }
 
 /// Create a test KMS instance from the default HTTPS config.
-///
-/// This is equivalent to:
-/// ```rust,no_run
-/// let clap_config = https_clap_config();
-/// let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-/// ```
 pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
     let clap_config = https_clap_config();
     Ok(Arc::new(

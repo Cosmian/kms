@@ -150,3 +150,13 @@
     - ChaCha20-Poly1305 with AAD: AEAD mode + `AuthenticatedEncryptionAdditionalData` + server-generated nonce
 - All Decrypt steps assert `Data = <exact plaintext hex>` (Option A round-trip verification)
 - Total test count: 196 → 204
+
+## Refactor
+
+### KMIP enum lookup consolidation
+
+- Remove duplicate inline `lookup_enum_code` closure (~390 lines) from `crate/kmip/src/ttlv/xml/deserializer.rs`; replace with import of shared `enum_lookup::lookup_enum_code` function
+- Add `ProtectionLevel` (`Low`, `Medium`, `High`) entries to shared `enum_lookup.rs` (forward + reverse tables) to cover variants present only in the removed closure
+- Fix flaky test server tmp-dir collision: replace `SystemTime::now().as_nanos()` with a global `AtomicU64` counter in `load_test_config_from_toml()` (macOS clock resolution ≈ 1 µs caused parallel tests to share the same directory)
+- Gate `test_neg_cp_sign_invalid_hash` with `#[cfg(feature = "non-fips")]` (MD5 is not FIPS-approved)
+- Fix `sign_rsa_with_ecdsa_algo` test vector: replace `CommonAttributes.CryptographicUsageMask = Unrestricted` with `PrivateKeyAttributes.CryptographicUsageMask = Sign` and `PublicKeyAttributes.CryptographicUsageMask = Verify` to pass FIPS-mode RSA key validation

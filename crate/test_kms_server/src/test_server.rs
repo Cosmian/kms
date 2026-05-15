@@ -2,11 +2,19 @@ use std::{
     env,
     net::TcpListener,
     path::{Path, PathBuf},
-    sync::{Arc, mpsc},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread::{self, JoinHandle},
     time::Duration,
     vec,
 };
+
+/// Global counter ensuring unique temp directories even when multiple tests
+/// start within the same clock tick (macOS `SystemTime` resolution = 1 µs).
+static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
@@ -1329,13 +1337,16 @@ fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClien
     drop(listener);
     config.http.port = port;
 
-    // Use a unique temp directory for SQLite and workspace to avoid collisions
+    // Use a unique temp directory for SQLite and workspace to avoid collisions.
+    // Combine timestamp with an atomic counter so that tests starting within
+    // the same clock tick (macOS resolution ≈ 1 µs) still get distinct paths.
     let tmp_dir = std::env::temp_dir().join(format!(
-        "kms_test_toml_{}",
+        "kms_test_toml_{}_{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_nanos()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     config.db.sqlite_path = tmp_dir.join("sqlite-data");
     config.db.clear_database = true;

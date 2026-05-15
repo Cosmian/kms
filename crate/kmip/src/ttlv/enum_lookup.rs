@@ -341,6 +341,11 @@ pub fn lookup_enum_code(name: &str) -> Option<(u32, &'static str)> {
         "PKCS12PasswordLink" => Some((0x0000_010D, "PKCS12PasswordLink")),
         "WrappingKeyLink" => Some((0x0000_010E, "WrappingKeyLink")),
 
+        // ── ProtectionLevel ──────────────────────────────────────────
+        "Low" => Some((0x0000_0001, "Low")),
+        "Medium" => Some((0x0000_0002, "Medium")),
+        "High" => Some((0x0000_0003, "High")),
+
         _ => Option::None,
     }
 }
@@ -685,6 +690,10 @@ static REVERSE_TABLE: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
         ("PKCS12CertificateLink", 0x0000_010C),
         ("PKCS12PasswordLink", 0x0000_010D),
         ("WrappingKeyLink", 0x0000_010E),
+        // ── ProtectionLevel ──
+        ("Low", 0x0000_0001),
+        ("Medium", 0x0000_0002),
+        ("High", 0x0000_0003),
     ];
     let mut map = HashMap::with_capacity(entries.len());
     for &(name, code) in entries {

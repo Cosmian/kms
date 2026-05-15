@@ -2131,6 +2131,9 @@ ObjectType = "SymmetricKey"
             .await
     }
 
+    // MD5 is not FIPS-approved; this test documents that RSA-PSS/MD5 succeeds
+    // only when the legacy OpenSSL provider is active (non-FIPS mode).
+    #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_neg_cp_sign_invalid_hash() -> Result<(), KmsClientError> {
         crate::init_test_logging();
