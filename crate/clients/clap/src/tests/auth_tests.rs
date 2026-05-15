@@ -2,7 +2,9 @@ use base64::Engine;
 use cosmian_kms_client::{
     read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
 };
-use cosmian_logger::{error, info, trace};
+#[cfg(not(target_os = "windows"))]
+use cosmian_logger::error;
+use cosmian_logger::{info, trace};
 use tempfile::TempDir;
 use test_kms_server::{
     TestClientOptions, TestsContext, init_test_logging, start_test_server,
