@@ -10,7 +10,7 @@
 //! and run:
 //!
 //! ```bash
-//! KMS_URL=http://<your-local-ip>:9998 \
+//! KMS_URL=http://<your-local-ip> \
 //!   cargo test --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy
 //! ```
 
@@ -47,8 +47,23 @@ pub(crate) async fn test_server_version_using_forward_proxy() {
 
     // In CI, KMS_URL is set to the machine's non-loopback IP so that Squid
     // forwards the connection (Squid skips proxying 127.0.0.1).
-    let kms_url = std::env::var("KMS_URL")
-        .unwrap_or_else(|_| format!("http://127.0.0.1:{}", ctx.server_port));
+    // The test server allocates a random port, so we extract only the host from
+    // KMS_URL and combine it with ctx.server_port.
+    // KMS_URL may be "http://1.2.3.4" (no port) or "http://1.2.3.4:PORT" — both
+    // are handled: split(':') after stripping the scheme gives either ["1.2.3.4"]
+    // or ["1.2.3.4", "PORT"]; we always take the first element.
+    let kms_url = match std::env::var("KMS_URL") {
+        Ok(url) => {
+            let host = url
+                .trim_start_matches("http://")
+                .trim_start_matches("https://")
+                .split(':')
+                .next()
+                .unwrap_or("127.0.0.1");
+            format!("http://{}:{}", host, ctx.server_port)
+        }
+        Err(_) => format!("http://127.0.0.1:{}", ctx.server_port),
+    };
 
     Command::cargo_bin("ckms")
         .expect("ckms binary not found")

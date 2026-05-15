@@ -275,13 +275,10 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
 
 // Create a KEK in the HSM before running server with `key_encryption_key` arg
 async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
-    let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_kek_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
+    // Use a fixed, deterministic path — this runs inside a OnceCell so there
+    // is no parallelism concern. A stable path ensures the workspace directory
+    // used for KEK creation is the same one reused by the main server.
+    let workspace_dir = std::env::temp_dir().join("kms_test_kek");
     let kek_id = "hsm::0::kek";
 
     let workspace_clone = workspace_dir.clone();
@@ -290,6 +287,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
         move |config| {
             config.db.sqlite_path = workspace_clone.join("sqlite-data");
             config.workspace.root_data_path = workspace_clone.join("workspace");
+            config.workspace.tmp_path = workspace_clone.join("tmp");
         },
         TestClientOptions {
             send_jwt: true,
@@ -366,6 +364,7 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
         config.db.sqlite_path = workspace_dir.join("sqlite-data");
         config.db.clear_database = false;
         config.workspace.root_data_path = workspace_dir.join("workspace");
+        config.workspace.tmp_path = workspace_dir.join("tmp");
         config.key_encryption_key = Some(kek_id);
         start_server_from_config(config, &config_path).await
     }))

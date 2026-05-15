@@ -160,3 +160,11 @@
 - Fix flaky test server tmp-dir collision: replace `SystemTime::now().as_nanos()` with a global `AtomicU64` counter in `load_test_config_from_toml()` (macOS clock resolution ≈ 1 µs caused parallel tests to share the same directory)
 - Gate `test_neg_cp_sign_invalid_hash` with `#[cfg(feature = "non-fips")]` (MD5 is not FIPS-approved)
 - Fix `sign_rsa_with_ecdsa_algo` test vector: replace `CommonAttributes.CryptographicUsageMask = Unrestricted` with `PrivateKeyAttributes.CryptographicUsageMask = Sign` and `PublicKeyAttributes.CryptographicUsageMask = Verify` to pass FIPS-mode RSA key validation
+
+## Bug Fixes — Certify with KEK
+
+- Fix `create_kek_in_db()` non-determinism: use a fixed workspace path (`kms_test_kek`) instead of timestamp-based naming, and override all workspace paths (`sqlite_path`, `root_data_path`, `tmp_path`) consistently between KEK creation server and main server ([#953](https://github.com/Cosmian/kms/pull/953))
+
+## Bug Fixes — Forward Proxy Test
+
+- Fix `test_server_version_using_forward_proxy`: extract only the host from `KMS_URL` and combine with `ctx.server_port` instead of using the full URL (which contains a stale port after `load_test_config_from_toml` dynamic port allocation) ([#953](https://github.com/Cosmian/kms/pull/953))

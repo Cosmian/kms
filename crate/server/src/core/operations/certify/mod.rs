@@ -353,7 +353,13 @@ async fn get_subject(
     )?;
 
     // If we have a public key, we can create a certificate from it
-    if let Some(public_key) = public_key {
+    if let Some(mut public_key) = public_key {
+        // The public key may be stored in wrapped form (e.g. when using a KEK).
+        // Unwrap it before using it for certificate creation.
+        let unwrapped_object = kms
+            .get_unwrapped(public_key.id(), public_key.object(), user)
+            .await?;
+        public_key.set_object(unwrapped_object);
         return Ok(Subject::PublicKeyAndSubjectName(
             attributes.unique_identifier.clone().unwrap_or_default(),
             public_key,
