@@ -24,7 +24,7 @@ use cosmian_kms_client::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, GetAttributes},
+        kmip_operations::Create,
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
     kms_client_bail, kms_client_error,
@@ -141,6 +141,12 @@ pub fn test_config_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../test_data/configs/server/test")
         .join(name)
+}
+
+/// Like [`test_config_path`] but resolves paths under the `hsm/` sub-directory.
+#[must_use]
+pub fn hsm_config_path(name: &str) -> PathBuf {
+    test_config_path("hsm").join(name)
 }
 
 fn path_to_string(p: &Path) -> Result<String, KmsClientError> {
@@ -283,7 +289,7 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
 
     let workspace_clone = workspace_dir.clone();
     let ctx = start_test_server_with_patch(
-        &test_config_path("hsm_jwt.toml"),
+        &hsm_config_path("hsm_jwt.toml"),
         move |config| {
             config.db.sqlite_path = workspace_clone.join("sqlite-data");
             config.workspace.root_data_path = workspace_clone.join("workspace");
@@ -296,44 +302,32 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     )
     .await?;
 
-    // Create the KEK in the HSM
-    // Fast path: if the key already exists and is active, we're done.
-
-    let get_attr_request = GetAttributes {
-        unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-        attribute_reference: None,
+    // Create the KEK in the HSM (idempotent: ignore "already exists").
+    let create_request = Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes: Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::WrapKey
+                    | CryptographicUsageMask::UnwrapKey,
+            ),
+            object_type: Some(ObjectType::SymmetricKey),
+            unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
+            activation_date: Some(time_normalize()?),
+            ..Default::default()
+        },
+        protection_storage_masks: None,
     };
-    let resp = ctx
-        .get_owner_client()
-        .get_attributes(get_attr_request)
-        .await;
-
-    if resp.is_err() {
-        // Create a request to generate a new symmetric key with activation_date set to now
-        // so it will be immediately active
-        let create_request = Create {
-            object_type: ObjectType::SymmetricKey,
-            attributes: Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                cryptographic_length: Some(256),
-                cryptographic_usage_mask: Some(
-                    CryptographicUsageMask::Encrypt
-                        | CryptographicUsageMask::Decrypt
-                        | CryptographicUsageMask::WrapKey
-                        | CryptographicUsageMask::UnwrapKey,
-                ),
-                object_type: Some(ObjectType::SymmetricKey),
-                unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-                activation_date: Some(time_normalize()?),
-                ..Default::default()
-            },
-            protection_storage_masks: None,
-        };
-
-        let _response = ctx.get_owner_client().create(create_request).await?;
+    match ctx.get_owner_client().create(create_request).await {
+        Ok(_) => trace!("KEK created in HSM"),
+        Err(e) if e.to_string().to_lowercase().contains("already exist") => {
+            trace!("KEK already exists in HSM, reusing");
+        }
+        Err(e) => return Err(e),
     }
-
-    // No grant access is required on external keys (e.g., when using HSM crypto oracles)
 
     ctx.stop_server().await?;
 
@@ -359,7 +353,7 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
             "workspace_dir must exist and kek_id must be non-empty"
         );
 
-        let config_path = test_config_path("hsm_kek.toml");
+        let config_path = hsm_config_path("hsm_kek.toml");
         let mut config = load_test_config_from_toml(&config_path)?;
         config.db.sqlite_path = workspace_dir.join("sqlite-data");
         config.db.clear_database = false;
@@ -371,6 +365,124 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
     .await
     .unwrap_or_else(|e| {
         error!("failed to start test server with utimaco hsm: {e}");
+        std::process::abort();
+    })
+}
+
+// ---------------------------------------------------------------------------
+// SoftHSM2 + KEK
+// ---------------------------------------------------------------------------
+
+pub(crate) static ONCE_SERVER_WITH_SOFTHSM2_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+
+/// Read the `SoftHSM2` slot id from the `HSM_SLOT_ID` environment variable.
+///
+/// # Panics
+/// Panics if the variable is missing or not a valid `usize`.
+#[allow(clippy::expect_used, clippy::panic)]
+fn get_softhsm2_slot_id() -> usize {
+    let raw = env::var("HSM_SLOT_ID").expect(
+        "HSM_SLOT_ID environment variable must be set (by test_hsm_softhsm2.sh) to run \
+         SoftHSM2+KEK tests",
+    );
+    raw.parse::<usize>().unwrap_or_else(|_| {
+        panic!("HSM_SLOT_ID '{raw}' is not a valid usize");
+    })
+}
+
+/// Bootstrap a KEK inside `SoftHSM2`.
+///
+/// Mirrors [`create_kek_in_db`] but uses the `SoftHSM2`-specific TOML and reads
+/// the slot from `HSM_SLOT_ID`.
+async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
+    let slot = get_softhsm2_slot_id();
+    let workspace_dir = std::env::temp_dir().join("kms_test_softhsm2_kek");
+    let kek_id = format!("hsm::{slot}::kek");
+
+    let workspace_clone = workspace_dir.clone();
+    let ctx = start_test_server_with_patch(
+        &hsm_config_path("hsm_softhsm2_jwt.toml"),
+        move |config| {
+            config.hsm.hsm_slot = vec![slot];
+            config.db.sqlite_path = workspace_clone.join("sqlite-data");
+            config.workspace.root_data_path = workspace_clone.join("workspace");
+            config.workspace.tmp_path = workspace_clone.join("tmp");
+        },
+        TestClientOptions {
+            send_jwt: true,
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    // Create the KEK in the HSM (idempotent: ignore "already exists").
+    let create_request = Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes: Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::WrapKey
+                    | CryptographicUsageMask::UnwrapKey,
+            ),
+            object_type: Some(ObjectType::SymmetricKey),
+            unique_identifier: Some(UniqueIdentifier::TextString(kek_id.clone())),
+            activation_date: Some(time_normalize()?),
+            ..Default::default()
+        },
+        protection_storage_masks: None,
+    };
+    match ctx.get_owner_client().create(create_request).await {
+        Ok(_) => trace!("KEK created in HSM"),
+        Err(e) if e.to_string().to_lowercase().contains("already exist") => {
+            trace!("KEK already exists in HSM, reusing");
+        }
+        Err(e) => return Err(e),
+    }
+
+    ctx.stop_server().await?;
+
+    Ok((workspace_dir, kek_id))
+}
+
+/// With `SoftHSM2` HSM + KEK
+///
+/// # Panics
+/// - if `HSM_SLOT_ID` is not set
+/// - if the `workspace_dir` does not exist
+/// - if the `kek_id` is empty
+#[allow(clippy::unwrap_used)]
+pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static TestsContext {
+    trace!("Starting test server with SoftHSM2 HSM and KEK");
+    let slot = get_softhsm2_slot_id();
+    Box::pin(
+        ONCE_SERVER_WITH_SOFTHSM2_KEK.get_or_try_init(|| async move {
+            let (workspace_dir, kek_id) = Box::pin(create_softhsm2_kek_in_db()).await?;
+            trace!(
+                "SoftHSM2 key encryption key created: {kek_id} in workspace {}",
+                workspace_dir.display()
+            );
+            assert!(
+                workspace_dir.exists() && !kek_id.is_empty(),
+                "workspace_dir must exist and kek_id must be non-empty"
+            );
+
+            let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            config.hsm.hsm_slot = vec![slot];
+            config.db.sqlite_path = workspace_dir.join("sqlite-data");
+            config.db.clear_database = false;
+            config.workspace.root_data_path = workspace_dir.join("workspace");
+            config.workspace.tmp_path = workspace_dir.join("tmp");
+            config.key_encryption_key = Some(kek_id);
+            start_server_from_config(config, &config_path).await
+        }),
+    )
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start test server with softhsm2 hsm: {e}");
         std::process::abort();
     })
 }

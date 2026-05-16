@@ -4,11 +4,12 @@ pub use cosmian_kms_server::{
 };
 pub use test_jwt::AUTH0_TOKEN;
 pub use test_server::{
-    TestClientOptions, TestsContext, start_default_test_kms_server,
+    TestClientOptions, TestsContext, hsm_config_path, start_default_test_kms_server,
     start_default_test_kms_server_with_cert_auth, start_default_test_kms_server_with_jwt_auth,
     start_default_test_kms_server_with_multi_privileged_users,
     start_default_test_kms_server_with_non_revocable_key_ids,
     start_default_test_kms_server_with_privileged_users,
+    start_default_test_kms_server_with_softhsm2_and_kek,
     start_default_test_kms_server_with_utimaco_and_kek,
     start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
     start_test_server, start_test_server_from_toml, start_test_server_with_patch, test_config_path,

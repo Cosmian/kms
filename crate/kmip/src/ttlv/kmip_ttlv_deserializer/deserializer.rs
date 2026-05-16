@@ -215,11 +215,7 @@ impl<'de> de::Deserializer<'de> for &mut TtlvDeserializer {
                 visitor.visit_i128(*dt)
             }
             TTLValue::Enumeration(e) => {
-                // Choose the variant name over the value if it is available.
-                // We prefer name-based deserialization (from_str) because the forward
-                // lookup table is context-free: the same name (e.g. "Encrypt") may map
-                // to different codes in different KMIP enumerations. The target type's
-                // from_str always picks the correct variant by name.
+                // Choose the variant name over the value if it is available
                 if e.name.is_empty() {
                     trace!("deserialize_any of enum variant: value: {}", e.value);
                     visitor.visit_u32(e.value)

@@ -104,6 +104,49 @@ env \
 
 echo "SoftHSM2 Loader tests completed successfully."
 
+# ─── Google CSE tests with SoftHSM2 + KEK (non-fips only) ─────────────────────
+# Optionally run Google CSE CLI tests if environment is provided
+if [[ " ${FEATURES_FLAG[*]:-} " == *"non-fips"* ]] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_CLIENT_SECRET:-}" ] && [ -n "${TEST_GOOGLE_OAUTH_REFRESH_TOKEN:-}" ]; then
+  echo "========================================="
+  echo "Running Google CSE tests with SoftHSM2 + KEK"
+  echo "========================================="
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+    DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_MODEL="softhsm2" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    TEST_GOOGLE_OAUTH_CLIENT_ID="$TEST_GOOGLE_OAUTH_CLIENT_ID" \
+    TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" \
+    TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" \
+    cargo test \
+    -p cosmian_kms_cli_actions \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    -- tests::google_cmd::using_hsm::hsm_google_cse_create_key_pair_using_imported_google_cse --ignored --exact
+
+  env \
+    PATH="$PATH" \
+    LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+    DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+    HSM_MODEL="softhsm2" \
+    HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+    HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+    TEST_GOOGLE_OAUTH_CLIENT_ID="$TEST_GOOGLE_OAUTH_CLIENT_ID" \
+    TEST_GOOGLE_OAUTH_CLIENT_SECRET="$TEST_GOOGLE_OAUTH_CLIENT_SECRET" \
+    TEST_GOOGLE_OAUTH_REFRESH_TOKEN="$TEST_GOOGLE_OAUTH_REFRESH_TOKEN" \
+    cargo test \
+    -p cosmian_kms_cli_actions \
+    ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+    -- tests::google_cmd::using_hsm::hsm_google_cse_privileged_wrap_unwrap_key --ignored --exact
+
+  echo "Google CSE SoftHSM2 + KEK tests completed successfully."
+elif [[ " ${FEATURES_FLAG[*]:-} " == *"non-fips"* ]]; then
+  echo "Skipping Google CSE CLI tests (TEST_GOOGLE_OAUTH_* env vars not provided)."
+fi
+
 # ─── pkcs11-tool warning check ────────────────────────────────────────────────
 # Spin up a KMS server, create AES and RSA keys via ckms, then run
 # pkcs11-tool --list-objects to confirm no unexpected attribute warnings appear.
