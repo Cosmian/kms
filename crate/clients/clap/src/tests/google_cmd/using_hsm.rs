@@ -36,7 +36,6 @@ use test_kms_server::{
         PrivilegedWrapRequest, PrivilegedWrapResponse, UnwrapRequest, UnwrapResponse, WrapRequest,
         WrapResponse,
     },
-    start_default_test_kms_server_with_softhsm2_and_kek,
     start_default_test_kms_server_with_utimaco_and_kek,
     start_default_test_kms_server_with_utimaco_hsm,
 };
@@ -383,12 +382,12 @@ async fn hsm_google_cse_create_key_pair() -> KmsCliResult<()> {
     Ok(())
 }
 
-#[ignore = "Requires Google OAuth credentials and a SoftHSM2 HSM"]
+#[ignore = "Requires Google OAuth credentials and an Utimaco HSM"]
 #[serial]
 #[tokio::test]
 async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliResult<()> {
     log_init(None);
-    let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
+    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
 
     let cse_key_id = ImportSecretDataOrKeyAction {
         key_file: PathBuf::from(
@@ -431,10 +430,10 @@ async fn hsm_google_cse_create_key_pair_using_imported_google_cse() -> KmsCliRes
 
 #[tokio::test]
 #[serial]
-#[ignore = "Requires Google OAuth credentials and a SoftHSM2 HSM"]
+#[ignore = "Requires Google OAuth credentials and an Utimaco HSM"]
 async fn hsm_google_cse_privileged_wrap_unwrap_key() -> KmsCliResult<()> {
     log_init(None);
-    let ctx = start_default_test_kms_server_with_softhsm2_and_kek().await;
+    let ctx = start_default_test_kms_server_with_utimaco_and_kek().await;
     import_google_cse_demo_key_and_grant(ctx).await?;
 
     let dek_b64 = "wHrlNOTI9mU6PBdqiq7EQA==";
