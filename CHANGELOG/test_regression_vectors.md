@@ -168,3 +168,20 @@
 ## Bug Fixes — Forward Proxy Test
 
 - Fix `test_server_version_using_forward_proxy`: extract only the host from `KMS_URL` and combine with `ctx.server_port` instead of using the full URL (which contains a stale port after `load_test_config_from_toml` dynamic port allocation) ([#953](https://github.com/Cosmian/kms/pull/953))
+
+### KMIP 1.3 test coverage
+
+- Add 2 binary TTLV integration vectors for KMIP 1.3 protocol version:
+    - `fips/integrations/kmip_1_3_symmetric`: AES-256 full lifecycle (Create→Activate→Get→Locate→Revoke→Destroy, 6 steps)
+    - `fips/integrations/kmip_1_3_asymmetric`: RSA-2048 keypair lifecycle (CreateKeyPair→Get(pub)→Get(priv)→Destroy×2, 5 steps)
+- Add `test_kmip_json_rejects_old_versions()` in `crate/server/src/tests/kmip_endpoints.rs`: verifies that the `/kmip` JSON endpoint rejects KMIP versions 1.0/1.1/1.2/1.3 with "OperationFailed" and accepts 1.4/2.1
+
+### Eliminate fragile KMS_TEST_DB mechanism
+
+- Remove `#[ignore]` from `test_db_postgresql`, `test_db_mysql`, `test_db_redis_with_findex` in `crate/server_database/src/tests/mod.rs`; replace with runtime env-var checks that skip gracefully when the connection URL is not set
+- Rewrite `_run_workspace_tests()` in `.github/scripts/common.sh`: remove `KMS_TEST_DB` export and test filter strings; DB tests now self-select based on env vars
+- Add validation guard for remaining `--ignored` tests: `cargo test --list --ignored | grep` fails fast if filter matches nothing (catches renamed test functions)
+- Fix localhost → 127.0.0.1 in `get_redis_url()` and `get_mysql()` defaults to avoid DNS resolution issues in CI
+- Update TESTS.md: add §8 "KMIP Version Coverage" section (endpoint × version matrix, wire protocol behavior, test coverage per version)
+- Update TESTS.md: add §9 "Database Backend Testing" section (self-selecting mechanism, CI orchestration table, known limitation)
+- Update TESTS.md: add KMIP 1.3 integration vector rows, update vector count 174→176

@@ -32,7 +32,7 @@ flowchart TD
         TOML["test_data/configs/server/test/*.toml\n(server configs)"]
         CERT["test_data/certificates/\n(TLS certs)"]
         XML["crate/kmip/src/.../XML/\n(KMIP normative XML vectors)"]
-        VEC["test_data/vectors/\n(174 vectors: FIPS/non-FIPS regression + KAT + TLS + integration + negative)"]
+        VEC["test_data/vectors/\n(176 vectors: FIPS/non-FIPS regression + KAT + TLS + integration + negative)"]
         PROP["crate/kmip/src/.../proptest\n(random TTLV roundtrip)"]
     end
 
@@ -52,106 +52,7 @@ flowchart TD
 
 ---
 
-## 2. Test Categories
-
-```mermaid
-mindmap
-  root((KMS Tests<br/>1140 total))
-    KMIP Protocol
-      TTLV Serialization (120)
-      KMIP 2.1 Operations (42)
-      KMIP 1.4 Operations (6)
-      XML Test Vectors (6)
-      Wire Edge Cases (28)
-      Normalize (22)
-      Proptest Roundtrip (1)
-    Server Operations
-      Config/Startup (30)
-      KMIP Policy (32)
-      Symmetric Encrypt/Decrypt (2)
-      Derive Key (8)
-      Sign/Verify (6)
-      Validate (2)
-      Locate (3)
-      Secret Data (3)
-      Attributes (2)
-      Security Regression (4)
-      Health Endpoint (2)
-      Crypto Operations (13)
-      OTLP Metrics (5)
-      Middleware JWT (6)
-    Crypto Primitives
-      Symmetric (22)
-      RSA (15)
-      Elliptic Curves (31)
-      PQC ML-KEM (13)
-      PQC ML-DSA (4)
-      PQC SLH-DSA (13)
-      PQC Hybrid KEM (8)
-      Key Wrapping (10)
-      Password Derivation (2)
-      ECIES (1)
-    Enterprise Integrations
-      Google CSE (12)
-      Azure EKM (4)
-      MS DKE (1)
-      AWS XKS (1)
-    Protocol Integrations
-      VMware (7)
-      Synology DSM (2)
-      Veeam (1)
-      PostgreSQL (1)
-      PyKMIP (1)
-      MongoDB (1)
-      MySQL (2)
-    Regression Vectors
-      Symmetric (18)
-      Asymmetric (19)
-      PQC (18)
-      KMIP Operations (31)
-      Access Control (1)
-      Integration Replays (8)
-      TLS Transport (2)
-      KAT (48)
-      Negative (44)
-      non-FIPS CryptoParams (8)
-    Covercrypt
-      Integration (3)
-      Bulk (1)
-      Tags (2)
-      Unit (5)
-    Client/CLI
-      ckms Binary (85)
-      clap Actions (163)
-      HTTP Client (38)
-      Client Utils (2)
-    PKCS11
-      Module (11)
-      Provider (5)
-      Loader (3)
-    HSM
-      SoftHSM2 (22)
-      Utimaco (19)
-      Proteccio (19)
-      SmartCard (18)
-      Crypt2Pay (19)
-    Database
-      PostgreSQL URL (15)
-      Redis Findex (2)
-      LRU Cache (3)
-      Connection Redaction (8)
-    Auth/TLS
-      mTLS DB (9)
-      KMIP Policy (32)
-    UI
-      Playwright E2E
-      Vitest Unit
-      Vitest Integration
-```
-
----
-
-## 3. Test Vector Execution Flow
+## 2. Test Vector Execution Flow
 
 ```mermaid
 sequenceDiagram
@@ -211,9 +112,9 @@ sequenceDiagram
 
 ---
 
-## 4. Test Inventory by Crate
+## 3. Test Inventory by Crate
 
-### 4.1 `cosmian_kms_server` — 218 tests (200 pass · 18 ignored)
+### 3.1 `cosmian_kms_server` — 218 tests (200 pass · 18 ignored)
 
 | Module | Tests | Feature Gate | Description |
 |--------|-------|-------------|-------------|
@@ -270,7 +171,7 @@ sequenceDiagram
 | `test_validate` | 2 | — | Certificate validation (ignored: requires network) |
 | `ttlv_tests/*` | 40 | non-fips | TTLV wire protocol: create, get, encrypt, decrypt, import, register, locate, discover versions, query, DSA, normative tests, integrations |
 
-### 4.2 `cosmian_kms_crypto` — 148 tests
+### 3.2 `cosmian_kms_crypto` — 148 tests
 
 | Module | Tests | Feature Gate | Description |
 |--------|-------|-------------|-------------|
@@ -300,7 +201,7 @@ sequenceDiagram
 | `openssl/public_key` | 11 | mixed | Public key parsing (same non-fips variants) |
 | `openssl/x509_extensions` | 3 | — | X.509 extension parsing |
 
-### 4.3 `cosmian_kmip` — 218 tests
+### 3.3 `cosmian_kmip` — 218 tests
 
 | Module | Tests | Description |
 |--------|-------|-------------|
@@ -331,7 +232,7 @@ sequenceDiagram
 | `error/mod` | 1 | Error handling |
 | `time_utils` | 1 | Time utility tests |
 
-### 4.4 `cosmian_kms_server_database` — 28 tests
+### 3.4 `cosmian_kms_server_database` — 28 tests
 
 | Module | Tests | Feature Gate | Description |
 |--------|-------|-------------|-------------|
@@ -341,7 +242,7 @@ sequenceDiagram
 | `stores/redis/redis_with_findex` | 1 | — | Redis Findex store |
 | `stores/sql/pgsql` | 15 | — | PostgreSQL URL parsing, retry logic |
 
-### 4.5 `clients` — 317 tests
+### 3.5 `clients` — 317 tests
 
 | Crate | Tests | Description |
 |-------|-------|-------------|
@@ -353,7 +254,7 @@ sequenceDiagram
 | `pkcs11/loader` | 3 | OIDC login, migration (non-fips) |
 | `pkcs11/provider` | 5 | KMS backend, key generation, SSH signing |
 
-### 4.6 `test_kms_server` — 204 tests (non-FIPS)
+### 3.6 `test_kms_server` — 204 tests (non-FIPS)
 
 | Module | Tests | Feature Gate | Description |
 |--------|-------|-------------|-------------|
@@ -361,7 +262,7 @@ sequenceDiagram
 | `vector_runner` (unit) | 6 | — | Manifest parsing, placeholder substitution, assertions, capture |
 | `vector_runner` (integration) | 196 | mixed | TTLV-JSON regression + KAT + TLS + negative + non-fips symmetric + binary TTLV integration replays (see §5) |
 
-### 4.7 HSM crates — 97 tests (all `#[ignore]`)
+### 3.7 HSM crates — 97 tests (all `#[ignore]`)
 
 | Backend | Tests | Description |
 |---------|-------|-------------|
@@ -371,13 +272,13 @@ sequenceDiagram
 | `smartcardhsm` | 18 | Same suite for SmartCard HSM |
 | `crypt2pay` | 19 | Same suite for Crypt2Pay HSM |
 
-### 4.8 `cosmian_kms_access` — 0 tests
+### 3.8 `cosmian_kms_access` — 0 tests
 
 No test functions.
 
 ---
 
-## 5. Regression Test Vectors (TTLV-JSON)
+## 4. Regression Test Vectors (TTLV-JSON)
 
 All regression vectors use a uniform **TTLV-JSON** format. Each vector is a directory
 under `test_data/vectors/fips/` containing a `manifest.toml` and one JSON step file
@@ -484,6 +385,8 @@ starts an isolated KMS server per test and replays the steps sequentially.
 | Integrations | `fips/integrations/mysql` | Create, Activate, Get, Revoke, Destroy (binary TTLV / KMIP 1.1) | 5 |
 | Integrations | `fips/integrations/percona` | Register, Locate, Get, Revoke, Destroy (binary TTLV / KMIP 1.4) | 5 |
 | Integrations | `fips/integrations/fortigate` | Create, Locate, Get, Activate, Revoke, Destroy (binary TTLV / KMIP 1.0) | 6 |
+| Integrations | `fips/integrations/kmip_1_3_symmetric` | Create, Activate, Get, Locate, Revoke, Destroy (binary TTLV / KMIP 1.3) | 6 |
+| Integrations | `fips/integrations/kmip_1_3_asymmetric` | CreateKeyPair, Get (public), Get (private), Destroy ×2 (binary TTLV / KMIP 1.3) | 5 |
 | Integrations | `non-fips/integrations/mongodb` | Create, Locate, Get, Destroy (binary TTLV / KMIP 1.0) | 4 |
 | Integrations | `non-fips/integrations/pykmip` | DiscoverVersions, Create, CreateKeyPair, GetAttributes, Locate, Activate, Revoke, Destroy ×3 (binary TTLV / KMIP 1.2) | 11 |
 | **TLS Transport** | | | |
@@ -544,7 +447,7 @@ starts an isolated KMS server per test and replays the steps sequentially.
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_explicit_nonce` | Create, Encrypt (AEAD + client 12-B nonce), Decrypt | 3 |
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_aad` | Create, Encrypt (AEAD + AAD + server nonce), Decrypt | 3 |
 
-### 5.1 Known-Answer Test (KAT) Vectors (`test_data/vectors/kat/`)
+### 4.1 Known-Answer Test (KAT) Vectors (`test_data/vectors/kat/`)
 
 KAT vectors use **published reference values** from NIST FIPS and RFC specifications to
 verify bit-exact outputs. Each vector imports a known key and asserts exact ciphertext,
@@ -606,7 +509,7 @@ MAC, or derived-key values.
 | **Non-FIPS Covercrypt** | | Cosmian Covercrypt v16 | | |
 | Covercrypt (non-FIPS) | `kat/covercrypt_decrypt` | Self-generated USK | Import USK, Decrypt (Covercrypt single-decrypt) | `Data` |
 
-### 5.2 Manifest Schema (`manifest.toml`)
+### 4.2 Manifest Schema (`manifest.toml`)
 
 ```toml
 # Required metadata
@@ -655,7 +558,7 @@ assert_error_reason = "PermissionDenied"           # match ResultReason tag
 fields = ["SensitiveField"]
 ```
 
-### 5.3 Request Payloads (TTLV-JSON)
+### 4.3 Request Payloads (TTLV-JSON)
 
 Request files are TTLV-JSON payloads. By default (`wire_format = "json"`), they
 are sent directly to the `/kmip/2_1` endpoint. When `wire_format = "binary"`, the
@@ -711,7 +614,7 @@ Placeholders use `{{variable_name}}` syntax and are substituted from captured va
 
 ---
 
-## 6. Server Configurations for Tests
+## 5. Server Configurations for Tests
 
 30 TOML config files in `test_data/configs/server/test/`:
 
@@ -737,7 +640,7 @@ Placeholders use `{{variable_name}}` syntax and are substituted from captured va
 
 ---
 
-## 7. Feature Flag Matrix
+## 6. Feature Flag Matrix
 
 | Feature | Tests Gated | Effect |
 |---------|-------------|--------|
@@ -749,7 +652,7 @@ Tests requiring `non-fips` are gated with `#[cfg(feature = "non-fips")]` on the 
 
 ---
 
-## 8. Running Tests
+## 7. Running Tests
 
 ```bash
 # All FIPS tests
@@ -779,3 +682,91 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 # HSM tests (require hardware)
 HSM_USER_PASSWORD=1234567 HSM_SLOT_ID=0 cargo test -p softhsm2_pkcs11_loader --features softhsm2 -- --ignored
 ```
+
+---
+
+## 8. KMIP Version Coverage
+
+The server exposes three HTTP endpoints for KMIP requests. Each has different
+version acceptance behavior:
+
+| Endpoint | Content-Type | KMIP Versions | Notes |
+|----------|-------------|---------------|-------|
+| `POST /kmip/2_1` | `application/json` | Any (no version check) | Always processes as 2.1 |
+| `POST /kmip` | `application/json` | **2.1, 1.4 only** | Rejects 1.0/1.1/1.2/1.3 with "only accepts KMIP 2.1 or 1.4" |
+| `POST /kmip` | `application/octet-stream` | All 1.x and 2.x | Binary TTLV; applies AE-tag tweaks for 1.0/1.1/1.2 |
+
+### Version-specific wire protocol behavior
+
+| KMIP Version | Binary `/kmip` | JSON `/kmip` | Special handling |
+|--------------|---------------|-------------|------------------|
+| 1.0 | ✅ | ❌ Rejected | `perform_request_tweaks`: extracts AE tag from Data field |
+| 1.1 | ✅ | ❌ Rejected | Same AE-tag tweaks as 1.0 |
+| 1.2 | ✅ | ❌ Rejected | Same AE-tag tweaks as 1.0 |
+| 1.3 | ✅ | ❌ Rejected | No special tweaks (processed as 1.4) |
+| 1.4 | ✅ | ✅ | `handle_ttlv_1_4`: TemplateAttribute → Attributes conversion |
+| 2.1 | ✅ | ✅ | `handle_ttlv_2_1`: native Attributes format |
+
+### Test vector coverage by KMIP version
+
+| KMIP Version | Integration vectors | XML spec files | Rust unit tests |
+|--------------|-------------------|----------------|-----------------|
+| 1.0 | 2 (FortiGate, MongoDB) | 84 (OASIS conformance) | 3 in `ttlv_tests/` |
+| 1.1 | 2 (MySQL, VMware vCenter) | — | 2 in `ttlv_tests/` |
+| 1.2 | 3 (Synology DSM, VAST Data, PyKMIP) | — | — |
+| 1.3 | 2 (kmip_1_3_symmetric, kmip_1_3_asymmetric) | — | — |
+| 1.4 | 2 (Veeam, Percona) | 75 (OASIS conformance) | 11 in `ttlv_tests/` |
+| 2.1 | — (185+ operation vectors) | 93 (OASIS conformance) | 8 in `ttlv_tests/` |
+
+---
+
+## 9. Database Backend Testing
+
+### Architecture
+
+Database backend tests live in `crate/server_database/src/tests/mod.rs`. They are
+**store-level tests** that exercise the database pool directly (not via HTTP).
+
+| Test function | Backend | Self-selecting env var | Compile gate |
+|---------------|---------|-----------------------|--------------|
+| `test_db_sqlite()` | SQLite | Always runs (uses tempfile) | — |
+| `test_db_postgresql()` | PostgreSQL | `KMS_POSTGRES_URL` | — |
+| `test_db_mysql()` | MySQL/MariaDB | `KMS_MYSQL_URL` | — |
+| `test_db_redis_with_findex()` | Redis-Findex | `KMS_REDIS_URL` or `REDIS_HOST` | `#[cfg(feature = "non-fips")]` |
+| `test_db_postgresql_multihost()` | PostgreSQL (2 instances) | `KMS_POSTGRES_MULTIHOST_URL` | `#[ignore]` |
+
+All non-multihost tests run an identical 11-test suite:
+`json_access`, `find_attributes`, `owner`, `permissions`, `tags`, `tx_and_list`,
+`atomic`, `upsert`, `crud`, `list_uids_for_tags_test`,
+`block_cipher_mode_migration_after_json_deserialization`.
+
+### Self-selecting mechanism
+
+DB tests **skip gracefully at runtime** when their connection env var is not set.
+This eliminates fragile `cargo test` filter strings that could silently break on renames:
+
+```rust
+// In test_db_postgresql():
+if std::env::var("KMS_POSTGRES_URL").is_err() {
+    eprintln!("SKIP test_db_postgresql: KMS_POSTGRES_URL is not set");
+    return Ok(());
+}
+```
+
+### CI orchestration
+
+| CI script | Sets env var | DB tests that run | Additional tests |
+|-----------|-------------|-------------------|------------------|
+| `test_sqlite.sh` | `KMS_SQLITE_PATH` | `test_db_sqlite` | `test_validate_with_certificates` (network) |
+| `test_psql.sh` | `KMS_POSTGRES_URL` | `test_db_postgresql` + `test_db_sqlite` | `test_validate_with_certificates` |
+| `test_mysql.sh` | `KMS_MYSQL_URL` | `test_db_mysql` + `test_db_sqlite` | `test_validate_with_certificates` |
+| `test_redis.sh` | `KMS_REDIS_URL` | `test_db_redis_with_findex` + `test_db_sqlite` | `test_validate_with_certificates` |
+| `test_percona.sh` | `KMS_MYSQL_URL` (Percona port) | `test_db_mysql` + `test_db_sqlite` | `test_validate_with_certificates` |
+| `test_maria.sh` | `KMS_MYSQL_URL` (MariaDB port) | `test_db_mysql` + `test_db_sqlite` | `test_validate_with_certificates` |
+
+### Known limitation
+
+Server-level HTTP integration tests (`crate/server/src/tests/`) ALL use SQLite.
+There are no HTTP/KMIP protocol tests running against PostgreSQL, MySQL, or Redis
+backends. The TOML configs (`postgres.toml`, `mysql.toml`, `redis_findex.toml`)
+exist in `test_data/configs/server/test/` but are unused by integration tests.

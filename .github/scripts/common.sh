@@ -297,26 +297,36 @@ setup_test_logging() {
 
 # Internal: run the Rust workspace tests for a given DB selector
 # Usage: _run_workspace_tests <db>
+#
+# DB tests are now self-selecting: they check at runtime whether their required
+# env var is set (e.g. KMS_POSTGRES_URL) and skip gracefully if not. This
+# eliminates fragile cargo test filter strings that break silently on renames.
+#
+# For "sqlite", runs the FULL workspace test suite (all crates, all tests).
+# For other backends, runs only the targeted DB test in server_database crate
+# to avoid re-running the entire workspace multiple times via test_all.sh.
 _run_workspace_tests() {
   local db="$1"
   # Ensure cargo is available when running outside Nix
   require_cmd cargo "Cargo is required to run the Rust test workspace. Install Rust (rustup) and retry."
-  # Export the selector understood by the test harness
+
+  # Validate the DB selector
   case "$db" in
-  sqlite | postgresql | mysql | redis-findex)
-    export KMS_TEST_DB="$db"
-    ;;
-  redis)
-    export KMS_TEST_DB="redis-findex"
-    ;;
+  sqlite | postgresql | mysql | redis-findex | redis) ;;
   *)
     echo "Unknown DB '$db'" >&2
     return 1
     ;;
   esac
 
-  # Provide sensible defaults matching repo docs when applicable
-  case "$KMS_TEST_DB" in
+  # Normalize redis → redis-findex
+  local normalized_db="$db"
+  if [ "$db" = "redis" ]; then
+    normalized_db="redis-findex"
+  fi
+
+  # Provide sensible defaults for DB connection env vars
+  case "$normalized_db" in
   sqlite)
     : "${KMS_SQLITE_PATH:=data/shared}"
     export KMS_SQLITE_PATH
@@ -329,94 +339,90 @@ _run_workspace_tests() {
     : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3306/kms}"
     export KMS_MYSQL_URL
     ;;
-  esac
-
-  # Database tests are marked with #[ignore] so they need --ignored flag
-  # We run only database-specific tests to avoid running other ignored tests (e.g., HSM, Google CSE)
-  local test_filter=""
-  local test_args="--nocapture"
-  case "$KMS_TEST_DB" in
-  postgresql)
-    test_filter="test_db_postgresql test_validate_with_certificates"
-    test_args="$test_args --ignored"
-    ;;
-  mysql)
-    test_filter="test_db_mysql test_validate_with_certificates"
-    test_args="$test_args --ignored"
-    ;;
   redis-findex)
-    test_filter="test_db_redis_with_findex test_validate_with_certificates"
-    test_args="$test_args --ignored"
+    : "${KMS_REDIS_URL:=redis://127.0.0.1:6379}"
+    export KMS_REDIS_URL
     ;;
   esac
 
-  # Build the ckms CLI binary with the correct feature flags so that
-  # `Command::cargo_bin("ckms")` in lib tests finds a binary built with the
-  # right features (e.g. non-fips algorithms, CoverCrypt, x25519, ChaCha20).
-  # `cargo test --lib` does not recompile [[bin]] targets, so we do it here.
-  local -a cargo_build_args
-  cargo_build_args=(-p ckms)
-  if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
-    cargo_build_args+=("${FEATURES_FLAG[@]}")
-  fi
-  cargo build "${cargo_build_args[@]}"
-
-  # Build the PKCS#11 cdylib so that cosmian_pkcs11_verify integration tests
-  # can dynamically load it at runtime.  `cargo test --lib` does not produce
-  # cdylib artifacts, so we build it explicitly here (non-fips only — the
-  # loader tests are compiled away in fips mode via #[cfg(feature="non-fips")]).
-  if [ "${VARIANT:-fips}" = "non-fips" ]; then
-    local -a cdylib_build_args
-    cdylib_build_args=(-p cosmian_pkcs11)
+  if [ "$normalized_db" = "sqlite" ]; then
+    # ── Full workspace run (only for sqlite / "main" test pass) ──────────
+    # Build the ckms CLI binary with the correct feature flags so that
+    # `Command::cargo_bin("ckms")` in lib tests finds a binary built with the
+    # right features (e.g. non-fips algorithms, CoverCrypt, x25519, ChaCha20).
+    # `cargo test --lib` does not recompile [[bin]] targets, so we do it here.
+    local -a cargo_build_args
+    cargo_build_args=(-p ckms)
     if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
-      cdylib_build_args+=("${FEATURES_FLAG[@]}")
+      cargo_build_args+=("${FEATURES_FLAG[@]}")
     fi
-    cargo build "${cdylib_build_args[@]}"
-  fi
+    cargo build "${cargo_build_args[@]}"
 
-  local -a cargo_test_args
-  cargo_test_args=(--workspace --lib)
-  if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
-    cargo_test_args+=("${FEATURES_FLAG[@]}")
-  fi
-  cargo_test_args+=(--)
-  cargo_test_args+=(--nocapture)
-  case "$KMS_TEST_DB" in
-  postgresql | mysql | redis-findex)
-    cargo_test_args+=(--ignored)
-    ;;
-  esac
-  if [ -n "${test_filter:-}" ]; then
-    # Split filter into tokens (Rust test name filters are space-separated here by design)
-    read -r -a _test_filter_tokens <<<"$test_filter"
-    cargo_test_args+=("${_test_filter_tokens[@]}")
-  fi
+    # Build the PKCS#11 cdylib so that cosmian_pkcs11_verify integration tests
+    # can dynamically load it at runtime.  `cargo test --lib` does not produce
+    # cdylib artifacts, so we build it explicitly here (non-fips only — the
+    # loader tests are compiled away in fips mode via #[cfg(feature="non-fips")]).
+    if [ "${VARIANT:-fips}" = "non-fips" ]; then
+      local -a cdylib_build_args
+      cdylib_build_args=(-p cosmian_pkcs11)
+      if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+        cdylib_build_args+=("${FEATURES_FLAG[@]}")
+      fi
+      cargo build "${cdylib_build_args[@]}"
+    fi
 
-  cargo test "${cargo_test_args[@]}"
+    # Run all non-ignored workspace tests.
+    # DB tests (test_db_postgresql, test_db_mysql, test_db_redis_with_findex)
+    # self-select at runtime: they skip when their env var is not set.
+    local -a cargo_test_args
+    cargo_test_args=(--workspace --lib)
+    if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+      cargo_test_args+=("${FEATURES_FLAG[@]}")
+    fi
+    cargo_test_args+=(-- --nocapture)
+    cargo test "${cargo_test_args[@]}"
 
-  # Run the network-dependent certificate validation tests (marked #[ignore]) for all DB
-  # backends.  For postgresql/mysql/redis-findex these tests were already included in the
-  # --ignored run above; for sqlite they need an explicit additional invocation.
-  if [ "$KMS_TEST_DB" = "sqlite" ]; then
+    # Run the network-dependent certificate validation tests (marked #[ignore]
+    # because they fetch CRLs from the internet). Validate that the filter
+    # matches at least one test to catch renames early.
     local -a cargo_test_validate_args
     cargo_test_validate_args=(--workspace --lib)
     if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
       cargo_test_validate_args+=("${FEATURES_FLAG[@]}")
     fi
-    cargo_test_validate_args+=(-- --nocapture --ignored test_validate_with_certificates)
-    cargo test "${cargo_test_validate_args[@]}"
-  fi
 
-  # For database backends (postgresql, mysql, redis), also run the regular non-ignored tests
-  # For sqlite, skip this step since all non-ignored tests already ran above
-  if [ "$KMS_TEST_DB" != "sqlite" ]; then
-    local -a cargo_test_non_ignored_args
-    cargo_test_non_ignored_args=(--workspace --lib)
-    if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
-      cargo_test_non_ignored_args+=("${FEATURES_FLAG[@]}")
+    local validate_filter="test_validate_with_certificates"
+    local matched
+    matched=$(cargo test "${cargo_test_validate_args[@]}" -- --list --ignored 2>/dev/null \
+      | grep -c "$validate_filter" || true)
+    if [ "$matched" -eq 0 ]; then
+      echo "ERROR: test filter '$validate_filter' matches no ignored test." >&2
+      echo "Was a test function renamed? Available ignored tests:" >&2
+      cargo test "${cargo_test_validate_args[@]}" -- --list --ignored 2>/dev/null >&2
+      return 1
     fi
-    cargo_test_non_ignored_args+=(--)
-    cargo test "${cargo_test_non_ignored_args[@]}"
+
+    cargo_test_validate_args+=(-- --nocapture --ignored "$validate_filter")
+    cargo test "${cargo_test_validate_args[@]}"
+
+  else
+    # ── Targeted DB test only (for non-sqlite backends) ──────────────────
+    # When called from test_all.sh or standalone DB test scripts, only run
+    # the specific DB test function to avoid re-running the full workspace.
+    local test_filter
+    case "$normalized_db" in
+    postgresql) test_filter="test_db_postgresql" ;;
+    mysql) test_filter="test_db_mysql" ;;
+    redis-findex) test_filter="test_db_redis_with_findex" ;;
+    esac
+
+    local -a cargo_db_args
+    cargo_db_args=(-p cosmian_kms_server_database --lib)
+    if [ ${#FEATURES_FLAG[@]} -gt 0 ]; then
+      cargo_db_args+=("${FEATURES_FLAG[@]}")
+    fi
+    cargo_db_args+=(-- --nocapture "$test_filter")
+    cargo test "${cargo_db_args[@]}"
   fi
 }
 

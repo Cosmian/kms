@@ -174,23 +174,66 @@ pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static T
     })
 }
 
+/// Override the database backend used by `start_default_test_kms_server` via the
+/// `TEST_KMS_DB` environment variable.
+///
+/// | `TEST_KMS_DB` value              | Backend        | Required env var(s)                          |
+/// |----------------------------------|----------------|----------------------------------------------|
+/// | unset / `sqlite`                 | SQLite         | —                                            |
+/// | `postgresql` / `postgres`        | PostgreSQL     | `KMS_POSTGRES_URL` (falls back to localhost) |
+/// | `mysql` / `mariadb`              | MySQL/MariaDB  | `KMS_MYSQL_URL` (falls back to localhost)    |
+/// | `redis-findex` / `redis` (non-FIPS only) | Redis-findex | `KMS_REDIS_URL` or `REDIS_HOST`      |
+fn apply_test_db_override(config: &mut ClapConfig) {
+    let Ok(db) = env::var("TEST_KMS_DB") else {
+        return; // default: SQLite, no override needed
+    };
+    match db.to_lowercase().as_str() {
+        "postgresql" | "postgres" => {
+            let url = env::var("KMS_POSTGRES_URL")
+                .unwrap_or_else(|_| "postgresql://kms:kms@127.0.0.1:5432/kms".to_owned());
+            config.db.database_type = Some("postgresql".to_owned());
+            config.db.database_url = Some(url);
+        }
+        "mysql" | "mariadb" => {
+            let url = env::var("KMS_MYSQL_URL")
+                .unwrap_or_else(|_| "mysql://kms:kms@127.0.0.1:3306/kms".to_owned());
+            config.db.database_type = Some("mysql".to_owned());
+            config.db.database_url = Some(url);
+        }
+        #[cfg(feature = "non-fips")]
+        "redis-findex" | "redis" => {
+            let url = env::var("KMS_REDIS_URL")
+                .or_else(|_| env::var("REDIS_HOST").map(|h| format!("redis://{h}:6379")))
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
+            config.db.database_type = Some("redis-findex".to_owned());
+            config.db.database_url = Some(url);
+            config.db.redis_master_password = Some(
+                env::var("KMS_REDIS_MASTER_PASSWORD")
+                    .unwrap_or_else(|_| "master_password".to_owned()),
+            );
+        }
+        _ => {} // unrecognized or non-FIPS redis: fall back to SQLite
+    }
+}
+
 /// Start a test KMS server in a thread with the default options:
 /// No TLS, no certificate authentication.
 ///
-/// Configuration is loaded from `test_data/configs/server/test/auth_plain.toml`.
+/// Configuration is loaded from `test_data/configs/server/test/auth_plain.toml` by default.
+/// Set `TEST_KMS_DB` to `postgresql`, `mysql`, or `redis-findex` (non-FIPS only) to run
+/// the full test suite against a different database backend transparently.
 ///
 /// # Panics
 /// - if the server fails to start
-#[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
     ensure_no_proxy_for_localhost();
     disable_proxies_for_tests();
     Box::pin(ONCE.get_or_try_init(|| async move {
-        start_test_server_from_toml(
-            &root_dir().join("../../test_data/configs/server/test/auth_plain.toml"),
-        )
-        .await
+        let config_path = root_dir().join("../../test_data/configs/server/test/auth_plain.toml");
+        let mut config = load_test_config_from_toml(&config_path)?;
+        apply_test_db_override(&mut config);
+        start_server_from_config(config, &config_path).await
     }))
     .await
     .unwrap_or_else(|e| {
