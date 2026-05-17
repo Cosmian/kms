@@ -2338,4 +2338,76 @@ ObjectType = "SymmetricKey"
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/type_mismatch/revoke_already_destroyed").await
     }
+
+    // ── Negative tests: state machine violations ────────────────────────
+
+    #[tokio::test]
+    async fn test_neg_double_activate() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/lifecycle/double_activate").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_activate_destroyed() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/lifecycle/deactivate_pre_active").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_reactivate_deactivated() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/lifecycle/reactivate_deactivated").await
+    }
+
+    // ── KMIP operations: ReKeyKeyPair ───────────────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_rsa() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_rsa").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_ec() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ec").await
+    }
+
+    // ── KMIP operations: certificate chain and revoke ───────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_certify_chain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/certify_chain").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_certify_revoke_validate() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/certify_revoke_validate").await
+    }
+
+    // ── KMIP operations: Locate filters ─────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_locate_by_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/locate_by_state").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_locate_by_usage_mask() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/locate_by_usage_mask").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_locate_by_tag() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/locate_by_tag").await
+    }
 }
