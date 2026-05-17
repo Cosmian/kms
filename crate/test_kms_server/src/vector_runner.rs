@@ -529,44 +529,8 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
         |cfg| root.join(cfg),
     );
 
-    // Start an isolated server with retry logic to handle transient port
-    // collisions (TOCTOU race between port allocation and server bind).
-    let context = {
-        let max_attempts = 3;
-        let mut last_err: Option<KmsClientError> = None;
-        let mut ctx = None;
-        for attempt in 0..max_attempts {
-            match crate::start_test_server_from_toml(&config_path).await {
-                Ok(c) => {
-                    ctx = Some(c);
-                    break;
-                }
-                Err(e) => {
-                    if attempt < max_attempts - 1 {
-                        eprintln!(
-                            "[run_test_vector] server start attempt {} failed (retrying): {e}",
-                            attempt + 1
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-                    }
-                    last_err = Some(e);
-                }
-            }
-        }
-        match ctx {
-            Some(c) => c,
-            None => {
-                return Err(last_err.map_or_else(
-                    || {
-                        KmsClientError::Default(
-                            "server start failed with no recorded error".to_owned(),
-                        )
-                    },
-                    |e| e,
-                ));
-            }
-        }
-    };
+    // Start an isolated server
+    let context = crate::start_test_server_from_toml(&config_path).await?;
 
     let result = execute_steps(&context, &manifest, &vector_path).await;
 

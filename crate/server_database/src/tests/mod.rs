@@ -93,11 +93,6 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
 #[ignore = "Requires a running Redis instance. Set KMS_REDIS_URL or REDIS_HOST before running."]
 #[tokio::test]
 pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
-    if std::env::var("KMS_REDIS_URL").is_err() && std::env::var("REDIS_HOST").is_err() {
-        return Err(DbError::Default(
-            "test_db_redis_with_findex: neither KMS_REDIS_URL nor REDIS_HOST is set".to_owned(),
-        ));
-    }
     log_init(option_env!("RUST_LOG"));
     test_objects_db().await?;
     test_permissions_db().await?;
