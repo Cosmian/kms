@@ -175,16 +175,16 @@ pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static T
 }
 
 /// Override the database backend used by `start_default_test_kms_server` via the
-/// `TEST_KMS_DB` environment variable.
+/// `KMS_TEST_DB` environment variable.
 ///
-/// | `TEST_KMS_DB` value              | Backend        | Required env var(s)                          |
+/// | `KMS_TEST_DB` value              | Backend        | Required env var(s)                          |
 /// |----------------------------------|----------------|----------------------------------------------|
 /// | unset / `sqlite`                 | SQLite         | —                                            |
 /// | `postgresql` / `postgres`        | PostgreSQL     | `KMS_POSTGRES_URL` (falls back to localhost) |
 /// | `mysql` / `mariadb`              | MySQL/MariaDB  | `KMS_MYSQL_URL` (falls back to localhost)    |
 /// | `redis-findex` / `redis` (non-FIPS only) | Redis-findex | `KMS_REDIS_URL` or `REDIS_HOST`      |
 fn apply_test_db_override(config: &mut ClapConfig) {
-    let Ok(db) = env::var("TEST_KMS_DB") else {
+    let Ok(db) = env::var("KMS_TEST_DB") else {
         return; // default: SQLite, no override needed
     };
     match db.to_lowercase().as_str() {
@@ -220,7 +220,7 @@ fn apply_test_db_override(config: &mut ClapConfig) {
 /// No TLS, no certificate authentication.
 ///
 /// Configuration is loaded from `test_data/configs/server/test/auth_plain.toml` by default.
-/// Set `TEST_KMS_DB` to `postgresql`, `mysql`, or `redis-findex` (non-FIPS only) to run
+/// Set `KMS_TEST_DB` to `postgresql`, `mysql`, or `redis-findex` (non-FIPS only) to run
 /// the full test suite against a different database backend transparently.
 ///
 /// # Panics

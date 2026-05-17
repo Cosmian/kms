@@ -710,7 +710,7 @@ This can be influenced by setting the `KMS_TEST_DB` environment variable to
   `"mysql://kms:kms@localhost:3306/kms"` URL)
 - `postgresql` (requires a running PostgreSQL server connected using
   a `"postgresql://kms:kms@127.0.0.1:5432/kms"`URL)
-- `redis-findex` (requires a running Redis server connected using a
+- `redis` (requires a running Redis server connected using a
   `"redis://localhost:6379"` URL)
 
 Example: testing with a plain SQLite and some logging
@@ -726,7 +726,7 @@ at the top of the test:
 unsafe {
 set_var("RUST_LOG", "error,cosmian_kms_server=debug,cosmian_kms_cli=info");
 set_var("RUST_BACKTRACE", "1");
-set_var("KMS_TEST_DB", "redis-findex");
+set_var("KMS_TEST_DB", "redis");
 }
 log_init(option_env!("RUST_LOG"));
 ```
