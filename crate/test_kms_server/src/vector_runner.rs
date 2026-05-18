@@ -12,13 +12,9 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_access::access::Access,
 };
 use serde::Deserialize;
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::OnceCell;
 
 use crate::TestsContext;
-
-/// Serializes PKCS#12 identity loading to avoid macOS Security.framework
-/// race conditions when multiple tokio tasks call `SecPKCS12Import` concurrently.
-static IDENTITY_BUILD_LOCK: Mutex<()> = Mutex::const_new(());
 
 /// Singleton server for vector tests on the `SQLite` backend.
 static ONCE_VECTOR_SQLITE: OnceCell<TestsContext> = OnceCell::const_new();
@@ -786,31 +782,22 @@ async fn execute_access_step(
 
 /// Build one `KmsClient` per named identity declared in `manifest.identities`.
 ///
-/// Auto-detects `.p12` beside `.crt`; falls back to PEM. Serializes PKCS#12 loading
-/// to avoid macOS `SecPKCS12Import` race conditions.
-async fn build_identity_clients(
+/// Always uses PEM (`.crt` + `.key`) so the runner works in both FIPS and
+/// non-FIPS builds (PKCS12KDF is not available in FIPS mode).
+fn build_identity_clients(
     context: &TestsContext,
     manifest: &TestManifest,
     root: &Path,
 ) -> Result<HashMap<String, KmsClient>, KmsClientError> {
     let mut identity_clients: HashMap<String, KmsClient> = HashMap::new();
-    let _lock = IDENTITY_BUILD_LOCK.lock().await;
     for (name, id_cfg) in &manifest.identities {
         let cert_path = root.join(&id_cfg.client_cert);
         let key_path = root.join(&id_cfg.client_key);
         let mut http_cfg = context.owner_client_config.http_config.clone();
-        let p12_path = cert_path.with_extension("p12");
-        if p12_path.exists() {
-            http_cfg.tls_client_pkcs12_path = Some(p12_path.to_string_lossy().into_owned());
-            http_cfg.tls_client_pkcs12_password = Some("password".to_owned());
-            http_cfg.tls_client_pem_cert_path = None;
-            http_cfg.tls_client_pem_key_path = None;
-        } else {
-            http_cfg.tls_client_pem_cert_path = Some(cert_path.to_string_lossy().into_owned());
-            http_cfg.tls_client_pem_key_path = Some(key_path.to_string_lossy().into_owned());
-            http_cfg.tls_client_pkcs12_path = None;
-            http_cfg.tls_client_pkcs12_password = None;
-        }
+        http_cfg.tls_client_pem_cert_path = Some(cert_path.to_string_lossy().into_owned());
+        http_cfg.tls_client_pem_key_path = Some(key_path.to_string_lossy().into_owned());
+        http_cfg.tls_client_pkcs12_path = None;
+        http_cfg.tls_client_pkcs12_password = None;
         let cfg = KmsClientConfig {
             http_config: http_cfg,
             vendor_id: VENDOR_ID_COSMIAN.to_owned(),
@@ -841,7 +828,7 @@ async fn execute_steps(
 
     // Build per-identity KmsClients from the manifest's `[identities.*]` section.
     let root = repo_root()?;
-    let identity_clients = build_identity_clients(context, manifest, &root).await?;
+    let identity_clients = build_identity_clients(context, manifest, &root)?;
 
     let is_binary = manifest.wire_format == "binary";
     let json_url = format!("{base_url}/kmip/2_1");
