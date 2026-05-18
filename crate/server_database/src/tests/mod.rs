@@ -24,7 +24,7 @@ use crate::stores::additional_redis_findex_tests::{
     test_corner_case, test_objects_db, test_permissions_db,
 };
 use crate::{
-    error::{DbError, DbResult},
+    error::DbResult,
     stores::{MySqlPool, PgPool, SqlitePool},
     tests::{
         database_tests::{atomic, block_cipher_mode_migration_after_json_deserialization},
@@ -43,7 +43,7 @@ mod tagging_tests;
 #[cfg(feature = "non-fips")]
 pub(crate) fn get_redis_url() -> String {
     std::env::var("REDIS_HOST").map_or_else(
-        |_| "redis://127.0.0.1:6379".to_owned(),
+        |_| "redis://localhost:6379".to_owned(),
         |var_env| format!("redis://{var_env}:6379"),
     )
 }
@@ -65,7 +65,7 @@ async fn get_pgsql() -> DbResult<PgPool> {
 // docker run --name mariadb --env MARIADB_DATABASE=kms  --env MARIADB_USER=kms --env MARIADB_PASSWORD=kms --env MARIADB_ROOT_PASSWORD=cosmian -p 3306:3306 -d mariadb
 // docker run --name mysql --env MYSQL_DATABASE=kms  --env MYSQL_USER=kms --env MYSQL_PASSWORD=kms --env MYSQL_ROOT_PASSWORD=cosmian -p 3306:3306 -d mysql:8.0.42
 async fn get_mysql() -> DbResult<MySqlPool> {
-    let mysql_url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@127.0.0.1:3306/kms");
+    let mysql_url = option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
     let my_sql = MySqlPool::instantiate(mysql_url, true, None).await?;
     Ok(my_sql)
 }
@@ -88,9 +88,9 @@ async fn get_redis_with_findex() -> DbResult<RedisWithFindex> {
     Ok(redis_findex)
 }
 
+#[ignore = "Requires a running Redis instance"]
 #[allow(clippy::large_stack_frames)] // This a test, we can skip this as long as test machines can handle such a stack
 #[cfg(feature = "non-fips")]
-#[ignore = "Requires a running Redis instance. Set KMS_REDIS_URL or REDIS_HOST before running."]
 #[tokio::test]
 pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     log_init(option_env!("RUST_LOG"));
@@ -142,14 +142,9 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     Ok(())
 }
 
-#[ignore = "Requires a running PostgreSQL instance. Set KMS_POSTGRES_URL before running."]
+#[ignore = "Requires a running PostgreSQL instance"]
 #[tokio::test]
 pub(crate) async fn test_db_postgresql() -> DbResult<()> {
-    if std::env::var("KMS_POSTGRES_URL").is_err() {
-        return Err(DbError::Default(
-            "test_db_postgresql: KMS_POSTGRES_URL is not set".to_owned(),
-        ));
-    }
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("trace"));
     Box::pin(json_access(&get_pgsql().await?)).await?;
@@ -189,14 +184,9 @@ pub(crate) async fn test_db_postgresql_multihost() -> DbResult<()> {
     Ok(())
 }
 
-#[ignore = "Requires a running MySQL/MariaDB instance. Set KMS_MYSQL_URL before running."]
+#[ignore = "Requires a running MySQL or MariaDB instance"]
 #[tokio::test]
 pub(crate) async fn test_db_mysql() -> DbResult<()> {
-    if std::env::var("KMS_MYSQL_URL").is_err() {
-        return Err(DbError::Default(
-            "test_db_mysql: KMS_MYSQL_URL is not set".to_owned(),
-        ));
-    }
     log_init(option_env!("RUST_LOG"));
     Box::pin(json_access(&get_mysql().await?)).await?;
     find_attributes(&get_mysql().await?).await?;
