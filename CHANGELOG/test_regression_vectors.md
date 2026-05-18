@@ -6,6 +6,7 @@
 - Add 8 regression test vectors covering Create, Get, Encrypt/Decrypt (AES-GCM), CreateKeyPair (RSA, EC P-256), Sign/Verify, DeriveKey (PBKDF2), Destroy lifecycle, Locate, and Revoke
 - Add `start_test_server_from_toml()` for isolated per-vector-test server instances with unique port allocation
 - Add `RECORD_VECTORS=1` env var to record actual server responses for debugging
+- Add new regression vectors for certificate-chain validation (root CA → intermediate CA → leaf with full Validate input) and certificate-auth access-control scenarios (owner/user identities with GrantAccess/RevokeAccess workflows) plus corresponding `vector_runner` tests ([#953](https://github.com/Cosmian/kms/pull/953))
 - Add 10 new encryption/signature test vectors for full cipher/padding/hash coverage:
     - Symmetric: AES-256-CBC, AES-128-CBC, AES-256-GCM-SIV, ChaCha20-Poly1305 encrypt/decrypt
     - Asymmetric: EC P-521 ECDSA sign/verify, RSA-2048 PKCS#1 v1.5 SHA-256 sign/verify, RSA-2048 PSS-SHA256/SHA384/SHA512 sign/verify, Ed25519 EdDSA sign/verify
@@ -185,3 +186,9 @@
 - Update TESTS.md: add §8 "KMIP Version Coverage" section (endpoint × version matrix, wire protocol behavior, test coverage per version)
 - Update TESTS.md: add §9 "Database Backend Testing" section (self-selecting mechanism, CI orchestration table, known limitation)
 - Update TESTS.md: add KMIP 1.3 integration vector rows, update vector count 174→176
+
+### Multi-backend vector runner and architecture improvements
+
+- Fix `backend_available()` in `vector_runner.rs`: when `KMS_TEST_DB=<backend>` or `KMS_TEST_BACKENDS` explicitly names a backend, treat it as available without requiring a separate connection env var (`KMS_POSTGRES_URL`, `KMS_MYSQL_URL`, etc.); the connection URL is already in the server config TOML ([#953](https://github.com/Cosmian/kms/pull/953))
+- Set `clear_database = true` in `test_data/configs/server/test/postgres.toml` and `mysql.toml` so each test run starts with a clean database (mirrors `auth_plain.toml`/`redis_findex.toml` behaviour); prevents "one or more objects already exist" failures from KAT vectors importing fixed-UID keys across runs
+- Simplify `vector_runner.rs` business logic: replace duplicate depth-first tree walk in `find_field_in_json` with a one-liner delegating to `find_all_fields_in_json`; replace inner recursive function in `assert_all_success` with `find_all_fields_in_json`; compress 4-arm repetitive `get_or_init_vector_server` into a table-driven `(cell, toml)` match; extract `build_identity_clients` and `execute_access_step` as standalone functions (−90 lines of business logic)

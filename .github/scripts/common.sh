@@ -345,6 +345,11 @@ _run_workspace_tests() {
     : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3306/kms}"
     export KMS_MYSQL_URL
     ;;
+  redis)
+    : "${REDIS_HOST:=127.0.0.1}"
+    : "${REDIS_PORT:=6379}"
+    export REDIS_HOST REDIS_PORT
+    ;;
   esac
 
   # Command 1: run DB-specific #[ignore] tests (not needed for sqlite — test_db_sqlite is not ignored)

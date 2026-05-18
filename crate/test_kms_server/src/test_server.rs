@@ -324,10 +324,16 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
 
 // Create a KEK in the HSM before running server with `key_encryption_key` arg
 async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
-    // Use a fixed, deterministic path — this runs inside a OnceCell so there
-    // is no parallelism concern. A stable path ensures the workspace directory
-    // used for KEK creation is the same one reused by the main server.
-    let workspace_dir = std::env::temp_dir().join("kms_test_kek");
+    // Use a unique path per CI job to avoid conflicts when multiple CI runners
+    // share the same /tmp directory.
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_kek_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     let kek_id = "hsm::0::kek";
 
     let workspace_clone = workspace_dir.clone();
@@ -439,7 +445,14 @@ fn get_softhsm2_slot_id() -> usize {
 /// the slot from `HSM_SLOT_ID`.
 async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     let slot = get_softhsm2_slot_id();
-    let workspace_dir = std::env::temp_dir().join("kms_test_softhsm2_kek");
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_softhsm2_kek_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     let kek_id = format!("hsm::{slot}::kek");
 
     let workspace_clone = workspace_dir.clone();
@@ -805,7 +818,16 @@ fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClien
         TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     config.db.sqlite_path = tmp_dir.join("sqlite-data");
-    config.db.clear_database = true;
+    // Give each test its own isolated database space so that parallel tests
+    // with fixed UIDs (KAT / regression vectors) never conflict with each other.
+    // • SQLite: unique file path (set above) — always safe to clear.
+    // • Other backends (PostgreSQL, MySQL, Redis): vector tests use singleton
+    //   servers (one per backend) with `clear_database = true` at startup,
+    //   avoiding parallel schema/table conflicts.
+    let db_type = config.db.database_type.as_deref().unwrap_or("sqlite");
+    if db_type == "sqlite" {
+        config.db.clear_database = true;
+    }
     config.workspace.root_data_path = tmp_dir.join("workspace");
     config.workspace.tmp_path = tmp_dir.join("tmp");
 

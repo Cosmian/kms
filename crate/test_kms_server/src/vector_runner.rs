@@ -4,12 +4,32 @@ use std::{
 };
 
 use cosmian_kms_client::{
-    KmsClientError,
-    cosmian_kmip::ttlv::{KmipFlavor, TTLV, enum_lookup::lookup_enum_code},
+    KmsClient, KmsClientConfig, KmsClientError,
+    cosmian_kmip::{
+        kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN,
+        ttlv::{KmipFlavor, TTLV, enum_lookup::lookup_enum_code},
+    },
+    reexport::cosmian_kms_access::access::Access,
 };
 use serde::Deserialize;
+use tokio::sync::{Mutex, OnceCell};
 
 use crate::TestsContext;
+
+/// Serializes PKCS#12 identity loading to avoid macOS Security.framework
+/// race conditions when multiple tokio tasks call `SecPKCS12Import` concurrently.
+static IDENTITY_BUILD_LOCK: Mutex<()> = Mutex::const_new(());
+
+/// Singleton server for vector tests on the `SQLite` backend.
+static ONCE_VECTOR_SQLITE: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests on the `PostgreSQL` backend.
+static ONCE_VECTOR_POSTGRESQL: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests on the `MySQL` backend.
+static ONCE_VECTOR_MYSQL: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests on the `Redis-findex` backend.
+static ONCE_VECTOR_REDIS_FINDEX: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests requiring mTLS cert-auth (`cert_auth.toml`).
+static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 
 /// A test vector manifest loaded from a TOML file.
 ///
@@ -51,6 +71,21 @@ pub struct TestManifest {
     /// Path to a TOML server config file (relative to the repo root).
     /// If omitted, defaults to `test_data/configs/server/test/auth_plain.toml`.
     pub server_config: Option<String>,
+    /// Database backends this vector should be tested against.
+    ///
+    /// Defaults to `["sqlite"]`. When `KMS_TEST_BACKENDS` env var is set
+    /// (comma-separated list), the runner intersects it with this list and
+    /// runs the vector once per matching backend.
+    ///
+    /// Supported values: `"sqlite"`, `"postgresql"`, `"mysql"`, `"redis-findex"`.
+    ///
+    /// Each backend maps to a config TOML override:
+    /// - `sqlite` → default (`auth_plain.toml` or `server_config`)
+    /// - `postgresql` → `test_data/configs/server/test/postgres.toml`
+    /// - `mysql` → `test_data/configs/server/test/mysql.toml`
+    /// - `redis-findex` → `test_data/configs/server/test/redis_findex.toml`
+    #[serde(default = "default_backends")]
+    pub backends: Vec<String>,
     /// Wire format: `"json"` (default) or `"binary"`.
     /// When `"binary"`, requests are serialized as TTLV binary bytes, wrapped in a
     /// `RequestMessage` envelope, and sent to `/kmip` with `application/octet-stream`.
@@ -61,18 +96,57 @@ pub struct TestManifest {
     /// Default is `[2, 1]`. Use `[1, 4]` for KMIP 1.4 integration tests.
     #[serde(default = "default_kmip_version")]
     pub kmip_version: [i32; 2],
+    /// Named client identities for multi-user tests.
+    ///
+    /// Keys are identity names (e.g. "owner", "user"); values contain cert/key paths
+    /// relative to the repo root.  Steps reference identities via their `identity` field.
+    /// If a step's identity is not found here, the default owner client is used.
+    ///
+    /// Example:
+    /// ```toml
+    /// [identities.owner]
+    /// client_cert = "test_data/certificates/client_server/owner/owner.client.acme.com.crt"
+    /// client_key  = "test_data/certificates/client_server/owner/owner.client.acme.com.key"
+    ///
+    /// [identities.user]
+    /// client_cert = "test_data/certificates/client_server/user/user.client.acme.com.crt"
+    /// client_key  = "test_data/certificates/client_server/user/user.client.acme.com.key"
+    /// ```
+    #[serde(default)]
+    pub identities: HashMap<String, IdentityConfig>,
     /// Ordered list of KMIP request steps to execute
     pub steps: Vec<TestStep>,
+}
+
+/// TLS client-certificate identity for a specific user in a test vector.
+///
+/// Paths are relative to the repository root.
+/// On macOS (native-tls / Security.framework), PEM identity loading is not
+/// supported. The runner auto-detects a `.p12` file next to the `.crt` and
+/// uses it with password `"password"` (standard test infrastructure convention).
+#[derive(Debug, Deserialize, Clone)]
+pub struct IdentityConfig {
+    /// Path to the PEM client certificate
+    pub client_cert: String,
+    /// Path to the PEM client private key
+    pub client_key: String,
 }
 
 /// A single request–response step in a test vector.
 #[derive(Debug, Deserialize)]
 pub struct TestStep {
-    /// KMIP operation name (informational; included in error messages)
+    /// KMIP operation name (informational; included in error messages).
+    ///
+    /// Use `"GrantAccess"` or `"RevokeAccess"` for the Cosmian access-control
+    /// REST endpoints (`POST /access/grant` and `POST /access/revoke`).  These
+    /// are not KMIP operations; the request file should be a JSON object with
+    /// fields `user_id`, `unique_identifier`, and `operation_types`.
     pub operation: String,
-    /// Filename of the TTLV-JSON request payload (relative to the vector directory)
+    /// Filename of the TTLV-JSON request payload (relative to the vector directory).
+    /// For `GrantAccess`/`RevokeAccess` steps the file must contain a JSON object
+    /// matching the `Access` struct (`user_id`, `unique_identifier`, `operation_types`).
     pub request: String,
-    /// When `true`, assert that `ResultStatus` == "Success"
+    /// When `true`, assert that `ResultStatus` == "Success" (KMIP) or HTTP 2xx (REST).
     #[serde(default = "default_true")]
     pub assert_success: bool,
     /// Field assertions on the response TTLV.
@@ -81,12 +155,17 @@ pub struct TestStep {
     /// that the leaf value matches the expected string.
     #[serde(default)]
     pub assert_fields: HashMap<String, String>,
+    /// Like `assert_fields`, but checks that the expected value is present in **any**
+    /// occurrence of the tag in the response (useful for `Locate` responses that
+    /// return multiple `UniqueIdentifier` items — only one of them needs to match).
+    #[serde(default)]
+    pub assert_any_field: HashMap<String, String>,
     /// Assert that these TTLV tags are **absent** from the response.
     /// Useful to verify fields have been properly removed (e.g. Veeam compatibility).
     #[serde(default)]
     pub assert_fields_absent: Vec<String>,
     /// When `assert_success` is `false`, optionally assert that the error response
-    /// contains a specific `ResultReason` value (e.g. `"ItemNotFound"`).
+    /// contains a specific `ResultReason` value (e.g. `"Item_Not_Found"`).
     pub assert_error_reason: Option<String>,
     /// When `assert_success` is `false`, optionally assert that `ResultMessage`
     /// contains this substring.
@@ -103,6 +182,20 @@ pub struct TestStep {
     /// Placeholder `{{variable}}` substitution still applies.
     #[serde(default)]
     pub raw_request: bool,
+    /// Named identity to use for this step (must match a key in `[identities]`).
+    ///
+    /// When absent, defaults to `"owner"` (the default client from `TestsContext`).
+    /// Set to `"user"` (or any other name defined in `[identities]`) to send this
+    /// request using a different client certificate.
+    ///
+    /// Example in manifest:
+    /// ```toml
+    /// [[steps]]
+    /// operation = "Get"
+    /// request   = "step_get.json"
+    /// identity  = "user"
+    /// ```
+    pub identity: Option<String>,
 }
 
 const fn default_true() -> bool {
@@ -111,6 +204,15 @@ const fn default_true() -> bool {
 
 fn default_json() -> String {
     "json".to_owned()
+}
+
+fn default_backends() -> Vec<String> {
+    vec![
+        "sqlite".to_owned(),
+        "postgresql".to_owned(),
+        "mysql".to_owned(),
+        "redis-findex".to_owned(),
+    ]
 }
 
 const fn default_kmip_version() -> [i32; 2] {
@@ -133,7 +235,7 @@ fn wrap_in_request_message(
         .unwrap_or("Unknown");
     // Map TTLV tag names to OperationEnumeration variant names
     // (TTLV tags use PascalCase, but some enum variants differ)
-    let operation = match tag {
+    let w = match tag {
         "Mac" => "MAC",
         "MacVerify" => "MACVerify",
         _ => tag,
@@ -162,7 +264,7 @@ fn wrap_in_request_message(
             {
                 "tag": "BatchItem",
                 "value": [
-                    { "tag": "Operation", "type": "Enumeration", "value": operation },
+                    { "tag": "Operation", "type": "Enumeration", "value": w },
                     {
                         "tag": "RequestPayload",
                         "value": children
@@ -307,48 +409,50 @@ fn load_request_json(
     })
 }
 
-/// Find a leaf value in a TTLV JSON tree by tag name.
-///
-/// Walks the tree depth-first, returning the first leaf whose `"tag"` matches.
-/// For structures (arrays), descends into children.
-fn find_field_in_json(value: &serde_json::Value, tag: &str) -> Option<String> {
+/// Collect ALL leaf values for a given tag name in the TTLV JSON tree.
+fn find_all_fields_in_json(value: &serde_json::Value, tag: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    find_all_fields_impl(value, tag, &mut results);
+    results
+}
+
+fn find_all_fields_impl(value: &serde_json::Value, tag: &str, out: &mut Vec<String>) {
     match value {
         serde_json::Value::Object(map) => {
-            // Check if this node matches the tag
             if let Some(serde_json::Value::String(t)) = map.get("tag") {
                 if t == tag {
-                    // Return the "value" field as a string
                     if let Some(v) = map.get("value") {
-                        return match v {
+                        let s = match v {
                             serde_json::Value::String(s) => Some(s.clone()),
                             serde_json::Value::Number(n) => Some(n.to_string()),
                             serde_json::Value::Bool(b) => Some(b.to_string()),
-                            serde_json::Value::Array(_) => None, // Structure node, not a leaf
+                            serde_json::Value::Array(_) => None,
                             _ => Some(v.to_string()),
                         };
+                        if let Some(s) = s {
+                            out.push(s);
+                        }
                     }
                 }
             }
-            // Descend into the "value" field if it's an array (Structure)
             if let Some(serde_json::Value::Array(children)) = map.get("value") {
                 for child in children {
-                    if let Some(found) = find_field_in_json(child, tag) {
-                        return Some(found);
-                    }
+                    find_all_fields_impl(child, tag, out);
                 }
             }
-            None
         }
         serde_json::Value::Array(arr) => {
             for item in arr {
-                if let Some(found) = find_field_in_json(item, tag) {
-                    return Some(found);
-                }
+                find_all_fields_impl(item, tag, out);
             }
-            None
         }
-        _ => None,
+        _ => {}
     }
+}
+
+/// Find the first leaf value in a TTLV JSON tree matching the given tag name.
+fn find_field_in_json(value: &serde_json::Value, tag: &str) -> Option<String> {
+    find_all_fields_in_json(value, tag).into_iter().next()
 }
 
 /// Assert that a response TTLV JSON contains the expected field values.
@@ -408,50 +512,14 @@ fn assert_success(
 }
 
 /// Assert that ALL `ResultStatus` fields in a batched response indicate success.
-///
-/// For raw (batched) requests, the response contains multiple `BatchItem` entries,
-/// each with their own `ResultStatus`. This function walks the entire tree and
-/// verifies that every `ResultStatus` found equals `"Success"` or `"0x00000000"`.
 fn assert_all_success(
     response: &serde_json::Value,
     step_operation: &str,
 ) -> Result<(), KmsClientError> {
-    fn collect_result_statuses(value: &serde_json::Value, results: &mut Vec<(String, String)>) {
-        match value {
-            serde_json::Value::Object(map) => {
-                if let Some(serde_json::Value::String(tag)) = map.get("tag") {
-                    if tag == "ResultStatus" {
-                        if let Some(v) = map.get("value") {
-                            let status = match v {
-                                serde_json::Value::String(s) => s.clone(),
-                                serde_json::Value::Number(n) => n.to_string(),
-                                _ => v.to_string(),
-                            };
-                            // Try to find the associated ResultMessage in siblings
-                            results.push((status, String::new()));
-                            return;
-                        }
-                    }
-                }
-                if let Some(serde_json::Value::Array(children)) = map.get("value") {
-                    for child in children {
-                        collect_result_statuses(child, results);
-                    }
-                }
-            }
-            serde_json::Value::Array(arr) => {
-                for item in arr {
-                    collect_result_statuses(item, results);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let mut statuses = Vec::new();
-    collect_result_statuses(response, &mut statuses);
-
-    for (idx, (status, _)) in statuses.iter().enumerate() {
+    for (idx, status) in find_all_fields_in_json(response, "ResultStatus")
+        .iter()
+        .enumerate()
+    {
         if status != "Success" && status != "0x00000000" {
             return Err(KmsClientError::UnexpectedError(format!(
                 "Step '{step_operation}': batch item {idx} expected success, \
@@ -459,12 +527,6 @@ fn assert_all_success(
             )));
         }
     }
-
-    if statuses.is_empty() {
-        // No ResultStatus found at all — same as assert_success: accept it
-        // (HTTP 200 is sufficient).
-    }
-
     Ok(())
 }
 
@@ -500,14 +562,94 @@ fn repo_root() -> Result<PathBuf, KmsClientError> {
         })
 }
 
+/// Parse the `KMS_TEST_BACKENDS` environment variable into a list of backend names.
+///
+/// Format: comma-separated, e.g. `"sqlite,postgresql,mysql"`.
+/// Falls back to `KMS_TEST_DB` (single value, used by CI scripts).
+/// Defaults to `["sqlite"]` when neither variable is set.
+///
+/// Returns `(backends, explicitly_requested)` where `explicitly_requested` is
+/// `true` when the caller set `KMS_TEST_BACKENDS` or `KMS_TEST_DB` — in that
+/// case a missing connection env var is a hard error, not a graceful skip.
+fn requested_backends() -> (Vec<String>, bool) {
+    if let Ok(v) = std::env::var("KMS_TEST_BACKENDS") {
+        let backends = v.split(',').map(|s| s.trim().to_owned()).collect();
+        return (backends, true);
+    }
+    if let Ok(db) = std::env::var("KMS_TEST_DB") {
+        let backend = match db.as_str() {
+            "redis" => "redis-findex".to_owned(),
+            other => other.to_owned(),
+        };
+        return (vec![backend], true);
+    }
+    (vec!["sqlite".to_owned()], false)
+}
+
+/// Check whether a backend is available to test.
+///
+/// Returns `true` when any of the following hold:
+/// - The backend is `sqlite` (always available)
+/// - `KMS_TEST_DB` explicitly names this backend (user asserts it is reachable;
+///   the connection URL is provided by the server config TOML)
+/// - `KMS_TEST_BACKENDS` lists this backend (same assertion)
+/// - The legacy per-backend connection env var is set (`KMS_POSTGRES_URL`, etc.)
+fn backend_available(backend: &str) -> bool {
+    // If the user explicitly requested this specific backend, treat it as available.
+    // The KMS server will use its own config TOML (which contains the URL), so
+    // no separate connection env var is needed.
+    if std::env::var("KMS_TEST_DB")
+        .ok()
+        .as_deref()
+        .map(|v| if v == "redis" { "redis-findex" } else { v })
+        == Some(backend)
+    {
+        return true;
+    }
+    if let Ok(v) = std::env::var("KMS_TEST_BACKENDS") {
+        if v.split(',').any(|b| b.trim() == backend) {
+            return true;
+        }
+    }
+    // Fall back to checking the legacy per-backend connection env var.
+    match backend {
+        "postgresql" => std::env::var("KMS_POSTGRES_URL").is_ok(),
+        "mysql" => std::env::var("KMS_MYSQL_URL").is_ok(),
+        "redis-findex" => {
+            std::env::var("KMS_REDIS_URL").is_ok() || std::env::var("REDIS_HOST").is_ok()
+        }
+        _ => true, // sqlite is always available
+    }
+}
+
+/// Get or initialize a singleton test server for the given backend.
+async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContext, KmsClientError> {
+    let root = repo_root()?;
+    let (cell, toml) = match backend {
+        "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml"),
+        "mysql" => (&ONCE_VECTOR_MYSQL, "mysql.toml"),
+        "redis-findex" => (&ONCE_VECTOR_REDIS_FINDEX, "redis_findex.toml"),
+        _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml"),
+    };
+    let p = root.join("test_data/configs/server/test").join(toml);
+    cell.get_or_try_init(|| async move { crate::start_test_server_from_toml(&p).await })
+        .await
+}
+
 /// Run a test vector from a directory containing `manifest.toml` and step JSON files.
 ///
 /// This is the main entry point for vector-based regression tests. It:
 /// 1. Loads the manifest
-/// 2. Starts an isolated KMS server from the specified (or default) TOML config
-/// 3. Executes each step sequentially: load request JSON, substitute captured
-///    placeholders, POST to `/kmip/2_1`, assert response, capture values
-/// 4. Stops the server
+/// 2. Determines which backends to test (intersection of manifest `backends`
+///    field and `KMS_TEST_BACKENDS` env var)
+/// 3. For each backend: uses a singleton shared server, executes steps
+///
+/// # Multi-backend support
+///
+/// Set `KMS_TEST_BACKENDS=sqlite,postgresql,mysql` to run vectors against multiple
+/// database backends. The connection URL for each backend is taken from the server
+/// config TOML; no separate env var is required when the backend is explicitly
+/// requested. Backends not listed are skipped gracefully.
 ///
 /// # Arguments
 /// * `vector_dir` — Path to the test vector directory (relative to the repo root),
@@ -523,22 +665,55 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
     let manifest_path = vector_path.join("manifest.toml");
     let manifest = load_manifest(&manifest_path)?;
 
-    // Resolve server config
-    let config_path = manifest.server_config.as_ref().map_or_else(
-        || root.join("test_data/configs/server/test/auth_plain.toml"),
-        |cfg| root.join(cfg),
-    );
+    // Determine which backends to test
+    let (requested, explicit) = requested_backends();
+    let backends_to_run: Vec<&String> = manifest
+        .backends
+        .iter()
+        .filter(|b| requested.iter().any(|r| r == *b))
+        .collect();
 
-    // Start an isolated server
-    let context = crate::start_test_server_from_toml(&config_path).await?;
+    if backends_to_run.is_empty() {
+        // No intersection — nothing to do (vector's backends not requested)
+        return Ok(());
+    }
 
-    let result = execute_steps(&context, &manifest, &vector_path).await;
+    for backend in &backends_to_run {
+        if !backend_available(backend) {
+            if explicit {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Backend '{backend}' was explicitly requested but its connection \
+                     env var is not set (postgresql→KMS_POSTGRES_URL, \
+                     mysql→KMS_MYSQL_URL, redis-findex→KMS_REDIS_URL/REDIS_HOST)"
+                )));
+            }
+            eprintln!(
+                "SKIP vector '{}' on backend '{backend}': connection env var not set",
+                manifest.name
+            );
+            continue;
+        }
 
-    // Always stop the server, even if steps failed
-    context.stop_server().await?;
+        eprintln!(
+            "▶ Running vector '{}' on backend '{backend}'",
+            manifest.name
+        );
 
-    // Propagate step errors after cleanup
-    result
+        // Manifests with a custom server_config use a singleton cert-auth server
+        // (avoids macOS Security.framework race conditions with parallel PKCS#12 loading).
+        if manifest.server_config.is_some() {
+            let config_path = root.join(manifest.server_config.as_deref().unwrap_or_default());
+            let context = ONCE_VECTOR_CERT_AUTH
+                .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
+                .await?;
+            execute_steps(context, &manifest, &vector_path).await?;
+        } else {
+            let context = get_or_init_vector_server(backend).await?;
+            execute_steps(context, &manifest, &vector_path).await?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Run a test vector against a pre-existing (shared) server context.
@@ -561,19 +736,112 @@ pub async fn run_test_vector_with_context(
     execute_steps(context, &manifest, &vector_path).await
 }
 
+/// Execute a `GrantAccess` or `RevokeAccess` step via the Cosmian REST API.
+async fn execute_access_step(
+    client: &KmsClient,
+    request_json: &serde_json::Value,
+    step: &TestStep,
+    i: usize,
+) -> Result<(), KmsClientError> {
+    let access: Access = serde_json::from_value(request_json.clone()).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Step {} '{}': cannot parse Access request: {e}",
+            i, step.operation
+        ))
+    })?;
+    let result = if step.operation == "GrantAccess" {
+        client.grant_access(access).await
+    } else {
+        client.revoke_access(access).await
+    };
+    match result {
+        Ok(_) => {
+            if !step.assert_success {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': expected failure but got success",
+                    i, step.operation
+                )));
+            }
+        }
+        Err(e) => {
+            if step.assert_success {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {} '{}': expected success, got error: {e}",
+                    i, step.operation
+                )));
+            }
+            if let Some(substr) = &step.assert_error_contains {
+                let msg = e.to_string();
+                if !msg.contains(substr.as_str()) {
+                    return Err(KmsClientError::UnexpectedError(format!(
+                        "Step {} '{}': expected error containing '{}', got: {e}",
+                        i, step.operation, substr
+                    )));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Build one `KmsClient` per named identity declared in `manifest.identities`.
+///
+/// Auto-detects `.p12` beside `.crt`; falls back to PEM. Serializes PKCS#12 loading
+/// to avoid macOS `SecPKCS12Import` race conditions.
+async fn build_identity_clients(
+    context: &TestsContext,
+    manifest: &TestManifest,
+    root: &Path,
+) -> Result<HashMap<String, KmsClient>, KmsClientError> {
+    let mut identity_clients: HashMap<String, KmsClient> = HashMap::new();
+    let _lock = IDENTITY_BUILD_LOCK.lock().await;
+    for (name, id_cfg) in &manifest.identities {
+        let cert_path = root.join(&id_cfg.client_cert);
+        let key_path = root.join(&id_cfg.client_key);
+        let mut http_cfg = context.owner_client_config.http_config.clone();
+        let p12_path = cert_path.with_extension("p12");
+        if p12_path.exists() {
+            http_cfg.tls_client_pkcs12_path = Some(p12_path.to_string_lossy().into_owned());
+            http_cfg.tls_client_pkcs12_password = Some("password".to_owned());
+            http_cfg.tls_client_pem_cert_path = None;
+            http_cfg.tls_client_pem_key_path = None;
+        } else {
+            http_cfg.tls_client_pem_cert_path = Some(cert_path.to_string_lossy().into_owned());
+            http_cfg.tls_client_pem_key_path = Some(key_path.to_string_lossy().into_owned());
+            http_cfg.tls_client_pkcs12_path = None;
+            http_cfg.tls_client_pkcs12_password = None;
+        }
+        let cfg = KmsClientConfig {
+            http_config: http_cfg,
+            vendor_id: VENDOR_ID_COSMIAN.to_owned(),
+            ..KmsClientConfig::default()
+        };
+        let client = KmsClient::new_with_config(cfg).map_err(|e| {
+            KmsClientError::UnexpectedError(format!(
+                "Failed to build client for identity '{name}': {e}"
+            ))
+        })?;
+        identity_clients.insert(name.clone(), client);
+    }
+    Ok(identity_clients)
+}
+
 /// Execute the steps of a test vector against a running server.
 async fn execute_steps(
     context: &TestsContext,
     manifest: &TestManifest,
     vector_path: &Path,
 ) -> Result<(), KmsClientError> {
-    let client = context.get_owner_client();
     let base_url = context
         .owner_client_config
         .http_config
         .server_url
         .trim_end_matches('/')
         .to_owned();
+
+    // Build per-identity KmsClients from the manifest's `[identities.*]` section.
+    let root = repo_root()?;
+    let identity_clients = build_identity_clients(context, manifest, &root).await?;
 
     let is_binary = manifest.wire_format == "binary";
     let json_url = format!("{base_url}/kmip/2_1");
@@ -582,8 +850,20 @@ async fn execute_steps(
     let mut captures: HashMap<String, String> = HashMap::new();
 
     for (i, step) in manifest.steps.iter().enumerate() {
+        // Resolve which client to use for this step
+        let step_identity = step.identity.as_deref().unwrap_or("owner");
+        let client = identity_clients
+            .get(step_identity)
+            .map_or_else(|| context.get_owner_client(), Clone::clone);
+
         let request_path = vector_path.join(&step.request);
         let request_json = load_request_json(&request_path, &captures)?;
+
+        // GrantAccess and RevokeAccess use the Cosmian REST API rather than TTLV.
+        if matches!(step.operation.as_str(), "GrantAccess" | "RevokeAccess") {
+            execute_access_step(&client, &request_json, step, i).await?;
+            continue;
+        }
 
         // Send the request via JSON or binary wire format.
         // When `raw_request` is true, the JSON is already a complete RequestMessage;
@@ -746,6 +1026,27 @@ async fn execute_steps(
                 })
                 .collect();
             assert_response_fields(&response_json, &resolved, &step.operation)?;
+        }
+
+        // Assert that the expected value appears in ANY occurrence of the field
+        // (used for Locate responses that return multiple UniqueIdentifiers)
+        if !step.assert_any_field.is_empty() {
+            for (tag, expected_template) in &step.assert_any_field {
+                let expected = captures
+                    .iter()
+                    .fold(expected_template.clone(), |acc, (name, val)| {
+                        acc.replace(&format!("{{{{{name}}}}}"), val)
+                    });
+                let all_values = find_all_fields_in_json(&response_json, tag);
+                if !all_values.contains(&expected) {
+                    return Err(KmsClientError::UnexpectedError(format!(
+                        "Step '{}': field '{tag}' expected to contain '{expected}', \
+                         but got: [{}]",
+                        step.operation,
+                        all_values.join(", ")
+                    )));
+                }
+            }
         }
 
         // Assert that certain fields are absent
@@ -2409,5 +2710,37 @@ ObjectType = "SymmetricKey"
     async fn test_vec_locate_by_tag() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/locate_by_tag").await
+    }
+
+    // ── Access control: owner/user certificate identities ───────────────
+
+    #[tokio::test]
+    async fn test_vec_access_grant_aes() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/grant_access_aes").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_revoke() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/revoke_access").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_unauthorized() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/unauthorized_access").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_owner_full() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/owner_full_permissions").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_grant_partial() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/grant_partial_permissions").await
     }
 }
