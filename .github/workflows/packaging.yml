@@ -304,17 +304,13 @@ jobs:
               cosmian@package.cosmian.com:"${remote_dir}/"
           done
 
-  publish-monitoring:
-    name: Publish monitoring stack archive
+  build-monitoring-archive:
+    name: Build monitoring stack archive
     if: |
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
       || startsWith(github.ref, 'refs/tags/')
       || github.event_name == 'workflow_dispatch'
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -323,8 +319,34 @@ jobs:
           submodules: false
 
       - name: Create monitoring archive
-        run: |
-          zip -r cosmian-kms-monitoring.zip monitoring/
+        run: zip -r cosmian-kms-monitoring.zip monitoring/
+
+      - name: Upload monitoring archive artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cosmian-kms-monitoring
+          path: cosmian-kms-monitoring.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  publish-monitoring:
+    name: Publish monitoring stack archive
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+    needs: build-monitoring-archive
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    steps:
+      - name: Download monitoring archive artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: cosmian-kms-monitoring
 
       - name: Push to package.cosmian.com
         shell: bash
