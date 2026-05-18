@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    WorkspaceConfig, logging::LoggingConfig, secret_backends, ui_config::UiConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -202,6 +202,81 @@ pub struct ClapConfig {
     #[clap(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+}
+
+/// Interpolates `${VAR_NAME}` placeholders in a string with environment variable values.
+///
+/// For each occurrence of `${VAR_NAME}`, the value of the environment variable `VAR_NAME`
+/// is substituted. Returns an error message if a referenced variable is not set.
+fn interpolate_env_vars(content: &str) -> Result<String, String> {
+    let mut result = String::with_capacity(content.len());
+    // Process line-by-line so that TOML comment lines (first non-whitespace char is '#')
+    // are passed through verbatim.  This prevents examples inside comments from being
+    // mistakenly treated as env-var references (e.g. `# example: url = "${MY_VAR}"`).
+    for line in content.split_inclusive('\n') {
+        if line.trim_start().starts_with('#') {
+            result.push_str(line);
+            continue;
+        }
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '$' && chars.peek() == Some(&'{') {
+                chars.next(); // consume '{'
+                let mut var_name = String::new();
+                let mut closed = false;
+                for inner in chars.by_ref() {
+                    if inner == '}' {
+                        closed = true;
+                        break;
+                    }
+                    var_name.push(inner);
+                }
+                if !closed {
+                    return Err(format!(
+                        "Unclosed '${{' in config for variable: '{var_name}'"
+                    ));
+                }
+                if var_name.is_empty() {
+                    return Err("Empty variable name '${}' in config file".to_owned());
+                }
+                let value = std::env::var(&var_name).map_err(|_e| {
+                    format!(
+                        "Environment variable '{var_name}' referenced in config file is not set"
+                    )
+                })?;
+                result.push_str(&value);
+            } else {
+                result.push(c);
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Deep-merges `overrides` into `base`.
+///
+/// Table values are merged recursively; scalar and array values in `overrides`
+/// replace the corresponding values in `base`.
+fn deep_merge_toml(base: &mut toml::Value, overrides: toml::Value) {
+    match overrides {
+        toml::Value::Table(override_table) => {
+            if let toml::Value::Table(base_table) = base {
+                for (key, value) in override_table {
+                    match base_table.entry(key) {
+                        toml::map::Entry::Occupied(mut entry) => {
+                            deep_merge_toml(entry.get_mut(), value);
+                        }
+                        toml::map::Entry::Vacant(entry) => {
+                            entry.insert(value);
+                        }
+                    }
+                }
+            } else {
+                *base = toml::Value::Table(override_table);
+            }
+        }
+        _ => *base = overrides,
+    }
 }
 
 impl ClapConfig {
@@ -407,7 +482,16 @@ impl ClapConfig {
         let env_path = std::env::var("COSMIAN_KMS_CONF").ok().map(PathBuf::from);
         let default_path = PathBuf::from(get_default_config_path());
 
-        // Helper to load a TOML file into ClapConfig
+        // Helper to load a TOML file into ClapConfig.
+        //
+        // Steps:
+        //  1. Read the file.
+        //  2. Interpolate `${VAR_NAME}` placeholders with environment variable values.
+        //  3. Parse into a `toml::Value`.
+        //  4. Optionally load and deep-merge a secrets file (COSMIAN_KMS_SECRETS_CONF env var
+        //     or `secrets_file` key in the main config), which allows keeping passwords and
+        //     other credentials in a separate, root-only file.
+        //  5. Deserialize the merged value into `ClapConfig`.
         let load_file = |p: &PathBuf| -> KResult<Self> {
             let conf_content = std::fs::read_to_string(p).map_err(|e| {
                 KmsError::ServerError(format!(
@@ -415,9 +499,68 @@ impl ClapConfig {
                     p.display()
                 ))
             })?;
-            toml::from_str(&conf_content).map_err(|e| {
+            let conf_content = interpolate_env_vars(&conf_content).map_err(|e| {
+                KmsError::ServerError(format!(
+                    "Error expanding environment variables in config {}: {e}",
+                    p.display()
+                ))
+            })?;
+            let mut config_value: toml::Value = toml::from_str(&conf_content).map_err(|e| {
                 KmsError::ServerError(format!(
                     "Cannot parse kms server config at: {} - {e:?}",
+                    p.display()
+                ))
+            })?;
+
+            // Secrets file precedence:
+            //  1. COSMIAN_KMS_SECRETS_CONF environment variable (highest)
+            //  2. `secrets_file` key inside the main config TOML
+            let secrets_path = std::env::var("COSMIAN_KMS_SECRETS_CONF")
+                .ok()
+                .map(PathBuf::from)
+                .or_else(|| {
+                    config_value
+                        .get("secrets_file")
+                        .and_then(|v| v.as_str())
+                        .map(PathBuf::from)
+                });
+
+            if let Some(secrets_path) = secrets_path {
+                let secrets_content = std::fs::read_to_string(&secrets_path).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "Cannot read KMS secrets config at: {} - {e:?}",
+                        secrets_path.display()
+                    ))
+                })?;
+                let secrets_content = interpolate_env_vars(&secrets_content).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "Error expanding environment variables in secrets config {}: {e}",
+                        secrets_path.display()
+                    ))
+                })?;
+                let secrets_value: toml::Value = toml::from_str(&secrets_content).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "Cannot parse KMS secrets config at: {} - {e:?}",
+                        secrets_path.display()
+                    ))
+                })?;
+                deep_merge_toml(&mut config_value, secrets_value);
+                println!(
+                    "Secrets configuration loaded from: {}",
+                    secrets_path.display()
+                );
+            }
+
+            // Phase 2: resolve secret URI schemes (vault://, aws-ssm://, azure-kv://)
+            // This is a no-op when no secret-* feature flag is enabled.
+            let backends = secret_backends::build_secret_backends();
+            if !backends.is_empty() {
+                secret_backends::resolve_secret_uris(&mut config_value, &backends)?;
+            }
+
+            config_value.try_into().map_err(|e| {
+                KmsError::ServerError(format!(
+                    "Cannot deserialize KMS server config at: {} - {e:?}",
                     p.display()
                 ))
             })
@@ -707,10 +850,12 @@ mod tests {
 
         // Save current env state
         let original_env = std::env::var("COSMIAN_KMS_CONF").ok();
+        let original_secrets_env = std::env::var("COSMIAN_KMS_SECRETS_CONF").ok();
 
         // Clear env
         unsafe {
             std::env::remove_var("COSMIAN_KMS_CONF");
+            std::env::remove_var("COSMIAN_KMS_SECRETS_CONF");
         }
 
         // Run test
@@ -720,6 +865,10 @@ mod tests {
         match original_env {
             Some(val) => unsafe { std::env::set_var("COSMIAN_KMS_CONF", val) },
             None => unsafe { std::env::remove_var("COSMIAN_KMS_CONF") },
+        }
+        match original_secrets_env {
+            Some(val) => unsafe { std::env::set_var("COSMIAN_KMS_SECRETS_CONF", val) },
+            None => unsafe { std::env::remove_var("COSMIAN_KMS_SECRETS_CONF") },
         }
 
         result
@@ -968,5 +1117,177 @@ mod tests {
         ]);
         let conf_str = toml::to_string_pretty(&conf).unwrap();
         debug!("Configuration TOML: {conf_str}");
+    }
+
+    // ── env-var interpolation ────────────────────────────────────────────────
+
+    #[test]
+    fn interpolate_env_vars_basic() {
+        with_clean_env(|| {
+            unsafe {
+                std::env::set_var("KMS_TEST_DB_PWD", "s3cr3t");
+            }
+            let input = r#"database_url = "postgresql://user:${KMS_TEST_DB_PWD}@localhost/kms""#;
+            let result = super::interpolate_env_vars(input).expect("interpolation should succeed");
+            assert_eq!(
+                result,
+                r#"database_url = "postgresql://user:s3cr3t@localhost/kms""#
+            );
+            unsafe {
+                std::env::remove_var("KMS_TEST_DB_PWD");
+            }
+        });
+    }
+
+    #[test]
+    fn interpolate_env_vars_missing_var_returns_error() {
+        with_clean_env(|| {
+            unsafe {
+                std::env::remove_var("KMS_NONEXISTENT_VAR_XYZ");
+            }
+            let input = r#"password = "${KMS_NONEXISTENT_VAR_XYZ}""#;
+            let result = super::interpolate_env_vars(input);
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("KMS_NONEXISTENT_VAR_XYZ"));
+        });
+    }
+
+    #[test]
+    fn interpolate_env_vars_comment_lines_skipped() {
+        with_clean_env(|| {
+            // ${VAR_NAME} and ${KMS_DB_PASSWORD} in comments must NOT trigger a missing-var error,
+            // even if those env vars are not set.  This mirrors the situation in pkg/kms.toml which
+            // contains illustrative examples inside TOML comment lines.
+            unsafe {
+                std::env::remove_var("VAR_NAME");
+                std::env::remove_var("KMS_DB_PASSWORD");
+            }
+            let input = "# using the ${VAR_NAME} syntax.\n\
+                         #   database_url = \"postgresql://kms:${KMS_DB_PASSWORD}@db.internal/kms\"\n\
+                         database_type = \"sqlite\"\n";
+            let result =
+                super::interpolate_env_vars(input).expect("comments should be skipped verbatim");
+            // Comment lines are preserved verbatim; the non-comment line is unchanged
+            assert!(result.contains("${VAR_NAME}"));
+            assert!(result.contains("${KMS_DB_PASSWORD}"));
+            assert!(result.contains("database_type = \"sqlite\""));
+        });
+    }
+
+    #[test]
+    fn interpolate_env_vars_no_placeholders() {
+        with_clean_env(|| {
+            let input = r#"database_type = "sqlite""#;
+            let result = super::interpolate_env_vars(input).expect("no placeholders, should pass");
+            assert_eq!(result, input);
+        });
+    }
+
+    #[test]
+    fn interpolate_env_vars_unclosed_brace_returns_error() {
+        with_clean_env(|| {
+            let input = r#"password = "${UNCLOSED"#;
+            let result = super::interpolate_env_vars(input);
+            assert!(result.is_err());
+            let msg = result.unwrap_err();
+            assert!(msg.contains("Unclosed"), "expected 'Unclosed' in: {msg}");
+        });
+    }
+
+    // ── env-var interpolation in config file ─────────────────────────────────
+
+    #[test]
+    fn config_file_env_var_interpolation() {
+        with_clean_env(|| {
+            unsafe {
+                std::env::set_var("KMS_TEST_HTTP_PORT", "19998");
+            }
+            let cfg_file = write_temp("[http]\nport = ${KMS_TEST_HTTP_PORT}\n");
+            let args = vec!["kms", "-c", cfg_file.to_str().unwrap()];
+            let cfg = ClapConfig::load_from_args(args).expect("load with interpolation");
+            assert_eq!(cfg.http.port, 19998);
+            cleanup_temp(&cfg_file);
+            unsafe {
+                std::env::remove_var("KMS_TEST_HTTP_PORT");
+            }
+        });
+    }
+
+    // ── secrets file via COSMIAN_KMS_SECRETS_CONF ────────────────────────────
+
+    #[test]
+    fn secrets_file_via_env_var_overrides_main_config() {
+        with_clean_env(|| {
+            let main_file = write_temp("[http]\nport = 9998\n[db]\ndatabase_type = \"sqlite\"\n");
+            let secrets_file =
+                write_temp("[db]\ndatabase_url = \"postgresql://user:secret@localhost/kms\"\n");
+            unsafe {
+                std::env::set_var("COSMIAN_KMS_SECRETS_CONF", secrets_file.to_str().unwrap());
+            }
+            let args = vec!["kms", "-c", main_file.to_str().unwrap()];
+            let cfg = ClapConfig::load_from_args(args).expect("load with secrets file");
+            assert_eq!(
+                cfg.db.database_url.as_deref(),
+                Some("postgresql://user:secret@localhost/kms")
+            );
+            assert_eq!(
+                cfg.http.port, 9998,
+                "main config values should be preserved"
+            );
+            cleanup_temp(&main_file);
+            cleanup_temp(&secrets_file);
+        });
+    }
+
+    #[test]
+    fn secrets_file_via_config_key() {
+        with_clean_env(|| {
+            let secrets_file =
+                write_temp("[db]\ndatabase_url = \"postgresql://user:frompkg@localhost/kms\"\n");
+            let main_content = format!(
+                "secrets_file = {:?}\n[http]\nport = 9998\n",
+                secrets_file.to_str().unwrap()
+            );
+            let main_file = write_temp(&main_content);
+            let args = vec!["kms", "-c", main_file.to_str().unwrap()];
+            let cfg = ClapConfig::load_from_args(args).expect("load with secrets_file key");
+            assert_eq!(
+                cfg.db.database_url.as_deref(),
+                Some("postgresql://user:frompkg@localhost/kms")
+            );
+            cleanup_temp(&main_file);
+            cleanup_temp(&secrets_file);
+        });
+    }
+
+    #[test]
+    fn secrets_env_var_takes_precedence_over_secrets_file_key() {
+        with_clean_env(|| {
+            let secrets_via_key =
+                write_temp("[db]\ndatabase_url = \"postgresql://from:key@localhost/kms\"\n");
+            let secrets_via_env =
+                write_temp("[db]\ndatabase_url = \"postgresql://from:env@localhost/kms\"\n");
+            let main_content = format!(
+                "secrets_file = {:?}\n[http]\nport = 9998\n",
+                secrets_via_key.to_str().unwrap()
+            );
+            let main_file = write_temp(&main_content);
+            unsafe {
+                std::env::set_var(
+                    "COSMIAN_KMS_SECRETS_CONF",
+                    secrets_via_env.to_str().unwrap(),
+                );
+            }
+            let args = vec!["kms", "-c", main_file.to_str().unwrap()];
+            let cfg = ClapConfig::load_from_args(args).expect("env secrets takes precedence");
+            assert_eq!(
+                cfg.db.database_url.as_deref(),
+                Some("postgresql://from:env@localhost/kms"),
+                "COSMIAN_KMS_SECRETS_CONF must win over secrets_file key"
+            );
+            cleanup_temp(&main_file);
+            cleanup_temp(&secrets_via_key);
+            cleanup_temp(&secrets_via_env);
+        });
     }
 }
