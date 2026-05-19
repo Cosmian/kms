@@ -2,7 +2,7 @@
 <!-- Do not edit by hand — run the sensor to regenerate this file.     -->
 <!-- commit: 959a4414  -->
 
-# 🔐 Cosmian KMS — Cryptographic Posture Report
+# 🔐 Eviden KMS — Cryptographic Posture Report
 
 ???+ info "ℹ️ Auto-generated report — do not edit by hand"
     Last commit: `959a4414`
@@ -139,7 +139,7 @@
 
     ```mermaid
     flowchart TD
-        COSMIAN_KMS["Cosmian KMS"]
+        COSMIAN_KMS["Eviden KMS"]
         COSMIAN_KMS --> OPENSSL__FIPS_PROVIDER_["openssl (FIPS provider)"]
         COSMIAN_KMS --> OPENSSL["OpenSSL (FIPS provider)"]
         COSMIAN_KMS --> X509_PARSER["x509-parser"]

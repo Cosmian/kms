@@ -1,17 +1,17 @@
 # Cryptographic Algorithms
 
-The Cosmian server supports a large, and growing, list of cryptographic algorithms.
+The Eviden server supports a large, and growing, list of cryptographic algorithms.
 This page lists the supported algorithms, their details and their reference in various standards.
 FIPS compliant algorithms are also listed with the corresponding NIST standard.
 
 Keys and certificates for all the listed algorithms can be generated, imported, exported, wrapped,
-unwrapped... using the Cosmian KMS server [API](../../kmip_support/json_ttlv_api.md) or [KMS CLI](../../../kms_clients/index.md)
+unwrapped... using the Eviden KMS server [API](../../kmip_support/json_ttlv_api.md) or [KMS CLI](../../../kms_clients/index.md)
 
 Should you require a specific algorithm or standard to be supported, please directly open a ticket or pull request on the [Github repository](https://github.com/Cosmian/kms).
 
 ## Key-wrapping schemes
 
-The Cosmian server supports key-wrapping via the `Import`(unwrapping) and `Export` (wrapping) kmip operations.
+The Eviden server supports key-wrapping via the `Import`(unwrapping) and `Export` (wrapping) kmip operations.
 The (un)wrapping key identifier may be that of a key or a certificate.
 In the latter case, the public key (or the associated private key for unwrapping, if any) will be retrieved and used.
 
@@ -64,7 +64,7 @@ with a unique fingerprint.
 ### AES GCM
 
 AES is described in  [NIST FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf). In
-Cosmian KMS it is used as a data encryption mechanism (DEM) with the Galois Counter Mode of
+Eviden KMS it is used as a data encryption mechanism (DEM) with the Galois Counter Mode of
 operation ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce, a 128 bits tag
 with and key sizes of 128, 192 or 256 bits.
 
@@ -149,7 +149,7 @@ id/tags of an RSA key as the wrapping key and set the `Cryptographic Algorithm` 
 the `Padding Method` to `None` in the `Key Wrapping Specification`.
 
 !!! note "Why `PaddingMethod::None` selects `CKM_RSA_AES_KEY_WRAP`"
-    In the Cosmian KMIP routing logic, the **padding method discriminates** between the three RSA
+    In the Eviden KMIP routing logic, the **padding method discriminates** between the three RSA
     wrapping schemes:
 
     | Padding Method | Algorithm selected               |
@@ -224,7 +224,7 @@ and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
 
 ### PQC Hybridized KEM
 
-The Cosmian KMS supports Post-Quantum Cryptography (PQC) hybridized Key Encapsulation Mechanisms (KEM)
+The Eviden KMS supports Post-Quantum Cryptography (PQC) hybridized Key Encapsulation Mechanisms (KEM)
 via the [cosmian_cover_crypt](https://github.com/Cosmian/cover_crypt) crate. This crate provides
 a configurable KEM framework that can operate in pure classical, pure post-quantum, or hybrid mode
 by combining a pre-quantum KEM with a post-quantum KEM through a KEM combiner (using SHA-256).
@@ -257,7 +257,7 @@ Key generation, encapsulation and decapsulation are exposed via the KMS CLI unde
 
 ### OpenSSL Native PQC Algorithms
 
-Starting with OpenSSL 3.5, the Cosmian KMS also provides direct support for OpenSSL-native Post-Quantum
+Starting with OpenSSL 3.5, the Eviden KMS also provides direct support for OpenSSL-native Post-Quantum
 Cryptography algorithms standardized by NIST in August 2024. These algorithms are available in
 **non-FIPS builds only**.
 
@@ -393,7 +393,7 @@ which follows FIPS recommendations as well. An additional random 128-bit salt is
 
 ## Hash functions
 
-The Cosmian server supports the following hashing algorithms:
+The Eviden server supports the following hashing algorithms:
 
 FIPS 180-4 (SHA-2 family):
 

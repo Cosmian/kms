@@ -2,7 +2,7 @@
 
 Veeam Backup & Replication supports delegating backup encryption key management
 to an external KMIP-compliant Key Management Server.  By connecting Veeam to
-Cosmian KMS, encryption keys for backup jobs are never stored on the Veeam
+Eviden KMS, encryption keys for backup jobs are never stored on the Veeam
 infrastructure itself: they are managed in a centrally audited, optionally
 HSM-backed key store.
 
@@ -16,7 +16,7 @@ HSM-backed key store.
 | **Port** | 5696 (IANA-registered KMIP port) |
 | **Key type** | RSA-2048 asymmetric key pair |
 | **Veeam version** | Veeam Backup & Replication 12 and above |
-| **Cosmian KMS feature** | Works with both FIPS and non-FIPS builds |
+| **Eviden KMS feature** | Works with both FIPS and non-FIPS builds |
 
 ### What Veeam does
 
@@ -32,15 +32,15 @@ following KMIP operations for each protected backup job:
 | 5 | `Get` (PrivateKey) | Retrieve the RSA private key for decryption during restore |
 | 6 | `Destroy` | Delete the key pair on job removal or rotation |
 
-!!! note "Compatibility fixes in Cosmian KMS"
+!!! note "Compatibility fixes in Eviden KMS"
     Two fixes were required for full Veeam Backup & Replication compatibility.
-    Both are included in Cosmian KMS as of the version that introduced this
+    Both are included in Eviden KMS as of the version that introduced this
     documentation:
 
     - **`KeyValue` attributes in `Get` response (bug fix)**: Veeam's KMIP 1.4
       decoder for `PublicKey` and `PrivateKey` expects the `KeyValue` structure
       to contain only key material — it does not support any `Attribute`
-      elements inside `KeyValue`.  Previous versions of Cosmian KMS embedded
+      elements inside `KeyValue`.  Previous versions of Eviden KMS embedded
       all object metadata attributes (state, identifiers, links, etc.) inside
       `KeyValue` when converting from the internal KMIP-2.1 representation to
       KMIP-1.4 wire format.  This caused Veeam to throw
@@ -61,7 +61,7 @@ following KMIP operations for each protected backup job:
 
 ## Prerequisites
 
-- Cosmian KMS server **4.x or later** (both FIPS and non-FIPS builds are
+- Eviden KMS server **4.x or later** (both FIPS and non-FIPS builds are
   supported)
 - TLS enabled on the KMS **socket server** (port 5696) with mutual certificate
   authentication
@@ -116,7 +116,7 @@ openssl pkcs12 -export \
   -out veeam-client.p12 -passout pass:veeam-p12-password
 ```
 
-### 3. Start Cosmian KMS
+### 3. Start Eviden KMS
 
 ```bash
 cosmian_kms --config /etc/cosmian/kms/kms.toml
@@ -142,7 +142,7 @@ docker run -p 9998:9998 -p 5696:5696 \
 
 | Field | Value |
 |-------|-------|
-| **Server name / IP** | Hostname or IP of your Cosmian KMS host |
+| **Server name / IP** | Hostname or IP of your Eviden KMS host |
 | **Port** | `5696` |
 | **Certificate** | Upload the PKCS#12 file (`veeam-client.p12`) |
 | **Password** | The PKCS#12 password |
@@ -159,7 +159,7 @@ docker run -p 9998:9998 -p 5696:5696 \
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
-| `KmipUnexpectedTagException: Unexpected Tag 66, expected Attribute` | Old Cosmian KMS version (pre-fix) embedding attributes inside `KeyValue` | Upgrade Cosmian KMS |
-| `A call to SSPI failed` / `SSL_ERROR_SSL` on reconnect | TLS session-ID context not set | Upgrade Cosmian KMS |
+| `KmipUnexpectedTagException: Unexpected Tag 66, expected Attribute` | Old Eviden KMS version (pre-fix) embedding attributes inside `KeyValue` | Upgrade Eviden KMS |
+| `A call to SSPI failed` / `SSL_ERROR_SSL` on reconnect | TLS session-ID context not set | Upgrade Eviden KMS |
 | `Test Connection` fails with certificate error | CA mismatch or self-signed cert | Verify `clients_ca_cert_file` contains the CA that signed the Veeam client cert, and that Veeam trusts the KMS server certificate |
 | Key not found after Veeam server migration | Unique identifier stored by Veeam differs from KMS | Re-configure the KMS server entry in Veeam; the keys remain in the KMS store |

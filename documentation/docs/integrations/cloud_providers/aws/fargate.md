@@ -1,6 +1,6 @@
-# Cosmian KMS on AWS ECS
+# Eviden KMS on AWS ECS
 
-Deploy Cosmian KMS on AWS ECS (Fargate) using either a production-ready setup with an Application Load Balancer (ALB) or a fast, fully managed Express Mode deployment.
+Deploy Eviden KMS on AWS ECS (Fargate) using either a production-ready setup with an Application Load Balancer (ALB) or a fast, fully managed Express Mode deployment.
 
 ---
 
@@ -8,7 +8,7 @@ Deploy Cosmian KMS on AWS ECS (Fargate) using either a production-ready setup wi
 
 ## Overview
 
-This repository documents two supported ways to run Cosmian KMS on AWS ECS.
+This repository documents two supported ways to run Eviden KMS on AWS ECS.
 
 Mode          | Use case
 --------------| -------

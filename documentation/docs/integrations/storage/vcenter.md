@@ -1,6 +1,6 @@
 # VMware vSphere VM Encryption with an External KMS
 
-This guide explains how to protect your VMware vSphere infrastructure using **Cosmian KMS** as an external **Key Management Server (KMS)**, and walks you through the full setup:
+This guide explains how to protect your VMware vSphere infrastructure using **Eviden KMS** as an external **Key Management Server (KMS)**, and walks you through the full setup:
 
 1. [Why use an external KMS with vSphere?](#why-use-an-external-kms-with-vsphere)
 2. [Architecture and security principles](#architecture-and-security-principles)
@@ -26,7 +26,7 @@ Using a **Standard Key Provider** backed by an external, dedicated KMS is the re
 - **Separation of duties**: encryption keys are stored in a dedicated, hardened system — completely separate from the compute infrastructure they protect. A compromised ESXi host or vCenter cannot expose the master keys.
 - **Centralised key lifecycle management**: key creation, rotation, revocation, and auditing are managed in one place across all workloads.
 - **Compliance readiness**: many frameworks (PCI-DSS, HIPAA, GDPR, SOC 2, FedRAMP) explicitly require that encryption keys be managed independently from the data they protect.
-- **FIPS 140-3 compliance**: Cosmian KMS operates in FIPS 140-3 validated mode, satisfying the cryptographic requirements of the most demanding regulatory environments.
+- **FIPS 140-3 compliance**: Eviden KMS operates in FIPS 140-3 validated mode, satisfying the cryptographic requirements of the most demanding regulatory environments.
 - **Zero-trust posture**: even with physical access to a storage array or datastore, data remains unintelligible without authorised key access from the KMS.
 
 > **References**
@@ -58,7 +58,7 @@ sequenceDiagram
     autonumber
     participant Admin as vSphere Admin
     participant VC as vCenter Server
-    participant KMS as Cosmian KMS
+    participant KMS as Eviden KMS
     participant ESXi as ESXi Host
     participant DS as Datastore (VMDK)
 
@@ -92,7 +92,7 @@ graph TB
     end
 
     subgraph KMSZone["KMS DMZ / Secure Zone"]
-        KMS["Cosmian KMS\nport 5696 (KMIP/TLS)\nport 9998 (HTTP API)"]
+        KMS["Eviden KMS\nport 5696 (KMIP/TLS)\nport 9998 (HTTP API)"]
         DB[("Key Store\n(SQLite / PostgreSQL\n/ Redis-findex)")]
         KMS --- DB
     end
@@ -126,13 +126,13 @@ graph TB
 | Property | How it is enforced |
 |---|---|
 | **Encryption at rest** | All VMDK files, VM swap files, VM core dumps, and the VM configuration (VMX) are encrypted with AES-256 XTS on the ESXi host before any write to the datastore |
-| **Key separation** | KEK lives only inside Cosmian KMS; the ESXi host holds the plaintext DEK in RAM only for the duration of active I/O |
-| **Mutual TLS (mTLS)** | Both vCenter and Cosmian KMS authenticate each other with X.509 certificates over every KMIP connection; no unauthenticated key request can succeed |
+| **Key separation** | KEK lives only inside Eviden KMS; the ESXi host holds the plaintext DEK in RAM only for the duration of active I/O |
+| **Mutual TLS (mTLS)** | Both vCenter and Eviden KMS authenticate each other with X.509 certificates over every KMIP connection; no unauthenticated key request can succeed |
 | **No keys on storage** | The datastore contains only the wrapped DEK (ciphertext); raw key material is never written to disk outside the KMS |
-| **Audit trail** | Every KMIP operation (Create, Get, Activate, Revoke, Destroy) is logged by Cosmian KMS with timestamp, caller identity, and key ID |
+| **Audit trail** | Every KMIP operation (Create, Get, Activate, Revoke, Destroy) is logged by Eviden KMS with timestamp, caller identity, and key ID |
 | **Key rotation** | VMware supports re-keying VMs (shallow re-key: new KEK; deep re-key: new DEK + new KEK) without downtime on vSphere 7.0+ |
-| **FIPS 140-3** | Cosmian KMS uses a FIPS 140-3 validated OpenSSL 3.x provider; all symmetric keys use AES-256; all asymmetric operations use NIST-approved curves |
-| **Revocation / disaster recovery** | Revoking the KEK in Cosmian KMS immediately prevents any new VM power-on or vMotion, enabling a cryptographic kill-switch |
+| **FIPS 140-3** | Eviden KMS uses a FIPS 140-3 validated OpenSSL 3.x provider; all symmetric keys use AES-256; all asymmetric operations use NIST-approved curves |
+| **Revocation / disaster recovery** | Revoking the KEK in Eviden KMS immediately prevents any new VM power-on or vMotion, enabling a cryptographic kill-switch |
 
 ---
 
@@ -156,13 +156,13 @@ All key material travels over **mutually authenticated TLS**:
 
 - **vCenter ↔ KMS**: KMIP 1.1+ over TLS 1.2+, enforced by certificate pinning on both sides
 - **vCenter ↔ ESXi**: key distribution uses the internal vSphere encrypted management channel
-- **KMS API**: Cosmian KMS exposes its management API over HTTPS (TLS 1.2+); the KMIP socket server runs on a dedicated port (default 5696)
+- **KMS API**: Eviden KMS exposes its management API over HTTPS (TLS 1.2+); the KMIP socket server runs on a dedicated port (default 5696)
 
 ### Access Control
 
 - Only vCenter Server (identified by its client certificate) can request keys from the KMS
 - ESXi hosts never communicate directly with the KMS; they receive KEKs from vCenter through the authenticated management plane
-- Cosmian KMS access control enforces per-key and per-user permissions; the vCenter service account should be granted the minimum set of KMIP operations (`Create`, `Get`, `Activate`, `Revoke`, `Locate`)
+- Eviden KMS access control enforces per-key and per-user permissions; the vCenter service account should be granted the minimum set of KMIP operations (`Create`, `Get`, `Activate`, `Revoke`, `Locate`)
 
 ---
 
@@ -310,22 +310,22 @@ systemctl start cosmian_kms
 
 ### Step 3: Set up your Standard Key Provider
 
-![Step 3 - Set your Cosmian KMS ](../images/vcenter-step03.png)
+![Step 3 - Set your Eviden KMS ](../images/vcenter-step03.png)
 
-### Step 4: Trust the newly added Cosmian KMS
+### Step 4: Trust the newly added Eviden KMS
 
-![Step 4 - Set your Cosmian KMS ](../images/vcenter-step04.png)
+![Step 4 - Set your Eviden KMS ](../images/vcenter-step04.png)
 
-### Step 5: Establish Trust with the Cosmian KMS
+### Step 5: Establish Trust with the Eviden KMS
 
-![Step 5 - Set your Cosmian KMS ](../images/vcenter-step05_1.png)
-
----
-
-![Step 5 - Set your Cosmian KMS ](../images/vcenter-step05_2.png)
+![Step 5 - Set your Eviden KMS ](../images/vcenter-step05_1.png)
 
 ---
-![Step 5 - Set your Cosmian KMS ](../images/vcenter-step05_3.png)
+
+![Step 5 - Set your Eviden KMS ](../images/vcenter-step05_2.png)
+
+---
+![Step 5 - Set your Eviden KMS ](../images/vcenter-step05_3.png)
 
 ### Step 6: Go on the KMS server and get .crt and .key certificates
 
@@ -337,7 +337,7 @@ systemctl start cosmian_kms
 
 ### Step 8: Your KMS is connected
 
-![Step 8 - Set your Cosmian KMS ](../images/vcenter-step08.png)
+![Step 8 - Set your Eviden KMS ](../images/vcenter-step08.png)
 
 ### Bonus: Encrypt your Virtual Machine
 

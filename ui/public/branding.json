@@ -1,9 +1,9 @@
 {
     "title": "Eviden KMS",
-    "faviconUrl": "/ui/themes/eviden/eviden-favicon-32x32.png",
+    "faviconUrl": "/ui/themes/eviden/eviden-favicon.svg",
     "logoAlt": "Key Management System",
     "logoLightUrl": "/ui/themes/eviden/eviden-logo-light.svg",
-    "logoDarkUrl": "/ui/themes/eviden/eviden-logo-dark.svg",
+    "logoDarkUrl": "/ui/themes/eviden/eviden-logo-light.svg",
     "loginTitle": "Eviden KMS user interface",
     "loginSubtitle": "",
     "backgroundImageUrl": "/ui/themes/eviden/eviden-login-bg.svg",

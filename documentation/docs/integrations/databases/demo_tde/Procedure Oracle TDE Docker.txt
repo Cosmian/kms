@@ -1,5 +1,5 @@
 ################################################################################
-#  Oracle TDE + Cosmian KMS — Docker demo procedure
+#  Oracle TDE + Eviden KMS — Docker demo procedure
 #  All commands are run from the demo/ directory.
 ################################################################################
 
@@ -72,7 +72,7 @@ mkdir -p oracle/cosmian-kms
 #
 # Starts two containers:
 #   • oracle      — Oracle Database 23ai Free (lite)
-#   • kms-oracle  — Cosmian KMS server (reachable as "kms" on the Docker network)
+#   • kms-oracle  — Eviden KMS server (reachable as "kms" on the Docker network)
 #
 # Oracle takes ~2–3 minutes to initialise on the first run.
 
@@ -103,7 +103,7 @@ docker exec -u root -i oracle bash -c \
   "chmod +x /home/oracle/setup_cosmian_pkcs11.sh && /home/oracle/setup_cosmian_pkcs11.sh"
 
 
-# ── STEP 7 — Configure Oracle TDE to use the Cosmian KMS as HSM ──────────────
+# ── STEP 7 — Configure Oracle TDE to use the Eviden KMS as HSM ──────────────
 #
 # run_sql_commands.sh executes the following SQL steps via sqlplus:
 #   1. ALTER SYSTEM SET WALLET_ROOT='.../libcosmian_pkcs11.so' SCOPE=SPFILE
@@ -135,7 +135,7 @@ INSERT INTO test_tde (name) VALUES ('Aurelie');
 INSERT INTO test_tde (name) VALUES ('Chris');
 COMMIT;
 
--- Read data back (decrypted transparently by TDE via the Cosmian KMS):
+-- Read data back (decrypted transparently by TDE via the Eviden KMS):
 SELECT * FROM test_tde;
 
 -- Confirm the HSM wallet and master encryption key are active:
@@ -226,7 +226,7 @@ mkdir -p oracle/cosmian-kms
 #
 # Starts two containers:
 #   • oracle      — Oracle Database 23ai Free (lite)
-#   • kms-oracle  — Cosmian KMS server (reachable as "kms" on the Docker network)
+#   • kms-oracle  — Eviden KMS server (reachable as "kms" on the Docker network)
 #
 # Oracle takes ~2–3 minutes to initialise on the first run.
 
@@ -257,7 +257,7 @@ docker exec -u root -i oracle bash -c \
   "chmod +x /home/oracle/setup_cosmian_pkcs11.sh && /home/oracle/setup_cosmian_pkcs11.sh"
 
 
-# ── STEP 7 — Configure Oracle TDE to use the Cosmian KMS as HSM ──────────────
+# ── STEP 7 — Configure Oracle TDE to use the Eviden KMS as HSM ──────────────
 #
 # run_sql_commands.sh executes the following SQL steps via sqlplus:
 #   1. ALTER SYSTEM SET WALLET_ROOT='.../libcosmian_pkcs11.so' SCOPE=SPFILE
@@ -289,7 +289,7 @@ INSERT INTO test_tde (name) VALUES ('Aurelie');
 INSERT INTO test_tde (name) VALUES ('Chris');
 COMMIT;
 
--- Read data back (decrypted transparently by TDE via the Cosmian KMS):
+-- Read data back (decrypted transparently by TDE via the Eviden KMS):
 SELECT * FROM test_tde;
 
 -- Confirm the HSM wallet and master encryption key are active:

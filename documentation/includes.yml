@@ -1,5 +1,5 @@
 ---
-title: Cosmian KMS
+title: Eviden KMS
 subtitle: Key Management System
 citation_package: biblatex
 # bibliography:
@@ -23,7 +23,7 @@ titlepage-logo: ./pandoc/cosmian.png
 logo-width: 200pt
 lang: en-US
 footer-left: Confidential
-footer-center: © Copyright 2018-2026 Cosmian. All rights reserved
+footer-center: © Copyright 2018-2026 Eviden. All rights reserved
 header-left: ./pandoc/favicon.png
 header-includes:
   - \setcounter{page}{0} # So that the titlepage is the zeroth page

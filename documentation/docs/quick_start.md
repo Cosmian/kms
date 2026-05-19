@@ -1,6 +1,6 @@
 # Quick start
 
-To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
+To quick-start a Eviden KMS server on `http://localhost:9998` that stores its data
 inside the container, run the following command:
 
 === "Docker"
@@ -38,13 +38,13 @@ To run a KMS where the database will survive restarts, run:
 Please note that if you want to use the KMIP wire protocol, you need to configure TLS and the socket server
 using the [server configuration file](./configuration/server_configuration_file.md) first.
 
-If you do not have Docker available, install a Cosmian KMS server as described
+If you do not have Docker available, install a Eviden KMS server as described
 in [installation guide](./installation/installation_getting_started.md):
 
 ## Using the Web UI
 
 Open your web browser and navigate to `http://localhost:9998/ui` to access the GUI.
-![Cosmian KMS UI](./images/kms-ui-front-page.png)
+![Eviden KMS UI](./images/kms-ui-front-page.png)
 
 ## Using the CLI
 

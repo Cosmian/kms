@@ -16,7 +16,7 @@ designed to support:
 
 ## CBOM artifact
 
-The Cosmian KMS CBOM is generated from the actual source code and `Cargo.lock`, ensuring it
+The Eviden KMS CBOM is generated from the actual source code and `Cargo.lock`, ensuring it
 reflects the running codebase rather than a manual registry.
 
 | File | Format | Description |

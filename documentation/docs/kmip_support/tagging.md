@@ -1,4 +1,4 @@
-The Cosmian KMS server supports the tagging of objects. Tags are arbitrary strings that can be attached to objects.
+The Eviden KMS server supports the tagging of objects. Tags are arbitrary strings that can be attached to objects.
 Tags can be used to group objects together, and to find objects for most operations, such as export, import, encrypt, decrypt, etc.
 
 In addition, the KMS server will automatically add a system tag to objects based on the object type:
@@ -11,7 +11,7 @@ In addition, the KMS server will automatically add a system tag to objects based
 - `_sd`: for a secret data
 - `_oo`: for an opaque object
 
-Since there is no provision in the KMIP 2.1 specification for tagging. The Cosmian KMS server implements tagging using the following KMIP 2.1 extensions:
+Since there is no provision in the KMIP 2.1 specification for tagging. The Eviden KMS server implements tagging using the following KMIP 2.1 extensions:
 
 1. When `Attributes` are passed as part of the KMIP operation, such as in the `Create`, `Create Key Pair`, `Locate`, `Certify` and `Import` operations,
 the tags are passed as `VendorAttributes` with the server's configured vendor identification (default: `cosmian`, configurable via `--vendor-identification` / `KMS_VENDOR_IDENTIFICATION`) and attribute name `tag`.

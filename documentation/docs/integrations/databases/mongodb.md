@@ -16,8 +16,8 @@ This guide walks through the manual setup process for enabling Client-Side Field
 - **MongoDB Crypt Shared Library**:
     - Download from the MongoDB Enterprise downloads section (e.g., `mongo_crypt_v1.so`)
     - Install to: `/opt/mongo_crypt_shared/mongo_crypt_v1.so`
-- **Cosmian KMS**:
-    - Cosmian KMS endpoint: `your-cosmian_kms-server:port`
+- **Eviden KMS**:
+    - Eviden KMS endpoint: `your-cosmian_kms-server:port`
     - TLS certs:
         - Client cert: `/opt/kms-certs/client.pem`
         - CA cert: `/opt/kms-certs/ca.pem`
@@ -33,7 +33,7 @@ This guide walks through the manual setup process for enabling Client-Side Field
 
 ## Step-by-Step Guide
 
-⚠️ This tutorial was done in a DB test environment with an external Cosmian KMS.
+⚠️ This tutorial was done in a DB test environment with an external Eviden KMS.
 
 ### 1. Define environment variable
 
@@ -257,7 +257,7 @@ for doc in secure_coll.find():
 
 ## Result
 
-Encrypted fields will be automatically decrypted in the returned documents, provided the proper key is stored in your key vault and accessible via the configured Cosmian KMS.
+Encrypted fields will be automatically decrypted in the returned documents, provided the proper key is stored in your key vault and accessible via the configured Eviden KMS.
 
 ---
 

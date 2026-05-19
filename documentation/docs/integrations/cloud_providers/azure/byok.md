@@ -1,5 +1,5 @@
-Cosmian KMS provides a `azure byok` command in its CLI to facilitate the import of an Azure wrapping key (KEK) in
-Cosmian KMS, and the export of the wrapped keys in the `.byok` format for easy import in Azure Key Vault.
+Eviden KMS provides a `azure byok` command in its CLI to facilitate the import of an Azure wrapping key (KEK) in
+Eviden KMS, and the export of the wrapped keys in the `.byok` format for easy import in Azure Key Vault.
 
 Follow this [Azure documentation](https://learn.microsoft.com/en-us/azure/key-vault/keys/byok-specification), for a
 description of Bring Your Own Key (BYOK) in Azure Key Vault,
@@ -11,7 +11,7 @@ must have the role of `Crypto Officer`.
 
 [TOC]
 
-## Create two test keys in the Cosmian KMS
+## Create two test keys in the Eviden KMS
 
 These keys will later be exported wrapped by the Azure (KEK) key,
 and imported into Azure Key Vault.
@@ -83,9 +83,9 @@ Download the public key and rename the file `KEK-BYOK.public.pem`.
 az keyvault key download --name KEK-BYOK --vault-name MyPremiumKeyVault --file KEK-BYOK.public.pem
 ```
 
-## Import the key encryption key in Cosmian KMS
+## Import the key encryption key in Eviden KMS
 
-The KMS CLI provides an `azure byok` command to facilitate both the import of the key encryption key in Cosmian KMS,
+The KMS CLI provides an `azure byok` command to facilitate both the import of the key encryption key in Eviden KMS,
 and the export of the wrapped keys in the `.byok` format for easy import in Azure Key Vault.
 
 ```shell
@@ -102,9 +102,9 @@ The PublicKey in file KEK-BYOK.public.pem was imported with id: BYOK_KEK
 ```
 
 Please note the presence of the `azure` and `kid:` tags on the key.
-These identify the key as an Azure Key Encryption Key (KEK) in the Cosmian KMS.
+These identify the key as an Azure Key Encryption Key (KEK) in the Eviden KMS.
 
-## Export the wrapped keys from the Cosmian KMS
+## Export the wrapped keys from the Eviden KMS
 
 The KMS CLI `azure byok export` command will generate a `.byok` file
 containing the wrapped private key, which can be directly imported into Azure Key Vault.

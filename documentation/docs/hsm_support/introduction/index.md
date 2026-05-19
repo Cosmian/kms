@@ -1,10 +1,10 @@
 # HSM Support
 
-The Cosmian KMS can be configured to use HSMs to store and manage keys and create KMS keys
+The Eviden KMS can be configured to use HSMs to store and manage keys and create KMS keys
 wrapped by the HSM keys.
 This provides the best of both worlds: the security of an HSM at rest and the scalability of a KMS at runtime.
 
-Cosmian KMS natively integrates with
+Eviden KMS natively integrates with
 the [Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/),
 the [Utimaco general purpose](https://utimaco.com/solutions/applications/general-purpose-hardware-security-modules),
 the [Smartcard HSM](https://www.smartcard-hsm.com/features.html),

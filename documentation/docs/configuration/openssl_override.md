@@ -1,6 +1,6 @@
 # Custom OpenSSL Build
 
-The Cosmian KMS **dynamic** package links against OpenSSL at runtime.
+The Eviden KMS **dynamic** package links against OpenSSL at runtime.
 You can redirect the service to a custom OpenSSL build — for example, a
 vendor-supplied or hardware-accelerated variant — without touching any
 Cosmian-owned files, by overriding the systemd service environment.

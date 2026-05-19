@@ -8,7 +8,7 @@ The SignatureVerify operation validates a digital signature against provided dat
 
 #### Implementation
 
-The Cosmian KMS server supports signing with RSA and EC private keys. The signature algorithms supported include:
+The Eviden KMS server supports signing with RSA and EC private keys. The signature algorithms supported include:
 
 - RSA-PKCS#1 v1.5 with SHA-256, SHA-384, SHA-512
 - RSA-PSS with SHA-256, SHA-384, SHA-512

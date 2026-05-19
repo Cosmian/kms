@@ -1,4 +1,4 @@
-Cosmian KMS natively integrates with the [Trustway Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
+Eviden KMS natively integrates with the [Trustway Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
 
 ### Proteccio library setup
 

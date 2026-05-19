@@ -36,7 +36,7 @@ graph TD
     okvclient -- OKV endpoint --> OKV
     subgraph OKV[Oracle Key Vault]
         subgraph hsm_client[Cosmian HSM client]
-            kms_client[Cosmian KMS client]
+            kms_client[Eviden KMS client]
             pkcs11_lib[libcosmian_pkcs11.so]
         end
         subgraph wallet[Wallet protected by HSM]
@@ -44,7 +44,7 @@ graph TD
         end
         tde --> hsm_client
     end
-    kms_client -- REST API --> KMS[Cosmian KMS Server]
+    kms_client -- REST API --> KMS[Eviden KMS Server]
     KMS --> HSM
     subgraph HSM[HSM]
         kek[Wallet Encryption Key]
@@ -103,7 +103,7 @@ For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](
 
 ## Mode 2: Direct HSM Integration
 
-For simplified deployments or environments where Oracle Key Vault is not available, Oracle Database can communicate directly with HSM via PKCS#11. In this mode, the Cosmian PKCS#11 library (`libcosmian_pkcs11.so`) provides direct access to the Cosmian KMS server, which manages the TDE master keys in the HSM.
+For simplified deployments or environments where Oracle Key Vault is not available, Oracle Database can communicate directly with HSM via PKCS#11. In this mode, the Cosmian PKCS#11 library (`libcosmian_pkcs11.so`) provides direct access to the Eviden KMS server, which manages the TDE master keys in the HSM.
 
 This approach eliminates Oracle Key Vault from the architecture, reducing complexity while maintaining the security benefits of HSM-protected keys.
 
@@ -122,7 +122,7 @@ graph TD
         libcosmian_pkcs11.so]
     end
     tde_engine -- PKCS#11 --> pkcs11
-    pkcs11 -- REST API --> KMS[Cosmian KMS Server]
+    pkcs11 -- REST API --> KMS[Eviden KMS Server]
     KMS --> HSM
     subgraph HSM[HSM]
         master_key[TDE Master Key]
@@ -353,10 +353,10 @@ The steps below apply the required workarounds.
 #### Architecture: libcosmian_pkcs11.so as a proxy
 
 `libcosmian_pkcs11.so` is **not** an HSM driver. It is a thin **proxy** between Oracle Database
-and the Cosmian KMS server:
+and the Eviden KMS server:
 
 ```text
-Oracle TDE Engine  →  libcosmian_pkcs11.so  →  (HTTP/HTTPS)  →  Cosmian KMS Server  →  HSM
+Oracle TDE Engine  →  libcosmian_pkcs11.so  →  (HTTP/HTTPS)  →  Eviden KMS Server  →  HSM
                        (PKCS#11 C API)          (REST API via                         (slot + PIN
                                                  ckms.toml)                            managed here)
 ```
@@ -527,7 +527,7 @@ ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY hsm_identity_pass
 
 ### Per-PDB Isolated Keystores (Multitenant CDB)
 
-In a multitenant Container Database (CDB), each Pluggable Database (PDB) can hold its own TDE master key. All PDB master keys are ultimately protected by the same Cosmian KMS through the shared PKCS#11 library, while Oracle enforces key isolation at the PDB boundary.
+In a multitenant Container Database (CDB), each Pluggable Database (PDB) can hold its own TDE master key. All PDB master keys are ultimately protected by the same Eviden KMS through the shared PKCS#11 library, while Oracle enforces key isolation at the PDB boundary.
 
 Activate per-PDB isolated keystores:
 
@@ -546,7 +546,7 @@ ADMINISTER KEY MANAGEMENT SET KEY IDENTIFIED BY hsm_identity_pass
     WITH BACKUP CONTAINER = CURRENT;
 ```
 
-Each PDB master key is stored in the Cosmian KMS under a unique label prefixed with `ORACLE.SECURITY.TDE.HSM.MASTERKEY.`, ensuring tenant isolation within the same KMS server. No additional KMS configuration is required to support multiple PDBs.
+Each PDB master key is stored in the Eviden KMS under a unique label prefixed with `ORACLE.SECURITY.TDE.HSM.MASTERKEY.`, ensuring tenant isolation within the same KMS server. No additional KMS configuration is required to support multiple PDBs.
 
 ### Key Rotation Across Wallets
 
@@ -706,7 +706,7 @@ propagated correctly.
 ### Verifying the library loads correctly
 
 Use the `cosmian_pkcs11_verify` diagnostic binary (shipped alongside `ckms` and
-`libcosmian_pkcs11.so` in the Cosmian KMS CLI package) to confirm that the library is loadable,
+`libcosmian_pkcs11.so` in the Eviden KMS CLI package) to confirm that the library is loadable,
 `ckms.toml` is found, and the KMS server is reachable.
 
 **Modes 0 and 1** (no auth or static token/TLS cert — the default):
@@ -782,7 +782,7 @@ If `--token` is omitted with mode 2, object enumeration fails with `CKR_USER_NOT
 
 ## Authentication from Oracle to KMS
 
-The Cosmian PKCS#11 library (`libcosmian_pkcs11.so` on Linux, `cosmian_pkcs11.dll` on Windows) communicates with the Cosmian KMS server over HTTP or HTTPS. Authentication is configured through the `ckms.toml` file that the library reads at startup.
+The Cosmian PKCS#11 library (`libcosmian_pkcs11.so` on Linux, `cosmian_pkcs11.dll` on Windows) communicates with the Eviden KMS server over HTTP or HTTPS. Authentication is configured through the `ckms.toml` file that the library reads at startup.
 
 ### Configuration File Discovery
 

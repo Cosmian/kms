@@ -1,6 +1,6 @@
 # Snowflake Native App for Large-Scale Data Encryption
 
-Cosmian offers a Snowflake Native App that seamlessly integrates with the Cosmian KMS to provide robust encryption and
+Cosmian offers a Snowflake Native App that seamlessly integrates with the Eviden KMS to provide robust encryption and
 decryption capabilities directly within your Snowflake environment. This solution builds upon
 the [Python UDF library](../../storage/user_defined_function_for_pyspark_databricks_in_python/index.md) to deliver enterprise-grade cryptographic operations at scale.
 

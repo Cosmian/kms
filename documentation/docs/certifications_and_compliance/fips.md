@@ -4,7 +4,7 @@ The Federal Information Processing Standard (FIPS) Publication 140-3, Security R
 Cryptographic Modules, is a US government standard that specifies the security requirements for
 cryptographic modules protecting sensitive information.
 
-When compiled in FIPS mode, the Cosmian KMS uses only cryptographic primitives that are compliant
+When compiled in FIPS mode, the Eviden KMS uses only cryptographic primitives that are compliant
 with the standards of the National Institute of Standards and Technology (NIST) and uses
 implementations of an NIST FIPS 140-3 compliant cryptographic module: the OpenSSL FIPS provider.
 
@@ -15,11 +15,11 @@ The OpenSSL FIPS provider is certified under
 - [#4776](https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/4746)
   when used on Red Hat Enterprise Linux 9 (RHEL 9)
 
-Cosmian
+Eviden
 produces [pre-built Debian based Linux packages](https://package.cosmian.com/kms/5.22.0/deb/)
 and docker containers of the KMS (on gcr.io).
 
-By default, the Cosmian KMS is built with FIPS compliance enabled.
+By default, the Eviden KMS is built with FIPS compliance enabled.
 Alternatively, you can enable all cryptographic mechanisms by building from source, using the `--features non-fips` flag:
 
 ```shell

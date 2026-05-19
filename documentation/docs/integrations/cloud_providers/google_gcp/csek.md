@@ -4,7 +4,7 @@ using [RSA wrapping keys](https://cloud.google.com/compute/docs/disks/customer-s
 
 [TOC]
 
-## Generate a symmetric key in Cosmian KMS
+## Generate a symmetric key in Eviden KMS
 
 This is the symmetric key that will be used as the CSEK.
 
@@ -23,7 +23,7 @@ Download the certificate
 curl  https://cloud-certs.storage.googleapis.com/google-cloud-csek-ingress.pem > test_data/cse/google-cloud-csek-ingress.pem
 ```
 
-## Import the certificates in Cosmian KMS
+## Import the certificates in Eviden KMS
 
 Name it `google_csek` on import.
 

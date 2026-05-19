@@ -1,7 +1,7 @@
 # Zeroization
 
 Secret keys and plaintexts are considered highly sensitive information and to securely erase from
-memory or storage Cosmian KMS implements data `zeroization`.
+memory or storage Eviden KMS implements data `zeroization`.
 The term `zeroization` originates from the process of setting all relevant bits to zero, effectively
 rendering the data unreadable and unrecoverable.
 This practice is essential to prevent unwanted memory residue of critical data,
@@ -23,7 +23,7 @@ Regarding OpenSSL `PKey` types, they are being zeroized by OpenSSL itself, which
 
 ## Regulatory Compliance
 
-Cosmian KMS thus adheres to relevant industry standards and regulatory requirements concerning data
+Eviden KMS thus adheres to relevant industry standards and regulatory requirements concerning data
 security and privacy such as the
 [Rust guidelines from ANSSI](https://cyber.gouv.fr/publications/regles-de-programmation-pour-le-developpement-dapplications-securisees-en-rust).
 The use of zeroization aligns with this standard, demonstrating our commitment to safeguarding

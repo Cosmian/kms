@@ -16,7 +16,7 @@ with personal data.
 
 HSM keys are systematically removed when calling the destroy operation.
 
-Unless, they are removed, destroyed keys are set in the state `destroyed` on the Cosmian KMS Server. They can only be
+Unless, they are removed, destroyed keys are set in the state `destroyed` on the Eviden KMS Server. They can only be
 retrieved using the`Export` operation. The `Get` operation will return an error. No key material will be returned by the
 `Export` operation, only metadata.
 

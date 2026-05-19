@@ -1,6 +1,6 @@
 
-The Cosmian KMS strives to be compatible with the PyKMIP client library, which is widely used for KMIP protocol interactions.
-This document provides a comprehensive guide to testing and validating PyKMIP compatibility with the Cosmian KMS server.
+The Eviden KMS strives to be compatible with the PyKMIP client library, which is widely used for KMIP protocol interactions.
+This document provides a comprehensive guide to testing and validating PyKMIP compatibility with the Eviden KMS server.
 
 [TOC]
 
@@ -18,7 +18,7 @@ The PyKMIP compatibility tests serve to:
 
 - Python 3.x installed on your system
 - PyKMIP library (will be installed by setup script)
-- Cosmian KMS server running and accessible with KMIP socket server enabled
+- Eviden KMS server running and accessible with KMIP socket server enabled
 - All scripts must be executed from the **project root directory** (not from within the `scripts/` directory)
 - Virtual environment (.venv) set up and activated for Python dependencies
 
@@ -86,7 +86,7 @@ The current test suite supports the following KMIP operations:
 ### Experimental/Unsupported Operations
 
 - **certify** - Certificate signing (implemented via separate module `pykmip_certify.py`, uses operations not yet
-  supported by Cosmian KMS)
+  supported by Eviden KMS)
 
 Note: Some operations may fail due to server limitations or KMIP 1.x compatibility constraints. The test runner handles
 these gracefully and provides detailed error reporting.
@@ -445,4 +445,4 @@ python scripts/pykmip_client.py \
 - [TLS Configuration](../configuration/tls.md)
 - [Authentication](../configuration/authentication.md)
 - [PyKMIP Official Documentation](https://pykmip.readthedocs.io/)
-- [Cosmian KMS Server Documentation](../index.md)
+- [Eviden KMS Server Documentation](../index.md)

@@ -1,6 +1,6 @@
 # Using PKCE Authentication with KMS
 
-This document covers PKCE (Proof Key for Code Exchange) authentication with the Cosmian KMS, for two distinct contexts:
+This document covers PKCE (Proof Key for Code Exchange) authentication with the Eviden KMS, for two distinct contexts:
 
 1. **CLI / API clients** — the `ckms` command-line tool and any direct API client uses PKCE to authenticate *against* the KMS server.  Client secrets are optional in this flow.
 2. **KMS Web UI** — the browser-based UI uses PKCE to log users in *through* an OIDC Identity Provider (IDP).  PKCE is **mandatory** for the web UI flow and cannot be disabled.

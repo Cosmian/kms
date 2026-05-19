@@ -1,6 +1,6 @@
 # KMIP Support
 
-The Cosmian KMS server implements both KMIP 1.x and 2.x interfaces. KMIP (Key Management Interoperability Protocol) is
+The Eviden KMS server implements both KMIP 1.x and 2.x interfaces. KMIP (Key Management Interoperability Protocol) is
 an [OASIS](https://www.oasis-open.org/) standard designed to standardize communication between key management systems
 and encryption clients.
 
@@ -21,7 +21,7 @@ and encryption clients.
 ## Implementation Details
 
 Internally, all KMIP messages are translated to KMIP 2.1 specifications and converted back to KMIP 1.x when necessary.
-The Cosmian KMS server implements a targeted subset of
+The Eviden KMS server implements a targeted subset of
 the [KMIP 2.1 protocol](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html).
 
 ## Purpose of KMIP
@@ -35,7 +35,7 @@ The OASIS KMIP standard aims to:
 
 ## Scope of Implementation
 
-KMIP is an extensive specification. While the Cosmian KMS server does not implement the entire standard, it supports the
+KMIP is an extensive specification. While the Eviden KMS server does not implement the entire standard, it supports the
 features necessary for advanced cryptographic use cases. The implementation continues to evolve to meet customer
 requirements, though like most KMS servers, it doesn't support all possible cryptographic objects and operations.
 

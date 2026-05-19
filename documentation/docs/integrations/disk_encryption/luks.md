@@ -1,10 +1,10 @@
 # LUKS
 
-The Cosmian KMS can provision secrets to open [Linux LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) encrypted partitions. The secret never leaves the KMS and can be used to unlock the partition at boot time.
+The Eviden KMS can provision secrets to open [Linux LUKS](https://en.wikipedia.org/wiki/Linux_Unified_Key_Setup) encrypted partitions. The secret never leaves the KMS and can be used to unlock the partition at boot time.
 
-## Installing p11-kit and the Cosmian KMS PKCS#11 module
+## Installing p11-kit and the Eviden KMS PKCS#11 module
 
-The Cosmian KMS provides a PKCS#11 module that can be used to access the KMS from applications that support PKCS#11, using the `p11-kit` framework.
+The Eviden KMS provides a PKCS#11 module that can be used to access the KMS from applications that support PKCS#11, using the `p11-kit` framework.
 
 With LUKS, the system provided `systemd-cryptenroll` command must have support for `p11-kit` which you can check by running `systemd-cryptenroll --help` and checking for the `+P11KIT` flag.
 
@@ -64,7 +64,7 @@ sudo cp libcosmian_pkcs11.so /usr/local/lib/
 
 ```bash
 sudo tee /etc/pkcs11/modules/cosmian_pkcs11.module <<EOF
-# Cosmian KMS PKCS#11 module
+# Eviden KMS PKCS#11 module
 module: /usr/local/lib/libcosmian_pkcs11.so
 EOF
 ```
@@ -76,7 +76,7 @@ EOF
 
 ...
 cosmian_pkcs11: /usr/local/lib/libcosmian_pkcs11.so
- library-description: Cosmian KMS PKCS#11 provider
+ library-description: Eviden KMS PKCS#11 provider
  library-manufacturer: Cosmian
  library-version: x.y
  token: Cosmian-KMS
@@ -118,7 +118,7 @@ The `COSMIAN_PKCS11_LOGGING_LEVEL` environment variable controls logging of the 
 The logging level can be set to `trace`, `debug`, `info`, `warn`, or `error`, and defaults to `info`
 when not set.
 
-## Creating an RSA key pair using openssl and importing it into the Cosmian KMS
+## Creating an RSA key pair using openssl and importing it into the Eviden KMS
 
 To generate a self-signed certificate with RSA 2048bit key and in PKCS12 format, you can use the
 OpenSSL command-line tool. Here are the steps:
@@ -141,7 +141,7 @@ openssl req -new -x509 -key private_key.pem -out cert.pem -days 365
 openssl pkcs12 -export -out certificate.p12 -inkey private_key.pem -in cert.pem
 ```
 
-### 4. Import the PKCS12 file into the Cosmian KMS using a `disk-encryption` tag
+### 4. Import the PKCS12 file into the Eviden KMS using a `disk-encryption` tag
 
 ```bash
 ckms certificates import -f pkcs12 -t disk-encryption certificate.p12 disk-encryption
@@ -216,13 +216,13 @@ sudo cryptsetup luksFormat --type luks2 --key-slot 0 /path/to/file
 Make sure to remember the passphrase, as it will be needed to unlock the partition
 during `cryptenroll` or when rotating the RSA keys.
 
-## Enrolling the LUKS partition with the Cosmian KMS
+## Enrolling the LUKS partition with the Eviden KMS
 
 The RSA key pair is searched on the KMS using a tag controlled by
 the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment variable.
 When not set, the default tag searched is `disk-encryption`.
 
-### 1. Enroll the partition with the Cosmian KMS
+### 1. Enroll the partition with the Eviden KMS
 
 ```bash
 # this is equivalent to
@@ -362,7 +362,7 @@ Check `dmesg`, and `/var/log/cosmian-pkcs11.log` for any errors.
 ## Rotating the keys
 
 To rotate the keys used to encrypt the LUKS partition, you can generate a new key pair and import it
-into the Cosmian KMS.
+into the Eviden KMS.
 
 Then, you can re-enroll the LUKS partition with the new key. You MUST know the passphrase to
 perform this operation.
@@ -375,7 +375,7 @@ sudo systemd-cryptenroll /dev/vda4  --wipe-slot=pkcs11
 Wiped slot 1.
 ```
 
-### 2. Revoke the old key from the Cosmian KMS
+### 2. Revoke the old key from the Eviden KMS
 
 ```bash
 ckms certificates revoke -k 6fc631...  "revoked"
@@ -383,7 +383,7 @@ ckms certificates revoke -k 6fc631...  "revoked"
 Successfully revoked: 6fc631....
 ```
 
-### 3. Follow the steps to generate a new key pair and import it into the Cosmian KMS
+### 3. Follow the steps to generate a new key pair and import it into the Eviden KMS
 
 ### 4. Enroll the LUKS partition with the new key; you will be prompted for the passphrase
 

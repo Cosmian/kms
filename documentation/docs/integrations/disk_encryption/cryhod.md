@@ -1,6 +1,6 @@
 # Prim'X CRYHOD
 
-The Cosmian KMS can be used to unlock Prim'x CRYHOD partitions
+The Eviden KMS can be used to unlock Prim'x CRYHOD partitions
 
 ## Configuring Prim'X CRYHOD
 

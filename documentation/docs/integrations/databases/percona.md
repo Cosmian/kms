@@ -1,6 +1,6 @@
-# Using pg_tde with Cosmian KMS and PostgreSQL 17 (Percona)
+# Using pg_tde with Eviden KMS and PostgreSQL 17 (Percona)
 
-This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` extension to use Cosmian KMS for transparent data encryption (TDE).
+This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` extension to use Eviden KMS for transparent data encryption (TDE).
 
 [TOC]
 
@@ -12,7 +12,7 @@ Before starting, ensure you have:
 
 - PostgreSQL 17 [Percona Server for PostgreSQL 17.x or later][1]
 - `pg_tde` extension installed
-- Access to a running Cosmian KMS server
+- Access to a running Eviden KMS server
 - Appropriate SSL certificates for KMIP communication [TLS 1.2+][2]
 
 ---
@@ -48,7 +48,7 @@ flowchart TB
 ```mermaid
 flowchart TB
     pg["PostgreSQL + pg_tde<br/>(KMIP Client)"]
-    kms["Cosmian KMS 5.6+<br/>(KMIP Server)<br/><br/>Supported operations:<br/>✓ Create · Get · Destroy · Register<br/>✓ Locate · Activate · Revoke<br/><br/>Protocol: KMIP 1.x and 2.x<br/>Profile: Baseline Server"]
+    kms["Eviden KMS 5.6+<br/>(KMIP Server)<br/><br/>Supported operations:<br/>✓ Create · Get · Destroy · Register<br/>✓ Locate · Activate · Revoke<br/><br/>Protocol: KMIP 1.x and 2.x<br/>Profile: Baseline Server"]
     pg -->|"KMIP over TLS 1.2/1.3<br/>Port 5696 (binary)<br/>Required: client_cert.pem, client_key.pem, ca_cert.pem"| kms
 ```
 
@@ -82,7 +82,7 @@ This will automatically create event triggers needed for pg_tde operation.
 
 ### 3. Configure the KMS Key Provider
 
-Connect to your PostgreSQL database and add the Cosmian KMS as a key provider using the KMIP protocol:[1]
+Connect to your PostgreSQL database and add the Eviden KMS as a key provider using the KMIP protocol:[1]
 
 ```sql
 SELECT pg_tde_add_global_key_provider_kmip(
@@ -120,7 +120,7 @@ The first parameter (`key_01`) is the key identifier, and the second parameter (
 
 **What happens in this step:**
 
-- `pg_tde_create_key_using_global_key_provider()` creates a Principal Key managed by Cosmian KMS
+- `pg_tde_create_key_using_global_key_provider()` creates a Principal Key managed by Eviden KMS
 - `pg_tde_set_server_key_using_global_key_provider()` sets the server-level default key
 - `pg_tde_set_default_key_using_global_key_provider()` sets the database-level default key
 
@@ -262,7 +262,7 @@ pg_tde uses a **two-level key hierarchy** for data encryption:[3]
 
 ```mermaid
 flowchart TB
-    principal["PRINCIPAL KEY (Master Key)<br/><br/>Stored externally in Cosmian KMS via KMIP<br/>ONE per database<br/>Encrypts Internal Keys (AES-128-GCM)<br/>Accessible only via TLS KMIP connection<br/><br/>Created with pg_tde_create_key_using_global_key_provider()"]
+    principal["PRINCIPAL KEY (Master Key)<br/><br/>Stored externally in Eviden KMS via KMIP<br/>ONE per database<br/>Encrypts Internal Keys (AES-128-GCM)<br/>Accessible only via TLS KMIP connection<br/><br/>Created with pg_tde_create_key_using_global_key_provider()"]
     internal["INTERNAL KEYS (Data Encryption Keys / DEK)<br/><br/>Stored locally in $PGDATA/pg_tde/<br/>Encrypted by Principal Key<br/>ONE unique key per relation (OID)<br/><br/>Tables: AES-128-CBC · WAL: AES-128-CTR · Keys: AES-128-GCM"]
     data["ENCRYPTED DATA (User Data)<br/><br/>Table pages stored encrypted on disk<br/>Index pages stored encrypted<br/>WAL data encrypted (if pg_tde.wal_encrypt = on)"]
     principal -->|"Encrypts via KMIP wrap (AES-128-GCM)"| internal
@@ -460,7 +460,7 @@ SELECT * FROM pg_tde_list_all_global_key_providers();
 
 - Verify `shared_preload_libraries` contains `pg_tde`
 - Restart PostgreSQL after configuration changes
-- Ensure Cosmian KMS is running: `telnet <kms-host> 5696`
+- Ensure Eviden KMS is running: `telnet <kms-host> 5696`
 - Check firewall/network between PostgreSQL and KMS
 
 #### 2. TLS Certificate Verification Failed
@@ -520,7 +520,7 @@ SELECT * FROM pg_tde_list_all_global_key_providers();
 
 **Solutions:**
 
-- Verify the key exists on Cosmian KMS
+- Verify the key exists on Eviden KMS
 - Verify the key name matches exactly (case-sensitive)
 - Check KMS user/role has permissions to access the key
 - Verify database OID if using database-level keys: `SELECT datoid FROM pg_database WHERE datname = current_database();`
@@ -618,7 +618,7 @@ flowchart TB
 #### Principal Key Rotation
 
 ```sql
--- 1. Create new key on Cosmian KMS
+-- 1. Create new key on Eviden KMS
 SELECT pg_tde_create_key_using_global_key_provider(
   'key_02', 'kms_provider'
 );
@@ -633,7 +633,7 @@ SELECT pg_tde_set_default_key_using_global_key_provider(
 SELECT pg_tde_default_key_info();
 
 -- 4. Old key can be archived/destroyed after verification
--- (Cosmian KMS: key revoke/destroy operations)
+-- (Eviden KMS: key revoke/destroy operations)
 ```
 
 **Notes:**
@@ -714,7 +714,7 @@ flowchart TB
 #### Standby Configuration with Patroni
 
 ```yaml
-# patroni.yml for pg_tde with Cosmian KMS
+# patroni.yml for pg_tde with Eviden KMS
 postgresql:
   # Use pg_tde_rewind, NOT standard pg_rewind if WAL encrypted
   pg_rewind: pg_tde_rewind
@@ -740,7 +740,7 @@ postgresql:
 
 **Important:** If using encrypted WAL, `pg_rewind` is incompatible. Use `pg_tde_rewind` instead.[5]
 
-### Cosmian KMS Compatibility
+### Eviden KMS Compatibility
 
 **Supported features with pg_tde:**[2]
 
@@ -773,7 +773,7 @@ postgresql:
    ```
 
 2. **Plan key rotation:**
-   - Principal keys: Via Cosmian KMS management
+   - Principal keys: Via Eviden KMS management
    - Internal keys: Via table recreation (VACUUM FULL or ALTER TABLE SET ACCESS METHOD)
 
 3. **Backup strategy:**
@@ -788,7 +788,7 @@ postgresql:
 ### References
 
 - [Percona pg_tde Documentation](https://percona.github.io/pg_tde/main/)
-- [Cosmian KMS KMIP Support](https://docs.cosmian.com/key_management_system/kmip/)
+- [Eviden KMS KMIP Support](https://docs.cosmian.com/key_management_system/kmip/)
 - [Percona pg_tde Architecture](https://docs.percona.com/pg-tde/architecture/architecture.html)
 - [Percona WAL Encryption Blog (2025-09-01)](https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/)
 - [Percona pg_tde Limitations](https://docs.percona.com/pg-tde/index/tde-limitations.html#currently-unsupported-wal-tools)
@@ -803,5 +803,5 @@ postgresql:
 ## Official Documentation Links
 
 - [Percona pg_tde Official Docs](https://docs.percona.com/pg-tde/)
-- [Cosmian KMS Percona Integration](https://docs.cosmian.com/key_management_system/percona/)
+- [Eviden KMS Percona Integration](https://docs.cosmian.com/key_management_system/percona/)
 - [Percona Server for PostgreSQL 17](https://www.percona.com/software/postgresql/percona-server-for-postgresql)

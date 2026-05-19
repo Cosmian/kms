@@ -19,7 +19,7 @@ Google has extensive documentation on how to enable CSE in Google Workspace. The
         - exposing a valid TLS certificate
         - and serving the [`.well-known`](../configuring-the-well-known-file-and-server.md) file used by the Identity Provider
     - The [KMS CLI](../../../../../kms_clients/index.md)
-        - to generate the [Google CSE key](#creating-google_cse-key) in the Cosmian KMS with correct access rights
+        - to generate the [Google CSE key](#creating-google_cse-key) in the Eviden KMS with correct access rights
         - to generate the [Gmail users keys](../configuring_gmail_cse.md#create-user-key-pair)
 
 ## Choosing the Certificate Authority
@@ -83,7 +83,7 @@ The KMS must be behind a valid TLS certificate when started.
 Assuming it is running at `https://cse.example.com` (kms-public-url parameter from server configuration), you should add the External Key Service with KACLS URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
 
 !!! important
-    To enable Client Side Encryption on the Cosmian KMS server, it must be started with the `--kms-public-url` option, and the `--google-cse-enable` option.
+    To enable Client Side Encryption on the Eviden KMS server, it must be started with the `--kms-public-url` option, and the `--google-cse-enable` option.
     This URL option is at which the KMS will serve the Key Access Control Lists (KACLs) for the Google CSE service.
     The KACLs are used by the Google CSE service to determine which users have access to which keys.
     The KACLs are served by the KMS at the URL `https://cse.example.com/google_cse` in the example above.
@@ -134,11 +134,11 @@ Then test the connection; it should show:
 
 Finalize the configuration. The Client Side Encryption page should now show the service to be active and you will now have to decide whether to assign this service to all users or to a subset of users.
 
-![Cosmian KMS active](./images/cosmian_kms_active.png)
+![Eviden KMS active](./images/cosmian_kms_active.png)
 
 ## Creating google_cse key
 
-Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
+Once your CSE Eviden KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
 This key MUST be created under the `google_cse` ID.
 
 Using the [KMS CLI](../../../../../kms_clients/index.md), ensure that it is properly configured and that [authentication is handled correctly](../../../../../kms_clients/authentication.md#oauth2oidc-authentication).
@@ -171,9 +171,9 @@ As an administrator, you can allow external users to access your encrypted conte
 
 For more information on this configuration, refer to [Google documentation](https://support.google.com/a/answer/14757842?hl=en-0).
 
-Cosmian KMS supports this feature, and to enable it:
+Eviden KMS supports this feature, and to enable it:
 
-- Add the identity provider's information in the server-side [Cosmian KMS configuration](../../../../configuration/authentication.md)
+- Add the identity provider's information in the server-side [Eviden KMS configuration](../../../../configuration/authentication.md)
 - Ensure that external users can access the Google CSE symmetric key
 
 ## User experience

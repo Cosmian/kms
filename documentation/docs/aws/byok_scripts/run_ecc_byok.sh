@@ -20,7 +20,7 @@ if [ $# -lt 1 ]; then
     usage
 fi
 
-# Convert size to lowercase (for Cosmian CLI and checks)
+# Convert size to lowercase (for Eviden CLI and checks)
 KEY_SIZE=$(echo "$1" | tr '[:upper:]' '[:lower:]')
 
 if [ "$KEY_SIZE" != "p256" ] && [ "$KEY_SIZE" != "p384" ] && [ "$KEY_SIZE" != "p521" ]; then
@@ -32,7 +32,7 @@ fi
 AWS_KEY_SPEC_SUFFIX=$(echo "$KEY_SIZE" | tr '[:lower:]' '[:upper:]')
 
 # Configuration
-AWS_KEY_DESC="${2:-Cosmian KMS external ECC-${AWS_KEY_SPEC_SUFFIX} key material}"
+AWS_KEY_DESC="${2:-Eviden KMS external ECC-${AWS_KEY_SPEC_SUFFIX} key material}"
 COSMIAN_KMS_CLI="${COSMIAN_KMS_CLI:-cosmian}"
 WRAPPING_ALGO="RSAES_OAEP_SHA_256"
 WRAPPING_KEY_SPEC="RSA_4096"

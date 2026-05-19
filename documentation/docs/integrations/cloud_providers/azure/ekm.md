@@ -1,9 +1,9 @@
 
-Cosmian KMS implements the Azure External Key Manager (EKM) Proxy API, enabling it to serve as an external key management service for an Azure Managed HSM.
+Eviden KMS implements the Azure External Key Manager (EKM) Proxy API, enabling it to serve as an external key management service for an Azure Managed HSM.
 
 This integration allows organizations to maintain complete physical control over their encryption keys outside of Azure infrastructure while seamlessly integrating with Azure services that support **Customer Managed Keys** (CMK).
 
-The Cosmian KMS implementation follows and implements the Microsoft EKM Proxy API Specification for v0.1-preview.
+The Eviden KMS implementation follows and implements the Microsoft EKM Proxy API Specification for v0.1-preview.
 
 [TOC]
 
@@ -24,7 +24,7 @@ flowchart LR
 
   subgraph DC["Customer infrastructure"]
     direction TB
-    P["Cosmian KMS"]
+    P["Eviden KMS"]
   end
 
   B <->|"Proxy API<br>(mTLS)"| P
@@ -40,7 +40,7 @@ The customer's Azure services (configured with Customer Managed Keys) communicat
 
 With this integration, your protected secrets remain under your complete control while maintaining compatibility with Azure's managed services.
 
-The following diagram illustrates a possible use case where Cosmian KMS acts as the EKM Proxy :
+The following diagram illustrates a possible use case where Eviden KMS acts as the EKM Proxy :
 
 ![Sequence diagram: Using an Azure Service with keys saved on customer's infrastructure](sequence.svg)
 
@@ -50,7 +50,7 @@ Mermaid chart of sequence diagram
 sequenceDiagram
     participant Azure as Azure Service -<br/>(must support CMK)
     participant MHSM as Azure Managed HSM
-    participant KMS as Cosmian KMS
+    participant KMS as Eviden KMS
 
     Note over Azure: Has encrypted data<br/>protected by DEK
     Note over Azure: DEK needs to be<br/>wrapped/unwrapped
@@ -70,7 +70,7 @@ sequenceDiagram
 
 ### URL format
 
-All requests and responses for Azure EKM APIs are sent as JSON objects over HTTPS. Each request includes context information to associate Azure Managed HSM logs and audits with Cosmian KMS logs.
+All requests and responses for Azure EKM APIs are sent as JSON objects over HTTPS. Each request includes context information to associate Azure Managed HSM logs and audits with Eviden KMS logs.
 
 The URI format for EKM Proxy API calls is:
 
@@ -116,19 +116,19 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 
 You must have an Azure Managed HSM Pool already created and activated in your Azure subscription. Refer to the [Azure Managed HSM documentation](https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/) for setup instructions.
 
-Once the configuration is done, you will need the root CA certificate that the Azure Managed HSM uses for client authentication. This certificate will be configured in Cosmian KMS to validate incoming mTLS connections.
+Once the configuration is done, you will need the root CA certificate that the Azure Managed HSM uses for client authentication. This certificate will be configured in Eviden KMS to validate incoming mTLS connections.
 
 Let's save the root CA as **`mhsm-root-ca.pem`** - We will need it in the next step.
 
-### Cosmian KMS setup
+### Eviden KMS setup
 
-Follow the [Cosmian KMS installation guide](../../../installation/installation_getting_started.md) to install the KMS server on your infrastructure. The KMS server typically uses the configuration file located at `/etc/cosmian/kms.toml` when installed manually with default parameters.
+Follow the [Eviden KMS installation guide](../../../installation/installation_getting_started.md) to install the KMS server on your infrastructure. The KMS server typically uses the configuration file located at `/etc/cosmian/kms.toml` when installed manually with default parameters.
 
 Alternatively, you can deploy a pre-configured Cosmian Confidential VM [like explained in this guide.](../../../installation/marketplace_guide.md). For confidential VMs, the KMS configuration file is located in the encrypted LUKS container at `/var/lib/cosmian_vm/data/app.conf`.
 
 Environment variables can also be used for all the configurations below.
 
-**The following guide will consider running Cosmian KMS on confidential VM in non-FIPS mode.**
+**The following guide will consider running Eviden KMS on confidential VM in non-FIPS mode.**
 
 #### mTLS Configuration
 
@@ -171,7 +171,7 @@ azure_ekm_path_prefix = "cosmian0"
 azure_ekm_proxy_vendor = "Cosmian"
 azure_ekm_proxy_name = "EKM Proxy Service v0.1-preview"
 azure_ekm_ekm_vendor = "Cosmian"
-azure_ekm_ekm_product = "Cosmian KMS"
+azure_ekm_ekm_product = "Eviden KMS"
 
 # WARNING: Only set to true for testing! Never in production.
 azure_ekm_disable_client_auth = false
@@ -186,7 +186,7 @@ azure_ekm_disable_client_auth = false
 | `azure_ekm_proxy_vendor` | string | `"Cosmian"` | Proxy vendor name reported in `/info` endpoint. |
 | `azure_ekm_proxy_name` | string | `"EKM Proxy Service"` | Proxy name and version reported in `/info` endpoint. Auto-inserts the KMS package version by default. |
 | `azure_ekm_ekm_vendor` | string | `"Cosmian"` | EKMS vendor name reported in `/info` endpoint.|
-| `azure_ekm_ekm_product` | string | `"Cosmian KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
+| `azure_ekm_ekm_product` | string | `"Eviden KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
 | `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing. |
 
 ## Testing the integration

@@ -1,6 +1,6 @@
-Cosmian KMS integrates with Microsoft SQL Server External key management using a Windows DLL implementing the [SQL Server Extensible Key Management (EKM)](https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/extensible-key-management-ekm?view=sql-server-ver17).
+Eviden KMS integrates with Microsoft SQL Server External key management using a Windows DLL implementing the [SQL Server Extensible Key Management (EKM)](https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/extensible-key-management-ekm?view=sql-server-ver17).
 
-The Windows DLL is a SQL Server EKM provider that forwards key operations to the Cosmian KMS over mutual TLS.  This allows SQL Server features like column-level encryption and Transparent Data Encryption (TDE) to use keys managed by the Cosmian KMS, without exposing key material to the SQL Server host.
+The Windows DLL is a SQL Server EKM provider that forwards key operations to the Eviden KMS over mutual TLS.  This allows SQL Server features like column-level encryption and Transparent Data Encryption (TDE) to use keys managed by the Eviden KMS, without exposing key material to the SQL Server host.
 
 The Windows DLL is available in a separate project on [GitHub](https://github.com/Cosmian/ekm_sql_server); pre-built signed DLLs are available for [download](https://package.cosmian.com).
 
@@ -16,7 +16,7 @@ This document explains how to install and configure the Cosmian EKM SQL Server p
 |-------------|-------|
 | Windows Server 2016+ or Windows 10/11 | x64 |
 | SQL Server 2016+ (any edition) with EKM support | Standard or Enterprise; Express does not support EKM |
-| Cosmian KMS 5.x | Must run on the same machine (or be network-reachable) |
+| Eviden KMS 5.x | Must run on the same machine (or be network-reachable) |
 | Signed `cosmian_ekm_sql_server.dll` | See the [KMS repository](https://github.com/Cosmian/kms) for build instructions |
 | PowerShell 5.1 (elevated) | For the setup scripts |
 | `sqlcmd` on the system `PATH` | Part of SQL Server Tools or installable standalone |
@@ -34,7 +34,7 @@ Ensure the **SQL Server Database Engine** service account is noted
 
 ---
 
-## 2. Start the Cosmian KMS
+## 2. Start the Eviden KMS
 
 The KMS must be running and accessible before SQL Server loads the EKM provider.
 

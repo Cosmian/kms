@@ -1,6 +1,6 @@
 # Configuration Examples
 
-This page provides a comprehensive collection of TOML configuration file examples for the Cosmian KMS server. Each configuration has been validated and tested to ensure it works correctly with the KMS server.
+This page provides a comprehensive collection of TOML configuration file examples for the Eviden KMS server. Each configuration has been validated and tested to ensure it works correctly with the KMS server.
 
 All configuration examples can be used by:
 
