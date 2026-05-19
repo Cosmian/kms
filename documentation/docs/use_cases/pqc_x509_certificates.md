@@ -17,7 +17,7 @@ Additional standards used by the KMS implementation:
 | Standard | Description |
 | -------- | ----------- |
 | [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280) | Internet X.509 Public Key Infrastructure Certificate and CRL Profile |
-| [RFC 9608](https://www.rfc-editor.org/rfc/rfc9608) | `id-pe-noRevAvail` — No Revocation Available extension for offline/self-signed PKI |
+| [RFC 9608](https://www.rfc-editor.org/rfc/rfc9608) | `id-ce-noRevAvail` — No Revocation Available extension for offline/self-signed PKI |
 | [draft-ietf-lamps-pq-composite-sigs](https://datatracker.ietf.org/doc/draft-ietf-lamps-pq-composite-sigs/) | Composite PQC signatures (IETF LAMPS WG, in progress) |
 
 These algorithms are **quantum-resistant**: they remain secure even against adversaries equipped
@@ -66,7 +66,7 @@ with large-scale quantum computers.
 
 ### ML-DSA and SLH-DSA (signing algorithms)
 
-Per RFC 9881 §4 and RFC 9909 §4:
+Per RFC 9881 §5 and RFC 9909 §6:
 
 - The `keyUsage` extension **MUST** be present and **MUST** be critical.
 - It **MUST** include `digitalSignature`.
@@ -276,11 +276,11 @@ via the extension config file to point to an OCSP responder or CA issuer:
 authorityInfoAccess=OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt
 ```
 
-### No Revocation Available (`id-pe-noRevAvail`, RFC 9608)
+### No Revocation Available (`id-ce-noRevAvail`, RFC 9608)
 
 For **self-signed certificates** (no issuer key provided) that do not carry a
 CRL distribution point, the KMS automatically adds the
-`id-pe-noRevAvail` extension (OID 1.3.6.1.5.5.7.1.56, RFC 9608). This signals
+`id-ce-noRevAvail` extension (OID 2.5.29.56, RFC 9608 §2). This signals
 to relying parties that no revocation information is available for this
 certificate, and that they should not reject it for lack of a CRL or OCSP
 response.

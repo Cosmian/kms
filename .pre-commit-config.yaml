@@ -70,6 +70,15 @@ repos:
     hooks:
       - id: shellcheck
 
+  - repo: local
+    hooks:
+      - id: shfmt
+        name: shfmt (shell formatter)
+        entry: shfmt
+        args: [-w, -i, "2", -ci]
+        language: system
+        types: [shell]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

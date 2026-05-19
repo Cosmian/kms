@@ -253,13 +253,17 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
             .zip(certificate.issuer_name().to_der().ok())
             .is_some_and(|(subj, iss)| !subj.is_empty() && subj == iss);
 
-        if (is_root_explicit || is_root_self_signed) && !sorted_chains.contains(certificate) {
+        if is_root_explicit || is_root_self_signed {
             trace_certificate("Root found", certificate);
-            sorted_chains.insert(0, certificate.to_owned());
+            if !sorted_chains.contains(certificate) {
+                sorted_chains.insert(0, certificate.to_owned());
+            }
             indexes_to_remove.push(index);
-        } else if aki.is_empty() && ski.is_empty() && !sorted_chains.contains(certificate) {
+        } else if aki.is_empty() && ski.is_empty() {
             trace_certificate("No AKI nor SKI -> leaf found", certificate);
-            sorted_chains.push(certificate.to_owned());
+            if !sorted_chains.contains(certificate) {
+                sorted_chains.push(certificate.to_owned());
+            }
             indexes_to_remove.push(index);
         }
     }
@@ -603,13 +607,13 @@ async fn get_crl_bytes(
 ///
 /// # Errors
 ///
-/// Returns `true` if the certificate carries the `id-pe-noRevAvail` extension
-/// (OID 1.3.6.1.5.5.7.1.56, RFC 9608), which signals that no revocation
+/// Returns `true` if the certificate carries the `id-ce-noRevAvail` extension
+/// (OID 2.5.29.56, RFC 9608 §2), which signals that no revocation
 /// information is available. When present, CRL fetching is skipped for this cert.
 fn cert_has_no_rev_avail(cert: &X509) -> bool {
-    // OID 1.3.6.1.5.5.7.1.56 — id-pe-noRevAvail (RFC 9608)
-    // Encoded as DER value bytes (without tag/length): 2B 06 01 05 05 07 01 38
-    const NO_REV_AVAIL: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x38];
+    // OID 2.5.29.56 — id-ce-noRevAvail (RFC 9608 §2), { id-ce 56 }
+    // Encoded as DER value bytes (without tag/length): 55 1D 38
+    const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
     let Ok(der) = cert.to_der() else { return false };
     let Ok((_, parsed)) = X509Certificate::from_der(&der) else {
         return false;
@@ -654,11 +658,11 @@ pub(crate) async fn verify_crls(
                 }
             }
         }
-        // RFC 9608 §4: skip CRL checks for certificates that carry id-pe-noRevAvail.
+        // RFC 9608 §4: skip CRL checks for certificates that carry id-ce-noRevAvail.
         // The extension signals that no revocation information is available; a
         // relying party MUST NOT reject the certificate for lack of a CRL/OCSP response.
         if cert_has_no_rev_avail(certificate) {
-            debug!("[{idx}] Certificate carries id-pe-noRevAvail (RFC 9608): skipping CRL check");
+            debug!("[{idx}] Certificate carries id-ce-noRevAvail (RFC 9608): skipping CRL check");
             continue;
         }
 

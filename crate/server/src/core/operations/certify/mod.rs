@@ -1,10 +1,7 @@
 use std::{cmp::min, collections::HashSet, default::Default};
 
 #[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::VENDOR_ATTR_X509_EXTENSION,
-    kmip_types::{CryptographicAlgorithm, VendorAttributeValue},
-};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 #[cfg(not(feature = "non-fips"))]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::CryptographicUsageMask,
@@ -23,13 +20,13 @@ use cosmian_kms_server_database::reexport::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
             KmipOperation,
-            extra::tagging::SYSTEM_TAG_CERTIFICATE,
+            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::SYSTEM_TAG_CERTIFICATE},
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
             kmip_operations::{Certify, CertifyResponse, CreateKeyPair},
             kmip_types::{
                 CertificateRequestType, KeyFormatType, LinkType, LinkedObjectIdentifier,
-                UniqueIdentifier,
+                UniqueIdentifier, VendorAttributeValue,
             },
         },
     },
@@ -611,30 +608,45 @@ async fn issuer_for_self_signed_certificate<'a>(
             }
         }
         Subject::KeypairAndSubjectName(unique_identifier, keypair_data, subject_name) => {
-            // ML-KEM / hybrid KEM keys are KEM-only algorithms — they do not support digital
-            // signatures and therefore cannot issue self-signed certificates.
-            // The caller must supply issuer_private_key_id + issuer_certificate_id pointing to
-            // a signing CA (RSA / EC / ML-DSA / SLH-DSA).
+            // Only signing-capable algorithms can issue self-signed certificates.
+            // KEM / hybrid-KEM keys must be signed by a separate CA.
             #[cfg(feature = "non-fips")]
-            if let Object::PrivateKey(pk) = &keypair_data.private_key_object {
-                if let Some(
-                    CryptographicAlgorithm::MLKEM_512
-                    | CryptographicAlgorithm::MLKEM_768
-                    | CryptographicAlgorithm::MLKEM_1024
-                    | CryptographicAlgorithm::X25519MLKEM768
-                    | CryptographicAlgorithm::X448MLKEM1024
-                    | CryptographicAlgorithm::ConfigurableKEM,
-                ) = pk.key_block.cryptographic_algorithm
-                {
-                    kms_bail!(KmsError::InvalidRequest(
-                        "KEM keys (ML-KEM, X25519MLKEM768, X448MLKEM1024, ConfigurableKEM) \
-                         do not support digital signatures and cannot issue self-signed \
-                         certificates. Provide issuer_private_key_id and \
-                         issuer_certificate_id pointing to a signing CA \
-                         (RSA/EC/ML-DSA/SLH-DSA)."
+            if let Object::PrivateKey(sk) = &keypair_data.private_key_object {
+                match sk.key_block.cryptographic_algorithm {
+                    Some(
+                        CryptographicAlgorithm::RSA
+                        | CryptographicAlgorithm::EC
+                        | CryptographicAlgorithm::ECDSA
+                        | CryptographicAlgorithm::Ed25519
+                        | CryptographicAlgorithm::Ed448
+                        | CryptographicAlgorithm::MLDSA_44
+                        | CryptographicAlgorithm::MLDSA_65
+                        | CryptographicAlgorithm::MLDSA_87
+                        | CryptographicAlgorithm::SLHDSA_SHA2_128s
+                        | CryptographicAlgorithm::SLHDSA_SHA2_128f
+                        | CryptographicAlgorithm::SLHDSA_SHA2_192s
+                        | CryptographicAlgorithm::SLHDSA_SHA2_192f
+                        | CryptographicAlgorithm::SLHDSA_SHA2_256s
+                        | CryptographicAlgorithm::SLHDSA_SHA2_256f
+                        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+                        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+                        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+                        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+                        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+                        | CryptographicAlgorithm::SLHDSA_SHAKE_256f,
+                    ) => {} // signing-capable — proceed
+                    _ => kms_bail!(KmsError::InvalidRequest(
+                        "Only signing algorithms (RSA, EC, ECDSA, Ed25519, Ed448, ML-DSA, \
+                         SLH-DSA) can issue self-signed certificates. For KEM or other \
+                         non-signing keys, provide issuer_private_key_id and \
+                         issuer_certificate_id pointing to a signing CA."
                             .to_owned()
-                    ))
+                    )),
                 }
+            } else {
+                kms_bail!(KmsError::ServerError(
+                    "Expected a PrivateKey object in keypair data".to_owned()
+                ))
             }
             Ok(Issuer::PrivateKeyAndSubjectName(
                 unique_identifier.clone(),
@@ -695,11 +707,11 @@ const fn subject_pqc_algorithm(subject: &Subject) -> Option<CryptographicAlgorit
 /// (`basicConstraints=CA:TRUE` or `basicConstraints=critical,CA:TRUE`).
 ///
 /// This is used in `build_and_sign_certificate` to decide whether to include the
-/// `keyCertSign` and `cRLSign` bits in the RFC-mandated PQC `keyUsage` extension.
+/// `keyCertSign` and `cRLSign` bits in the RFC-mandated PQC `keyUsage` extension,
+/// and to enforce RFC 9608 §3 (noRevAvail MUST NOT appear in CA certificates).
 /// RFC 5280 §4.2.1.3 requires `keyCertSign` when `keyUsage` is present *and* the
 /// certificate will be used to verify certificate signatures in path validation.
 /// OpenSSL's `X509_verify_cert` enforces this check.
-#[cfg(feature = "non-fips")]
 fn extension_config_is_ca(attributes: &Attributes, vendor_id: &str) -> bool {
     attributes
         .vendor_attributes
@@ -722,13 +734,13 @@ fn extension_config_is_ca(attributes: &Attributes, vendor_id: &str) -> bool {
 
 /// Build the RFC-mandated critical keyUsage extension for a PQC algorithm.
 ///
-/// - RFC 9881 §4.2 (ML-DSA): `digitalSignature` MUST be critical.
+/// - RFC 9881 §5 (ML-DSA): `digitalSignature` MUST be critical.
 ///   For CA certificates (`is_ca=true`), `keyCertSign` and `cRLSign` are also included
 ///   (RFC 9881 allows any combination of digitalSignature, nonRepudiation, keyCertSign,
 ///   cRLSign; RFC 5280 §4.2.1.3 *requires* keyCertSign when the cert is a CA and keyUsage
 ///   is present — OpenSSL enforces this in `X509_verify_cert`).
-/// - draft-ietf-lamps-x509-slh-dsa §4.2 (SLH-DSA): same rule as ML-DSA.
-/// - RFC 9935 §4.2 (ML-KEM, hybrid KEM): `keyEncipherment` only (MUST be critical).
+/// - RFC 9909 §6 (SLH-DSA): same rule as ML-DSA.
+/// - RFC 9935 §5 (ML-KEM, hybrid KEM): `keyEncipherment` only (MUST be critical).
 ///   ML-KEM certs can never be CAs; `is_ca` is ignored for KEM algorithms.
 ///
 /// Returns `None` for non-PQC algorithms (RSA, EC, `EdDSA`) — no automatic extension.
@@ -867,15 +879,17 @@ fn build_and_sign_certificate(
             false
         };
 
-    // RFC 9608 §4: auto-add id-pe-noRevAvail (OID 1.3.6.1.5.5.7.1.56) for self-signed
-    // certificates that carry no CRL distribution points. Applies to ALL algorithms.
+    // RFC 9608 §2: auto-add id-ce-noRevAvail (OID 2.5.29.56, i.e. { id-ce 56 }) for
+    // self-signed end-entity certificates that carry no CRL distribution points.
     // Signals to relying parties that no revocation information is available so they
     // should not reject the certificate for lack of a CRL or OCSP response.
+    // RFC 9608 §3: this extension MUST NOT be present in CA public key certificates.
+    // Criticality MUST be FALSE per RFC 9608 §2 ("'0500'H is the DER encoding").
     // OpenSSL does not register this OID so we build the extension via new_from_der().
-    // The extension value per RFC 9608 §4.3.1 is NULL (DER: 05 00).
     let is_self_signed = matches!(issuer, Issuer::PrivateKeyAndSubjectName(..));
-    if is_self_signed && !ext_conf_has_cdp {
-        let oid = Asn1Object::from_str("1.3.6.1.5.5.7.1.56")?;
+    let is_ca = extension_config_is_ca(&attributes, vendor_id);
+    if is_self_signed && !ext_conf_has_cdp && !is_ca {
+        let oid = Asn1Object::from_str("2.5.29.56")?;
         let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
         x509_builder.append_extension(X509Extension::new_from_der(
             oid.as_ref(),

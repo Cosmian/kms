@@ -264,11 +264,11 @@ pub fn parse_v3_ca(
                 )?);
             }
             "noRevAvail" => {
-                // id-pe-noRevAvail (RFC 9608), OID 1.3.6.1.5.5.7.1.56.
+                // id-ce-noRevAvail (RFC 9608 §2), OID { id-ce 56 } = 2.5.29.56.
                 // OpenSSL does not register this OID in its extension table, so we build
                 // the extension directly using new_from_der().
-                // The extension value per RFC 9608 §4.3.1 is NULL (DER: 05 00).
-                let oid = Asn1Object::from_str("1.3.6.1.5.5.7.1.56")?;
+                // Criticality MUST be FALSE; DER encoding is '0500'H (NULL).
+                let oid = Asn1Object::from_str("2.5.29.56")?;
                 let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
                 extensions.push(X509Extension::new_from_der(
                     oid.as_ref(),

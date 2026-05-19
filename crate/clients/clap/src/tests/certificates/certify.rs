@@ -1654,7 +1654,7 @@ async fn test_pqc_ca_signature_verification() -> KmsCliResult<()> {
 // RFC 9881 (ML-DSA) and RFC 9935 (ML-KEM) key usage extension compliance tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// RFC 9881 §4: ML-DSA certificates MUST include a critical keyUsage extension
+/// RFC 9881 §5: ML-DSA certificates MUST include a critical keyUsage extension
 /// containing `digitalSignature`.
 ///
 /// OID reference: id-ml-dsa-44 = 2.16.840.1.101.3.4.3.17
@@ -1687,7 +1687,7 @@ async fn test_rfc9881_ml_dsa_key_usage_critical_digital_signature() -> KmsCliRes
         .find(|e| e.oid == oid!(2.5.29.15))
         .expect("RFC 9881: keyUsage extension must be present in ML-DSA certificates");
 
-    // RFC 9881 §4: the keyUsage extension MUST be critical
+    // RFC 9881 §5: the keyUsage extension MUST be critical
     assert!(
         ku_ext.critical,
         "RFC 9881: keyUsage extension must be critical for ML-DSA certificates"
@@ -1869,13 +1869,13 @@ async fn test_rfc9881_ml_dsa_87_key_usage() -> KmsCliResult<()> {
 }
 
 /// RFC 9608: A self-signed ML-DSA-44 certificate without crlDistributionPoints
-/// must automatically carry the id-pe-noRevAvail extension (OID 1.3.6.1.5.5.7.1.56).
+/// must automatically carry the id-ce-noRevAvail extension (OID 2.5.29.56).
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 async fn test_certify_pqc_self_signed_no_rev_avail() -> KmsCliResult<()> {
-    // OID 1.3.6.1.5.5.7.1.56 — id-pe-noRevAvail (RFC 9608)
-    // DER value bytes (without tag/length): 2B 06 01 05 05 07 01 38
-    const NO_REV_AVAIL: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x38];
+    // OID 2.5.29.56 — id-ce-noRevAvail (RFC 9608 §2), { id-ce 56 }
+    // DER value bytes (without tag/length): 55 1D 38
+    const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
     log_init(None);
     let ctx = start_default_test_kms_server().await;
 
@@ -1900,8 +1900,101 @@ async fn test_certify_pqc_self_signed_no_rev_avail() -> KmsCliResult<()> {
         .any(|ext| ext.oid.as_bytes() == NO_REV_AVAIL);
     assert!(
         has_no_rev_avail,
-        "RFC 9608: id-pe-noRevAvail (OID 1.3.6.1.5.5.7.1.56) must be auto-added to \
+        "RFC 9608: id-ce-noRevAvail (OID 2.5.29.56) must be auto-added to \
          self-signed certs with no crlDistributionPoints"
+    );
+
+    Ok(())
+}
+
+/// RFC 9608 OpenSSL compatibility test: verify that `openssl x509 -text`
+/// recognises the `noRevAvail` extension by its proper name rather than
+/// printing an unknown OID.
+///
+/// OpenSSL 3.x knows OID 2.5.29.56 as "No Revocation Information Available".
+/// If the wrong OID were embedded (e.g. the `id-pe` arc `1.3.6.1.5.5.7.1.56`),
+/// OpenSSL would not recognise it and would print the raw numeric OID instead.
+/// This test acts as an external validator that the correct OID is present in
+/// certificates produced by the KMS.
+#[cfg(not(windows))]
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_no_rev_avail_openssl_compat() -> KmsCliResult<()> {
+    log_init(None);
+
+    // Check that the openssl binary is available and is version 3.x.
+    let ver_out = tokio::process::Command::new("openssl")
+        .arg("version")
+        .output()
+        .await;
+    let Ok(ver_out) = ver_out else {
+        info!("test_certify_no_rev_avail_openssl_compat: openssl CLI not found, skipping");
+        return Ok(());
+    };
+    if !ver_out.status.success() {
+        info!("test_certify_no_rev_avail_openssl_compat: openssl version failed, skipping");
+        return Ok(());
+    }
+    let ver_str = String::from_utf8_lossy(&ver_out.stdout);
+    if !ver_str.to_lowercase().contains("openssl 3") {
+        info!("test_certify_no_rev_avail_openssl_compat: not OpenSSL 3 ({ver_str}), skipping");
+        return Ok(());
+    }
+
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some("C = FR, CN = noRevAvail OpenSSL compat test".to_owned()),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "noRevAvail OpenSSL compat test").await;
+
+    // Write DER bytes to a temp file then let openssl decode the certificate.
+    let tmp_dir = TempDir::new()?;
+    let cert_file = tmp_dir.path().join("cert.der");
+    std::fs::write(&cert_file, &der)?;
+
+    let output = tokio::process::Command::new("openssl")
+        .arg("x509")
+        .arg("-noout")
+        .arg("-text")
+        .arg("-inform")
+        .arg("DER")
+        .arg("-in")
+        .arg(&cert_file)
+        .output()
+        .await?;
+
+    assert!(
+        output.status.success(),
+        "openssl x509 -text failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    // OpenSSL 3.x displays OID 2.5.29.56 by its registered name.
+    // Either "No Revocation" (named display) or the dotted OID "2.5.29.56"
+    // (numeric fallback) confirms the correct OID is embedded in the cert.
+    assert!(
+        text.contains("No Revocation") || text.contains("2.5.29.56"),
+        "Expected 'No Revocation' or '2.5.29.56' in openssl output — \
+         OID 2.5.29.56 (id-ce-noRevAvail) should be present.\n\
+         If the wrong id-pe OID 1.3.6.1.5.5.7.1.56 were embedded, openssl \
+         would print that raw OID instead.\nopenssl output:\n{text}"
+    );
+
+    // The wrong id-pe OID must not appear in the output at all.
+    assert!(
+        !text.contains("1.3.6.1.5.5.7.1.56"),
+        "openssl output contains the wrong OID 1.3.6.1.5.5.7.1.56 (id-pe arc); \
+         expected OID 2.5.29.56 (id-ce arc).\nopenssl output:\n{text}"
     );
 
     Ok(())

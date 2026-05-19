@@ -1453,14 +1453,14 @@ authorityKeyIdentifier=keyid:always,issuer
     // noRevAvail tests (RFC 9608)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// Self-signed ML-DSA-44 certificate automatically gets id-pe-noRevAvail
-    /// (OID 1.3.6.1.5.5.7.1.56, RFC 9608) because it has no CRL DP.
+    /// Self-signed ML-DSA-44 certificate automatically gets id-ce-noRevAvail
+    /// (OID 2.5.29.56, RFC 9608 §2) because it has no CRL DP.
     /// Chain validation must succeed (CRL check is skipped due to noRevAvail).
     #[tokio::test]
     async fn test_validate_pqc_self_signed_has_no_rev_avail() -> KResult<()> {
-        // OID 1.3.6.1.5.5.7.1.56 — id-pe-noRevAvail (RFC 9608)
-        // DER value bytes (without tag/length): 2B 06 01 05 05 07 01 38
-        const NO_REV_AVAIL: &[u8] = &[0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x38];
+        // OID 2.5.29.56 — id-ce-noRevAvail (RFC 9608 §2), { id-ce 56 }
+        // DER value bytes (without tag/length): 55 1D 38
+        const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
         let kms = make_kms().await?;
         let owner = "pqc_test_owner";
 
