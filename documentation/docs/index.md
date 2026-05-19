@@ -1,5 +1,7 @@
 # Eviden KMS
 
+> **Note**: Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
+
 The **Eviden KMS** is a high-performance, [**source available**](https://github.com/Cosmian/kms), [**FIPS 140-3 compliant**](./certifications_and_compliance/fips.md) server application written in [**Rust**](https://www.rust-lang.org/) with unique capabilities.
 
 ## High-scale, secure encryption, anywhere
@@ -8,7 +10,7 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
   with master keys held in a secure HSM-backed environment.
 - **Flexible pricing**: Per-CPU pricing with no hidden costs, all connectors are included; deploying any number of
   servers.
-- **Runs securely in public clouds**:  or zero-trust environments using Cosmian VMs available on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/). See our [deployment guide](installation/marketplace_guide.md).
+- **Runs securely in public clouds**:  or zero-trust environments using Eviden VMs available on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/). See our [deployment guide](installation/marketplace_guide.md).
 
 ## Standards' compliance
 

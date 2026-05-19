@@ -27,7 +27,7 @@ if [ "$KEY_SIZE" != "2048" ] && [ "$KEY_SIZE" != "3072" ] && [ "$KEY_SIZE" != "4
 fi
 
 # Configuration
-AWS_KEY_DESC="${2:-Cosmian KMS external RSA-${KEY_SIZE} key material}"
+AWS_KEY_DESC="${2:-Eviden KMS external RSA-${KEY_SIZE} key material}"
 COSMIAN_KMS_CLI="${COSMIAN_KMS_CLI:-cosmian}"
 WRAPPING_ALGO="RSA_AES_KEY_WRAP_SHA_256"
 WRAPPING_KEY_SPEC="RSA_4096"

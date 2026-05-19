@@ -1,7 +1,7 @@
 # Runtime Network Security Audit
 
 !!! abstract "Scope"
-    This report documents the **live runtime security assessment** methodology and expected results for the Cosmian KMS server.
+    This report documents the **live runtime security assessment** methodology and expected results for the Eviden KMS server.
     The analysis targets the running server process over the network — complementing [static source analysis](owasp_security_audit.md)
     and [multi-framework compliance](multi_framework_security_audit.md) reports.
 

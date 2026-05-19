@@ -1,4 +1,4 @@
-# MySQL Enterprise 8.4 + Cosmian KMS Integration
+# MySQL Enterprise 8.4 + Eviden KMS Integration
 
 ## Executive Summary
 
@@ -17,11 +17,11 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 | Component | Minimum Version | Notes |
 |-----------|-----------------|-------|
 | **MySQL Enterprise** | 8.0+ | keyring_okv plugin available in Enterprise Edition |
-| **Cosmian KMS** | 5.14+ | Full KMIP 1.1 compatibility |
+| **Eviden KMS** | 5.14+ | Full KMIP 1.1 compatibility |
 | **KMIP Protocol** | 1.1 | Standard protocol version supported by keyring_okv |
 | **OpenSSL** | 3.0+ | For TLS 1.3 and mTLS certificate support |
 
-**Note:** This lab uses **MySQL 8.4.7** and **Cosmian KMS 5.14+** which are the stable, production-ready versions recommended for new deployments.
+**Note:** This lab uses **MySQL 8.4.7** and **Eviden KMS 5.14+** which are the stable, production-ready versions recommended for new deployments.
 
 ---
 
@@ -32,7 +32,7 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 | Component | Version | Specification |
 |-----------|---------|---------------|
 | **MySQL Enterprise Server** | 8.4.7-commercial | Generic Linux x86_64 binary (glibc 2.28) |
-| **Cosmian KMS** | 5.14+ | KMIP 1.1 server with socket support |
+| **Eviden KMS** | 5.14+ | KMIP 1.1 server with socket support |
 | **Operating System** | Ubuntu 24.04 LTS (Noble) | Debian 10+, RHEL 8+, or any modern Linux (x86_64) |
 | **OpenSSL** | 3.6.0 (+ 3.1.2 FIPS provider) | For TLS/mTLS communication |
 | **Network** | Dedicated subnet | Low-latency, isolated lab network |
@@ -42,7 +42,7 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 ```mermaid
 flowchart LR
     subgraph network["Isolated Lab Network"]
-        kms["Cosmian KMS v5.14+<br/>HTTP: 9998 (HTTPS)<br/>KMIP: 5696 (TLS)<br/>DB: SQLite"]
+        kms["Eviden KMS v5.14+<br/>HTTP: 9998 (HTTPS)<br/>KMIP: 5696 (TLS)<br/>DB: SQLite"]
         mysql["MySQL Enterprise v8.4.7<br/>Port 3306 (MySQL)<br/>KMIP via TLS<br/>keyring_okv plugin"]
         kms <-->|"KMIP 1.1 over TLS 1.3"| mysql
     end
@@ -55,7 +55,7 @@ flowchart TB
     innodb["MySQL InnoDB"]
     tek["Generates encryption key (TEK)"]
     okv["keyring_okv plugin (MySQL 8.0+)"]
-    kms["Cosmian KMS v5.14+<br/>(Port 5696)"]
+    kms["Eviden KMS v5.14+<br/>(Port 5696)"]
     db["SQLite Database (persistent)"]
     innodb --> tek
     tek --> okv
@@ -69,7 +69,7 @@ flowchart TB
 
 ### Component Roles
 
-**Cosmian KMS (v5.14+):**
+**Eviden KMS (v5.14+):**
 
 - Acts as external Key Management System
 - Manages encryption keys for MySQL
@@ -91,7 +91,7 @@ flowchart TB
 
 - **Authentication:** Mutual TLS (mTLS) with X.509 certificates
 - **Encryption:** AES-256 for data, TLS 1.3 for transport
-- **Key Storage:** Centralized in Cosmian KMS (never persisted on MySQL filesystem)
+- **Key Storage:** Centralized in Eviden KMS (never persisted on MySQL filesystem)
 - **Key Access:** Only via authenticated KMIP protocol over TLS
 - **Cache Invalidation:** Automatic on KMS unavailability
 
@@ -101,13 +101,13 @@ flowchart TB
 
 ### Hardware Requirements
 
-- **Cosmian KMS Server:** 1 vCPU, 2 GB RAM, 10 GB storage
+- **Eviden KMS Server:** 1 vCPU, 2 GB RAM, 10 GB storage
 - **MySQL Enterprise Server:** 2 vCPU, 4 GB RAM, 20 GB storage
 - **Network:** Low-latency connection (<10 ms ping recommended)
 
 ### Software Requirements
 
-On **Cosmian KMS Host (v5.14+):**
+On **Eviden KMS Host (v5.14+):**
 
 - Ubuntu 20.04+, | RHEL 8+ | or equivalent
 - Ope | x86_64 architecturenSSL 3.0+
@@ -135,9 +135,9 @@ For mutual TLS authentication:
 
 ## Installation and Configuration
 
-### Step 1: Prepare Cosmian KMS (v5.14+)
+### Step 1: Prepare Eviden KMS (v5.14+)
 
-#### 1.1 Deploy Cosmian KMS Server
+#### 1.1 Deploy Eviden KMS Server
 
 Choose your Linux distribution and refer to [installation guide](../../installation/installation_getting_started.md)
 
@@ -192,7 +192,7 @@ database-url="mysql://kms_user:kms_password@mysql-server:3306/kms"
 - `socket_server_port` 5696 is standard KMIP port
 - Ensure database path is on persistent storage
 
-#### 1.3 Start Cosmian KMS (v5.14+)
+#### 1.3 Start Eviden KMS (v5.14+)
 
 ```bash
 export COSMIAN_KMS_CONF=/path/to/kms.toml
@@ -493,7 +493,7 @@ strings /var/lib/mysql-data/database/table_name.ibd | \
 
 ### Key Storage Architecture
 
-- **Master Key:** Stored only in Cosmian KMS database
+- **Master Key:** Stored only in Eviden KMS database
 - **Tablespace Keys (TEK):** Encrypted with master key, stored in InnoDB
 - **Cache:** Kept in MySQL memory during runtime for performance
 - **Persistence:** Survives MySQL restart (key retrieved from KMS)
@@ -910,14 +910,14 @@ please check in the server log if a keyring is loaded and initialized successful
 
 **Root Causes:**
 
-1. Cosmian KMS (v5.14+) is not running or unreachable
+1. Eviden KMS (v5.14+) is not running or unreachable
 2. Network connectivity issue between MySQL and KMS
 3. Certificate authentication failed
 4. Plugin failed to initialize
 
 **Solutions:**
 
-1. **Verify Cosmian KMS (v5.14+) is running:**
+1. **Verify Eviden KMS (v5.14+) is running:**
 
    ```bash
    ps aux | grep cosmian_kms | grep -v grep
@@ -1062,7 +1062,7 @@ sudo -u mysql /usr/local/mysql/bin/mysqld \
 - [MySQL keyring_okv KMIP Plugin](https://dev.mysql.com/doc/refman/8.4/en/keyring-okv-plugin.html)
 - [MySQL Transparent Data Encryption](https://dev.mysql.com/doc/refman/8.4/en/innodb-tablespace-encryption.html)
 - [MySQL 8.0 Release Notes](https://dev.mysql.com/doc/relnotes/mysql/8.0/en/)
-- [Cosmian KMS Documentation](https://docs.cosmian.com/key_management_system/)
+- [Eviden KMS Documentation](https://docs.cosmian.com/key_management_system/)
 - [KMIP Specification](http://docs.oasis-open.org/kmip/spec/)
 
 ### Key Files and Paths
@@ -1095,4 +1095,4 @@ sudo -u mysql /usr/local/mysql/bin/mysqld \
 For issues related to:
 
 - **MySQL Enterprise:** [Oracle MySQL Support](https://www.mysql.com/products/enterprise/)
-- **Cosmian KMS:** [Cosmian GitHub Issues](https://github.com/Cosmian/kms/issues)
+- **Eviden KMS:** [Cosmian GitHub Issues](https://github.com/Cosmian/kms/issues)

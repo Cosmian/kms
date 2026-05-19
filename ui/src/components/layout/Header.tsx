@@ -61,7 +61,7 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
 
     return (
         <div className="flex items-center h-full">
-            {logoUrl && <img src={logoUrl} alt={branding.logoAlt} className="h-7 mr-4 transition-opacity duration-300" />}
+            {logoUrl && <img src={logoUrl} alt={branding.logoAlt} className="h-16 mr-4 transition-opacity duration-300" />}
             <h1 className="text-xl font-bold pl-10">{branding.logoAlt}</h1>
             {instances.length > 0 ? (
                 <div className="ml-6 flex items-center gap-2">

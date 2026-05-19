@@ -1,4 +1,4 @@
-The authorization system in the Cosmian Key Management Service (KMS) operates based on two fundamental principles:
+The authorization system in the Eviden Key Management Service (KMS) operates based on two fundamental principles:
 
 1. **Ownership:** Every cryptographic object has an assigned owner. The ownership is established when an object is
    created using any of the following KMIP operations: `Create`, `CreateKeyPair`, or `Import`. As an owner, a user holds

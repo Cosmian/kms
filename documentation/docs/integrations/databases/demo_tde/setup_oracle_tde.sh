@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# setup_oracle_tde.sh — Oracle TDE + Cosmian KMS Docker demo
+# setup_oracle_tde.sh — Oracle TDE + Eviden KMS Docker demo
 #
 # Usage:  ./setup_oracle_tde.sh [--version 5.18.0]
 #
@@ -271,7 +271,7 @@ echo ""
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Oracle TDE + Cosmian KMS demo setup complete."
+echo "  Oracle TDE + Eviden KMS demo setup complete."
 echo ""
 echo "  Connect interactively:"
 echo "    docker exec -u oracle -it oracle sqlplus / as sysdba"

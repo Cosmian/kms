@@ -1,6 +1,6 @@
 # Encrypting and Decrypting at Scale
 
-The Cosmian KMS is architected specifically to deliver high-performance cryptography at scale for enterprise
+The Eviden KMS is architected specifically to deliver high-performance cryptography at scale for enterprise
 applications.
 
 ## Scalability Design
@@ -43,7 +43,7 @@ less trusted environments.
 
 ### HSM Integration
 
-To maintain strong security while preserving performance, Cosmian KMS can be backed by Hardware Security Modules (HSMs):
+To maintain strong security while preserving performance, Eviden KMS can be backed by Hardware Security Modules (HSMs):
 
 - HSM integration details are explained in the [HSM support section](../hsm_support/introduction/index.md)
 - HSM master keys wrap all application keys handled by the KMS
@@ -56,10 +56,10 @@ documentation.
 
 ### Additional Protection in Public Clouds
 
-For deployments in public clouds, consider using the [Cosmian VM](https://cosmian.com/marketplaces/) to run the KMS.
-The Cosmian VM provides memory and disk encryption and verifiability of the KMS's integrity.
+For deployments in public clouds, consider using the [Eviden VM](https://cosmian.com/marketplaces/) to run the KMS.
+The Eviden VM provides memory and disk encryption and verifiability of the KMS's integrity.
 
-Pre-packaged KMS in Cosmian VMs is available on
+Pre-packaged KMS in Eviden VMs is available on
 the [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/).
 
 ## Integration Examples

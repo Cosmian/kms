@@ -18,7 +18,7 @@ usage() {
 KEY_SIZE="256"
 
 # Configuration
-AWS_KEY_DESC="${1:-Cosmian KMS external AES-${KEY_SIZE} key material}"
+AWS_KEY_DESC="${1:-Eviden KMS external AES-${KEY_SIZE} key material}"
 COSMIAN_KMS_CLI="${COSMIAN_KMS_CLI:-cosmian}"
 WRAPPING_ALGO="RSAES_OAEP_SHA_256"
 WRAPPING_KEY_SPEC="RSA_4096"
@@ -40,7 +40,7 @@ KEY_ARN=$(aws kms create-key \
     --output text)
 echo "  -> Created AWS KMS Key ARN: $KEY_ARN"
 
-echo "[2/7] Creating Cosmian KMS AES-${KEY_SIZE} symmetric key..."
+echo "[2/7] Creating Eviden KMS AES-${KEY_SIZE} symmetric key..."
 COSMIAN_KEY_ID=$($COSMIAN_KMS_CLI kms sym keys create \
     --algorithm aes \
     --number-of-bits "$KEY_SIZE" \
@@ -63,7 +63,7 @@ jq -r '.ImportToken' "$WORK_DIR/step3_params.json" | base64 -d > "$WORK_DIR/toke
 jq -r '.PublicKey'    "$WORK_DIR/step3_params.json" | base64 -d > "$WORK_DIR/kek.bin"
 echo "  -> Decoded token and KEK"
 
-echo "[5/7] Importing AWS KEK into Cosmian KMS..."
+echo "[5/7] Importing AWS KEK into Eviden KMS..."
 COSMIAN_KEK_ID=$($COSMIAN_KMS_CLI kms aws byok import \
     --kek-file "$WORK_DIR/kek.bin" \
     --wrapping-algorithm $WRAPPING_ALGO \
@@ -75,7 +75,7 @@ if [ -z "$COSMIAN_KEK_ID" ]; then
 fi
 echo "  -> Imported KEK with ID: $COSMIAN_KEK_ID"
 
-echo "[6/7] Exporting (wrapping) key material from Cosmian KMS..."
+echo "[6/7] Exporting (wrapping) key material from Eviden KMS..."
 $COSMIAN_KMS_CLI kms aws byok export \
     "$COSMIAN_KEY_ID" \
     "$COSMIAN_KEK_ID" \

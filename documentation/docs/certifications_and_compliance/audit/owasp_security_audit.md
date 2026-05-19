@@ -1,4 +1,4 @@
-# Cosmian KMS — OWASP Security Audit Plan & Report
+# Eviden KMS — OWASP Security Audit Plan & Report
 
 **Document type**: Security Audit Plan & Report Template
 **Standard**: OWASP Top 10 (2021) + OWASP ASVS v4.0 (selective)

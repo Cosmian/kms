@@ -1,4 +1,4 @@
-# Cosmian KMS — Multi-Framework Security Audit
+# Eviden KMS — Multi-Framework Security Audit
 
 **Document type**: Security Audit Plan & Report
 **Frameworks**: NIST CSF 2.0 / SSDF (SP 800-218) · CIS Controls v8 · ISO/IEC 27034 · OSSTMM

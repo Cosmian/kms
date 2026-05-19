@@ -1,4 +1,4 @@
-The Cosmian KMS is particularly suited for application-level and client-side encryption scenarios, which may require
+The Eviden KMS is particularly suited for application-level and client-side encryption scenarios, which may require
 high-performance encryption and decryption.
 
 The KMS offers two mechanisms for encrypting and decrypting data:
@@ -15,12 +15,12 @@ The KMS provides a high-performance encryption and decryption API for encrypting
 
 ### Parallelization, concurrency, and batching
 
-Due to its stateless user session model, the Cosmian KMS is designed to use modern
+Due to its stateless user session model, the Eviden KMS is designed to use modern
 multi-core processors and can parallelize encryption and decryption operations across multiple
 cores. Parallelization can be achieved by scaling vertically (increasing the number of cores on a
 single machine) or horizontally (increasing the number of machines in a cluster).
 
-The Cosmian KMS can also handle multiple concurrent encryption and decryption requests on a single core using (async)
+The Eviden KMS can also handle multiple concurrent encryption and decryption requests on a single core using (async)
 concurrency primitives.
 The asynchronous model optimizes the use of CPU resources by allowing the CPU to perform other tasks
 while waiting for I/O operations to complete.
@@ -36,7 +36,7 @@ single request, reducing the overhead of making multiple requests to the KMS.
 Batching in KMIP is achieved by sending multiple `Operations` in a single KMIP `RequestMessage` operation.
 The protocol is highly flexible and allows various operations to be batched together.
 
-The Cosmian KMS supports batching using the KMIP protocol.
+The Eviden KMS supports batching using the KMIP protocol.
 
 #### Optimized batching
 
@@ -48,7 +48,7 @@ When batching encryption or decryption requests, the metadata is likely identica
 each request, and the overhead of unnecessarily sending the metadata multiple times can be
 significant.
 
-To address this issue, the Cosmian KMS provides an optimized batching API that allows multiple
+To address this issue, the Eviden KMS provides an optimized batching API that allows multiple
 encryption or decryption requests to be batched together in a single request, without the overhead
 of the KMIP protocol. The optimized batching API is designed to be lightweight and efficient,
 allowing multiple encryption or decryption requests to be batched together with minimal overhead.
@@ -93,7 +93,7 @@ For AES-GCM encryption, the concatenation is as follows:
 
 ### Performance heuristics
 
-The Cosmian KMS uses heuristics to determine the optimal batch size for encryption and decryption
+The Eviden KMS uses heuristics to determine the optimal batch size for encryption and decryption
 requests.
 The heuristics consider the size of the data, the number of cores available, and the expected latency of the KMS.
 

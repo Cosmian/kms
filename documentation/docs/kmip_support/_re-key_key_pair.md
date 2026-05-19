@@ -22,8 +22,8 @@ based on the dates of the existing key pair as follows
 
 #### Implementation
 
-The `Re-Key Key Pair` Operation is the main mechanism to rotate Covercrypt attributes on the Cosmian KMS Server. By
-updating, through this operation, the Policy held by a master secret key in it Vendor Attributes, the Cosmian KMS Server
+The `Re-Key Key Pair` Operation is the main mechanism to rotate Covercrypt attributes on the Eviden KMS Server. By
+updating, through this operation, the Policy held by a master secret key in it Vendor Attributes, the Eviden KMS Server
 will automatically
 
 - update the Policy held by the Master Public Key

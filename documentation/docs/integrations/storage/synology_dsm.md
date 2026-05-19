@@ -1,8 +1,8 @@
-# Synology DSM — NAS Volume Encryption with Cosmian KMS
+# Synology DSM — NAS Volume Encryption with Eviden KMS
 
 Synology DiskStation Manager (DSM) 7.x supports delegating NAS volume encryption
 key management to an external KMIP-compliant Key Management Server.  By
-connecting a Synology NAS to Cosmian KMS, you ensure that volume encryption keys
+connecting a Synology NAS to Eviden KMS, you ensure that volume encryption keys
 are never stored on the NAS itself: they live in a centrally managed, audited,
 and optionally HSM-backed key store.
 
@@ -16,7 +16,7 @@ and optionally HSM-backed key store.
 | **Port** | 5696 (IANA-registered KMIP port) |
 | **Key type** | AES-256 symmetric key |
 | **DSM version** | DSM 7.1 and above |
-| **Cosmian KMS feature** | Requires non-FIPS build (PKCS#12 TLS + AES-CBC key wrapping) |
+| **Eviden KMS feature** | Requires non-FIPS build (PKCS#12 TLS + AES-CBC key wrapping) |
 
 ### What Synology DSM does
 
@@ -52,7 +52,7 @@ operations on every volume creation and every subsequent volume mount:
 
 ## Prerequisites
 
-- Cosmian KMS server running in **non-FIPS** mode
+- Eviden KMS server running in **non-FIPS** mode
 - TLS enabled on the KMS server with a valid PKCS#12 certificate
 - Client certificate and CA certificate for mutual TLS authentication
 - DSM 7.1 or later with the **Encryption Key Manager** feature enabled
@@ -99,7 +99,7 @@ openssl x509 -req -days 3650 -in synology-nas.csr \
   -out synology-nas.crt
 ```
 
-### 3. Start Cosmian KMS
+### 3. Start Eviden KMS
 
 ```bash
 cosmian_kms --config /etc/cosmian/kms/kms.toml
@@ -125,7 +125,7 @@ docker run -p 9998:9998 -p 5696:5696 \
 
 | Field | Value |
 |-------|-------|
-| KMS Server Address | IP or hostname of the Cosmian KMS host |
+| KMS Server Address | IP or hostname of the Eviden KMS host |
 | Port | 5696 |
 | Client Certificate | PEM or PKCS#12 file you issued for the NAS |
 | Private Key | Matching private key (if not bundled in PKCS#12) |
@@ -147,7 +147,7 @@ docker run -p 9998:9998 -p 5696:5696 \
 ## Automated CI Testing
 
 Because Synology DSM is proprietary hardware/software, there is no official
-Docker image available for automated testing.  Instead, the Cosmian KMS test
+Docker image available for automated testing.  Instead, the Eviden KMS test
 suite includes a **Python simulation client** (`scripts/synology_dsm_client.py`)
 that replays the exact KMIP operation sequence performed by DSM.
 
@@ -198,7 +198,7 @@ matrix:
 
 The CI job:
 
-1. Builds Cosmian KMS with `--features non-fips`.
+1. Builds Eviden KMS with `--features non-fips`.
 2. Starts the server with TLS and the KMIP socket enabled.
 3. Runs `scripts/synology_dsm_client.py` against it.
 4. Asserts that all 10 steps (DiscoverVersions → Destroy) succeed.
@@ -234,7 +234,7 @@ The CI job:
 
 ### ModifyAttribute returns an error
 
-- Ensure you are running Cosmian KMS ≥ 5.17 which includes the `ModifyAttribute`
+- Ensure you are running Eviden KMS ≥ 5.17 which includes the `ModifyAttribute`
   fix for Synology DSM compatibility (issue #760).
 - The operation requires the key to be in *Active* state.  Call `Activate` before
   `ModifyAttribute`.
@@ -251,7 +251,7 @@ The CI job:
 
 Older DSM versions (using the KMIP 1.0 protocol) include an `OperationPolicyName`
 attribute in their Register/Create requests.  This attribute was deprecated in
-KMIP 1.3 and removed in KMIP 2.0+.  Cosmian KMS ≥ 5.18 silently ignores it
+KMIP 1.3 and removed in KMIP 2.0+.  Eviden KMS ≥ 5.18 silently ignores it
 (issue [#796](https://github.com/Cosmian/kms/issues/796)).  Earlier versions log
 a harmless `WARN` entry; the key operation still succeeds.
 
@@ -262,7 +262,7 @@ a harmless `WARN` entry; the key operation still succeeds.
 - **Mutual TLS**: Always require client certificate authentication
   (`clients_ca_cert_file` set in `kms.toml`) so that only authorised NAS
   devices can access keys.
-- **Key access policy**: Use the Cosmian KMS
+- **Key access policy**: Use the Eviden KMS
   [policy](../../certifications_and_compliance/cryptographic_algorithms/kmip_policy.md) to restrict each NAS to
   its own keys.
 - **Key rotation**: Revoke and re-create keys periodically.  DSM will

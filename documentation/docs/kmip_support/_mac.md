@@ -15,7 +15,7 @@ When a stream or by-parts operation is requested:
 
 #### Implementation
 
-The Cosmian KMS server supports the following MAC algorithms:
+The Eviden KMS server supports the following MAC algorithms:
 
 - HMAC-SHA-1 (NIST SP 800-131A Rev. 2 — Acceptable)
 - HMAC-SHA-224 (NIST SP 800-131A Rev. 2 — Acceptable)

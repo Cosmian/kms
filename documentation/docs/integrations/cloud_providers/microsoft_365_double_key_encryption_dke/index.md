@@ -5,7 +5,7 @@ a [feature of Microsoft 365](https://learn.microsoft.com/en-us/purview/double-ke
 that allows you to protect your most sensitive
 data by encrypting data on the client computer before sending it to Microsoft servers.
 One of the keys used to encrypt remains under your control and makes the data unreadable by Microsoft. This key is kept
-inside your instance of Cosmian KMS which exposes the required API to integrate with Microsoft DKE.
+inside your instance of Eviden KMS which exposes the required API to integrate with Microsoft DKE.
 
 See [How it works](#how-it-works) for details on the cryptographic process.
 
@@ -20,7 +20,7 @@ Purview compliance portal.
 Once DKE is configured, the whole process consists in assigning a
 specific [sensitivity label](https://learn.microsoft.com/en-gb/purview/create-sensitivity-labels#create-and-configure-sensitivity-labels)
 to a document. The label will indicate that the document is encrypted and that the key to decrypt it is stored in your
-Cosmian KMS.
+Eviden KMS.
 
 Please check the dedicated [Microsoft documentation](https://learn.microsoft.com/en-us/purview/double-key-encryption)
 for a complete overview of the feature.
@@ -30,7 +30,7 @@ From a cryptographic standpoint, the feature works as follows:
 Before saving an encrypted document, the Office client will:
 
 1. Generate an ephemeral 128-bit AES key and use it to encrypt the document
-2. Call the Cosmian KMS to get your 2048-bit RSA public key (the Office client will cache the key for 24 hours)
+2. Call the Eviden KMS to get your 2048-bit RSA public key (the Office client will cache the key for 24 hours)
 3. Use that key to wrap the AES key using the PKCS#11 CKM_RSA_PKCS_OAEP (NIST 800 56B Rev2) algorithm; the hashing
    algorithm is set to SHA-256 (see [the list of supported algorithms](../../../certifications_and_compliance/cryptographic_algorithms/algorithms.md) for details)
 4. Send the wrapped AES key and the encrypted document to Microsoft servers, where Azure RMS will also wrap the
@@ -40,16 +40,16 @@ Retrieving an encrypted document works as follows, the Office client will:
 
 1. Request Azure RMS to perform the first unwrapping using their key, to recover the wrapped AES key
 2. Download the encrypted document and the wrapped AES key
-3. Call your Cosmian KMS to unwrap the AES key using your private RSA key. Please note
-   that the private RSA key never leaves the Cosmian KMS.
+3. Call your Eviden KMS to unwrap the AES key using your private RSA key. Please note
+   that the private RSA key never leaves the Eviden KMS.
 4. Decrypt the document using the recovered AES key and display it.
 
-**Note**: The Cosmian KMS implementation of the PKCS#11 CKM_RSA_PKCS_OAEP algorithm is FIPS compliant. The DKE
+**Note**: The Eviden KMS implementation of the PKCS#11 CKM_RSA_PKCS_OAEP algorithm is FIPS compliant. The DKE
 API is therefore available on the Cosmian server running in [FIPS mode](../../../certifications_and_compliance/fips.md).
 
-## Configuring the Cosmian KMS server
+## Configuring the Eviden KMS server
 
-The Cosmian KMS server needs to be started with the `--ms-dke-service-url <MS_DKE_SERVICE_URL>` option.
+The Eviden KMS server needs to be started with the `--ms-dke-service-url <MS_DKE_SERVICE_URL>` option.
 
 The `<MS_DKE_SERVICE_URL>`should contain the external URL of this server as configured in [Azure App Registrations
 for the DKE Service](https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
@@ -60,12 +60,12 @@ Alternatively, you can set the `KMS_MS_DKE_SERVICE_URL` environment variable to 
 corresponding entry in the server TOML configuration file.
 
 !!! warning "No authentication => firewalling is critical"
-The Office client does not send any authentication information when calling the Cosmian KMS. Firewalling the
-Cosmian KMS server to only accept requests from valid Office clients is critical.
+The Office client does not send any authentication information when calling the Eviden KMS. Firewalling the
+Eviden KMS server to only accept requests from valid Office clients is critical.
 
 !!! important "Running the KMS server in the cloud for DKE"
-It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
-Cosmian VM](../../../installation/marketplace_guide.md). However, due to the lack of authentication, and thus the need to
+It is possible to confidentially run the Eviden KMS server in the cloud [inside an
+Eviden VM](../../../installation/marketplace_guide.md). However, due to the lack of authentication, and thus the need to
 firewall the server,
 one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
 particularly if running on Azure.
@@ -90,7 +90,7 @@ You must then create a new sensitivity label where the Double Key Encryption URL
 See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
 
 Users should now select the new label when creating new documents.
-As long as the old key is available in the Cosmian KMS, users will still be able to open documents encrypted with the
+As long as the old key is available in the Eviden KMS, users will still be able to open documents encrypted with the
 old key.
 
 ## Configuring Microsoft DKE in Purview
@@ -196,7 +196,7 @@ you do not activate co-authoring.
 !!! important "Use the correct URL"
     The URL must be set to a form similar to `https://dke.acme.com/ms_dke/dke_key` where
 
-    - `dke.acme.com` is the address of the Cosmian KMS server. A valid certificate must be installed on the server.
+    - `dke.acme.com` is the address of the Eviden KMS server. A valid certificate must be installed on the server.
     - `ms_dke` is the root of REST path for the DKE services.
     - `dke_key` is the tag set for the RSA key pair to use for this label.
 
