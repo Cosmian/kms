@@ -7,11 +7,34 @@
 
 ## Table of contents
 
-1. [Prerequisites](#prerequisites)
-2. [Local mode — KMS included](#local-mode--kms-included)
-3. [External mode — existing KMS](#external-mode--existing-kms)
-4. [Explore Grafana](#explore-grafana)
-5. [Troubleshooting](#troubleshooting)
+1. [Download](#download)
+2. [Prerequisites](#prerequisites)
+3. [Local mode — KMS included](#local-mode--kms-included)
+4. [External mode — existing KMS](#external-mode--existing-kms)
+5. [Explore Grafana](#explore-grafana)
+6. [Troubleshooting](#troubleshooting)
+
+---
+
+## Download
+
+The monitoring stack is distributed as a standalone archive containing the Docker Compose file,
+configuration templates, and helper scripts.
+
+Download the archive from the [KMS GitHub Releases page](https://github.com/Cosmian/kms/releases/latest)
+(`cosmian-kms-monitoring.zip`), or use `wget` with the version you are deploying:
+
+```bash
+wget https://package.cosmian.com/kms/<version>/monitoring/cosmian-kms-monitoring.zip
+unzip cosmian-kms-monitoring.zip
+cd monitoring/
+```
+
+Replace `<version>` with the KMS version you are deploying (e.g. `5.22.0`).
+The list of available versions is at <https://package.cosmian.com/kms/>.
+
+Alternatively, clone the [KMS repository](https://github.com/Cosmian/kms) and navigate to the
+`monitoring/` directory.
 
 ---
 
@@ -75,6 +98,13 @@ The following ports must be free on the host before starting the stack:
 
 In this mode, the full stack starts together: KMS, OTel Collector, VictoriaMetrics, and Grafana.
 Use this mode for local development or to evaluate the stack end-to-end.
+
+All files referenced below (`docker-compose.yml`, `.env`, `generate-demo-cert.sh`) are located in the
+`monitoring/` directory of the KMS repository. Navigate there first:
+
+```bash
+cd monitoring/
+```
 
 ### 1. Configure `.env`
 
@@ -177,6 +207,13 @@ Expected response: `{"status":"Server available"}`
 
 Use this mode when you already have a running KMS instance and only want to attach
 the observability stack to it.
+
+All files referenced below are located in the `monitoring/` directory of the KMS repository.
+Navigate there first:
+
+```bash
+cd monitoring/
+```
 
 ### 1. Configure `.env`
 
