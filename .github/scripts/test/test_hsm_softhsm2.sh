@@ -146,7 +146,7 @@ env \
   cargo test \
   -p ckms \
   ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
-  -- tests::hsm::test_multi_hsm_key_creation_test --ignored --exact
+  -- tests::hsm::multi_softhsm2::test_multi_hsm_key_creation_test --ignored --exact
 echo "Multi-HSM key creation tests completed successfully."
 
 # ─── pkcs11-tool warning check ────────────────────────────────────────────────

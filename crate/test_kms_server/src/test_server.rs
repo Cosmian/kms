@@ -51,7 +51,9 @@ pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+#[allow(dead_code)]
 pub(crate) static ONCE_SERVER_WITH_KEK_SOFTHSM2: OnceCell<TestsContext> = OnceCell::const_new();
+#[allow(dead_code)]
 pub(crate) static ONCE_SERVER_WITH_MULTI_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 /// Dedicated cell for the three-SoftHSM2 multi-instance test server.
 /// Uses `hsm:` (old single config on slot 1) + two `[[hsm_instances]]` entries
@@ -549,6 +551,64 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
         error!("failed to start test server with softhsm2 hsm: {e}");
         std::process::abort();
     })
+}
+
+/// Start a test KMS server with three SoftHSM2 instances:
+///
+/// - Slot 1 (`HSM_SLOT_ID_1`): legacy single-HSM config (`hsm:` top-level fields).
+///   Keys are addressed with `"hsm::<slot>::<key_id>"`.
+/// - Slot 2 (`HSM_SLOT_ID_2`): first `[[hsm_instances]]` entry.
+///   Keys are addressed with `"hsm::softhsm2::<slot>::<key_id>"`.
+/// - Slot 3 (`HSM_SLOT_ID_3`): second `[[hsm_instances]]` entry (same model,
+///   disambiguated as `softhsm2_1`).
+///   Keys are addressed with `"hsm::softhsm2_1::<slot>::<key_id>"`.
+///
+/// Slot IDs are read from `HSM_SLOT_ID_1`, `HSM_SLOT_ID_2`, `HSM_SLOT_ID_3`
+/// environment variables (set by `test_hsm_softhsm2.sh`).
+///
+/// # Panics
+/// Panics if any of the slot ID environment variables are missing or not valid integers.
+pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static TestsContext {
+    trace!("Starting test server with three SoftHSM2 instances");
+    ONCE_SERVER_WITH_THREE_SOFTHSM2
+        .get_or_try_init(|| async move {
+            let slot1: usize = env::var("HSM_SLOT_ID_1")
+                .expect("HSM_SLOT_ID_1 must be set")
+                .parse()
+                .expect("HSM_SLOT_ID_1 must be a valid usize");
+            let slot2: usize = env::var("HSM_SLOT_ID_2")
+                .expect("HSM_SLOT_ID_2 must be set")
+                .parse()
+                .expect("HSM_SLOT_ID_2 must be a valid usize");
+            let slot3: usize = env::var("HSM_SLOT_ID_3")
+                .expect("HSM_SLOT_ID_3 must be set")
+                .parse()
+                .expect("HSM_SLOT_ID_3 must be a valid usize");
+
+            let password = env::var("HSM_USER_PASSWORD").unwrap_or_else(|_| "12345678".to_owned());
+
+            let config_path = hsm_config_path("three_softhsm2.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+
+            // Patch legacy single-HSM with slot 1
+            config.hsm.hsm_slot = vec![slot1];
+            config.hsm.hsm_password = vec![password.clone()];
+
+            // Patch [[hsm_instances]] with slots 2 and 3
+            if config.hsm_instances.len() >= 2 {
+                config.hsm_instances[0].hsm_slot = vec![slot2];
+                config.hsm_instances[0].hsm_password = vec![password.clone()];
+                config.hsm_instances[1].hsm_slot = vec![slot3];
+                config.hsm_instances[1].hsm_password = vec![password];
+            }
+
+            start_server_from_config(config, &config_path).await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with three softhsm2: {e}");
+            std::process::abort();
+        })
 }
 
 /// Privileged users — two distinct identities in the list.
