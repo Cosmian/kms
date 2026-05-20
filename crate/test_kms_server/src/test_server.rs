@@ -553,7 +553,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
     })
 }
 
-/// Start a test KMS server with three SoftHSM2 instances:
+/// Start a test KMS server with three `SoftHSM2` instances:
 ///
 /// - Slot 1 (`HSM_SLOT_ID_1`): legacy single-HSM config (`hsm:` top-level fields).
 ///   Keys are addressed with `"hsm::<slot>::<key_id>"`.
@@ -568,6 +568,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
 ///
 /// # Panics
 /// Panics if any of the slot ID environment variables are missing or not valid integers.
+#[expect(clippy::expect_used, clippy::indexing_slicing)]
 pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static TestsContext {
     trace!("Starting test server with three SoftHSM2 instances");
     ONCE_SERVER_WITH_THREE_SOFTHSM2
