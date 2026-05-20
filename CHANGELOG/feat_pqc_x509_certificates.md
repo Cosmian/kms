@@ -16,6 +16,10 @@
 - **Server — `id-ce-noRevAvail` OID and CA exclusion fix**: the `noRevAvail` extension block in `build_and_sign_certificate` contained AI-generated errors identified by code review: (1) wrong OID `1.3.6.1.5.5.7.1.56` (`id-pe` arc) corrected to `2.5.29.56` (`id-ce 56`); (2) wrong name `id-pe-noRevAvail` corrected to `id-ce-noRevAvail`; (3) wrong RFC section `RFC 9608 §4` corrected to `RFC 9608 §2`; (4) non-existent sub-section `§4.3.1` removed. Additionally, a logic bug was fixed: RFC 9608 §3 mandates that `noRevAvail` MUST NOT appear in CA public key certificates; the extension is now only added to self-signed end-entity certificates.
 - **E2E UI — `self-signed Ed25519` test fails in FIPS mode**: the `certificates-certify.spec.ts` test for Ed25519 was missing the `test.skip(FIPS_MODE, ...)` guard. Ed25519 is not available in FIPS mode; the test now correctly skips in FIPS builds (`PLAYWRIGHT_FIPS_MODE=true`). ([#943](https://github.com/Cosmian/kms/pull/943))
 
+### ♻️ Refactor
+
+- **Server — Certify operation: one file per RFC**: split the PQC extension logic from `certify/mod.rs` into dedicated submodules: `rfc9881.rs` (ML-DSA keyUsage), `rfc9909.rs` (SLH-DSA keyUsage), `rfc9935.rs` (ML-KEM keyUsage), and `rfc9608.rs` (noRevAvail). Shared helpers (`pqc_signing_key_usage`, `is_signing_capable`) remain in `mod.rs`. ([#943](https://github.com/Cosmian/kms/pull/943))
+
 ### 🧪 Testing
 
 - **KMIP policy alignment with ANSSI crypto guide 3.0**: test verifying that the KMIP policy configuration is aligned with the latest ANSSI cryptographic recommendations (guide version 3.0).
@@ -46,6 +50,7 @@
 
 ### 📚 Documentation
 
+- **PKI page consolidation**: renamed `pqc_x509_certificates.md` to `pki.md`, broadening scope to cover all supported X.509 standards (RFC 5280, 8017, 5480, 8032, 9881, 9909, 9935, 9608), classical algorithms (RSA, EC, EdDSA), PKCS#12 export, and an explicit "Not supported" section (Merkle Tree Certificates, Composite Certificates, OCSP responder, CRL generation). ([#943](https://github.com/Cosmian/kms/pull/943))
 - **Post-Quantum X.509 certificates — RFC references updated**: the `pqc_x509_certificates.md` page now references finalized RFCs: SLH-DSA row changed from `draft-ietf-lamps-x509-slh-dsa` to **RFC 9909** (published March 2025); **RFC 9608** (`id-ce-noRevAvail`) added to the standards table; hyperlinks added for RFC 9881, 9935, 9909, 9608, and RFC 5280.
 - **New section — Revocation handling**: documents CRL distribution points (existing), AIA / `authorityInfoAccess` (now unblocked, see fix below), `id-ce-noRevAvail` for offline/self-signed PKI (auto-added by this release), and OCSP as future work.
 - **New section — Composite PQC (future)**: explains the classical→PQC migration rationale (dual signatures for backward compatibility) and references `draft-ietf-lamps-pq-composite-sigs-19`; no implementation in this release.

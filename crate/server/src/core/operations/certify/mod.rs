@@ -41,11 +41,11 @@ use cosmian_logger::{debug, info, trace};
 #[cfg(feature = "non-fips")]
 use openssl::x509::extension::KeyUsage;
 use openssl::{
-    asn1::{Asn1Integer, Asn1Object, Asn1OctetString, Asn1Time},
+    asn1::{Asn1Integer, Asn1Time},
     hash::MessageDigest,
     pkey::Id,
     sha::Sha1,
-    x509::{X509, X509Extension, X509Req},
+    x509::{X509, X509Req},
 };
 
 use crate::{
@@ -67,6 +67,13 @@ use crate::{
 };
 
 mod issuer;
+mod rfc9608;
+#[cfg(feature = "non-fips")]
+mod rfc9881;
+#[cfg(feature = "non-fips")]
+mod rfc9909;
+#[cfg(feature = "non-fips")]
+mod rfc9935;
 mod subject;
 
 const X509_VERSION3: i32 = 2;
@@ -612,36 +619,14 @@ async fn issuer_for_self_signed_certificate<'a>(
             // KEM / hybrid-KEM keys must be signed by a separate CA.
             #[cfg(feature = "non-fips")]
             if let Object::PrivateKey(sk) = &keypair_data.private_key_object {
-                match sk.key_block.cryptographic_algorithm {
-                    Some(
-                        CryptographicAlgorithm::RSA
-                        | CryptographicAlgorithm::EC
-                        | CryptographicAlgorithm::ECDSA
-                        | CryptographicAlgorithm::Ed25519
-                        | CryptographicAlgorithm::Ed448
-                        | CryptographicAlgorithm::MLDSA_44
-                        | CryptographicAlgorithm::MLDSA_65
-                        | CryptographicAlgorithm::MLDSA_87
-                        | CryptographicAlgorithm::SLHDSA_SHA2_128s
-                        | CryptographicAlgorithm::SLHDSA_SHA2_128f
-                        | CryptographicAlgorithm::SLHDSA_SHA2_192s
-                        | CryptographicAlgorithm::SLHDSA_SHA2_192f
-                        | CryptographicAlgorithm::SLHDSA_SHA2_256s
-                        | CryptographicAlgorithm::SLHDSA_SHA2_256f
-                        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
-                        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
-                        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
-                        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
-                        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
-                        | CryptographicAlgorithm::SLHDSA_SHAKE_256f,
-                    ) => {} // signing-capable — proceed
-                    _ => kms_bail!(KmsError::InvalidRequest(
+                if !is_signing_capable(sk.key_block.cryptographic_algorithm) {
+                    kms_bail!(KmsError::InvalidRequest(
                         "Only signing algorithms (RSA, EC, ECDSA, Ed25519, Ed448, ML-DSA, \
                          SLH-DSA) can issue self-signed certificates. For KEM or other \
                          non-signing keys, provide issuer_private_key_id and \
                          issuer_certificate_id pointing to a signing CA."
                             .to_owned()
-                    )),
+                    ))
                 }
             } else {
                 kms_bail!(KmsError::ServerError(
@@ -732,65 +717,140 @@ fn extension_config_is_ca(attributes: &Attributes, vendor_id: &str) -> bool {
         .is_some_and(|upper| upper.contains("CA:TRUE"))
 }
 
-/// Build the RFC-mandated critical keyUsage extension for a PQC algorithm.
+/// Shared helper: build the critical `keyUsage` extension for PQC **signing** algorithms
+/// (ML-DSA per RFC 9881 §5, SLH-DSA per RFC 9909 §6).
 ///
-/// - RFC 9881 §5 (ML-DSA): `digitalSignature` MUST be critical.
-///   For CA certificates (`is_ca=true`), `keyCertSign` and `cRLSign` are also included
-///   (RFC 9881 allows any combination of digitalSignature, nonRepudiation, keyCertSign,
-///   cRLSign; RFC 5280 §4.2.1.3 *requires* keyCertSign when the cert is a CA and keyUsage
-///   is present — OpenSSL enforces this in `X509_verify_cert`).
-/// - RFC 9909 §6 (SLH-DSA): same rule as ML-DSA.
-/// - RFC 9935 §5 (ML-KEM, hybrid KEM): `keyEncipherment` only (MUST be critical).
-///   ML-KEM certs can never be CAs; `is_ca` is ignored for KEM algorithms.
+/// - End-entity: `digitalSignature` (critical)
+/// - CA (`is_ca=true`): `digitalSignature | keyCertSign | cRLSign` (critical)
 ///
-/// Returns `None` for non-PQC algorithms (RSA, EC, `EdDSA`) — no automatic extension.
+/// Called by [`rfc9881::apply_extensions`] and [`rfc9909::apply_extensions`].
 #[cfg(feature = "non-fips")]
-fn pqc_rfc_key_usage(
-    algo: CryptographicAlgorithm,
-    is_ca: bool,
-) -> KResult<Option<openssl::x509::X509Extension>> {
-    let extension = match algo {
-        // RFC 9881: ML-DSA certificates keyUsage MUST include digitalSignature
-        CryptographicAlgorithm::MLDSA_44
-        | CryptographicAlgorithm::MLDSA_65
-        | CryptographicAlgorithm::MLDSA_87
-        // draft-ietf-lamps-x509-slh-dsa: SLH-DSA signature algorithms
-        | CryptographicAlgorithm::SLHDSA_SHA2_128s
-        | CryptographicAlgorithm::SLHDSA_SHA2_128f
-        | CryptographicAlgorithm::SLHDSA_SHA2_192s
-        | CryptographicAlgorithm::SLHDSA_SHA2_192f
-        | CryptographicAlgorithm::SLHDSA_SHA2_256s
-        | CryptographicAlgorithm::SLHDSA_SHA2_256f
-        | CryptographicAlgorithm::SLHDSA_SHAKE_128s
-        | CryptographicAlgorithm::SLHDSA_SHAKE_128f
-        | CryptographicAlgorithm::SLHDSA_SHAKE_192s
-        | CryptographicAlgorithm::SLHDSA_SHAKE_192f
-        | CryptographicAlgorithm::SLHDSA_SHAKE_256s
-        | CryptographicAlgorithm::SLHDSA_SHAKE_256f => {
-            let mut ku = KeyUsage::new();
-            ku.critical().digital_signature();
-            if is_ca {
-                // RFC 5280 §4.2.1.3: keyCertSign required for CA certs with keyUsage present.
-                // RFC 9881 explicitly allows keyCertSign and cRLSign for ML-DSA CA certs.
-                ku.key_cert_sign().crl_sign();
+fn pqc_signing_key_usage(is_ca: bool) -> KResult<openssl::x509::X509Extension> {
+    let mut ku = KeyUsage::new();
+    ku.critical().digital_signature();
+    if is_ca {
+        // RFC 5280 §4.2.1.3: keyCertSign required for CA certs with keyUsage present.
+        ku.key_cert_sign().crl_sign();
+    }
+    Ok(ku.build()?)
+}
+
+/// Return `true` if the given algorithm is signing-capable and can issue self-signed
+/// certificates. Non-signing algorithms (KEM, DH, etc.) must be signed by a separate CA.
+///
+/// This is a general RFC 5280 §4.2.1.3 requirement: a certificate's subject key must be
+/// able to produce the signature that covers the TBS certificate.
+#[cfg(feature = "non-fips")]
+const fn is_signing_capable(algo: Option<CryptographicAlgorithm>) -> bool {
+    matches!(
+        algo,
+        Some(
+            CryptographicAlgorithm::RSA
+                | CryptographicAlgorithm::EC
+                | CryptographicAlgorithm::ECDSA
+                | CryptographicAlgorithm::Ed25519
+                | CryptographicAlgorithm::Ed448
+                | CryptographicAlgorithm::MLDSA_44
+                | CryptographicAlgorithm::MLDSA_65
+                | CryptographicAlgorithm::MLDSA_87
+                | CryptographicAlgorithm::SLHDSA_SHA2_128s
+                | CryptographicAlgorithm::SLHDSA_SHA2_128f
+                | CryptographicAlgorithm::SLHDSA_SHA2_192s
+                | CryptographicAlgorithm::SLHDSA_SHA2_192f
+                | CryptographicAlgorithm::SLHDSA_SHA2_256s
+                | CryptographicAlgorithm::SLHDSA_SHA2_256f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+                | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+                | CryptographicAlgorithm::SLHDSA_SHAKE_256f
+        )
+    )
+}
+
+/// RFC 9881 §5 / RFC 9909 §6 / RFC 9935 §5 — auto-add the RFC-mandated critical keyUsage
+/// extension for fresh PQC key certifications.
+///
+/// Dispatches to the per-RFC submodule based on the algorithm family.
+/// CSR-based and re-certification cases already carry extensions from the original object,
+/// so this only fires when `subject_pqc_algorithm` returns `Some`.
+#[cfg(feature = "non-fips")]
+fn apply_pqc_key_usage(
+    x509_builder: &mut openssl::x509::X509Builder,
+    subject: &Subject,
+    attributes: &Attributes,
+    vendor_id: &str,
+) -> KResult<()> {
+    if let Some(algo) = subject_pqc_algorithm(subject) {
+        let is_ca = extension_config_is_ca(attributes, vendor_id);
+        match algo {
+            CryptographicAlgorithm::MLDSA_44
+            | CryptographicAlgorithm::MLDSA_65
+            | CryptographicAlgorithm::MLDSA_87 => {
+                rfc9881::apply_extensions(x509_builder, is_ca)?;
             }
-            Some(ku.build()?)
+            CryptographicAlgorithm::SLHDSA_SHA2_128s
+            | CryptographicAlgorithm::SLHDSA_SHA2_128f
+            | CryptographicAlgorithm::SLHDSA_SHA2_192s
+            | CryptographicAlgorithm::SLHDSA_SHA2_192f
+            | CryptographicAlgorithm::SLHDSA_SHA2_256s
+            | CryptographicAlgorithm::SLHDSA_SHA2_256f
+            | CryptographicAlgorithm::SLHDSA_SHAKE_128s
+            | CryptographicAlgorithm::SLHDSA_SHAKE_128f
+            | CryptographicAlgorithm::SLHDSA_SHAKE_192s
+            | CryptographicAlgorithm::SLHDSA_SHAKE_192f
+            | CryptographicAlgorithm::SLHDSA_SHAKE_256s
+            | CryptographicAlgorithm::SLHDSA_SHAKE_256f => {
+                rfc9909::apply_extensions(x509_builder, is_ca)?;
+            }
+            CryptographicAlgorithm::MLKEM_512
+            | CryptographicAlgorithm::MLKEM_768
+            | CryptographicAlgorithm::MLKEM_1024
+            | CryptographicAlgorithm::X25519MLKEM768
+            | CryptographicAlgorithm::X448MLKEM1024
+            | CryptographicAlgorithm::ConfigurableKEM => {
+                rfc9935::apply_extensions(x509_builder)?;
+            }
+            _ => {} // RSA, EC, EdDSA — no automatic PQC keyUsage
         }
-        // RFC 9935: ML-KEM / hybrid KEM certificates keyUsage MUST be keyEncipherment only
-        CryptographicAlgorithm::MLKEM_512
-        | CryptographicAlgorithm::MLKEM_768
-        | CryptographicAlgorithm::MLKEM_1024
-        | CryptographicAlgorithm::X25519MLKEM768
-        | CryptographicAlgorithm::X448MLKEM1024
-        | CryptographicAlgorithm::ConfigurableKEM => Some(
-            KeyUsage::new()
-                .critical()
-                .key_encipherment()
-                .build()?,
-        ),
-        _ => None, // RSA, EC, EdDSA — not covered by RFC 9881/9935
-    };
-    Ok(extension)
+    }
+    Ok(())
+}
+
+/// RFC 5280 §4.2 — apply user-supplied X.509v3 extensions from the vendor attribute CNF.
+///
+/// Returns `true` if the user-supplied config contains a `crlDistributionPoints` entry
+/// (needed by `apply_no_rev_avail` to decide whether to auto-add `noRevAvail`).
+fn apply_user_extensions(
+    x509_builder: &mut openssl::x509::X509Builder,
+    attributes: &mut Attributes,
+    vendor_id: &str,
+    issuer: &Issuer,
+) -> KResult<bool> {
+    if let Some(extensions) = attributes.remove_x509_extension_file(vendor_id) {
+        let extensions_as_str = String::from_utf8(extensions)?;
+        debug!("OpenSSL Extensions: {}", extensions_as_str);
+        let has_cdp = extensions_as_str.contains("crlDistributionPoints");
+        let context = x509_builder.x509v3_context(issuer.certificate(), None);
+        x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
+            .into_iter()
+            .try_for_each(|extension| x509_builder.append_extension(extension))?;
+        Ok(has_cdp)
+    } else {
+        Ok(false)
+    }
+}
+
+/// RFC 9608 §2–§3 — delegate to [`rfc9608::apply_extensions`].
+fn apply_no_rev_avail(
+    x509_builder: &mut openssl::x509::X509Builder,
+    issuer: &Issuer,
+    attributes: &Attributes,
+    vendor_id: &str,
+    has_cdp: bool,
+) -> KResult<()> {
+    rfc9608::apply_extensions(x509_builder, issuer, attributes, vendor_id, has_cdp)
 }
 
 fn build_and_sign_certificate(
@@ -840,63 +900,21 @@ fn build_and_sign_certificate(
             .as_ref(),
     )?;
 
-    // add subject extensions
+    // add subject extensions (from CSR or existing certificate)
     subject
         .extensions()?
         .into_iter()
         .try_for_each(|extension| x509_builder.append_extension(extension))?;
 
-    // RFC 9881 (ML-DSA/SLH-DSA) / RFC 9935 (ML-KEM): automatically add the RFC-mandated
-    // critical keyUsage extension for fresh PQC key certifications.
-    // CSR-based and re-certification cases already carry extensions from the original object.
-    //
-    // For CA certificates (basicConstraints=CA:TRUE in the extension config),
-    // keyCertSign and cRLSign are added in addition to digitalSignature so that
-    // OpenSSL's X509_verify_cert accepts the cert as a signing CA (RFC 5280 §4.2.1.3).
+    // RFC 9881 §5 / RFC 9909 §6 / RFC 9935 §5: auto-add PQC keyUsage
     #[cfg(feature = "non-fips")]
-    if let Some(algo) = subject_pqc_algorithm(subject) {
-        let is_ca = extension_config_is_ca(&attributes, vendor_id);
-        if let Some(ku_ext) = pqc_rfc_key_usage(algo, is_ca)? {
-            x509_builder.append_extension(ku_ext)?;
-        }
-    }
+    apply_pqc_key_usage(&mut x509_builder, subject, &attributes, vendor_id)?;
 
-    // Extensions supplied using an extension attribute.
-    // Also tracks whether a crlDistributionPoints was supplied (used below for noRevAvail).
-    // This requires knowing the issuer certificate.
-    let ext_conf_has_cdp =
-        if let Some(extensions) = attributes.remove_x509_extension_file(vendor_id) {
-            let extensions_as_str = String::from_utf8(extensions)?;
-            debug!("OpenSSL Extensions: {}", extensions_as_str);
-            let has_cdp = extensions_as_str.contains("crlDistributionPoints");
-            // Create a new X509V3Context object for the issuer certificate
-            let context = x509_builder.x509v3_context(issuer.certificate(), None);
-            x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
-                .into_iter()
-                .try_for_each(|extension| x509_builder.append_extension(extension))?;
-            has_cdp
-        } else {
-            false
-        };
+    // RFC 5280 §4.2: user-supplied extensions from vendor attribute CNF
+    let has_cdp = apply_user_extensions(&mut x509_builder, &mut attributes, vendor_id, issuer)?;
 
-    // RFC 9608 §2: auto-add id-ce-noRevAvail (OID 2.5.29.56, i.e. { id-ce 56 }) for
-    // self-signed end-entity certificates that carry no CRL distribution points.
-    // Signals to relying parties that no revocation information is available so they
-    // should not reject the certificate for lack of a CRL or OCSP response.
-    // RFC 9608 §3: this extension MUST NOT be present in CA public key certificates.
-    // Criticality MUST be FALSE per RFC 9608 §2 ("'0500'H is the DER encoding").
-    // OpenSSL does not register this OID so we build the extension via new_from_der().
-    let is_self_signed = matches!(issuer, Issuer::PrivateKeyAndSubjectName(..));
-    let is_ca = extension_config_is_ca(&attributes, vendor_id);
-    if is_self_signed && !ext_conf_has_cdp && !is_ca {
-        let oid = Asn1Object::from_str("2.5.29.56")?;
-        let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
-        x509_builder.append_extension(X509Extension::new_from_der(
-            oid.as_ref(),
-            false,
-            val.as_ref(),
-        )?)?;
-    }
+    // RFC 9608 §2–§3: auto-add noRevAvail for self-signed end-entity certs
+    apply_no_rev_avail(&mut x509_builder, issuer, &attributes, vendor_id, has_cdp)?;
 
     // The digest must match the *issuer's signing key* type, not the subject key.
     // RSA and EC (ECDSA) require an explicit external digest; EdDSA and PQC algorithms
