@@ -149,13 +149,11 @@ fn initialize_logging(log_home: Option<String>) {
 
     // Determine the log directory: prefer the DLL's own directory, then
     // %APPDATA%\.cosmian as a fallback so we always write to a file.
-    let log_dir: Option<PathBuf> = log_home
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var("APPDATA")
-                .ok()
-                .map(|p| PathBuf::from(p).join(".cosmian"))
-        });
+    let log_dir: Option<PathBuf> = log_home.map(PathBuf::from).or_else(|| {
+        std::env::var("APPDATA")
+            .ok()
+            .map(|p| PathBuf::from(p).join(".cosmian"))
+    });
 
     if let Some(dir) = log_dir {
         drop(std::fs::create_dir_all(&dir));
