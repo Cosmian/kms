@@ -5,28 +5,22 @@
 /// `Capabilities` describe the DLL location and supported operations.
 ///
 /// These helpers are called by the CLI `ckms cng register/unregister` commands.
-#[cfg(windows)]
 use std::path::Path;
 
-#[cfg(windows)]
 use cosmian_logger::debug;
-#[cfg(windows)]
 use windows_sys::Win32::System::Registry::{
     HKEY, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WRITE, REG_DWORD,
     REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegOpenKeyExW,
     RegSetValueExW,
 };
 
-#[cfg(windows)]
 use crate::provider::KSP_PROVIDER_NAME;
 
 /// Registry path to all CNG KSP providers (without trailing `\`).
-#[cfg(windows)]
 const KSP_REGISTRY_PATH: &str = r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers";
 
 /// Registry flag: NCRYPT_IMPL_HARDWARE_FLAG(1) | NCRYPT_IMPL_SOFTWARE_FLAG(2)
 /// We advertise software-only.
-#[cfg(windows)]
 const KSP_CAPABILITIES: u32 = 2_u32; // NCRYPT_IMPL_SOFTWARE_FLAG
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -38,7 +32,6 @@ const KSP_CAPABILITIES: u32 = 2_u32; // NCRYPT_IMPL_SOFTWARE_FLAG
 ///
 /// # Errors
 /// Returns an error string (suitable for display) if the registry write fails.
-#[cfg(windows)]
 pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
     let dll_path_str = dll_path
         .to_str()
@@ -108,7 +101,6 @@ pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
 }
 
 /// Unregister the Cosmian KMS KSP by removing its registry subkey.
-#[cfg(windows)]
 pub fn unregister_ksp() -> Result<(), String> {
     debug!("CNG KSP unregister");
 
@@ -143,7 +135,6 @@ pub fn unregister_ksp() -> Result<(), String> {
 }
 
 /// Check whether the KSP is currently registered (key exists and `DllFileName` is present).
-#[cfg(windows)]
 pub fn is_ksp_registered() -> bool {
     let key_path = format!("{KSP_REGISTRY_PATH}\\{KSP_PROVIDER_NAME}");
     let key_path_w = to_wide(&key_path);
@@ -165,24 +156,6 @@ pub fn is_ksp_registered() -> bool {
     true
 }
 
-// ─── Registry helpers for non-Windows builds (stubs) ─────────────────────────
-
-#[cfg(not(windows))]
-pub fn register_ksp(_dll_path: &std::path::Path) -> Result<(), String> {
-    Err("KSP registration is only supported on Windows".to_owned())
-}
-
-#[cfg(not(windows))]
-pub fn unregister_ksp() -> Result<(), String> {
-    Err("KSP unregistration is only supported on Windows".to_owned())
-}
-
-#[cfg(not(windows))]
-#[must_use]
-pub fn is_ksp_registered() -> bool {
-    false
-}
-
 // ─── Wide-string helpers ──────────────────────────────────────────────────────
 
 /// Encode a Rust `&str` as a null-terminated UTF-16 `Vec<u16>`.
@@ -199,7 +172,6 @@ fn str_to_wide(s: &str) -> Vec<u16> {
 
 /// Reinterpret a `&[u16]` as a byte slice for `RegSetValueExW`.
 /// Includes the null terminator so the registry stores a well-formed wide string.
-#[cfg(windows)]
 #[allow(unsafe_code)]
 fn wide_as_bytes(wide: &[u16]) -> Vec<u8> {
     wide.iter().flat_map(|c| c.to_le_bytes()).collect()

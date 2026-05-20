@@ -59,6 +59,14 @@
 - Rename crate `cosmian_kms_cng_ksp` → `cosmian_cng` and `cosmian_kms_cng_ksp_verify` →
   `cosmian_cng_verify`: shorter names, consistent with `cosmian_pkcs11` naming; DLL artifact
   becomes `cosmian_cng.dll` and binary becomes `cosmian_cng_verify.exe`. ([#924](https://github.com/Cosmian/kms/pull/924))
+- Move `cosmian_cng_verify` DLL verification logic into `ckms cng verify --dll <path>`;
+  remove standalone `cosmian_cng_verify` crate. ([#924](https://github.com/Cosmian/kms/pull/924))
+- Move `cosmian_pkcs11_verify` diagnostic logic into `ckms pkcs11 verify --so-path <path>`;
+  remove standalone `cosmian_pkcs11_verify` crate. ([#924](https://github.com/Cosmian/kms/pull/924))
+- Bundle `cosmian_cng.dll` in the ckms NSIS installer (Windows); remove separate CNG ZIP
+  archive from CI artifacts. ([#924](https://github.com/Cosmian/kms/pull/924))
+- Remove `cosmian_pkcs11_verify` binary from deb/rpm/NSIS packages; the functionality is now
+  available via `ckms pkcs11 verify`. ([#924](https://github.com/Cosmian/kms/pull/924))
 
 ## Bug Fixes
 

@@ -469,7 +469,7 @@ run against a **local Cosmian KMS server** with a SQLite backend.
 | Layer | What it tests | Runner | Location |
 |---|---|---|---|
 | **Rust lib tests** | Backend functions (`backend::create_rsa_key_pair`, `sign_hash`, `list_cng_keys`, …) via an in-process KMS | `cargo test --lib -p cosmian_cng` | `crate/clients/cng/src/tests.rs` |
-| **DLL surface tests** | Loads `cosmian_cng.dll` at runtime, calls `GetKeyStorageInterface`, exercises every `NCrypt*` function pointer against a live KMS | `cosmian_cng_verify.exe` | `crate/clients/cng_verify/src/main.rs` |
+| **DLL surface tests** | Loads `cosmian_cng.dll` at runtime, calls `GetKeyStorageInterface`, exercises every `NCrypt*` function pointer against a live KMS | `ckms cng verify --dll <path>` | `crate/clients/clap/src/actions/cng_verify.rs` |
 | **CLI commands** | `ckms cng register`, `status`, `list-keys`, `unregister` | PowerShell assertions | `.github/scripts/windows/test_cng_ksp.ps1` |
 
 ### Running the full test suite

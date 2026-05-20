@@ -12,55 +12,39 @@
 /// - No panics across FFI boundaries — errors are converted to
 ///   `SECURITY_STATUS` codes and logged.
 /// - The shared Tokio runtime in `backend.rs` handles all async I/O.
-#[cfg(windows)]
 use std::{path::PathBuf, sync::Arc};
 
-#[cfg(windows)]
 use cosmian_logger::error;
-#[cfg(windows)]
 use windows_sys::Win32::Security::Cryptography::{
     BCryptBufferDesc, NCRYPT_ALLOW_EXPORT_FLAG, NCRYPT_ALLOW_PLAINTEXT_EXPORT_FLAG,
     NCRYPT_IMPL_SOFTWARE_FLAG, NCryptAlgorithmName, NCryptKeyName,
 };
 
 // NCrypt constants not provided by windows-sys — values from ncryptprovider.h
-#[cfg(windows)]
 const NCRYPT_IMPL_HARDWARE_FLAG: u32 = 0x0000_0001;
-#[cfg(windows)]
 const NCRYPT_SIGN_OPERATION: u32 = 0x0000_0001;
-#[cfg(windows)]
 const NCRYPT_DECRYPT_OPERATION: u32 = 0x0000_0002;
-#[cfg(windows)]
 const NCRYPT_ENCRYPT_OPERATION: u32 = 0x0000_0004;
-#[cfg(windows)]
 const NCRYPT_KEY_NAME_PROPERTY: *const u16 = {
     // "Name\0" as UTF-16LE  — same value as NCRYPT_NAME_PROPERTY
     // We cast the NCRYPT_NAME_PROPERTY wide-string constant.
     // We can just use NCRYPT_NAME_PROPERTY for key name queries.
     std::ptr::null()
 };
-#[cfg(windows)]
 const NCRYPT_MAX_NAME_LEN_PROPERTY: u32 = 260;
-#[cfg(windows)]
 const NCRYPT_ALGORITHM_OPERATIONS_PARAMETER: u32 = 0x0000_0002;
-#[cfg(windows)]
 const NCRYPT_EXPORT_LEGACY_ALLOW_EXPORT_FLAG: u32 = 0x0000_0400;
 
 // CNG padding flag constants
-#[cfg(windows)]
 const BCRYPT_PAD_NONE: u32 = 0x0000_0001;
-#[cfg(windows)]
 const BCRYPT_PAD_PKCS1: u32 = 0x0000_0002;
-#[cfg(windows)]
 const BCRYPT_PAD_OAEP: u32 = 0x0000_0004;
-#[cfg(windows)]
 const BCRYPT_PAD_PSS: u32 = 0x0000_0008;
 
 // ─── Padding info structures (not provided by windows-sys) ───────────────────
 
 /// `BCRYPT_PKCS1_PADDING_INFO` — passed for PKCS#1 v1.5 sign/verify.
 /// Layout: { LPCWSTR pszAlgId; }
-#[cfg(windows)]
 #[repr(C)]
 struct BcryptPkcs1PaddingInfo {
     psz_alg_id: *const u16,
@@ -68,7 +52,6 @@ struct BcryptPkcs1PaddingInfo {
 
 /// `BCRYPT_PSS_PADDING_INFO` — passed for PSS sign/verify.
 /// Layout: { LPCWSTR pszAlgId; ULONG cbSalt; }
-#[cfg(windows)]
 #[repr(C)]
 struct BcryptPssPaddingInfo {
     psz_alg_id: *const u16,
@@ -77,7 +60,6 @@ struct BcryptPssPaddingInfo {
 
 /// `BCRYPT_OAEP_PADDING_INFO` — passed for OAEP encrypt/decrypt.
 /// Layout: { LPCWSTR pszAlgId; PUCHAR pbLabel; ULONG cbLabel; }
-#[cfg(windows)]
 #[repr(C)]
 struct BcryptOaepPaddingInfo {
     psz_alg_id: *const u16,
@@ -85,7 +67,6 @@ struct BcryptOaepPaddingInfo {
     _cb_label: u32,
 }
 
-#[cfg(windows)]
 use crate::{
     backend,
     error::{
@@ -111,14 +92,12 @@ pub const KSP_PROVIDER_NAME_W: &[u16] = &[
 pub const PROVIDER_CTX_MAGIC: u32 = 0xC0_5A_1A_AC;
 
 /// Heap-allocated provider context.  Address cast to `NCRYPT_PROV_HANDLE`.
-#[cfg(windows)]
 pub struct CngProviderCtx {
     pub magic: u32,
     pub client:
         Arc<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient>,
 }
 
-#[cfg(windows)]
 impl CngProviderCtx {
     unsafe fn from_handle(handle: usize) -> KspResult<&'static mut Self> {
         if handle == 0 {
@@ -138,7 +117,6 @@ impl CngProviderCtx {
 
 /// Copy `data` into `pb_output/cb_output` and write the actual size to
 /// `*pcb_result`.  If `pb_output` is null, only fill `*pcb_result`.
-#[cfg(windows)]
 unsafe fn write_output(
     pb_output: *mut u8,
     cb_output: u32,
@@ -164,14 +142,12 @@ unsafe fn write_output(
 }
 
 /// Encode a Rust `&str` as a null-terminated UTF-16 little-endian byte slice.
-#[cfg(windows)]
 fn str_to_wide_bytes(s: &str) -> Vec<u8> {
     let wide: Vec<u16> = s.encode_utf16().chain(std::iter::once(0)).collect();
     wide.iter().flat_map(|c| c.to_le_bytes()).collect()
 }
 
 /// Decode a null-terminated UTF-16 wide string from a raw pointer.
-#[cfg(windows)]
 unsafe fn wide_ptr_to_string(ptr: *const u16) -> KspResult<String> {
     if ptr.is_null() {
         return Err(KspError::InvalidParameter("null wide string".to_owned()));
@@ -189,7 +165,6 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> KspResult<String> {
 
 /// Parse a CNG hash algorithm name (wide string) into a `HashingAlgorithm`.
 /// Returns `None` if the pointer is null or the algorithm is unknown.
-#[cfg(windows)]
 unsafe fn parse_hash_alg_from_wide(ptr: *const u16) -> Option<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm>{
     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
     if ptr.is_null() {
@@ -209,7 +184,6 @@ unsafe fn parse_hash_alg_from_wide(ptr: *const u16) -> Option<ckms::reexport::co
 // ─── KSP function implementations ────────────────────────────────────────────
 
 /// `NCryptOpenStorageProvider` — initialise a provider session.
-#[cfg(windows)]
 unsafe extern "system" fn open_provider(
     ph_provider: *mut usize,
     _psz_provider_name: *const u16,
@@ -220,10 +194,7 @@ unsafe extern "system" fn open_provider(
     }
 
     // Locate ckms.toml: check DLL directory first, then default search.
-    #[cfg(windows)]
     let dll_dir = crate::dll_directory();
-    #[cfg(not(windows))]
-    let dll_dir: Option<PathBuf> = None;
 
     let explicit_conf: Option<PathBuf> = dll_dir.as_deref().and_then(|dir| {
         let candidate = dir.join("ckms.toml");
@@ -255,7 +226,6 @@ unsafe extern "system" fn open_provider(
 }
 
 /// `NCryptFreeProvider`
-#[cfg(windows)]
 unsafe extern "system" fn free_provider(h_provider: usize) -> SecurityStatus {
     if h_provider == 0 {
         return NTE_INVALID_HANDLE;
@@ -268,7 +238,6 @@ unsafe extern "system" fn free_provider(h_provider: usize) -> SecurityStatus {
 }
 
 /// `NCryptOpenKey` — open an existing named key from the KMS.
-#[cfg(windows)]
 unsafe extern "system" fn open_key(
     h_provider: usize,
     ph_key: *mut usize,
@@ -327,7 +296,6 @@ unsafe extern "system" fn open_key(
 }
 
 /// `NCryptCreatePersistedKey` — stage a key for creation (finalized later).
-#[cfg(windows)]
 unsafe extern "system" fn create_persisted_key(
     h_provider: usize,
     ph_key: *mut usize,
@@ -377,7 +345,6 @@ unsafe extern "system" fn create_persisted_key(
 }
 
 /// `NCryptFinalizeKey` — commit a pending key to the KMS.
-#[cfg(windows)]
 unsafe extern "system" fn finalize_key(
     _h_provider: usize,
     h_key: usize,
@@ -397,7 +364,6 @@ unsafe extern "system" fn finalize_key(
 }
 
 /// `NCryptDeleteKey` — revoke + destroy a key from the KMS and free the context.
-#[cfg(windows)]
 unsafe extern "system" fn delete_key(
     _h_provider: usize,
     h_key: usize,
@@ -436,14 +402,12 @@ unsafe extern "system" fn delete_key(
 }
 
 /// `NCryptFreeKey`
-#[cfg(windows)]
 unsafe extern "system" fn free_key(_h_provider: usize, h_key: usize) -> SecurityStatus {
     unsafe { CngKeyCtx::free(h_key) };
     ERROR_SUCCESS
 }
 
 /// `NCryptFreeBuffer` — free a buffer allocated by the KSP (e.g. in EnumKeys).
-#[cfg(windows)]
 unsafe extern "system" fn free_buffer(_pv_input: *mut core::ffi::c_void) -> SecurityStatus {
     // Buffers we allocate are Vec<u8> turned into raw pointers via Box.
     // For simplicity, any buffer we hand out is a Box<[u8]> leaked.
@@ -453,7 +417,6 @@ unsafe extern "system" fn free_buffer(_pv_input: *mut core::ffi::c_void) -> Secu
 }
 
 /// `NCryptGetKeyProperty`
-#[cfg(windows)]
 unsafe extern "system" fn get_key_property(
     _h_provider: usize,
     h_key: usize,
@@ -528,7 +491,6 @@ unsafe extern "system" fn get_key_property(
 }
 
 /// `NCryptSetKeyProperty`
-#[cfg(windows)]
 unsafe extern "system" fn set_key_property(
     _h_provider: usize,
     h_key: usize,
@@ -595,7 +557,6 @@ unsafe extern "system" fn set_key_property(
 }
 
 /// `NCryptGetProviderProperty`
-#[cfg(windows)]
 unsafe extern "system" fn get_provider_property(
     _h_provider: usize,
     psz_property: *const u16,
@@ -633,7 +594,6 @@ unsafe extern "system" fn get_provider_property(
 }
 
 /// `NCryptSetProviderProperty` — not needed for a software KSP.
-#[cfg(windows)]
 unsafe extern "system" fn set_provider_property(
     _h_provider: usize,
     _psz_property: *const u16,
@@ -645,7 +605,6 @@ unsafe extern "system" fn set_provider_property(
 }
 
 /// `NCryptSignHash`
-#[cfg(windows)]
 unsafe extern "system" fn sign_hash(
     _h_provider: usize,
     h_key: usize,
@@ -713,7 +672,6 @@ unsafe extern "system" fn sign_hash(
 }
 
 /// `NCryptVerifySignature` — verify a signature using the public key in the KMS.
-#[cfg(windows)]
 unsafe extern "system" fn verify_signature(
     _h_provider: usize,
     h_key: usize,
@@ -793,7 +751,6 @@ unsafe extern "system" fn verify_signature(
 }
 
 /// `NCryptEncrypt`
-#[cfg(windows)]
 unsafe extern "system" fn encrypt(
     _h_provider: usize,
     h_key: usize,
@@ -849,7 +806,6 @@ unsafe extern "system" fn encrypt(
 }
 
 /// `NCryptDecrypt`
-#[cfg(windows)]
 unsafe extern "system" fn decrypt(
     _h_provider: usize,
     h_key: usize,
@@ -903,7 +859,6 @@ unsafe extern "system" fn decrypt(
 }
 
 /// `NCryptExportKey`
-#[cfg(windows)]
 unsafe extern "system" fn export_key(
     _h_provider: usize,
     h_key: usize,
@@ -951,7 +906,6 @@ unsafe extern "system" fn export_key(
 }
 
 /// `NCryptImportKey` — import a key blob into the KMS.
-#[cfg(windows)]
 unsafe extern "system" fn import_key(
     _h_provider: usize,
     _h_import_key: usize,
@@ -966,7 +920,6 @@ unsafe extern "system" fn import_key(
 }
 
 /// `NCryptIsAlgSupported`
-#[cfg(windows)]
 unsafe extern "system" fn is_alg_supported(
     _h_provider: usize,
     psz_alg_id: *const u16,
@@ -990,7 +943,6 @@ unsafe extern "system" fn is_alg_supported(
 ///
 /// Allocates an array of `NCryptAlgorithmName` structs filtered by the
 /// requested operation class.
-#[cfg(windows)]
 unsafe extern "system" fn enum_algorithms(
     _h_provider: usize,
     dw_alg_class: u32,
@@ -1100,7 +1052,6 @@ unsafe extern "system" fn enum_algorithms(
 }
 
 /// `NCryptEnumKeys` — enumerate CNG KSP keys from the KMS.
-#[cfg(windows)]
 unsafe extern "system" fn enum_keys(
     h_provider: usize,
     _psz_scope: *const u16,
@@ -1161,7 +1112,6 @@ unsafe extern "system" fn enum_keys(
 }
 
 /// `NCryptGenRandom` — delegate to Windows BCryptGenRandom.
-#[cfg(windows)]
 unsafe extern "system" fn gen_random(
     _h_provider: usize,
     pb_buffer: *mut u8,
@@ -1190,7 +1140,6 @@ unsafe extern "system" fn gen_random(
 }
 
 /// `NCryptNotifyChangeKey` — stub returning success (no event plumbing needed).
-#[cfg(windows)]
 unsafe extern "system" fn notify_change_key(
     _h_provider: usize,
     _ph_event: *mut windows_sys::Win32::Foundation::HANDLE,
@@ -1200,7 +1149,6 @@ unsafe extern "system" fn notify_change_key(
 }
 
 /// `NCryptSecretAgreement` — not supported.
-#[cfg(windows)]
 unsafe extern "system" fn secret_agreement(
     _h_provider: usize,
     _h_priv_key: usize,
@@ -1212,7 +1160,6 @@ unsafe extern "system" fn secret_agreement(
 }
 
 /// `NCryptDeriveKey` — not supported.
-#[cfg(windows)]
 unsafe extern "system" fn derive_key(
     _h_provider: usize,
     _h_shared_secret: usize,
@@ -1227,7 +1174,6 @@ unsafe extern "system" fn derive_key(
 }
 
 /// `NCryptFreeSecret` — no-op.
-#[cfg(windows)]
 unsafe extern "system" fn free_secret(
     _h_provider: usize,
     _h_shared_secret: usize,
@@ -1236,7 +1182,6 @@ unsafe extern "system" fn free_secret(
 }
 
 /// `NCryptPromptUser` — interactive PIN dialog; not needed for automated KMS access.
-#[cfg(windows)]
 unsafe extern "system" fn prompt_user(
     _h_provider: usize,
     _h_key: usize,
@@ -1247,7 +1192,6 @@ unsafe extern "system" fn prompt_user(
 }
 
 /// `NCryptKeyDerivation` — not supported.
-#[cfg(windows)]
 unsafe extern "system" fn key_derivation(
     _h_provider: usize,
     _h_key: usize,
@@ -1261,7 +1205,6 @@ unsafe extern "system" fn key_derivation(
 }
 
 /// `NCryptCreateClaim` — not supported.
-#[cfg(windows)]
 unsafe extern "system" fn create_claim(
     _h_prov: usize,
     _h_subject_key: usize,
@@ -1277,7 +1220,6 @@ unsafe extern "system" fn create_claim(
 }
 
 /// `NCryptVerifyClaim` — not supported.
-#[cfg(windows)]
 unsafe extern "system" fn verify_claim(
     _h_prov: usize,
     _h_subject_key: usize,
@@ -1295,7 +1237,6 @@ unsafe extern "system" fn verify_claim(
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Infer hashing algorithm from digest byte length (fallback heuristic).
-#[cfg(windows)]
 fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm{
     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
     #[allow(clippy::match_same_arms)]
@@ -1319,7 +1260,6 @@ fn hash_alg_from_digest_len(len: usize) -> ckms::reexport::cosmian_kms_cli_actio
 /// FreeBuffer, Encrypt, Decrypt, IsAlgSupported, EnumAlgorithms, EnumKeys, ImportKey,
 /// ExportKey, SignHash, VerifySignature, PromptUser, NotifyChangeKey, SecretAgreement,
 /// DeriveKey, FreeSecret.
-#[cfg(windows)]
 pub static KSP_FUNCTION_TABLE:
     windows_sys::Win32::Security::Cryptography::NCRYPT_KEY_STORAGE_FUNCTION_TABLE =
     windows_sys::Win32::Security::Cryptography::NCRYPT_KEY_STORAGE_FUNCTION_TABLE {
@@ -1361,7 +1301,6 @@ pub static KSP_FUNCTION_TABLE:
 // ─── Attribute helpers ────────────────────────────────────────────────────────
 
 /// Convert KMS `Attributes` to a `KeyAlgorithm`.
-#[cfg(windows)]
 fn attrs_to_algorithm(
     attrs: &ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
 ) -> KeyAlgorithm {
@@ -1390,7 +1329,6 @@ fn attrs_to_algorithm(
 }
 
 /// Convert KMS `Attributes` to `KeyUsage` flags.
-#[cfg(windows)]
 fn attrs_to_usage(
     attrs: &ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes,
 ) -> KeyUsage {
@@ -1411,5 +1349,4 @@ fn attrs_to_usage(
 }
 
 // Re-export for use in blob.rs helpers called from key.rs
-#[cfg(windows)]
 use crate::blob::EcCurve;

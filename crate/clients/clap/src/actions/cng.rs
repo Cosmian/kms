@@ -35,6 +35,15 @@ pub enum CngCommands {
     Status,
     /// List all private keys stored in Cosmian KMS that belong to this CNG KSP.
     ListKeys,
+    /// Load the CNG KSP DLL and exercise all `NCrypt` function-table entry points.
+    ///
+    /// This tests key creation, signing, encryption, export, delete, property queries,
+    /// algorithm enumeration, and more against a live KMS server.
+    Verify {
+        /// Full path to the `cosmian_cng.dll` file to verify.
+        #[arg(long, short = 'd')]
+        dll: PathBuf,
+    },
 }
 
 impl CngCommands {
@@ -51,6 +60,7 @@ impl CngCommands {
             Self::Unregister => unregister(),
             Self::Status => status(),
             Self::ListKeys => list_keys(kms_rest_client).await,
+            Self::Verify { dll } => verify(dll),
         }
     }
 }
@@ -156,6 +166,13 @@ async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResu
         }
     }
     Ok(())
+}
+
+// ─── Verify ───────────────────────────────────────────────────────────────────
+
+#[allow(clippy::ptr_arg)]
+fn verify(dll: &PathBuf) -> KmsCliResult<()> {
+    crate::actions::cng_verify::win::run_verify(dll)
 }
 
 // ─── Windows Registry helpers ─────────────────────────────────────────────────

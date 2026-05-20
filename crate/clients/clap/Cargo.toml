@@ -54,7 +54,9 @@ hex = { workspace = true }
 jsonwebtoken = { workspace = true }
 leb128 = { workspace = true }
 libc = "0.2"
+libloading = { workspace = true }
 pem = { workspace = true }
+pkcs11-sys = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -80,5 +82,7 @@ x509-parser = { workspace = true, features = ["verify"] }
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
   "Win32_Security",
+  "Win32_Security_Cryptography",
+  "Win32_System_LibraryLoader",
   "Win32_System_Registry",
 ] }

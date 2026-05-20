@@ -128,55 +128,23 @@ function BuildProject {
     }
 
     # -------------------------------------------------------------------------
-    # Package ckms CLI NSIS installer
+    # Build CNG KSP DLL (bundled into the NSIS installer via cargo-packager)
     # -------------------------------------------------------------------------
-    # Copy the PKCS#11 DLL where cargo-packager looks for it (relative to ckms crate)
+    Invoke-NativeCommand cargo build --release --package cosmian_cng --features "non-fips"
+
+    # -------------------------------------------------------------------------
+    # Package ckms CLI NSIS installer (includes PKCS#11 DLL and CNG DLL)
+    # -------------------------------------------------------------------------
+    # Copy DLLs where cargo-packager looks for them (relative to ckms crate)
     New-Item -ItemType Directory -Path "crate\clients\ckms\target\release" -Force | Out-Null
     Copy-Item -Force "target\release\cosmian_pkcs11.dll" "crate\clients\ckms\target\release\cosmian_pkcs11.dll"
-    Write-Host "Copied cosmian_pkcs11.dll to crate\clients\ckms\target\release\"
+    Copy-Item -Force "target\release\cosmian_cng.dll" "crate\clients\ckms\target\release\cosmian_cng.dll"
+    Write-Host "Copied cosmian_pkcs11.dll and cosmian_cng.dll to crate\clients\ckms\target\release\"
 
     Invoke-NativeCommand cargo packager --verbose --formats nsis --release --packages ckms
 
     Get-ChildItem -Path "target\release" -Filter "ckms*setup.exe" | ForEach-Object {
         Write-Host "CLI installer: $($_.Name)"
-    }
-
-    # -------------------------------------------------------------------------
-    # Build CNG KSP DLL and verify tool
-    # -------------------------------------------------------------------------
-    Invoke-NativeCommand cargo build --release --package cosmian_cng --package cosmian_cng_verify --features "non-fips"
-
-    # -------------------------------------------------------------------------
-    # Package CNG KSP as ZIP
-    # -------------------------------------------------------------------------
-    $cargoToml = Get-Content -Raw "Cargo.toml"
-    $version = ""
-    $inWorkspace = $false
-    foreach ($line in $cargoToml -split "`n") {
-        if ($line -match '^\[workspace\.package\]') { $inWorkspace = $true; continue }
-        if ($inWorkspace -and $line -match '^version\s*=\s*"([^"]+)"') { $version = $Matches[1]; break }
-        if ($inWorkspace -and $line -match '^\[') { break }
-    }
-    if (-not $version) { throw "Unable to parse version from Cargo.toml" }
-    $arch = "x86_64"
-    $zipName = "cosmian-cng-non-fips-static-openssl_${version}_windows-${arch}.zip"
-
-    $zipStaging = "target\release\cng-staging"
-    New-Item -ItemType Directory -Path $zipStaging -Force | Out-Null
-    Remove-Item -Path "$zipStaging\*" -Force -ErrorAction SilentlyContinue
-    Copy-Item -Force "target\release\cosmian_cng.dll" "$zipStaging\"
-    Copy-Item -Force "target\release\cosmian_cng_verify.exe" "$zipStaging\"
-    if (Test-Path "nix\signing-keys\cosmian-kms-public.asc") {
-        Copy-Item -Force "nix\signing-keys\cosmian-kms-public.asc" "$zipStaging\"
-    }
-
-    $zipPath = "target\release\$zipName"
-    if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
-    Compress-Archive -Path "$zipStaging\*" -DestinationPath $zipPath
-    Write-Host "CNG KSP ZIP: $zipPath"
-
-    Get-ChildItem -Path "target\release" -Filter "cosmian-cng-*.zip" | ForEach-Object {
-        Write-Host "CNG KSP archive: $($_.Name)"
     }
 
     exit 0

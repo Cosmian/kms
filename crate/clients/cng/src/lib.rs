@@ -51,11 +51,37 @@ pub mod backend;
 mod blob;
 pub mod error;
 mod key;
+#[cfg(windows)]
 mod provider;
+#[cfg(windows)]
 mod registry;
 
+#[cfg(windows)]
 pub use provider::{KSP_PROVIDER_NAME, KSP_PROVIDER_NAME_W};
+#[cfg(windows)]
 pub use registry::{is_ksp_registered, register_ksp, unregister_ksp};
+
+// Non-Windows stubs for cross-platform compilation in CI.
+#[cfg(not(windows))]
+pub const KSP_PROVIDER_NAME: &str = "Cosmian KMS Key Storage Provider";
+#[cfg(not(windows))]
+pub const KSP_PROVIDER_NAME_W: &[u16] = &[];
+
+#[cfg(not(windows))]
+pub fn register_ksp(_dll_path: &std::path::Path) -> Result<(), String> {
+    Err("KSP registration is only supported on Windows".to_owned())
+}
+
+#[cfg(not(windows))]
+pub fn unregister_ksp() -> Result<(), String> {
+    Err("KSP unregistration is only supported on Windows".to_owned())
+}
+
+#[cfg(not(windows))]
+#[must_use]
+pub fn is_ksp_registered() -> bool {
+    false
+}
 
 // ─── DLL directory detection (Windows-only) ───────────────────────────────────
 

@@ -696,7 +696,7 @@ Oracle**-side applications** by running the diagnostic binary as the `oracle` us
 ```bash
 sudo -u oracle \
   COSMIAN_PKCS11_LOGGING_LEVEL=debug \
-  cosmian_pkcs11_verify \
+  ckms pkcs11 verify \
   --so-path /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
 ```
 
@@ -705,24 +705,23 @@ propagated correctly.
 
 ### Verifying the library loads correctly
 
-Use the `cosmian_pkcs11_verify` diagnostic binary (shipped alongside `ckms` and
-`libcosmian_pkcs11.so` in the Cosmian KMS CLI package) to confirm that the library is loadable,
-`ckms.toml` is found, and the KMS server is reachable.
+Use the `ckms pkcs11 verify` command (part of the Cosmian KMS CLI) to confirm that the library
+is loadable, `ckms.toml` is found, and the KMS server is reachable.
 
 **Modes 0 and 1** (no auth or static token/TLS cert — the default):
 
 ```bash
 # Basic check (uses ~/.cosmian/ckms.toml by default)
-cosmian_pkcs11_verify --so-path /usr/local/lib/libcosmian_pkcs11.so
+ckms pkcs11 verify --so-path /usr/local/lib/libcosmian_pkcs11.so
 
 # Explicit config path
-cosmian_pkcs11_verify \
+ckms pkcs11 verify \
   --so-path /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so \
   --conf /home/oracle/.cosmian/ckms.toml
 
 # Verbose — combine with logging env var to also capture library-side trace output
 COSMIAN_PKCS11_LOGGING_LEVEL=debug \
-  cosmian_pkcs11_verify --so-path /usr/local/lib/libcosmian_pkcs11.so
+  ckms pkcs11 verify --so-path /usr/local/lib/libcosmian_pkcs11.so
 ```
 
 **Mode 2** (`pkcs11_use_pin_as_access_token = true` — OIDC token supplied at keystore open):
@@ -733,7 +732,7 @@ A short-lived JWT must be obtained from your identity provider and passed via `-
 ```bash
 TOKEN=$(oidc-token my-oidc-profile)   # example using oidc-agent; adapt to your IdP
 
-cosmian_pkcs11_verify \
+ckms pkcs11 verify \
   --so-path /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so \
   --conf /home/oracle/.cosmian/ckms.toml \
   --token "$TOKEN"
@@ -866,7 +865,7 @@ EOF
 - `ckms.toml` contains no secrets — reading the file grants nothing.
 - Each keystore open requires a fresh token from the IdP; expired tokens are rejected (`401 Unauthorized` from KMS → `C_Login` failure).
 - An empty `IDENTIFIED BY` string returns `CKR_PIN_INCORRECT` (Oracle: `ORA-28354`).
-- Use `cosmian_pkcs11_verify --token <JWT>` to test the full flow end-to-end; see [Verifying the library loads correctly](#verifying-the-library-loads-correctly).
+- Use `ckms pkcs11 verify --token <JWT>` to test the full flow end-to-end; see [Verifying the library loads correctly](#verifying-the-library-loads-correctly).
 
 ### TLS Client Certificate Authentication (Recommended for Production)
 

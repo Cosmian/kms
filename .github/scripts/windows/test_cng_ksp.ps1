@@ -5,7 +5,7 @@
 #   1. Build the CNG KSP DLL and verification tool
 #   2. Start a local KMS server (SQLite backend)
 #   3. Register the KSP in the Windows registry
-#   4. Run the cng_verify tool against the live KMS
+#   4. Run `ckms cng verify` against the live KMS
 #   5. Run the Rust in-process tests (cosmian_cng --lib)
 #   6. Validate ckms CLI CNG commands (list-keys, status)
 #   7. Clean up (unregister KSP, stop KMS)
@@ -144,10 +144,6 @@ $DllPath = Join-Path $TARGET_DIR "cosmian_cng.dll"
 if (-not (Test-Path $DllPath)) { Write-Error "DLL not found: $DllPath"; exit 1 }
 Write-Ok "CNG KSP DLL built: $DllPath"
 
-# Build the verification tool
-Invoke-Native cargo (@("build", "--package", "cosmian_cng_verify", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build cosmian_cng_verify"
-Write-Ok "cosmian_cng_verify built"
-
 # Build ckms CLI
 Invoke-Native cargo (@("build", "--package", "ckms", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build ckms"
 Write-Ok "ckms CLI built"
@@ -195,12 +191,11 @@ server_url = "$KMS_URL"
         Write-Host "  [SKIP] ckms cng register" -ForegroundColor Yellow
     }
 
-    # -- 6. Run cosmian_cng_verify tool (NCrypt DLL surface tests) ----------------
+    # -- 6. Run CNG KSP verification via ckms CLI (NCrypt DLL surface tests) --
 
     Write-Step "Running CNG KSP verification tool (DLL surface tests)"
-    $verifyExe = Join-Path $TARGET_DIR "cosmian_cng_verify.exe"
-    Invoke-Native $verifyExe @("--dll", (Resolve-Path $DllPath).Path) "cosmian_cng_verify failed"
-    Write-Ok "cosmian_cng_verify: all DLL surface tests passed"
+    Invoke-Native $ckmsExe @("cng", "verify", "--dll", (Resolve-Path $DllPath).Path) "ckms cng verify failed"
+    Write-Ok "ckms cng verify: all DLL surface tests passed"
 
     # -- 7. Run Rust in-process lib tests ---------------------------------
 
