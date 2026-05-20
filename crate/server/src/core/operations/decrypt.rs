@@ -194,16 +194,26 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
     // Second-stage enforcement: validate the retrieved key's stored attributes.
     enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "Decrypt", owm.id(), &owm)?;
 
-    let res = BulkData::deserialize(data).map_or_else(
-        |_| decrypt_single(&owm, &kms.params, &request),
-        |bulk_data| decrypt_bulk(&owm, &kms.params, &request, bulk_data),
-    )?;
+    // Offload the CPU-bound crypto to the blocking thread pool so the async
+    // worker thread is free to handle other requests concurrently.
+    let owm_id = owm.id().to_owned();
+    let data_len = data.len();
+    let params = kms.params.clone();
+    let data_vec = data.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        BulkData::deserialize(&data_vec).map_or_else(
+            |_| decrypt_single(&owm, &params, &request),
+            |bulk_data| decrypt_bulk(&owm, &params, &request, bulk_data),
+        )
+    })
+    .await
+    .map_err(|e| KmsError::ServerError(format!("decrypt crypto task panicked: {e}")))??;
 
     info!(
-        uid = owm.id(),
+        uid = owm_id,
         user = user,
         "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
-        request.data.as_ref().map_or(0, Vec::len),
+        data_len,
         res.data.as_ref().map_or(0, |d| d.len()),
     );
 
