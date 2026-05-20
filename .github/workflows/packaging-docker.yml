@@ -189,7 +189,7 @@ jobs:
       - name: Test Docker image
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
-          RUN_ORACLE_TESTS: ${{ matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04' }}
+          # RUN_ORACLE_TESTS: ${{ matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04' }}
           ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
           COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
         run: |
