@@ -216,6 +216,11 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
     let server_url: String = Input::new()
         .with_prompt("Server URL")
         .default(http.server_url.clone())
+        .validate_with(|input: &String| -> Result<(), String> {
+            Url::parse(input)
+                .map_err(|e| format!("Invalid URL: {e}"))
+                .map(|_| ())
+        })
         .interact_text()
         .map_err(|e| cli_error!("Prompt failed: {e}"))?;
     http.server_url = server_url;

@@ -95,6 +95,31 @@ while [ $# -gt 0 ]; do
       usage >&2
       exit 1
       ;;
+    --target)
+      TARGET="${2:-}"
+      shift 2
+      ;;
+    --variant)
+      VARIANT="${2:-}"
+      shift 2
+      ;;
+    --link)
+      LINK="${2:-}"
+      shift 2
+      ;;
+    --output)
+      OUTPUT_DIR="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
   esac
 done
 

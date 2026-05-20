@@ -128,12 +128,18 @@ function BuildProject {
     }
 
     # -------------------------------------------------------------------------
-    # Package ckms CLI NSIS installer
+    # Build CNG KSP DLL (bundled into the NSIS installer via cargo-packager)
     # -------------------------------------------------------------------------
-    # Copy the PKCS#11 DLL where cargo-packager looks for it (relative to ckms crate)
+    Invoke-NativeCommand cargo build --release --package cosmian_cng --features "non-fips"
+
+    # -------------------------------------------------------------------------
+    # Package ckms CLI NSIS installer (includes PKCS#11 DLL and CNG DLL)
+    # -------------------------------------------------------------------------
+    # Copy DLLs where cargo-packager looks for them (relative to ckms crate)
     New-Item -ItemType Directory -Path "crate\clients\ckms\target\release" -Force | Out-Null
     Copy-Item -Force "target\release\cosmian_pkcs11.dll" "crate\clients\ckms\target\release\cosmian_pkcs11.dll"
-    Write-Host "Copied cosmian_pkcs11.dll to crate\clients\ckms\target\release\"
+    Copy-Item -Force "target\release\cosmian_cng.dll" "crate\clients\ckms\target\release\cosmian_cng.dll"
+    Write-Host "Copied cosmian_pkcs11.dll and cosmian_cng.dll to crate\clients\ckms\target\release\"
 
     Invoke-NativeCommand cargo packager --verbose --formats nsis --release --packages ckms
 

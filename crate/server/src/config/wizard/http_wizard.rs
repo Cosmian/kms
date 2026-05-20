@@ -6,19 +6,6 @@ use dialoguer::{Input, theme::ColorfulTheme};
 
 use crate::{config::HttpConfig, error::KmsError, result::KResult};
 
-/// Build the default CORS allowed-origins list for `port` and `scheme`.
-///
-/// Includes `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, and `[::]` so that
-/// the bundled Web UI works out-of-the-box from any loopback address (mirrors
-/// the Docker image defaults in `nix/docker.nix`).
-pub(super) fn default_cors_origins(scheme: &str, port: u16) -> Vec<String> {
-    let hosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "[::]"];
-    hosts
-        .iter()
-        .map(|h| format!("{scheme}://{h}:{port}"))
-        .collect()
-}
-
 pub fn configure_http() -> KResult<HttpConfig> {
     let theme = ColorfulTheme::default();
 

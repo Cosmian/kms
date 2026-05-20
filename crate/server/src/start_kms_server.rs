@@ -727,8 +727,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         format!(
             "http{}://{}:{}",
             if tls_config.is_some() { "s" } else { "" },
-            &kms_server.params.http_hostname,
-            &kms_server.params.http_port
+            kms_server.params.http_hostname,
+            kms_server.params.http_port
         )
     });
 

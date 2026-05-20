@@ -423,19 +423,23 @@ formats = ["nsis", "dmg"]
 src = "../../README.md"
 target = "README.md"
 
+# Default kms.toml — platform defaults are embedded in the binary
 [[package.metadata.packager.resources]]
 src = "../../pkg/kms.toml"
 target = "kms.toml"
 
+# UI dist files (from project-root ui/dist/)
 [[package.metadata.packager.resources]]
-src = "ui_non_fips/dist"
+src = "../../ui/dist"
 target = "ui/"
 
 # NSIS-specific configuration
 [package.metadata.packager.nsis]
-# Installer configuration
+# Custom template that registers the KMS server as a Windows service
+template = "installer.nsi"
+# Install system-wide (required for Windows service registration)
 display-language-selector = false
-installer-mode = "currentUser"    # or "perMachine" for system-wide installation
+installer-mode = "perMachine"
 languages = ["English"]
 
 # END WINDOWS INSTALLER PACKAGING

@@ -1014,6 +1014,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "cosmian_cng"
+version = "5.23.0"
+dependencies = [
+ "bitflags",
+ "ckms",
+ "cosmian_logger",
+ "serial_test",
+ "test_kms_server",
+ "thiserror 2.0.17",
+ "tokio",
+ "uuid",
+ "windows-sys 0.59.0",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_config_utils"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1151,8 +1167,10 @@ dependencies = [
  "jsonwebtoken",
  "leb128",
  "libc",
+ "libloading",
  "openssl",
  "pem",
+ "pkcs11-sys",
  "reqwest",
  "serde",
  "serde_json",
@@ -1166,6 +1184,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "windows-sys 0.59.0",
  "x509-cert",
  "zeroize",
 ]
@@ -1447,18 +1466,6 @@ dependencies = [
  "thiserror 2.0.17",
  "tracing",
  "zeroize",
-]
-
-[[package]]
-name = "cosmian_pkcs11_verify"
-version = "5.23.0"
-dependencies = [
- "clap",
- "libloading",
- "pkcs11-sys",
- "serial_test",
- "test_kms_server",
- "tokio",
 ]
 
 [[package]]
