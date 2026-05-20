@@ -118,7 +118,7 @@ jobs:
     name: Publish ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     needs: packages
     concurrency:
-      group: publish-release
+      group: publish-release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
       cancel-in-progress: false
     runs-on: [self-hosted, not-sgx]
     container:
