@@ -107,6 +107,7 @@ nav:
       - Storage:
           - VMware vCenter: integrations/storage/vcenter.md
           - Synology DSM (NAS volume encryption): integrations/storage/synology_dsm.md
+          - VAST Data (Storage encryption EKM): integrations/storage/vast_data.md
           - Veeam Backup & Replication: integrations/storage/veeam.md
       - Big Data:
           - Snowflake Native App: integrations/big_data/snowflake_native_app/index.md

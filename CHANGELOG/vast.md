@@ -9,5 +9,10 @@
 ## Testing
 
 - **KMIP 1.x / VAST integration**: Add non-regression test suite `crate/server/src/tests/ttlv_tests/integrations/vast.rs` with six tests covering `ReKey`, `Check`, `DeriveKey`, `ReCertify`, the KEK/DEK RFC 3394 wrapping round-trip (`test_vast_get_dek_wrapped_by_kek`), and the full VAST production workflow (`test_vast_workflow_create_locate_get_attributes`) — Create a named key, Activate, Locate by VAST-style name, and GetAttributes to verify `State=Active` and `ActivationDate` — to prevent future regressions. ([#845](https://github.com/Cosmian/kms/issues/845))
+- **VAST regression vectors**: Add `test_data/vectors/fips/integrations/vast_data/` with 9-step key lifecycle (Create → Activate → Locate → ReKey → Check → Get → GetAttributes → Revoke → Destroy) covering the `ReKey` bug from production logs. ([#845](https://github.com/Cosmian/kms/issues/845))
+
+## Documentation
+
+- **VAST Data integration**: Add storage integration documentation at `documentation/docs/integrations/storage/vast_data.md` covering server setup, VAST-side configuration, KEK/DEK wrapping workflow, compatibility notes, and troubleshooting. ([#845](https://github.com/Cosmian/kms/issues/845))
 
 Closes #845
