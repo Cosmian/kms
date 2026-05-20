@@ -237,8 +237,6 @@ mod vault {
 
 #[cfg(feature = "secret-aws")]
 mod aws {
-    use std::fmt::Write as _;
-
     use chrono::Utc;
     use hmac::{Hmac, Mac};
     use sha2::{Digest, Sha256};
@@ -269,28 +267,26 @@ mod aws {
     }
 
     fn hex_encode(bytes: &[u8]) -> String {
-        bytes.iter().fold(String::new(), |mut s, b| {
-            write!(s, "{b:02x}").expect("write to String cannot fail");
-            s
-        })
+        hex::encode(bytes)
     }
 
     fn sha256_hex(data: &[u8]) -> String {
         hex_encode(&Sha256::digest(data))
     }
 
-    fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
-        let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key size");
+    fn hmac_sha256(key: &[u8], data: &[u8]) -> KResult<Vec<u8>> {
+        let mut mac = HmacSha256::new_from_slice(key)
+            .map_err(|e| KmsError::ServerError(format!("HMAC key error: {e}")))?;
         mac.update(data);
-        mac.finalize().into_bytes().to_vec()
+        Ok(mac.finalize().into_bytes().to_vec())
     }
 
-    /// Build the SigV4 signing key:
+    /// Build the `SigV4` signing key:
     /// `HMAC(HMAC(HMAC(HMAC("AWS4" + secret, date), region), service), "aws4_request")`
-    fn signing_key(secret: &str, date: &str, region: &str, service: &str) -> Vec<u8> {
-        let k_date = hmac_sha256(format!("AWS4{secret}").as_bytes(), date.as_bytes());
-        let k_region = hmac_sha256(&k_date, region.as_bytes());
-        let k_service = hmac_sha256(&k_region, service.as_bytes());
+    fn signing_key(secret: &str, date: &str, region: &str, service: &str) -> KResult<Vec<u8>> {
+        let k_date = hmac_sha256(format!("AWS4{secret}").as_bytes(), date.as_bytes())?;
+        let k_region = hmac_sha256(&k_date, region.as_bytes())?;
+        let k_service = hmac_sha256(&k_region, service.as_bytes())?;
         hmac_sha256(&k_service, b"aws4_request")
     }
 
@@ -314,12 +310,12 @@ mod aws {
             // Parameter name starts with '/', e.g. /kms/prod/db
             let param_name = rest[slash..].to_owned();
 
-            let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").map_err(|_| {
+            let access_key_id = std::env::var("AWS_ACCESS_KEY_ID").map_err(|_e| {
                 KmsError::ServerError(
                     "AWS_ACCESS_KEY_ID env var not set for secret-aws backend".to_owned(),
                 )
             })?;
-            let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").map_err(|_| {
+            let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY").map_err(|_e| {
                 KmsError::ServerError(
                     "AWS_SECRET_ACCESS_KEY env var not set for secret-aws backend".to_owned(),
                 )
@@ -377,21 +373,24 @@ mod aws {
         // Canonical headers must be sorted alphabetically by name (lowercased).
         // Without session token: content-type, host, x-amz-date, x-amz-target.
         // With session token: insert x-amz-security-token between x-amz-date and x-amz-target.
-        let (canonical_headers, signed_headers) = if let Some(token) = session_token {
-            (
-                format!(
-                    "content-type:application/x-amz-json-1.1\nhost:{host}\nx-amz-date:{datetime}\nx-amz-security-token:{token}\nx-amz-target:AmazonSSM.GetParameter\n"
-                ),
-                "content-type;host;x-amz-date;x-amz-security-token;x-amz-target".to_owned(),
-            )
-        } else {
-            (
-                format!(
-                    "content-type:application/x-amz-json-1.1\nhost:{host}\nx-amz-date:{datetime}\nx-amz-target:AmazonSSM.GetParameter\n"
-                ),
-                "content-type;host;x-amz-date;x-amz-target".to_owned(),
-            )
-        };
+        let (canonical_headers, signed_headers) = session_token.map_or_else(
+            || {
+                (
+                    format!(
+                        "content-type:application/x-amz-json-1.1\nhost:{host}\nx-amz-date:{datetime}\nx-amz-target:AmazonSSM.GetParameter\n"
+                    ),
+                    "content-type;host;x-amz-date;x-amz-target".to_owned(),
+                )
+            },
+            |token| {
+                (
+                    format!(
+                        "content-type:application/x-amz-json-1.1\nhost:{host}\nx-amz-date:{datetime}\nx-amz-security-token:{token}\nx-amz-target:AmazonSSM.GetParameter\n"
+                    ),
+                    "content-type;host;x-amz-date;x-amz-security-token;x-amz-target".to_owned(),
+                )
+            },
+        );
 
         let canonical_request =
             format!("POST\n/\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
@@ -401,8 +400,8 @@ mod aws {
             sha256_hex(canonical_request.as_bytes())
         );
 
-        let key = signing_key(secret_key, &date, region, service);
-        let signature = hex_encode(&hmac_sha256(&key, string_to_sign.as_bytes()));
+        let key = signing_key(secret_key, &date, region, service)?;
+        let signature = hex_encode(&hmac_sha256(&key, string_to_sign.as_bytes())?);
         let authorization = format!(
             "AWS4-HMAC-SHA256 Credential={access_key_id}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
         );
