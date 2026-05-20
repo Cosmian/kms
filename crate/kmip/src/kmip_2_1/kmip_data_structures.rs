@@ -36,6 +36,7 @@ use crate::{
 };
 
 #[derive(Clone, Default, Eq, Serialize, Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "PascalCase")]
 pub struct DerivationParameters {
     /// Depends on the PRF.
     #[serde(skip_serializing_if = "Option::is_none")]
