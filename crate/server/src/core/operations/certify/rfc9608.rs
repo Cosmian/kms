@@ -12,15 +12,16 @@
 //! **§4**: Updates RFC 5280 §6.1.3 certification path validation — implementations
 //! should skip revocation checking for certificates carrying this extension.
 //!
-//! This module provides [`apply_extensions`] which conditionally appends
-//! `id-ce-noRevAvail` to self-signed end-entity certificates that do not carry a
-//! `crlDistributionPoints` extension.
+//! This module provides:
+//! - [`apply_extensions`] — conditionally appends `id-ce-noRevAvail` during issuance
+//! - [`has_extension`] — checks whether a certificate carries the extension (for validation)
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_attributes::Attributes;
 use openssl::{
     asn1::{Asn1Object, Asn1OctetString},
-    x509::{X509Builder, X509Extension},
+    x509::{X509, X509Builder, X509Extension},
 };
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use super::{extension_config_is_ca, issuer::Issuer};
 use crate::result::KResult;
@@ -52,4 +53,24 @@ pub(super) fn apply_extensions(
         )?)?;
     }
     Ok(())
+}
+
+/// RFC 9608 §4 — check whether a certificate carries the `id-ce-noRevAvail` extension.
+///
+/// OID 2.5.29.56 encoded as raw DER value bytes (without tag/length): `55 1D 38`.
+/// When present, relying parties MUST NOT reject the certificate for lack of a
+/// CRL or OCSP response; CRL fetching should be skipped entirely.
+///
+/// Used by the `Validate` operation to implement RFC 9608 §4 path validation update.
+pub(crate) fn has_extension(cert: &X509) -> bool {
+    // OID 2.5.29.56 — id-ce-noRevAvail, { id-ce 56 }
+    const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
+    let Ok(der) = cert.to_der() else { return false };
+    let Ok((_, parsed)) = X509Certificate::from_der(&der) else {
+        return false;
+    };
+    parsed
+        .extensions()
+        .iter()
+        .any(|ext| ext.oid.as_bytes() == NO_REV_AVAIL)
 }
