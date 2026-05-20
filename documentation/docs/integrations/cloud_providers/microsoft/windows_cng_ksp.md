@@ -240,43 +240,75 @@ flowchart LR
 
 ## Installation
 
-### 1. Download the DLL
+### 1. Install the Cosmian KMS CLI
 
-Download the pre-built ZIP archive from the Cosmian package repository:
+The `cosmian_cng.dll` is bundled inside the **Cosmian KMS CLI installer**
+alongside `ckms.exe`. Download and run the installer for your platform:
 
 ```powershell
-Invoke-WebRequest -Uri "https://package.cosmian.com/kms/5.23.0/windows/x86_64/non-fips/static-openssl/cosmian-cng-non-fips-static-openssl_5.22.0_windows-x86_64.zip" `
-    -OutFile "$env:TEMP\cosmian_cng.zip"
-Expand-Archive -Path "$env:TEMP\cosmian_cng.zip" -DestinationPath "C:\Program Files\Cosmian\Kms" -Force
+# Download the CLI installer (adjust the version number as needed)
+Invoke-WebRequest `
+    -Uri "https://package.cosmian.com/kms/5.22.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-cli-non-fips-static-openssl_5.22.0_x86_64.exe" `
+    -OutFile "$env:TEMP\cosmian-kms-cli.exe"
+
+# Run the installer (accepts the default installation directory)
+Start-Process -FilePath "$env:TEMP\cosmian-kms-cli.exe" -ArgumentList "/S" -Wait
 ```
 
-The archive contains `cosmian_cng.dll` and `ckms.exe`. Place them in your chosen installation directory, e.g.:
+The installer places both files in the default installation directory:
 
 ```text
-C:\Program Files\Cosmian\Kms\cosmian_cng.dll
 C:\Program Files\Cosmian\Kms\ckms.exe
+C:\Program Files\Cosmian\Kms\cosmian_cng.dll
 ```
 
-### 2. Configure KMS connection
+Ensure `C:\Program Files\Cosmian\Kms` is on your `PATH` (the installer does
+this automatically for system-wide installs):
 
-Create `ckms.toml` **in the same directory as the DLL**
-(or at `%USERPROFILE%\.cosmian\ckms.toml`):
-
-```toml
-[kms_config.http_config]
-server_url = "https://kms.example.com:9998"
-# Optional: client certificate authentication
-# tls_client_pkcs12_path = "C:\\certs\\client.p12"
-# tls_client_pkcs12_password = "changeme"
+```powershell
+$env:PATH += ";C:\Program Files\Cosmian\Kms"
 ```
 
-The DLL searches for `ckms.toml` in this order:
+### 2. Configure the KMS connection
 
-1. Path set in `CKMS_CONF` environment variable.
-2. `ckms.toml` in the same directory as `cosmian_cng.dll`.
-3. `%APPDATA%\.cosmian\ckms.toml`.
+Run the interactive configuration wizard to create `ckms.toml`:
 
-### 3. Register the KSP (requires Administrator)
+```powershell
+ckms configure
+```
+
+The wizard prompts for the KMS server URL and authentication method (none,
+bearer token, PEM client certificate, or PKCS#12 client certificate). It writes
+the configuration to `%APPDATA%\.cosmian\ckms.toml`.
+
+### 3. Verify the DLL
+
+Before registering the KSP, confirm that the DLL loads correctly and can reach
+the KMS server:
+
+```powershell
+ckms cng verify --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+```
+
+Expected output (with a running KMS):
+
+```text
+=== Cosmian CNG KSP Verification ===
+
+Loading DLL: C:\Program Files\Cosmian\Kms\cosmian_cng.dll
+
+  [OK]   OpenProvider
+── RSA key pair + sign + export + lookup ──
+  [OK]   RSA key pair + sign + export + lookup
+  ...
+─────────────────────────────────────────
+All 15 verification step(s) PASSED.
+```
+
+If any step shows `[FAIL]` with `NTE_FAIL (0x8009002A)`, the DLL cannot reach
+the KMS server — check `ckms.toml` and network connectivity before proceeding.
+
+### 4. Register the KSP (requires Administrator)
 
 ```powershell
 # From an elevated PowerShell prompt:
@@ -292,7 +324,7 @@ HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
         Capabilities REG_DWORD  2  (NCRYPT_IMPL_SOFTWARE_FLAG)
 ```
 
-### 4. Verify registration
+### 5. Verify registration
 
 ```powershell
 ckms cng status

@@ -16,9 +16,8 @@ use crate::{
         cng::CngCommands, console::Stdout, derive_key::DeriveKeyAction,
         elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
         login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands,
-        pkcs11::Pkcs11Commands, rng::RngAction, rsa::RsaCommands,
-        secret_data::SecretDataCommands, shared::LocateObjectsAction,
-        symmetric::SymmetricCommands, version::ServerVersionAction,
+        pkcs11::Pkcs11Commands, rng::RngAction, rsa::RsaCommands, secret_data::SecretDataCommands,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };

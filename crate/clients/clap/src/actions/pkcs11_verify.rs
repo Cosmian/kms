@@ -9,10 +9,10 @@ use std::{env, ffi::c_void, path::Path, ptr};
 
 use libloading::{Library, Symbol};
 use pkcs11_sys::{
-    CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR, CK_OBJECT_CLASS,
+    CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR, CK_OBJECT_CLASS,
     CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE, CK_ULONG, CKA_CLASS,
-    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY,
-    CKO_PUBLIC_KEY, CKO_SECRET_KEY, CKR_OK, CKU_USER, CK_ATTRIBUTE,
+    CKF_RW_SESSION, CKF_SERIAL_SESSION, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
+    CKO_SECRET_KEY, CKR_OK, CKU_USER,
 };
 
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -25,7 +25,11 @@ use crate::error::{KmsCliError, result::KmsCliResult};
 ///
 /// # Errors
 /// Returns an error if any PKCS#11 call fails or the library cannot be loaded.
-pub(crate) fn run_verify(so_path: &Path, conf: Option<&Path>, token: Option<&str>) -> KmsCliResult<()> {
+pub(crate) fn run_verify(
+    so_path: &Path,
+    conf: Option<&Path>,
+    token: Option<&str>,
+) -> KmsCliResult<()> {
     // ── Step A: Determine which ckms.toml will be used ──────────────────────
     describe_config(so_path, conf);
 
@@ -57,13 +61,9 @@ pub(crate) fn run_verify(so_path: &Path, conf: Option<&Path>, token: Option<&str
     println!();
 
     // ── Step D: C_Initialize ────────────────────────────────────────────────
-    let c_initialize = func_list
-        .C_Initialize
-        .ok_or_else(|| {
-            KmsCliError::Default(
-                "FAIL [C_Initialize]: not present in function list".to_owned(),
-            )
-        })?;
+    let c_initialize = func_list.C_Initialize.ok_or_else(|| {
+        KmsCliError::Default("FAIL [C_Initialize]: not present in function list".to_owned())
+    })?;
     let rv = unsafe { c_initialize(ptr::null_mut::<c_void>()) };
     check_rv(rv, "C_Initialize")?;
     println!("[C_Initialize] OK");
@@ -92,25 +92,17 @@ pub(crate) fn run_verify(so_path: &Path, conf: Option<&Path>, token: Option<&str
     println!();
 
     // ── Step J: C_CloseSession ──────────────────────────────────────────────
-    let c_close_session = func_list
-        .C_CloseSession
-        .ok_or_else(|| {
-            KmsCliError::Default(
-                "FAIL [C_CloseSession]: not present in function list".to_owned(),
-            )
-        })?;
+    let c_close_session = func_list.C_CloseSession.ok_or_else(|| {
+        KmsCliError::Default("FAIL [C_CloseSession]: not present in function list".to_owned())
+    })?;
     let rv = unsafe { c_close_session(session) };
     check_rv(rv, "C_CloseSession")?;
     println!("[C_CloseSession] OK");
 
     // ── Step K: C_Finalize ──────────────────────────────────────────────────
-    let c_finalize = func_list
-        .C_Finalize
-        .ok_or_else(|| {
-            KmsCliError::Default(
-                "FAIL [C_Finalize]: not present in function list".to_owned(),
-            )
-        })?;
+    let c_finalize = func_list.C_Finalize.ok_or_else(|| {
+        KmsCliError::Default("FAIL [C_Finalize]: not present in function list".to_owned())
+    })?;
     let rv = unsafe { c_finalize(ptr::null_mut::<c_void>()) };
     check_rv(rv, "C_Finalize")?;
     println!("[C_Finalize] OK");
@@ -440,9 +432,11 @@ fn describe_config(so_path: &Path, conf: Option<&Path>) {
             println!("[conf] Will use ckms.toml adjacent to .so: {}", p.display());
         } else {
             // Default search order mirrors ClientConfig::location()
-            let home_conf = env::var("HOME")
-                .ok()
-                .map(|h| std::path::PathBuf::from(h).join(".cosmian").join("ckms.toml"));
+            let home_conf = env::var("HOME").ok().map(|h| {
+                std::path::PathBuf::from(h)
+                    .join(".cosmian")
+                    .join("ckms.toml")
+            });
             let system_conf = std::path::PathBuf::from("/etc/cosmian/ckms.toml");
 
             if home_conf.as_ref().is_some_and(|p| p.exists()) {

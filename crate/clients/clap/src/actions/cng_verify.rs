@@ -12,7 +12,7 @@
     clippy::doc_markdown,
     clippy::indexing_slicing,
     clippy::missing_asserts_for_indexing,
-    clippy::print_stdout,
+    clippy::print_stdout
 )]
 pub(crate) mod win {
     use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
@@ -121,14 +121,16 @@ pub(crate) mod win {
 
             let mut table_ptr: *const NCRYPT_KEY_STORAGE_FUNCTION_TABLE = ptr::null();
             let provider_name = to_wide("Cosmian KMS Key Storage Provider");
-            let status =
-                unsafe { get_interface(provider_name.as_ptr(), &raw mut table_ptr, 0) };
+            let status = unsafe { get_interface(provider_name.as_ptr(), &raw mut table_ptr, 0) };
             if status != ERROR_SUCCESS || table_ptr.is_null() {
                 return Err(format!("GetKeyStorageInterface returned 0x{status:08X}"));
             }
 
             let table = unsafe { &*table_ptr };
-            Ok(Self { _handle: handle, table })
+            Ok(Self {
+                _handle: handle,
+                table,
+            })
         }
     }
 
@@ -227,8 +229,15 @@ pub(crate) mod win {
         let mut cb_result: u32 = 0;
         let status = unsafe {
             export_fn(
-                h_provider, h_key, 0, blob_type_w.as_ptr(), ptr::null(), ptr::null_mut(), 0,
-                &raw mut cb_result, 0,
+                h_provider,
+                h_key,
+                0,
+                blob_type_w.as_ptr(),
+                ptr::null(),
+                ptr::null_mut(),
+                0,
+                &raw mut cb_result,
+                0,
             )
         };
         if status != ERROR_SUCCESS || cb_result == 0 {
@@ -238,8 +247,15 @@ pub(crate) mod win {
         let mut buf = vec![0_u8; cb_result as usize];
         let status = unsafe {
             export_fn(
-                h_provider, h_key, 0, blob_type_w.as_ptr(), ptr::null(), buf.as_mut_ptr(),
-                cb_result, &raw mut cb_result, 0,
+                h_provider,
+                h_key,
+                0,
+                blob_type_w.as_ptr(),
+                ptr::null(),
+                buf.as_mut_ptr(),
+                cb_result,
+                &raw mut cb_result,
+                0,
             )
         };
         if status != ERROR_SUCCESS {
@@ -257,13 +273,22 @@ pub(crate) mod win {
     ) -> Result<Vec<u8>, String> {
         let sign_fn = dll.table.SignHash.ok_or("SignHash not in table")?;
         let sha256 = sha256_wide();
-        let padding_info = BcryptPkcs1PaddingInfo { psz_alg_id: sha256.as_ptr() };
+        let padding_info = BcryptPkcs1PaddingInfo {
+            psz_alg_id: sha256.as_ptr(),
+        };
 
         let mut cb_sig: u32 = 0;
         let status = unsafe {
             sign_fn(
-                h_provider, h_key, (&raw const padding_info).cast(), hash.as_ptr(),
-                hash.len() as u32, ptr::null_mut(), 0, &raw mut cb_sig, BCRYPT_PAD_PKCS1,
+                h_provider,
+                h_key,
+                (&raw const padding_info).cast(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                ptr::null_mut(),
+                0,
+                &raw mut cb_sig,
+                BCRYPT_PAD_PKCS1,
             )
         };
         if status != ERROR_SUCCESS || cb_sig == 0 {
@@ -273,8 +298,15 @@ pub(crate) mod win {
         let mut sig = vec![0_u8; cb_sig as usize];
         let status = unsafe {
             sign_fn(
-                h_provider, h_key, (&raw const padding_info).cast(), hash.as_ptr(),
-                hash.len() as u32, sig.as_mut_ptr(), cb_sig, &raw mut cb_sig, BCRYPT_PAD_PKCS1,
+                h_provider,
+                h_key,
+                (&raw const padding_info).cast(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                sig.as_mut_ptr(),
+                cb_sig,
+                &raw mut cb_sig,
+                BCRYPT_PAD_PKCS1,
             )
         };
         if status != ERROR_SUCCESS {
@@ -293,13 +325,23 @@ pub(crate) mod win {
     ) -> Result<Vec<u8>, String> {
         let sign_fn = dll.table.SignHash.ok_or("SignHash not in table")?;
         let sha256 = sha256_wide();
-        let padding_info = BcryptPssPaddingInfo { psz_alg_id: sha256.as_ptr(), cb_salt: salt_len };
+        let padding_info = BcryptPssPaddingInfo {
+            psz_alg_id: sha256.as_ptr(),
+            cb_salt: salt_len,
+        };
 
         let mut cb_sig: u32 = 0;
         let status = unsafe {
             sign_fn(
-                h_provider, h_key, (&raw const padding_info).cast(), hash.as_ptr(),
-                hash.len() as u32, ptr::null_mut(), 0, &raw mut cb_sig, BCRYPT_PAD_PSS,
+                h_provider,
+                h_key,
+                (&raw const padding_info).cast(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                ptr::null_mut(),
+                0,
+                &raw mut cb_sig,
+                BCRYPT_PAD_PSS,
             )
         };
         if status != ERROR_SUCCESS || cb_sig == 0 {
@@ -309,8 +351,15 @@ pub(crate) mod win {
         let mut sig = vec![0_u8; cb_sig as usize];
         let status = unsafe {
             sign_fn(
-                h_provider, h_key, (&raw const padding_info).cast(), hash.as_ptr(),
-                hash.len() as u32, sig.as_mut_ptr(), cb_sig, &raw mut cb_sig, BCRYPT_PAD_PSS,
+                h_provider,
+                h_key,
+                (&raw const padding_info).cast(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                sig.as_mut_ptr(),
+                cb_sig,
+                &raw mut cb_sig,
+                BCRYPT_PAD_PSS,
             )
         };
         if status != ERROR_SUCCESS {
@@ -331,8 +380,15 @@ pub(crate) mod win {
         let mut cb_sig: u32 = 0;
         let status = unsafe {
             sign_fn(
-                h_provider, h_key, ptr::null(), hash.as_ptr(), hash.len() as u32,
-                ptr::null_mut(), 0, &raw mut cb_sig, 0,
+                h_provider,
+                h_key,
+                ptr::null(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                ptr::null_mut(),
+                0,
+                &raw mut cb_sig,
+                0,
             )
         };
         if status != ERROR_SUCCESS || cb_sig == 0 {
@@ -343,8 +399,15 @@ pub(crate) mod win {
         let mut sig = vec![0_u8; buf_size as usize];
         let status = unsafe {
             sign_fn(
-                h_provider, h_key, ptr::null(), hash.as_ptr(), hash.len() as u32,
-                sig.as_mut_ptr(), buf_size, &raw mut cb_sig, 0,
+                h_provider,
+                h_key,
+                ptr::null(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                sig.as_mut_ptr(),
+                buf_size,
+                &raw mut cb_sig,
+                0,
             )
         };
         if status != ERROR_SUCCESS {
@@ -361,14 +424,25 @@ pub(crate) mod win {
         hash: &[u8],
         signature: &[u8],
     ) -> Result<i32, String> {
-        let verify_fn = dll.table.VerifySignature.ok_or("VerifySignature not in table")?;
+        let verify_fn = dll
+            .table
+            .VerifySignature
+            .ok_or("VerifySignature not in table")?;
         let sha256 = sha256_wide();
-        let padding_info = BcryptPkcs1PaddingInfo { psz_alg_id: sha256.as_ptr() };
+        let padding_info = BcryptPkcs1PaddingInfo {
+            psz_alg_id: sha256.as_ptr(),
+        };
 
         let status = unsafe {
             verify_fn(
-                h_provider, h_key, (&raw const padding_info).cast(), hash.as_ptr(),
-                hash.len() as u32, signature.as_ptr(), signature.len() as u32, BCRYPT_PAD_PKCS1,
+                h_provider,
+                h_key,
+                (&raw const padding_info).cast(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                signature.as_ptr(),
+                signature.len() as u32,
+                BCRYPT_PAD_PKCS1,
             )
         };
         Ok(status)
@@ -381,12 +455,21 @@ pub(crate) mod win {
         hash: &[u8],
         signature: &[u8],
     ) -> Result<i32, String> {
-        let verify_fn = dll.table.VerifySignature.ok_or("VerifySignature not in table")?;
+        let verify_fn = dll
+            .table
+            .VerifySignature
+            .ok_or("VerifySignature not in table")?;
 
         let status = unsafe {
             verify_fn(
-                h_provider, h_key, ptr::null(), hash.as_ptr(), hash.len() as u32,
-                signature.as_ptr(), signature.len() as u32, 0,
+                h_provider,
+                h_key,
+                ptr::null(),
+                hash.as_ptr(),
+                hash.len() as u32,
+                signature.as_ptr(),
+                signature.len() as u32,
+                0,
             )
         };
         Ok(status)
@@ -401,14 +484,22 @@ pub(crate) mod win {
         let encrypt_fn = dll.table.Encrypt.ok_or("Encrypt not in table")?;
         let sha256 = sha256_wide();
         let padding_info = BcryptOaepPaddingInfo {
-            psz_alg_id: sha256.as_ptr(), pb_label: ptr::null(), cb_label: 0,
+            psz_alg_id: sha256.as_ptr(),
+            pb_label: ptr::null(),
+            cb_label: 0,
         };
 
         let mut cb_out: u32 = 0;
         let status = unsafe {
             encrypt_fn(
-                h_provider, h_key, plaintext.as_ptr(), plaintext.len() as u32,
-                (&raw const padding_info).cast(), ptr::null_mut(), 0, &raw mut cb_out,
+                h_provider,
+                h_key,
+                plaintext.as_ptr(),
+                plaintext.len() as u32,
+                (&raw const padding_info).cast(),
+                ptr::null_mut(),
+                0,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
@@ -419,8 +510,14 @@ pub(crate) mod win {
         let mut ct = vec![0_u8; cb_out as usize];
         let status = unsafe {
             encrypt_fn(
-                h_provider, h_key, plaintext.as_ptr(), plaintext.len() as u32,
-                (&raw const padding_info).cast(), ct.as_mut_ptr(), cb_out, &raw mut cb_out,
+                h_provider,
+                h_key,
+                plaintext.as_ptr(),
+                plaintext.len() as u32,
+                (&raw const padding_info).cast(),
+                ct.as_mut_ptr(),
+                cb_out,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
@@ -440,14 +537,22 @@ pub(crate) mod win {
         let decrypt_fn = dll.table.Decrypt.ok_or("Decrypt not in table")?;
         let sha256 = sha256_wide();
         let padding_info = BcryptOaepPaddingInfo {
-            psz_alg_id: sha256.as_ptr(), pb_label: ptr::null(), cb_label: 0,
+            psz_alg_id: sha256.as_ptr(),
+            pb_label: ptr::null(),
+            cb_label: 0,
         };
 
         let mut cb_out: u32 = 0;
         let status = unsafe {
             decrypt_fn(
-                h_provider, h_key, ciphertext.as_ptr(), ciphertext.len() as u32,
-                (&raw const padding_info).cast(), ptr::null_mut(), 0, &raw mut cb_out,
+                h_provider,
+                h_key,
+                ciphertext.as_ptr(),
+                ciphertext.len() as u32,
+                (&raw const padding_info).cast(),
+                ptr::null_mut(),
+                0,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
@@ -458,8 +563,14 @@ pub(crate) mod win {
         let mut pt = vec![0_u8; cb_out as usize];
         let status = unsafe {
             decrypt_fn(
-                h_provider, h_key, ciphertext.as_ptr(), ciphertext.len() as u32,
-                (&raw const padding_info).cast(), pt.as_mut_ptr(), cb_out, &raw mut cb_out,
+                h_provider,
+                h_key,
+                ciphertext.as_ptr(),
+                ciphertext.len() as u32,
+                (&raw const padding_info).cast(),
+                pt.as_mut_ptr(),
+                cb_out,
+                &raw mut cb_out,
                 BCRYPT_PAD_OAEP,
             )
         };
@@ -520,11 +631,16 @@ pub(crate) mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_RSAKEY_BLOB>() {
             return Err(format!("RSA public blob too small: {} bytes", blob.len()));
         }
-        let header = unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_RSAKEY_BLOB>()) };
+        let header =
+            unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_RSAKEY_BLOB>()) };
         if header.Magic != KSP_RSAPUBLIC_MAGIC {
             return Err(format!("Bad RSA blob magic: 0x{:08X}", header.Magic));
         }
-        step_ok(&format!("RSA public key exported ({} bytes, {} bits)", blob.len(), header.BitLength));
+        step_ok(&format!(
+            "RSA public key exported ({} bytes, {} bits)",
+            blob.len(),
+            header.BitLength
+        ));
 
         let h_key2 = open_key(dll, h_provider, "verify-rsa-2048")?;
         free_key(dll, h_provider, h_key2);
@@ -561,7 +677,11 @@ pub(crate) mod win {
 
         let recovered = decrypt_oaep(dll, h_provider, h_key, &ciphertext)?;
         if recovered != plaintext {
-            return Err(format!("RSA OAEP round-trip mismatch: got {} bytes, expected {}", recovered.len(), plaintext.len()));
+            return Err(format!(
+                "RSA OAEP round-trip mismatch: got {} bytes, expected {}",
+                recovered.len(),
+                plaintext.len()
+            ));
         }
         step_ok("RSA OAEP decrypt round-trip OK");
 
@@ -579,7 +699,10 @@ pub(crate) mod win {
         let hash: [u8; 32] = [0x42; 32];
         let sig = sign_hash_pss(dll, h_provider, h_key, &hash, 32)?;
         if sig.len() != 256 {
-            return Err(format!("RSA-2048 PSS signature must be 256 bytes, got {}", sig.len()));
+            return Err(format!(
+                "RSA-2048 PSS signature must be 256 bytes, got {}",
+                sig.len()
+            ));
         }
         step_ok("RSA-PSS sign OK (256 bytes)");
 
@@ -599,7 +722,9 @@ pub(crate) mod win {
 
         let status = verify_signature_pkcs1(dll, h_provider, h_key, &hash, &sig)?;
         if status != ERROR_SUCCESS {
-            return Err(format!("VerifySignature (valid): expected 0, got 0x{status:08X}"));
+            return Err(format!(
+                "VerifySignature (valid): expected 0, got 0x{status:08X}"
+            ));
         }
         step_ok("RSA PKCS1v15 verify OK (valid)");
 
@@ -624,11 +749,15 @@ pub(crate) mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_ECCKEY_BLOB>() {
             return Err(format!("EC public blob too small: {} bytes", blob.len()));
         }
-        let header = unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_ECCKEY_BLOB>()) };
+        let header =
+            unsafe { std::ptr::read_unaligned(blob.as_ptr().cast::<BCRYPT_ECCKEY_BLOB>()) };
         if header.dwMagic != BCRYPT_ECDSA_PUBLIC_P256_MAGIC {
             return Err(format!("Bad EC P-256 blob magic: 0x{:08X}", header.dwMagic));
         }
-        step_ok(&format!("EC P-256 public key exported ({} bytes)", blob.len()));
+        step_ok(&format!(
+            "EC P-256 public key exported ({} bytes)",
+            blob.len()
+        ));
 
         let hash: [u8; 32] = [0x77; 32];
         let sig = sign_hash_ecdsa(dll, h_provider, h_key, &hash)?;
@@ -651,7 +780,9 @@ pub(crate) mod win {
 
         let status = verify_signature_ecdsa(dll, h_provider, h_key, &hash, &sig)?;
         if status != ERROR_SUCCESS {
-            return Err(format!("ECDSA VerifySignature (valid): expected 0, got 0x{status:08X}"));
+            return Err(format!(
+                "ECDSA VerifySignature (valid): expected 0, got 0x{status:08X}"
+            ));
         }
         step_ok("ECDSA P-256 verify OK");
 
@@ -668,7 +799,10 @@ pub(crate) mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_ECCKEY_BLOB>() {
             return Err("P-384 blob too small".to_owned());
         }
-        step_ok(&format!("EC P-384 key pair created + exported ({} bytes)", blob.len()));
+        step_ok(&format!(
+            "EC P-384 key pair created + exported ({} bytes)",
+            blob.len()
+        ));
 
         let hash: [u8; 48] = [0xCD; 48];
         let sig = sign_hash_ecdsa(dll, h_provider, h_key, &hash)?;
@@ -690,7 +824,10 @@ pub(crate) mod win {
         if blob.len() < std::mem::size_of::<BCRYPT_ECCKEY_BLOB>() {
             return Err("P-521 blob too small".to_owned());
         }
-        step_ok(&format!("EC P-521 key pair created + exported ({} bytes)", blob.len()));
+        step_ok(&format!(
+            "EC P-521 key pair created + exported ({} bytes)",
+            blob.len()
+        ));
 
         delete_key(dll, h_provider, h_key)?;
         Ok(())
@@ -716,18 +853,32 @@ pub(crate) mod win {
             return Err("key should not be found after DeleteKey".to_owned());
         }
         if status != NTE_NO_KEY {
-            return Err(format!("OpenKey after delete: expected NTE_NO_KEY (0x{NTE_NO_KEY:08X}), got 0x{status:08X}"));
+            return Err(format!(
+                "OpenKey after delete: expected NTE_NO_KEY (0x{NTE_NO_KEY:08X}), got 0x{status:08X}"
+            ));
         }
         step_ok("OpenKey confirms key is gone (NTE_NO_KEY)");
         Ok(())
     }
 
     fn verify_get_provider_property(dll: &KspDll, h_provider: usize) -> Result<(), String> {
-        let get_prop = dll.table.GetProviderProperty.ok_or("GetProviderProperty not in table")?;
+        let get_prop = dll
+            .table
+            .GetProviderProperty
+            .ok_or("GetProviderProperty not in table")?;
 
         let name_w = to_wide("Name");
         let mut cb_result: u32 = 0;
-        let status = unsafe { get_prop(h_provider, name_w.as_ptr(), ptr::null_mut(), 0, &raw mut cb_result, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                name_w.as_ptr(),
+                ptr::null_mut(),
+                0,
+                &raw mut cb_result,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
             return Err(format!("GetProviderProperty(Name) size: 0x{status:08X}"));
         }
@@ -737,11 +888,23 @@ pub(crate) mod win {
         step_ok(&format!("GetProviderProperty(Name) size = {cb_result}"));
 
         let mut buf = vec![0_u8; cb_result as usize];
-        let status = unsafe { get_prop(h_provider, name_w.as_ptr(), buf.as_mut_ptr(), cb_result, &raw mut cb_result, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                name_w.as_ptr(),
+                buf.as_mut_ptr(),
+                cb_result,
+                &raw mut cb_result,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
             return Err(format!("GetProviderProperty(Name) data: 0x{status:08X}"));
         }
-        let wide: Vec<u16> = buf.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let wide: Vec<u16> = buf
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
         let name = String::from_utf16_lossy(&wide);
         if !name.contains("Cosmian") {
             return Err(format!("Provider name unexpected: {name}"));
@@ -750,22 +913,49 @@ pub(crate) mod win {
 
         let impl_type_w = to_wide("Implementation Type");
         let mut cb: u32 = 0;
-        let status = unsafe { get_prop(h_provider, impl_type_w.as_ptr(), ptr::null_mut(), 0, &raw mut cb, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                impl_type_w.as_ptr(),
+                ptr::null_mut(),
+                0,
+                &raw mut cb,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS || cb != 4 {
-            return Err(format!("GetProviderProperty(ImplType) size: status=0x{status:08X}, cb={cb}"));
+            return Err(format!(
+                "GetProviderProperty(ImplType) size: status=0x{status:08X}, cb={cb}"
+            ));
         }
         let mut val = [0_u8; 4];
-        let status = unsafe { get_prop(h_provider, impl_type_w.as_ptr(), val.as_mut_ptr(), 4, &raw mut cb, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                impl_type_w.as_ptr(),
+                val.as_mut_ptr(),
+                4,
+                &raw mut cb,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
-            return Err(format!("GetProviderProperty(ImplType) data: 0x{status:08X}"));
+            return Err(format!(
+                "GetProviderProperty(ImplType) data: 0x{status:08X}"
+            ));
         }
         let impl_flag = u32::from_le_bytes(val);
-        step_ok(&format!("GetProviderProperty(Implementation Type) = {impl_flag}"));
+        step_ok(&format!(
+            "GetProviderProperty(Implementation Type) = {impl_flag}"
+        ));
         Ok(())
     }
 
     fn verify_get_key_property(dll: &KspDll, h_provider: usize) -> Result<(), String> {
-        let get_prop = dll.table.GetKeyProperty.ok_or("GetKeyProperty not in table")?;
+        let get_prop = dll
+            .table
+            .GetKeyProperty
+            .ok_or("GetKeyProperty not in table")?;
 
         let rsa = rsa_wide();
         let h_key = create_persisted_key(dll, h_provider, &rsa, "verify-key-prop")?;
@@ -774,18 +964,40 @@ pub(crate) mod win {
         finalize_key(dll, h_provider, h_key)?;
 
         let mut cb_result: u32 = 0;
-        let status = unsafe { get_prop(h_provider, h_key, length_prop.as_ptr(), ptr::null_mut(), 0, &raw mut cb_result, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                h_key,
+                length_prop.as_ptr(),
+                ptr::null_mut(),
+                0,
+                &raw mut cb_result,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
             delete_key(dll, h_provider, h_key)?;
             return Err(format!("GetKeyProperty(Length) size: 0x{status:08X}"));
         }
         if cb_result < 4 {
             delete_key(dll, h_provider, h_key)?;
-            return Err(format!("GetKeyProperty(Length) returned size {cb_result} < 4"));
+            return Err(format!(
+                "GetKeyProperty(Length) returned size {cb_result} < 4"
+            ));
         }
 
         let mut val = [0_u8; 4];
-        let status = unsafe { get_prop(h_provider, h_key, length_prop.as_ptr(), val.as_mut_ptr(), 4, &raw mut cb_result, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                h_key,
+                length_prop.as_ptr(),
+                val.as_mut_ptr(),
+                4,
+                &raw mut cb_result,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
             delete_key(dll, h_provider, h_key)?;
             return Err(format!("GetKeyProperty(Length) data: 0x{status:08X}"));
@@ -799,33 +1011,63 @@ pub(crate) mod win {
 
         let alg_group_w = to_wide("Algorithm Group");
         let mut cb: u32 = 0;
-        let status = unsafe { get_prop(h_provider, h_key, alg_group_w.as_ptr(), ptr::null_mut(), 0, &raw mut cb, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                h_key,
+                alg_group_w.as_ptr(),
+                ptr::null_mut(),
+                0,
+                &raw mut cb,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
             delete_key(dll, h_provider, h_key)?;
             return Err(format!("GetKeyProperty(AlgGroup) size: 0x{status:08X}"));
         }
         let mut buf = vec![0_u8; cb as usize];
-        let status = unsafe { get_prop(h_provider, h_key, alg_group_w.as_ptr(), buf.as_mut_ptr(), cb, &raw mut cb, 0) };
+        let status = unsafe {
+            get_prop(
+                h_provider,
+                h_key,
+                alg_group_w.as_ptr(),
+                buf.as_mut_ptr(),
+                cb,
+                &raw mut cb,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
             delete_key(dll, h_provider, h_key)?;
             return Err(format!("GetKeyProperty(AlgGroup) data: 0x{status:08X}"));
         }
-        let wide: Vec<u16> = buf.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let wide: Vec<u16> = buf
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
         let alg_group = String::from_utf16_lossy(&wide);
-        step_ok(&format!("GetKeyProperty(Algorithm Group) = \"{alg_group}\""));
+        step_ok(&format!(
+            "GetKeyProperty(Algorithm Group) = \"{alg_group}\""
+        ));
 
         delete_key(dll, h_provider, h_key)?;
         Ok(())
     }
 
     fn verify_is_alg_supported(dll: &KspDll, h_provider: usize) -> Result<(), String> {
-        let is_alg = dll.table.IsAlgSupported.ok_or("IsAlgSupported not in table")?;
+        let is_alg = dll
+            .table
+            .IsAlgSupported
+            .ok_or("IsAlgSupported not in table")?;
 
         for alg_name in &["RSA", "ECDSA_P256", "ECDSA_P384", "ECDSA_P521"] {
             let alg_w = to_wide(alg_name);
             let status = unsafe { is_alg(h_provider, alg_w.as_ptr(), 0) };
             if status != ERROR_SUCCESS {
-                return Err(format!("IsAlgSupported({alg_name}) returned 0x{status:08X}, expected SUCCESS"));
+                return Err(format!(
+                    "IsAlgSupported({alg_name}) returned 0x{status:08X}, expected SUCCESS"
+                ));
             }
         }
         step_ok("IsAlgSupported(RSA, ECDSA_P256/P384/P521) = SUCCESS");
@@ -835,15 +1077,21 @@ pub(crate) mod win {
         if status == ERROR_SUCCESS {
             return Err("IsAlgSupported(AES) should NOT return SUCCESS".to_owned());
         }
-        step_ok(&format!("IsAlgSupported(AES) correctly rejected (0x{status:08X})"));
+        step_ok(&format!(
+            "IsAlgSupported(AES) correctly rejected (0x{status:08X})"
+        ));
         Ok(())
     }
 
     fn verify_enum_algorithms(dll: &KspDll, h_provider: usize) -> Result<(), String> {
-        let enum_alg = dll.table.EnumAlgorithms.ok_or("EnumAlgorithms not in table")?;
+        let enum_alg = dll
+            .table
+            .EnumAlgorithms
+            .ok_or("EnumAlgorithms not in table")?;
 
         let mut count: u32 = 0;
-        let mut list: *mut windows_sys::Win32::Security::Cryptography::NCryptAlgorithmName = ptr::null_mut();
+        let mut list: *mut windows_sys::Win32::Security::Cryptography::NCryptAlgorithmName =
+            ptr::null_mut();
         let status = unsafe { enum_alg(h_provider, 0, &raw mut count, &raw mut list, 0) };
         if status != ERROR_SUCCESS {
             return Err(format!("EnumAlgorithms(all): 0x{status:08X}"));
@@ -860,7 +1108,8 @@ pub(crate) mod win {
         }
 
         let mut count_sign: u32 = 0;
-        let mut list_sign: *mut windows_sys::Win32::Security::Cryptography::NCryptAlgorithmName = ptr::null_mut();
+        let mut list_sign: *mut windows_sys::Win32::Security::Cryptography::NCryptAlgorithmName =
+            ptr::null_mut();
         let status = unsafe { enum_alg(h_provider, 1, &raw mut count_sign, &raw mut list_sign, 0) };
         if status != ERROR_SUCCESS {
             return Err(format!("EnumAlgorithms(sign): 0x{status:08X}"));
@@ -868,7 +1117,9 @@ pub(crate) mod win {
         if count_sign == 0 {
             return Err("EnumAlgorithms(sign) returned 0 algorithms".to_owned());
         }
-        step_ok(&format!("EnumAlgorithms(sign operations) returned {count_sign} algorithms"));
+        step_ok(&format!(
+            "EnumAlgorithms(sign operations) returned {count_sign} algorithms"
+        ));
 
         if !list_sign.is_null() {
             if let Some(free_buf) = dll.table.FreeBuffer {
@@ -887,9 +1138,18 @@ pub(crate) mod win {
 
         let enum_fn = dll.table.EnumKeys.ok_or("EnumKeys not in table")?;
 
-        let mut key_name_ptr: *mut windows_sys::Win32::Security::Cryptography::NCryptKeyName = ptr::null_mut();
+        let mut key_name_ptr: *mut windows_sys::Win32::Security::Cryptography::NCryptKeyName =
+            ptr::null_mut();
         let mut enum_state: *mut core::ffi::c_void = ptr::null_mut();
-        let status = unsafe { enum_fn(h_provider, ptr::null(), &raw mut key_name_ptr, &raw mut enum_state, 0) };
+        let status = unsafe {
+            enum_fn(
+                h_provider,
+                ptr::null(),
+                &raw mut key_name_ptr,
+                &raw mut enum_state,
+                0,
+            )
+        };
         if status != ERROR_SUCCESS {
             delete_key(dll, h_provider, h_key)?;
             return Err(format!("EnumKeys first call: 0x{status:08X}"));
@@ -920,10 +1180,21 @@ pub(crate) mod win {
         let mut h_key: usize = 0;
         let fake_data: [u8; 4] = [0; 4];
         let status = unsafe {
-            import_fn(h_provider, 0, blob_type.as_ptr(), ptr::null(), &raw mut h_key, fake_data.as_ptr(), 4, 0)
+            import_fn(
+                h_provider,
+                0,
+                blob_type.as_ptr(),
+                ptr::null(),
+                &raw mut h_key,
+                fake_data.as_ptr(),
+                4,
+                0,
+            )
         };
         if status != NTE_NOT_SUPPORTED {
-            return Err(format!("ImportKey expected NTE_NOT_SUPPORTED (0x{NTE_NOT_SUPPORTED:08X}), got 0x{status:08X}"));
+            return Err(format!(
+                "ImportKey expected NTE_NOT_SUPPORTED (0x{NTE_NOT_SUPPORTED:08X}), got 0x{status:08X}"
+            ));
         }
         step_ok("ImportKey correctly returns NTE_NOT_SUPPORTED");
         Ok(())
@@ -937,8 +1208,15 @@ pub(crate) mod win {
         let run_test = |name: &str, test_fn: VerifyFn| {
             println!("── {name} ──");
             match test_fn(dll, h_provider) {
-                Ok(()) => { println!("  => PASS\n"); false }
-                Err(e) => { step_fail(name, &e); println!("  => FAIL\n"); true }
+                Ok(()) => {
+                    println!("  => PASS\n");
+                    false
+                }
+                Err(e) => {
+                    step_fail(name, &e);
+                    println!("  => FAIL\n");
+                    true
+                }
             }
         };
 
@@ -946,18 +1224,30 @@ pub(crate) mod win {
             ("RSA key pair + sign + export + lookup", verify_rsa_key_pair),
             ("RSA encrypt / decrypt (OAEP)", verify_rsa_encrypt_decrypt),
             ("RSA-PSS sign", verify_rsa_pss_sign),
-            ("RSA signature verify (PKCS1v15)", verify_rsa_signature_verify),
+            (
+                "RSA signature verify (PKCS1v15)",
+                verify_rsa_signature_verify,
+            ),
             ("EC P-256 key pair + sign + export", verify_ec_key_pair),
-            ("ECDSA signature verify (P-256)", verify_ecdsa_signature_verify),
+            (
+                "ECDSA signature verify (P-256)",
+                verify_ecdsa_signature_verify,
+            ),
             ("EC P-384 key pair + sign", verify_ec_p384),
             ("EC P-521 key pair + export", verify_ec_p521),
             ("DeleteKey + verify gone", verify_destroy_and_lookup),
-            ("GetProviderProperty (Name, ImplType)", verify_get_provider_property),
+            (
+                "GetProviderProperty (Name, ImplType)",
+                verify_get_provider_property,
+            ),
             ("GetKeyProperty (Length, AlgGroup)", verify_get_key_property),
             ("IsAlgSupported", verify_is_alg_supported),
             ("EnumAlgorithms", verify_enum_algorithms),
             ("EnumKeys", verify_enum_keys),
-            ("ImportKey (stub → NTE_NOT_SUPPORTED)", verify_import_key_not_supported),
+            (
+                "ImportKey (stub → NTE_NOT_SUPPORTED)",
+                verify_import_key_not_supported,
+            ),
         ];
 
         let mut failures = 0;
@@ -977,7 +1267,10 @@ pub(crate) mod win {
         })?;
 
         if !dll_path.exists() {
-            return Err(KmsCliError::Default(format!("DLL not found: {}", dll_path.display())));
+            return Err(KmsCliError::Default(format!(
+                "DLL not found: {}",
+                dll_path.display()
+            )));
         }
 
         println!("=== Cosmian CNG KSP Verification ===\n");
@@ -996,7 +1289,9 @@ pub(crate) mod win {
             println!("All verification steps PASSED.");
             Ok(())
         } else {
-            Err(KmsCliError::Default(format!("{failures} verification step(s) FAILED.")))
+            Err(KmsCliError::Default(format!(
+                "{failures} verification step(s) FAILED."
+            )))
         }
     }
 }

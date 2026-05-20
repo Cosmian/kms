@@ -69,7 +69,7 @@ For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](
 - Copy the configuration of the PKCS#11 provider library to `/usr/local/okv/hsm/generic/ckms.toml`
 - Override the OKV generic HSM configuration files:
 
-    - `/usr/local/okv/hsm/generic/okv_hsm_env`
+  - `/usr/local/okv/hsm/generic/okv_hsm_env`
 
     ```bash
     COSMIAN_PKCS11_LOGGING_LEVEL="trace"
@@ -77,7 +77,7 @@ For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](
     COSMIAN_PKCS11_LOGGING_FOLDER="/var/okv/log/hsm"
     ```
 
-    - `/usr/local/okv/hsm/generic/okv_hsm_conf`
+  - `/usr/local/okv/hsm/generic/okv_hsm_conf`
 
     ```bash
     # Oracle Key Vault HSM vendor configuration file
