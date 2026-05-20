@@ -5,7 +5,10 @@ use cosmian_kmip::{
         kmip_objects::{
             Certificate, Object, PGPKey, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey,
         },
-        kmip_types::{CryptographicAlgorithm, EncodingOption, KeyFormatType, WrappingMethod},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, EncodingOption, KeyFormatType,
+            WrappingMethod,
+        },
     },
 };
 use cosmian_logger::{debug, trace};
@@ -30,6 +33,7 @@ use crate::{
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
         },
         symmetric::{
+            rfc3394::rfc3394_wrap,
             rfc5649::rfc5649_wrap,
             symmetric_ciphers::{SymCipher, encrypt, random_nonce},
         },
@@ -115,7 +119,34 @@ pub fn wrap_object_with_key(
     // update the key block with the wrapped key
     let object_key_block = object.key_block_mut()?;
     object_key_block.key_value = Some(KeyValue::ByteString(Zeroizing::new(wrapped_key)));
-    object_key_block.key_wrapping_data = Some(key_wrapping_specification.get_key_wrapping_data());
+    let mut kwd = key_wrapping_specification.get_key_wrapping_data();
+    // For symmetric wrapping keys, store the resolved block_cipher_mode in the
+    // KeyWrappingData so the unwrap path knows which algorithm was actually used.
+    //
+    // We use NISTKeyWrap (RFC 3394, AES Key Wrap without padding) as the default.
+    // This is confirmed correct by the VAST Data production logs:
+    // the PyKMIP-based VAST client calls `cryptography.hazmat.primitives.keywrap.
+    // aes_key_unwrap()`, which implements RFC 3394.  Using RFC 5649 (AES Key Wrap
+    // with Padding, `aes_key_unwrap_padded`) caused `InvalidUnwrap` errors on the
+    // VAST side because the two standards produce different wrapped output.
+    //
+    // NISTKeyWrap is also the KMIP spec default when no BlockCipherMode is specified
+    // (see KMIP 2.1 §4.26).
+    if matches!(wrapping_key, Object::SymmetricKey { .. }) {
+        if let Some(ref mut eki) = kwd.encryption_key_information {
+            let current_mode = eki
+                .cryptographic_parameters
+                .as_ref()
+                .and_then(|p| p.block_cipher_mode);
+            if current_mode.is_none() {
+                let cp = eki
+                    .cryptographic_parameters
+                    .get_or_insert_with(CryptographicParameters::default);
+                cp.block_cipher_mode = Some(BlockCipherMode::NISTKeyWrap);
+            }
+        }
+    }
+    object_key_block.key_wrapping_data = Some(kwd);
 
     Ok(())
 }
@@ -245,6 +276,8 @@ pub(super) fn wrap(
                 //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
                 //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
                 KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
+                    let has_encryption_key_info =
+                        key_wrapping_data.encryption_key_information.is_some();
                     let cryptographic_parameters = key_wrapping_data
                         .encryption_key_information
                         .clone()
@@ -258,10 +291,24 @@ pub(super) fn wrap(
                             "Can't use RSA algorithm for AES wrapping key".to_owned()
                         ))
                     }
+                    // When EncryptionKeyInformation is present (a KMIP client specified a KEK
+                    // UID) but no BlockCipherMode was given, default to NISTKeyWrap (RFC 3394).
+                    // This matches the behavior of pykmip-based clients (e.g. VAST Data) which
+                    // call aes_key_unwrap (RFC 3394) and send no CryptographicParameters.
+                    //
+                    // When no EncryptionKeyInformation exists (internal/password wrapping), keep
+                    // AESKeyWrapPadding (RFC 5649) as the default for backward compatibility with
+                    // existing stored wrapped keys and small-data wrapping (< 16 bytes).
                     let block_cipher_mode = cryptographic_parameters
                         .as_ref()
                         .and_then(|params| params.block_cipher_mode)
-                        .unwrap_or(BlockCipherMode::AESKeyWrapPadding);
+                        .unwrap_or({
+                            if has_encryption_key_info {
+                                BlockCipherMode::NISTKeyWrap
+                            } else {
+                                BlockCipherMode::AESKeyWrapPadding
+                            }
+                        });
                     let padding_method = cryptographic_parameters
                         .as_ref()
                         .and_then(|params| params.padding_method)
@@ -305,8 +352,12 @@ pub(super) fn wrap(
                         );
 
                         Ok(ciphertext)
+                    } else if block_cipher_mode == BlockCipherMode::NISTKeyWrap {
+                        trace!("using RFC-3394 (AES Key Wrap, no padding)");
+                        let ciphertext = rfc3394_wrap(key_to_wrap, &key_bytes)?;
+                        Ok(ciphertext)
                     } else {
-                        trace!("using RFC-5649");
+                        trace!("using RFC-5649 (AES Key Wrap with Padding)");
                         let ciphertext = rfc5649_wrap(key_to_wrap, &key_bytes)?;
                         Ok(ciphertext)
                     }

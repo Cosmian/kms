@@ -506,21 +506,21 @@ The integrations section is the most commonly extended area. Keep these four vie
 **Canonical integration file paths**:
 
 - Cloud providers: `documentation/docs/integrations/cloud_providers/<provider>/`
-  - AWS: `cloud_providers/aws/` (xks.md, byok.md, fargate.md)
-  - Azure: `cloud_providers/azure/` (ekm.md, byok.md)
-  - GCP: `cloud_providers/google_gcp/` (cmek.md, csek.md)
-  - Google Workspace CSE: `cloud_providers/google_workspace_client_side_encryption_cse/`
-  - Microsoft 365 DKE: `cloud_providers/microsoft_365_double_key_encryption_dke/`
+    - AWS: `cloud_providers/aws/` (xks.md, byok.md, fargate.md)
+    - Azure: `cloud_providers/azure/` (ekm.md, byok.md)
+    - GCP: `cloud_providers/google_gcp/` (cmek.md, csek.md)
+    - Google Workspace CSE: `cloud_providers/google_workspace_client_side_encryption_cse/`
+    - Microsoft 365 DKE: `cloud_providers/microsoft_365_double_key_encryption_dke/`
 - Databases: `documentation/docs/integrations/databases/`
-  - mongodb.md, mysql.md, percona.md, ms_sql_server.md, oracle_tde.md
+    - mongodb.md, mysql.md, percona.md, ms_sql_server.md, oracle_tde.md
 - Storage: `documentation/docs/integrations/storage/`
-  - vcenter.md, synology_dsm.md, veeam.md
+    - vcenter.md, synology_dsm.md, vast_data.md, veeam.md
 - Disk encryption: `documentation/docs/integrations/disk_encryption/`
-  - veracrypt.md, luks.md, cryhod.md
+    - veracrypt.md, luks.md, cryhod.md
 - Big Data: `documentation/docs/integrations/big_data/`
-  - snowflake_native_app/, user_defined_function_for_pyspark_databricks_in_python/
+    - snowflake_native_app/, user_defined_function_for_pyspark_databricks_in_python/
 - Other: `documentation/docs/integrations/`
-  - openssh.md, pykmip.md, smime.md
+    - openssh.md, pykmip.md, smime.md
 
 **README.md `## 🔗 Integrations` section categories must mirror mkdocs.yml exactly:**
 

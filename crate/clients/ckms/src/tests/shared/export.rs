@@ -252,9 +252,12 @@ pub(crate) async fn test_export_wrapped() -> CosmianResult<()> {
         .encryption_key_information
         .unwrap()
         .cryptographic_parameters;
-    assert_eq!(cryptographic_parameters, None);
+    assert_eq!(
+        cryptographic_parameters.and_then(|cp| cp.block_cipher_mode),
+        Some(BlockCipherMode::NISTKeyWrap)
+    );
 
-    // Wrapping with symmetric key should be by default with rfc5649
+    // Wrapping with symmetric key should be by default with NISTKeyWrap (RFC 3394)
     export_key(ExportKeyParams {
         cli_conf_path: owner_client_conf_path.clone(),
         sub_command: "rsa".to_owned(),
@@ -281,7 +284,10 @@ pub(crate) async fn test_export_wrapped() -> CosmianResult<()> {
         .encryption_key_information
         .unwrap()
         .cryptographic_parameters;
-    assert_eq!(cryptographic_parameters, None);
+    assert_eq!(
+        cryptographic_parameters.and_then(|cp| cp.block_cipher_mode),
+        Some(BlockCipherMode::NISTKeyWrap)
+    );
 
     assert_eq!(key_bytes, key_bytes_2);
 
