@@ -36,7 +36,7 @@ pub const AES_128_CBC_MAC_LENGTH: usize = 0;
 /// AES 192 CBC key length in bytes.
 pub const AES_192_CBC_KEY_LENGTH: usize = 24;
 /// AES 192 CBC nonce length in bytes.
-pub const AES_192_CBC_IV_LENGTH: usize = 24;
+pub const AES_192_CBC_IV_LENGTH: usize = 16;
 /// AES 192 CBC tag/mac length in bytes.
 pub const AES_192_CBC_MAC_LENGTH: usize = 0;
 
@@ -281,6 +281,13 @@ impl SymCipher {
         }
     }
 
+    /// Whether this cipher supports variable-length nonces.
+    /// GCM supports arbitrary IV lengths per NIST SP 800-38D §5.2.1.1.
+    #[must_use]
+    pub const fn allows_variable_nonce(&self) -> bool {
+        matches!(self, Self::Aes128Gcm | Self::Aes192Gcm | Self::Aes256Gcm)
+    }
+
     /// Get the key size in bytes.
     #[must_use]
     pub const fn key_size(&self) -> usize {
@@ -506,7 +513,7 @@ pub fn encrypt(
                 openssl_encrypt(sym_cipher.to_openssl_cipher()?, key, Some(nonce), plaintext)?;
             Ok((ciphertext, vec![]))
         }
-        SymCipher::Aes128Cbc | SymCipher::Aes256Cbc => {
+        SymCipher::Aes128Cbc | SymCipher::Aes192Cbc | SymCipher::Aes256Cbc => {
             let padding = padding_method.unwrap_or(PaddingMethod::PKCS5);
             let ciphertext = match padding {
                 PaddingMethod::None => {
@@ -655,7 +662,7 @@ pub fn decrypt(
                 ciphertext,
             )?)
         }
-        SymCipher::Aes128Cbc | SymCipher::Aes256Cbc => {
+        SymCipher::Aes128Cbc | SymCipher::Aes192Cbc | SymCipher::Aes256Cbc => {
             let padding = padding_method.unwrap_or(PaddingMethod::PKCS5);
             // CBC mode does not require a tag.
             match padding {

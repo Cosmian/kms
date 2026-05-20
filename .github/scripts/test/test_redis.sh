@@ -23,4 +23,4 @@ fi
 : "${REDIS_HOST:=127.0.0.1}"
 : "${REDIS_PORT:=6379}"
 
-check_and_test_db "Redis" "redis-findex" "REDIS_HOST" "REDIS_PORT"
+check_and_test_db "Redis" "redis" "REDIS_HOST" "REDIS_PORT"

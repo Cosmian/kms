@@ -9,6 +9,16 @@ This guide explains how to protect your VMware vSphere infrastructure using **Co
 5. [Configuring the KMS server](#6-configure-the-kms-server-kmstoml)
 6. [Connecting vCenter](#vcenter-integration)
 
+## Overview
+
+| Item | Details |
+|------|---------|
+| **Protocol** | KMIP 1.1 over TCP/TLS with mutual certificate authentication |
+| **Port** | 5696 (IANA-registered KMIP port) |
+| **Key type** | AES-256 symmetric key |
+| **vSphere version** | vSphere 6.5 and above (Standard Key Provider) |
+| **Cosmian KMS feature** | Works with both FIPS and non-FIPS builds |
+
 ---
 
 ## Why Use an External KMS with vSphere?

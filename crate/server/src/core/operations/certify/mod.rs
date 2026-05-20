@@ -353,7 +353,13 @@ async fn get_subject(
     )?;
 
     // If we have a public key, we can create a certificate from it
-    if let Some(public_key) = public_key {
+    if let Some(mut public_key) = public_key {
+        // The public key may be stored in wrapped form (e.g. when using a KEK).
+        // Unwrap it before using it for certificate creation.
+        let unwrapped_object = kms
+            .get_unwrapped(public_key.id(), public_key.object(), user)
+            .await?;
+        public_key.set_object(unwrapped_object);
         return Ok(Subject::PublicKeyAndSubjectName(
             attributes.unique_identifier.clone().unwrap_or_default(),
             public_key,
@@ -487,9 +493,14 @@ async fn get_issuer<'a>(
         user,
     )
     .await?;
+    // The private key may be stored in wrapped form (e.g. when using an HSM with a KEK).
+    // Unwrap it before converting to OpenSSL format for signing.
+    let unwrapped_pk = kms
+        .get_unwrapped(issuer_private_key.id(), issuer_private_key.object(), user)
+        .await?;
     Ok(Issuer::PrivateKeyAndCertificate(
         UniqueIdentifier::TextString(issuer_certificate.id().to_owned()),
-        kmip_private_key_to_openssl(issuer_private_key.object())?,
+        kmip_private_key_to_openssl(&unwrapped_pk)?,
         kmip_certificate_to_openssl(issuer_certificate.object())?,
     ))
 }
@@ -542,9 +553,12 @@ async fn issuer_for_self_signed_certificate<'a>(
                         .to_owned(),
                 )
             })?;
+            let unwrapped_pk = kms
+                .get_unwrapped(private_key.id(), private_key.object(), user)
+                .await?;
             Ok(Issuer::PrivateKeyAndCertificate(
                 unique_identifier.clone(),
-                kmip_private_key_to_openssl(private_key.object())?,
+                kmip_private_key_to_openssl(&unwrapped_pk)?,
                 certificate.clone(),
             ))
         }
@@ -565,6 +579,9 @@ async fn issuer_for_self_signed_certificate<'a>(
                     .to_owned(),
                 )
             })?;
+            let unwrapped_pk = kms
+                .get_unwrapped(private_key.id(), private_key.object(), user)
+                .await?;
             // see if we can find an existing certificate to link to the public key
             let certificate = fetch_object_from_attributes(
                 LinkType::CertificateLink,
@@ -576,12 +593,12 @@ async fn issuer_for_self_signed_certificate<'a>(
             match certificate {
                 Some(certificate) => Ok(Issuer::PrivateKeyAndCertificate(
                     unique_identifier.clone(),
-                    kmip_private_key_to_openssl(private_key.object())?,
+                    kmip_private_key_to_openssl(&unwrapped_pk)?,
                     kmip_certificate_to_openssl(certificate.object())?,
                 )),
                 None => Ok(Issuer::PrivateKeyAndSubjectName(
                     unique_identifier.clone(),
-                    kmip_private_key_to_openssl(private_key.object())?,
+                    kmip_private_key_to_openssl(&unwrapped_pk)?,
                     subject_name,
                 )),
             }

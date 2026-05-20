@@ -108,8 +108,9 @@ nav:
           - VMware vCenter: integrations/storage/vcenter.md
           - Synology DSM (NAS volume encryption): integrations/storage/synology_dsm.md
           - Veeam Backup & Replication: integrations/storage/veeam.md
-          - Snowflake Native App: integrations/databases/snowflake_native_app/index.md
-          - User Defined Function for PySpark, Databricks,... in Python: integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md
+      - Big Data:
+          - Snowflake Native App: integrations/big_data/snowflake_native_app/index.md
+          - User Defined Function for PySpark, Databricks,... in Python: integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md
       - Other:
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md

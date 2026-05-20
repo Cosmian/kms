@@ -2,6 +2,15 @@
 The Cosmian KMS strives to be compatible with the PyKMIP client library, which is widely used for KMIP protocol interactions.
 This document provides a comprehensive guide to testing and validating PyKMIP compatibility with the Cosmian KMS server.
 
+## Overview
+
+| Item | Details |
+|------|---------|
+| **Protocol** | KMIP 1.2 over TCP/TLS with mutual certificate authentication |
+| **Port** | 5696 (IANA-registered KMIP port) |
+| **Library** | PyKMIP (Python KMIP client library) |
+| **Cosmian KMS feature** | Requires non-FIPS build |
+
 [TOC]
 
 ## Purpose of PyKMIP compatibility tests

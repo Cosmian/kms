@@ -3,7 +3,8 @@ use std::fmt::Debug;
 use time::OffsetDateTime;
 
 use super::{
-    TTLVBytesDeserializer, TTLVBytesSerializer, error::TtlvError, kmip_big_int::KmipBigInt,
+    TTLVBytesDeserializer, TTLVBytesSerializer, enum_lookup::lookup_enum_code, error::TtlvError,
+    kmip_big_int::KmipBigInt,
 };
 use crate::{KmipResultHelper, kmip_1_4, kmip_2_1};
 
@@ -82,6 +83,33 @@ impl TTLV {
             }
         };
         Ok(ttlv)
+    }
+
+    /// Recursively resolve enumeration variant names to their numeric codes.
+    ///
+    /// When a TTLV tree is deserialized from JSON, enumeration values like
+    /// `"Create"` or `"AES"` are stored with `value: 0` and `name: "Create"`.
+    /// The binary TTLV serializer uses the numeric `value` field, so these must
+    /// be resolved before calling `to_bytes()`.
+    pub fn resolve_enumeration_values(&mut self) {
+        match &mut self.value {
+            TTLValue::Enumeration(en) => {
+                if en.value == 0 && !en.name.is_empty() {
+                    if let Some((code, canonical)) = lookup_enum_code(&en.name) {
+                        en.value = code;
+                        if !canonical.is_empty() {
+                            en.name = canonical.to_owned();
+                        }
+                    }
+                }
+            }
+            TTLValue::Structure(children) => {
+                for child in children {
+                    child.resolve_enumeration_values();
+                }
+            }
+            _ => {}
+        }
     }
 }
 

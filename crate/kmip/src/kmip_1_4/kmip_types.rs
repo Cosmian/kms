@@ -406,7 +406,8 @@ impl TryFrom<u32> for ObjectType {
 #[kmip_enum]
 pub enum CryptographicAlgorithm {
     DES = 0x1,
-    ThreeES = 0x2,
+    #[strum(serialize = "THREE_DES", serialize = "THREEDES")]
+    THREE_DES = 0x2,
     AES = 0x3,
     RSA = 0x4,
     DSA = 0x5,
@@ -450,7 +451,7 @@ pub enum CryptographicAlgorithm {
 impl From<CryptographicAlgorithm> for kmip_2_1::kmip_types::CryptographicAlgorithm {
     fn from(val: CryptographicAlgorithm) -> Self {
         match val {
-            CryptographicAlgorithm::DES | CryptographicAlgorithm::ThreeES => Self::DES,
+            CryptographicAlgorithm::DES | CryptographicAlgorithm::THREE_DES => Self::DES,
             CryptographicAlgorithm::AES => Self::AES,
             CryptographicAlgorithm::RSA => Self::RSA,
             CryptographicAlgorithm::DSA => Self::DSA,

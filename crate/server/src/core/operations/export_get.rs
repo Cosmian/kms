@@ -483,21 +483,33 @@ async fn post_process_active_private_key(
     .await?;
 
     let owm_attributes = object_with_metadata.attributes().clone();
-    let object = object_with_metadata.object_mut();
-    let key_block = object.key_block_mut()?;
 
-    // If the key is still wrapped, then the exported `KeyFormatType` must be the default (`None`)
-    if key_block.key_wrapping_data.is_some() {
+    // If the key is still wrapped, check constraints and optionally unwrap for re-wrapping.
+    if object_with_metadata.object().is_wrapped() {
         if key_format_type.is_some() {
             kms_bail!(
                 "export: unable to export a wrapped key with a requested Key Format Type. It must \
                  be the default"
             )
         }
-        // The key is wrapped, and the Key Format Type is the default (none)
-        // The key is exported as such
-        return Ok(());
+        if key_wrapping_specification.is_none() {
+            // No re-wrapping requested: export the key as-is (still wrapped)
+            return Ok(());
+        }
+        // A re-wrapping specification is present (e.g. CSE key): unwrap the
+        // current wrapping (KEK) first so the key can be re-wrapped below.
+        let unwrapped = kms
+            .get_unwrapped(
+                object_with_metadata.id(),
+                object_with_metadata.object(),
+                user,
+            )
+            .await?;
+        object_with_metadata.set_object(unwrapped);
     }
+
+    let object = object_with_metadata.object_mut();
+    let key_block = object.key_block_mut()?;
 
     // Covercrypt keys cannot be post-processed, process them here
     if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
@@ -1376,7 +1388,14 @@ async fn post_process_pkcs7(
             user,
         ))
         .await?;
-        let pkey = kmip_private_key_to_openssl(private_key_owm.object())
+        let private_key_object = if private_key_owm.object().is_wrapped() {
+            kms.get_unwrapped(private_key_owm.id(), private_key_owm.object(), user)
+                .await
+                .context("export pkcs7: unable to unwrap the private key")?
+        } else {
+            private_key_owm.object().clone()
+        };
+        let pkey = kmip_private_key_to_openssl(&private_key_object)
             .context("export: unable to parse the private key to openssl")?;
 
         // Create the PKCS7 structure

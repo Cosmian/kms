@@ -38,6 +38,14 @@ pub(crate) fn https_clap_config() -> ClapConfig {
     https_clap_config_opts(None)
 }
 
+/// Create a test KMS instance from the default HTTPS config.
+pub(crate) async fn test_kms() -> KResult<Arc<KMS>> {
+    let clap_config = https_clap_config();
+    Ok(Arc::new(
+        KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
+    ))
+}
+
 /// Like `https_clap_config`, but additionally captures any `HTTPS_PROXY` / `HTTP_PROXY`
 /// environment variable that is set *before* the test helpers clear it, then assigns it
 /// to the server's `proxy_params` so that server-side outbound requests (e.g. CRL fetches)

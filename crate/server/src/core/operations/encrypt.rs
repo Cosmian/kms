@@ -407,6 +407,17 @@ pub(super) fn encrypt_bulk(
                     .i_v_counter_nonce
                     .clone()
                     .unwrap_or(random_nonce(cipher)?);
+                if cipher.nonce_size() > 0
+                    && nonce.len() != cipher.nonce_size()
+                    && !cipher.allows_variable_nonce()
+                {
+                    return Err(KmsError::InvalidRequest(format!(
+                        "Encrypt: invalid IV/nonce length: expected {} bytes for {cipher:?}, \
+                         got {}",
+                        cipher.nonce_size(),
+                        nonce.len()
+                    )));
+                }
                 let padding_method = request
                     .cryptographic_parameters
                     .as_ref()
@@ -471,10 +482,19 @@ fn encrypt_with_symmetric_key(
     let nonce = if aead.nonce_size() == 0 {
         Vec::new()
     } else {
-        request
+        let n = request
             .i_v_counter_nonce
             .clone()
-            .unwrap_or(random_nonce(aead)?)
+            .unwrap_or(random_nonce(aead)?);
+        let expected = aead.nonce_size();
+        if n.len() != expected && !aead.allows_variable_nonce() {
+            return Err(KmsError::InvalidRequest(format!(
+                "Encrypt: invalid IV/nonce length: expected {expected} bytes for {:?}, got {}",
+                aead,
+                n.len()
+            )));
+        }
+        n
     };
     let aad = request
         .authenticated_encryption_additional_data

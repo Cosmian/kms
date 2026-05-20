@@ -55,7 +55,9 @@ jobs:
           LOCAL_IP=$(hostname -I | awk '{print $1}')
           echo "Local IP address: $LOCAL_IP"
 
-          # Export the KMS_URL environment variable
-          export KMS_URL=http://$LOCAL_IP:9998
+          # Export only the host part in KMS_URL — the test extracts the host
+          # and combines it with the actual server port (dynamically allocated).
+          # The port in this URL is intentionally omitted; only the host matters.
+          export KMS_URL=http://$LOCAL_IP
 
           cargo +${{ inputs.toolchain }} test --workspace --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy

@@ -2,11 +2,19 @@ use std::{
     env,
     net::TcpListener,
     path::{Path, PathBuf},
-    sync::{Arc, mpsc},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread::{self, JoinHandle},
     time::Duration,
     vec,
 };
+
+/// Global counter ensuring unique temp directories even when multiple tests
+/// start within the same clock tick (macOS `SystemTime` resolution = 1 µs).
+static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
@@ -16,23 +24,20 @@ use cosmian_kms_client::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, GetAttributes},
+        kmip_operations::Create,
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
     kms_client_bail, kms_client_error,
     reexport::cosmian_http_client::HttpClientConfig,
 };
 use cosmian_kms_server::{
-    config::{
-        ClapConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, MainDBConfig,
-        ServerParams, SocketServerConfig, TlsConfig, WorkspaceConfig,
-    },
+    config::{ClapConfig, ServerParams},
     start_kms_server::start_kms_server,
 };
 use cosmian_logger::{error, info, trace, warn};
 use tokio::sync::OnceCell;
 
-use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER, get_multiple_jwt_config};
+use crate::test_jwt::{AUTH0_TOKEN, AUTH0_TOKEN_USER};
 
 /// To run most tests in parallel,
 /// We use that to avoid trying to start N KMS servers (one per test)
@@ -53,32 +58,6 @@ pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = On
 /// `ONCE_SERVER_WITH_PRIVILEGED_USERS` but only register the owner.
 pub(crate) static ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS: OnceCell<TestsContext> =
     OnceCell::const_new();
-
-const DEFAULT_KMS_SERVER_PORT: u16 = 9998;
-
-fn resolve_test_port(preferred_port: u16) -> Result<u16, KmsClientError> {
-    if TcpListener::bind(("127.0.0.1", preferred_port)).is_ok() {
-        return Ok(preferred_port);
-    }
-
-    let fallback = TcpListener::bind(("127.0.0.1", 0)).map_err(|error| {
-        KmsClientError::UnexpectedError(format!(
-            "failed to allocate a fallback localhost port for test KMS server: {error}"
-        ))
-    })?;
-    let port = fallback
-        .local_addr()
-        .map_err(|error| {
-            KmsClientError::UnexpectedError(format!(
-                "failed to read fallback localhost port for test KMS server: {error}"
-            ))
-        })?
-        .port();
-    info!(
-        "Preferred test KMS port {preferred_port} is already in use; falling back to port {port}"
-    );
-    Ok(port)
-}
 
 /// Ensure localhost bypasses any corporate proxy for tests.
 /// When `HTTP_PROXY`/`HTTPS_PROXY` are set, add standard loopback hosts
@@ -153,139 +132,27 @@ fn root_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TlsMode {
-    PlainHttp,
-    HttpsNoClientCa,
-    HttpsWithClientCa,
+/// Returns the absolute path to a test server TOML configuration file.
+///
+/// `name` should be just the filename (e.g. `"auth_plain.toml"`).
+/// This resolves correctly regardless of which crate is calling it.
+#[must_use]
+pub fn test_config_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../test_data/configs/server/test")
+        .join(name)
 }
 
-impl TlsMode {
-    const fn use_https(self) -> bool {
-        !matches!(self, Self::PlainHttp)
-    }
-
-    const fn use_known_ca_list(self) -> bool {
-        matches!(self, Self::HttpsWithClientCa)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum JwtAuth {
-    Disabled,
-    Enabled,
-}
-
-impl JwtAuth {
-    const fn is_enabled(self) -> bool {
-        matches!(self, Self::Enabled)
-    }
+/// Like [`test_config_path`] but resolves paths under the `hsm/` sub-directory.
+#[must_use]
+pub fn hsm_config_path(name: &str) -> PathBuf {
+    test_config_path("hsm").join(name)
 }
 
 fn path_to_string(p: &Path) -> Result<String, KmsClientError> {
     p.to_str()
         .map(str::to_owned)
         .ok_or_else(|| KmsClientError::Default("Can't convert path to string".to_owned()))
-}
-
-fn sqlite_db_config(workspace_dir: Option<&PathBuf>) -> MainDBConfig {
-    let base = workspace_dir.map_or_else(
-        || std::env::temp_dir().join("kms_sqlite"),
-        std::clone::Clone::clone,
-    );
-    trace!("TESTS: using sqlite at base dir: {}", base.display());
-    if let Err(e) = std::fs::create_dir_all(&base) {
-        warn!(
-            "Could not create sqlite base temp dir ({}): {e}",
-            base.display()
-        );
-    }
-    MainDBConfig {
-        database_type: Some("sqlite".to_owned()),
-        clear_database: true,
-        ..MainDBConfig::default()
-    }
-}
-
-fn mysql_db_config() -> MainDBConfig {
-    trace!("TESTS: using mysql");
-    let mysql_url = option_env!("KMS_MYSQL_URL")
-        .unwrap_or("mysql://kms:kms@localhost:3306/kms")
-        .to_owned();
-    MainDBConfig {
-        database_type: Some("mysql".to_owned()),
-        clear_database: false,
-        database_url: Some(mysql_url),
-        ..MainDBConfig::default()
-    }
-}
-
-fn postgres_db_config() -> MainDBConfig {
-    trace!("TESTS: using postgres");
-    let postgresql_url = option_env!("KMS_POSTGRES_URL")
-        .unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms")
-        .to_owned();
-    MainDBConfig {
-        database_type: Some("postgresql".to_owned()),
-        clear_database: false,
-        database_url: Some(postgresql_url),
-        ..MainDBConfig::default()
-    }
-}
-
-#[allow(deprecated)] // needed to migrate
-#[cfg(feature = "non-fips")]
-#[allow(clippy::as_conversions)]
-fn redis_findex_db_config(port: u16) -> MainDBConfig {
-    trace!("TESTS: using redis-findex");
-    let mut url = env::var("REDIS_HOST").map_or_else(
-        |_| "redis://localhost:6379".to_owned(),
-        |var_env| format!("redis://{var_env}:6379"),
-    );
-    // Compute a logical DB index from the port to isolate concurrent servers.
-    // Using a small ring to keep index bounded.
-    let db_index: u8 = (port % 16) as u8;
-    // Ensure the redis URL carries the DB index (e.g., redis://host:6379/5)
-    // If the URL already has a trailing "/<digits>", replace it; otherwise append it
-    let has_db_suffix = url
-        .rsplit('/')
-        .next()
-        .is_some_and(|s| s.chars().all(|c| c.is_ascii_digit()));
-    if has_db_suffix {
-        if let Some(pos) = url.rfind('/') {
-            url.truncate(pos + 1);
-            url.push_str(&db_index.to_string());
-        }
-    } else {
-        if !url.ends_with('/') {
-            url.push('/');
-        }
-        url.push_str(&db_index.to_string());
-    }
-
-    MainDBConfig {
-        database_type: Some("redis-findex".to_owned()),
-        clear_database: true,
-        unwrapped_cache_max_age: 15,
-        max_connections: None,
-        database_url: Some(url),
-        sqlite_path: PathBuf::default(),
-        redis_master_password: Some("password".to_owned()),
-    }
-}
-
-#[allow(clippy::used_underscore_binding)]
-fn get_db_config(_port: u16, workspace_dir: Option<&PathBuf>) -> MainDBConfig {
-    env::var_os("KMS_TEST_DB").map_or_else(
-        || sqlite_db_config(workspace_dir),
-        |v| match v.to_str().unwrap_or("") {
-            #[cfg(feature = "non-fips")]
-            "redis-findex" => redis_findex_db_config(_port),
-            "mysql" => mysql_db_config(),
-            "postgresql" => postgres_db_config(),
-            _ => sqlite_db_config(workspace_dir),
-        },
-    )
 }
 
 /// Start a test KMS server in a thread with the default options:
@@ -307,36 +174,66 @@ pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static T
     })
 }
 
+/// Override the database backend used by `start_default_test_kms_server` via the
+/// `KMS_TEST_DB` environment variable.
+///
+/// | `KMS_TEST_DB` value              | Backend        | Required env var(s)                          |
+/// |----------------------------------|----------------|----------------------------------------------|
+/// | unset / `sqlite`                 | SQLite         | —                                            |
+/// | `postgresql` / `postgres`        | PostgreSQL     | `KMS_POSTGRES_URL` (falls back to localhost) |
+/// | `mysql` / `mariadb`              | MySQL/MariaDB  | `KMS_MYSQL_URL` (falls back to localhost)    |
+/// | `redis-findex` / `redis` (non-FIPS only) | Redis-findex | `KMS_REDIS_URL` or `REDIS_HOST`      |
+fn apply_test_db_override(config: &mut ClapConfig) {
+    let Ok(db) = env::var("KMS_TEST_DB") else {
+        return; // default: SQLite, no override needed
+    };
+    match db.to_lowercase().as_str() {
+        "postgresql" | "postgres" => {
+            let url = env::var("KMS_POSTGRES_URL")
+                .unwrap_or_else(|_| "postgresql://kms:kms@127.0.0.1:5432/kms".to_owned());
+            config.db.database_type = Some("postgresql".to_owned());
+            config.db.database_url = Some(url);
+        }
+        "mysql" | "mariadb" => {
+            let url = env::var("KMS_MYSQL_URL")
+                .unwrap_or_else(|_| "mysql://kms:kms@127.0.0.1:3306/kms".to_owned());
+            config.db.database_type = Some("mysql".to_owned());
+            config.db.database_url = Some(url);
+        }
+        #[cfg(feature = "non-fips")]
+        "redis-findex" | "redis" => {
+            let url = env::var("KMS_REDIS_URL")
+                .or_else(|_| env::var("REDIS_HOST").map(|h| format!("redis://{h}:6379")))
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
+            config.db.database_type = Some("redis-findex".to_owned());
+            config.db.database_url = Some(url);
+            config.db.redis_master_password = Some(
+                env::var("KMS_REDIS_MASTER_PASSWORD")
+                    .unwrap_or_else(|_| "master_password".to_owned()),
+            );
+        }
+        _ => {} // unrecognized or non-FIPS redis: fall back to SQLite
+    }
+}
+
 /// Start a test KMS server in a thread with the default options:
-/// No TLS, no certificate authentication
+/// No TLS, no certificate authentication.
+///
+/// Configuration is loaded from `test_data/configs/server/test/auth_plain.toml` by default.
+/// Set `KMS_TEST_DB` to `postgresql`, `mysql`, or `redis-findex` (non-FIPS only) to run
+/// the full test suite against a different database backend transparently.
+///
 /// # Panics
 /// - if the server fails to start
-#[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server() -> &'static TestsContext {
     trace!("Starting default test server");
-    // Ensure corporate proxies do not intercept localhost requests in tests
     ensure_no_proxy_for_localhost();
-    // If NO_PROXY is not sufficient for the HTTP stack, hard-disable proxies
     disable_proxies_for_tests();
     Box::pin(ONCE.get_or_try_init(|| async move {
-        let use_kek = env::var_os("KMS_USE_KEK");
-        let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT)?;
-        match use_kek {
-            Some(_use_kek) => {
-                let server_params = Box::pin(create_server_params_with_kek(port)).await.unwrap();
-                start_from_server_params(server_params).await
-            }
-            None => {
-                start_test_server_with_options(
-                    get_db_config(port, None),
-                    port,
-                    AuthenticationOptions::new(),
-                    None,
-                    None,
-                )
-                .await
-            }
-        }
+        let config_path = root_dir().join("../../test_data/configs/server/test/auth_plain.toml");
+        let mut config = load_test_config_from_toml(&config_path)?;
+        apply_test_db_override(&mut config);
+        start_server_from_config(config, &config_path).await
     }))
     .await
     .unwrap_or_else(|e| {
@@ -345,31 +242,18 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     })
 }
 
-/// TLS + certificate authentication
+/// TLS + certificate authentication.
+///
+/// Configuration is loaded from `test_data/configs/server/test/cert_auth.toml`.
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
-    // Initialize OpenSSL legacy provider before any P12 parsing
     crate::init_openssl_providers_for_tests();
-
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 1)?;
-            let db_config = get_db_config(port, None);
-
-            let server_params = build_server_params_full(BuildServerParamsOptions {
-                db_config,
-                port,
-                tls: TlsMode::HttpsWithClientCa,
-                jwt: JwtAuth::Disabled,
-                ..Default::default()
-            })
-            .map_err(|e| {
-                KmsClientError::Default(format!(
-                    "failed initializing the server config (cert auth): {e}"
-                ))
-            })?;
-
-            start_from_server_params(server_params).await
+            start_test_server_from_toml(
+                &root_dir().join("../../test_data/configs/server/test/cert_auth.toml"),
+            )
+            .await
         })
         .await
         .unwrap_or_else(|e| {
@@ -380,31 +264,16 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
 
 /// Plain-HTTP server with JWT authentication enabled (Auth0 `IdP`).
 ///
-/// Use this in tests that verify JWT-based authentication end-to-end.
-/// The owner client config is pre-populated with [`crate::test_jwt::AUTH0_TOKEN`].
+/// Configuration is loaded from `test_data/configs/server/test/auth_plain_jwt.toml`.
 pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();
-
     trace!("Starting test server with JWT auth");
     ONCE_SERVER_WITH_JWT_AUTH
         .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 6)?;
-            let db_config = get_db_config(port, None);
-
-            let server_params = build_server_params_full(BuildServerParamsOptions {
-                db_config,
-                port,
-                tls: TlsMode::PlainHttp,
-                jwt: JwtAuth::Enabled,
-                ..Default::default()
-            })
-            .map_err(|e| {
-                KmsClientError::Default(format!(
-                    "failed initializing the server config (JWT auth): {e}"
-                ))
-            })?;
-
-            start_from_server_params(server_params).await
+            start_test_server_from_toml(
+                &root_dir().join("../../test_data/configs/server/test/auth_plain_jwt.toml"),
+            )
+            .await
         })
         .await
         .unwrap_or_else(|e| {
@@ -413,22 +282,21 @@ pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsCont
         })
 }
 
-/// revocable key IDs
+/// Non-revocable key IDs.
+///
+/// Base configuration is loaded from `test_data/configs/server/test/non_revocable.toml`;
+/// the `non_revocable_key_id` field is injected from the argument.
 pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     non_revocable_key_id: Option<Vec<String>>,
 ) -> &'static TestsContext {
     trace!("Starting test server with non-revocable key ids");
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 2)?;
-            start_test_server_with_options(
-                get_db_config(port, None),
-                port,
-                AuthenticationOptions::new(),
-                non_revocable_key_id,
-                None,
-            )
-            .await
+            let config_path =
+                root_dir().join("../../test_data/configs/server/test/non_revocable.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            config.non_revocable_key_id = non_revocable_key_id;
+            start_server_from_config(config, &config_path).await
         })
         .await
         .unwrap_or_else(|e| {
@@ -440,30 +308,12 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
 /// With Utimaco HSM
 pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsContext {
     trace!("Starting test server with Utimaco HSM");
-    // Build ServerParams with HSM fields directly and start from them
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 3)?;
-            let db_config = get_db_config(port, None);
-
-            let server_params = build_server_params_full(BuildServerParamsOptions {
-                db_config,
-                port,
-                tls: TlsMode::PlainHttp,
-                jwt: JwtAuth::Disabled,
-                hsm: Some(HsmConfig {
-                    hsm_model: "utimaco".to_owned(),
-                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
-                    hsm_slot: vec![0],
-                    hsm_password: vec!["12345678".to_owned()],
-                }),
-                ..Default::default()
-            })
-            .map_err(|e| {
-                KmsClientError::Default(format!("failed initializing the server config (HSM): {e}"))
-            })?;
-
-            start_from_server_params(server_params).await
+            start_test_server_from_toml(
+                &root_dir().join("../../test_data/configs/server/test/hsm.toml"),
+            )
+            .await
         })
         .await
         .unwrap_or_else(|e| {
@@ -474,125 +324,63 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
 
 // Create a KEK in the HSM before running server with `key_encryption_key` arg
 async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
-    let port = 20000;
-    let workspace_dir = std::env::temp_dir().join(format!("kms_test_workspace_{port}"));
+    // Use a unique path per CI job to avoid conflicts when multiple CI runners
+    // share the same /tmp directory.
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_kek_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     let kek_id = "hsm::0::kek";
-    let db_config = MainDBConfig {
-        database_type: Some("sqlite".to_owned()),
-        clear_database: true,
-        ..MainDBConfig::default()
-    };
 
-    let ctx = start_test_server_with_options(
-        db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig::default(),
-                jwt: JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params_full(BuildServerParamsOptions {
-                workspace_dir: Some(workspace_dir.clone()),
-                db_config,
-                port,
-                tls: TlsMode::PlainHttp,
-                jwt: JwtAuth::Enabled,
-                hsm: Some(HsmConfig {
-                    hsm_model: "utimaco".to_owned(),
-                    hsm_admin: vec!["tech@cosmian.com".to_owned()],
-                    hsm_slot: vec![0],
-                    hsm_password: vec!["12345678".to_owned()],
-                }),
-                ..Default::default()
-            })?),
+    let workspace_clone = workspace_dir.clone();
+    let ctx = start_test_server_with_patch(
+        &hsm_config_path("hsm_jwt.toml"),
+        move |config| {
+            config.db.sqlite_path = workspace_clone.join("sqlite-data");
+            config.workspace.root_data_path = workspace_clone.join("workspace");
+            config.workspace.tmp_path = workspace_clone.join("tmp");
         },
-        None,
-        None,
+        TestClientOptions {
+            send_jwt: true,
+            ..Default::default()
+        },
     )
     .await?;
 
-    // Create the KEK in the HSM
-    // Fast path: if the key already exists and is active, we're done.
-
-    let get_attr_request = GetAttributes {
-        unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-        attribute_reference: None,
+    // Create the KEK in the HSM (idempotent: ignore "already exists").
+    let create_request = Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes: Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::WrapKey
+                    | CryptographicUsageMask::UnwrapKey,
+            ),
+            object_type: Some(ObjectType::SymmetricKey),
+            unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
+            activation_date: Some(time_normalize()?),
+            ..Default::default()
+        },
+        protection_storage_masks: None,
     };
-    let resp = ctx
-        .get_owner_client()
-        .get_attributes(get_attr_request)
-        .await;
-
-    if resp.is_err() {
-        // Create a request to generate a new symmetric key with activation_date set to now
-        // so it will be immediately active
-        let create_request = Create {
-            object_type: ObjectType::SymmetricKey,
-            attributes: Attributes {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                cryptographic_length: Some(256),
-                cryptographic_usage_mask: Some(
-                    CryptographicUsageMask::Encrypt
-                        | CryptographicUsageMask::Decrypt
-                        | CryptographicUsageMask::WrapKey
-                        | CryptographicUsageMask::UnwrapKey,
-                ),
-                object_type: Some(ObjectType::SymmetricKey),
-                unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-                activation_date: Some(time_normalize()?),
-                ..Default::default()
-            },
-            protection_storage_masks: None,
-        };
-
-        let _response = ctx.get_owner_client().create(create_request).await?;
+    match ctx.get_owner_client().create(create_request).await {
+        Ok(_) => trace!("KEK created in HSM"),
+        Err(e) if e.to_string().to_lowercase().contains("already exist") => {
+            trace!("KEK already exists in HSM, reusing");
+        }
+        Err(e) => return Err(e),
     }
-
-    // No grant access is required on external keys (e.g., when using HSM crypto oracles)
 
     ctx.stop_server().await?;
 
     Ok((workspace_dir, kek_id.to_owned()))
-}
-
-async fn create_server_params_with_kek(port: u16) -> Result<ServerParams, KmsClientError> {
-    let (workspace_dir, kek_id) = Box::pin(create_kek_in_db()).await?;
-    trace!(
-        "Key encryption key created: {kek_id} in workspace {}",
-        workspace_dir.display()
-    );
-
-    assert!(
-        workspace_dir.exists() && !kek_id.is_empty(),
-        "workspace_dir must exist and kek_id must be non-empty"
-    );
-
-    let db_config = get_db_config(port, Some(&workspace_dir));
-
-    let reuse_db_config = MainDBConfig {
-        clear_database: false,
-        ..db_config
-    };
-    let server_params = build_server_params_full(BuildServerParamsOptions {
-        workspace_dir: Some(workspace_dir),
-        db_config: reuse_db_config,
-        port,
-        tls: TlsMode::HttpsWithClientCa,
-        jwt: JwtAuth::Enabled,
-        hsm: Some(HsmConfig {
-            hsm_model: "utimaco".to_owned(),
-            hsm_admin: vec!["owner.client@acme.com".to_owned()],
-            hsm_slot: vec![0],
-            hsm_password: vec!["12345678".to_owned()],
-        }),
-        key_encryption_key: Some(kek_id),
-        ..Default::default()
-    })
-    .map_err(|e| {
-        KmsClientError::Default(format!("failed initializing the server config (HSM): {e}"))
-    })?;
-    Ok(server_params)
 }
 
 /// With Utimaco HSM
@@ -603,12 +391,25 @@ async fn create_server_params_with_kek(port: u16) -> Result<ServerParams, KmsCli
 #[allow(clippy::unwrap_used)]
 pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static TestsContext {
     trace!("Starting test server with Utimaco HSM and KEK");
-    // Build ServerParams with HSM fields directly and start from them
     Box::pin(ONCE_SERVER_WITH_KEK.get_or_try_init(|| async move {
-        let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 4)?;
-        let server_params = Box::pin(create_server_params_with_kek(port)).await.unwrap();
+        let (workspace_dir, kek_id) = Box::pin(create_kek_in_db()).await?;
+        trace!(
+            "Key encryption key created: {kek_id} in workspace {}",
+            workspace_dir.display()
+        );
+        assert!(
+            workspace_dir.exists() && !kek_id.is_empty(),
+            "workspace_dir must exist and kek_id must be non-empty"
+        );
 
-        start_from_server_params(server_params).await
+        let config_path = hsm_config_path("hsm_kek.toml");
+        let mut config = load_test_config_from_toml(&config_path)?;
+        config.db.sqlite_path = workspace_dir.join("sqlite-data");
+        config.db.clear_database = false;
+        config.workspace.root_data_path = workspace_dir.join("workspace");
+        config.workspace.tmp_path = workspace_dir.join("tmp");
+        config.key_encryption_key = Some(kek_id);
+        start_server_from_config(config, &config_path).await
     }))
     .await
     .unwrap_or_else(|e| {
@@ -617,37 +418,151 @@ pub async fn start_default_test_kms_server_with_utimaco_and_kek() -> &'static Te
     })
 }
 
+// ---------------------------------------------------------------------------
+// SoftHSM2 + KEK
+// ---------------------------------------------------------------------------
+
+pub(crate) static ONCE_SERVER_WITH_SOFTHSM2_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+
+/// Read the `SoftHSM2` slot id from the `HSM_SLOT_ID` environment variable.
+///
+/// # Panics
+/// Panics if the variable is missing or not a valid `usize`.
+#[allow(clippy::expect_used, clippy::panic)]
+fn get_softhsm2_slot_id() -> usize {
+    let raw = env::var("HSM_SLOT_ID").expect(
+        "HSM_SLOT_ID environment variable must be set (by test_hsm_softhsm2.sh) to run \
+         SoftHSM2+KEK tests",
+    );
+    raw.parse::<usize>().unwrap_or_else(|_| {
+        panic!("HSM_SLOT_ID '{raw}' is not a valid usize");
+    })
+}
+
+/// Bootstrap a KEK inside `SoftHSM2`.
+///
+/// Mirrors [`create_kek_in_db`] but uses the `SoftHSM2`-specific TOML and reads
+/// the slot from `HSM_SLOT_ID`.
+async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
+    let slot = get_softhsm2_slot_id();
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_softhsm2_kek_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let kek_id = format!("hsm::{slot}::kek");
+
+    let workspace_clone = workspace_dir.clone();
+    let ctx = start_test_server_with_patch(
+        &hsm_config_path("hsm_softhsm2_jwt.toml"),
+        move |config| {
+            config.hsm.hsm_slot = vec![slot];
+            config.db.sqlite_path = workspace_clone.join("sqlite-data");
+            config.workspace.root_data_path = workspace_clone.join("workspace");
+            config.workspace.tmp_path = workspace_clone.join("tmp");
+        },
+        TestClientOptions {
+            send_jwt: true,
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    // Create the KEK in the HSM (idempotent: ignore "already exists").
+    let create_request = Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes: Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::WrapKey
+                    | CryptographicUsageMask::UnwrapKey,
+            ),
+            object_type: Some(ObjectType::SymmetricKey),
+            unique_identifier: Some(UniqueIdentifier::TextString(kek_id.clone())),
+            activation_date: Some(time_normalize()?),
+            ..Default::default()
+        },
+        protection_storage_masks: None,
+    };
+    match ctx.get_owner_client().create(create_request).await {
+        Ok(_) => trace!("KEK created in HSM"),
+        Err(e) if e.to_string().to_lowercase().contains("already exist") => {
+            trace!("KEK already exists in HSM, reusing");
+        }
+        Err(e) => return Err(e),
+    }
+
+    ctx.stop_server().await?;
+
+    Ok((workspace_dir, kek_id))
+}
+
+/// With `SoftHSM2` HSM + KEK
+///
+/// # Panics
+/// - if `HSM_SLOT_ID` is not set
+/// - if the `workspace_dir` does not exist
+/// - if the `kek_id` is empty
+#[allow(clippy::unwrap_used)]
+pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static TestsContext {
+    trace!("Starting test server with SoftHSM2 HSM and KEK");
+    let slot = get_softhsm2_slot_id();
+    Box::pin(
+        ONCE_SERVER_WITH_SOFTHSM2_KEK.get_or_try_init(|| async move {
+            let (workspace_dir, kek_id) = Box::pin(create_softhsm2_kek_in_db()).await?;
+            trace!(
+                "SoftHSM2 key encryption key created: {kek_id} in workspace {}",
+                workspace_dir.display()
+            );
+            assert!(
+                workspace_dir.exists() && !kek_id.is_empty(),
+                "workspace_dir must exist and kek_id must be non-empty"
+            );
+
+            let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            config.hsm.hsm_slot = vec![slot];
+            config.db.sqlite_path = workspace_dir.join("sqlite-data");
+            config.db.clear_database = false;
+            config.workspace.root_data_path = workspace_dir.join("workspace");
+            config.workspace.tmp_path = workspace_dir.join("tmp");
+            config.key_encryption_key = Some(kek_id);
+            start_server_from_config(config, &config_path).await
+        }),
+    )
+    .await
+    .unwrap_or_else(|e| {
+        error!("failed to start test server with softhsm2 hsm: {e}");
+        std::process::abort();
+    })
+}
+
 /// Privileged users — two distinct identities in the list.
+///
+/// Base configuration is loaded from `test_data/configs/server/test/privileged_users.toml`;
+/// the `privileged_users` field is hardcoded to `["owner.client@acme.com", "user.privileged@acme.com"]`.
 ///
 /// Uses a dedicated [`ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS`] cell so that
 /// tests requiring both the owner *and* `user.privileged@acme.com` never share
 /// state with tests that only register the owner (e.g. `privilege_bypass`).
 pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'static TestsContext {
-    let privileged_users = vec![
-        "owner.client@acme.com".to_owned(),
-        "user.privileged@acme.com".to_owned(),
-    ];
     trace!("Starting test server with multi privileged users");
     ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 7)?;
-            let db_config = get_db_config(port, None);
-
-            let server_params = build_server_params_full(BuildServerParamsOptions {
-                db_config,
-                port,
-                tls: TlsMode::HttpsWithClientCa,
-                jwt: JwtAuth::Enabled,
-                privileged_users: Some(privileged_users),
-                ..Default::default()
-            })
-            .map_err(|e| {
-                KmsClientError::Default(format!(
-                    "failed initializing the server config (multi privileged users): {e}"
-                ))
-            })?;
-
-            start_from_server_params(server_params).await
+            let config_path =
+                root_dir().join("../../test_data/configs/server/test/privileged_users.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            config.privileged_users = Some(vec![
+                "owner.client@acme.com".to_owned(),
+                "user.privileged@acme.com".to_owned(),
+            ]);
+            start_server_from_config(config, &config_path).await
         })
         .await
         .unwrap_or_else(|e| {
@@ -656,32 +571,21 @@ pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'st
         })
 }
 
-/// Privileged users
+/// Privileged users.
+///
+/// Base configuration is loaded from `test_data/configs/server/test/privileged_users.toml`;
+/// the `privileged_users` field is injected from the argument.
 pub async fn start_default_test_kms_server_with_privileged_users(
     privileged_users: Vec<String>,
 ) -> &'static TestsContext {
     trace!("Starting test server with privileged users");
     ONCE_SERVER_WITH_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
-            let port = resolve_test_port(DEFAULT_KMS_SERVER_PORT + 5)?;
-            let db_config = get_db_config(port, None);
-
-            // Use Auth0 config for IdP-enabled server
-            let server_params = build_server_params_full(BuildServerParamsOptions {
-                db_config,
-                port,
-                tls: TlsMode::HttpsWithClientCa,
-                jwt: JwtAuth::Enabled,
-                privileged_users: Some(privileged_users),
-                ..Default::default()
-            })
-            .map_err(|e| {
-                KmsClientError::Default(format!(
-                    "failed initializing the server config (privileged users): {e}"
-                ))
-            })?;
-
-            start_from_server_params(server_params).await
+            let config_path =
+                root_dir().join("../../test_data/configs/server/test/privileged_users.toml");
+            let mut config = load_test_config_from_toml(&config_path)?;
+            config.privileged_users = Some(privileged_users);
+            start_server_from_config(config, &config_path).await
         })
         .await
         .unwrap_or_else(|e| {
@@ -722,179 +626,6 @@ impl TestsContext {
             .join()
             .map_err(|_e| kms_client_error!("failed joining the stop thread"))?
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ClientCertPolicy {
-    /// Send a client certificate when the server requires it (default cert if none is provided)
-    Send,
-    /// Do not send any client certificate
-    Suppress,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ApiTokenPolicy {
-    /// Send API token if provided by the client configuration (default)
-    SendIfProvided,
-    /// Do not send API token even if provided
-    Suppress,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum JwtPolicy {
-    /// Auto-inject a default `JWT` when the server has an `IdP` and no token was provided (default)
-    AutoDefault,
-    /// Never send a `JWT`
-    Suppress,
-}
-
-pub struct ClientAuthOptions {
-    pub http: HttpClientConfig,
-    pub client_cert: ClientCertPolicy,
-    pub api_token: ApiTokenPolicy,
-    pub jwt: JwtPolicy,
-}
-
-impl Default for ClientAuthOptions {
-    fn default() -> Self {
-        Self {
-            http: HttpClientConfig::default(),
-            client_cert: ClientCertPolicy::Send,
-            api_token: ApiTokenPolicy::SendIfProvided,
-            jwt: JwtPolicy::AutoDefault,
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct AuthenticationOptions {
-    pub client: ClientAuthOptions,
-    pub server_params: Option<ServerParams>,
-}
-
-impl AuthenticationOptions {
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            client: ClientAuthOptions::default(),
-            server_params: None,
-        }
-    }
-}
-
-/// Options container to avoid `too_many_arguments` on the builder
-#[derive(Clone)]
-pub struct BuildServerParamsOptions {
-    pub workspace_dir: Option<PathBuf>,
-    pub db_config: MainDBConfig,
-    pub port: u16,
-    pub tls: TlsMode,
-    pub jwt: JwtAuth,
-    pub server_tls_cipher_suites: Option<String>,
-    pub api_token_id: Option<String>,
-    pub privileged_users: Option<Vec<String>>,
-    pub non_revocable_key_id: Option<Vec<String>>,
-    pub hsm: Option<HsmConfig>,
-    pub key_encryption_key: Option<String>,
-}
-
-impl std::fmt::Debug for BuildServerParamsOptions {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BuildServerParamsOptions")
-            .field("workspace_dir", &self.workspace_dir)
-            .field("db_config", &"<redacted>")
-            .field("port", &self.port)
-            .field("tls", &self.tls)
-            .field("jwt", &self.jwt)
-            .field("server_tls_cipher_suites", &self.server_tls_cipher_suites)
-            .field("api_token_id", &self.api_token_id)
-            .field("privileged_users", &self.privileged_users)
-            .field("non_revocable_key_id", &self.non_revocable_key_id)
-            .field("hsm", &self.hsm.as_ref().map(|_| "<provided>"))
-            .field(
-                "key_encryption_key",
-                &self.key_encryption_key.as_ref().map(|_| "<provided>"),
-            )
-            .finish()
-    }
-}
-
-impl Default for BuildServerParamsOptions {
-    fn default() -> Self {
-        Self {
-            workspace_dir: None,
-            db_config: MainDBConfig::default(),
-            port: 0,
-            tls: TlsMode::PlainHttp,
-            jwt: JwtAuth::Disabled,
-            server_tls_cipher_suites: None,
-            api_token_id: None,
-            privileged_users: None,
-            non_revocable_key_id: None,
-            hsm: None,
-            key_encryption_key: None,
-        }
-    }
-}
-
-/// Start a KMS server in a thread with the given options
-pub async fn start_test_server_with_options(
-    db_config: MainDBConfig,
-    port: u16,
-    authentication_options: AuthenticationOptions,
-    non_revocable_key_id: Option<Vec<String>>,
-    privileged_users: Option<Vec<String>>,
-) -> Result<TestsContext, KmsClientError> {
-    // Protect local test connections from corporate proxies
-    ensure_no_proxy_for_localhost();
-    disable_proxies_for_tests();
-    // Destructure options to avoid borrow/move conflicts
-    let AuthenticationOptions {
-        client,
-        server_params: server_params_opt,
-    } = authentication_options;
-    let client_opts = &client;
-    // Generate server params
-    let server_params = generate_server_params(
-        db_config,
-        port,
-        server_params_opt,
-        non_revocable_key_id,
-        privileged_users,
-    )?;
-
-    // Create a (object owner) conf
-    let owner_client_config = generate_owner_conf(&server_params, client_opts)?;
-
-    info!(" -- Test KMS server configuration: {:#?}", server_params);
-    info!(
-        " -- Test KMS owner client configuration: {:#?}",
-        owner_client_config
-    );
-
-    // generate a user conf
-    let use_jwt_token = server_params.identity_provider_configurations.is_some();
-    let user_client_config = generate_user_conf(&owner_client_config, use_jwt_token, client_opts)?;
-    let server_port = server_params.http_port;
-
-    let (server_handle, thread_handle) = start_test_kms_server(server_params)?;
-
-    // wait for the server to be up
-    wait_for_server_to_start(&owner_client_config)
-        .await
-        .map_err(|e| {
-            // error!("Error waiting for server to start: {e:?}");
-            KmsClientError::UnexpectedError(e.to_string())
-        })?;
-
-    Ok(TestsContext {
-        server_port,
-        owner_client_config,
-        user_client_config,
-        server_handle,
-        thread_handle,
-    })
 }
 
 /// Start a test KMS server with the given config in a separate thread
@@ -965,169 +696,6 @@ async fn wait_for_server_to_start(
     Ok(())
 }
 
-fn server_tls_config(mode: TlsMode, server_tls_cipher_suites: Option<String>) -> TlsConfig {
-    if !mode.use_https() {
-        return TlsConfig::default();
-    }
-    let clients_ca = mode
-        .use_known_ca_list()
-        .then(|| root_dir().join("../../test_data/certificates/client_server/ca/ca.crt"));
-    #[cfg(feature = "non-fips")]
-    {
-        TlsConfig {
-            tls_p12_file: Some(
-                root_dir().join(
-                    "../../test_data/certificates/client_server/server/kmserver.acme.com.p12",
-                ),
-            ),
-            tls_p12_password: Some("password".to_owned()),
-            clients_ca_cert_file: clients_ca,
-            tls_cipher_suites: server_tls_cipher_suites,
-            ..Default::default()
-        }
-    }
-    #[cfg(not(feature = "non-fips"))]
-    {
-        TlsConfig {
-            tls_cert_file: Some(
-                root_dir().join(
-                    "../../test_data/certificates/client_server/server/kmserver.acme.com.crt",
-                ),
-            ),
-            tls_key_file: Some(
-                root_dir().join(
-                    "../../test_data/certificates/client_server/server/kmserver.acme.com.key",
-                ),
-            ),
-            // Server cert is directly signed by root CA, no intermediate chain needed
-            tls_chain_file: None,
-            clients_ca_cert_file: clients_ca,
-            tls_cipher_suites: server_tls_cipher_suites,
-        }
-    }
-}
-
-pub fn build_server_params_full(
-    opts: BuildServerParamsOptions,
-) -> Result<ServerParams, KmsClientError> {
-    // Create a unique workspace path for each test to avoid race conditions
-    let workspace_dir = if let Some(workspace_dir) = opts.workspace_dir {
-        workspace_dir
-    } else {
-        std::env::temp_dir().join(format!("kms_test_workspace_{}", opts.port))
-    };
-    info!(
-        "Using workspace dir for test KMS server: {}",
-        workspace_dir.display()
-    );
-
-    // Database configuration is already isolated for redis-findex within get_db_config(port)
-    let db_cfg = opts.db_config;
-
-    let idp_auth = if opts.jwt.is_enabled() {
-        // Issuer must match the JWTs embedded in test_kms_server::test_jwt
-        get_multiple_jwt_config()
-    } else {
-        IdpAuthConfig::default()
-    };
-
-    let mut clap = ClapConfig {
-        idp_auth,
-        socket_server: SocketServerConfig {
-            // Start socket server when HTTPS and client cert auth are used
-            socket_server_start: opts.tls.use_https() && opts.tls.use_known_ca_list(),
-            socket_server_port: opts.port.saturating_add(100),
-            ..Default::default()
-        },
-        workspace: WorkspaceConfig {
-            root_data_path: workspace_dir,
-            tmp_path: PathBuf::from("./"),
-        },
-        // db: opts.db_config,
-        db: db_cfg,
-        tls: server_tls_config(opts.tls, opts.server_tls_cipher_suites),
-        http: HttpConfig {
-            port: opts.port,
-            api_token_id: opts.api_token_id,
-            ..HttpConfig::default()
-        },
-        // Expose Google CSE endpoints in tests and relax token validation
-        kms_public_url: Some(format!("http://localhost:{}/google_cse", opts.port)),
-        google_cse_config: GoogleCseConfig {
-            google_cse_enable: true,
-            google_cse_disable_tokens_validation: !opts.jwt.is_enabled(),
-            google_cse_incoming_url_whitelist: Some(vec!["https://cse.cosmian.com".to_owned()]),
-            google_cse_migration_key: None,
-        },
-        non_revocable_key_id: opts.non_revocable_key_id,
-        privileged_users: opts.privileged_users,
-        default_username: "tech@cosmian.com".to_owned(),
-        key_encryption_key: opts.key_encryption_key.clone(),
-        default_unwrap_type: if opts.key_encryption_key.is_some() {
-            Some(vec!["All"].into_iter().map(String::from).collect())
-        } else {
-            None
-        },
-        ..ClapConfig::default()
-    };
-
-    // If HSM options were provided, set them under the nested HSM config
-    if let Some(h) = opts.hsm {
-        clap.hsm = h;
-    }
-
-    trace!(
-        "Building ServerParams for test harness with ClapConfig: {:#?}",
-        clap
-    );
-    ServerParams::try_from(clap).map_err(|e| {
-        KmsClientError::Default(format!(
-            "Failed to build ServerParams for test harness: {e}"
-        ))
-    })
-}
-
-// Convenience builder used by CLI tests and simple scenarios
-pub fn build_server_params(
-    db_config: MainDBConfig,
-    port: u16,
-    tls: TlsMode,
-    jwt: JwtAuth,
-    server_tls_cipher_suites: Option<String>,
-    api_token_id: Option<String>,
-) -> Result<ServerParams, KmsClientError> {
-    build_server_params_full(BuildServerParamsOptions {
-        db_config,
-        port,
-        tls,
-        jwt,
-        server_tls_cipher_suites,
-        api_token_id,
-        ..Default::default()
-    })
-}
-
-fn generate_server_params(
-    db_config: MainDBConfig,
-    port: u16,
-    server_params_opt: Option<ServerParams>,
-    non_revocable_key_id: Option<Vec<String>>,
-    privileged_users: Option<Vec<String>>,
-) -> Result<ServerParams, KmsClientError> {
-    if let Some(sp) = server_params_opt {
-        return Ok(sp);
-    }
-    build_server_params_full(BuildServerParamsOptions {
-        db_config,
-        port,
-        tls: TlsMode::PlainHttp,
-        jwt: JwtAuth::Disabled,
-        privileged_users,
-        non_revocable_key_id,
-        ..Default::default()
-    })
-}
-
 /// Common finalization once the server parameters are fully constructed
 async fn start_from_server_params(
     server_params: ServerParams,
@@ -1135,8 +703,9 @@ async fn start_from_server_params(
     // Protect local test connections from corporate proxies
     ensure_no_proxy_for_localhost();
     disable_proxies_for_tests();
-    // Create a (object owner) conf
-    let owner_client_config = generate_owner_conf(&server_params, &ClientAuthOptions::default())?;
+
+    let opts = TestClientOptions::default();
+    let owner_client_config = generate_owner_conf_from_opts(&server_params, &opts)?;
 
     info!(" -- Test KMS server configuration: {:#?}", server_params);
     info!(
@@ -1144,18 +713,13 @@ async fn start_from_server_params(
         owner_client_config
     );
 
-    // generate a user conf
     let use_jwt_token = server_params.identity_provider_configurations.is_some();
-    let user_client_config = generate_user_conf(
-        &owner_client_config,
-        use_jwt_token,
-        &ClientAuthOptions::default(),
-    )?;
+    let user_client_config =
+        generate_user_conf_from_opts(&owner_client_config, use_jwt_token, &opts)?;
     let server_port = server_params.http_port;
 
     let (server_handle, thread_handle) = start_test_kms_server(server_params)?;
 
-    // wait for the server to be up
     wait_for_server_to_start(&owner_client_config)
         .await
         .map_err(|e| {
@@ -1189,40 +753,273 @@ fn set_access_token(
     }
 }
 
-fn generate_owner_conf(
+/// Load a TOML configuration file into [`ClapConfig`], allocating a free port
+/// and setting unique temp paths for `SQLite` and workspace.
+///
+/// This is the shared logic used by both [`start_test_server_from_toml`] and
+/// the singleton wrappers that need to patch the config before starting.
+fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClientError> {
+    let toml_content = std::fs::read_to_string(config_path).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Cannot read test server config at {}: {e}",
+            config_path.display()
+        ))
+    })?;
+    let mut config: ClapConfig = toml::from_str(&toml_content).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Cannot parse test server config at {}: {e}",
+            config_path.display()
+        ))
+    })?;
+
+    // Allocate a guaranteed-unique port: bind to :0, read the port, then
+    // release so the KMS server can bind it immediately after.
+    let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| {
+        KmsClientError::UnexpectedError(format!("Failed to allocate port for test server: {e}"))
+    })?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| {
+            KmsClientError::UnexpectedError(format!("Failed to read port from listener: {e}"))
+        })?
+        .port();
+    drop(listener);
+    config.http.port = port;
+
+    // Also dynamically allocate the socket server port to avoid conflicts
+    // when multiple test servers run in parallel.
+    if config.socket_server.socket_server_start {
+        let socket_listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| {
+            KmsClientError::UnexpectedError(format!(
+                "Failed to allocate socket server port for test server: {e}"
+            ))
+        })?;
+        let socket_port = socket_listener
+            .local_addr()
+            .map_err(|e| {
+                KmsClientError::UnexpectedError(format!(
+                    "Failed to read socket server port from listener: {e}"
+                ))
+            })?
+            .port();
+        drop(socket_listener);
+        config.socket_server.socket_server_port = socket_port;
+    }
+
+    // Use a unique temp directory for SQLite and workspace to avoid collisions.
+    // Combine timestamp with an atomic counter so that tests starting within
+    // the same clock tick (macOS resolution ≈ 1 µs) still get distinct paths.
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "kms_test_toml_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    config.db.sqlite_path = tmp_dir.join("sqlite-data");
+    // Give each test its own isolated database space so that parallel tests
+    // with fixed UIDs (KAT / regression vectors) never conflict with each other.
+    // • SQLite: unique file path (set above) — always safe to clear.
+    // • Other backends (PostgreSQL, MySQL, Redis): vector tests use singleton
+    //   servers (one per backend) with `clear_database = true` at startup,
+    //   avoiding parallel schema/table conflicts.
+    let db_type = config.db.database_type.as_deref().unwrap_or("sqlite");
+    if db_type == "sqlite" {
+        config.db.clear_database = true;
+    }
+    config.workspace.root_data_path = tmp_dir.join("workspace");
+    config.workspace.tmp_path = tmp_dir.join("tmp");
+
+    // Resolve any relative TLS cert paths relative to the repo root so that
+    // test servers launched from any crate (e.g. ckms) find the files correctly
+    // regardless of the process working directory.
+    let repo_root = root_dir().join("../../");
+    let abs = |p: Option<PathBuf>| {
+        p.map(|x| {
+            if x.is_relative() {
+                repo_root.join(x)
+            } else {
+                x
+            }
+        })
+    };
+    config.tls.tls_cert_file = abs(config.tls.tls_cert_file);
+    config.tls.tls_key_file = abs(config.tls.tls_key_file);
+    config.tls.tls_chain_file = abs(config.tls.tls_chain_file);
+    config.tls.clients_ca_cert_file = abs(config.tls.clients_ca_cert_file);
+
+    Ok(config)
+}
+
+/// Start a server from a pre-loaded (and optionally patched) [`ClapConfig`].
+async fn start_server_from_config(
+    config: ClapConfig,
+    config_path: &Path,
+) -> Result<TestsContext, KmsClientError> {
+    ensure_no_proxy_for_localhost();
+    disable_proxies_for_tests();
+
+    let server_params = ServerParams::try_from(config).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Failed to create ServerParams from TOML config {}: {e}",
+            config_path.display()
+        ))
+    })?;
+
+    start_from_server_params(server_params).await
+}
+
+/// Start an isolated test KMS server from a TOML configuration file.
+///
+/// The TOML file is loaded into [`ClapConfig`], the HTTP port is overridden to a
+/// free port for safe parallel test execution, and the `SQLite` path and workspace
+/// directory are set to unique temp paths to avoid cross-test interference.
+///
+/// Each call starts a **new** server instance — there is no `OnceCell` caching.
+/// The caller is responsible for stopping the server when done (via
+/// [`TestsContext::stop_server()`]).
+///
+/// # Arguments
+/// * `config_path` — Path to a TOML file that can be deserialized into `ClapConfig`
+///   (e.g. `test_data/configs/server/test/auth_plain.toml`).
+///
+/// # Errors
+/// Returns an error if the file cannot be read/parsed, or if the server fails to start.
+pub async fn start_test_server_from_toml(
+    config_path: &Path,
+) -> Result<TestsContext, KmsClientError> {
+    let config = load_test_config_from_toml(config_path)?;
+    start_server_from_config(config, config_path).await
+}
+
+// ─── New TOML-driven API (replaces build_server_params_full) ─────────────────
+
+/// Simplified client authentication options for test scenarios.
+///
+/// Controls what credentials the test client sends to the server.
+/// Replaces the former `ClientAuthOptions` + `JwtPolicy` + `ClientCertPolicy` + `ApiTokenPolicy`.
+#[derive(Clone, Debug)]
+pub struct TestClientOptions {
+    /// Extra HTTP client configuration (e.g. explicit cert paths, access tokens).
+    pub http: HttpClientConfig,
+    /// Whether the client should send a JWT token (when the server has an `IdP` configured).
+    pub send_jwt: bool,
+    /// Whether the client should present a TLS client certificate.
+    pub send_client_cert: bool,
+    /// Whether the client should send an API token (from `http.access_token`).
+    pub send_api_token: bool,
+}
+
+impl Default for TestClientOptions {
+    fn default() -> Self {
+        Self {
+            http: HttpClientConfig::default(),
+            send_jwt: true,
+            send_client_cert: true,
+            send_api_token: true,
+        }
+    }
+}
+
+/// Start a test server from a TOML config file with default client options.
+///
+/// The server is started in a dedicated thread with dynamic port allocation.
+/// Returns a [`TestsContext`] for interacting with the running server.
+///
+/// # Arguments
+/// * `config_path` — Path to a TOML config file (relative to repo root or absolute).
+pub async fn start_test_server(
+    config_path: &Path,
+    client_opts: TestClientOptions,
+) -> Result<TestsContext, KmsClientError> {
+    start_test_server_with_patch(config_path, |_| {}, client_opts).await
+}
+
+/// Start a test server from a TOML config file, applying a runtime patch to the config.
+///
+/// Use this when you need to inject runtime-determined values (e.g. `api_token_id`,
+/// `privileged_users`, `key_encryption_key`) that cannot be known at TOML authoring time.
+///
+/// # Arguments
+/// * `config_path` — Path to a TOML config file.
+/// * `patch` — A closure that mutates the loaded [`ClapConfig`] before starting the server.
+/// * `client_opts` — Controls what credentials the test client sends.
+pub async fn start_test_server_with_patch(
+    config_path: &Path,
+    patch: impl FnOnce(&mut ClapConfig),
+    client_opts: TestClientOptions,
+) -> Result<TestsContext, KmsClientError> {
+    ensure_no_proxy_for_localhost();
+    disable_proxies_for_tests();
+
+    let mut config = load_test_config_from_toml(config_path)?;
+    patch(&mut config);
+
+    let server_params = ServerParams::try_from(config).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Failed to create ServerParams from TOML config {}: {e}",
+            config_path.display()
+        ))
+    })?;
+
+    // Build client configurations
+    let owner_client_config = generate_owner_conf_from_opts(&server_params, &client_opts)?;
+
+    info!(" -- Test KMS server configuration: {:#?}", server_params);
+    info!(
+        " -- Test KMS owner client configuration: {:#?}",
+        owner_client_config
+    );
+
+    let use_jwt_token = server_params.identity_provider_configurations.is_some();
+    let user_client_config =
+        generate_user_conf_from_opts(&owner_client_config, use_jwt_token, &client_opts)?;
+    let server_port = server_params.http_port;
+
+    let (server_handle, thread_handle) = start_test_kms_server(server_params)?;
+
+    wait_for_server_to_start(&owner_client_config)
+        .await
+        .map_err(|e| {
+            error!("Error waiting for server to start: {e:?}");
+            KmsClientError::UnexpectedError(e.to_string())
+        })?;
+
+    Ok(TestsContext {
+        server_port,
+        owner_client_config,
+        user_client_config,
+        server_handle,
+        thread_handle,
+    })
+}
+
+/// Generate owner client config from the new [`TestClientOptions`].
+fn generate_owner_conf_from_opts(
     server_params: &ServerParams,
-    client_opts: &ClientAuthOptions,
+    opts: &TestClientOptions,
 ) -> Result<KmsClientConfig, KmsClientError> {
-    // This creates a root dir
     let root_path = root_dir();
 
     let gmail_api_conf: Option<GmailApiConf> = env::var("TEST_GMAIL_API_CONF")
         .ok()
         .and_then(|config| serde_json::from_str(&config).ok());
 
-    // Server requests client cert only if a clients CA is configured,
-    // but the caller may explicitly suppress sending a client identity.
     let server_requests_client_cert = server_params
         .tls_params
         .as_ref()
         .and_then(|tls| tls.clients_ca_cert_pem.as_ref())
         .is_some();
-    let caller_suppresses_client_cert =
-        matches!(client_opts.client_cert, ClientCertPolicy::Suppress);
-    let use_client_cert_auth = server_requests_client_cert && !caller_suppresses_client_cert;
+    let use_client_cert = server_requests_client_cert && opts.send_client_cert;
 
-    let use_jwt_token = match client_opts.jwt {
-        JwtPolicy::Suppress => false,
-        JwtPolicy::AutoDefault => {
-            server_params.identity_provider_configurations.is_some()
-                && client_opts.http.access_token.is_none()
-        }
-    };
+    let use_jwt_token = opts.send_jwt
+        && server_params.identity_provider_configurations.is_some()
+        && opts.http.access_token.is_none();
 
-    let use_api_token = client_opts.http.access_token.is_some()
-        && client_opts.api_token == ApiTokenPolicy::SendIfProvided;
+    let use_api_token = opts.send_api_token && opts.http.access_token.is_some();
 
-    let mut http_conf = client_opts.http.clone();
+    let mut http_conf = opts.http.clone();
     http_conf.server_url = if server_params.tls_params.is_some() {
         format!("https://localhost:{}", server_params.http_port)
     } else {
@@ -1234,14 +1031,13 @@ fn generate_owner_conf(
         use_api_token,
         Some(AUTH0_TOKEN.to_owned()),
         if use_api_token {
-            client_opts.http.access_token.clone()
+            opts.http.access_token.clone()
         } else {
             None
         },
     );
-    if use_client_cert_auth {
-        // Client certificate is mandatory when server requests it.
-        // Respect any explicit client identity provided by the caller; otherwise, inject defaults.
+
+    if use_client_cert {
         #[cfg(feature = "non-fips")]
         {
             let has_pkcs12 = http_conf.tls_client_pkcs12_path.is_some();
@@ -1249,32 +1045,26 @@ fn generate_owner_conf(
                 && http_conf.tls_client_pem_key_path.is_some();
 
             if !has_pkcs12 && !has_pem {
-                // Inject default owner PKCS#12 only if caller didn't provide an identity
                 let p = root_path.join(
                     "../../test_data/certificates/client_server/owner/owner.client.acme.com.p12",
                 );
                 http_conf.tls_client_pkcs12_path = Some(path_to_string(&p)?);
                 http_conf.tls_client_pkcs12_password = Some("password".to_owned());
-                // Ensure PEM fields are cleared in non-FIPS when using PKCS#12
                 http_conf.tls_client_pem_cert_path = None;
                 http_conf.tls_client_pem_key_path = None;
             } else if has_pkcs12 {
-                // PKCS#12 provided by caller takes precedence; clear PEM to avoid ambiguity
                 http_conf.tls_client_pem_cert_path = None;
                 http_conf.tls_client_pem_key_path = None;
             } else {
-                // PEM provided by caller in non-FIPS: honor it; ensure PKCS#12 is cleared
                 http_conf.tls_client_pkcs12_path = None;
                 http_conf.tls_client_pkcs12_password = None;
             }
         }
         #[cfg(not(feature = "non-fips"))]
         {
-            // In FIPS mode, use PEM certificate and key; PKCS#12 must not be used.
             let has_pem = http_conf.tls_client_pem_cert_path.is_some()
                 && http_conf.tls_client_pem_key_path.is_some();
             if !has_pem {
-                // Inject default owner PEM identity only if caller didn't provide one
                 let cert_p = root_path.join(
                     "../../test_data/certificates/client_server/owner/owner.client.acme.com.crt",
                 );
@@ -1284,44 +1074,36 @@ fn generate_owner_conf(
                 http_conf.tls_client_pem_cert_path = Some(path_to_string(&cert_p)?);
                 http_conf.tls_client_pem_key_path = Some(path_to_string(&key_p)?);
             }
-            // Always clear PKCS#12 in FIPS
             http_conf.tls_client_pkcs12_path = None;
             http_conf.tls_client_pkcs12_password = None;
         }
     } else {
-        // If server doesn't require client cert, don't send one
         http_conf.tls_client_pkcs12_path = None;
         http_conf.tls_client_pkcs12_password = None;
         http_conf.tls_client_pem_cert_path = None;
         http_conf.tls_client_pem_key_path = None;
     }
 
-    let conf = KmsClientConfig {
+    Ok(KmsClientConfig {
         http_config: http_conf,
         gmail_api_conf,
         print_json: None,
         vendor_id: VENDOR_ID_COSMIAN.to_owned(),
         pkcs11_use_pin_as_access_token: None,
-    };
-
-    Ok(conf)
+    })
 }
 
-/// Generate a user configuration for user.client@acme.com and return the file path
-fn generate_user_conf(
+/// Generate user client config from the new [`TestClientOptions`].
+fn generate_user_conf_from_opts(
     owner_client_conf: &KmsClientConfig,
     use_jwt_token: bool,
-    client_opts: &ClientAuthOptions,
+    opts: &TestClientOptions,
 ) -> Result<KmsClientConfig, KmsClientError> {
-    // This creates root dir
     let root_dir = root_dir();
-
     let mut conf = owner_client_conf.clone();
     let is_https = conf.http_config.server_url.starts_with("https://");
+
     if is_https {
-        // For HTTPS, client certificate is mandatory for test clients.
-        // Use PKCS#12 in non-FIPS, and PEM cert/key in FIPS mode.
-        // Always set the dedicated "user" identity (not the owner's).
         #[cfg(feature = "non-fips")]
         {
             let p = root_dir
@@ -1343,16 +1125,17 @@ fn generate_user_conf(
             conf.http_config.tls_client_pkcs12_password = None;
         }
     } else {
-        // For HTTP, ensure no TLS identity is configured to avoid builder errors.
         conf.http_config.tls_client_pkcs12_path = None;
         conf.http_config.tls_client_pkcs12_password = None;
         conf.http_config.tls_client_pem_cert_path = None;
         conf.http_config.tls_client_pem_key_path = None;
     }
+
+    let should_send_jwt = opts.send_jwt && use_jwt_token;
+    let should_send_api = opts.send_api_token && conf.http_config.access_token.is_some();
     conf.http_config.access_token = set_access_token(
-        matches!(client_opts.jwt, JwtPolicy::AutoDefault) && use_jwt_token,
-        client_opts.api_token == ApiTokenPolicy::SendIfProvided
-            && conf.http_config.access_token.is_some(),
+        should_send_jwt,
+        should_send_api,
         Some(AUTH0_TOKEN_USER.to_owned()),
         None,
     );
@@ -1365,13 +1148,25 @@ fn generate_user_conf(
 #[allow(clippy::unwrap_in_result)]
 #[tokio::test]
 async fn test_start_server() -> Result<(), KmsClientError> {
-    let context = start_test_server_with_options(
-        sqlite_db_config(None),
-        DEFAULT_KMS_SERVER_PORT + 20,
-        AuthenticationOptions::new(),
-        None,
-        None,
+    let context = start_test_server(
+        &test_config_path("auth_plain.toml"),
+        TestClientOptions::default(),
     )
     .await?;
+    context.stop_server().await
+}
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+#[allow(clippy::panic_in_result_fn)]
+#[tokio::test]
+async fn test_start_server_from_toml() -> Result<(), KmsClientError> {
+    let config_path = Path::new("../../test_data/configs/server/test/auth_plain.toml");
+    let context = start_test_server_from_toml(config_path).await?;
+    assert!(context.server_port > 0, "Server should be assigned a port");
+    // Verify the server is responding
+    let client = context.get_owner_client();
+    let version = client.version().await?;
+    assert!(!version.is_empty(), "Server should return a version");
     context.stop_server().await
 }

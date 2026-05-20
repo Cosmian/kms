@@ -52,8 +52,9 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
     - [VMware](./integrations/storage/vcenter.md)
     - [Veeam Backup & Replication](./integrations/storage/veeam.md)
     - [Synology DSM](./integrations/storage/synology_dsm.md)
-    - [Snowflake](./integrations/databases/snowflake_native_app/index.md)
-    - [Databricks, Spark,..  UDFs](./integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md)
+- **Big Data**:
+    - [Snowflake](./integrations/big_data/snowflake_native_app/index.md)
+    - [Databricks, Spark,..  UDFs](./integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md)
 - **Other integrations**:
     - [FortiGate / FortiOS](./integrations/fortigate.md)
     - [S/MIME email encryption](./integrations/smime.md)
