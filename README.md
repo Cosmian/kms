@@ -216,7 +216,7 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | -------------- | ------------------------------------------------------------------------------------------------------ | ------------ | ------ |
 | VMware vCenter | Trust Key Provider ([docs](./documentation/docs/integrations/storage/vcenter.md))                      | 1.1          | ✅      |
 | Synology DSM   | NAS volume encryption via KMIP ([docs](./documentation/docs/integrations/storage/synology_dsm.md))     | 1.2          | ✅      |
-| VAST Data      | Storage encryption EKM via KMIP ([docs](./documentation/docs/integrations/storage/vast_data.md))       | 1.2–1.4      | ✅      |
+| VAST Data      | Storage encryption EKM via KMIP ([docs](./documentation/docs/integrations/storage/vast_data.md))       | 1.4          | ✅      |
 | Veeam Backup   | Backup encryption key management via KMIP ([docs](./documentation/docs/integrations/storage/veeam.md)) | 1.4          | ✅      |
 
 ### 🗃️ Big Data

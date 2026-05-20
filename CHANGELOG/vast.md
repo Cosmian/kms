@@ -9,7 +9,7 @@
 ## Testing
 
 - **KMIP 1.x / VAST integration**: Add non-regression test suite `crate/server/src/tests/ttlv_tests/integrations/vast.rs` with six tests covering `ReKey`, `Check`, `DeriveKey`, `ReCertify`, the KEK/DEK RFC 3394 wrapping round-trip (`test_vast_get_dek_wrapped_by_kek`), and the full VAST production workflow (`test_vast_workflow_create_locate_get_attributes`) — Create a named key, Activate, Locate by VAST-style name, and GetAttributes to verify `State=Active` and `ActivationDate` — to prevent future regressions. ([#845](https://github.com/Cosmian/kms/issues/845))
-- **VAST regression vectors**: Add `test_data/vectors/fips/integrations/vast_data/` with 9-step key lifecycle (Create → Activate → Locate → ReKey → Check → Get → GetAttributes → Revoke → Destroy) covering the `ReKey` bug from production logs. ([#845](https://github.com/Cosmian/kms/issues/845))
+- **VAST regression vectors**: Add `test_data/vectors/fips/integrations/vast_data/` with 10-step key lifecycle (Create → AddAttribute → Activate → Locate → ReKey → Check → Get → GetAttributes → Revoke → Destroy) derived from production success logs (2026-05-10). Fixes protocol version from `[1, 2]` to `[1, 4]` to match actual VAST binary TTLV usage; adds `AddAttribute` step observed in production between Create and Activate. ([#845](https://github.com/Cosmian/kms/issues/845))
 
 ## Documentation
 

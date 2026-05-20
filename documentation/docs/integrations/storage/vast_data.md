@@ -11,7 +11,7 @@ managed, audited, and never stored unprotected on the storage appliance.
 
 | Item | Details |
 |------|---------|
-| **Protocol** | KMIP 1.2–1.4 binary TTLV over TCP/TLS with mutual certificate authentication |
+| **Protocol** | KMIP 1.4 binary TTLV over TCP/TLS with mutual certificate authentication |
 | **Port** | 5696 (IANA-registered KMIP port) |
 | **Key types** | AES-256 symmetric keys (KEK and DEK) |
 | **Key wrapping** | AES Key Wrap RFC 3394 (NISTKeyWrap) |
@@ -26,15 +26,16 @@ lifecycle management:
 
 | Step | KMIP Operation | Purpose |
 |------|---------------|---------|
-| 1 | `Create` | Create a named AES-256 key (`VAST_EKM_KEY_2_<encryption_group_uuid>_<index>`) |
-| 2 | `Activate` | Transition the key from *Pre-Active* to *Active* state |
-| 3 | `Locate` | Find a key by its VAST-assigned name |
-| 4 | `Get` | Retrieve key material (plaintext or wrapped by KEK) |
-| 5 | `GetAttributes` | Verify key state (`Active`) and `ActivationDate` |
-| 6 | `ReKey` | Rotate an active key — generates new key material while keeping the same identifier |
-| 7 | `Check` | Validate that a key satisfies the required `CryptographicUsageMask` |
-| 8 | `Revoke` | Revoke a key during decommissioning or rotation |
-| 9 | `Destroy` | Permanently delete the key from the KMS |
+| 1 | `Create` | Create an AES-256 key (`OperationPolicyName("default")` attribute silently ignored) |
+| 2 | `AddAttribute` | Add key metadata (group name, usage mask, custom tags) — called 1–3× after Create |
+| 3 | `Activate` | Transition the key from *Pre-Active* to *Active* state |
+| 4 | `Locate` | Find a key by its VAST-assigned name (`VAST_EKM_KEY_2_<uuid>_<index>`) |
+| 5 | `Get` | Retrieve key material (plaintext or wrapped by KEK) |
+| 6 | `GetAttributes` | Verify key state (`Active`) and `ActivationDate` |
+| 7 | `ReKey` | Rotate an active key — generates new key material while keeping the same identifier |
+| 8 | `Check` | Validate that a key satisfies the required `CryptographicUsageMask` |
+| 9 | `Revoke` | Revoke a key during decommissioning or rotation |
+| 10 | `Destroy` | Permanently delete the key from the KMS |
 
 ### KEK / DEK wrapping workflow
 
@@ -169,6 +170,7 @@ specific encryption groups.
 | `OperationPolicyName` warnings in KMS logs | Normal — VAST sends this deprecated KMIP 1.x attribute | No action required; informational warning only |
 | Connection refused on port 5696 | Socket server not enabled | Add `socket_server_start = true` to `kms.toml` |
 | TLS handshake failure | Certificate mismatch or missing CA | Verify `clients_ca_cert_file` matches the CA that signed VAST's client cert |
+| `tlsv1 alert decrypt error` (SSL alert 51) in KMS logs | VAST background reconnection attempt with stale connection state | Transient; no action required — the KMIP workflow itself is unaffected |
 
 ---
 
@@ -179,12 +181,13 @@ environments:
 
 | Operation | Status | Notes |
 |-----------|--------|-------|
-| `Create` | ✅ | AES-256 with Name attribute |
+| `Create` | ✅ | AES-256 with Name attribute; confirmed in production logs (2026-05-10) |
+| `AddAttribute` | ✅ | Called 1–3× after Create to set group metadata; confirmed in production logs |
 | `Activate` | ✅ | Transitions key to Active state |
 | `Locate` | ✅ | By Name (UninterpretedTextString) |
 | `Get` | ✅ | Plaintext and KEK-wrapped (RFC 3394) |
 | `GetAttributes` | ✅ | State, ActivationDate |
-| `ReKey` | ✅ | In-place key material rotation |
+| `ReKey` | ✅ | In-place key material rotation; confirmed in production logs (2026-05-10) |
 | `Check` | ✅ | CryptographicUsageMask validation |
 | `Revoke` | ✅ | Key revocation |
 | `Destroy` | ✅ | Permanent key deletion |
