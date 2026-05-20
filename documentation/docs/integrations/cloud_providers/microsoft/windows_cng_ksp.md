@@ -381,11 +381,13 @@ ckms cng unregister
 
 ## Logging
 
-Set the `COSMIAN_CNG_KSP_LOGGING_LEVEL` environment variable to `trace`,
-`debug`, `info` (default), `warn`, or `error`.
+Log output is written to `cosmian_cng.log` in the same directory as the
+DLL by default — no additional configuration is required. If the DLL directory
+is not writable, the log file is created in `%APPDATA%\.cosmian\cosmian_cng.log`
+instead. Logging to a file always happens without any configuration.
 
-Log output is written to `cosmian_cng_ksp.log` in the same directory as the
-DLL (when the DLL directory is writable), or to stderr.
+Set the `COSMIAN_CNG_KSP_LOGGING_LEVEL` environment variable to control
+verbosity: `trace`, `debug`, `info` (default), `warn`, or `error`.
 
 ---
 

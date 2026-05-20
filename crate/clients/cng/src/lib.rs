@@ -147,13 +147,22 @@ fn initialize_logging(log_home: Option<String>) {
         std::env::var("COSMIAN_CNG_KSP_LOGGING_LEVEL").unwrap_or_else(|_| "info".to_owned());
     let filter = EnvFilter::try_new(&level).unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // Write to a log file when given a log_home directory.
-    if let Some(home) = log_home {
-        let home_path = PathBuf::from(&home);
+    // Determine the log directory: prefer the DLL's own directory, then
+    // %APPDATA%\.cosmian as a fallback so we always write to a file.
+    let log_dir: Option<PathBuf> = log_home
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("APPDATA")
+                .ok()
+                .map(|p| PathBuf::from(p).join(".cosmian"))
+        });
+
+    if let Some(dir) = log_dir {
+        drop(std::fs::create_dir_all(&dir));
         if let Ok(file) = std::fs::File::options()
             .create(true)
             .append(true)
-            .open(home_path.join("cosmian_cng.log"))
+            .open(dir.join("cosmian_cng.log"))
         {
             let _subscriber = fmt::Subscriber::builder()
                 .with_writer(std::sync::Mutex::new(file))
@@ -162,7 +171,7 @@ fn initialize_logging(log_home: Option<String>) {
             return;
         }
     }
-    // Fall through to stderr.
+    // Last resort: stderr.
     let _subscriber = fmt::Subscriber::builder()
         .with_writer(std::io::stderr)
         .with_env_filter(filter)

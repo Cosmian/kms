@@ -21,7 +21,7 @@ pub enum Pkcs11Commands {
     Verify {
         /// Path to the PKCS#11 shared library (`libcosmian_pkcs11.so` / `.dylib` / `.dll`).
         #[arg(long, value_name = "PATH")]
-        so_path: PathBuf,
+        dll: PathBuf,
 
         /// Explicit path to `ckms.toml`. When set, the `CKMS_CONF` environment
         /// variable is written before the library is loaded so that the provider
@@ -43,11 +43,9 @@ impl Pkcs11Commands {
     /// Returns an error if the verification sequence fails.
     pub fn process(&self) -> KmsCliResult<()> {
         match self {
-            Self::Verify {
-                so_path,
-                conf,
-                token,
-            } => super::pkcs11_verify::run_verify(so_path, conf.as_deref(), token.as_deref()),
+            Self::Verify { dll, conf, token } => {
+                super::pkcs11_verify::run_verify(dll, conf.as_deref(), token.as_deref())
+            }
         }
     }
 }

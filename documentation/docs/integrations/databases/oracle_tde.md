@@ -697,7 +697,7 @@ Oracle**-side applications** by running the diagnostic binary as the `oracle` us
 sudo -u oracle \
   COSMIAN_PKCS11_LOGGING_LEVEL=debug \
   ckms pkcs11 verify \
-  --so-path /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
+  --dll /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
 ```
 
 If the correct tag and config path appear in the debug output, the variables are
@@ -712,16 +712,16 @@ is loadable, `ckms.toml` is found, and the KMS server is reachable.
 
 ```bash
 # Basic check (uses ~/.cosmian/ckms.toml by default)
-ckms pkcs11 verify --so-path /usr/local/lib/libcosmian_pkcs11.so
+ckms pkcs11 verify --dll /usr/local/lib/libcosmian_pkcs11.so
 
 # Explicit config path
 ckms pkcs11 verify \
-  --so-path /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so \
+  --dll /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so \
   --conf /home/oracle/.cosmian/ckms.toml
 
 # Verbose — combine with logging env var to also capture library-side trace output
 COSMIAN_PKCS11_LOGGING_LEVEL=debug \
-  ckms pkcs11 verify --so-path /usr/local/lib/libcosmian_pkcs11.so
+  ckms pkcs11 verify --dll /usr/local/lib/libcosmian_pkcs11.so
 ```
 
 **Mode 2** (`pkcs11_use_pin_as_access_token = true` — OIDC token supplied at keystore open):
@@ -733,7 +733,7 @@ A short-lived JWT must be obtained from your identity provider and passed via `-
 TOKEN=$(oidc-token my-oidc-profile)   # example using oidc-agent; adapt to your IdP
 
 ckms pkcs11 verify \
-  --so-path /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so \
+  --dll /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so \
   --conf /home/oracle/.cosmian/ckms.toml \
   --token "$TOKEN"
 ```

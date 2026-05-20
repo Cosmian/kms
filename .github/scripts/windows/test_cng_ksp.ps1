@@ -144,6 +144,13 @@ $DllPath = Join-Path $TARGET_DIR "cosmian_cng.dll"
 if (-not (Test-Path $DllPath)) { Write-Error "DLL not found: $DllPath"; exit 1 }
 Write-Ok "CNG KSP DLL built: $DllPath"
 
+# Build the PKCS#11 provider DLL (cdylib)
+Invoke-Native cargo (@("build", "--package", "cosmian_pkcs11", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build PKCS#11 provider DLL"
+
+$Pkcs11DllPath = Join-Path $TARGET_DIR "cosmian_pkcs11.dll"
+if (-not (Test-Path $Pkcs11DllPath)) { Write-Error "PKCS#11 DLL not found: $Pkcs11DllPath"; exit 1 }
+Write-Ok "PKCS#11 provider DLL built: $Pkcs11DllPath"
+
 # Build ckms CLI
 Invoke-Native cargo (@("build", "--package", "ckms", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build ckms"
 Write-Ok "ckms CLI built"
@@ -196,6 +203,12 @@ server_url = "$KMS_URL"
     Write-Step "Running CNG KSP verification tool (DLL surface tests)"
     Invoke-Native $ckmsExe @("cng", "verify", "--dll", (Resolve-Path $DllPath).Path) "ckms cng verify failed"
     Write-Ok "ckms cng verify: all DLL surface tests passed"
+
+    # -- 6b. Run PKCS#11 provider verification via ckms CLI -------------------
+
+    Write-Step "Running PKCS#11 provider verification (DLL surface tests)"
+    Invoke-Native $ckmsExe @("pkcs11", "verify", "--dll", (Resolve-Path $Pkcs11DllPath).Path) "ckms pkcs11 verify failed"
+    Write-Ok "ckms pkcs11 verify: all PKCS#11 surface tests passed"
 
     # -- 7. Run Rust in-process lib tests ---------------------------------
 
