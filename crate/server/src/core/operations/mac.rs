@@ -181,7 +181,7 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
     Ok(response)
 }
 
-pub(super) async fn mac_verify(
+pub(crate) async fn mac_verify(
     kms: &KMS,
     request: MACVerify,
     user: &str,
