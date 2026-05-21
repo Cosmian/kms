@@ -1,4 +1,4 @@
-A2# Cosmian KMS — AI Agent Instructions
+# Cosmian KMS — AI Agent Instructions
 
 > **Canonical file**: `.github/copilot-instructions.md` — `CLAUDE.md` and `AGENTS.md` at the repo root are symlinks to this file. **Always edit this file directly.**
 >

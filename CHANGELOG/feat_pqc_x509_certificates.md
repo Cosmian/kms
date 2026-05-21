@@ -47,6 +47,13 @@
     - PQC tests are automatically skipped in FIPS mode (`PLAYWRIGHT_FIPS_MODE=true`).
     - Added `createCertificate` helper to `helpers.ts` for reuse across test files.
     - Added `data-testid="cert-algorithm-select"` to the algorithm `<Select>` in `CertificateCertify.tsx`.
+- **Server — Certify operation integration tests (31 tests)**: added `crate/test_kms_server/src/certify_tests.rs` with comprehensive coverage of the Certify operation across all Subject×Issuer paths:
+    - **KeypairAndSubjectName**: self-signed (RSA, EC, Ed25519, ML-DSA, SLH-DSA) + CA-signed (RSA, EC, Ed25519, ML-DSA, SLH-DSA, ML-KEM).
+    - **PublicKeyAndSubjectName**: self-signed (RSA, EC, Ed25519) + CA-signed (RSA, EC, Ed25519, ML-DSA, SLH-DSA, ML-KEM).
+    - **Certificate renewal**: self-signed (RSA, EC, Ed25519) + CA-signed (RSA, EC, Ed25519).
+    - **CSR-based certification**: CA-signed (RSA, EC, Ed25519) using pre-generated test CSR PEM files.
+    - **Negative tests**: ML-KEM self-sign rejected, CSR without issuer rejected.
+    - PQC tests are gated with `#[cfg(feature = "non-fips")]` (15 FIPS-only, 31 non-FIPS).
 
 ### 📚 Documentation
 

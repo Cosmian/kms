@@ -5076,6 +5076,7 @@ dependencies = [
  "cosmian_kms_server",
  "cosmian_logger",
  "criterion",
+ "openssl",
  "serde",
  "serde_json",
  "time",

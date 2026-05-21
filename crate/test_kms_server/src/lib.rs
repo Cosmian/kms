@@ -42,3 +42,6 @@ pub fn init_test_logging() {
 pub mod reexport {
     pub use cosmian_kms_server;
 }
+
+#[cfg(test)]
+mod certify_tests;
