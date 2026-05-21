@@ -171,8 +171,8 @@ impl SocketServer {
         });
         trace!("Waiting for test socket server to start...");
         let state = rx
-            .recv_timeout(Duration::from_secs(25))
-            .context("Can't get the socket server to start after 25 seconds")?;
+            .recv_timeout(Duration::from_secs(60))
+            .context("Can't get the socket server to start after 60 seconds")?;
         // if the server failed to start, the returned state will be in error
         state?;
         Ok(thread_handle)

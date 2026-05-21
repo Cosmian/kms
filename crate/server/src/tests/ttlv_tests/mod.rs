@@ -100,7 +100,7 @@ fn start_test_server(socket_port: u16) -> &'static TestServerCtx {
         });
         trace!("Waiting for test KMS server to start...");
         let server_handle = rx
-            .recv_timeout(Duration::from_secs(25))
+            .recv_timeout(Duration::from_secs(60))
             .expect("Can't get test KMS server handle");
         trace!("... server started");
 

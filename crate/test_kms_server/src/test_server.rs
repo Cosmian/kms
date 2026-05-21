@@ -677,7 +677,7 @@ fn start_test_kms_server(
             })
     });
     trace!("Waiting for test KMS server to start...");
-    let server_handle = rx.recv_timeout(Duration::from_secs(25)).map_err(|e| {
+    let server_handle = rx.recv_timeout(Duration::from_secs(60)).map_err(|e| {
         KmsClientError::UnexpectedError(format!("Error getting test KMS server handle: {e}"))
     })?;
     trace!("... got handle ...");

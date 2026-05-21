@@ -10,7 +10,8 @@ on:
 
 jobs:
   cla-assistant:
-    if: (github.event.pull_request.head.repo.full_name != github.repository) && ((github.event.comment.body == 'recheck' || github.event.comment.body ==
+    if:
+      (github.event.pull_request.head.repo.full_name != github.repository) && ((github.event.comment.body == 'recheck' || github.event.comment.body ==
       'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target')
     uses: ./.github/workflows/cla.yml
     secrets: inherit
@@ -62,9 +63,9 @@ jobs:
           set -ex
           if [ "${{ matrix.features }}" = "non-fips" ]; then
             export FEATURES_FLAG="--features non-fips";
-            # Build the PKCS#11 cdylib so that cosmian_pkcs11_verify integration
-            # tests can dynamically load it at runtime.  `cargo test --lib` does
-            # not produce cdylib artifacts, so we build it explicitly here.
+            # Build the PKCS#11 cdylib so that `ckms pkcs11 verify` and
+            # integration tests can dynamically load it at runtime.
+            # `cargo test --lib` does not produce cdylib artifacts.
             cargo build -p cosmian_pkcs11 --features non-fips
           else
             export FEATURES_FLAG="";
@@ -72,7 +73,8 @@ jobs:
           cargo test --workspace --lib $FEATURES_FLAG -- --nocapture
 
   test: # Run all tests
-    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+    if:
+      github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
       || startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/test_all.yml
     secrets: inherit
@@ -80,7 +82,8 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
 
   public_documentation:
-    if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
+    if:
+      github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
       || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 

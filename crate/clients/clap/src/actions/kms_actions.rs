@@ -13,11 +13,11 @@ use crate::{
     actions::{
         access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
         azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
-        console::Stdout, derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
-        google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacCommands,
-        opaque_object::OpaqueObjectCommands, rng::RngAction, rsa::RsaCommands,
-        secret_data::SecretDataCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        version::ServerVersionAction,
+        cng::CngCommands, console::Stdout, derive_key::DeriveKeyAction,
+        elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
+        login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands,
+        pkcs11::Pkcs11Commands, rng::RngAction, rsa::RsaCommands, secret_data::SecretDataCommands,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -51,6 +51,11 @@ pub enum KmsActions {
     Pqc(PqcCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
+    /// Manage the Windows CNG Key Storage Provider (KSP).
+    ///
+    /// Register, unregister, or list keys in the Cosmian KMS CNG KSP.
+    #[command(subcommand)]
+    Cng(CngCommands),
     DeriveKey(DeriveKeyAction),
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
@@ -73,6 +78,11 @@ pub enum KmsActions {
     Rsa(RsaCommands),
     #[command(subcommand)]
     OpaqueObject(OpaqueObjectCommands),
+    /// Verify PKCS#11 shared library integration.
+    ///
+    /// Load a PKCS#11 shared object and exercise the standard API sequence.
+    #[command(subcommand)]
+    Pkcs11(Pkcs11Commands),
     #[command(subcommand)]
     SecretData(SecretDataCommands),
     #[command(subcommand)]
@@ -100,6 +110,8 @@ impl KmsActions {
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }
+            Self::Cng(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Pkcs11(action) => action.process()?,
             Self::DeriveKey(action) => {
                 Box::pin(action.run(&kms_rest_client)).await?;
             }
