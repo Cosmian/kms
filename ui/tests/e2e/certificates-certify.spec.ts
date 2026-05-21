@@ -371,7 +371,10 @@ test.describe("Certificate certify – issuer field clearing", () => {
         await gotoAndWait(page, "/ui/certificates/certs/certify");
         await page.getByText("2. Public Key ID to Certify").click();
         await page.fill('input[placeholder="Enter public key ID"]', caPubKeyId);
-        await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=CA for clearing test,O=Cosmian");
+        await page.fill(
+            'input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]',
+            "CN=CA for clearing test,O=Cosmian",
+        );
         const caText = await submitAndWaitForResponse(page);
         expect(caText).toMatch(/certificate successfully created/i);
         const caCertId = extractUuid(caText)!;
@@ -411,12 +414,14 @@ test.describe("Certificate certify – issuer field clearing", () => {
         await issuerPrivKeyInput.fill("some-issuer-priv");
         await issuerCertInput.fill("some-issuer-cert");
 
-        // Switch to another method — issuer fields should be cleared by the form reset
+        // Switch to a DIFFERENT method — triggers onCertifyMethodChange which resets fields
+        await page.getByText("1. Certificate Signing Request (CSR)").click();
+        // Switch back to Generate Keypair — fields should now be cleared
         await page.getByText("4. Generate New Keypair").click();
         await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=Method Switch,O=Cosmian");
         await selectOption(page, "cert-algorithm-select", "NIST P-256");
 
-        // Submit: even if previous values lingered, normalization prevents 422
+        // Submit: issuer fields were cleared by the method switch, so this is self-signed
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/certificate successfully created/i);
     });
