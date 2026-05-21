@@ -33,6 +33,9 @@ jobs:
           - gcp_cmek
           - openssh
           - luks
+          - secret_vault
+          - secret_aws
+          - secret_azure
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -52,6 +55,13 @@ jobs:
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
+            features: fips
+          # secret backends use reqwest/aws-sdk which are non-fips optional features
+          - type: secret_vault
+            features: fips
+          - type: secret_aws
+            features: fips
+          - type: secret_azure
             features: fips
 
     steps:
@@ -123,6 +133,17 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+
+          # AWS secret backend variables (secret_aws test type)
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+
+          # Azure Key Vault secret backend variables (secret_azure test type)
+          AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+          AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
         run: |
           set -ex
           bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}
@@ -130,11 +151,12 @@ jobs:
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
     runs-on: ubuntu-latest
-    # proteccio and crypt2pay hardware do not support concurrent connections from multiple CI runs;
-    # give them fixed concurrency groups so only one job runs at a time across all PRs.
+    # proteccio hardware does not support concurrent connections from multiple CI runs;
+    # give it a fixed concurrency group so only one job runs at a time across all PRs.
     # utimaco and softhsm2 use a per-run group so they are never blocked by other PRs.
     concurrency:
-      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
+      group:
+        ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
         github.run_id) }}
       cancel-in-progress: false
     strategy:
