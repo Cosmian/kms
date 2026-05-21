@@ -146,6 +146,9 @@ pub struct ServerParams {
     /// embedded deployments; production should set this to a positive value such as 100).
     pub rate_limit_per_second: Option<u32>,
 
+    /// Number of actix-web HTTP worker threads. `None` means actix-web default (num_cpus).
+    pub http_workers: Option<usize>,
+
     /// Extra origins allowed to make cross-origin requests to the KMIP API.
     /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]` in
     /// UI E2E tests where the Vite dev server runs on a different port.
@@ -377,6 +380,7 @@ impl ServerParams {
             // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
             // to enable rate limiting in production deployments.
             rate_limit_per_second: conf.http.rate_limit_per_second,
+            http_workers: conf.http.http_workers,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_default(),
             max_locate_items: 1000,
         };
@@ -599,6 +603,7 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
         debug_struct.field("ui_enable", &self.ui_enable);
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
+        debug_struct.field("http_workers", &self.http_workers);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
 

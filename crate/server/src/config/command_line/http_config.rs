@@ -48,6 +48,15 @@ pub struct HttpConfig {
         verbatim_doc_comment
     )]
     pub cors_allowed_origins: Option<Vec<String>>,
+
+    /// Number of actix-web HTTP worker threads.
+    /// Defaults to the number of logical CPUs. On I/O-heavy workloads (e.g. PostgreSQL backend)
+    /// setting this to `2 * <number of CPU cores>` improves throughput by keeping more Tokio
+    /// threads busy while others are waiting on network I/O.
+    /// Can also be set via the `TOKIO_WORKER_THREADS` environment variable (Tokio runtime),
+    /// but this flag controls only the actix-web application workers.
+    #[clap(long, env = "KMS_HTTP_WORKERS", verbatim_doc_comment)]
+    pub http_workers: Option<usize>,
 }
 
 impl HttpConfig {
@@ -76,6 +85,9 @@ impl Display for HttpConfig {
         if let Some(ref origins) = self.cors_allowed_origins {
             write!(f, " (cors_allowed_origins: {})", origins.join(", "))?;
         }
+        if let Some(w) = self.http_workers {
+            write!(f, " (http_workers: {w})")?;
+        }
         Ok(())
     }
 }
@@ -94,6 +106,7 @@ impl Default for HttpConfig {
             api_token_id: None,
             rate_limit_per_second: None,
             cors_allowed_origins: None,
+            http_workers: None,
         }
     }
 }

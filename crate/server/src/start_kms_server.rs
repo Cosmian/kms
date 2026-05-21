@@ -755,6 +755,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
 
+    // Extract http_workers before the closure moves kms_server
+    let http_workers = kms_server.params.http_workers;
+
     // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
     // The test-server helper leaves that field at `None` so parallel unit tests are never
     // throttled by the governor. Production configs set it to 100 (req/s, burst 300).
@@ -1058,6 +1061,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         std::time::Duration::from_secs(120),
     ))
     .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
+
+    // Apply worker count if configured; otherwise actix-web defaults to num_cpus.
+    let server = if let Some(n) = http_workers {
+        server.workers(n)
+    } else {
+        server
+    };
     // The KMIP XML vector test harness keeps a single HTTP connection open across
     // many serialized requests with potentially long gaps (several seconds) while
     // preparing the next request. Actix-web's default keep-alive (~5s) was closing

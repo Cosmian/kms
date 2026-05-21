@@ -208,6 +208,7 @@ mod tests {
                 api_token_id: None,
                 rate_limit_per_second: Some(100),
                 cors_allowed_origins: None,
+                http_workers: None,
             },
             proxy: ProxyConfig {
                 proxy_url: Some("https://proxy.example.com:8080".to_owned()),

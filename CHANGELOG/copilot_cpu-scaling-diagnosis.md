@@ -3,6 +3,7 @@
 ### Server
 
 - Wrap CPU-bound crypto operations (`encrypt_single`, `encrypt_bulk`, `decrypt_single`, `decrypt_bulk`, `sign_with_private_key`) in `tokio::task::spawn_blocking` to prevent Tokio worker thread starvation under high concurrency, especially for heavy operations (RSA key generation, large-payload encryption)
+- Add `--http-workers` CLI flag / `KMS_HTTP_WORKERS` env var / `http_workers` TOML key to set the number of actix-web worker threads; defaults to `num_cpus` when unset. Allows tuning to `2 × num_cpus` for I/O-heavy workloads on multi-core servers
 
 ### PostgreSQL backend
 
