@@ -15,6 +15,7 @@
 mod common;
 mod encrypt_decrypt;
 mod error_cases;
+mod jose_vectors;
 mod mac;
 mod rfc_vectors;
 mod sign_verify;
