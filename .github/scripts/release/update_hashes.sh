@@ -283,4 +283,4 @@ echo ""
 echo "Triggering nix-build to verify updated hashes..."
 cd "$REPO_ROOT"
 nix-build -A kms-cli-fips-static-openssl
-nix-build -A kms-cli-fips-dynamic-openssl
+nix-build -A kms-cli-non-fips-dynamic-openssl
