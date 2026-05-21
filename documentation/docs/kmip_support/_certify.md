@@ -79,7 +79,7 @@ NIST-standardized post-quantum algorithms:
   **always CA-issued** (ML-KEM cannot self-sign); the KMS automatically adds a critical
   `keyUsage` extension with `keyEncipherment` only.
 
-See [Post-Quantum X.509 Certificates](../use_cases/pqc_x509_certificates.md) for
+See [Post-Quantum X.509 Certificates](../use_cases/pki.md) for
 detailed usage instructions, OID tables, CLI examples, and cross-algorithm PKI guidance.
 
 #### Supply X509 extensions (optional)

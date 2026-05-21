@@ -278,3 +278,9 @@ if [ "$updated_count" -eq 0 ]; then
 fi
 
 echo "Done. Updated $updated_count expected-hash file(s)."
+
+echo ""
+echo "Triggering nix-build to verify updated hashes..."
+cd "$REPO_ROOT"
+nix-build -A kms-cli-fips-static-openssl
+nix-build -A kms-cli-fips-dynamic-openssl
