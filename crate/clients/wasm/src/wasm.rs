@@ -84,6 +84,14 @@ fn get_vendor_id() -> String {
     VENDOR_ID.with(|v| v.borrow().clone())
 }
 
+/// Converts an `Option<String>` containing an empty or whitespace-only value to `None`.
+///
+/// This guards against UI form fields that produce `""` when cleared by the user,
+/// which wasm-bindgen passes as `Some("")` rather than `None`.
+fn none_if_empty(s: Option<String>) -> Option<String> {
+    s.filter(|v| !v.trim().is_empty())
+}
+
 /// Set the vendor identification used for all KMIP `VendorAttribute` operations.
 ///
 /// Call this once at UI startup after querying the KMS server's
@@ -657,6 +665,12 @@ pub fn locate_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let cryptographic_algorithm = none_if_empty(cryptographic_algorithm);
+    let key_format_type = none_if_empty(key_format_type);
+    let object_type = none_if_empty(object_type);
+    let public_key_id = none_if_empty(public_key_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let certificate_id = none_if_empty(certificate_id);
     let cryptographic_algorithm: Option<CryptographicAlgorithm> = cryptographic_algorithm
         .as_deref()
         .map(|s| CryptographicAlgorithm::from_str(s).map_err(|e| JsValue::from(e.to_string())))
@@ -710,9 +724,8 @@ pub fn create_rsa_key_pair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
-    let private_key_id = private_key_id
-        .filter(|s| !s.is_empty())
-        .map(UniqueIdentifier::TextString);
+    let private_key_id = none_if_empty(private_key_id).map(UniqueIdentifier::TextString);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let request: CreateKeyPair = create_rsa_key_pair_request(
         vendor_id,
         private_key_id,
@@ -738,9 +751,8 @@ pub fn create_ec_key_pair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
-    let private_key_id = private_key_id
-        .filter(|s| !s.is_empty())
-        .map(UniqueIdentifier::TextString);
+    let private_key_id = none_if_empty(private_key_id).map(UniqueIdentifier::TextString);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let recommended_curve: RecommendedCurve = Curve::from_str(recommended_curve)
         .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?
         .into();
@@ -955,6 +967,9 @@ pub fn create_sym_key_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let key_id = none_if_empty(key_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let wrap_key_b64 = none_if_empty(wrap_key_b64);
     let algorithm = SymmetricAlgorithm::from_str(symmetric_algorithm)
         .map_err(|e| JsValue::from_str(&format!("Invalid cryptographic algorithm: {e}")))?;
     let (number_of_bits, key_bytes, algorithm) =
@@ -984,9 +999,7 @@ pub fn create_sym_key_ttlv_request(
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
-        let key_id = key_id
-            .filter(|s| !s.is_empty())
-            .map(UniqueIdentifier::TextString);
+        let key_id = key_id.map(UniqueIdentifier::TextString);
         let request = symmetric_key_create_request(
             vendor_id,
             key_id,
@@ -1014,6 +1027,9 @@ pub fn create_secret_data_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let secret_value = none_if_empty(secret_value);
+    let secret_id = none_if_empty(secret_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
     let secret_data_type = SecretDataType::from_str(secret_type)
         .map_err(|e| JsValue::from_str(&format!("Invalid secret data type: {e}")))?;
 
@@ -1038,9 +1054,7 @@ pub fn create_secret_data_ttlv_request(
         let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
         serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
     } else {
-        let secret_id = secret_id
-            .filter(|s| !s.is_empty())
-            .map(UniqueIdentifier::TextString);
+        let secret_id = secret_id.map(UniqueIdentifier::TextString);
         let request = secret_data_create_request(
             vendor_id,
             secret_id,
@@ -1073,6 +1087,8 @@ pub fn create_opaque_object_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let object_id = none_if_empty(object_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
     // Allow empty opaque object when value not provided
     #[allow(clippy::redundant_closure_for_method_calls)]
     let data = object_value.map(|v| v.into_bytes()).unwrap_or_default();
@@ -1186,6 +1202,7 @@ pub fn encrypt_sym_ttlv_request(
     authentication_data: Option<Vec<u8>>,
     data_encryption_algorithm: JsValue,
 ) -> Result<JsValue, JsValue> {
+    let encryption_policy = none_if_empty(encryption_policy);
     let cryptographic_parameters: Option<CryptographicParameters> = if data_encryption_algorithm
         .is_null()
         || data_encryption_algorithm.is_undefined()
@@ -1437,6 +1454,9 @@ pub fn export_ttlv_request(
     wrapping_algorithm: Option<String>,
     authentication_data: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let wrapping_algorithm = none_if_empty(wrapping_algorithm);
+    let authentication_data = none_if_empty(authentication_data);
     let key_format = ExportKeyFormat::from_str(key_format)
         .map_err(|e| JsValue::from_str(&format!("Invalid key format: {e}")))?;
     let wrapping_algorithm = wrapping_algorithm.and_then(|s| {
@@ -1584,6 +1604,11 @@ pub fn import_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let unique_identifier = none_if_empty(unique_identifier);
+    let public_key_id = none_if_empty(public_key_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let certificate_id = none_if_empty(certificate_id);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let key_usage = key_usage.map(|vec| {
         vec.into_iter()
             .filter_map(|s| s.parse::<KeyUsage>().ok())
@@ -1655,6 +1680,7 @@ pub fn create_cc_master_keypair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let request = build_create_covercrypt_master_keypair_request(
         vendor_id,
         access_structure,
@@ -1678,6 +1704,7 @@ pub fn create_cc_user_key_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let request = build_create_covercrypt_usk_request(
         vendor_id,
         access_policy,
@@ -1753,6 +1780,11 @@ pub fn import_certificate_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let certificate_id = none_if_empty(certificate_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let public_key_id = none_if_empty(public_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
+    let pkcs12_password = none_if_empty(pkcs12_password);
     let input_format =
         CertificateInputFormat::from_str(input_format).map_err(|e| JsValue::from(e.to_string()))?;
     let key_usage: Option<Vec<KeyUsage>> = key_usage.map(|vec| {
@@ -1859,6 +1891,7 @@ pub fn export_certificate_ttlv_request(
     output_format: &str,
     pkcs12_password: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let pkcs12_password = none_if_empty(pkcs12_password);
     let output_format = CertificateExportFormat::from_str(output_format)
         .map_err(|e| JsValue::from(e.to_string()))?;
     let (key_format_type, wrapping_key_id) =
@@ -1949,6 +1982,8 @@ pub fn validate_certificate_ttlv_request(
     unique_identifier: Option<String>,
     validity_time: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let unique_identifier = none_if_empty(unique_identifier);
+    let validity_time = none_if_empty(validity_time);
     let unique_identifier = unique_identifier.map(|id| vec![UniqueIdentifier::TextString(id)]);
     let request = Validate {
         certificate: None,
@@ -2032,6 +2067,14 @@ pub fn certify_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let certificate_id = none_if_empty(certificate_id);
+    let certificate_signing_request_format = none_if_empty(certificate_signing_request_format);
+    let public_key_id_to_certify = none_if_empty(public_key_id_to_certify);
+    let certificate_id_to_re_certify = none_if_empty(certificate_id_to_re_certify);
+    let subject_name = none_if_empty(subject_name);
+    let algorithm = none_if_empty(algorithm);
+    let issuer_private_key_id = none_if_empty(issuer_private_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
     let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
         .map_err(|e| JsValue::from(e.to_string()))?;
     let request = build_certify_request(
@@ -2308,6 +2351,7 @@ pub fn derive_key_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     use kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm};
 
+    let derived_key_id = none_if_empty(derived_key_id);
     let method = match derivation_method.to_uppercase().as_str() {
         "PBKDF2" => DerivationMethod::PBKDF2,
         "HKDF" => DerivationMethod::HKDF,

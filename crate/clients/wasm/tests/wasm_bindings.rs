@@ -399,3 +399,46 @@ fn test_parse_signature_verify_ttlv_response() {
     let r = w::parse_signature_verify_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
     assert!(r.is_ok() || r.is_err());
 }
+
+/// Verify that empty-string `Option<String>` parameters are treated as `None`.
+/// This tests the `none_if_empty` sanitization in `certify_ttlv_request`:
+/// passing `Some("")` for issuer_certificate_id should produce a self-signed
+/// certificate request (no issuer lookup), not a 422 Object_Not_Found error.
+#[wasm_bindgen_test]
+fn test_certify_ttlv_request_empty_strings_treated_as_none() {
+    // All Option<String> params set to empty string — should succeed the same
+    // as passing None (produces a self-signed certify request).
+    let with_empty = w::certify_ttlv_request(
+        Some(String::new()),    // certificate_id
+        Some("  ".to_string()), // issuer_certificate_id (whitespace)
+        Some(String::new()),    // issuer_private_key_id
+        Some(String::new()),    // subject_name
+        Some(String::new()),    // public_key_id_to_certify
+        false,                  // generate_key_pair
+        Some(String::new()),    // algorithm
+        Some(String::new()),    // subject_alternative_name
+        Some(String::new()),    // extensions
+        Some(String::new()),    // certification_id
+        365,                    // number_of_days
+        None,                   // key_size
+        vec![],                 // tags
+    );
+    let with_none = w::certify_ttlv_request(
+        None,
+        None,
+        None,
+        None,
+        None,
+        false,
+        None,
+        None,
+        None,
+        None,
+        365,
+        None,
+        vec![],
+    );
+    // Both should produce Ok results (valid TTLV request generation)
+    assert!(with_empty.is_ok(), "empty-string params should not fail");
+    assert!(with_none.is_ok(), "None params should not fail");
+}

@@ -329,3 +329,112 @@ test.describe("Certificate certify – optional certificate ID", () => {
         expect(returnedId).toBe(customId);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Issuer field clearing — regression tests for empty-string bug
+// ---------------------------------------------------------------------------
+
+test.describe("Certificate certify – issuer field clearing", () => {
+    /**
+     * Regression: once an issuer certificate ID was entered and then cleared,
+     * the form would send an empty string "" to the WASM layer which would
+     * attempt a server lookup and fail with 422 Object_Not_Found.
+     */
+
+    test("self-signed succeeds after filling and clearing issuer fields", async ({ page }) => {
+        await gotoAndWait(page, "/ui/certificates/certs/certify");
+        await page.getByText("4. Generate New Keypair").click();
+        await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=Cleared Issuer,O=Cosmian");
+        await selectOption(page, "cert-algorithm-select", "NIST P-256");
+
+        // Fill issuer fields (simulating user entering then changing mind)
+        const issuerPrivKeyInput = page.locator('input[placeholder="Enter issuer private key ID"]');
+        const issuerCertInput = page.locator('input[placeholder="Enter issuer certificate ID"]');
+        await issuerPrivKeyInput.fill("some-fake-priv-key-id");
+        await issuerCertInput.fill("some-fake-cert-id");
+
+        // Now clear them — this is the exact scenario that triggered the bug
+        await issuerPrivKeyInput.clear();
+        await issuerCertInput.clear();
+
+        // Submit: should produce a self-signed certificate, NOT a 422 error
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/certificate successfully created/i);
+        const certId = extractUuid(text);
+        expect(certId).not.toBeNull();
+    });
+
+    test("CA-signed succeeds after clearing and re-filling issuer", async ({ page }) => {
+        test.skip(FIPS_MODE, "PQC not available in FIPS mode");
+        // Create a CA first (self-signed ML-DSA-44)
+        const { privKeyId: caPrivKeyId, pubKeyId: caPubKeyId } = await createPqcKeyPair(page, "ML-DSA-44");
+        await gotoAndWait(page, "/ui/certificates/certs/certify");
+        await page.getByText("2. Public Key ID to Certify").click();
+        await page.fill('input[placeholder="Enter public key ID"]', caPubKeyId);
+        await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=CA for clearing test,O=Cosmian");
+        const caText = await submitAndWaitForResponse(page);
+        expect(caText).toMatch(/certificate successfully created/i);
+        const caCertId = extractUuid(caText)!;
+
+        // Now create a leaf certificate: fill issuer → clear → re-fill with correct values
+        await gotoAndWait(page, "/ui/certificates/certs/certify");
+        await page.getByText("4. Generate New Keypair").click();
+        await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=Leaf after clear,O=Cosmian");
+        await selectOption(page, "cert-algorithm-select", "NIST P-256");
+
+        const issuerPrivKeyInput = page.locator('input[placeholder="Enter issuer private key ID"]');
+        const issuerCertInput = page.locator('input[placeholder="Enter issuer certificate ID"]');
+
+        // Fill with wrong values first
+        await issuerPrivKeyInput.fill("wrong-key-id");
+        await issuerCertInput.fill("wrong-cert-id");
+        // Clear
+        await issuerPrivKeyInput.clear();
+        await issuerCertInput.clear();
+        // Re-fill with correct CA values
+        await issuerPrivKeyInput.fill(caPrivKeyId);
+        await issuerCertInput.fill(caCertId);
+
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/certificate successfully created/i);
+        const certId = extractUuid(text);
+        expect(certId).not.toBeNull();
+    });
+
+    test("switching certification method clears issuer state", async ({ page }) => {
+        await gotoAndWait(page, "/ui/certificates/certs/certify");
+
+        // Start with "Generate keypair" and fill issuer fields
+        await page.getByText("4. Generate New Keypair").click();
+        const issuerPrivKeyInput = page.locator('input[placeholder="Enter issuer private key ID"]');
+        const issuerCertInput = page.locator('input[placeholder="Enter issuer certificate ID"]');
+        await issuerPrivKeyInput.fill("some-issuer-priv");
+        await issuerCertInput.fill("some-issuer-cert");
+
+        // Switch to another method — issuer fields should be cleared by the form reset
+        await page.getByText("4. Generate New Keypair").click();
+        await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=Method Switch,O=Cosmian");
+        await selectOption(page, "cert-algorithm-select", "NIST P-256");
+
+        // Submit: even if previous values lingered, normalization prevents 422
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/certificate successfully created/i);
+    });
+
+    test("whitespace-only issuer fields treated as self-signed", async ({ page }) => {
+        await gotoAndWait(page, "/ui/certificates/certs/certify");
+        await page.getByText("4. Generate New Keypair").click();
+        await page.fill('input[placeholder="CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"]', "CN=Whitespace Issuer,O=Cosmian");
+        await selectOption(page, "cert-algorithm-select", "NIST P-256");
+
+        // Fill issuer fields with whitespace only
+        await page.locator('input[placeholder="Enter issuer private key ID"]').fill("   ");
+        await page.locator('input[placeholder="Enter issuer certificate ID"]').fill("   ");
+
+        // Should succeed as self-signed (whitespace normalized to undefined)
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/certificate successfully created/i);
+        const certId = extractUuid(text);
+        expect(certId).not.toBeNull();
+    });
+});
