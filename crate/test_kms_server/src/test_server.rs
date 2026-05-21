@@ -663,29 +663,6 @@ pub async fn start_default_test_kms_server_with_privileged_users(
         })
 }
 
-/// Privileged users.
-///
-/// Base configuration is loaded from `test_data/configs/server/test/privileged_users.toml`;
-/// the `privileged_users` field is injected from the argument.
-pub async fn start_default_test_kms_server_with_privileged_users(
-    privileged_users: Vec<String>,
-) -> &'static TestsContext {
-    trace!("Starting test server with privileged users");
-    ONCE_SERVER_WITH_PRIVILEGED_USERS
-        .get_or_try_init(|| async move {
-            let config_path =
-                root_dir().join("../../test_data/configs/server/test/privileged_users.toml");
-            let mut config = load_test_config_from_toml(&config_path)?;
-            config.privileged_users = Some(privileged_users);
-            start_server_from_config(config, &config_path).await
-        })
-        .await
-        .unwrap_or_else(|e| {
-            error!("failed to start test server with PQC TLS cert: {e}");
-            std::process::abort();
-        })
-}
-
 /// PQC TLS server — uses an ML-DSA-44 certificate for its HTTPS endpoint.
 ///
 /// Configuration is loaded from `test_data/configs/server/test/pqc_tls.toml`.
