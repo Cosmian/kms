@@ -236,17 +236,19 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         }
     }
 
-    // It may be a bulk encryption request; if not, fallback to single encryption
-    let res = match BulkData::deserialize(data) {
-        Ok(bulk_data) => {
-            // It is a bulk encryption request
-            encrypt_bulk(&unwrapped_owm, &kms.params, request, bulk_data)
+    // It may be a bulk encryption request; if not, fallback to single encryption.
+    // Offload the CPU-bound crypto to the blocking thread pool so the async
+    // worker thread is free to handle other requests concurrently.
+    let data_vec = data.clone();
+    let params = kms.params.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        match BulkData::deserialize(&data_vec) {
+            Ok(bulk_data) => encrypt_bulk(&unwrapped_owm, &params, request, bulk_data),
+            Err(_) => encrypt_single(&unwrapped_owm, &params, &request),
         }
-        Err(_) => {
-            // fallback to single encryption
-            encrypt_single(&unwrapped_owm, &kms.params, &request)
-        }
-    }?;
+    })
+    .await
+    .map_err(|e| KmsError::ServerError(format!("encrypt crypto task panicked: {e}")))??;
 
     // Post-encryption: decrement usage limits directly on owm.attributes_mut(), then persist.
     // Operates on the original owm (which holds the wrapped key as stored in the DB) to avoid

@@ -148,16 +148,23 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
     // Second-stage enforcement: validate the retrieved key's stored attributes.
     enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "Sign", owm.id(), &owm)?;
 
-    // Only private keys can be used for signing
-    let res = match owm.object() {
-        Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
-        other => kms_bail!(KmsError::NotSupported(format!(
+    // Only private keys can be used for signing.
+    // Validate type before moving owm into the blocking closure.
+    if !matches!(owm.object(), Object::PrivateKey { .. }) {
+        return Err(KmsError::NotSupported(format!(
             "signing with keys of type: {} is not supported",
-            other.object_type()
-        ))),
-    }?;
+            owm.object().object_type()
+        )));
+    }
 
-    info!(uid = owm.id(), user = user, "sign response = {res}");
+    // Offload the CPU-bound crypto to the blocking thread pool so the async
+    // worker thread is free to handle other requests concurrently.
+    let owm_id = owm.id().to_owned();
+    let res = tokio::task::spawn_blocking(move || sign_with_private_key(&request, &owm))
+        .await
+        .map_err(|e| KmsError::ServerError(format!("sign crypto task panicked: {e}")))??;
+
+    info!(uid = owm_id, user = user, "sign response = {res}");
     Ok(res)
 }
 
