@@ -5,12 +5,14 @@
 //!
 //! Supported schemes and their controlling feature flags:
 //!
-//! | Scheme        | Feature flag   | Required env vars                             |
-//! |---------------|----------------|-----------------------------------------------|
-//! | `vault://`    | `secret-vault` | `VAULT_ADDR`, `VAULT_TOKEN`                   |
-//! | `aws-ssm://`  | `secret-aws`   | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`  |
-//! | `azure-kv://` | `secret-azure` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,         |
-//! |               |                | `AZURE_CLIENT_SECRET`                         |
+//! | Scheme             | Feature flag          | Required env vars / notes                  |
+//! |--------------------|----------------------|--------------------------------------------|
+//! | `vault://`         | `secret-vault`       | `VAULT_ADDR`, `VAULT_TOKEN`                |
+//! | `aws-ssm://`       | `secret-aws`         | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+//! | `azure-kv://`      | `secret-azure`       | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,      |
+//! |                    |                      | `AZURE_CLIENT_SECRET`                      |
+//! | `cosmian-kms://`   | `secret-cosmian-kms` | `COSMIAN_KMS_TOKEN` (opt.),                |
+//! |                    |                      | `COSMIAN_KMS_INSECURE_CERTS` (opt.)        |
 //!
 //! **Usage in kms.toml / secrets.toml**
 //!
@@ -23,6 +25,8 @@
 //! tls_p12_password = "azure-kv://my-vault/secrets/kms-tls"
 //!
 //! hsm_password = ["vault://secret/kms/hsm-slot1", "vault://secret/kms/hsm-slot2"]
+//!
+//! database_url = "cosmian-kms://kms.internal:9998/b4c2f00a-1234-5678-abcd-ef0123456789"
 //! ```
 //!
 //! Schemes can be mixed freely; each value is resolved independently.
@@ -30,7 +34,8 @@
 #[cfg(any(
     feature = "secret-vault",
     feature = "secret-aws",
-    feature = "secret-azure"
+    feature = "secret-azure",
+    feature = "secret-cosmian-kms"
 ))]
 use crate::error::KmsError;
 use crate::result::KResult;
@@ -104,6 +109,9 @@ pub(super) fn build_secret_backends() -> Vec<Box<dyn SecretBackend>> {
     #[cfg(feature = "secret-azure")]
     #[allow(clippy::vec_init_then_push)]
     backends.push(Box::new(azure::AzureKvBackend::new()));
+
+    #[cfg(feature = "secret-cosmian-kms")]
+    backends.push(Box::new(cosmian_kms::CosmianKmsBackend::new()));
 
     backends
 }
@@ -613,6 +621,210 @@ mod azure {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Cosmian KMS — `cosmian-kms://`
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "secret-cosmian-kms")]
+mod cosmian_kms {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_2_1::{
+            kmip_objects::Object,
+            kmip_operations::{Get, GetResponse},
+        },
+        ttlv::{TTLV, from_ttlv, to_ttlv},
+    };
+
+    use super::{KResult, KmsError, SecretBackend};
+
+    /// Cosmian KMS secret backend.
+    ///
+    /// URI format: `cosmian-kms://<host>[:<port>]/<object-id>`
+    ///   - `host`      — hostname or IP of the target Cosmian KMS server
+    ///   - `port`      — optional port; defaults to `9998`
+    ///   - `object-id` — UID of the `SecretData` or `OpaqueObject` to fetch
+    ///
+    /// Optional env vars:
+    ///   - `COSMIAN_KMS_TOKEN`          — Bearer token / API key for authentication
+    ///   - `COSMIAN_KMS_INSECURE_CERTS` — set to `true` to skip TLS cert verification
+    ///
+    /// Example:
+    ///   `cosmian-kms://kms.internal:9998/b4c2f00a-1234-5678-abcd-ef0123456789`
+    pub(super) struct CosmianKmsBackend;
+
+    impl CosmianKmsBackend {
+        pub(super) const fn new() -> Self {
+            Self
+        }
+    }
+
+    impl SecretBackend for CosmianKmsBackend {
+        fn scheme(&self) -> &'static str {
+            "cosmian-kms"
+        }
+
+        fn resolve(&self, uri: &str) -> KResult<String> {
+            // Parse  cosmian-kms://<host>[:<port>]/<object-id>
+            let rest = uri.strip_prefix("cosmian-kms://").ok_or_else(|| {
+                KmsError::InvalidRequest(format!("Invalid cosmian-kms URI: {uri}"))
+            })?;
+
+            let slash = rest.find('/').ok_or_else(|| {
+                KmsError::InvalidRequest(format!(
+                    "cosmian-kms URI must have the form \
+                     cosmian-kms://<host>[:<port>]/<object-id>, got: {uri}"
+                ))
+            })?;
+            let host_port = &rest[..slash];
+            let object_id = rest[slash + 1..].to_owned();
+
+            if object_id.is_empty() {
+                return Err(KmsError::InvalidRequest(format!(
+                    "cosmian-kms URI must contain a non-empty object ID: {uri}"
+                )));
+            }
+
+            // Use HTTPS unless connecting to localhost (or explicit port 9998
+            // via HTTP for dev environments where insecure certs are expected).
+            let insecure_certs = std::env::var("COSMIAN_KMS_INSECURE_CERTS")
+                .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+                .unwrap_or(false);
+
+            let is_local = host_port.starts_with("localhost")
+                || host_port.starts_with("127.0.0.1")
+                || host_port.starts_with("[::1]");
+
+            let scheme = if is_local || insecure_certs {
+                "http"
+            } else {
+                "https"
+            };
+
+            let server_url = if host_port.contains(':') {
+                format!("{scheme}://{host_port}")
+            } else {
+                format!("{scheme}://{host_port}:9998")
+            };
+
+            let token = std::env::var("COSMIAN_KMS_TOKEN").ok();
+            let uri_owned = uri.to_owned();
+
+            std::thread::spawn(move || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|e| {
+                        KmsError::ServerError(format!(
+                            "Failed to build tokio runtime for Cosmian KMS backend: {e}"
+                        ))
+                    })?
+                    .block_on(async move {
+                        fetch_kmip_object(
+                            &server_url,
+                            &object_id,
+                            token.as_deref(),
+                            insecure_certs,
+                            &uri_owned,
+                        )
+                        .await
+                    })
+            })
+            .join()
+            .map_err(|_e| {
+                KmsError::ServerError("Cosmian KMS secret resolution thread panicked".to_owned())
+            })?
+        }
+    }
+
+    /// Send a KMIP `Get` request to the target KMS server and return the secret
+    /// as a UTF-8 string. Supports `SecretData` and `OpaqueObject` types.
+    async fn fetch_kmip_object(
+        server_url: &str,
+        object_id: &str,
+        token: Option<&str>,
+        insecure_certs: bool,
+        uri: &str,
+    ) -> KResult<String> {
+        let get_request = Get::from(object_id);
+        let ttlv_request = to_ttlv(&get_request).map_err(|e| {
+            KmsError::ServerError(format!(
+                "Failed to serialise KMIP Get request for {uri}: {e}"
+            ))
+        })?;
+
+        let mut builder = reqwest::Client::builder();
+        if insecure_certs {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
+        let client = builder.build().map_err(|e| {
+            KmsError::ServerError(format!(
+                "Failed to build HTTP client for Cosmian KMS backend: {e}"
+            ))
+        })?;
+
+        let endpoint = format!("{}/kmip/2_1", server_url.trim_end_matches('/'));
+        let mut req = client.post(&endpoint).json(&ttlv_request);
+        if let Some(tok) = token {
+            req = req.bearer_auth(tok);
+        }
+
+        let resp = req.send().await.map_err(|e| {
+            KmsError::ServerError(format!("Cosmian KMS request failed for {uri}: {e}"))
+        })?;
+
+        if !resp.status().is_success() {
+            return Err(KmsError::ServerError(format!(
+                "Cosmian KMS returned HTTP {} for {uri}",
+                resp.status()
+            )));
+        }
+
+        let ttlv_response: TTLV = resp.json().await.map_err(|e| {
+            KmsError::ServerError(format!(
+                "Failed to parse Cosmian KMS response for {uri}: {e}"
+            ))
+        })?;
+
+        let get_response: GetResponse = from_ttlv(ttlv_response).map_err(|e| {
+            KmsError::ServerError(format!(
+                "Failed to deserialise Cosmian KMS GetResponse for {uri}: {e}"
+            ))
+        })?;
+
+        extract_secret_string(get_response.object, uri)
+    }
+
+    /// Extract the secret value as a UTF-8 string from a KMIP `Object`.
+    ///
+    /// Supported types: `SecretData`, `OpaqueObject`.
+    fn extract_secret_string(object: Object, uri: &str) -> KResult<String> {
+        match object {
+            Object::SecretData(sd) => {
+                let bytes = sd.key_block.key_bytes().map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "Failed to extract secret bytes from SecretData at {uri}: {e}"
+                    ))
+                })?;
+                String::from_utf8(bytes.to_vec()).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "SecretData at {uri} contains non-UTF-8 bytes: {e}"
+                    ))
+                })
+            }
+            Object::OpaqueObject(obj) => String::from_utf8(obj.opaque_data_value).map_err(|e| {
+                KmsError::ServerError(format!(
+                    "OpaqueObject at {uri} contains non-UTF-8 bytes: {e}"
+                ))
+            }),
+            other => Err(KmsError::ServerError(format!(
+                "Cosmian KMS object at {uri} has type {:?}; \
+                 expected SecretData or OpaqueObject",
+                other.object_type()
+            ))),
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tests (always compiled — backends themselves are behind feature flags)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -776,6 +988,37 @@ mod tests {
         assert_eq!(
             resolved, expected,
             "Azure KV secret value mismatch: got '{resolved}', expected '{expected}'"
+        );
+    }
+
+    /// Cosmian KMS integration test.
+    ///
+    /// Expects the object at `KMS_TEST_COSMIAN_KMS_URI` (e.g.
+    /// `cosmian-kms://localhost:9998/<object-id>`) to be a `SecretData` or
+    /// `OpaqueObject` whose resolved value equals `KMS_TEST_COSMIAN_KMS_EXPECTED`
+    /// (defaults to `"ci-secret-value"`).
+    ///
+    /// Required env vars:
+    ///   - `KMS_TEST_COSMIAN_KMS_URI` — full cosmian-kms:// URI
+    ///   - `COSMIAN_KMS_TOKEN`        — Bearer token for the target server (optional)
+    #[cfg(feature = "secret-cosmian-kms")]
+    #[test]
+    #[ignore = "requires a running Cosmian KMS instance (set KMS_TEST_COSMIAN_KMS_URI)"]
+    fn test_secret_cosmian_kms() {
+        use super::cosmian_kms::CosmianKmsBackend;
+        let uri = std::env::var("KMS_TEST_COSMIAN_KMS_URI").unwrap_or_else(|_e| {
+            "cosmian-kms://localhost:9998/00000000-0000-0000-0000-000000000000".to_owned()
+        });
+        let expected = std::env::var("KMS_TEST_COSMIAN_KMS_EXPECTED")
+            .unwrap_or_else(|_e| "ci-secret-value".to_owned());
+
+        let backend = CosmianKmsBackend::new();
+        let resolved = backend
+            .resolve(&uri)
+            .expect("Cosmian KMS resolution failed");
+        assert_eq!(
+            resolved, expected,
+            "Cosmian KMS secret value mismatch: got '{resolved}', expected '{expected}'"
         );
     }
 }

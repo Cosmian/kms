@@ -444,6 +444,10 @@ non-fips = [
 secret-aws = ["dep:hmac", "dep:sha2"]
 # Enable secret URI resolution via Azure Key Vault (azure-kv://)
 secret-azure = []
+# Enable secret URI resolution via Cosmian KMS (cosmian-kms://)
+# Fetches SecretData / OpaqueObject from another Cosmian KMS server using KMIP 2.1.
+# No additional dependencies — reuses cosmian_kms_client_utils + reqwest.
+secret-cosmian-kms = []
 # Enable secret URI resolution via HashiCorp Vault (vault://)
 secret-vault = []
 # The binary won't start after a date chosen at compile-time
