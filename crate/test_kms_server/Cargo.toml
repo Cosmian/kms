@@ -32,6 +32,7 @@ cosmian_kms_server = { path = "../server", features = [
   "insecure",
 ], version = "5.22.0" }
 cosmian_logger = { workspace = true }
+openssl = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 time = { workspace = true }

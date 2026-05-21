@@ -1020,9 +1020,9 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cosmian_config_utils"
-version = "0.3.1"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91a2391ecbf5eb9a6df4aabfc7fca8508c64fae697db949b5c768cc5959a99ea"
+checksum = "7f1d0e44674e79187047ce12589f837d94ef2e9cfabd3bed4b6c4ac321dafabf"
 dependencies = [
  "base64 0.21.7",
  "serde",
@@ -1374,9 +1374,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "0.5.4"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e3c9c7a09cb59a839d7df9cba9fe3f781f2c46fa5b56545092acbbfd3e7aa3"
+checksum = "84cd0fe474e8ad66df5dfc5d0dfa02379e0a80c76da53ec659f68cfdd377f6d8"
 dependencies = [
  "opentelemetry 0.29.1",
  "opentelemetry-otlp 0.29.0",
@@ -2905,15 +2905,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4080,7 +4071,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn",
@@ -5085,6 +5076,7 @@ dependencies = [
  "cosmian_kms_server",
  "cosmian_logger",
  "criterion",
+ "openssl",
  "serde",
  "serde_json",
  "time",

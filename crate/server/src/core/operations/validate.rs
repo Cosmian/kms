@@ -22,7 +22,9 @@ use openssl::{
 
 use crate::{
     config::ProxyParams,
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{
+        KMS, operations::certify::rfc9608, retrieve_object_utils::retrieve_object_for_operation,
+    },
     error::KmsError,
     result::KResult,
 };
@@ -225,23 +227,44 @@ fn sort_certificates(certificates: &[X509]) -> KResult<Vec<X509>> {
     let mut certificates_copy: Vec<X509> = certificates.to_vec();
     let mut indexes_to_remove = vec![];
 
-    // First step, identify root and leaf
-    // Each of this certificate can be identified with their SKI and AKI
-    // Root has the same SKI and AKI
-    // And only a leaf can omit AKI and SKI
+    // First step, identify root and leaf.
+    // Certificates are identified by their Subject Key Identifier (SKI) and
+    // Authority Key Identifier (AKI):
+    //
+    //   Root (self-signed) — two detection strategies:
+    //     1. Explicit:    SKI == AKI && !SKI.is_empty()  (classical PKI with AKI set)
+    //     2. Self-signed: issuer_name == subject_name    (RFC 5280 §4.2.1.1 allows
+    //        AKI to be omitted for self-signed certs; required for PQC root CAs
+    //        generated in-process where no issuer cert is available in the OpenSSL
+    //        X.509 builder context when the AKI extension would be set).
+    //
+    //   Leaf (no extensions at all): AKI.is_empty() && SKI.is_empty()
     for (index, certificate) in certificates_copy.iter().enumerate() {
         let (ski, aki) = get_certificate_identifiers(certificate);
         trace_certificate("Finding root (or leaf)", certificate);
 
-        if ski == aki && !ski.is_empty() {
-            trace_certificate("Root found", certificate);
-            sorted_chains.insert(0, certificate.to_owned());
-            indexes_to_remove.push(index);
-        }
+        // Root detection #1: explicit AKI == SKI (classical PKI behaviour).
+        let is_root_explicit = ski == aki && !ski.is_empty();
+        // Root detection #2: self-signed certificate (issuer == subject).
+        // RFC 5280 §4.2.1.1: AKI MAY be omitted for self-signed certificates.
+        let is_root_self_signed = certificate
+            .subject_name()
+            .to_der()
+            .ok()
+            .zip(certificate.issuer_name().to_der().ok())
+            .is_some_and(|(subj, iss)| !subj.is_empty() && subj == iss);
 
-        if aki.is_empty() && ski.is_empty() {
+        if is_root_explicit || is_root_self_signed {
+            trace_certificate("Root found", certificate);
+            if !sorted_chains.contains(certificate) {
+                sorted_chains.insert(0, certificate.to_owned());
+            }
+            indexes_to_remove.push(index);
+        } else if aki.is_empty() && ski.is_empty() {
             trace_certificate("No AKI nor SKI -> leaf found", certificate);
-            sorted_chains.push(certificate.to_owned());
+            if !sorted_chains.contains(certificate) {
+                sorted_chains.push(certificate.to_owned());
+            }
             indexes_to_remove.push(index);
         }
     }
@@ -619,6 +642,14 @@ pub(crate) async fn verify_crls(
                 }
             }
         }
+        // RFC 9608 §4: skip CRL checks for certificates that carry id-ce-noRevAvail.
+        // The extension signals that no revocation information is available; a
+        // relying party MUST NOT reject the certificate for lack of a CRL/OCSP response.
+        if rfc9608::has_extension(certificate) {
+            debug!("[{idx}] Certificate carries id-ce-noRevAvail (RFC 9608): skipping CRL check");
+            continue;
+        }
+
         if let Some(crl_dp) = certificate.crl_distribution_points() {
             let crl_size = crl_dp.len();
             let mut uri_list = Vec::with_capacity(crl_size);

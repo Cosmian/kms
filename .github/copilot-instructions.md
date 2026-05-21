@@ -13,7 +13,37 @@ and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
 ---
 
-## 1. Build & test cheatsheet
+## Rust best practices
+
+- **Function length**: keep functions under 100 lines; extract helpers for longer ones.
+- **Error handling**: use `?` propagation; never use `.unwrap()` in production code; never ignore errors in tests.
+- **Imports**: `use` statements go at the top of each file, never inline inside function bodies.
+- **Feature flags**: gate non-FIPS code with `#[cfg(feature = "non-fips")]` at the function level, not inline inside function bodies.
+- **Unsafe code**: avoid unless strictly necessary; every `unsafe` block requires a `// SAFETY:` comment explaining the invariant being upheld.
+- **Clippy**: all code must pass `cargo clippy --workspace --all-targets --all-features -- -D warnings` with zero warnings.
+- **Tests**: write unit tests in a `#[cfg(test)]` submodule close to the code they exercise; prefer `assert_matches!` and direct `.unwrap()` in test code over `assert!(x.is_ok())`.
+- **Documentation**: add `///` doc comments to all public items; internal helpers should explain *why*, not just *what*.
+- **Naming**: follow Rust idioms — `snake_case` for functions/variables, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
+- **Logging**: use `trace!` for per-request detail, `debug!` for internal state, `info!` for lifecycle events; `warn!`/`error!` only for operator-actionable problems.
+
+---
+
+## Specifications and standards
+
+Always fetch the **latest published version** of any specification before implementing or referencing it. Never rely on a draft, a locally-cached copy, or a version number recalled from memory.
+
+| Standard family | Canonical source |
+| --------------- | ---------------- |
+| IETF RFCs | `https://www.rfc-editor.org/rfc/rfcXXXX.html` |
+| KMIP | OASIS specification pages |
+| NIST algorithms & FIPS | `https://csrc.nist.gov/` |
+| X.509 / ASN.1 OIDs | `https://oid-rep.orange-labs.fr/` or `https://oidref.com/` |
+
+> **AI agent rule**: when implementing or commenting on cryptographic standards (RFCs, NIST FIPS, KMIP spec), use the `fetch_webpage` tool to retrieve the live document and verify section numbers, OIDs, algorithm identifiers, and normative requirements before writing code or comments. Do **not** rely on training-data knowledge of a specification — always fetch it.
+
+---
+
+## Build & test cheatsheet
 
 ```bash
 # ── Build ────────────────────────────────────────────────────────────────
@@ -76,7 +106,7 @@ Do not use either SKIP environment variable to bypass pre-commit hooks.
 
 ---
 
-## 2. Workspace layout
+## Workspace layout
 
 ```text
 crate/
@@ -122,7 +152,7 @@ ui_non_fips/        Pre-built non-FIPS web UI bundle (committed)
 
 ---
 
-## 3. KMIP request flow
+## KMIP request flow
 
 ```text
 HTTP client
@@ -154,7 +184,7 @@ You must always verify that changes related to KMIP protocol are compliant with 
 
 ---
 
-## 4. Key file map
+## Key file map
 
 When you need to change something, start here:
 
@@ -181,11 +211,11 @@ When you need to change something, start here:
 
 ---
 
-## 5. Feature flags
+## Feature flags
 
 | Flag            | Default | Effect                                                                                       |
 | --------------- | ------- | -------------------------------------------------------------------------------------------- |
-| _(none / fips)_ | **on**  | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider                          |
+| *(none / fips)* | **on**  | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider                          |
 | `non-fips`      | off     | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS                   |
 | `interop`       | **on**  | Enables extra KMIP interoperability test operations (on by default; do not disable in tests) |
 | `insecure`      | off     | Skips OAuth token expiration check and allows self-signed TLS — **dev/test only**            |
@@ -195,7 +225,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 
 ---
 
-## 6. OpenSSL handling
+## OpenSSL handling
 
 **No external OpenSSL needed.** OpenSSL 3.6.0 is downloaded, SHA-256-verified,
 and built from source by `crate/crypto/build.rs` into `target/` on first build.
@@ -212,7 +242,7 @@ OpenSSL can locate `legacy.so` / `fips.so` from the build tree.
 
 ---
 
-## 7. CI overview
+## CI overview
 
 As pre-requisite, do not skip or ignore tests
 
@@ -242,7 +272,7 @@ bash .github/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] CO
 | `pykmip`        | **no** | `test_pykmip.sh`      | PyKMIP + Synology DSM                |
 | `aws_xks`       | **no** | `aws_xks_test.sh`     | AWS XKS                              |
 | `azure_ekm`     | **no** | `azure_ekm_test.sh`   | Azure EKM                            |
-| `ui`            | **no** | `test_ui.sh`          | Playwright E2E (see §8)              |
+| `ui`            | **no** | `test_ui.sh`          | Playwright E2E (see "Web UI & Playwright E2E tests") |
 
 ### Package types (`nix.sh package [type]`)
 
@@ -267,7 +297,7 @@ bash .github/scripts/nix.sh docker --variant non-fips --load --test
 
 ---
 
-## 8. Web UI & Playwright E2E tests
+## Web UI & Playwright E2E tests
 
 **Stack**: React 19 + Vite 7 + Ant Design 5 + Tailwind CSS 4 + Playwright + pnpm
 
@@ -345,7 +375,7 @@ ui/src/actions/
 
 ---
 
-## 9. GitHub CLI — reading issues, PRs, and CI failures
+## GitHub CLI — reading issues, PRs, and CI failures
 
 **Always use `GH_PAGER=cat`** to prevent `gh` from spawning an interactive pager
 (which hangs in non-interactive terminal sessions). The repository is `Cosmian/kms`.
@@ -370,12 +400,12 @@ GH_PAGER=cat gh run list --repo Cosmian/kms --limit 10
 
 ---
 
-## 10. Coding rules
+## Coding rules
 
 - **Function length**: keep functions under 100 lines; extract helpers for longer ones.
 - **Imports**: Rust `use` statements go at the top of each file, never inline.
 - **Error handling**: never ignore or skip errors in tests or builds — investigate and fix.
-- **CHANGELOG**: update `CHANGELOG/<branch_name_without_slashes>.md` for every user-visible change (see §11 for details).
+- **CHANGELOG**: update `CHANGELOG/<branch_name_without_slashes>.md` for every user-visible change (see "Updating CHANGELOG.md").
 - **Commit scope**: make minimal, focused changes. Don't refactor surrounding code or add
   unrelated improvements alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`,
@@ -383,7 +413,7 @@ GH_PAGER=cat gh run list --repo Cosmian/kms --limit 10
 
 ---
 
-## 11. Updating CHANGELOG.md
+## Updating CHANGELOG.md
 
 > **IMPORTANT — file location**: Changes go in `CHANGELOG/<branch_name_without_slashes>.md`
 > (replace `/` with `_` in the branch name, e.g. branch `feature/foo` → `CHANGELOG/feature_foo.md`).
@@ -398,7 +428,7 @@ Finally, add at the bottom of the file, if not already present, as many `Closes 
 
 ---
 
-## 12. Debugging
+## Debugging
 
 ### Server logging
 
@@ -419,7 +449,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:latest
 
 ---
 
-## 13. Nix packaging
+## Nix packaging
 
 Deb and RPM packages are built via Nix. Vendor hash files live in `nix/expected-hashes/`.
 After updating the package version or `Cargo.lock`, regenerate the vendor hashes:
@@ -466,13 +496,13 @@ Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
 ---
 
-## 14. Common issues
+## Common issues
 
 | Symptom                                                    | Cause                                                                                                  | Fix                                                                                                          |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | Usage mask errors (`Encrypt`, `Sign` denied)               | Key missing required `CryptographicUsageMask`                                                          | Check the object's attributes                                                                                |
 | `legacy.so` / `fips.so` not found                          | `OPENSSL_MODULES` not set                                                                              | Ensure `apply_openssl_dir_env_if_needed()` in `openssl_providers.rs` is called before `Provider::try_load()` |
-| Stale Nix vendor hashes                                    | `Cargo.lock` or version changed                                                                        | Regenerate all four hash files (see §13)                                                                     |
+| Stale Nix vendor hashes                                    | `Cargo.lock` or version changed                                                                        | Regenerate all four hash files (see "Nix packaging")                                                        |
 | `gh` command hangs                                         | Interactive pager opened                                                                               | Use `GH_PAGER=cat gh ...`                                                                                    |
 | Playwright `toHaveText` type error with `exact`            | Unsupported option in Playwright                                                                       | Use anchored regex instead: `toHaveText(/^\s*Label\s*$/)`                                                    |
 | TypeScript unused-variable error in UI tests               | `noUnusedLocals: true` in tsconfig                                                                     | Remove the variable or prefix with `_`                                                                       |
@@ -481,7 +511,7 @@ Repeat for all four combinations (`fips`/`non-fips` × `dynamic`/`static`).
 
 ---
 
-## 15. Documentation synchronization rules
+## Documentation synchronization rules
 
 When making user-visible changes, keep documentation synchronized across these three sources:
 

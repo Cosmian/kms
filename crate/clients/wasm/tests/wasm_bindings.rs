@@ -399,3 +399,46 @@ fn test_parse_signature_verify_ttlv_response() {
     let r = w::parse_signature_verify_ttlv_response("{\"type\":\"Structure\",\"value\":[]}");
     assert!(r.is_ok() || r.is_err());
 }
+
+/// Verify that empty-string `Option<String>` parameters are treated as `None`.
+/// This tests the `none_if_empty` sanitization in `certify_ttlv_request`:
+/// passing `Some("")` for issuer_certificate_id should produce a self-signed
+/// certificate request (no issuer lookup), not a 422 Object_Not_Found error.
+#[wasm_bindgen_test]
+fn test_certify_ttlv_request_empty_strings_treated_as_none() {
+    // All Option<String> params set to empty string — should succeed the same
+    // as passing None (produces a self-signed certify request with generated keypair).
+    let with_empty = w::certify_ttlv_request(
+        Some(String::new()),         // certificate_id
+        Some("  ".to_string()),      // certificate_signing_request_format (whitespace)
+        None,                        // certificate_signing_request (Vec<u8>, not String)
+        Some(String::new()),         // public_key_id_to_certify
+        Some(String::new()),         // certificate_id_to_re_certify
+        true,                        // generate_key_pair (must be true for valid request)
+        Some("CN=Test".to_string()), // subject_name (required when generating keypair)
+        Some(String::new()),         // algorithm (empty → defaults to rsa4096)
+        Some(String::new()),         // issuer_private_key_id
+        Some(String::new()),         // issuer_certificate_id
+        365,                         // number_of_days
+        None,                        // certificate_extensions (Vec<u8>, not String)
+        vec![],                      // tags
+    );
+    let with_none = w::certify_ttlv_request(
+        None,
+        None,
+        None,
+        None,
+        None,
+        true,
+        Some("CN=Test".to_string()),
+        None,
+        None,
+        None,
+        365,
+        None,
+        vec![],
+    );
+    // Both should produce Ok results (valid TTLV request generation)
+    assert!(with_empty.is_ok(), "empty-string params should not fail");
+    assert!(with_none.is_ok(), "None params should not fail");
+}

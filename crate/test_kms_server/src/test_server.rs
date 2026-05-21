@@ -58,6 +58,8 @@ pub(crate) static ONCE_SERVER_WITH_PRIVILEGED_USERS: OnceCell<TestsContext> = On
 /// `ONCE_SERVER_WITH_PRIVILEGED_USERS` but only register the owner.
 pub(crate) static ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS: OnceCell<TestsContext> =
     OnceCell::const_new();
+#[cfg(feature = "non-fips")]
+pub(crate) static ONCE_PQC_TLS: OnceCell<TestsContext> = OnceCell::const_new();
 
 /// Ensure localhost bypasses any corporate proxy for tests.
 /// When `HTTP_PROXY`/`HTTPS_PROXY` are set, add standard loopback hosts
@@ -589,7 +591,30 @@ pub async fn start_default_test_kms_server_with_privileged_users(
         })
         .await
         .unwrap_or_else(|e| {
-            error!("failed to start test server with privileged users: {e}");
+            error!("failed to start test server with PQC TLS cert: {e}");
+            std::process::abort();
+        })
+}
+
+/// PQC TLS server — uses an ML-DSA-44 certificate for its HTTPS endpoint.
+///
+/// Configuration is loaded from `test_data/configs/server/test/pqc_tls.toml`.
+/// The test that uses this is `#[ignore]` because most TLS clients (native-tls
+/// on macOS, etc.) do not yet support PQC signature schemes in the TLS handshake.
+#[cfg(feature = "non-fips")]
+pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
+    crate::init_openssl_providers_for_tests();
+    trace!("Starting test server with PQC (ML-DSA-44) TLS certificate");
+    ONCE_PQC_TLS
+        .get_or_try_init(|| async move {
+            start_test_server_from_toml(
+                &root_dir().join("../../test_data/configs/server/test/pqc_tls.toml"),
+            )
+            .await
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("failed to start test server with PQC TLS cert: {e}");
             std::process::abort();
         })
 }

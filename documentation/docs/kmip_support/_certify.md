@@ -65,6 +65,23 @@ the original certificate id will be used and the original certificate will
 be replaced by the new one. In all other cases, a random certificate id
 will be generated.
 
+#### Post-quantum (PQC) certificates
+
+The Cosmian KMS generates fully standards-compliant X.509 v3 certificates for all
+NIST-standardized post-quantum algorithms:
+
+- **ML-DSA** (CRYSTALS-Dilithium) — [RFC 9881](https://www.rfc-editor.org/info/rfc9881):
+  self-signed or CA-signed; the KMS automatically adds a critical `keyUsage` extension
+  with `digitalSignature`.
+- **SLH-DSA** (SPHINCS+) — draft-ietf-lamps-x509-slh-dsa:
+  self-signed or CA-signed; same `digitalSignature` key usage.
+- **ML-KEM** (CRYSTALS-Kyber) — [RFC 9935](https://www.rfc-editor.org/info/rfc9935):
+  **always CA-issued** (ML-KEM cannot self-sign); the KMS automatically adds a critical
+  `keyUsage` extension with `keyEncipherment` only.
+
+See [Post-Quantum X.509 Certificates](../use_cases/pki.md) for
+detailed usage instructions, OID tables, CLI examples, and cross-algorithm PKI guidance.
+
 #### Supply X509 extensions (optional)
 
 Specify X509 extensions for a `Certify` operation is possible using the [KMS CLI](../../kms_clients/index.md).

@@ -4,9 +4,9 @@ set -x
 
 #  OpenVPN setup
 if ! command -v openvpn >/dev/null 2>&1; then
-    echo "Installing OpenVPN..."
-    sudo apt-get update
-    sudo apt-get install -y openvpn
+  echo "Installing OpenVPN..."
+  sudo apt-get update
+  sudo apt-get install -y openvpn
 fi
 
 : "${OVPN_CONF:?OVPN_CONF not set}"
@@ -14,7 +14,7 @@ fi
 # Strip route-nopull so that server-pushed routes are accepted.
 # Keep pull-filter ignore "redirect-gateway" to avoid full traffic redirect.
 OVPN_CONF_FIXED=$(echo "$OVPN_CONF" | grep -v '^route-nopull$')
-echo "$OVPN_CONF_FIXED" | sudo tee /tmp/openvpn.ovpn > /dev/null
+echo "$OVPN_CONF_FIXED" | sudo tee /tmp/openvpn.ovpn >/dev/null
 
 # Kill any previous openvpn instances to avoid duplicate routes / stale tunnels
 sudo killall openvpn 2>/dev/null || true

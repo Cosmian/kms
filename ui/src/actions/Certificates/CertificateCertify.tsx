@@ -69,18 +69,21 @@ const CertificateCertifyForm: React.FC = () => {
     const onFinish = async (values: CertificateCertifyFormData) => {
         setIsLoading(true);
         setRes(undefined);
+        // Normalize empty/whitespace-only strings to undefined so the WASM layer
+        // does not attempt to look up a blank identifier on the server.
+        const normalize = (v?: string) => (v?.trim() ? v.trim() : undefined);
         try {
             const request = wasm.certify_ttlv_request(
-                values.certificateId,
+                normalize(values.certificateId),
                 values.csrFormat,
                 values.certificateSigningRequest,
-                values.publicKeyIdToCertify,
-                values.certificateIdToReCertify,
+                normalize(values.publicKeyIdToCertify),
+                normalize(values.certificateIdToReCertify),
                 values.generateKeyPair,
-                values.subjectName,
-                values.algorithm,
-                values.issuerPrivateKeyId,
-                values.issuerCertificateId,
+                normalize(values.subjectName),
+                normalize(values.algorithm),
+                normalize(values.issuerPrivateKeyId),
+                normalize(values.issuerCertificateId),
                 values.numberOfDays,
                 values.certificateExtensions,
                 values.tags,
@@ -234,7 +237,7 @@ const CertificateCertifyForm: React.FC = () => {
                                     label="Key Algorithm"
                                     rules={[{ required: true, message: "Please select an algorithm" }]}
                                 >
-                                    <Select options={algorithmOptions} />
+                                    <Select options={algorithmOptions} data-testid="cert-algorithm-select" virtual={false} />
                                 </Form.Item>
                             </div>
                         )}
