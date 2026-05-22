@@ -156,6 +156,7 @@ where
         "encrypt_decrypt_tamper_reject" => {
             run_encrypt_decrypt_tamper_reject(app, &v, &filename).await
         }
+        "key_lifecycle" => run_key_lifecycle(app, &v, &filename).await,
         unknown => panic!("Vector {filename}: unknown type '{unknown}'"),
     }
 }
@@ -492,6 +493,150 @@ where
     );
 
     delete_key(app, &kid).await;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Key lifecycle tests (create → use → delete → verify gone)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async fn run_key_lifecycle<S, B>(app: &S, v: &Value, filename: &str) -> KResult<()>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: actix_web::body::MessageBody,
+{
+    let key = &v["key"];
+    let operation = v["operation"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Vector {filename}: missing 'operation' field"));
+
+    // ── Step 1: Create key ──────────────────────────────────────────────────
+    let (kid, kid_public) = provision_key(app, key).await?;
+    assert!(
+        !kid.is_empty(),
+        "Vector {filename}: POST /v1/crypto/keys must return non-empty kid"
+    );
+
+    // Verify asymmetric keys return kid_public
+    let kty = key["kty"].as_str().unwrap_or("oct");
+    if kty == "EC" || kty == "RSA" || kty == "OKP" {
+        assert!(
+            kid_public.is_some(),
+            "Vector {filename}: asymmetric key must return kid_public"
+        );
+    }
+
+    // ── Step 2: Use key ─────────────────────────────────────────────────────
+    let plaintext = resolve_plaintext(&v["request"]);
+    let data_b64 = URL_SAFE_NO_PAD.encode(&plaintext);
+    let alg = v["algorithm"].as_str().expect("algorithm missing");
+
+    match operation {
+        "mac" => {
+            let resp: Value = test_utils::post_json_with_uri(
+                app,
+                json!({"kid": kid, "alg": alg, "data": data_b64}),
+                "/v1/crypto/mac",
+            )
+            .await?;
+            assert!(
+                resp.get("mac").is_some(),
+                "Vector {filename}: MAC compute must return mac"
+            );
+        }
+        "sign" => {
+            let sign_kid = &kid;
+            let verify_kid = kid_public.as_deref().expect("sign needs kid_public");
+            let resp: Value = test_utils::post_json_with_uri(
+                app,
+                json!({"kid": sign_kid, "alg": alg, "data": data_b64}),
+                "/v1/crypto/sign",
+            )
+            .await?;
+            let protected = resp["protected"].as_str().expect("missing protected");
+            let signature = resp["signature"].as_str().expect("missing signature");
+
+            let verify_resp: Value = test_utils::post_json_with_uri(
+                app,
+                json!({"protected": protected, "data": data_b64, "signature": signature}),
+                "/v1/crypto/verify",
+            )
+            .await?;
+            assert_eq!(
+                verify_resp["valid"].as_bool(),
+                Some(true),
+                "Vector {filename}: sign/verify must succeed"
+            );
+            assert_eq!(
+                verify_resp["kid"].as_str(),
+                Some(verify_kid),
+                "Vector {filename}: verify kid mismatch"
+            );
+        }
+        "encrypt" => {
+            let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
+            let enc_resp: Value = test_utils::post_json_with_uri(
+                app,
+                json!({"kid": kid, "alg": "dir", "enc": enc_alg, "data": data_b64}),
+                "/v1/crypto/encrypt",
+            )
+            .await?;
+            assert!(
+                enc_resp.get("ciphertext").is_some(),
+                "Vector {filename}: encrypt must return ciphertext"
+            );
+
+            let dec_resp: Value = test_utils::post_json_with_uri(
+                app,
+                json!({
+                    "protected":  enc_resp["protected"],
+                    "iv":         enc_resp["iv"],
+                    "ciphertext": enc_resp["ciphertext"],
+                    "tag":        enc_resp["tag"]
+                }),
+                "/v1/crypto/decrypt",
+            )
+            .await?;
+            let recovered = URL_SAFE_NO_PAD
+                .decode(dec_resp["data"].as_str().expect("missing data"))
+                .expect("base64 decode");
+            assert_eq!(
+                recovered, plaintext,
+                "Vector {filename}: decrypt must recover plaintext"
+            );
+        }
+        op => panic!("Vector {filename}: unsupported lifecycle operation '{op}'"),
+    }
+
+    // ── Step 3: Delete key ──────────────────────────────────────────────────
+    delete_key(app, &kid).await;
+
+    // ── Step 4: Verify key is gone (operation must fail) ────────────────────
+    let post_delete_req = match operation {
+        "mac" => actix_test::TestRequest::post()
+            .uri("/v1/crypto/mac")
+            .set_json(&json!({"kid": kid, "alg": alg, "data": data_b64}))
+            .to_request(),
+        "sign" => actix_test::TestRequest::post()
+            .uri("/v1/crypto/sign")
+            .set_json(&json!({"kid": kid, "alg": alg, "data": data_b64}))
+            .to_request(),
+        "encrypt" => {
+            let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
+            actix_test::TestRequest::post()
+                .uri("/v1/crypto/encrypt")
+                .set_json(&json!({"kid": kid, "alg": "dir", "enc": enc_alg, "data": data_b64}))
+                .to_request()
+        }
+        op => panic!("Vector {filename}: unsupported post-delete check for '{op}'"),
+    };
+    let resp = actix_test::call_service(app, post_delete_req).await;
+    assert_ne!(
+        resp.status(),
+        StatusCode::OK,
+        "Vector {filename}: using deleted key must fail"
+    );
+
     Ok(())
 }
 
