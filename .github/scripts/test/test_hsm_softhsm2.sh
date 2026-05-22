@@ -149,6 +149,26 @@ env \
   -- tests::hsm::multi_softhsm2::test_multi_hsm_key_creation_test --ignored --exact
 echo "Multi-HSM key creation tests completed successfully."
 
+# ─── Multi-HSM routing test (server-crate, 2 SoftHSM2 slots) ─────────────────
+# Verifies that the KMS in-process correctly routes KMIP operations to the right
+# HSM instance based on the model-based UID prefix (hsm::softhsm2 / hsm::softhsm2_1).
+echo "========================================="
+echo "Running multi-HSM routing test (server crate)"
+echo "========================================="
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+  DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID_1="$SOFTHSM2_HSM_SLOT_ID" \
+  HSM_SLOT_ID_2="$SOFTHSM2_HSM_SLOT_ID_2" \
+  cargo test \
+  -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- tests::hsm::multi_hsm::test_multi_hsm_routing --ignored --exact
+echo "Multi-HSM routing test completed successfully."
+
 # ─── pkcs11-tool warning check ────────────────────────────────────────────────
 # Spin up a KMS server, create AES and RSA keys via ckms, then run
 # pkcs11-tool --list-objects to confirm no unexpected attribute warnings appear.

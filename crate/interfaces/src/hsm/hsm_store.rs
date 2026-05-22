@@ -1,4 +1,4 @@
-//! `HsmBackend` — a single adapter that implements both `ObjectsStore` and `CryptoOracle`
+//! `HsmStore` — a single adapter that implements both `ObjectsStore` and `CryptoOracle`
 //! for Hardware Security Module backends.  It consolidates what was previously two separate
 //! types (`HsmStore` and `HsmCryptoOracle`) that always wrapped the same `Arc<dyn HSM>`.
 
@@ -32,7 +32,7 @@ use crate::{
 /// [`CryptoOracle`].  Callers can [`Clone`] the backend cheaply (only the inner `Arc` is
 /// cloned) to register it in both the object-store and crypto-oracle maps.
 #[derive(Clone)]
-pub struct HsmBackend {
+pub struct HsmStore {
     hsm: Arc<dyn HSM + Send + Sync>,
     hsm_admin: Vec<String>,
     vendor_id: String,
@@ -40,7 +40,7 @@ pub struct HsmBackend {
     prefix: String,
 }
 
-impl HsmBackend {
+impl HsmStore {
     pub fn new(
         hsm: Arc<dyn HSM + Send + Sync>,
         hsm_admin: &[String],
@@ -76,7 +76,7 @@ impl HsmBackend {
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[async_trait(?Send)]
-impl ObjectsStore for HsmBackend {
+impl ObjectsStore for HsmStore {
     // Only single keys are created using this call,
     // keypair creation goes through the atomic operations
     /// Create a key on the HSM
@@ -129,7 +129,7 @@ impl ObjectsStore for HsmBackend {
                 usize::try_from(*key_length).map_err(|e| {
                     InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                 })?,
-                attributes.sensitive.unwrap_or_default(),
+                attributes.sensitive.unwrap_or(true),
             )
             .await?;
         debug!("Created HSM AES Key of length {key_length} with id {uid}",);
@@ -239,7 +239,7 @@ impl ObjectsStore for HsmBackend {
                     usize::try_from(attributes.cryptographic_length.unwrap_or(2048)).map_err(
                         |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
                     )?,
-                    attributes.sensitive.unwrap_or_default(),
+                    attributes.sensitive.unwrap_or(true),
                 )
                 .await?;
             return Ok(vec![
@@ -384,7 +384,7 @@ impl ObjectsStore for HsmBackend {
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[async_trait]
-impl CryptoOracle for HsmBackend {
+impl CryptoOracle for HsmStore {
     async fn encrypt(
         &self,
         uid: &str,

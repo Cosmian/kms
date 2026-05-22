@@ -47,7 +47,7 @@ const Header: React.FC<HeaderProps> = ({ isDarkMode, serverInfo }) => {
     });
     const longestLabel = hsmLabelTexts.reduce((max, s) => (s.length > max.length ? s : max), "");
     // Approx 8 px per character + 64 px for icon/padding/suffix.
-    const hsmSelectWidth = Math.max(220, longestLabel.length * 8 + 64);
+    const hsmSelectWidth = longestLabel.length;
 
     const hsmOptions = instances.map((inst, idx) => ({
         value: inst.prefix,

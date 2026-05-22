@@ -141,7 +141,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             </div>
                         ) : (
                             currentUser && (
-                                <Tag className="truncate text-sm leading-tight ml-4" color="default">
+                                <Tag className="truncate text-sm leading-tight ml-4" color="green">
                                     {currentUser}
                                 </Tag>
                             )

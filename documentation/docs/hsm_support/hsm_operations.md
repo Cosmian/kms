@@ -269,7 +269,7 @@ the public key of the `hsm::1::mykey` private key will be created with a unique 
 Create an RSA 4096-bit key on the HSM slot 4, with the KMS CLI:
 
 ```shell
-❯ ckms rsa keys create --size_in_bits 4096 --sensitive hsm::4::my_rsa_key
+❯ ckms rsa keys create --size_in_bits 4096 hsm::4::my_rsa_key
 The RSA key pair has been created.
       Public key unique identifier: hsm::4::my_rsa_key_pk
       Private key unique identifier: hsm::4::my_rsa_key
@@ -278,13 +278,13 @@ The RSA key pair has been created.
 Create an AES 256-bit key on HSM slot 4, with the KMS CLI:
 
 ```shell
-❯ ckms sym keys create --algorithm aes --number-of-bits 256 --sensitive hsm::4::my_aes_key
+❯ ckms sym keys create --algorithm aes --number-of-bits 256 hsm::4::my_aes_key
 The symmetric key was successfully generated.
    Unique identifier: hsm::4::my_aes_key
 ```
 
-Keys should be flagged as `sensitive` when created in the HSM, so that the private key or symmetric key cannot be
-exported (see below `Get` and `Export`).
+HSM keys are always created with `CKA_SENSITIVE=true` (private/symmetric key material cannot be
+exported). Pass `--sensitive false` explicitly only if you intentionally need an extractable key.
 
 Note: HSM keys do not support object tagging in this release.
 

@@ -1,7 +1,7 @@
-mod backend;
+mod hsm_store;
 mod interface;
 
-pub use backend::HsmBackend;
+pub use hsm_store::HsmStore;
 pub use interface::{
     HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial,
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial,

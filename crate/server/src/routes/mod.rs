@@ -146,7 +146,7 @@ pub(crate) struct HsmInstanceStatus {
 }
 
 /// GET /hsm/status — returns information about all configured HSM instances.
-/// This endpoint is public (no authentication required).
+/// Authentication is required.
 #[get("/hsm/status")]
 pub(crate) async fn get_hsm_status(
     req: HttpRequest,

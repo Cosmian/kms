@@ -804,7 +804,7 @@ const LocateForm: React.FC = () => {
                                 dataSource={objects || []}
                                 rowKey="object_id"
                                 pagination={{
-                                    pageSize: 10,
+                                    defaultPageSize: 10,
                                     showSizeChanger: true,
                                     pageSizeOptions: [10, 20, 50, 100],
                                 }}
