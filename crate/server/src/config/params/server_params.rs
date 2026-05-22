@@ -146,7 +146,7 @@ pub struct ServerParams {
     /// embedded deployments; production should set this to a positive value such as 100).
     pub rate_limit_per_second: Option<u32>,
 
-    /// Number of actix-web HTTP worker threads. `None` means actix-web default (num_cpus).
+    /// Number of actix-web HTTP worker threads. `None` means actix-web default (`num_cpus`).
     pub http_workers: Option<usize>,
 
     /// Extra origins allowed to make cross-origin requests to the KMIP API.

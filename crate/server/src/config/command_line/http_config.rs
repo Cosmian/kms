@@ -50,7 +50,7 @@ pub struct HttpConfig {
     pub cors_allowed_origins: Option<Vec<String>>,
 
     /// Number of actix-web HTTP worker threads.
-    /// Defaults to the number of logical CPUs. On I/O-heavy workloads (e.g. PostgreSQL backend)
+    /// Defaults to the number of logical CPUs. On I/O-heavy workloads (e.g. `PostgreSQL` backend)
     /// setting this to `2 * <number of CPU cores>` improves throughput by keeping more Tokio
     /// threads busy while others are waiting on network I/O.
     /// Can also be set via the `TOKIO_WORKER_THREADS` environment variable (Tokio runtime),
