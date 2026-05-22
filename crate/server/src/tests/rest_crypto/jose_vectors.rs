@@ -157,6 +157,7 @@ where
             run_encrypt_decrypt_tamper_reject(app, &v, &filename).await
         }
         "key_lifecycle" => run_key_lifecycle(app, &v, &filename).await,
+        "expect_error" => run_expect_error(app, &v, &filename).await,
         unknown => panic!("Vector {filename}: unknown type '{unknown}'"),
     }
 }
@@ -638,6 +639,127 @@ where
     );
 
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Expect-error tests (malformed requests, invalid payloads, edge cases)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Run a vector that expects an HTTP error response.
+///
+/// Vector format:
+/// ```json
+/// {
+///   "type": "expect_error",
+///   "endpoint": "/v1/crypto/encrypt",
+///   "method": "POST",            // optional, defaults to POST
+///   "body": { ... },             // raw JSON body to send (or null for no body)
+///   "setup_key": { ... },        // optional: create a key first, inject kid into body
+///   "expected_status": 400,      // expected HTTP status code
+///   "expected_error": "bad_request"  // optional: assert error field in response
+/// }
+/// ```
+async fn run_expect_error<S, B>(app: &S, v: &Value, filename: &str) -> KResult<()>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: actix_web::body::MessageBody,
+{
+    let endpoint = v["endpoint"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Vector {filename}: missing 'endpoint' field"));
+    let method = v["method"].as_str().unwrap_or("POST");
+    let expected_status = u16::try_from(
+        v["expected_status"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("Vector {filename}: missing 'expected_status' field")),
+    )
+    .expect("status code fits u16");
+
+    // Optionally provision a key and inject kid into body
+    let mut body = v["body"].clone();
+    let mut kid_to_cleanup: Option<String> = None;
+
+    if let Some(setup_key) = v.get("setup_key") {
+        if !setup_key.is_null() {
+            let (kid, kid_public) = provision_key(app, setup_key).await?;
+            // Inject kid into body where "$KID" placeholder appears
+            inject_kid(&mut body, &kid, kid_public.as_deref());
+            kid_to_cleanup = Some(kid);
+        }
+    }
+
+    // Build and send request
+    let req = match method {
+        "POST" => {
+            if body.is_null() {
+                actix_test::TestRequest::post()
+                    .uri(endpoint)
+                    .insert_header(("content-type", "application/json"))
+                    .set_payload("")
+                    .to_request()
+            } else {
+                actix_test::TestRequest::post()
+                    .uri(endpoint)
+                    .set_json(&body)
+                    .to_request()
+            }
+        }
+        "DELETE" => actix_test::TestRequest::delete().uri(endpoint).to_request(),
+        "GET" => actix_test::TestRequest::get().uri(endpoint).to_request(),
+        m => panic!("Vector {filename}: unsupported method '{m}'"),
+    };
+
+    let resp = actix_test::call_service(app, req).await;
+    let status = resp.status().as_u16();
+
+    assert_eq!(
+        status, expected_status,
+        "Vector {filename}: expected HTTP {expected_status}, got {status}"
+    );
+
+    // Optionally check the error code in the response body
+    if let Some(expected_error) = v.get("expected_error").and_then(Value::as_str) {
+        let resp_body = actix_test::read_body(resp).await;
+        if let Ok(parsed) = serde_json::from_slice::<Value>(&resp_body) {
+            if let Some(got_error) = parsed.get("error").and_then(Value::as_str) {
+                assert_eq!(
+                    got_error, expected_error,
+                    "Vector {filename}: expected error code '{expected_error}', got '{got_error}'"
+                );
+            }
+        }
+    }
+
+    // Cleanup provisioned key if any
+    if let Some(kid) = kid_to_cleanup {
+        delete_key(app, &kid).await;
+    }
+
+    Ok(())
+}
+
+/// Replace `"$KID"` and `"$KID_PUBLIC"` placeholders in a JSON body with actual key IDs.
+fn inject_kid(body: &mut Value, kid: &str, kid_public: Option<&str>) {
+    match body {
+        Value::String(s) => {
+            if s == "$KID" {
+                *body = Value::String(kid.to_owned());
+            } else if s == "$KID_PUBLIC" {
+                *body = Value::String(kid_public.unwrap_or(kid).to_owned());
+            }
+        }
+        Value::Object(map) => {
+            for val in map.values_mut() {
+                inject_kid(val, kid, kid_public);
+            }
+        }
+        Value::Array(arr) => {
+            for val in arr {
+                inject_kid(val, kid, kid_public);
+            }
+        }
+        _ => {}
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

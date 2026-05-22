@@ -30,6 +30,10 @@
 
 ## Testing
 
+- Fixed flaky access-control vector tests (`test_vec_access_revoke`, `test_vec_access_unauthorized`,
+  `test_vec_access_grant_aes`, `test_vec_access_grant_partial`): added missing lifecycle `Revoke`
+    - `Destroy` cleanup steps to the four affected manifests; keys created with a past `ActivationDate`
+  are `Active` and require a KMIP `Revoke` before they can be destroyed.
 - Rewrote JOSE test vector runner (`jose_vectors.rs`) as generic auto-discovery framework —
   discovers all `test_data/vectors/jose/*.json` files, dispatches by `type` field, provisions
   keys via `POST /v1/crypto/keys` endpoint (dogfooding)
