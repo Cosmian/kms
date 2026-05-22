@@ -129,7 +129,7 @@ impl ObjectsStore for HsmStore {
                 usize::try_from(*key_length).map_err(|e| {
                     InterfaceError::InvalidRequest(format!("Invalid key length: {e}"))
                 })?,
-                attributes.sensitive.unwrap_or(true),
+                attributes.sensitive.unwrap_or(false),
             )
             .await?;
         debug!("Created HSM AES Key of length {key_length} with id {uid}",);
@@ -239,7 +239,7 @@ impl ObjectsStore for HsmStore {
                     usize::try_from(attributes.cryptographic_length.unwrap_or(2048)).map_err(
                         |e| InterfaceError::InvalidRequest(format!("Invalid key length: {e}")),
                     )?,
-                    attributes.sensitive.unwrap_or(true),
+                    attributes.sensitive.unwrap_or_default(),
                 )
                 .await?;
             return Ok(vec![

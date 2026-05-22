@@ -154,13 +154,16 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 
 async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
+    // sensitive = false so that export-based tests can retrieve the key material;
+    // HSM tests that specifically exercise non-extractable keys create their own
+    // sensitive key directly.
     let create_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
         CryptographicAlgorithm::AES,
         EMPTY_TAGS,
-        true,
+        false,
         None,
     )?;
     let response =
