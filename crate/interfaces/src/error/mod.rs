@@ -12,6 +12,9 @@ pub enum InterfaceError {
     #[error("Invalid Request: {0}")]
     InvalidRequest(String),
 
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+
     #[error("HSM Error: {0}")]
     Hsm(String),
 

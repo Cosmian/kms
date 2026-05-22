@@ -22,6 +22,11 @@ on:
   schedule:
     - cron: 0 2 * * 0
 
+  # Run on tag pushes to record a release baseline
+  push:
+    tags:
+      - '**'
+
 jobs:
   benchmark-regression:
     name: Benchmark Regression – ${{ inputs.variant || 'non-fips' }}
@@ -68,3 +73,36 @@ jobs:
           path: |
             target/criterion/benchmarks.json
           retention-days: 90
+
+  publish-benchmarks:
+    name: Publish benchmark results to package.cosmian.com
+    needs: benchmark-regression
+    if: always() && needs.benchmark-regression.result != 'cancelled'
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    steps:
+      - name: Download benchmark artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: benchmark-results-${{ inputs.variant || 'non-fips' }}-${{ github.run_id }}
+          path: benchmark-results
+
+      - name: Push benchmark results to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          REMOTE_DIR="/mnt/package/kms/${BRANCH}/benchmarks"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            benchmark-results/benchmarks.json \
+            cosmian@package.cosmian.com:"${REMOTE_DIR}/"

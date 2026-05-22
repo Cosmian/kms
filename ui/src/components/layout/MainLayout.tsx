@@ -23,6 +23,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const [loading, setLoading] = useState<boolean>(true);
     const { logout, idToken, serverUrl, userId } = useAuth();
     const [downloadTarget, setDownloadTarget] = useState<string>();
+    const [currentUser, setCurrentUser] = useState<string | null>(null);
 
     const normalizedServerHealth = (serverHealth ?? "").trim().toUpperCase();
     const isServerHealthy = normalizedServerHealth === "UP";
@@ -41,6 +42,17 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                 setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
                 const info = await getNoTTLVRequest("/server-info", idToken, serverUrl);
                 setServerInfo(info as ServerInfo);
+                // Fetch the authenticated username via /me (runs through auth middleware).
+                // This correctly returns the cert CN for CERT auth.
+                try {
+                    const me = await getNoTTLVRequest("/me", idToken, serverUrl);
+                    if (me && typeof me === "object" && "user" in me) {
+                        setCurrentUser((me as { user: string }).user);
+                    }
+                } catch {
+                    // /me may fail if no auth is configured; fall back to default_username.
+                    setCurrentUser((info as ServerInfo).default_username ?? null);
+                }
             } catch {
                 setServerVersion("Unavailable");
                 setServerHealth("Unavailable");
@@ -116,7 +128,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             checkedChildren={<MoonOutlined />}
                             unCheckedChildren={<SunOutlined />}
                         />
-                        {authMethod === "JWT" && (
+                        {authMethod === "JWT" ? (
                             <div className="flex justify-center items-center h-full overflow-hidden ml-4">
                                 {userId && (
                                     <Tag className="truncate text-sm leading-tight" color="purple">
@@ -127,6 +139,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                     Logout
                                 </Button>
                             </div>
+                        ) : (
+                            currentUser && (
+                                <Tag className="truncate text-sm leading-tight ml-4" color="default">
+                                    {currentUser}
+                                </Tag>
+                            )
                         )}
                     </div>
                 </div>
@@ -145,8 +163,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 message={<span className="text-yellow-900 font-bold">Authentication is disabled on this KMS server</span>}
                                 description={
                                     <span className="text-yellow-900">
-                                        This KMS server was started without authentication method configured and then is not ready for
-                                        production use.
+                                        This KMS server was started without authentication method configured.
                                     </span>
                                 }
                             />

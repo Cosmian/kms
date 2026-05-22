@@ -99,15 +99,11 @@ pub(crate) async fn recursively_destroy_object(
         // If the object has a prefix (external object store),
         // destroy all the objects with this prefix
         if let Some(_prefix) = has_prefix(&uid) {
-            // ensure user can destroy
+            // HSM keys: only HSM admins can destroy — Destroy cannot be delegated
             if !kms.database.is_object_owned_by(&uid, user).await? {
-                let ops = kms
-                    .database
-                    .list_user_operations_on_object(&uid, user, false)
-                    .await?;
-                if !ops.iter().any(|p| KmipOperation::Destroy == *p) {
-                    continue;
-                }
+                kms_bail!(KmsError::Unauthorized(format!(
+                    "Only HSM admins can destroy HSM key `{uid}`"
+                )));
             }
             kms.database.delete(&uid).await?;
             count += 1;

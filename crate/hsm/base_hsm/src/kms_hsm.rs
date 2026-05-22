@@ -160,6 +160,11 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         let mut object_ids = Vec::with_capacity(handles.len());
         for handle in handles {
             if let Ok(Some(object_id)) = session.get_object_id(handle) {
+                // Pre-populate the object handle cache so that subsequent
+                // export()/get_object_handle() calls get a cache hit instead of
+                // re-searching via find_by_id_or_label() which may fail due to
+                // CKA_ID/CKA_LABEL asymmetry.
+                drop(session.cache_object_handle(&object_id, handle));
                 object_ids.push(object_id);
             } else {
                 debug!("Invalid object, skipping");

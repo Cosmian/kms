@@ -42,16 +42,39 @@ if [ -n "$SOFTHSM2_BIN_PATH" ]; then
   fi
 fi
 SOFTHSM2_PKCS11_LIB_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR/libsofthsm2.so}"
-INIT_OUT=$(softhsm2-util --init-token --free --label "my_token_1" --so-pin "$HSM_USER_PASSWORD" --pin "$HSM_USER_PASSWORD" 2>&1 | tee /dev/stderr)
 
-SOFTHSM2_HSM_SLOT_ID=$(echo "$INIT_OUT" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
-if [ -z "${SOFTHSM2_HSM_SLOT_ID:-}" ]; then
-  SOFTHSM2_HSM_SLOT_ID=$(softhsm2-util --show-slots | awk 'BEGIN{sid=""} /^Slot/ {sid=$2} /Token label/ && $0 ~ /my_token_1/ {print sid; exit}')
-fi
-[ -n "${SOFTHSM2_HSM_SLOT_ID:-}" ] || {
-  echo "Error: Could not determine SoftHSM2 slot id" >&2
-  exit 1
+# Helper: extract slot id from softhsm2-util --init-token output
+_extract_slot_id() {
+  local init_out="$1"
+  local label="$2"
+  local slot_id
+  slot_id=$(echo "$init_out" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
+  if [ -z "${slot_id:-}" ]; then
+    slot_id=$(softhsm2-util --show-slots | awk -v lbl="$label" 'BEGIN{sid=""} /^Slot/ {sid=$2} /Token label/ && index($0,lbl) {print sid; exit}')
+  fi
+  echo "$slot_id"
 }
+
+# Initialise three independent SoftHSM2 tokens (one per HSM instance under test).
+#   Token 1 → used with the legacy single-HSM config (hsm:)
+#   Token 2 → used as the first entry in hsm_instances (new config)
+#   Token 3 → used as the second entry in hsm_instances (new config)
+INIT_OUT_1=$(softhsm2-util --init-token --free --label "my_token_1" --so-pin "$HSM_USER_PASSWORD" --pin "$HSM_USER_PASSWORD" 2>&1 | tee /dev/stderr)
+INIT_OUT_2=$(softhsm2-util --init-token --free --label "my_token_2" --so-pin "$HSM_USER_PASSWORD" --pin "$HSM_USER_PASSWORD" 2>&1 | tee /dev/stderr)
+INIT_OUT_3=$(softhsm2-util --init-token --free --label "my_token_3" --so-pin "$HSM_USER_PASSWORD" --pin "$HSM_USER_PASSWORD" 2>&1 | tee /dev/stderr)
+
+SOFTHSM2_HSM_SLOT_ID=$(_extract_slot_id "$INIT_OUT_1" "my_token_1")
+SOFTHSM2_HSM_SLOT_ID_2=$(_extract_slot_id "$INIT_OUT_2" "my_token_2")
+SOFTHSM2_HSM_SLOT_ID_3=$(_extract_slot_id "$INIT_OUT_3" "my_token_3")
+
+for _var in SOFTHSM2_HSM_SLOT_ID SOFTHSM2_HSM_SLOT_ID_2 SOFTHSM2_HSM_SLOT_ID_3; do
+  [ -n "${!_var:-}" ] || {
+    echo "Error: Could not determine SoftHSM2 slot id for ${_var}" >&2
+    exit 1
+  }
+done
+
+echo "==> SoftHSM2 slot ids: ${SOFTHSM2_HSM_SLOT_ID} / ${SOFTHSM2_HSM_SLOT_ID_2} / ${SOFTHSM2_HSM_SLOT_ID_3}"
 
 env \
   PATH="$PATH" \
@@ -103,6 +126,48 @@ env \
   -- tests::test_hsm_softhsm2_all --ignored
 
 echo "SoftHSM2 Loader tests completed successfully."
+
+# ─── Multi-HSM key creation tests (3 SoftHSM2 slots) ────────────────────────
+# Tests cover:
+#   - Old single-HSM config (hsm: field) with slot 1 → UID prefix "hsm"
+#   - New hsm_instances config with 2 more slots → UID prefixes "hsm::softhsm2" / "hsm::softhsm2_1"
+echo "========================================="
+echo "Running multi-HSM key creation tests (3 SoftHSM2 slots)"
+echo "========================================="
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+  DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID_1="$SOFTHSM2_HSM_SLOT_ID" \
+  HSM_SLOT_ID_2="$SOFTHSM2_HSM_SLOT_ID_2" \
+  HSM_SLOT_ID_3="$SOFTHSM2_HSM_SLOT_ID_3" \
+  cargo test \
+  -p ckms \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- tests::hsm::multi_softhsm2::test_multi_hsm_key_creation_test --ignored --exact
+echo "Multi-HSM key creation tests completed successfully."
+
+# ─── Multi-HSM routing test (server-crate, 2 SoftHSM2 slots) ─────────────────
+# Verifies that the KMS in-process correctly routes KMIP operations to the right
+# HSM instance based on the model-based UID prefix (hsm::softhsm2 / hsm::softhsm2_1).
+echo "========================================="
+echo "Running multi-HSM routing test (server crate)"
+echo "========================================="
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+  DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID_1="$SOFTHSM2_HSM_SLOT_ID" \
+  HSM_SLOT_ID_2="$SOFTHSM2_HSM_SLOT_ID_2" \
+  cargo test \
+  -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- tests::hsm::multi_hsm::test_multi_hsm_routing --ignored --exact
+echo "Multi-HSM routing test completed successfully."
 
 # ─── pkcs11-tool warning check ────────────────────────────────────────────────
 # Spin up a KMS server, create AES and RSA keys via ckms, then run

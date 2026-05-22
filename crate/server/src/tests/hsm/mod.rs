@@ -46,6 +46,8 @@ use crate::{
 #[cfg(feature = "non-fips")]
 mod ec_dek;
 mod issues;
+mod multi_hsm;
+mod permissions;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
@@ -96,6 +98,9 @@ async fn test_hsm_all() {
     Box::pin(issues::test_hsm_locate_name_filter_does_not_leak_kek())
         .await
         .unwrap();
+
+    info!("HSM: permissions (32 scenarios)");
+    Box::pin(permissions::test_hsm_permissions()).await.unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {

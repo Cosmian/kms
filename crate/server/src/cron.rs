@@ -46,9 +46,8 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                             },
                             ..Default::default()
                         };
-                        let user = kms.params.hsm_admin.iter()
-                            .find(|a| a.as_str() != "*")
-                            .cloned()
+                        let user = kms.params.hsm_instances.first()
+                            .and_then(|inst| inst.admin.iter().find(|a| a.as_str() != "*").cloned())
                             .unwrap_or_else(|| kms.params.default_username.clone());
                         match kms.locate(request, &user,).await {
                             Ok(resp) => {
