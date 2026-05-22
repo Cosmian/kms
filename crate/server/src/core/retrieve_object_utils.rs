@@ -204,6 +204,13 @@ pub(crate) async fn user_has_permission(
         .list_user_operations_on_object(id, user, false)
         .await?;
 
+    // GetAttributes is metadata-only (no key material exposed), so allow it if
+    // the user has ANY granted operation on the object. This avoids "Unknown" state
+    // in UIs when a user can Locate an object but was only granted e.g. Encrypt.
+    if *operation_type == KmipOperation::GetAttributes && !permissions.is_empty() {
+        return Ok(true);
+    }
+
     // HSM keys: each operation must be explicitly granted — no generic Get wildcard.
     // Exception: Get and Export are semantically equivalent (both read key material),
     // so holding either permission grants access for both operations.
