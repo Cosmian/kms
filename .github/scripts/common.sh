@@ -19,12 +19,12 @@ ensure_macos_sdk_env() {
   export DEVELOPER_DIR
   if [ -d "${DEVELOPER_DIR}/usr/bin" ]; then
     case ":${PATH}:" in
-    *":${DEVELOPER_DIR}/usr/bin:"*)
-      :
-      ;;
-    *)
-      export PATH="${DEVELOPER_DIR}/usr/bin:${PATH}"
-      ;;
+      *":${DEVELOPER_DIR}/usr/bin:"*)
+        :
+        ;;
+      *)
+        export PATH="${DEVELOPER_DIR}/usr/bin:${PATH}"
+        ;;
     esac
   fi
 
@@ -172,24 +172,24 @@ init_build_env() {
   local i=1
   while [ $i -le $# ]; do
     case "${!i}" in
-    --variant)
-      if [ $variant_set -eq 1 ]; then
-        echo "Error: --variant specified multiple times" >&2
-        exit 1
-      fi
-      variant_set=1
-      i=$((i + 1))
-      variant="${!i:-}"
-      ;;
-    --link)
-      if [ $link_set -eq 1 ]; then
-        echo "Error: --link specified multiple times" >&2
-        exit 1
-      fi
-      link_set=1
-      i=$((i + 1))
-      link="${!i:-}"
-      ;;
+      --variant)
+        if [ $variant_set -eq 1 ]; then
+          echo "Error: --variant specified multiple times" >&2
+          exit 1
+        fi
+        variant_set=1
+        i=$((i + 1))
+        variant="${!i:-}"
+        ;;
+      --link)
+        if [ $link_set -eq 1 ]; then
+          echo "Error: --link specified multiple times" >&2
+          exit 1
+        fi
+        link_set=1
+        i=$((i + 1))
+        link="${!i:-}"
+        ;;
     esac
     i=$((i + 1))
   done
@@ -197,31 +197,31 @@ init_build_env() {
   # If flags were not provided, inherit from existing environment (when available)
   if [ $variant_set -eq 0 ] && [ -n "${VARIANT:-}" ]; then
     case "${VARIANT}" in
-    fips | non-fips) variant="${VARIANT}" ;;
+      fips | non-fips) variant="${VARIANT}" ;;
     esac
   fi
   if [ $link_set -eq 0 ] && [ -n "${LINK:-}" ]; then
     case "${LINK}" in
-    static | dynamic) link="${LINK}" ;;
+      static | dynamic) link="${LINK}" ;;
     esac
   fi
 
   case "$variant" in
-  fips | non-fips) : ;;
-  *)
-    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
-    exit 1
-    ;;
+    fips | non-fips) : ;;
+    *)
+      echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+      exit 1
+      ;;
   esac
   VARIANT="$variant"
   VARIANT_NAME=$([ "$VARIANT" = "non-fips" ] && echo "non-FIPS" || echo "FIPS")
 
   case "$link" in
-  static | dynamic) : ;;
-  *)
-    echo "Error: --link must be 'static' or 'dynamic'" >&2
-    exit 1
-    ;;
+    static | dynamic) : ;;
+    *)
+      echo "Error: --link must be 'static' or 'dynamic'" >&2
+      exit 1
+      ;;
   esac
   LINK="$link"
 
@@ -327,35 +327,35 @@ _run_workspace_tests() {
 
   # Validate and export the DB selector
   case "$db" in
-  sqlite | postgresql | mysql | redis) ;;
-  *)
-    echo "Unknown DB '$db'. Accepted: sqlite, postgresql, mysql, redis" >&2
-    return 1
-    ;;
+    sqlite | postgresql | mysql | redis) ;;
+    *)
+      echo "Unknown DB '$db'. Accepted: sqlite, postgresql, mysql, redis" >&2
+      return 1
+      ;;
   esac
   export KMS_TEST_DB="$db"
 
   # Provide sensible defaults for DB connection URLs
   case "$db" in
-  postgresql)
-    : "${KMS_POSTGRES_URL:=postgresql://kms:kms@127.0.0.1:5432/kms}"
-    export KMS_POSTGRES_URL
-    ;;
-  mysql)
-    : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3306/kms}"
-    export KMS_MYSQL_URL
-    ;;
-  redis)
-    : "${REDIS_HOST:=127.0.0.1}"
-    : "${REDIS_PORT:=6379}"
-    export REDIS_HOST REDIS_PORT
-    ;;
+    postgresql)
+      : "${KMS_POSTGRES_URL:=postgresql://kms:kms@127.0.0.1:5432/kms}"
+      export KMS_POSTGRES_URL
+      ;;
+    mysql)
+      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3306/kms}"
+      export KMS_MYSQL_URL
+      ;;
+    redis)
+      : "${REDIS_HOST:=127.0.0.1}"
+      : "${REDIS_PORT:=6379}"
+      export REDIS_HOST REDIS_PORT
+      ;;
   esac
 
   # Command 1: run DB-specific #[ignore] tests (not needed for sqlite — test_db_sqlite is not ignored)
   if [ "$db" != "sqlite" ]; then
     cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
-      -- --ignored --nocapture "test_db_${db}"
+      -- --ignored --nocapture "test_db_${db}" test_certificate_validate
   fi
 
   # Command 2: run all non-ignored workspace tests with KMS_TEST_DB set
@@ -392,9 +392,9 @@ check_and_test_db() {
   local pretty="$1" dbkey="$2" host_var="$3" port_var="$4"
   local host="${!host_var:-127.0.0.1}" port="${!port_var:-}"
   case "$dbkey" in
-  postgresql) : "${port:=5432}" ;;
-  mysql) : "${port:=3306}" ;;
-  redis) : "${port:=6379}" ;;
+    postgresql) : "${port:=5432}" ;;
+    mysql) : "${port:=3306}" ;;
+    redis) : "${port:=6379}" ;;
   esac
 
   echo "Checking $pretty at $host:$port..."

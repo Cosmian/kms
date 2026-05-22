@@ -127,7 +127,11 @@ const AccessObtainedList: React.FC = () => {
                         columns={columns}
                         rowKey="objectUid"
                         loading={isLoading}
-                        pagination={{ pageSize: 10 }}
+                        pagination={{
+                            defaultPageSize: 10,
+                            showSizeChanger: true,
+                            pageSizeOptions: [10, 20, 50, 100],
+                        }}
                         className="border rounded"
                     />
                 </Card>

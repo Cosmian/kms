@@ -8,7 +8,7 @@ pub use crypto_oracle::{
 };
 pub use error::{InterfaceError, InterfaceResult};
 pub use hsm::{
-    HSM, HsmBackend, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, KeyMaterial,
+    HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter, HsmStore, KeyMaterial,
     RsaPrivateKeyMaterial, RsaPublicKeyMaterial,
 };
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};

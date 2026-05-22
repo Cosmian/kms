@@ -19,7 +19,7 @@ cosmian_kms_interfaces
 │   └── ObjectWithMetadata  — thin wrapper: Object + owner + State + Attributes
 ├── hsm/
 │   ├── HSM                 — raw PKCS#11-level interface (create, encrypt, sign …)
-│   └── HsmBackend          — ObjectsStore + CryptoOracle adapter backed by an HSM
+│   └── HsmStore          — ObjectsStore + CryptoOracle adapter backed by an HSM
 └── CryptoOracle            — software/HSM encryption, decryption, signing by key prefix
 ```
 
@@ -113,18 +113,18 @@ classDiagram
         +sign(uid, data, algo)
     }
 
-    class HsmBackend {
+    class HsmStore {
         +Arc~dyn HSM~
         +Clone
-        +impl ObjectsStore for HsmBackend
-        +impl CryptoOracle for HsmBackend
+        +impl ObjectsStore for HsmStore
+        +impl CryptoOracle for HsmStore
     }
 
     HSM <|.. BaseHsmP : implements
     HsmProvider <|.. BaseHsmP : bounds P
-    BaseHsmP --> HsmBackend : wrapped in Arc
-    HsmBackend ..|> ObjectsStore : implements
-    HsmBackend ..|> CryptoOracle : implements
+    BaseHsmP --> HsmStore : wrapped in Arc
+    HsmStore ..|> ObjectsStore : implements
+    HsmStore ..|> CryptoOracle : implements
 ```
 
 ---
@@ -145,7 +145,7 @@ flowchart LR
     subgraph impl_hsm["HSM chain"]
         PROV["5 × HsmProvider<br/>(pkcs11 loader crates)"]
         BH["BaseHsm&lt;P&gt;"]
-        HB["HsmBackend"]
+        HB["HsmStore"]
     end
 
     subgraph traits["cosmian_kms_interfaces"]
@@ -210,7 +210,7 @@ flowchart LR
 ## HSM chain
 
 Five provider crates each implement `HsmProvider`. `BaseHsm<P>` uses that bound
-to satisfy `HSM`. A single `HsmBackend` wraps the resulting `Arc<dyn HSM>` and
+to satisfy `HSM`. A single `HsmStore` wraps the resulting `Arc<dyn HSM>` and
 is `Clone`d to fill both the object-store map and the crypto-oracle map in
 `KMS::instantiate()`.
 
@@ -230,7 +230,7 @@ flowchart LR
 
     subgraph iface["cosmian_kms_interfaces"]
         HSMt["HSM trait"]
-        HB["HsmBackend (Clone)"]
+        HB["HsmStore (Clone)"]
         OS[ObjectsStore]
         CO[CryptoOracle]
     end
@@ -310,7 +310,7 @@ sequenceDiagram
 2. Implement `ObjectsStore` and `PermissionsStore` (required for SQL/KV stores).
 3. Optionally implement `NotificationsStore` (or use `NoopNotificationsStore`).
 4. For HSM backends: implement `HsmProvider` in a new `*_pkcs11_loader` crate;
-   `BaseHsm<YourProvider>` then automatically satisfies `HSM`, and `HsmBackend::new()
+   `BaseHsm<YourProvider>` then automatically satisfies `HSM`, and `HsmStore::new()
    becomes usable as both`ObjectsStore` and `CryptoOracle` without further code.
 5. Register the backend in `cosmian_kms_server_database` (SQL) or
    `KMS::instantiate()` (HSM / crypto oracle).
