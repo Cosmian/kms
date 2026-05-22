@@ -14,11 +14,13 @@ Key material **never leaves the KMS**. Only ciphertext, signatures, and MACs tra
 
 - [Authentication](#authentication)
 - [Endpoints](#endpoints)
-  - [POST /v1/crypto/encrypt](#post-v1cryptoencrypt)
-  - [POST /v1/crypto/decrypt](#post-v1cryptodecrypt)
-  - [POST /v1/crypto/sign](#post-v1cryptosign)
-  - [POST /v1/crypto/verify](#post-v1cryptoverify)
-  - [POST /v1/crypto/mac](#post-v1cryptomac)
+    - [POST /v1/crypto/keys](#post-v1cryptokeys)
+    - [DELETE /v1/crypto/keys/{kid}](#delete-v1cryptokeyskid)
+    - [POST /v1/crypto/encrypt](#post-v1cryptoencrypt)
+    - [POST /v1/crypto/decrypt](#post-v1cryptodecrypt)
+    - [POST /v1/crypto/sign](#post-v1cryptosign)
+    - [POST /v1/crypto/verify](#post-v1cryptoverify)
+    - [POST /v1/crypto/mac](#post-v1cryptomac)
 - [Error responses](#error-responses)
 - [Known limitations](#known-limitations)
 - [Algorithm support matrix](#algorithm-support-matrix)
@@ -34,6 +36,75 @@ server configuration. See [Authentication](../configuration/authentication.md).
 ---
 
 ## Endpoints
+
+### `POST /v1/crypto/keys`
+
+Generate a new cryptographic key (or key pair) in the KMS. The request follows JWK
+conventions — specify `kty` (key type) and `alg` (algorithm) at minimum.
+
+#### Request body
+
+```json
+{
+  "kty": "oct",
+  "alg": "A256GCM"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `kty` | ✓ | Key type: `oct` (symmetric), `RSA`, `EC`, `OKP` (non-FIPS) |
+| `alg` | ✓ | JOSE algorithm identifier (determines key size and usage) |
+| `crv` | EC/OKP | Curve name: `P-256`, `P-384`, `P-521`, `Ed25519` (non-FIPS) |
+
+#### Response body
+
+```json
+{
+  "kid": "<key-uuid>",
+  "kid_public": "<public-key-uuid>"  // only for asymmetric key pairs
+}
+```
+
+#### Examples
+
+**Symmetric key (AES-256-GCM)**:
+
+```json
+{ "kty": "oct", "alg": "A256GCM" }
+```
+
+**RSA key pair (PS256)**:
+
+```json
+{ "kty": "RSA", "alg": "PS256" }
+```
+
+**EC key pair (ES256)**:
+
+```json
+{ "kty": "EC", "crv": "P-256", "alg": "ES256" }
+```
+
+---
+
+### `DELETE /v1/crypto/keys/{kid}`
+
+Destroy (permanently delete) a key from the KMS. The key is first revoked
+(deactivated) then removed from the database, including any linked public/private
+key in the pair.
+
+#### Path parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `kid` | The UUID of the key to destroy |
+
+#### Response
+
+- **204 No Content** on success (empty body).
+
+---
 
 ### `POST /v1/crypto/encrypt`
 

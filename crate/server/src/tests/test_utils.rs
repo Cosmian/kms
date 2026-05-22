@@ -269,7 +269,9 @@ pub(crate) async fn test_app(
         .service(routes::crypto::decrypt_handler)
         .service(routes::crypto::sign_handler)
         .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler);
+        .service(routes::crypto::mac_handler)
+        .service(routes::crypto::create_key_handler)
+        .service(routes::crypto::delete_key_handler);
     app = app.service(crypto_scope);
 
     test::init_service(app).await
@@ -340,7 +342,9 @@ pub(crate) async fn test_app_with_clap_config(
         .service(routes::crypto::decrypt_handler)
         .service(routes::crypto::sign_handler)
         .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler);
+        .service(routes::crypto::mac_handler)
+        .service(routes::crypto::create_key_handler)
+        .service(routes::crypto::delete_key_handler);
     app = app.service(crypto_scope);
 
     test::init_service(app).await

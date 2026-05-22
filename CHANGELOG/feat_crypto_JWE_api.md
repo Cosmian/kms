@@ -5,6 +5,8 @@
 - Added REST crypto API under `/v1/crypto` — JOSE-compatible encrypt, decrypt, sign, verify,
   and MAC without a KMIP client library ([RFC 7515](https://www.rfc-editor.org/rfc/rfc7515),
   [RFC 7516](https://www.rfc-editor.org/rfc/rfc7516), [RFC 7518](https://www.rfc-editor.org/rfc/rfc7518)):
+    - `POST /v1/crypto/keys` — Generate keys (symmetric, RSA, EC; OKP non-FIPS)
+    - `DELETE /v1/crypto/keys/{kid}` — Revoke + destroy key (cascades to linked keys)
     - `POST /v1/crypto/encrypt` — AES-GCM (`dir` + `A128/192/256GCM`)
     - `POST /v1/crypto/decrypt` — AES-GCM with AAD binding
     - `POST /v1/crypto/sign` — RS256/384/512, PS256/384/512, ES256/384/512 (+ EdDSA, MLDSA44 non-FIPS)
@@ -28,6 +30,9 @@
 
 ## Testing
 
+- Rewrote JOSE test vector runner (`jose_vectors.rs`) as generic auto-discovery framework —
+  discovers all `test_data/vectors/jose/*.json` files, dispatches by `type` field, provisions
+  keys via `POST /v1/crypto/keys` endpoint (dogfooding)
 - Added [`crate/server/src/tests/rest_crypto/`](crate/server/src/tests/rest_crypto/) — integration tests
   (`encrypt_decrypt`, `sign_verify`, `mac`, `error_cases`, `rfc_vectors`).
 - Added [`.github/scripts/test/test_jose.sh`](.github/scripts/test/test_jose.sh) — unified JOSE E2E

@@ -1,9 +1,12 @@
 use std::{fmt, str::FromStr};
 
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
+    kmip_0::kmip_types::{
+        BlockCipherMode, CryptographicUsageMask, HashingAlgorithm, PaddingMethod,
+    },
     kmip_2_1::kmip_types::{
         CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+        RecommendedCurve,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -263,4 +266,74 @@ fn build_pqc_params(alg: JoseAlgorithm) -> Result<CryptographicParameters, Crypt
         cryptographic_algorithm: Some(crypto_alg),
         ..Default::default()
     })
+}
+
+// ─── Key creation helpers ───────────────────────────────────────────────────
+
+/// Derive the symmetric key size (in bits) from a JOSE algorithm identifier.
+///
+/// Returns `None` for non-symmetric algorithms.
+pub(crate) fn key_bits_from_alg(alg: &str) -> Option<usize> {
+    match alg {
+        // AES-GCM content-encryption (RFC 7518 §5.1)
+        "A128GCM" => Some(128),
+        "A192GCM" => Some(192),
+        // AES-256-GCM and HMAC-SHA-256 both require 256-bit keys
+        "A256GCM" | "HS256" => Some(256),
+        // HMAC (RFC 7518 §3.2) — minimum key size equals hash output size
+        "HS384" => Some(384),
+        "HS512" => Some(512),
+        _ => None,
+    }
+}
+
+/// Map a JOSE `alg` string to a default `CryptographicUsageMask`.
+///
+/// The mapping follows the natural operation class:
+/// - Signing algs → `Sign | Verify`
+/// - Encryption algs (`dir` + enc) → `Encrypt | Decrypt`
+/// - MAC algs → `MACGenerate | MACVerify`
+// Will be used for import-path usage validation.
+#[allow(dead_code)]
+pub(crate) fn usage_mask_from_alg(alg: &str) -> CryptographicUsageMask {
+    match alg {
+        // Signature algorithms
+        "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512" | "ES256" | "ES384" | "ES512"
+        | "EdDSA" | "MLDSA44" => CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
+        // MAC algorithms
+        "HS256" | "HS384" | "HS512" => {
+            CryptographicUsageMask::MACGenerate | CryptographicUsageMask::MACVerify
+        }
+        // Encryption algorithms (including "dir" which uses AES-GCM)
+        _ => CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt,
+    }
+}
+
+/// Map a JOSE `crv` string to a KMIP `RecommendedCurve`.
+pub(crate) fn curve_from_crv(crv: &str) -> Result<RecommendedCurve, CryptoApiError> {
+    match crv {
+        "P-256" => Ok(RecommendedCurve::P256),
+        "P-384" => Ok(RecommendedCurve::P384),
+        "P-521" => Ok(RecommendedCurve::P521),
+        #[cfg(feature = "non-fips")]
+        "Ed25519" => Ok(RecommendedCurve::CURVEED25519),
+        other => Err(CryptoApiError::BadRequest(format!(
+            "Unsupported curve '{other}'. Supported: P-256, P-384, P-521, Ed25519 (non-FIPS)."
+        ))),
+    }
+}
+
+/// Map a JOSE `alg` string to the KMIP `CryptographicAlgorithm` used for symmetric key creation.
+pub(crate) fn symmetric_algorithm_from_alg(
+    alg: &str,
+) -> Result<CryptographicAlgorithm, CryptoApiError> {
+    match alg {
+        "A128GCM" | "A192GCM" | "A256GCM" | "dir" => Ok(CryptographicAlgorithm::AES),
+        "HS256" => Ok(CryptographicAlgorithm::HMACSHA256),
+        "HS384" => Ok(CryptographicAlgorithm::HMACSHA384),
+        "HS512" => Ok(CryptographicAlgorithm::HMACSHA512),
+        other => Err(CryptoApiError::BadRequest(format!(
+            "Algorithm '{other}' is not a symmetric/MAC algorithm."
+        ))),
+    }
 }
