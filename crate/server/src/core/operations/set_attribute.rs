@@ -376,9 +376,14 @@ pub(crate) async fn set_attribute(
         | ObjectType::SecretData
         | ObjectType::PGPKey
         | ObjectType::SymmetricKey => {
-            let object_attributes = owm.object_mut().attributes_mut()?;
-            *object_attributes = attributes.clone();
-            debug!("Set Object Attribute: {}", object_attributes);
+            // For wrapped keys, `attributes_mut()` returns an error because the key
+            // block holds a ByteString (ciphertext), not a Structure. In that case,
+            // skip the embedded key-block update; the attribute is persisted in the
+            // metadata column by `update_object` below.
+            if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
+                *object_attributes = attributes.clone();
+                debug!("Set Object Attribute: {}", object_attributes);
+            }
         }
         _ => {
             trace!(

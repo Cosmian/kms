@@ -110,24 +110,61 @@ However, when the KMS server is configured with a list of privileged users, obje
 
 ## HSM keys and authorization
 
-Keys stored in an HSM are physically located in the HSM hardware, not in the KMS database.
-However, their **authorization model is identical to that of regular KMS keys**: ownership and
-access rights are still tracked by the KMS, and all the rules described on this page apply.
+Keys stored in an HSM follow a **stricter permission model** than regular KMS keys.
+Authorization metadata (owner, grants) is still managed by the KMS, but two
+important differences apply.
 
-| Aspect                        | KMS keys                 | HSM keys                          |
-| ----------------------------- | ------------------------ | --------------------------------- |
-| Key material stored in        | KMS database (encrypted) | HSM hardware                      |
-| Authorizations managed by     | KMS                      | KMS (same ownership + ACL model)  |
-| Owner                         | Creating user            | HSM admin at creation time        |
-| `grant` / `revoke` supported  | Yes                      | Yes — same REST API               |
-| `Get` super-privilege applies | Yes                      | Yes                               |
+### Comparison with regular KMS keys
 
-The one HSM-specific restriction is **creation and destruction**: only users listed in the server's
-`hsm_admin` configuration (or granted the `Create` / `Destroy` operation by an HSM admin) may create
-or destroy objects directly in the HSM. All other operations (`Encrypt`, `Decrypt`, `Get`, etc.) follow
-the standard KMS access rights model and can be delegated to any authenticated user via `grant`.
+| Aspect | KMS keys | HSM keys |
+|---|---|---|
+| Key material stored in | KMS database (encrypted) | HSM hardware |
+| `Get` is a super-privilege | Yes — implies all operations | **No** — each operation must be granted explicitly |
+| `Get` ↔ `Export` equivalence | No | **Yes** — holding either grants both |
+| `Destroy` / `Revoke` delegable | Yes | **No** — blocked; admin-only |
+| `Create` | Any user (or privileged users if configured) | HSM admin only |
+| `Locate` visibility | All owned / granted objects | Non-admins see only keys with ≥ 1 explicit grant |
 
-See the [HSM operations](../hsm_support/hsm_operations.md) page for details on HSM admin configuration.
+### Who is an HSM admin?
+
+Users listed in the server's `hsm_admin` configuration for a given HSM instance are
+its **admins**. Admins bypass all permission checks for that HSM — they can create,
+destroy, and perform any operation on its keys.
+
+### Permission evaluation for HSM keys
+
+```
+Request arrives for operation OP on key hsm::<model>::<slot>::<id>
+│
+├─ Is the user an HSM admin for this instance?  ──▶  YES → Granted
+│
+├─ Does the user have OP explicitly granted?  ──────▶  YES → Granted
+│
+├─ Is OP = Export and user has Get?  ───────────────▶  YES → Granted
+├─ Is OP = Get   and user has Export?  ─────────────▶  YES → Granted
+│
+└─ Otherwise  ──────────────────────────────────────────────▶  Denied
+```
+
+### What can and cannot be delegated
+
+| Operation | Delegable via `grant`? | Notes |
+|---|:---:|---|
+| `encrypt`, `decrypt`, `sign`, `mac`, … | Yes | All standard operations |
+| `get` | Yes | Also implies `export` (equivalence) |
+| `export` | Yes | Also implies `get` (equivalence) |
+| `get_attributes`, `locate` | Yes | |
+| `create` | Yes (admin to another admin) | Non-admin cannot receive `create` on HSM |
+| `destroy` | **No** | Blocked — admin-only, cannot be delegated |
+| `revoke` | **No** | Blocked — HSM objects do not use KMIP lifecycle states |
+
+!!! warning
+    Unlike regular KMS keys, **granting `Get` on an HSM key does not imply `encrypt`,
+    `decrypt`, `sign`, or any other operation**. Each operation must be granted
+    individually.
+
+See the [HSM operations](../hsm_support/hsm_operations.md) page for HSM admin
+configuration details.
 
 ## Authentication vs. authorization
 

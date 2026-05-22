@@ -84,21 +84,45 @@ echo "directories.tokendir = ${SOFTHSM2_HOME}/tokens" >"${SOFTHSM2_CONF}"
 
 softhsm2-util --version
 
-INIT_OUT=$(softhsm2-util --init-token --free \
-    --label "ui_hsm_test_token" \
+# Helper: extract slot id from softhsm2-util --init-token output
+_extract_ui_slot_id() {
+  local init_out="$1" label="$2" slot_id
+  slot_id=$(echo "$init_out" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
+  if [ -z "${slot_id:-}" ]; then
+    slot_id=$(softhsm2-util --show-slots | awk -v lbl="$label" 'BEGIN{sid=""} /^Slot/ {sid=$2} /Token label/ && index($0,lbl) {print sid; exit}')
+  fi
+  echo "$slot_id"
+}
+
+# Initialise three independent SoftHSM2 tokens:
+#   Token 1 → legacy single-HSM config (hsm:) — backward-compat prefix "hsm"
+#   Token 2 → first [[hsm_instances]] entry — prefix "hsm::softhsm2"
+#   Token 3 → second [[hsm_instances]] entry — prefix "hsm::softhsm2_1"
+INIT_OUT_1=$(softhsm2-util --init-token --free \
+    --label "ui_hsm_test_token_1" \
+    --so-pin "${HSM_USER_PASSWORD}" \
+    --pin "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+INIT_OUT_2=$(softhsm2-util --init-token --free \
+    --label "ui_hsm_test_token_2" \
+    --so-pin "${HSM_USER_PASSWORD}" \
+    --pin "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+INIT_OUT_3=$(softhsm2-util --init-token --free \
+    --label "ui_hsm_test_token_3" \
     --so-pin "${HSM_USER_PASSWORD}" \
     --pin "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
 
-SOFTHSM2_HSM_SLOT_ID=$(echo "${INIT_OUT}" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
-if [ -z "${SOFTHSM2_HSM_SLOT_ID:-}" ]; then
-    SOFTHSM2_HSM_SLOT_ID=$(softhsm2-util --show-slots |
-        awk 'BEGIN{sid=""} /^Slot/ {sid=$2} /Token label/ && $0 ~ /ui_hsm_test_token/ {print sid; exit}')
-fi
-[ -n "${SOFTHSM2_HSM_SLOT_ID:-}" ] || {
-    echo "Error: Could not determine SoftHSM2 slot id." >&2
+SOFTHSM2_HSM_SLOT_ID=$(_extract_ui_slot_id "${INIT_OUT_1}" "ui_hsm_test_token_1")
+SOFTHSM2_HSM_SLOT_ID_2=$(_extract_ui_slot_id "${INIT_OUT_2}" "ui_hsm_test_token_2")
+SOFTHSM2_HSM_SLOT_ID_3=$(_extract_ui_slot_id "${INIT_OUT_3}" "ui_hsm_test_token_3")
+
+for _var in SOFTHSM2_HSM_SLOT_ID SOFTHSM2_HSM_SLOT_ID_2 SOFTHSM2_HSM_SLOT_ID_3; do
+  [ -n "${!_var:-}" ] || {
+    echo "Error: Could not determine SoftHSM2 slot id for ${_var}" >&2
     exit 1
-}
-echo "==> SoftHSM2 slot id: ${SOFTHSM2_HSM_SLOT_ID}"
+  }
+done
+
+echo "==> SoftHSM2 slot ids: ${SOFTHSM2_HSM_SLOT_ID} / ${SOFTHSM2_HSM_SLOT_ID_2} / ${SOFTHSM2_HSM_SLOT_ID_3}"
 
 # ── 1. Build WASM ────────────────────────────────────────────────────────────
 if [ "${VARIANT}" = "non-fips" ]; then
@@ -145,12 +169,12 @@ echo "==> Installing UI dependencies …"
 rm -rf "${UI_DIR}/node_modules"
 run_ui run_pnpm install --frozen-lockfile
 
-echo "==> Building UI (VITE_KMS_URL=http://127.0.0.1:9998, VITE_DEV_MODE=true) …"
+echo "==> Building UI (VITE_KMS_URL=https://127.0.0.1:9998, VITE_DEV_MODE=true) …"
 (cd "${UI_DIR}" && {
     chmod -R u+w dist >/dev/null 2>&1 || true
     rm -rf dist >/dev/null 2>&1 || true
 })
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="http://127.0.0.1:9998" VITE_DEV_MODE="true" pnpm run build:vite)
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES VITE_KMS_URL="https://127.0.0.1:9998" VITE_DEV_MODE="true" pnpm run build:vite)
 
 # ── 4. Install Playwright's Chromium browser ─────────────────────────────────
 echo "==> Installing Playwright Chromium browser …"
@@ -192,6 +216,14 @@ fi
 KMS_LOG="${SQLITE_DIR}/kms-server.log"
 KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 
+# ── mTLS certificate paths ───────────────────────────────────────────────────
+CERT_DIR="${REPO_ROOT}/test_data/certificates/client_server"
+SERVER_CERT="${CERT_DIR}/server/kmserver.acme.com.crt"
+SERVER_KEY="${CERT_DIR}/server/kmserver.acme.com.key"
+CLIENTS_CA_CERT="${CERT_DIR}/ca/ca.crt"
+OWNER_CERT="${CERT_DIR}/owner/owner.client.acme.com.crt"
+OWNER_KEY="${CERT_DIR}/owner/owner.client.acme.com.key"
+
 # Generate a TOML config file.
 # Using --config bypasses the default-path detection that errors when
 # /etc/cosmian/kms.toml exists alongside extra CLI arguments (macOS dev
@@ -199,12 +231,32 @@ KMS_CONF_FILE="${SQLITE_DIR}/kms.toml"
 # served by the Vite preview process on port 5173; omitting this flag also
 # avoids a known actix-files interaction that causes the server to exit
 # immediately after worker initialization on Linux CI.
+#
+# mTLS is enabled via [tls].clients_ca_cert_file. The owner CN
+# (owner.client@acme.com) is configured as HSM admin; the user CN
+# (user.client@acme.com) has no HSM admin privileges.
 cat >"${KMS_CONF_FILE}" <<HSMEOF
-default_username = "admin"
 vendor_identification = "test_vendor"
+
+# Legacy single-HSM config for slot 1 (backward-compat UID prefix "hsm").
 hsm_model = "softhsm2"
-hsm_admin = ["admin"]
+hsm_admin = ["owner.client@acme.com"]
 hsm_slot = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+# Additional SoftHSM2 instances using the new [[hsm_instances]] config.
+# Slot 2 → prefix "hsm::softhsm2"
+[[hsm_instances]]
+hsm_model = "softhsm2"
+hsm_admin = ["owner.client@acme.com"]
+hsm_slot = [${SOFTHSM2_HSM_SLOT_ID_2}]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+# Slot 3 → prefix "hsm::softhsm2_1" (second softhsm2 instance → disambiguated).
+[[hsm_instances]]
+hsm_model = "softhsm2"
+hsm_admin = ["owner.client@acme.com"]
+hsm_slot = [${SOFTHSM2_HSM_SLOT_ID_3}]
 hsm_password = ["${HSM_USER_PASSWORD}"]
 
 [db]
@@ -216,6 +268,11 @@ clear_database = true
 hostname = "127.0.0.1"
 port = 9998
 cors_allowed_origins = ["http://127.0.0.1:5173"]
+
+[tls]
+tls_cert_file = "${SERVER_CERT}"
+tls_key_file = "${SERVER_KEY}"
+clients_ca_cert_file = "${CLIENTS_CA_CERT}"
 HSMEOF
 
 echo "==> Starting KMS server with SoftHSM2 (port 9998) …"
@@ -225,30 +282,80 @@ env \
     DYLD_LIBRARY_PATH="${_DYLD}" \
     SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
     SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-    RUST_LOG="cosmian_kms_server=info,cosmian_kms_server_database=info" \
+    RUST_LOG="cosmian_kms_server=debug,cosmian_kms_server_database=debug,softhsm2_pkcs11_loader=debug" \
     "${kms_bin}" \
     --config "${KMS_CONF_FILE}" \
     >"${KMS_LOG}" 2>&1 &
 KMS_PID=$!
 
-echo "==> Waiting for KMS to be ready …"
-kms_wait_ready "http://127.0.0.1:9998/kmip/2_1" "${KMS_PID}" "${KMS_LOG}" 300
+# Wait for KMS with mTLS — kms_wait_ready uses plain curl, so we use our own
+# loop that passes --insecure and the owner client certificate.
+echo "==> Waiting for KMS to be ready (mTLS) …"
+for _i in $(seq 1 300); do
+    if env -u LD_PRELOAD -u LD_LIBRARY_PATH \
+        curl -sS --max-time 2 --insecure \
+        --cert "${OWNER_CERT}" --key "${OWNER_KEY}" \
+        -o /dev/null -w "%{http_code}" \
+        -X POST -H "Content-Type: application/json" -d '{}' \
+        "https://127.0.0.1:9998/kmip/2_1" 2>/dev/null | grep -Eq '^[0-9]{3}$'; then
+        echo "    KMS ready after ${_i}s"
+        break
+    fi
+    if [ "${_i}" -eq 300 ]; then
+        echo "ERROR: KMS server did not start in 300 s; log:" >&2
+        cat "${KMS_LOG}" >&2
+        exit 1
+    fi
+    if ! kill -0 "${KMS_PID}" 2>/dev/null; then
+        echo "ERROR: KMS server process exited early; log:" >&2
+        cat "${KMS_LOG}" >&2
+        exit 1
+    fi
+    sleep 1
+done
 
 # ── 6. Pre-create test keys ─────────────────────────────────────────────────
 TS="$(date +%s)"
-KMS_BASE_ARGS=(--url "http://127.0.0.1:9998")
 
-echo "==> Creating 2 HSM AES-256 keys (slot ${SOFTHSM2_HSM_SLOT_ID}) …"
+# Create a ckms config file for mTLS connections (owner cert).
+# Use PEM certs (not PKCS#12) because PKCS12KDF is unavailable in FIPS mode.
+CKMS_CONF_FILE="${SQLITE_DIR}/ckms.toml"
+cat >"${CKMS_CONF_FILE}" <<CKMSEOF
+print_json = false
+
+[http_config]
+server_url = "https://127.0.0.1:9998"
+accept_invalid_certs = true
+tls_client_pem_cert_path = "${OWNER_CERT}"
+tls_client_pem_key_path = "${OWNER_KEY}"
+CKMSEOF
+export CKMS_CONF="${CKMS_CONF_FILE}"
+
+echo "==> Creating 3 HSM AES-256 keys (one per SoftHSM2 slot) …"
 # Note: HSM keys do not support tags (the HsmStore silently ignores them).
-env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-    "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
-    --algorithm aes --number-of-bits 256 \
-    "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes1_${TS}"
 
-env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
-    "${ckms_bin}" "${KMS_BASE_ARGS[@]}" sym keys create \
-    --algorithm aes --number-of-bits 256 \
-    "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes2_${TS}"
+_create_hsm_key() {
+    local uid="$1"
+    if ! env PATH="${PATH}" SOFTHSM2_CONF="${SOFTHSM2_CONF}" CKMS_CONF="${CKMS_CONF_FILE}" \
+        "${ckms_bin}" sym keys create \
+        --algorithm aes --number-of-bits 256 \
+        "${uid}" 2>&1; then
+        echo "ERROR: HSM key creation failed for UID: ${uid}" >&2
+        echo "--- KMS server log (last 50 lines) ---" >&2
+        tail -50 "${KMS_LOG}" >&2 || true
+        echo "--- End KMS server log ---" >&2
+        return 1
+    fi
+}
+
+# Slot 1 — legacy prefix "hsm"
+_create_hsm_key "hsm::${SOFTHSM2_HSM_SLOT_ID}::pw_locate_aes1_${TS}"
+
+# Slot 2 — new prefix "hsm::softhsm2"
+_create_hsm_key "hsm::softhsm2::${SOFTHSM2_HSM_SLOT_ID_2}::pw_locate_aes2_${TS}"
+
+# Slot 3 — new prefix "hsm::softhsm2_1" (second softhsm2 instance)
+_create_hsm_key "hsm::softhsm2_1::${SOFTHSM2_HSM_SLOT_ID_3}::pw_locate_aes3_${TS}"
 
 echo "==> HSM test keys created."
 
@@ -292,7 +399,12 @@ PW_ENV=(
     CI=true
     PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173"
     PLAYWRIGHT_WORKERS="${PLAYWRIGHT_WORKERS:-10}"
-    PLAYWRIGHT_HSM_KEY_COUNT=2
+    PLAYWRIGHT_HSM_KEY_COUNT=3
+    PLAYWRIGHT_HSM_SLOT_ID_1="${SOFTHSM2_HSM_SLOT_ID}"
+    PLAYWRIGHT_HSM_SLOT_ID_2="${SOFTHSM2_HSM_SLOT_ID_2}"
+    PLAYWRIGHT_HSM_SLOT_ID_3="${SOFTHSM2_HSM_SLOT_ID_3}"
+    PLAYWRIGHT_CERT_DIR="${CERT_DIR}"
+    PLAYWRIGHT_KMS_URL="https://127.0.0.1:9998"
 )
 if [ "${VARIANT}" = "fips" ]; then
     PW_ENV+=(PLAYWRIGHT_FIPS_MODE=true)
@@ -301,8 +413,8 @@ fi
 (cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES "${PW_ENV[@]}" pnpm run test:e2e) || TEST_EXIT=$?
 
 # ── 9. Report server errors ─────────────────────────────────────────────────
-SERVER_ERRORS=$(grep -c ' ERROR ' "${KMS_LOG}" 2>/dev/null || true)
-SERVER_WARNS=$(grep -c ' WARN ' "${KMS_LOG}" 2>/dev/null || true)
+SERVER_ERRORS=$(grep -c ' ERROR ' "${KMS_LOG}" 2>/dev/null) || SERVER_ERRORS=0
+SERVER_WARNS=$(grep -c ' WARN ' "${KMS_LOG}" 2>/dev/null) || SERVER_WARNS=0
 
 if [ "${SERVER_ERRORS}" -gt 0 ] || [ "${SERVER_WARNS}" -gt 0 ]; then
     echo ""

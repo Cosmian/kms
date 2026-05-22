@@ -46,6 +46,8 @@ use crate::{
 #[cfg(feature = "non-fips")]
 mod ec_dek;
 mod issues;
+mod multi_hsm;
+mod permissions;
 mod rsa_dek;
 mod search;
 mod secret_data_dek;
@@ -96,6 +98,9 @@ async fn test_hsm_all() {
     Box::pin(issues::test_hsm_locate_name_filter_does_not_leak_kek())
         .await
         .unwrap();
+
+    info!("HSM: permissions (32 scenarios)");
+    Box::pin(permissions::test_hsm_permissions()).await.unwrap();
 }
 
 fn hsm_clap_config(owner: &str, kek_id: Option<Uuid>) -> KResult<ClapConfig> {
@@ -149,13 +154,16 @@ async fn create_kek(kek_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
 
 async fn create_sym_key(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<()> {
     // create the key encryption key
+    // sensitive = false so that export-based tests can retrieve the key material;
+    // HSM tests that specifically exercise non-extractable keys create their own
+    // sensitive key directly.
     let create_request = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
         Some(UniqueIdentifier::TextString(key_uid.to_owned())),
         256,
         CryptographicAlgorithm::AES,
         EMPTY_TAGS,
-        true,
+        false,
         None,
     )?;
     let response =

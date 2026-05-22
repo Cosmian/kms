@@ -58,7 +58,8 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
@@ -1039,6 +1040,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(get_server_info)
+            .service(get_hsm_status)
+            .service(access::get_current_user)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)
             .service(access::list_accesses)

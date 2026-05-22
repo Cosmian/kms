@@ -422,6 +422,59 @@ const KMS_API_URL =
     (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.PLAYWRIGHT_KMS_URL ?? "http://127.0.0.1:9998";
 
 /**
+ * mTLS-aware fetch for direct KMS API calls from test helpers.
+ * When PLAYWRIGHT_CERT_DIR is set (CI with mTLS), uses the owner client
+ * certificate and skips server cert verification via node:https.
+ * Falls back to plain fetch for HTTP endpoints.
+ */
+const _certDir = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.PLAYWRIGHT_CERT_DIR ?? "";
+
+async function kmsFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+    if (!_certDir || !KMS_API_URL.startsWith("https://")) {
+        return fetch(url, init);
+    }
+    // Use node:https for mTLS support (cert + key + rejectUnauthorized).
+    const https = await import("node:https");
+    const ownerCert = fs.readFileSync(path.join(_certDir, "owner/owner.client.acme.com.crt"));
+    const ownerKey = fs.readFileSync(path.join(_certDir, "owner/owner.client.acme.com.key"));
+    const parsedUrl = new URL(typeof url === "string" ? url : url instanceof URL ? url.href : url.url);
+    const body = init?.body ? String(init.body) : undefined;
+    const headers = init?.headers as Record<string, string> | undefined;
+
+    return new Promise<Response>((resolve, reject) => {
+        const req = https.request(
+            {
+                hostname: parsedUrl.hostname,
+                port: parsedUrl.port || 443,
+                path: parsedUrl.pathname + parsedUrl.search,
+                method: init?.method ?? "GET",
+                headers,
+                cert: ownerCert,
+                key: ownerKey,
+                rejectUnauthorized: false,
+            },
+            (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                res.on("end", () => {
+                    const bodyText = Buffer.concat(chunks).toString("utf-8");
+                    resolve(
+                        new Response(bodyText, {
+                            status: res.statusCode ?? 500,
+                            statusText: res.statusMessage ?? "",
+                            headers: res.headers as Record<string, string>,
+                        }),
+                    );
+                });
+            },
+        );
+        req.on("error", reject);
+        if (body) req.write(body);
+        req.end();
+    });
+}
+
+/**
  * Create an HMAC key via direct KMIP API call (bypasses the UI since there is
  * no dedicated "create HMAC key" UI page).
  *
@@ -456,7 +509,7 @@ export async function createHmacKey(_page: Page, algorithm = "HMACSHA256"): Prom
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         let response: Response;
         try {
-            response = await fetch(`${KMS_API_URL}/kmip/2_1`, {
+            response = await kmsFetch(`${KMS_API_URL}/kmip/2_1`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(request),
@@ -518,7 +571,7 @@ export async function createDerivableSymKey(): Promise<string> {
             },
         ],
     };
-    const response = await fetch(`${KMS_API_URL}/kmip/2_1`, {
+    const response = await kmsFetch(`${KMS_API_URL}/kmip/2_1`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),

@@ -403,6 +403,7 @@ pub(crate) async fn get_attributes(
                     // - Transparent RSA formats -> PKCS1
                     // - TransparentSymmetricKey -> Raw (default for symmetric keys)
                     // - SymmetricKey with None -> default to Raw
+                    // - PrivateKey/PublicKey with None -> default to PKCS1
                     res.key_format_type = match attributes.key_format_type {
                         Some(
                             KeyFormatType::TransparentRSAPrivateKey
@@ -411,6 +412,9 @@ pub(crate) async fn get_attributes(
                         Some(KeyFormatType::TransparentSymmetricKey) => Some(KeyFormatType::Raw),
                         None => match owm.object() {
                             Object::SymmetricKey(_) => Some(KeyFormatType::Raw),
+                            Object::PrivateKey(_) | Object::PublicKey(_) => {
+                                Some(KeyFormatType::PKCS1)
+                            }
                             _ => None,
                         },
                         other => other,
@@ -451,7 +455,9 @@ pub(crate) async fn get_attributes(
                     attributes.object_group.clone_into(&mut res.object_group);
                 }
                 Tag::ObjectType => {
-                    res.object_type = attributes.object_type;
+                    res.object_type = attributes
+                        .object_type
+                        .or_else(|| Some(owm.object().object_type()));
                 }
                 Tag::OriginalCreationDate => {
                     res.original_creation_date = attributes.original_creation_date;

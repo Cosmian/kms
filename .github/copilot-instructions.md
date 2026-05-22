@@ -573,3 +573,19 @@ The integrations section is the most commonly extended area. Keep these four vie
 **documentation/docs/index.md** should not be updated with new integrations; it is a high-level overview and the README is the main entry point for users to discover integrations.
 
 **Never** put an integration in a different category in README than it appears in mkdocs.yml, or leave it out of the README table if it has a mkdocs page.
+
+---
+
+## 16. Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues on `Cosmian/kms` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.

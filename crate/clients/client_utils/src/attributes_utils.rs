@@ -350,6 +350,15 @@ pub fn parse_selected_attributes_flatten(
     attributes: &Attributes,
     selected_attributes: &[&str],
 ) -> Result<HashMap<String, Value>, UtilsError> {
+    /// Insert a serializable value into the results map if it is `Some`.
+    macro_rules! insert_if_some {
+        ($results:expr, $key:expr, $opt:expr) => {
+            if let Some(v) = $opt {
+                $results.insert($key.to_owned(), serde_json::to_value(v).unwrap_or_default());
+            }
+        };
+    }
+
     let mut results: HashMap<String, Value> = HashMap::new();
     if selected_attributes.is_empty() {
         let values = serde_json::to_value(attributes)?;
@@ -367,118 +376,79 @@ pub fn parse_selected_attributes_flatten(
             "activation_date" => {
                 if let Some(v) = attributes.activation_date.as_ref() {
                     results.insert(
-                        selected_attribute_name.to_owned().clone(),
+                        selected_attribute_name.to_owned(),
                         serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
                     );
                 }
             }
-            "cryptographic_algorithm" => {
-                if let Some(v) = attributes.cryptographic_algorithm.as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "cryptographic_length" => {
-                if let Some(v) = attributes.cryptographic_length.as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "key_usage" => {
-                if let Some(v) = attributes.cryptographic_usage_mask.as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "key_format_type" => {
-                if let Some(v) = attributes.key_format_type.as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "object_type" => {
-                if let Some(v) = attributes.object_type.as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "vendor_attributes" => {
-                if let Some(vendor_attributes) = attributes.vendor_attributes.as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(vendor_attributes).unwrap_or_default(),
-                    );
-                }
-            }
-            "public_key_id" => {
-                if let Some(v) = attributes.get_link(LinkType::PublicKeyLink).as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "private_key_id" => {
-                if let Some(v) = attributes.get_link(LinkType::PrivateKeyLink).as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "certificate_id" => {
-                if let Some(v) = attributes.get_link(LinkType::CertificateLink).as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "pkcs12_certificate_id" => {
-                if let Some(v) = attributes
+            "cryptographic_algorithm" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.cryptographic_algorithm.as_ref()
+            ),
+            "cryptographic_length" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.cryptographic_length.as_ref()
+            ),
+            "key_usage" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.cryptographic_usage_mask.as_ref()
+            ),
+            "key_format_type" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.key_format_type.as_ref()
+            ),
+            "object_type" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.object_type.as_ref()
+            ),
+            "state" => insert_if_some!(results, selected_attribute_name, attributes.state.as_ref()),
+            "vendor_attributes" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.vendor_attributes.as_ref()
+            ),
+            "public_key_id" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.get_link(LinkType::PublicKeyLink).as_ref()
+            ),
+            "private_key_id" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.get_link(LinkType::PrivateKeyLink).as_ref()
+            ),
+            "certificate_id" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.get_link(LinkType::CertificateLink).as_ref()
+            ),
+            "pkcs12_certificate_id" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes
                     .get_link(LinkType::PKCS12CertificateLink)
                     .as_ref()
-                {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "pkcs12_password_certificate" => {
-                if let Some(v) = attributes.get_link(LinkType::PKCS12PasswordLink).as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "parent_id" => {
-                if let Some(v) = attributes.get_link(LinkType::ParentLink).as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
-            "child_id" => {
-                if let Some(v) = attributes.get_link(LinkType::ChildLink).as_ref() {
-                    results.insert(
-                        selected_attribute_name.to_owned(),
-                        serde_json::to_value(v).unwrap_or_default(),
-                    );
-                }
-            }
+            ),
+            "pkcs12_password_certificate" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.get_link(LinkType::PKCS12PasswordLink).as_ref()
+            ),
+            "parent_id" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.get_link(LinkType::ParentLink).as_ref()
+            ),
+            "child_id" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.get_link(LinkType::ChildLink).as_ref()
+            ),
             _x => {}
         }
     }
