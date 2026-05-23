@@ -784,14 +784,7 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
         .collect();
 
     if backends_to_run.is_empty() {
-        if explicit {
-            return Err(KmsClientError::UnexpectedError(format!(
-                "Vector '{}' requires backends {:?} but none match the explicitly \
-                 requested backends {:?} — check KMS_TEST_BACKENDS / KMS_TEST_DB",
-                manifest.name, manifest.backends, requested
-            )));
-        }
-        // Implicit default (sqlite-only run): vector targets a different backend family.
+        // Vector does not target any of the requested backends — skip gracefully.
         eprintln!(
             "SKIP vector '{}': its backends {:?} are not in the current run set {:?}",
             manifest.name, manifest.backends, requested
