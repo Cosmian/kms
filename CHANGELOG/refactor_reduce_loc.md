@@ -19,3 +19,19 @@
 - **Auth guard**: extract `user_can_perform_operation()` helper into `state_utils.rs`, deduplicating authorization checks in `destroy.rs` and `revoke.rs`
 - **PQC dispatch**: extract `resolve_key_algorithm()` and `is_pqc_signature_algorithm()` helpers into `state_utils.rs`, replacing duplicated 15-variant PQC match blocks in `sign.rs` and `signature_verify.rs`
 - **MAC modernization**: rewrite `mac.rs` with Phase 2 key selection, lifecycle gating, and extracted `hmac_algorithm_to_hashing`/`infer_hmac_hashing_algorithm` helpers
+
+## Security
+
+- **KEK wrapping bypass via attribute operations**: fix a security bug where `ModifyAttribute`, `SetAttribute`, `AddAttribute`, and `Activate` would auto-unwrap HSM-wrapped keys via `retrieve_object_for_operation()` and then persist the unwrapped key material back to the database, defeating KEK encryption at rest. The fix skips auto-unwrapping for `GetAttributes`-type operations since they only need object metadata, not key material ([#960](https://github.com/Cosmian/kms/issues/960))
+
+## Bug Fixes
+
+- **Synology DSM + HSM-wrapped keys**: add `default_unwrap_type = ["SecretData", "SymmetricKey"]` to the HSM KEK vector test server, reproducing the exact configuration from issue #960 where DSM fails to retrieve keys wrapped by a hardware KEK ([#960](https://github.com/Cosmian/kms/issues/960))
+- **Logging repetition in KMIP routes**: remove `span.enter()` calls from async route handlers in `routes/kmip.rs` that caused span names to repeat 70+ times in trace output when concurrent requests shared worker threads; per-operation instrumentation already exists in `core/kms/kmip.rs`
+
+## Testing
+
+- **Synology DSM vectors**: add GetAttributeList, GetAttributes, and Get steps to the Synology DSM integration vector to exercise the full key retrieval flow after Activate (requires `server_type = "hsm_kek"` with `HSM_SLOT_ID`)
+- **Synology DSM Rust test**: extend `test_synology_dsm_volume_lifecycle` with GetAttributeList, GetAttributes, and Get operations matching the post-Activate DSM sequence
+
+Closes #960

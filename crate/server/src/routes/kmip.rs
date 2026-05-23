@@ -23,7 +23,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, error, info, trace, warn};
 use serde_json::Value;
 use time::OffsetDateTime;
-use tracing::span;
+use tracing::Instrument;
 
 use crate::{
     core::{
@@ -153,15 +153,15 @@ pub(crate) async fn kmip_2_1_json(
     body: String,
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<TTLV>> {
-    let span = tracing::span!(tracing::Level::ERROR, "kmip_2_1");
-    let _enter = span.enter();
-
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
+    let span = tracing::info_span!("kmip_2_1", user = user.as_str(), tag = ttlv.tag.as_str());
+    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
+        .instrument(span)
+        .await?;
 
     Ok(Json(ttlv))
 }
@@ -203,9 +203,6 @@ pub(crate) async fn kmip(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> KResult<HttpResponse> {
-    let span = span!(tracing::Level::TRACE, "kmip");
-    let _guard = span.enter();
-
     let content_type = req_http
         .headers()
         .get(CONTENT_TYPE)
@@ -227,9 +224,6 @@ pub(crate) async fn kmip_json(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let span = span!(tracing::Level::TRACE, "json");
-    let _guard = span.enter();
-
     let json = Box::pin(kmip_json_inner(req_http, body, kms))
         .await
         .unwrap_or_else(|e| {
@@ -243,9 +237,6 @@ pub(crate) async fn kmip_json(
 
 /// Handle KMIP requests with JSON content type
 async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>) -> KResult<TTLV> {
-    let span = tracing::span!(tracing::Level::DEBUG, "kmip_json");
-    let _enter = span.enter();
-
     // Recover the user from the request
     let user = kms.get_user(&req_http);
 
@@ -265,7 +256,10 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     );
 
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
-        Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor)).await
+        let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
+        Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
+            .instrument(span)
+            .await
     } else {
         Err(KmsError::InvalidRequest(
             "The /kmip endpoint only accepts KMIP 2.1 or 1.4 requests".to_owned(),
@@ -279,12 +273,6 @@ pub(crate) async fn kmip_binary(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let span = span!(tracing::Level::TRACE, "binary");
-    let _guard = span.enter();
-
-    let span = tracing::span!(tracing::Level::ERROR, "kmip_binary");
-    let _enter = span.enter();
-
     // Recover the user from the request
     let user = kms.get_user(&req_http);
 
@@ -303,7 +291,9 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
         error!(target: "kmip", "Failed to find KMIP version");
         return vec![];
     };
+    let span = tracing::info_span!("kmip_binary", user = user);
     Box::pin(handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms))
+        .instrument(span)
         .await
         .unwrap_or_else(|e| {
             let response_message = invalid_response_message(major, minor, e.to_string());

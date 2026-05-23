@@ -581,6 +581,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     config.workspace.root_data_path = workspace_dir.join("workspace");
     config.workspace.tmp_path = workspace_dir.join("tmp");
     config.key_encryption_key = Some(kek_id);
+    config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
     start_server_from_config(config, &config_path).await
 }
 

@@ -139,13 +139,21 @@ pub(crate) async fn retrieve_object_for_operation(
 
             // Automatic object unwrapping (if object type is not filtered)
             // Skip unwrapping for destroyed objects as they have empty key material
-            if let Some(defaults) = &kms.params.default_unwrap_types {
-                if defaults.contains(&owm.object().object_type())
-                    && state != State::Destroyed
-                    && state != State::Destroyed_Compromised
-                {
-                    let unwrapped_object = kms.get_unwrapped(owm.id(), owm.object(), user).await?;
-                    owm.set_object(unwrapped_object);
+            // Skip unwrapping for attribute-only operations (GetAttributes) to prevent
+            // persisting the unwrapped key back to the database when the caller
+            // later calls update_object (e.g. ModifyAttribute, SetAttribute, Activate).
+            // Operations that need the key material (Get, Export) handle unwrapping
+            // themselves in export_get.rs.
+            if operation_type != KmipOperation::GetAttributes {
+                if let Some(defaults) = &kms.params.default_unwrap_types {
+                    if defaults.contains(&owm.object().object_type())
+                        && state != State::Destroyed
+                        && state != State::Destroyed_Compromised
+                    {
+                        let unwrapped_object =
+                            kms.get_unwrapped(owm.id(), owm.object(), user).await?;
+                        owm.set_object(unwrapped_object);
+                    }
                 }
             }
 
