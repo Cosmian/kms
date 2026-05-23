@@ -16,30 +16,30 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 print_header() {
-    echo -e "${BLUE}================================${NC}"
-    echo -e "${BLUE}  $*  ${NC}"
-    echo -e "${BLUE}================================${NC}"
-    echo
+  echo -e "${BLUE}================================${NC}"
+  echo -e "${BLUE}  $*  ${NC}"
+  echo -e "${BLUE}================================${NC}"
+  echo
 }
 
 print_status() {
-    echo -e "${GREEN}[INFO]${NC} $*"
+  echo -e "${GREEN}[INFO]${NC} $*"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARN]${NC} $*"
+  echo -e "${YELLOW}[WARN]${NC} $*"
 }
 
 # print_error exits with status 1 after printing.
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $*" >&2
-    exit 1
+  echo -e "${RED}[ERROR]${NC} $*" >&2
+  exit 1
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $*"
+  echo -e "${GREEN}[SUCCESS]${NC} $*"
 }
 
 print_info() {
-    echo -e "${BLUE}[i]${NC} $*"
+  echo -e "${BLUE}[i]${NC} $*"
 }

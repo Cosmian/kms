@@ -245,6 +245,6 @@ Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 Notes:
 
 - GetAttributes returns a union of metadata attributes and those embedded in KeyBlock structures.
-- "Vendor Attributes" are available via the Cosmian vendor namespace and are accessible via GetAttributes.
+- "Vendor Attributes" are available via the Eviden vendor namespace and are accessible via GetAttributes.
 - A ✅ indicates the attribute is used or updated by at least one KMIP operation implementation in `crate/server/src/core/operations`, including attribute handlers (Add/Delete/Set/Get Attribute).
 - Most attributes are present across all KMIP versions with some additions in newer versions.

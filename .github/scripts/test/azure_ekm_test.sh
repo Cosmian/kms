@@ -28,9 +28,12 @@ REQCTX='{"request_id":"test-001","correlation_id":"test-corr-001","pool_name":"t
 KMS_PID=""
 
 cleanup() {
-    [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; wait "${KMS_PID}" 2>/dev/null || true; }
-    [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
-    [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
+  [ -n "${KMS_PID:-}" ] && {
+    kill "${KMS_PID}" 2>/dev/null || true
+    wait "${KMS_PID}" 2>/dev/null || true
+  }
+  [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
+  [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
 }
 trap cleanup EXIT
 
@@ -75,13 +78,13 @@ cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
 
 # shellcheck disable=SC2068
 cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
-    --config "${KMS_CONF_PATH}" \
-    &
+  --config "${KMS_CONF_PATH}" \
+  &
 KMS_PID=$!
 
 if ! _wait_for_port localhost "${KMS_PORT}" 60; then
-    echo "ERROR: KMS server failed to start or bind to port ${KMS_PORT}"
-    exit 1
+  echo "ERROR: KMS server failed to start or bind to port ${KMS_PORT}"
+  exit 1
 fi
 
 # 2. Create an AES-256 key
@@ -135,28 +138,28 @@ create_aes_key() {
   }'
 }
 
-create_aes_key "${AES_KEY_ID}" > /dev/null
-activate_key "${AES_KEY_ID}" > /dev/null
+create_aes_key "${AES_KEY_ID}" >/dev/null
+activate_key "${AES_KEY_ID}" >/dev/null
 
 # 3. EKM /info endpoint
 curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/info?api-version=0.1-preview" \
-    -H "Content-Type: application/json" \
-    -d "{\"request_context\":${REQCTX}}" > /dev/null
+  -H "Content-Type: application/json" \
+  -d "{\"request_context\":${REQCTX}}" >/dev/null
 
 # 4. EKM /metadata — AES key
 curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/${AES_KEY_ID}/metadata?api-version=0.1-preview" \
-    -H "Content-Type: application/json" \
-    -d "{\"request_context\":${REQCTX}}" > /dev/null
+  -H "Content-Type: application/json" \
+  -d "{\"request_context\":${REQCTX}}" >/dev/null
 
 # 5. Sad path: /metadata for a non-existent key must return 404
 echo "==> EKM: Sad path /metadata (non-existent key)"
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/does-not-exist/metadata?api-version=0.1-preview" \
-    -H "Content-Type: application/json" \
-    -d "{\"request_context\":${REQCTX}}")
+  -H "Content-Type: application/json" \
+  -d "{\"request_context\":${REQCTX}}")
 
 if [ "${HTTP_STATUS}" != "404" ]; then
-    echo "ERROR: Expected HTTP 404 for non-existent key, but got ${HTTP_STATUS}"
-    exit 1
+  echo "ERROR: Expected HTTP 404 for non-existent key, but got ${HTTP_STATUS}"
+  exit 1
 fi
 echo "==> Sad path successfully returned 404"
 
@@ -168,22 +171,22 @@ PLAINTEXT_B64=$(echo -n "${PLAINTEXT}" | base64 | tr -d '=' | tr '/+' '_-')
 
 # Wrap
 WRAP_RESPONSE=$(curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/${AES_KEY_ID}/wrapkey?api-version=0.1-preview" \
-    -H "Content-Type: application/json" \
-    -d "{\"request_context\":${REQCTX}, \"alg\":\"A256KW\", \"value\":\"${PLAINTEXT_B64}\"}")
+  -H "Content-Type: application/json" \
+  -d "{\"request_context\":${REQCTX}, \"alg\":\"A256KW\", \"value\":\"${PLAINTEXT_B64}\"}")
 WRAPPED_B64=$(echo "${WRAP_RESPONSE}" | sed -E 's/.*"value":"([^"]+)".*/\1/')
 
 # Unwrap
 UNWRAP_RESPONSE=$(curl -sSf -X POST "${KMS_URL}/azureekm/${EKM_PREFIX}/${AES_KEY_ID}/unwrapkey?api-version=0.1-preview" \
-    -H "Content-Type: application/json" \
-    -d "{\"request_context\":${REQCTX}, \"alg\":\"A256KW\", \"value\":\"${WRAPPED_B64}\"}")
+  -H "Content-Type: application/json" \
+  -d "{\"request_context\":${REQCTX}, \"alg\":\"A256KW\", \"value\":\"${WRAPPED_B64}\"}")
 UNWRAPPED_B64=$(echo "${UNWRAP_RESPONSE}" | sed -E 's/.*"value":"([^"]+)".*/\1/')
 
 # Verify
 if [ "${PLAINTEXT_B64}" != "${UNWRAPPED_B64}" ]; then
-    echo "ERROR: Round trip wrap/unwrap failed!"
-    echo "Expected: ${PLAINTEXT_B64}"
-    echo "Got:      ${UNWRAPPED_B64}"
-    exit 1
+  echo "ERROR: Round trip wrap/unwrap failed!"
+  echo "Expected: ${PLAINTEXT_B64}"
+  echo "Got:      ${UNWRAPPED_B64}"
+  exit 1
 fi
 echo "==> Round trip wrap/unwrap OK."
 

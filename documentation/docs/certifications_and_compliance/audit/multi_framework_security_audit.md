@@ -2,7 +2,7 @@
 
 **Document type**: Security Audit Plan & Report
 **Frameworks**: NIST CSF 2.0 / SSDF (SP 800-218) · CIS Controls v8 · ISO/IEC 27034 · OSSTMM
-**Repository**: `Cosmian/kms`
+**Repository**: `Eviden/kms`
 **Workspace root**: `crate/` (Rust workspace) + `ui/` (React/TypeScript)
 **Audit script**: `.github/scripts/audit/multi_framework.sh` — run `bash .github/scripts/audit/multi_framework.sh` to reproduce all automated checks
 
@@ -300,8 +300,8 @@ bash .github/scripts/audit/audit.sh                    # run unified OWASP + mul
 | Role | Name | Date | Signature |
 |------|------|------|-----------|
 | Security Reviewer | GitHub Copilot (automated) | 2026-04-16 | — |
-| Lead Developer | Cosmian Engineering | — | Pending |
-| Security Officer | Cosmian Security | — | Pending |
+| Lead Developer | Eviden Engineering | — | Pending |
+| Security Officer | Eviden Security | — | Pending |
 
 **Overall status**: ✅ All automated checks pass — 8 findings identified and closed.
 

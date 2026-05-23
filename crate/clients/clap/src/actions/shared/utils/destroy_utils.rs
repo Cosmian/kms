@@ -43,7 +43,7 @@ pub(crate) async fn destroy(
     let destroy_response = kms_rest_client
         .destroy(destroy_query)
         .await
-        .with_context(|| format!("destroying the object {} failed", &uid))?;
+        .with_context(|| format!("destroying the object {uid} failed"))?;
 
     if uid == destroy_response.unique_identifier {
         let verb = if remove { "removed" } else { "destroyed" };

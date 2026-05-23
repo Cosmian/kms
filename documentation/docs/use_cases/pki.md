@@ -1,6 +1,6 @@
 # Public Key Infrastructure (PKI)
 
-The Cosmian KMS is a full-featured X.509 certificate authority capable of issuing,
+The Eviden KMS is a full-featured X.509 certificate authority capable of issuing,
 storing, validating, and revoking certificates for both **classical** and
 **post-quantum** algorithms.
 
@@ -79,7 +79,7 @@ Certificates and their associated private keys can be exported in:
 ### Key usage requirements
 
 !!! important "RFC-mandated key usage extensions"
-    The Cosmian KMS automatically adds the correct critical `keyUsage` extension
+    The Eviden KMS automatically adds the correct critical `keyUsage` extension
     to every PQC certificate it generates, per the applicable IETF standard.
 
 #### ML-DSA and SLH-DSA (signing algorithms)
@@ -217,7 +217,7 @@ openssl verify -CAfile ca-cert.pem leaf-cert.pem
 
 ## Using the Web UI
 
-The Cosmian KMS Web UI exposes certificate generation through the
+The Eviden KMS Web UI exposes certificate generation through the
 **Certificate Issuance and Renewal** page at `/ui/certificates/certs/certify`.
 
 - Select **"4. Generate New Keypair"**.

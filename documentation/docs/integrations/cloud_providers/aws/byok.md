@@ -40,7 +40,7 @@ Supported wrapping algorithms:
 - Either: [Eviden KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Eviden KMS UI](../../../configuration/ui.md) of your deployed KMS instance.
 - Any tool to convert base64 values to their binary counterparts (e.g. [openssl](https://openssl.org/), python, etc).
 
-## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI
+## Creating an AES key and importing it using the AWS CLI and the Eviden CLI
 
 ### 1. Create a KMS key with `EXTERNAL` origin
 
@@ -197,7 +197,7 @@ aws kms import-key-material \
 
 ### 6. Import the wrapped key material into AWS KMS
 
-If you have filled all the fields on the previous step, you can directly use the command that the Cosmian CLI automatically generated for you:
+If you have filled all the fields on the previous step, you can directly use the command that the Eviden CLI automatically generated for you:
 
 ```bash
 aws kms import-key-material \
@@ -218,7 +218,7 @@ aws kms import-key-material \
 
 Receiving this response means that the key material has been successfully imported into AWS KMS.
 
-## Creating an RSA key and importing it using the AWS CLI and the Cosmian CLI
+## Creating an RSA key and importing it using the AWS CLI and the Eviden CLI
 
 For this example, we will create an 2048 bits RSA key material, wrapped using a 4096 kek with RSAES_OAEP_SHA_256.
 
@@ -244,7 +244,7 @@ An in depth explanation of the import process can be found in the [AWS documenta
 
 ## Automated BYOK Scripts
 
-To facilitate testing and automating the BYOK flow, we provide ready-to-use Bash scripts that demonstrate the end-to-end process of creating an AWS KMS key, generating the corresponding key material using the Cosmian CLI, and performing the import/export procedures.
+To facilitate testing and automating the BYOK flow, we provide ready-to-use Bash scripts that demonstrate the end-to-end process of creating an AWS KMS key, generating the corresponding key material using the Eviden CLI, and performing the import/export procedures.
 
 The following scripts are available for download:
 

@@ -29,14 +29,14 @@ bash generate-demo-cert.sh
 echo "Starting services with docker compose..."
 docker compose up -d
 
-wait_for () {
+wait_for() {
   local name=$1
   local url=$2
   local timeout=${3:-60}
 
   echo "Waiting for $name..."
 
-  for ((i=0;i<timeout;i++)); do
+  for ((i = 0; i < timeout; i++)); do
     if curl -sf --insecure "$url" >/dev/null; then
       echo "$name is ready"
       return

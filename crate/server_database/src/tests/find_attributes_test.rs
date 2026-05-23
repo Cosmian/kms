@@ -71,9 +71,9 @@ pub(super) async fn find_attributes<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
         .ok_or_else(|| db_error!("Object not found"))?;
     assert_eq!(State::PreActive, obj.state());
     assert_eq!(&symmetric_key, obj.object());
-    assert!(
-        obj.object().attributes()?.link.as_ref().unwrap()[0].linked_object_identifier
-            == LinkedObjectIdentifier::TextString("foo".to_owned())
+    assert_eq!(
+        obj.object().attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
+        LinkedObjectIdentifier::TextString("foo".to_owned())
     );
     assert_eq!(
         obj.object().attributes()?.name.as_ref().unwrap()[0].name_value,

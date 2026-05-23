@@ -53,11 +53,16 @@ YELLOW=$'\e[33m'
 CYAN=$'\e[36m'
 BOLD=$'\e[1m'
 RESET=$'\e[0m'
-info()  { echo "${CYAN}${BOLD}[SENSOR]${RESET} $*"; }
-ok()    { echo "${GREEN}${BOLD}[  OK  ]${RESET} $*"; }
-warn()  { echo "${YELLOW}${BOLD}[ WARN ]${RESET} $*"; }
-fail()  { echo "${RED}${BOLD}[ FAIL ]${RESET} $*"; }
-banner(){ echo; echo "${BOLD}═════════════════════════════════════════════��════${RESET}"; echo "${BOLD}  $*${RESET}"; echo "${BOLD}══════════════════════════════════════════════════${RESET}"; }
+info() { echo "${CYAN}${BOLD}[SENSOR]${RESET} $*"; }
+ok() { echo "${GREEN}${BOLD}[  OK  ]${RESET} $*"; }
+warn() { echo "${YELLOW}${BOLD}[ WARN ]${RESET} $*"; }
+fail() { echo "${RED}${BOLD}[ FAIL ]${RESET} $*"; }
+banner() {
+  echo
+  echo "${BOLD}═════════════════════════════════════════════��════${RESET}"
+  echo "${BOLD}  $*${RESET}"
+  echo "${BOLD}══════════════════════════════════════════════════${RESET}"
+}
 
 usage() {
   cat <<EOF
@@ -79,16 +84,47 @@ EOF
 # ─── Argument parsing ─────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-  --repo-root)    REPO_ROOT="$2"; shift 2 ;;
-  --scan-dirs)    SCAN_DIRS="$2"; shift 2 ;;
-  --output-dir)   OUTPUT_DIR="$2"; shift 2 ;;
-  --docs-output)  DOCS_PAGE="$2"; shift 2 ;;
-  --project-name) PROJECT_NAME="$2"; shift 2 ;;
-  --server-url)   SERVER_URL="$2"; shift 2 ;;
-  --quick)        QUICK=true; shift ;;
-  --update-cbom)  UPDATE_CBOM=true; shift ;;
-  --help) usage; exit 0 ;;
-  *) echo "Unknown option: $1"; usage; exit 1 ;;
+    --repo-root)
+      REPO_ROOT="$2"
+      shift 2
+      ;;
+    --scan-dirs)
+      SCAN_DIRS="$2"
+      shift 2
+      ;;
+    --output-dir)
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --docs-output)
+      DOCS_PAGE="$2"
+      shift 2
+      ;;
+    --project-name)
+      PROJECT_NAME="$2"
+      shift 2
+      ;;
+    --server-url)
+      SERVER_URL="$2"
+      shift 2
+      ;;
+    --quick)
+      QUICK=true
+      shift
+      ;;
+    --update-cbom)
+      UPDATE_CBOM=true
+      shift
+      ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 1
+      ;;
   esac
 done
 
@@ -121,9 +157,9 @@ banner "1/5 — Source code cryptographic scan"
 FINDINGS_JSON="$OUTPUT_DIR/findings.json"
 set +e
 python3 "$SCRIPT_DIR/scan_source.py" \
-    --repo-root "$REPO_ROOT" \
-    --scan-dirs "$SCAN_DIRS" \
-    --output "$FINDINGS_JSON"
+  --repo-root "$REPO_ROOT" \
+  --scan-dirs "$SCAN_DIRS" \
+  --output "$FINDINGS_JSON"
 SCAN_EXIT=$?
 set -e
 if [[ "$SCAN_EXIT" -eq 0 ]]; then
@@ -140,21 +176,21 @@ fi
 # Pre-define AUDIT_JSON so set -u does not fire when --quick skips this step
 AUDIT_JSON=""
 if [[ "$QUICK" == false ]]; then
-banner "2/5 — CVE scan (cargo audit)"
+  banner "2/5 — CVE scan (cargo audit)"
 
-AUDIT_JSON="$OUTPUT_DIR/cargo_audit.json"
-AUDIT_ARGS="--json"
-set +e
-cargo audit $AUDIT_ARGS 2>/dev/null >"$AUDIT_JSON"
-AUDIT_EXIT=$?
-set -e
+  AUDIT_JSON="$OUTPUT_DIR/cargo_audit.json"
+  AUDIT_ARGS="--json"
+  set +e
+  cargo audit $AUDIT_ARGS 2>/dev/null >"$AUDIT_JSON"
+  AUDIT_EXIT=$?
+  set -e
 
-if [[ "$AUDIT_EXIT" -eq 0 ]]; then
-  ok "cargo audit — no advisories"
-else
-  CRITICAL_HIGH=0
-  if command -v python3 &>/dev/null && [[ -s "$AUDIT_JSON" ]]; then
-    CRITICAL_HIGH=$(python3 -c "
+  if [[ "$AUDIT_EXIT" -eq 0 ]]; then
+    ok "cargo audit — no advisories"
+  else
+    CRITICAL_HIGH=0
+    if command -v python3 &>/dev/null && [[ -s "$AUDIT_JSON" ]]; then
+      CRITICAL_HIGH=$(python3 -c "
 import json, sys
 try:
     d = json.load(open('$AUDIT_JSON'))
@@ -164,17 +200,17 @@ try:
 except Exception:
     print(0)
 " 2>/dev/null || echo 0)
+    fi
+    if [[ "$CRITICAL_HIGH" -gt 0 ]]; then
+      fail "cargo audit: $CRITICAL_HIGH CRITICAL/HIGH CVE(s). See $AUDIT_JSON"
+      OVERALL_EXIT=1
+    else
+      warn "cargo audit: advisories found (non-CRITICAL). See $AUDIT_JSON"
+    fi
   fi
-  if [[ "$CRITICAL_HIGH" -gt 0 ]]; then
-    fail "cargo audit: $CRITICAL_HIGH CRITICAL/HIGH CVE(s). See $AUDIT_JSON"
-    OVERALL_EXIT=1
-  else
-    warn "cargo audit: advisories found (non-CRITICAL). See $AUDIT_JSON"
-  fi
-fi
 
 # ─── Step 3: Risk scoring and Markdown report ────────────────────────────────
-fi  # end --quick skip: CVE scan
+fi # end --quick skip: CVE scan
 
 banner "3/5 — Risk scoring"
 
@@ -205,70 +241,70 @@ fi
 
 # ─── Step 4: Dependency-level CBOM (cdxgen, optional) ────────────────────────
 if [[ "$QUICK" == false ]]; then
-banner "4/5 — Dependency CBOM (cdxgen)"
+  banner "4/5 — Dependency CBOM (cdxgen)"
 
-DEP_CBOM="$OUTPUT_DIR/dep_cbom.json"
-if command -v cdxgen &>/dev/null; then
-  info "Running cdxgen for Cargo.lock → CycloneDX CBOM …"
-  if cdxgen \
+  DEP_CBOM="$OUTPUT_DIR/dep_cbom.json"
+  if command -v cdxgen &>/dev/null; then
+    info "Running cdxgen for Cargo.lock → CycloneDX CBOM …"
+    if cdxgen \
       --type rust \
       --output "$DEP_CBOM" \
       --spec-version 1.6 \
       "$REPO_ROOT" 2>/dev/null; then
-    ok "cdxgen CBOM → $DEP_CBOM"
-  else
-    warn "cdxgen exited non-zero. Partial CBOM may exist at $DEP_CBOM"
-  fi
-else
-  warn "cdxgen not installed — skipping dependency-level CBOM."
-  warn "Install: npm install -g @cyclonedx/cdxgen"
-  echo '{"bomFormat":"CycloneDX","specVersion":"1.6","components":[],"note":"cdxgen not available"}' >"$DEP_CBOM"
-fi
-
-# ─── Step 5: Live TLS scan (testssl.sh, optional) ────────────────────────────
-fi  # end --quick skip: cdxgen
-
-if [[ "$QUICK" == false ]]; then
-banner "5/5 — Live TLS scan"
-
-TLS_OUT="$OUTPUT_DIR/tls_report.txt"
-if [[ -n "$SERVER_URL" ]]; then
-  if command -v testssl.sh &>/dev/null || command -v testssl &>/dev/null; then
-    TESTSSL_CMD="testssl.sh"
-    command -v testssl &>/dev/null && TESTSSL_CMD="testssl"
-    info "Scanning TLS on $SERVER_URL …"
-    set +e
-    "$TESTSSL_CMD" --quiet --color 0 --logfile "$TLS_OUT" "$SERVER_URL" 2>&1
-    set -e
-    ok "TLS scan complete → $TLS_OUT"
-
-    # Flag critical TLS weaknesses
-    if grep -qiE "VULNERABLE|CRITICAL|SSLv[23]|TLSv1\.0|TLSv1\.1|RC4|DES|NULL" "$TLS_OUT" 2>/dev/null; then
-      warn "TLS scan flagged weaknesses. Review $TLS_OUT"
+      ok "cdxgen CBOM → $DEP_CBOM"
     else
-      ok "TLS scan — no critical weaknesses detected"
+      warn "cdxgen exited non-zero. Partial CBOM may exist at $DEP_CBOM"
     fi
   else
-    warn "testssl.sh not installed — skipping live TLS scan."
-    warn "Install: https://testssl.sh"
-    echo "(testssl.sh not available)" >"$TLS_OUT"
+    warn "cdxgen not installed — skipping dependency-level CBOM."
+    warn "Install: npm install -g @cyclonedx/cdxgen"
+    echo '{"bomFormat":"CycloneDX","specVersion":"1.6","components":[],"note":"cdxgen not available"}' >"$DEP_CBOM"
   fi
-elif command -v gitleaks &>/dev/null; then
-  # Use the step for gitleaks if no server URL given
-  info "Running gitleaks secret scan …"
-  GITLEAKS_OUT="$OUTPUT_DIR/secrets.txt"
-  if gitleaks detect --source "$REPO_ROOT" --no-git --report-path "$GITLEAKS_OUT" 2>&1; then
-    ok "gitleaks — no secrets detected"
-  else
-    fail "gitleaks found potential secrets. See $GITLEAKS_OUT"
-    OVERALL_EXIT=1
-  fi
-else
-  info "No --server-url provided and gitleaks not installed — skipping step 5."
-  echo "(step skipped)" >"$TLS_OUT"
-fi
 
-fi  # end --quick skip: TLS scan
+# ─── Step 5: Live TLS scan (testssl.sh, optional) ────────────────────────────
+fi # end --quick skip: cdxgen
+
+if [[ "$QUICK" == false ]]; then
+  banner "5/5 — Live TLS scan"
+
+  TLS_OUT="$OUTPUT_DIR/tls_report.txt"
+  if [[ -n "$SERVER_URL" ]]; then
+    if command -v testssl.sh &>/dev/null || command -v testssl &>/dev/null; then
+      TESTSSL_CMD="testssl.sh"
+      command -v testssl &>/dev/null && TESTSSL_CMD="testssl"
+      info "Scanning TLS on $SERVER_URL …"
+      set +e
+      "$TESTSSL_CMD" --quiet --color 0 --logfile "$TLS_OUT" "$SERVER_URL" 2>&1
+      set -e
+      ok "TLS scan complete → $TLS_OUT"
+
+      # Flag critical TLS weaknesses
+      if grep -qiE "VULNERABLE|CRITICAL|SSLv[23]|TLSv1\.0|TLSv1\.1|RC4|DES|NULL" "$TLS_OUT" 2>/dev/null; then
+        warn "TLS scan flagged weaknesses. Review $TLS_OUT"
+      else
+        ok "TLS scan — no critical weaknesses detected"
+      fi
+    else
+      warn "testssl.sh not installed — skipping live TLS scan."
+      warn "Install: https://testssl.sh"
+      echo "(testssl.sh not available)" >"$TLS_OUT"
+    fi
+  elif command -v gitleaks &>/dev/null; then
+    # Use the step for gitleaks if no server URL given
+    info "Running gitleaks secret scan …"
+    GITLEAKS_OUT="$OUTPUT_DIR/secrets.txt"
+    if gitleaks detect --source "$REPO_ROOT" --no-git --report-path "$GITLEAKS_OUT" 2>&1; then
+      ok "gitleaks — no secrets detected"
+    else
+      fail "gitleaks found potential secrets. See $GITLEAKS_OUT"
+      OVERALL_EXIT=1
+    fi
+  else
+    info "No --server-url provided and gitleaks not installed — skipping step 5."
+    echo "(step skipped)" >"$TLS_OUT"
+  fi
+
+fi # end --quick skip: TLS scan
 
 # ─── Update cbom/cbom.cdx.json timestamp ─────────────────────────────────────
 if $UPDATE_CBOM; then

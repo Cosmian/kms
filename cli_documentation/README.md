@@ -1,6 +1,6 @@
 # KMS Clients Documentation
 
-This directory contains the documentation for Cosmian KMS client tools:
+This directory contains the documentation for Eviden KMS client tools:
 
 - **Command Line Interface (CLI)** - `cosmian` / `ckms` command-line tool
 - **PKCS#11 Provider** - PKCS#11 module for HSM integration

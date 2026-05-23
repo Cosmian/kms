@@ -9,7 +9,7 @@ This document provides a comprehensive guide to testing and validating PyKMIP co
 | **Protocol** | KMIP 1.2 over TCP/TLS with mutual certificate authentication |
 | **Port** | 5696 (IANA-registered KMIP port) |
 | **Library** | PyKMIP (Python KMIP client library) |
-| **Cosmian KMS feature** | Requires non-FIPS build |
+| **Eviden KMS feature** | Requires non-FIPS build |
 
 [TOC]
 

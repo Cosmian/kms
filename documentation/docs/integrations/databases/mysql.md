@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document provides a comprehensive guide for integrating MySQL Enterprise with Cosmian Key Management System (KMS) using the `keyring_okv` plugin for Transparent Data Encryption (TDE). This lab demonstrates secure key management and data encryption at rest in a controlled environment.
+This document provides a comprehensive guide for integrating MySQL Enterprise with Eviden Key Management System (KMS) using the `keyring_okv` plugin for Transparent Data Encryption (TDE). This lab demonstrates secure key management and data encryption at rest in a controlled environment.
 
 ---
 
@@ -1076,15 +1076,15 @@ sudo -u mysql /usr/local/mysql/bin/mysqld \
 | Socket File | `/var/run/mysqld/mysqld.sock` |
 | KMIP Config | `/usr/local/mysql/mysql-keyring-okv/okvclient.ora` |
 | SSL Certificates | `/usr/local/mysql/mysql-keyring-okv/ssl/` |
-| Cosmian Config | `/path/to/kms.toml` |
-| Cosmian DB | `/path/to/cosmian-kms/sqlite-data/kms.db` |
+| Eviden Config | `/path/to/kms.toml` |
+| Eviden DB | `/path/to/cosmian-kms/sqlite-data/kms.db` |
 
 ### Default Credentials (Lab Only)
 
 | User | Password | Scope |
 |------|----------|-------|
 | root (MySQL) | Set during installation | Local MySQL |
-| admin (Cosmian) | Configured in kms.toml | KMS REST API |
+| admin (Eviden) | Configured in kms.toml | KMS REST API |
 
 **SECURITY NOTE:** Change all default credentials before production use.
 
@@ -1095,4 +1095,4 @@ sudo -u mysql /usr/local/mysql/bin/mysqld \
 For issues related to:
 
 - **MySQL Enterprise:** [Oracle MySQL Support](https://www.mysql.com/products/enterprise/)
-- **Eviden KMS:** [Cosmian GitHub Issues](https://github.com/Cosmian/kms/issues)
+- **Eviden KMS:** [Eviden GitHub Issues](https://github.com/Cosmian/kms/issues)

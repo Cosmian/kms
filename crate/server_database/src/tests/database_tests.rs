@@ -327,13 +327,13 @@ pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 
     let owm = db.retrieve(&uid).await?.expect("uid should be in the db");
     assert_eq!(State::Deactivated, owm.state());
-    assert!(
+    assert_eq!(
         owm.attributes()
             .link
             .as_ref()
             .ok_or_else(|| DbError::ServerError("links should not be empty".to_owned()))?[0]
-            .linked_object_identifier
-            == LinkedObjectIdentifier::TextString("foo".to_owned())
+            .linked_object_identifier,
+        LinkedObjectIdentifier::TextString("foo".to_owned())
     );
 
     db.delete(&uid).await?;
@@ -394,14 +394,14 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 
     let obj = db.retrieve(&uid).await?.expect("uid should be in the db");
     assert_eq!(State::PreActive, obj.state());
-    assert!(
+    assert_eq!(
         obj.object()
             .attributes()?
             .link
             .as_ref()
             .ok_or_else(|| DbError::ServerError("links should not be empty".to_owned()))?[0]
-            .linked_object_identifier
-            == LinkedObjectIdentifier::TextString("foo".to_owned())
+            .linked_object_identifier,
+        LinkedObjectIdentifier::TextString("foo".to_owned())
     );
 
     db.update_state(&uid, State::Deactivated).await?;

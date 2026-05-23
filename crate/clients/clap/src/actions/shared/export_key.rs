@@ -195,7 +195,7 @@ impl ExportSecretDataOrKeyAction {
 
         let stdout = format!(
             "The key {} of type {} was exported to {:?}",
-            &id,
+            id,
             object.object_type(),
             self.key_file.display()
         );

@@ -10,9 +10,9 @@ set -ex
 #
 
 if [ -z "${DOCKER_IMAGE_NAME}" ]; then
-    echo "ERROR: DOCKER_IMAGE_NAME must be set to the KMS docker image name."
-    echo "  Example: export DOCKER_IMAGE_NAME=cosmian-kms:5.10.0-non-fips"
-    exit 1
+  echo "ERROR: DOCKER_IMAGE_NAME must be set to the KMS docker image name."
+  echo "  Example: export DOCKER_IMAGE_NAME=cosmian-kms:5.10.0-non-fips"
+  exit 1
 fi
 
 # Repo root: set_hsm.sh is called from the repository root by test_docker_image.sh.
@@ -22,24 +22,24 @@ rm -f libcosmian_pkcs11.so
 
 # Determine the KMS variant from the image name (non-fips / fips).
 if [[ "${DOCKER_IMAGE_NAME}" == *"-non-fips"* ]]; then
-    CLI_STATIC_RESULT="${REPO_ROOT}/result-cli-non-fips-static"
+  CLI_STATIC_RESULT="${REPO_ROOT}/result-cli-non-fips-static"
 else
-    CLI_STATIC_RESULT="${REPO_ROOT}/result-cli-fips-static"
+  CLI_STATIC_RESULT="${REPO_ROOT}/result-cli-fips-static"
 fi
 
 # Prefer the static-linked CLI derivation's library (targets glibc 2.28, works
 # on Oracle Linux 8) over the one embedded in the Docker image (which may have
 # been built against a newer glibc and would fail with ORA-28376 on OL8).
 if [ -f "${CLI_STATIC_RESULT}/lib/libcosmian_pkcs11.so" ]; then
-    echo "Using OL8-compatible libcosmian_pkcs11.so from ${CLI_STATIC_RESULT}/lib/"
-    cp "${CLI_STATIC_RESULT}/lib/libcosmian_pkcs11.so" .
+  echo "Using OL8-compatible libcosmian_pkcs11.so from ${CLI_STATIC_RESULT}/lib/"
+  cp "${CLI_STATIC_RESULT}/lib/libcosmian_pkcs11.so" .
 else
-    echo "Static CLI result not found at ${CLI_STATIC_RESULT}; extracting from Docker image."
-    # Create a temporary (non-running) container from the KMS image to copy the library out.
-    docker rm dll_p11 2>/dev/null || true
-    CONTAINER_ID=$(docker create --name dll_p11 "${DOCKER_IMAGE_NAME}")
-    docker cp "${CONTAINER_ID}:/usr/lib/libcosmian_pkcs11.so" .
-    docker rm dll_p11
+  echo "Static CLI result not found at ${CLI_STATIC_RESULT}; extracting from Docker image."
+  # Create a temporary (non-running) container from the KMS image to copy the library out.
+  docker rm dll_p11 2>/dev/null || true
+  CONTAINER_ID=$(docker create --name dll_p11 "${DOCKER_IMAGE_NAME}")
+  docker cp "${CONTAINER_ID}:/usr/lib/libcosmian_pkcs11.so" .
+  docker rm dll_p11
 fi
 
 # Check that the library is loadable inside the Oracle container.
@@ -47,18 +47,18 @@ fi
 # require glibc 2.34+.  Fail early with a clear message rather than an opaque
 # ORA-28376 / ORA-28353 deep inside Oracle.
 MISSING_DEPS=$(docker run --rm \
-    -v "$(pwd)/libcosmian_pkcs11.so:/tmp/libcosmian_pkcs11.so" \
-    --entrypoint ldd \
-    oracle \
-    /tmp/libcosmian_pkcs11.so 2>&1 | grep "not found" || true)
+  -v "$(pwd)/libcosmian_pkcs11.so:/tmp/libcosmian_pkcs11.so" \
+  --entrypoint ldd \
+  oracle \
+  /tmp/libcosmian_pkcs11.so 2>&1 | grep "not found" || true)
 if [ -n "$MISSING_DEPS" ]; then
-    echo "ERROR: libcosmian_pkcs11.so is incompatible with the Oracle container's glibc."
-    echo "Missing symbols:"
-    echo "$MISSING_DEPS"
-    echo ""
-    echo "Fix: ensure result-cli-{non-fips,fips}-static contains a glibc-2.28-compatible build"
-    echo "     or update default.nix to add pkcs11LibDrv to the docker-image-* derivations."
-    exit 1
+  echo "ERROR: libcosmian_pkcs11.so is incompatible with the Oracle container's glibc."
+  echo "Missing symbols:"
+  echo "$MISSING_DEPS"
+  echo ""
+  echo "Fix: ensure result-cli-{non-fips,fips}-static contains a glibc-2.28-compatible build"
+  echo "     or update default.nix to add pkcs11LibDrv to the docker-image-* derivations."
+  exit 1
 fi
 
 #

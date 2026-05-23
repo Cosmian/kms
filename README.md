@@ -2,6 +2,8 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/main.yml?branch=develop&label=CI&logo=github)](https://github.com/Cosmian/kms/actions/workflows/main.yml) [![Tests](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/pr.yml?branch=develop&label=Packaging&logo=github)](https://github.com/Cosmian/kms/actions/workflows/pr.yml) [![Release](https://img.shields.io/github/v/release/Cosmian/kms)](https://github.com/Cosmian/kms/releases) [![Docs](https://img.shields.io/badge/Docs-cosmian.com-0A84FF?logo=readthedocs&logoColor=white)](https://docs.cosmian.com/key_management_system/) [![Container](https://img.shields.io/badge/ghcr.io%2Fcosmian%2Fkms-Image-2496ED?logo=docker&logoColor=white)](https://github.com/Cosmian/kms/pkgs/container/kms) [![Security](https://img.shields.io/badge/Security-Policy-0A84FF?logo=github&logoColor=white)](SECURITY.md) [![License](https://img.shields.io/badge/License-BSL%201.1-blue)](LICENSE) [![FIPS](https://img.shields.io/badge/FIPS%20140--3-Mode-blue)](./documentation/docs/fips.md)
 
+> **Note**: Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
+
 The **Cosmian KMS** is a high-performance, source-available [FIPS 140-3 compliant](./documentation/docs/fips.md) server application written in [Rust](https://www.rust-lang.org/).
 
 Online [documentation](https://docs.cosmian.com/key_management_system/).

@@ -39,9 +39,9 @@ cd "$REPO_ROOT"
 
 # ── Runtime dependencies ────────────────────────────────────────────────────
 require_cmd cargo "Cargo is required to build the KMS server and ckms CLI."
-require_cmd curl  "curl is required to download the reference benchmarks."
-require_cmd jq    "jq is required to parse benchmark JSON results."
-require_cmd bc    "bc is required to compute regression percentages."
+require_cmd curl "curl is required to download the reference benchmarks."
+require_cmd jq "jq is required to parse benchmark JSON results."
+require_cmd bc "bc is required to compute regression percentages."
 
 # ── Configuration ───────────────────────────────────────────────────────────
 BENCH_SPEED="${BENCH_SPEED:-quick}"
@@ -49,9 +49,9 @@ BENCH_PORT="${BENCH_PORT:-19998}"
 REGRESSION_THRESHOLD="${REGRESSION_THRESHOLD:-10}"
 
 # Derive the KMS version from the workspace Cargo.toml.
-KMS_VERSION=$(cargo metadata --no-deps --format-version 1 \
-  | jq -r '.packages[] | select(.name == "cosmian_kms_server") | .version' \
-  | head -1)
+KMS_VERSION=$(cargo metadata --no-deps --format-version 1 |
+  jq -r '.packages[] | select(.name == "cosmian_kms_server") | .version' |
+  head -1)
 if [ -z "$KMS_VERSION" ]; then
   # Fallback: parse Cargo.toml directly.
   KMS_VERSION=$(grep -m1 '^version' "$REPO_ROOT/Cargo.toml" | sed 's/.*= *"\(.*\)"/\1/')
@@ -146,7 +146,7 @@ echo "[c] Running benchmarks (speed=${BENCH_SPEED})..."
   bench \
   --speed "$BENCH_SPEED" \
   --format json \
-  >/dev/null  # JSON is written to target/criterion/benchmarks.json
+  >/dev/null # JSON is written to target/criterion/benchmarks.json
 
 # Copy the generated file to our temp workspace.
 CRITERION_JSON="${CARGO_TARGET_DIR}/criterion/benchmarks.json"
@@ -224,7 +224,7 @@ while IFS='|' read -r id ref_mean cur_mean delta; do
   fi
 
   printf "%-60s %12s %12s %7.1f%%%s\n" "$id" "$ref_us" "$cur_us" "$delta" "$flag"
-done <<< "$COMPARISON"
+done <<<"$COMPARISON"
 
 printf '%.0s-' {1..96}
 echo

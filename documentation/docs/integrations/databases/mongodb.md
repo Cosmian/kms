@@ -10,7 +10,7 @@ This guide walks through the manual setup process for enabling Client-Side Field
 | **Port** | 5696 (IANA-registered KMIP port) |
 | **Key type** | AES-256 symmetric key |
 | **MongoDB version** | MongoDB Enterprise 6.0 and above |
-| **Cosmian KMS feature** | Requires non-FIPS build |
+| **Eviden KMS feature** | Requires non-FIPS build |
 
 ---
 

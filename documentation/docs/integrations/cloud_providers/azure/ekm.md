@@ -124,7 +124,7 @@ Let's save the root CA as **`mhsm-root-ca.pem`** - We will need it in the next s
 
 Follow the [Eviden KMS installation guide](../../../installation/installation_getting_started.md) to install the KMS server on your infrastructure. The KMS server typically uses the configuration file located at `/etc/cosmian/kms.toml` when installed manually with default parameters.
 
-Alternatively, you can deploy a pre-configured Cosmian Confidential VM [like explained in this guide.](../../../installation/marketplace_guide.md). For confidential VMs, the KMS configuration file is located in the encrypted LUKS container at `/var/lib/cosmian_vm/data/app.conf`.
+Alternatively, you can deploy a pre-configured Eviden Confidential VM [like explained in this guide.](../../../installation/marketplace_guide.md). For confidential VMs, the KMS configuration file is located in the encrypted LUKS container at `/var/lib/cosmian_vm/data/app.conf`.
 
 Environment variables can also be used for all the configurations below.
 
@@ -168,9 +168,9 @@ azure_ekm_enable = true
 azure_ekm_path_prefix = "cosmian0"
 
 # The fields below will be reported in the /info endpoint, edit according to your needs
-azure_ekm_proxy_vendor = "Cosmian"
+azure_ekm_proxy_vendor = "Eviden"
 azure_ekm_proxy_name = "EKM Proxy Service v0.1-preview"
-azure_ekm_ekm_vendor = "Cosmian"
+azure_ekm_ekm_vendor = "Eviden"
 azure_ekm_ekm_product = "Eviden KMS"
 
 # WARNING: Only set to true for testing! Never in production.
@@ -183,9 +183,9 @@ azure_ekm_disable_client_auth = false
 |-----------|------|---------|-------------|
 | `azure_ekm_enable` | boolean | `false` | Enable/disable Azure EKM API endpoints. |
 | `azure_ekm_path_prefix` | string | none | Optional path prefix for routing and multi-tenant isolation. Max 64 chars: `a-z`, `A-Z`, `0-9`, `/`, `-`. Example: `"cosmian0"`, `"customer-a/prod"` |
-| `azure_ekm_proxy_vendor` | string | `"Cosmian"` | Proxy vendor name reported in `/info` endpoint. |
+| `azure_ekm_proxy_vendor` | string | `"Eviden"` | Proxy vendor name reported in `/info` endpoint. |
 | `azure_ekm_proxy_name` | string | `"EKM Proxy Service"` | Proxy name and version reported in `/info` endpoint. Auto-inserts the KMS package version by default. |
-| `azure_ekm_ekm_vendor` | string | `"Cosmian"` | EKMS vendor name reported in `/info` endpoint.|
+| `azure_ekm_ekm_vendor` | string | `"Eviden"` | EKMS vendor name reported in `/info` endpoint.|
 | `azure_ekm_ekm_product` | string | `"Eviden KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
 | `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing. |
 
@@ -228,9 +228,9 @@ Expected response (if you used the config above):
 ```json
 {
   "api_version": "0.1-preview",
-  "proxy_vendor": "Cosmian",
+  "proxy_vendor": "Eviden",
   "proxy_name": "EKM Proxy Service v=0.1-preview",
-  "ekm_vendor": "Cosmian",
-  "ekm_product": "Cosmian KMS v5.15.0"
+  "ekm_vendor": "Eviden",
+  "ekm_product": "Eviden KMS v5.15.0"
 }
 ```

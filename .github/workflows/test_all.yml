@@ -155,6 +155,9 @@ jobs:
           # parallel connections on proteccio is not supported
           - hsm-type: proteccio
             features: fips
+          # Not required - testing non-fips is sufficient
+          - hsm-type: crypt2pay
+            features: fips
 
     steps:
       - name: Nix installation

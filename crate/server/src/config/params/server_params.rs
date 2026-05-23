@@ -609,8 +609,8 @@ impl fmt::Debug for ServerParams {
             &format!(
                 "http{}://{}:{}",
                 if self.tls_params.is_some() { "s" } else { "" },
-                &self.http_hostname,
-                &self.http_port
+                self.http_hostname,
+                self.http_port
             ),
         );
 

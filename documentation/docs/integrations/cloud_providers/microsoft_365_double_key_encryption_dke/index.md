@@ -45,7 +45,7 @@ Retrieving an encrypted document works as follows, the Office client will:
 4. Decrypt the document using the recovered AES key and display it.
 
 **Note**: The Eviden KMS implementation of the PKCS#11 CKM_RSA_PKCS_OAEP algorithm is FIPS compliant. The DKE
-API is therefore available on the Cosmian server running in [FIPS mode](../../../certifications_and_compliance/fips.md).
+API is therefore available on the Eviden server running in [FIPS mode](../../../certifications_and_compliance/fips.md).
 
 ## Configuring the Eviden KMS server
 

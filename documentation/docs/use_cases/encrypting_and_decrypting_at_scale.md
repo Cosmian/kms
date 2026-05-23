@@ -21,7 +21,7 @@ Cryptographic operations themselves are rarely the bottleneck. The key factors a
 
 ## Deployment Architecture
 
-The optimal architecture places KMS instances as close as possible to the applications they serve. Thanks to Cosmian
+The optimal architecture places KMS instances as close as possible to the applications they serve. Thanks to Eviden
 KMS's:
 
 - Stateless design

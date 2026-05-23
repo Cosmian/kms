@@ -2,7 +2,7 @@
 
 **Oracle Database** [Transparent Data Encryption (TDE)](https://docs.oracle.com/en/database/oracle/oracle-database/23/dbtde/introduction-to-transparent-data-encryption.html) enables automatic encryption of data at rest in Oracle databases. Users can execute SQL queries normally while TDE handles encryption transparently in the background. Encryption keys are stored directly in the database but can be encrypted using **Oracle Key Vault** or directly with **Hardware Security Modules (HSM)** via PKCS#11.
 
-Cosmian provides two deployment modes for Oracle TDE integration:
+Eviden provides two deployment modes for Oracle TDE integration:
 
 1. **Oracle Key Vault + HSM Mode**: Uses Oracle Key Vault as an intermediary with HSM as Root-of-Trust
 2. **Direct HSM Mode**: Direct communication between Oracle Database and HSM via PKCS#11 interface
@@ -18,7 +18,7 @@ Physical loss of an Oracle Key Vault server from a facility is one example of su
 
 When an **Oracle Key Vault server** is HSM-enabled, Oracle Key Vault contacts the HSM every five minutes (or whatever you have set the monitoring interval to) to ensure that the Root of Trust key is available and the TDE wallet password can be decrypted.
 
-What Cosmian provides is:
+What Eviden provides is:
 
 - **a HSM client**: this is a PKCS#11 provider library that make the Oracle Key Vault a HSM client itself. **It enables the Root-of-Trust** by protecting the Oracle Key Vault wallets passwords. That library also provides a KMS client to communicate with the KMS server.
 - **a KMS server** that is interrogated by the KMS client. The KMS server can either front a HSM or act as a HSM but deployed in a secure environment.
@@ -35,7 +35,7 @@ graph TD
     end
     okvclient -- OKV endpoint --> OKV
     subgraph OKV[Oracle Key Vault]
-        subgraph hsm_client[Cosmian HSM client]
+        subgraph hsm_client[Eviden HSM client]
             kms_client[Eviden KMS client]
             pkcs11_lib[libcosmian_pkcs11.so]
         end
@@ -103,7 +103,7 @@ For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](
 
 ## Mode 2: Direct HSM Integration
 
-For simplified deployments or environments where Oracle Key Vault is not available, Oracle Database can communicate directly with HSM via PKCS#11. In this mode, the Cosmian PKCS#11 library (`libcosmian_pkcs11.so`) provides direct access to the Eviden KMS server, which manages the TDE master keys in the HSM.
+For simplified deployments or environments where Oracle Key Vault is not available, Oracle Database can communicate directly with HSM via PKCS#11. In this mode, the Eviden PKCS#11 library (`libcosmian_pkcs11.so`) provides direct access to the Eviden KMS server, which manages the TDE master keys in the HSM.
 
 This approach eliminates Oracle Key Vault from the architecture, reducing complexity while maintaining the security benefits of HSM-protected keys.
 
@@ -118,7 +118,7 @@ graph TD
             encrypted by
             TDE Master Key]
         end
-        pkcs11[Cosmian PKCS#11 Library
+        pkcs11[Eviden PKCS#11 Library
         libcosmian_pkcs11.so]
     end
     tde_engine -- PKCS#11 --> pkcs11
@@ -135,7 +135,7 @@ graph TD
 
 #### Linux
 
-1. **Install Cosmian PKCS#11 Library**
+1. **Install Eviden PKCS#11 Library**
 
     For Oracle Database OS, the PKCS#11 library is available here: [cosmian-pkcs11](https://package.cosmian.com/kms/5.22.0/pkcs11-zip/amd64/non-fips/static/cosmian-pkcs11-non-fips-static-openssl_5.22.0_linux-amd64.zip).
 
@@ -149,7 +149,7 @@ graph TD
     chown oracle:oinstall /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
     ```
 
-2. **Configure Cosmian PKCS#11 Library**
+2. **Configure Eviden PKCS#11 Library**
 
     Create the configuration file `/home/oracle/.cosmian/ckms.toml`:
 
@@ -239,7 +239,7 @@ when configuring TDE directly (without Oracle Key Vault):
 
 The steps below apply the required workarounds.
 
-1. **Install Cosmian PKCS#11 Library**
+1. **Install Eviden PKCS#11 Library**
 
     Download `cosmian_pkcs11.dll` from the [release packages](https://package.cosmian.com/kms/5.16.2/).
 
@@ -258,7 +258,7 @@ The steps below apply the required workarounds.
     Copy-Item cosmian_pkcs11.dll "$env:ORACLE_HOME\extapi\64\hsm\Cosmian\cosmian_pkcs11.dll"
     ```
 
-2. **Configure Cosmian PKCS#11 Library**
+2. **Configure Eviden PKCS#11 Library**
 
     Place `ckms.toml` alongside the DLL so it is found regardless of which Windows user
     account Oracle's service runs under:
@@ -494,11 +494,11 @@ ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY <token>;
 
 ## Multiple Wallets Handling with the Same Database
 
-Oracle TDE supports several multi-wallet configurations on a single database instance. The Cosmian PKCS#11 library is transparent to these layouts: every keystore operation that reaches the HSM is forwarded to the KMS server regardless of the number of active wallets.
+Oracle TDE supports several multi-wallet configurations on a single database instance. The Eviden PKCS#11 library is transparent to these layouts: every keystore operation that reaches the HSM is forwarded to the KMS server regardless of the number of active wallets.
 
 ### Combined HSM and Software Wallet
 
-Oracle supports a combined keystore by setting `KEYSTORE_CONFIGURATION=HSM|FILE`. In this mode the TDE master key is generated and stored in the HSM (via the Cosmian PKCS#11 library), while Oracle also maintains a local file-based software wallet. This is useful when an auto-login wallet is required for datafile decryption during automatic instance startup, or for keystore redundancy.
+Oracle supports a combined keystore by setting `KEYSTORE_CONFIGURATION=HSM|FILE`. In this mode the TDE master key is generated and stored in the HSM (via the Eviden PKCS#11 library), while Oracle also maintains a local file-based software wallet. This is useful when an auto-login wallet is required for datafile decryption during automatic instance startup, or for keystore redundancy.
 
 Configure the combined mode:
 
@@ -511,7 +511,7 @@ STARTUP;
 With the combined configuration, both keystores must be opened explicitly before any key operation:
 
 ```sql
--- Open the HSM keystore (Cosmian PKCS#11)
+-- Open the HSM keystore (Eviden PKCS#11)
 ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass FOR HSM;
 
 -- Open the file-based wallet (use the wallet password here)
@@ -574,7 +574,7 @@ ORDER BY ACTIVATION_TIME DESC;
 
 ## Environment Variables Used by `cosmian_pkcs11`
 
-The Cosmian PKCS#11 library reads the following environment variables at startup (i.e. when
+The Eviden PKCS#11 library reads the following environment variables at startup (i.e. when
 `C_GetFunctionList` is called). All variables are optional unless otherwise noted.
 
 | Variable | Default | Description |
@@ -782,7 +782,7 @@ If `--token` is omitted with mode 2, object enumeration fails with `CKR_USER_NOT
 
 ## Authentication from Oracle to KMS
 
-The Cosmian PKCS#11 library (`libcosmian_pkcs11.so` on Linux, `cosmian_pkcs11.dll` on Windows) communicates with the Eviden KMS server over HTTP or HTTPS. Authentication is configured through the `ckms.toml` file that the library reads at startup.
+The Eviden PKCS#11 library (`libcosmian_pkcs11.so` on Linux, `cosmian_pkcs11.dll` on Windows) communicates with the Eviden KMS server over HTTP or HTTPS. Authentication is configured through the `ckms.toml` file that the library reads at startup.
 
 ### Configuration File Discovery
 

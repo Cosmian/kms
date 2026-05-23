@@ -24,26 +24,29 @@ set -euo pipefail
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 KMS_VERSION="${1:-5.20.1}"
-KMS_VERSION="${KMS_VERSION#--version }"   # strip flag if passed as --version X
+KMS_VERSION="${KMS_VERSION#--version }" # strip flag if passed as --version X
 
 ORACLE_IMAGE="container-registry.oracle.com/database/free:latest-lite"
 PACKAGE_BASE="https://package.cosmian.com/kms/${KMS_VERSION}"
-DEMO_PDB="FREEPDB1"      # PDB where demo tables are created
-DEMO_USER="kms_demo"    # local PDB user created for the smoke test
-DEMO_PASS="kmsDemo123"  # password for the demo PDB user
-DEMO_TS="KMS_DEMO_TS"   # dedicated tablespace (makes a known, small .dbf to dump)
+DEMO_PDB="FREEPDB1"    # PDB where demo tables are created
+DEMO_USER="kms_demo"   # local PDB user created for the smoke test
+DEMO_PASS="kmsDemo123" # password for the demo PDB user
+DEMO_TS="KMS_DEMO_TS"  # dedicated tablespace (makes a known, small .dbf to dump)
 DEMO_DBF="/opt/oracle/oradata/FREE/FREEPDB1/kms_demo_ts01.dbf"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-log()  { echo "▶  $*"; }
-ok()   { echo "✓  $*"; }
-err()  { echo "✗  $*" >&2; exit 1; }
+log() { echo "▶  $*"; }
+ok() { echo "✓  $*"; }
+err() {
+  echo "✗  $*" >&2
+  exit 1
+}
 
 run_sql() {
   local sql1="$1" sql2="${2:-}" sql3="${3:-}"
   log "SQL: $sql1"
-  cat > /tmp/kms_demo.sql << EOF
+  cat >/tmp/kms_demo.sql <<EOF
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 WHENEVER OSERROR EXIT FAILURE;
 ${sql1}
@@ -69,8 +72,8 @@ if [[ -z "$ORACLE_ARCH" ]]; then
 fi
 
 case "$ORACLE_ARCH" in
-  aarch64|arm64) DEB_ARCH="arm64" ;;
-  x86_64|amd64)  DEB_ARCH="amd64" ;;
+  aarch64 | arm64) DEB_ARCH="arm64" ;;
+  x86_64 | amd64) DEB_ARCH="amd64" ;;
   *) err "Unsupported architecture: ${ORACLE_ARCH}" ;;
 esac
 
@@ -86,11 +89,11 @@ if [[ -f "$DEB_FILE" ]]; then
 else
   log "Downloading ${DEB_FILE} ..."
   if command -v curl &>/dev/null; then
-    curl -fL --progress-bar -o "${DEB_FILE}" "${DEB_URL}" \
-      || err "Download failed. Please download manually from ${DEB_URL}"
+    curl -fL --progress-bar -o "${DEB_FILE}" "${DEB_URL}" ||
+      err "Download failed. Please download manually from ${DEB_URL}"
   elif command -v wget &>/dev/null; then
-    wget -q --show-progress -O "${DEB_FILE}" "${DEB_URL}" \
-      || err "Download failed. Please download manually from ${DEB_URL}"
+    wget -q --show-progress -O "${DEB_FILE}" "${DEB_URL}" ||
+      err "Download failed. Please download manually from ${DEB_URL}"
   else
     err "Neither curl nor wget found. Please download manually:\n  ${DEB_URL}"
   fi
@@ -112,7 +115,7 @@ ok "libcosmian_pkcs11.so extracted ($(file libcosmian_pkcs11.so | grep -oE 'ELF 
 
 # ── Step 4 — Create ckms.toml ─────────────────────────────────────────────────
 
-cat > ckms.toml << 'EOF'
+cat >ckms.toml <<'EOF'
 [http_config]
 server_url = "http://kms:9998"
 EOF
@@ -135,12 +138,12 @@ log "Waiting for Oracle to be healthy (may take up to 3 minutes on first run)...
 TIMEOUT=180
 ELAPSED=0
 until docker inspect --format='{{.State.Health.Status}}' oracle 2>/dev/null | grep -q "healthy"; do
-  if (( ELAPSED >= TIMEOUT )); then
+  if ((ELAPSED >= TIMEOUT)); then
     err "Oracle did not become healthy within ${TIMEOUT}s. Check: docker logs oracle"
   fi
   printf "."
   sleep 10
-  (( ELAPSED += 10 ))
+  ((ELAPSED += 10))
 done
 echo ""
 ok "Oracle is healthy"
@@ -182,7 +185,7 @@ ok "Oracle TDE configured (${DEMO_PDB})"
 run_sql_pdb() {
   local sql1="$1" sql2="${2:-}" sql3="${3:-}"
   log "SQL (${DEMO_USER}@${DEMO_PDB}): $sql1"
-  cat > /tmp/kms_demo.sql << EOF
+  cat >/tmp/kms_demo.sql <<EOF
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 WHENEVER OSERROR EXIT FAILURE;
 ${sql1}
@@ -203,7 +206,7 @@ EOF
 
 log "Creating tablespace ${DEMO_TS} and user ${DEMO_USER} in ${DEMO_PDB}..."
 # WHENEVER SQLERROR CONTINUE lets DROP silently fail on first run.
-cat > /tmp/kms_pdb_user.sql << EOF
+cat >/tmp/kms_pdb_user.sql <<EOF
 WHENEVER SQLERROR CONTINUE;
 ALTER SESSION SET CONTAINER = ${DEMO_PDB};
 DROP USER ${DEMO_USER} CASCADE;

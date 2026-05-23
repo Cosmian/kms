@@ -21,9 +21,9 @@ echo "Backing up KMS SQLite data from running container..."
 rm -rf "${BACKUP_DIR}"
 mkdir -p "${BACKUP_DIR}"
 # Try both possible paths (old wrong path and correct path)
-docker cp "cosmian-kms:${KMS_DATA_PATH}/." "${BACKUP_DIR}/" 2>/dev/null \
-  || docker cp "cosmian-kms:/root/cosmian-kms/sqlite-data/." "${BACKUP_DIR}/" 2>/dev/null \
-  || echo "No existing KMS data to migrate (fresh install)"
+docker cp "cosmian-kms:${KMS_DATA_PATH}/." "${BACKUP_DIR}/" 2>/dev/null ||
+  docker cp "cosmian-kms:/root/cosmian-kms/sqlite-data/." "${BACKUP_DIR}/" 2>/dev/null ||
+  echo "No existing KMS data to migrate (fresh install)"
 
 # ── Step 2: Fix docker-compose.yml — update image tag and volume path
 sudo sed -i "s|ghcr.io/cosmian/kms:.*|ghcr.io/cosmian/kms:${TAG_ONLY}|" docker-compose.yml
@@ -82,4 +82,3 @@ fi
 
 rm -rf "${BACKUP_DIR}"
 echo "Upgrade complete: ghcr.io/cosmian/kms:${TAG_ONLY}"
-

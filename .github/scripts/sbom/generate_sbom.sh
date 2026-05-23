@@ -70,117 +70,117 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
-  --target)
-    TARGET="${2:-}"
-    shift 2
-    ;;
-  --variant)
-    VARIANT="${2:-}"
-    shift 2
-    ;;
-  --link)
-    LINK="${2:-}"
-    shift 2
-    ;;
-  --output)
-    OUTPUT_DIR="${2:-}"
-    shift 2
-    ;;
-  -h | --help)
-    usage
-    exit 0
-    ;;
-  *)
-    echo "Error: Unknown option: $1" >&2
-    usage >&2
-    exit 1
-    ;;
+    --target)
+      TARGET="${2:-}"
+      shift 2
+      ;;
+    --variant)
+      VARIANT="${2:-}"
+      shift 2
+      ;;
+    --link)
+      LINK="${2:-}"
+      shift 2
+      ;;
+    --output)
+      OUTPUT_DIR="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
   esac
 done
 
 # Determine the derivation to analyze based on target
 case "$TARGET" in
-openssl_3_1_2)
-  DERIVATION="openssl312"
-  NIX_RESULT="$REPO_ROOT/result-openssl-312"
-  ;;
-openssl_3_6_0)
-  DERIVATION="openssl36-static"
-  NIX_RESULT="$REPO_ROOT/result-openssl-360"
-  ;;
-server)
-  # Validate variant/link values
-  case "$VARIANT" in
-  fips | non-fips) : ;;
-  *)
-    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
-    exit 1
+  openssl_3_1_2)
+    DERIVATION="openssl312"
+    NIX_RESULT="$REPO_ROOT/result-openssl-312"
     ;;
-  esac
-  case "$LINK" in
-  static | dynamic) : ;;
-  *)
-    echo "Error: --link must be 'static' or 'dynamic'" >&2
-    exit 1
+  openssl_3_6_0)
+    DERIVATION="openssl36-static"
+    NIX_RESULT="$REPO_ROOT/result-openssl-360"
     ;;
-  esac
+  server)
+    # Validate variant/link values
+    case "$VARIANT" in
+      fips | non-fips) : ;;
+      *)
+        echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+        exit 1
+        ;;
+    esac
+    case "$LINK" in
+      static | dynamic) : ;;
+      *)
+        echo "Error: --link must be 'static' or 'dynamic'" >&2
+        exit 1
+        ;;
+    esac
 
-  # Scan the exact server derivation (build chain) to verify toolchain CVEs
-  if [ "$LINK" = "dynamic" ]; then
-    DERIVATION="kms-server-${VARIANT}-dynamic-openssl"
-    NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-dynamic-openssl"
-  else
-    DERIVATION="kms-server-${VARIANT}-static-openssl"
-    NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
-  fi
-  ;;
-ckms)
-  # Validate variant/link values
-  case "$VARIANT" in
-  fips | non-fips) : ;;
-  *)
-    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
-    exit 1
+    # Scan the exact server derivation (build chain) to verify toolchain CVEs
+    if [ "$LINK" = "dynamic" ]; then
+      DERIVATION="kms-server-${VARIANT}-dynamic-openssl"
+      NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-dynamic-openssl"
+    else
+      DERIVATION="kms-server-${VARIANT}-static-openssl"
+      NIX_RESULT="$REPO_ROOT/result-server-${VARIANT}-static-openssl"
+    fi
     ;;
-  esac
-  case "$LINK" in
-  static | dynamic) : ;;
-  *)
-    echo "Error: --link must be 'static' or 'dynamic'" >&2
-    exit 1
-    ;;
-  esac
+  ckms)
+    # Validate variant/link values
+    case "$VARIANT" in
+      fips | non-fips) : ;;
+      *)
+        echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+        exit 1
+        ;;
+    esac
+    case "$LINK" in
+      static | dynamic) : ;;
+      *)
+        echo "Error: --link must be 'static' or 'dynamic'" >&2
+        exit 1
+        ;;
+    esac
 
-  # Scan the CLI binary derivation
-  if [ "$LINK" = "dynamic" ]; then
-    DERIVATION="kms-cli-${VARIANT}-dynamic-openssl"
-    NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-dynamic-openssl"
-  else
-    DERIVATION="kms-cli-${VARIANT}-static-openssl"
-    NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-static-openssl"
-  fi
-  ;;
-*)
-  echo "Error: Unknown --target '$TARGET'. Use 'openssl_3_1_2', 'openssl_3_6_0', 'server', or 'ckms'." >&2
-  exit 1
-  ;;
+    # Scan the CLI binary derivation
+    if [ "$LINK" = "dynamic" ]; then
+      DERIVATION="kms-cli-${VARIANT}-dynamic-openssl"
+      NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-dynamic-openssl"
+    else
+      DERIVATION="kms-cli-${VARIANT}-static-openssl"
+      NIX_RESULT="$REPO_ROOT/result-cli-${VARIANT}-static-openssl"
+    fi
+    ;;
+  *)
+    echo "Error: Unknown --target '$TARGET'. Use 'openssl_3_1_2', 'openssl_3_6_0', 'server', or 'ckms'." >&2
+    exit 1
+    ;;
 esac
 
 # Adjust default output directory to include target/variant/link structure
 if [ "$OUTPUT_DIR" = "$REPO_ROOT/sbom" ]; then
   case "$TARGET" in
-  server)
-    OUTPUT_DIR="$REPO_ROOT/sbom/server/$VARIANT/$LINK"
-    ;;
-  ckms)
-    OUTPUT_DIR="$REPO_ROOT/sbom/ckms/$VARIANT/$LINK"
-    ;;
-  openssl_3_1_2)
-    OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_1_2"
-    ;;
-  openssl_3_6_0)
-    OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_6_0"
-    ;;
+    server)
+      OUTPUT_DIR="$REPO_ROOT/sbom/server/$VARIANT/$LINK"
+      ;;
+    ckms)
+      OUTPUT_DIR="$REPO_ROOT/sbom/ckms/$VARIANT/$LINK"
+      ;;
+    openssl_3_1_2)
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_1_2"
+      ;;
+    openssl_3_6_0)
+      OUTPUT_DIR="$REPO_ROOT/sbom/openssl_3_6_0"
+      ;;
   esac
 fi
 
@@ -234,9 +234,9 @@ _run_sbomnix_tool() {
   fi
 }
 
-run_sbomnix()   { _run_sbomnix_tool sbomnix   "$@"; }
+run_sbomnix() { _run_sbomnix_tool sbomnix "$@"; }
 run_vulnxscan() { _run_sbomnix_tool vulnxscan "$@"; }
-run_nixgraph()  { _run_sbomnix_tool nixgraph  "$@"; }
+run_nixgraph() { _run_sbomnix_tool nixgraph "$@"; }
 
 # Check for build output
 echo "Checking build output..."

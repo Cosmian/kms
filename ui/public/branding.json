@@ -11,12 +11,7 @@
     "menuTheme": "light",
     "enableCovercrypt": true,
     "pqcLabel": "PQC",
-    "hiddenPqcAlgorithms": [
-        "ml-kem-512-p256",
-        "ml-kem-768-p256",
-        "ml-kem-512-curve25519",
-        "ml-kem-768-curve25519"
-    ],
+    "hiddenPqcAlgorithms": ["ml-kem-512-p256", "ml-kem-768-p256", "ml-kem-512-curve25519", "ml-kem-768-curve25519"],
     "tokens": {
         "light": {
             "colorPrimary": "#FF6D43",

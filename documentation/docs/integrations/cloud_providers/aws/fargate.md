@@ -264,4 +264,4 @@ The symmetric key was successfully generated.
 
 ## License
 
-Refer to Cosmian documentation for licensing and support details.
+Refer to Eviden documentation for licensing and support details.

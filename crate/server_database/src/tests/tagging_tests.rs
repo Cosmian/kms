@@ -98,7 +98,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(owm.id(), uid);
     assert_eq!(owm.owner(), owner);
     if verify_attributes {
-        assert!(owm.attributes() == &expected_attributes);
+        assert_eq!(owm.attributes(), &expected_attributes);
     }
     assert_eq!(owm.state(), State::PreActive);
 
@@ -118,7 +118,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(owm.id(), uid);
     assert_eq!(owm.owner(), owner);
     if verify_attributes {
-        assert!(owm.attributes() == &expected_attributes);
+        assert_eq!(owm.attributes(), &expected_attributes);
     }
     assert_eq!(owm.state(), State::PreActive);
     let tags = db.retrieve_tags(owm.id()).await?;
@@ -137,7 +137,7 @@ pub(super) async fn tags<DB: ObjectsStore + PermissionsStore>(
     assert_eq!(owm.id(), uid);
     assert_eq!(owm.owner(), owner);
     if verify_attributes {
-        assert!(owm.attributes() == &expected_attributes);
+        assert_eq!(owm.attributes(), &expected_attributes);
     }
     assert_eq!(owm.state(), State::PreActive);
     let tags = db.retrieve_tags(owm.id()).await?;

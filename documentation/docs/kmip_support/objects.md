@@ -1,4 +1,4 @@
-The KMIP 2.1 specification pre-defines a set of 9 cryptographic objects. Cosmian supports the use of 4 of these objects
+The KMIP 2.1 specification pre-defines a set of 9 cryptographic objects. Eviden supports the use of 4 of these objects
 
 | Objects             | Cryptographic primitives                               |
 |---------------------|--------------------------------------------------------|

@@ -150,7 +150,7 @@ impl UnwrapSecretDataOrKeyAction {
             "The key of type {:?} in file {} was unwrapped in file: {}",
             object_type,
             self.key_file_in.display(),
-            &output_file.display()
+            output_file.display()
         );
         console::Stdout::new(&stdout).write()?;
 
@@ -228,7 +228,7 @@ impl UnwrapSecretDataOrKeyAction {
             "The key of type {:?} in file {} was unwrapped via the KMS server in file: {}",
             object_type,
             self.key_file_in.display(),
-            &output_file.display()
+            output_file.display()
         );
         console::Stdout::new(&stdout).write()?;
         Ok(())

@@ -281,7 +281,7 @@ impl Database {
     pub async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> DbResult<HashSet<String>> {
         let db_map = self.objects.read().await;
         let mut results = HashSet::new();
-        for (_prefix, db) in db_map.iter() {
+        for db in db_map.values() {
             results.extend(db.list_uids_for_tags(tags).await?);
         }
         Ok(results)
@@ -299,7 +299,7 @@ impl Database {
     ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
-        for (_prefix, db) in map.iter() {
+        for db in map.values() {
             results.extend(
                 db.find(
                     researched_attributes,

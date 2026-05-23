@@ -20,7 +20,7 @@ variable stored inside the server that is preserved during the execution of a ba
 
 Maintaining this value requires maintaining a state during a batch session across multiple requests and potentially
 multiple servers. The performance gain of using placeholder IDs is not obvious, and the added complexity of maintaining
-sessions across multiple servers when scaling horizontally is not worth in the Cosmian view for the type of operations
+sessions across multiple servers when scaling horizontally is not worth in the Eviden view for the type of operations
 conducted on the server.
 
 The Eviden KMS servers are kept stateless to simplify horizontal scaling and therefore do not support placeholder IDs

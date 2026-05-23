@@ -1,6 +1,6 @@
 # REST Native Crypto API (`/v1/crypto`)
 
-The Cosmian KMS exposes a lightweight **REST Native Crypto API** under the `/v1/crypto` path.
+The Eviden KMS exposes a lightweight **REST Native Crypto API** under the `/v1/crypto` path.
 This API follows the **JOSE** (JSON Object Signing and Encryption) conventions from
 [RFC 7516 (JWE)](https://www.rfc-editor.org/rfc/rfc7516),
 [RFC 7515 (JWS)](https://www.rfc-editor.org/rfc/rfc7515), and

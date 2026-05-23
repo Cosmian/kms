@@ -28,7 +28,7 @@ KMS_URL="http://${KMS_HOST}:${KMS_PORT}"
 KMS_PID=""
 LOG_PATH="${LOG_PATH:-/tmp/kms-gcp-cmek.log}"
 WRAPPING_KEY_PEM="${REPO_ROOT}/test_data/google_cmek/Import_RSA_AES_WRAP.pem"
-WRAPPED_KEY_FILE=""  # set later (temp file)
+WRAPPED_KEY_FILE="" # set later (temp file)
 
 # Unique identifiers for this test run (avoid collisions with parallel tests)
 SYM_KEY_ID="CMEK_Sym_Key_$$"

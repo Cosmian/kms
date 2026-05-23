@@ -30,7 +30,7 @@ will automatically
 - and re-key all non revoked User Decryption Keys holding the rotated policy attributes in a way that they will now be
   able to decrypt cipher texts encrypted with attributes before and after the rotation.
 
-The operation has currently no other usages on the Cosmian server.
+The operation has currently no other usages on the Eviden server.
 
 ### Example - Rotate the `Security Level::Confidential` attribute
 

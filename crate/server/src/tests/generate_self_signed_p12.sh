@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cat > "/tmp/openssl.cnf" << EOF
+cat >"/tmp/openssl.cnf" <<EOF
 [req]
 default_bits = 2048
 encrypt_key  = no # Change to encrypt the private key using des3 or similar
@@ -38,7 +38,7 @@ DNS.1 = my.dns.name
 EOF
 
 # Create a self-signed cert
-openssl req -x509 -new -config "/tmp/openssl.cnf" -days 365  -keyout /tmp/test.key -out /tmp/test.crt
+openssl req -x509 -new -config "/tmp/openssl.cnf" -days 365 -keyout /tmp/test.key -out /tmp/test.crt
 
 # openssl x509 -in /tmp/test.crt -out /tmp/test.crt.der -outform DER
 

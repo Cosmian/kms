@@ -133,7 +133,7 @@ destroy, and perform any operation on its keys.
 
 ### Permission evaluation for HSM keys
 
-```
+```text
 Request arrives for operation OP on key hsm::<model>::<slot>::<id>
 │
 ├─ Is the user an HSM admin for this instance?  ──▶  YES → Granted

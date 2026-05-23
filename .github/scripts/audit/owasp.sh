@@ -61,27 +61,27 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-  --output-dir)
-    OUTPUT_DIR="$2"
-    shift 2
-    ;;
-  --geiger)
-    RUN_GEIGER=true
-    shift
-    ;;
-  --fail-on-warn)
-    FAIL_ON_WARN=true
-    shift
-    ;;
-  --help)
-    usage
-    exit 0
-    ;;
-  *)
-    echo "Unknown option: $1"
-    usage
-    exit 1
-    ;;
+    --output-dir)
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --geiger)
+      RUN_GEIGER=true
+      shift
+      ;;
+    --fail-on-warn)
+      FAIL_ON_WARN=true
+      shift
+      ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 1
+      ;;
   esac
 done
 
@@ -733,17 +733,17 @@ WARN_COUNT=0
 FAIL_COUNT=0
 for name in "${!RESULTS[@]}"; do
   case "${RESULTS[$name]}" in
-  PASS) PASS_COUNT=$((PASS_COUNT + 1)) ;;
-  WARN) WARN_COUNT=$((WARN_COUNT + 1)) ;;
-  FAIL) FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
+    PASS) PASS_COUNT=$((PASS_COUNT + 1)) ;;
+    WARN) WARN_COUNT=$((WARN_COUNT + 1)) ;;
+    FAIL) FAIL_COUNT=$((FAIL_COUNT + 1)) ;;
   esac
 done
 for name in $(echo "${!RESULTS[@]}" | tr ' ' '\n' | sort); do
   status="${RESULTS[$name]}"
   case "$status" in
-  PASS) ok "  $name" ;;
-  WARN) warn "  $name" ;;
-  FAIL) fail "  $name" ;;
+    PASS) ok "  $name" ;;
+    WARN) warn "  $name" ;;
+    FAIL) fail "  $name" ;;
   esac
 done
 

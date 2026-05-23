@@ -1,6 +1,6 @@
 # User Defined Functions in Python for Eviden KMS
 
-Cosmian maintains a [Python UDF library](https://github.com/Cosmian/cosmian_kms_python_udf) that enables efficient,
+Eviden maintains a [Python UDF library](https://github.com/Cosmian/cosmian_kms_python_udf) that enables efficient,
 large-scale cryptographic operations with the Eviden KMS.
 
 ## Purpose and Applications

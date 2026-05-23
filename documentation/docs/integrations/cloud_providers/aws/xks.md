@@ -13,7 +13,7 @@ The Eviden KMS integrates to AWS XKS and proposes a novel architecture (dubbed *
 
 ![xksv2 architecture diagram](./xksv2.drawio.svg)
 
-The Cosmian XKSv2 architecture is composed of the following components:
+The Eviden XKSv2 architecture is composed of the following components:
 
 ### Eviden Confidential KMS
 

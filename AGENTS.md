@@ -1,6 +1,6 @@
 # Cosmian KMS — AI Agent Instructions
 
-> **Purpose of this file**: This is the cannonical instructions file for any AI agent
+> **Purpose of this file**: This is the canonical instructions file for any AI agent
 > (Copilot, Cursor, Cline, Claude Code, etc.) working on the Cosmian KMS codebase. It
 > explains project structure, build commands, CI workflows, coding conventions,
 > and troubleshooting steps so the agent can act autonomously and correctly.
@@ -489,7 +489,7 @@ Source technical examples in strict priority:
 1. **Copy-paste from test `assert_eq!` (or similar) in codebase** (highest priority)
 2. **Live KMS output** launch a debug instance and use it to produce the result
 3. **Mathematically derived** (applies only for deteministed operations)
-4. **User-provided** 
+4. **User-provided**
 
 **If none applies**: Leave example blank with placeholder `"<result>"` and report: "Example not sourced — could not find test assertion, live KMS output, derivation, or user value for: [description]". **Never invent examples**.
 
@@ -567,7 +567,6 @@ before finishing.
 4. **Diff review** — Run `git diff --stat` and `git diff` before declaring done.
    Every hunk must be explainable by the task. If a hunk surprises you, investigate
    and revert if it is not justified.
-
 
 ### Reporting
 
