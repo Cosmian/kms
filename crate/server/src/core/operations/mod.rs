@@ -1,3 +1,5 @@
+#[macro_use]
+mod attribute_ops_dispatch;
 mod activate;
 mod add_attribute;
 mod certify;

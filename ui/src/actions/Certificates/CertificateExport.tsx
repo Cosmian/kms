@@ -1,8 +1,9 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useState } from "react";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { export_certificate_ttlv_request, parse_export_certificate_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface CertificateExportFormData {
     certificateId?: string;
@@ -23,30 +24,18 @@ const exportFileExtension = {
 
 const CertificateExportForm: React.FC = () => {
     const [form] = Form.useForm<CertificateExportFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [selectedFormat, setSelectedFormat] = useState<CertificateExportFormat>("JsonTtlv");
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     const handleFormatChange = (value: CertificateExportFormat) => {
         setSelectedFormat(value);
     };
 
     const onFinish = async (values: CertificateExportFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.certificateId ? values.certificateId : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing certificate identifier.");
-                throw Error("Missing certificate identifier");
+                throw new Error("Missing certificate identifier.");
             }
             const request = export_certificate_ttlv_request(id, values.outputFormat, values.pkcs12Password);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -72,14 +61,9 @@ const CertificateExportForm: React.FC = () => {
                         mimeType = "application/octet-stream";
                 }
                 downloadFile(data, filename, mimeType);
-                setRes("Certificate has been exported");
+                return "Certificate has been exported";
             }
-        } catch (e) {
-            setRes(`Error exporting certificate: ${e}`);
-            console.error("Error exporting certificate:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     const certificateFormats = [
@@ -159,11 +143,7 @@ const CertificateExportForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Certificate export response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Certificate export response" />
         </div>
     );
 };

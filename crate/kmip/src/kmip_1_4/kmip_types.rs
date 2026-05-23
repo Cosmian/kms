@@ -11,6 +11,64 @@ use crate::{
     kmip_2_1::{self},
 };
 
+/// Generates `From<$src> for $dst` for enums with identical variant names.
+macro_rules! impl_from_1to1 {
+    ($src:ty => $dst:ty, [$($variant:ident),* $(,)?]) => {
+        impl From<$src> for $dst {
+            fn from(val: $src) -> Self {
+                match val {
+                    $(<$src>::$variant => Self::$variant,)*
+                }
+            }
+        }
+    };
+}
+
+/// Generates `From<$src> for $dst` with grouped variants (multiple source → one target).
+macro_rules! impl_from_grouped {
+    ($src:ty => $dst:ty, { $($($src_variant:ident)|+ => $dst_variant:ident),* $(,)? }) => {
+        impl From<$src> for $dst {
+            fn from(val: $src) -> Self {
+                match val {
+                    $($(<$src>::$src_variant)|+ => Self::$dst_variant,)*
+                }
+            }
+        }
+    };
+}
+
+/// Generates infallible `TryFrom<$src> for $dst` (all variants map 1:1).
+macro_rules! impl_try_from_infallible {
+    ($src:ty => $dst:ty, [$($variant:ident),* $(,)?]) => {
+        impl TryFrom<$src> for $dst {
+            type Error = KmipError;
+            fn try_from(value: $src) -> Result<Self, Self::Error> {
+                Ok(match value {
+                    $(<$src>::$variant => Self::$variant,)*
+                })
+            }
+        }
+    };
+}
+
+/// Generates `TryFrom<$src> for $dst` with matching variants + wildcard error.
+macro_rules! impl_try_from_with_error {
+    ($src:ty => $dst:ty, [$($variant:ident),* $(,)?], $err_msg:expr) => {
+        impl TryFrom<$src> for $dst {
+            type Error = KmipError;
+            fn try_from(value: $src) -> Result<Self, Self::Error> {
+                Ok(match value {
+                    $(<$src>::$variant => Self::$variant,)*
+                    x => return Err(KmipError::InvalidKmip14Value(
+                        ResultReason::InvalidField,
+                        format!("{}: {:?}", $err_msg, x),
+                    )),
+                })
+            }
+        }
+    };
+}
+
 /// KMIP 1.4 Key Compression Type Enumeration
 #[kmip_enum]
 pub enum KeyCompressionType {
@@ -20,20 +78,11 @@ pub enum KeyCompressionType {
     ECPublicKeyTypeX962CompressedChar2 = 0x4,
 }
 
-impl From<KeyCompressionType> for kmip_2_1::kmip_types::KeyCompressionType {
-    fn from(val: KeyCompressionType) -> Self {
-        match val {
-            KeyCompressionType::ECPublicKeyTypeUncompressed => Self::ECPublicKeyTypeUncompressed,
-            KeyCompressionType::ECPublicKeyTypeX962Compressed
-            | KeyCompressionType::ECPublicKeyTypeX962CompressedPrime => {
-                Self::ECPublicKeyTypeX962CompressedPrime
-            }
-            KeyCompressionType::ECPublicKeyTypeX962CompressedChar2 => {
-                Self::ECPublicKeyTypeX962CompressedChar2
-            }
-        }
-    }
-}
+impl_from_grouped!(KeyCompressionType => kmip_2_1::kmip_types::KeyCompressionType, {
+    ECPublicKeyTypeUncompressed => ECPublicKeyTypeUncompressed,
+    ECPublicKeyTypeX962Compressed | ECPublicKeyTypeX962CompressedPrime => ECPublicKeyTypeX962CompressedPrime,
+    ECPublicKeyTypeX962CompressedChar2 => ECPublicKeyTypeX962CompressedChar2,
+});
 
 impl TryFrom<kmip_2_1::kmip_types::KeyCompressionType> for KeyCompressionType {
     type Error = KmipError;
@@ -91,38 +140,28 @@ pub enum KeyFormatType {
     CoverCryptPublicKey = 0x8880_000D,
 }
 
-impl From<KeyFormatType> for kmip_2_1::kmip_types::KeyFormatType {
-    fn from(val: KeyFormatType) -> Self {
-        match val {
-            KeyFormatType::Raw => Self::Raw,
-            KeyFormatType::Opaque => Self::Opaque,
-            KeyFormatType::PKCS1 => Self::PKCS1,
-            KeyFormatType::PKCS8 => Self::PKCS8,
-            KeyFormatType::X509 => Self::X509,
-            KeyFormatType::ECPrivateKey => Self::ECPrivateKey,
-            KeyFormatType::TransparentSymmetricKey => Self::TransparentSymmetricKey,
-            KeyFormatType::TransparentDSAPrivateKey => Self::TransparentDSAPrivateKey,
-            KeyFormatType::TransparentDSAPublicKey => Self::TransparentDSAPublicKey,
-            KeyFormatType::TransparentRSAPrivateKey => Self::TransparentRSAPrivateKey,
-            KeyFormatType::TransparentRSAPublicKey => Self::TransparentRSAPublicKey,
-            KeyFormatType::TransparentDHPrivateKey => Self::TransparentDHPrivateKey,
-            KeyFormatType::TransparentDHPublicKey => Self::TransparentDHPublicKey,
-            KeyFormatType::TransparentECDSAPublicKey
-            | KeyFormatType::TransparentECMQVPublicKey
-            | KeyFormatType::TransparentECDHPublicKey
-            | KeyFormatType::TransparentECPublicKey => Self::TransparentECPublicKey,
-            KeyFormatType::TransparentECDHPrivateKey
-            | KeyFormatType::TransparentECMQVPrivateKey
-            | KeyFormatType::TransparentECDSAPrivateKey
-            | KeyFormatType::TransparentECPrivateKey => Self::TransparentECPrivateKey,
-            KeyFormatType::PKCS12 => Self::PKCS12,
-            KeyFormatType::ConfigurableKEMSecretKey => Self::ConfigurableKEMSecretKey,
-            KeyFormatType::ConfigurableKEMPublicKey => Self::ConfigurableKEMPublicKey,
-            KeyFormatType::CoverCryptSecretKey => Self::CoverCryptSecretKey,
-            KeyFormatType::CoverCryptPublicKey => Self::CoverCryptPublicKey,
-        }
-    }
-}
+impl_from_grouped!(KeyFormatType => kmip_2_1::kmip_types::KeyFormatType, {
+    Raw => Raw,
+    Opaque => Opaque,
+    PKCS1 => PKCS1,
+    PKCS8 => PKCS8,
+    X509 => X509,
+    ECPrivateKey => ECPrivateKey,
+    TransparentSymmetricKey => TransparentSymmetricKey,
+    TransparentDSAPrivateKey => TransparentDSAPrivateKey,
+    TransparentDSAPublicKey => TransparentDSAPublicKey,
+    TransparentRSAPrivateKey => TransparentRSAPrivateKey,
+    TransparentRSAPublicKey => TransparentRSAPublicKey,
+    TransparentDHPrivateKey => TransparentDHPrivateKey,
+    TransparentDHPublicKey => TransparentDHPublicKey,
+    TransparentECDSAPublicKey | TransparentECMQVPublicKey | TransparentECDHPublicKey | TransparentECPublicKey => TransparentECPublicKey,
+    TransparentECDHPrivateKey | TransparentECMQVPrivateKey | TransparentECDSAPrivateKey | TransparentECPrivateKey => TransparentECPrivateKey,
+    PKCS12 => PKCS12,
+    ConfigurableKEMSecretKey => ConfigurableKEMSecretKey,
+    ConfigurableKEMPublicKey => ConfigurableKEMPublicKey,
+    CoverCryptSecretKey => CoverCryptSecretKey,
+    CoverCryptPublicKey => CoverCryptPublicKey,
+});
 
 impl TryFrom<kmip_2_1::kmip_types::KeyFormatType> for KeyFormatType {
     type Error = KmipError;
@@ -209,35 +248,13 @@ pub enum WrappingMethod {
     TR31 = 0x5,
 }
 
-impl From<WrappingMethod> for kmip_2_1::kmip_types::WrappingMethod {
-    fn from(val: WrappingMethod) -> Self {
-        match val {
-            WrappingMethod::Encrypt => Self::Encrypt,
-            WrappingMethod::MACSign => Self::MACSign,
-            WrappingMethod::EncryptThenMACSign => Self::EncryptThenMACSign,
-            WrappingMethod::MACSignThenEncrypt => Self::MACSignThenEncrypt,
-            WrappingMethod::TR31 => Self::TR31,
-        }
-    }
-}
+impl_from_1to1!(WrappingMethod => kmip_2_1::kmip_types::WrappingMethod, [
+    Encrypt, MACSign, EncryptThenMACSign, MACSignThenEncrypt, TR31,
+]);
 
-impl TryFrom<kmip_2_1::kmip_types::WrappingMethod> for WrappingMethod {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_types::WrappingMethod) -> Result<Self, Self::Error> {
-        match value {
-            kmip_2_1::kmip_types::WrappingMethod::Encrypt => Ok(Self::Encrypt),
-            kmip_2_1::kmip_types::WrappingMethod::MACSign => Ok(Self::MACSign),
-            kmip_2_1::kmip_types::WrappingMethod::EncryptThenMACSign => {
-                Ok(Self::EncryptThenMACSign)
-            }
-            kmip_2_1::kmip_types::WrappingMethod::MACSignThenEncrypt => {
-                Ok(Self::MACSignThenEncrypt)
-            }
-            kmip_2_1::kmip_types::WrappingMethod::TR31 => Ok(Self::TR31),
-        }
-    }
-}
+impl_try_from_infallible!(kmip_2_1::kmip_types::WrappingMethod => WrappingMethod, [
+    Encrypt, MACSign, EncryptThenMACSign, MACSignThenEncrypt, TR31,
+]);
 
 /// KMIP 1.4 Split Key Method Enumeration
 #[kmip_enum]
@@ -251,35 +268,13 @@ pub enum SplitKeyMethod {
     PolynomialSharingGf28 = 0x0000_0004,
 }
 
-impl From<SplitKeyMethod> for kmip_2_1::kmip_types::SplitKeyMethod {
-    fn from(val: SplitKeyMethod) -> Self {
-        match val {
-            SplitKeyMethod::XOR => Self::XOR,
-            SplitKeyMethod::PolynomialSharingGf216 => Self::PolynomialSharingGf216,
-            SplitKeyMethod::PolynomialSharingPrimeField => Self::PolynomialSharingPrimeField,
-            SplitKeyMethod::PolynomialSharingGf28 => Self::PolynomialSharingGf28,
-        }
-    }
-}
+impl_from_1to1!(SplitKeyMethod => kmip_2_1::kmip_types::SplitKeyMethod, [
+    XOR, PolynomialSharingGf216, PolynomialSharingPrimeField, PolynomialSharingGf28,
+]);
 
-impl TryFrom<kmip_2_1::kmip_types::SplitKeyMethod> for SplitKeyMethod {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_types::SplitKeyMethod) -> Result<Self, Self::Error> {
-        match value {
-            kmip_2_1::kmip_types::SplitKeyMethod::XOR => Ok(Self::XOR),
-            kmip_2_1::kmip_types::SplitKeyMethod::PolynomialSharingGf216 => {
-                Ok(Self::PolynomialSharingGf216)
-            }
-            kmip_2_1::kmip_types::SplitKeyMethod::PolynomialSharingPrimeField => {
-                Ok(Self::PolynomialSharingPrimeField)
-            }
-            kmip_2_1::kmip_types::SplitKeyMethod::PolynomialSharingGf28 => {
-                Ok(Self::PolynomialSharingGf28)
-            }
-        }
-    }
-}
+impl_try_from_infallible!(kmip_2_1::kmip_types::SplitKeyMethod => SplitKeyMethod, [
+    XOR, PolynomialSharingGf216, PolynomialSharingPrimeField, PolynomialSharingGf28,
+]);
 
 /// KMIP 1.4 Name Type Enumeration
 #[kmip_enum]
@@ -288,27 +283,9 @@ pub enum NameType {
     URI = 0x2,
 }
 
-impl From<NameType> for kmip_2_1::kmip_types::NameType {
-    fn from(val: NameType) -> Self {
-        match val {
-            NameType::UninterpretedTextString => Self::UninterpretedTextString,
-            NameType::URI => Self::URI,
-        }
-    }
-}
+impl_from_1to1!(NameType => kmip_2_1::kmip_types::NameType, [UninterpretedTextString, URI]);
 
-impl TryFrom<kmip_2_1::kmip_types::NameType> for NameType {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_types::NameType) -> Result<Self, Self::Error> {
-        match value {
-            kmip_2_1::kmip_types::NameType::UninterpretedTextString => {
-                Ok(Self::UninterpretedTextString)
-            }
-            kmip_2_1::kmip_types::NameType::URI => Ok(Self::URI),
-        }
-    }
-}
+impl_try_from_infallible!(kmip_2_1::kmip_types::NameType => NameType, [UninterpretedTextString, URI]);
 
 /// KMIP 1.4 Object Type Enumeration
 #[kmip_enum]
@@ -325,21 +302,17 @@ pub enum ObjectType {
     PGPKey = 0x9,
 }
 
-impl From<ObjectType> for kmip_2_1::kmip_objects::ObjectType {
-    fn from(val: ObjectType) -> Self {
-        match val {
-            // KMIP 2.1 does not support Template object type. Return Certificate as a placeholder.
-            ObjectType::Certificate | ObjectType::Template => Self::Certificate,
-            ObjectType::SymmetricKey => Self::SymmetricKey,
-            ObjectType::PublicKey => Self::PublicKey,
-            ObjectType::PrivateKey => Self::PrivateKey,
-            ObjectType::SplitKey => Self::SplitKey,
-            ObjectType::SecretData => Self::SecretData,
-            ObjectType::OpaqueObject => Self::OpaqueObject,
-            ObjectType::PGPKey => Self::PGPKey,
-        }
-    }
-}
+impl_from_grouped!(ObjectType => kmip_2_1::kmip_objects::ObjectType, {
+    // KMIP 2.1 does not support Template object type. Return Certificate as a placeholder.
+    Certificate | Template => Certificate,
+    SymmetricKey => SymmetricKey,
+    PublicKey => PublicKey,
+    PrivateKey => PrivateKey,
+    SplitKey => SplitKey,
+    SecretData => SecretData,
+    OpaqueObject => OpaqueObject,
+    PGPKey => PGPKey,
+});
 
 impl TryFrom<kmip_2_1::kmip_objects::ObjectType> for ObjectType {
     type Error = KmipError;
@@ -448,105 +421,29 @@ pub enum CryptographicAlgorithm {
     SHAKE256 = 0x28,
 }
 
-impl From<CryptographicAlgorithm> for kmip_2_1::kmip_types::CryptographicAlgorithm {
-    fn from(val: CryptographicAlgorithm) -> Self {
-        match val {
-            CryptographicAlgorithm::DES | CryptographicAlgorithm::THREE_DES => Self::DES,
-            CryptographicAlgorithm::AES => Self::AES,
-            CryptographicAlgorithm::RSA => Self::RSA,
-            CryptographicAlgorithm::DSA => Self::DSA,
-            CryptographicAlgorithm::ECDSA => Self::ECDSA,
-            CryptographicAlgorithm::HMACSHA1 => Self::HMACSHA1,
-            CryptographicAlgorithm::HMACSHA224 => Self::HMACSHA224,
-            CryptographicAlgorithm::HMACSHA256 => Self::HMACSHA256,
-            CryptographicAlgorithm::HMACSHA384 => Self::HMACSHA384,
-            CryptographicAlgorithm::HMACSHA512 => Self::HMACSHA512,
-            CryptographicAlgorithm::HMACMD5 => Self::HMACMD5,
-            CryptographicAlgorithm::DH => Self::DH,
-            CryptographicAlgorithm::ECDH => Self::ECDH,
-            CryptographicAlgorithm::ECMQV => Self::ECMQV,
-            CryptographicAlgorithm::Blowfish => Self::Blowfish,
-            CryptographicAlgorithm::Camellia => Self::Camellia,
-            CryptographicAlgorithm::CAST5 => Self::CAST5,
-            CryptographicAlgorithm::IDEA => Self::IDEA,
-            CryptographicAlgorithm::MARS => Self::MARS,
-            CryptographicAlgorithm::RC2 => Self::RC2,
-            CryptographicAlgorithm::RC4 => Self::RC4,
-            CryptographicAlgorithm::RC5 => Self::RC5,
-            CryptographicAlgorithm::SKIPJACK => Self::SKIPJACK,
-            CryptographicAlgorithm::Twofish => Self::Twofish,
-            CryptographicAlgorithm::EC => Self::EC,
-            CryptographicAlgorithm::OneTimePad => Self::OneTimePad,
-            CryptographicAlgorithm::ChaCha20 => Self::ChaCha20,
-            CryptographicAlgorithm::Poly1305 => Self::Poly1305,
-            CryptographicAlgorithm::ChaCha20Poly1305 => Self::ChaCha20Poly1305,
-            CryptographicAlgorithm::SHA3224 => Self::SHA3224,
-            CryptographicAlgorithm::SHA3256 => Self::SHA3256,
-            CryptographicAlgorithm::SHA3384 => Self::SHA3384,
-            CryptographicAlgorithm::SHA3512 => Self::SHA3512,
-            CryptographicAlgorithm::HMACSHA3224 => Self::HMACSHA3224,
-            CryptographicAlgorithm::HMACSHA3256 => Self::HMACSHA3256,
-            CryptographicAlgorithm::HMACSHA3384 => Self::HMACSHA3384,
-            CryptographicAlgorithm::HMACSHA3512 => Self::HMACSHA3512,
-            CryptographicAlgorithm::SHAKE128 => Self::SHAKE128,
-            CryptographicAlgorithm::SHAKE256 => Self::SHAKE256,
-        }
-    }
-}
+impl_from_grouped!(CryptographicAlgorithm => kmip_2_1::kmip_types::CryptographicAlgorithm, {
+    DES | THREE_DES => DES,
+    AES => AES, RSA => RSA, DSA => DSA, ECDSA => ECDSA,
+    HMACSHA1 => HMACSHA1, HMACSHA224 => HMACSHA224, HMACSHA256 => HMACSHA256,
+    HMACSHA384 => HMACSHA384, HMACSHA512 => HMACSHA512, HMACMD5 => HMACMD5,
+    DH => DH, ECDH => ECDH, ECMQV => ECMQV,
+    Blowfish => Blowfish, Camellia => Camellia, CAST5 => CAST5, IDEA => IDEA,
+    MARS => MARS, RC2 => RC2, RC4 => RC4, RC5 => RC5, SKIPJACK => SKIPJACK,
+    Twofish => Twofish, EC => EC, OneTimePad => OneTimePad,
+    ChaCha20 => ChaCha20, Poly1305 => Poly1305, ChaCha20Poly1305 => ChaCha20Poly1305,
+    SHA3224 => SHA3224, SHA3256 => SHA3256, SHA3384 => SHA3384, SHA3512 => SHA3512,
+    HMACSHA3224 => HMACSHA3224, HMACSHA3256 => HMACSHA3256,
+    HMACSHA3384 => HMACSHA3384, HMACSHA3512 => HMACSHA3512,
+    SHAKE128 => SHAKE128, SHAKE256 => SHAKE256,
+});
 
-impl TryFrom<kmip_2_1::kmip_types::CryptographicAlgorithm> for CryptographicAlgorithm {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_types::CryptographicAlgorithm) -> Result<Self, Self::Error> {
-        match value {
-            kmip_2_1::kmip_types::CryptographicAlgorithm::DES => Ok(Self::DES),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::AES => Ok(Self::AES),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::RSA => Ok(Self::RSA),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::DSA => Ok(Self::DSA),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::ECDSA => Ok(Self::ECDSA),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA1 => Ok(Self::HMACSHA1),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA224 => Ok(Self::HMACSHA224),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA256 => Ok(Self::HMACSHA256),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA384 => Ok(Self::HMACSHA384),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA512 => Ok(Self::HMACSHA512),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACMD5 => Ok(Self::HMACMD5),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::DH => Ok(Self::DH),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::ECDH => Ok(Self::ECDH),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::ECMQV => Ok(Self::ECMQV),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::Blowfish => Ok(Self::Blowfish),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::Camellia => Ok(Self::Camellia),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::CAST5 => Ok(Self::CAST5),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::IDEA => Ok(Self::IDEA),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::MARS => Ok(Self::MARS),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::RC2 => Ok(Self::RC2),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::RC4 => Ok(Self::RC4),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::RC5 => Ok(Self::RC5),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::SKIPJACK => Ok(Self::SKIPJACK),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::Twofish => Ok(Self::Twofish),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::EC => Ok(Self::EC),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::OneTimePad => Ok(Self::OneTimePad),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::ChaCha20 => Ok(Self::ChaCha20),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::Poly1305 => Ok(Self::Poly1305),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::ChaCha20Poly1305 => {
-                Ok(Self::ChaCha20Poly1305)
-            }
-            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3224 => Ok(Self::SHA3224),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3256 => Ok(Self::SHA3256),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3384 => Ok(Self::SHA3384),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::SHA3512 => Ok(Self::SHA3512),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3224 => Ok(Self::HMACSHA3224),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3256 => Ok(Self::HMACSHA3256),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3384 => Ok(Self::HMACSHA3384),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::HMACSHA3512 => Ok(Self::HMACSHA3512),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::SHAKE128 => Ok(Self::SHAKE128),
-            kmip_2_1::kmip_types::CryptographicAlgorithm::SHAKE256 => Ok(Self::SHAKE256),
-            x => Err(KmipError::InvalidKmip14Value(
-                ResultReason::InvalidField,
-                format!("Invalid Cryptographic Algorithm value: {x}. Not supported in KMIP 1.4"),
-            )),
-        }
-    }
-}
+impl_try_from_with_error!(kmip_2_1::kmip_types::CryptographicAlgorithm => CryptographicAlgorithm, [
+    DES, AES, RSA, DSA, ECDSA, HMACSHA1, HMACSHA224, HMACSHA256, HMACSHA384, HMACSHA512,
+    HMACMD5, DH, ECDH, ECMQV, Blowfish, Camellia, CAST5, IDEA, MARS, RC2, RC4, RC5,
+    SKIPJACK, Twofish, EC, OneTimePad, ChaCha20, Poly1305, ChaCha20Poly1305,
+    SHA3224, SHA3256, SHA3384, SHA3512, HMACSHA3224, HMACSHA3256, HMACSHA3384, HMACSHA3512,
+    SHAKE128, SHAKE256,
+], "Invalid Cryptographic Algorithm value. Not supported in KMIP 1.4");
 
 /// KMIP 1.4 Link Type Enumeration
 #[kmip_enum]
@@ -564,23 +461,11 @@ pub enum LinkType {
     NextLink = 0x10B,
 }
 
-impl From<LinkType> for kmip_2_1::kmip_types::LinkType {
-    fn from(val: LinkType) -> Self {
-        match val {
-            LinkType::CertificateLink => Self::CertificateLink,
-            LinkType::PublicKeyLink => Self::PublicKeyLink,
-            LinkType::PrivateKeyLink => Self::PrivateKeyLink,
-            LinkType::DerivationBaseObjectLink => Self::DerivationBaseObjectLink,
-            LinkType::DerivedKeyLink => Self::DerivedKeyLink,
-            LinkType::ReplacementObjectLink => Self::ReplacementObjectLink,
-            LinkType::ReplacedObjectLink => Self::ReplacedObjectLink,
-            LinkType::ParentLink => Self::ParentLink,
-            LinkType::ChildLink => Self::ChildLink,
-            LinkType::PreviousLink => Self::PreviousLink,
-            LinkType::NextLink => Self::NextLink,
-        }
-    }
-}
+impl_from_1to1!(LinkType => kmip_2_1::kmip_types::LinkType, [
+    CertificateLink, PublicKeyLink, PrivateKeyLink, DerivationBaseObjectLink,
+    DerivedKeyLink, ReplacementObjectLink, ReplacedObjectLink, ParentLink,
+    ChildLink, PreviousLink, NextLink,
+]);
 
 impl TryFrom<kmip_2_1::kmip_types::LinkType> for LinkType {
     type Error = KmipError;
@@ -680,27 +565,9 @@ pub enum ValidityIndicator {
     Unknown = 0x3,
 }
 
-impl From<ValidityIndicator> for kmip_2_1::kmip_types::ValidityIndicator {
-    fn from(val: ValidityIndicator) -> Self {
-        match val {
-            ValidityIndicator::Valid => Self::Valid,
-            ValidityIndicator::Invalid => Self::Invalid,
-            ValidityIndicator::Unknown => Self::Unknown,
-        }
-    }
-}
+impl_from_1to1!(ValidityIndicator => kmip_2_1::kmip_types::ValidityIndicator, [Valid, Invalid, Unknown]);
 
-impl TryFrom<kmip_2_1::kmip_types::ValidityIndicator> for ValidityIndicator {
-    type Error = KmipError;
-
-    fn try_from(val: kmip_2_1::kmip_types::ValidityIndicator) -> Result<Self, Self::Error> {
-        Ok(match val {
-            kmip_2_1::kmip_types::ValidityIndicator::Valid => Self::Valid,
-            kmip_2_1::kmip_types::ValidityIndicator::Invalid => Self::Invalid,
-            kmip_2_1::kmip_types::ValidityIndicator::Unknown => Self::Unknown,
-        })
-    }
-}
+impl_try_from_infallible!(kmip_2_1::kmip_types::ValidityIndicator => ValidityIndicator, [Valid, Invalid, Unknown]);
 
 /// KMIP 1.4 Query Function Enumeration
 #[kmip_enum]
@@ -719,24 +586,11 @@ pub enum QueryFunction {
     QueryClientRegistrationMethods = 0xC,
 }
 
-impl From<QueryFunction> for kmip_2_1::kmip_types::QueryFunction {
-    fn from(val: QueryFunction) -> Self {
-        match val {
-            QueryFunction::QueryOperations => Self::QueryOperations,
-            QueryFunction::QueryObjects => Self::QueryObjects,
-            QueryFunction::QueryServerInformation => Self::QueryServerInformation,
-            QueryFunction::QueryApplicationNamespaces => Self::QueryApplicationNamespaces,
-            QueryFunction::QueryExtensionList => Self::QueryExtensionList,
-            QueryFunction::QueryExtensionMap => Self::QueryExtensionMap,
-            QueryFunction::QueryAttestationTypes => Self::QueryAttestationTypes,
-            QueryFunction::QueryRNGs => Self::QueryRNGs,
-            QueryFunction::QueryValidations => Self::QueryValidations,
-            QueryFunction::QueryProfiles => Self::QueryProfiles,
-            QueryFunction::QueryCapabilities => Self::QueryCapabilities,
-            QueryFunction::QueryClientRegistrationMethods => Self::QueryClientRegistrationMethods,
-        }
-    }
-}
+impl_from_1to1!(QueryFunction => kmip_2_1::kmip_types::QueryFunction, [
+    QueryOperations, QueryObjects, QueryServerInformation, QueryApplicationNamespaces,
+    QueryExtensionList, QueryExtensionMap, QueryAttestationTypes, QueryRNGs,
+    QueryValidations, QueryProfiles, QueryCapabilities, QueryClientRegistrationMethods,
+]);
 
 /// KMIP 1.4 Cancellation Result Enumeration
 #[kmip_enum]
@@ -803,55 +657,14 @@ pub enum OperationEnumeration {
     Export = 0x2B,
 }
 
-impl From<OperationEnumeration> for kmip_2_1::kmip_types::OperationEnumeration {
-    fn from(value: OperationEnumeration) -> Self {
-        match value {
-            OperationEnumeration::Activate => Self::Activate,
-            OperationEnumeration::AddAttribute => Self::AddAttribute,
-            OperationEnumeration::Archive => Self::Archive,
-            OperationEnumeration::Cancel => Self::Cancel,
-            OperationEnumeration::Certify => Self::Certify,
-            OperationEnumeration::Check => Self::Check,
-            OperationEnumeration::Create => Self::Create,
-            OperationEnumeration::CreateKeyPair => Self::CreateKeyPair,
-            OperationEnumeration::CreateSplitKey => Self::CreateSplitKey,
-            OperationEnumeration::Decrypt => Self::Decrypt,
-            OperationEnumeration::DeleteAttribute => Self::DeleteAttribute,
-            OperationEnumeration::DeriveKey => Self::DeriveKey,
-            OperationEnumeration::Destroy => Self::Destroy,
-            OperationEnumeration::DiscoverVersions => Self::DiscoverVersions,
-            OperationEnumeration::Encrypt => Self::Encrypt,
-            OperationEnumeration::Export => Self::Export,
-            OperationEnumeration::Get => Self::Get,
-            OperationEnumeration::GetAttributes => Self::GetAttributes,
-            OperationEnumeration::GetAttributeList => Self::GetAttributeList,
-            OperationEnumeration::GetUsageAllocation => Self::GetUsageAllocation,
-            OperationEnumeration::Hash => Self::Hash,
-            OperationEnumeration::Import => Self::Import,
-            OperationEnumeration::JoinSplitKey => Self::JoinSplitKey,
-            OperationEnumeration::Locate => Self::Locate,
-            OperationEnumeration::MAC => Self::MAC,
-            OperationEnumeration::MACVerify => Self::MACVerify,
-            OperationEnumeration::ModifyAttribute => Self::ModifyAttribute,
-            OperationEnumeration::Notify => Self::Notify,
-            OperationEnumeration::ObtainLease => Self::ObtainLease,
-            OperationEnumeration::Poll => Self::Poll,
-            OperationEnumeration::Put => Self::Put,
-            OperationEnumeration::Query => Self::Query,
-            OperationEnumeration::ReCertify => Self::ReCertify,
-            OperationEnumeration::Recover => Self::Recover,
-            OperationEnumeration::Register => Self::Register,
-            OperationEnumeration::ReKey => Self::ReKey,
-            OperationEnumeration::ReKeyKeyPair => Self::ReKeyKeyPair,
-            OperationEnumeration::Revoke => Self::Revoke,
-            OperationEnumeration::RNGRetrieve => Self::RNGRetrieve,
-            OperationEnumeration::RNGSeed => Self::RNGSeed,
-            OperationEnumeration::Sign => Self::Sign,
-            OperationEnumeration::SignatureVerify => Self::SignatureVerify,
-            OperationEnumeration::Validate => Self::Validate,
-        }
-    }
-}
+impl_from_1to1!(OperationEnumeration => kmip_2_1::kmip_types::OperationEnumeration, [
+    Activate, AddAttribute, Archive, Cancel, Certify, Check, Create, CreateKeyPair,
+    CreateSplitKey, Decrypt, DeleteAttribute, DeriveKey, Destroy, DiscoverVersions,
+    Encrypt, Export, Get, GetAttributes, GetAttributeList, GetUsageAllocation, Hash,
+    Import, JoinSplitKey, Locate, MAC, MACVerify, ModifyAttribute, Notify, ObtainLease,
+    Poll, Put, Query, ReCertify, Recover, Register, ReKey, ReKeyKeyPair, Revoke,
+    RNGRetrieve, RNGSeed, Sign, SignatureVerify, Validate,
+]);
 
 impl TryFrom<kmip_2_1::kmip_types::OperationEnumeration> for OperationEnumeration {
     type Error = KmipError;
@@ -1011,25 +824,9 @@ pub enum EncodingOption {
     TTLVEncoding = 0x2,
 }
 
-impl From<EncodingOption> for kmip_2_1::kmip_types::EncodingOption {
-    fn from(val: EncodingOption) -> Self {
-        match val {
-            EncodingOption::NoEncoding => Self::NoEncoding,
-            EncodingOption::TTLVEncoding => Self::TTLVEncoding,
-        }
-    }
-}
+impl_from_1to1!(EncodingOption => kmip_2_1::kmip_types::EncodingOption, [NoEncoding, TTLVEncoding]);
 
-impl TryFrom<kmip_2_1::kmip_types::EncodingOption> for EncodingOption {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_types::EncodingOption) -> Result<Self, Self::Error> {
-        match value {
-            kmip_2_1::kmip_types::EncodingOption::NoEncoding => Ok(Self::NoEncoding),
-            kmip_2_1::kmip_types::EncodingOption::TTLVEncoding => Ok(Self::TTLVEncoding),
-        }
-    }
-}
+impl_try_from_infallible!(kmip_2_1::kmip_types::EncodingOption => EncodingOption, [NoEncoding, TTLVEncoding]);
 
 /// KMIP 1.4 Object Group Member Enumeration
 #[kmip_enum]
@@ -1267,99 +1064,23 @@ pub enum RecommendedCurve {
     BRAINPOOLP512T1 = 0x24,
 }
 
-impl From<RecommendedCurve> for kmip_2_1::kmip_types::RecommendedCurve {
-    fn from(val: RecommendedCurve) -> Self {
-        match val {
-            RecommendedCurve::P192 => Self::P192,
-            RecommendedCurve::K163 => Self::K163,
-            RecommendedCurve::B163 => Self::B163,
-            RecommendedCurve::P224 => Self::P224,
-            RecommendedCurve::K233 => Self::K233,
-            RecommendedCurve::B233 => Self::B233,
-            RecommendedCurve::P256 => Self::P256,
-            RecommendedCurve::K283 => Self::K283,
-            RecommendedCurve::B283 => Self::B283,
-            RecommendedCurve::P384 => Self::P384,
-            RecommendedCurve::K409 => Self::K409,
-            RecommendedCurve::B409 => Self::B409,
-            RecommendedCurve::P521 => Self::P521,
-            RecommendedCurve::K571 => Self::K571,
-            RecommendedCurve::B571 => Self::B571,
-            RecommendedCurve::SECP112R1 => Self::SECP112R1,
-            RecommendedCurve::SECP112R2 => Self::SECP112R2,
-            RecommendedCurve::SECP128R1 => Self::SECP128R1,
-            RecommendedCurve::SECP128R2 => Self::SECP128R2,
-            RecommendedCurve::SECP160R1 => Self::SECP160R1,
-            RecommendedCurve::SECP160K1 => Self::SECP160K1,
-            RecommendedCurve::SECP256K1 => Self::SECP256K1,
-            RecommendedCurve::BRAINPOOLP160R1 => Self::BRAINPOOLP160R1,
-            RecommendedCurve::BRAINPOOLP160T1 => Self::BRAINPOOLP160T1,
-            RecommendedCurve::BRAINPOOLP192R1 => Self::BRAINPOOLP192R1,
-            RecommendedCurve::BRAINPOOLP192T1 => Self::BRAINPOOLP192T1,
-            RecommendedCurve::BRAINPOOLP224R1 => Self::BRAINPOOLP224R1,
-            RecommendedCurve::BRAINPOOLP224T1 => Self::BRAINPOOLP224T1,
-            RecommendedCurve::BRAINPOOLP256R1 => Self::BRAINPOOLP256R1,
-            RecommendedCurve::BRAINPOOLP256T1 => Self::BRAINPOOLP256T1,
-            RecommendedCurve::BRAINPOOLP320R1 => Self::BRAINPOOLP320R1,
-            RecommendedCurve::BRAINPOOLP320T1 => Self::BRAINPOOLP320T1,
-            RecommendedCurve::BRAINPOOLP384R1 => Self::BRAINPOOLP384R1,
-            RecommendedCurve::BRAINPOOLP384T1 => Self::BRAINPOOLP384T1,
-            RecommendedCurve::BRAINPOOLP512R1 => Self::BRAINPOOLP512R1,
-            RecommendedCurve::BRAINPOOLP512T1 => Self::BRAINPOOLP512T1,
-        }
-    }
-}
+impl_from_1to1!(RecommendedCurve => kmip_2_1::kmip_types::RecommendedCurve, [
+    P192, K163, B163, P224, K233, B233, P256, K283, B283, P384, K409, B409, P521, K571, B571,
+    SECP112R1, SECP112R2, SECP128R1, SECP128R2, SECP160R1, SECP160K1, SECP256K1,
+    BRAINPOOLP160R1, BRAINPOOLP160T1, BRAINPOOLP192R1, BRAINPOOLP192T1,
+    BRAINPOOLP224R1, BRAINPOOLP224T1, BRAINPOOLP256R1, BRAINPOOLP256T1,
+    BRAINPOOLP320R1, BRAINPOOLP320T1, BRAINPOOLP384R1, BRAINPOOLP384T1,
+    BRAINPOOLP512R1, BRAINPOOLP512T1,
+]);
 
-impl TryFrom<kmip_2_1::kmip_types::RecommendedCurve> for RecommendedCurve {
-    type Error = KmipError;
-
-    fn try_from(value: kmip_2_1::kmip_types::RecommendedCurve) -> Result<Self, Self::Error> {
-        Ok(match value {
-            kmip_2_1::kmip_types::RecommendedCurve::P192 => Self::P192,
-            kmip_2_1::kmip_types::RecommendedCurve::K163 => Self::K163,
-            kmip_2_1::kmip_types::RecommendedCurve::B163 => Self::B163,
-            kmip_2_1::kmip_types::RecommendedCurve::P224 => Self::P224,
-            kmip_2_1::kmip_types::RecommendedCurve::K233 => Self::K233,
-            kmip_2_1::kmip_types::RecommendedCurve::B233 => Self::B233,
-            kmip_2_1::kmip_types::RecommendedCurve::P256 => Self::P256,
-            kmip_2_1::kmip_types::RecommendedCurve::K283 => Self::K283,
-            kmip_2_1::kmip_types::RecommendedCurve::B283 => Self::B283,
-            kmip_2_1::kmip_types::RecommendedCurve::P384 => Self::P384,
-            kmip_2_1::kmip_types::RecommendedCurve::K409 => Self::K409,
-            kmip_2_1::kmip_types::RecommendedCurve::B409 => Self::B409,
-            kmip_2_1::kmip_types::RecommendedCurve::P521 => Self::P521,
-            kmip_2_1::kmip_types::RecommendedCurve::K571 => Self::K571,
-            kmip_2_1::kmip_types::RecommendedCurve::B571 => Self::B571,
-            kmip_2_1::kmip_types::RecommendedCurve::SECP112R1 => Self::SECP112R1,
-            kmip_2_1::kmip_types::RecommendedCurve::SECP112R2 => Self::SECP112R2,
-            kmip_2_1::kmip_types::RecommendedCurve::SECP128R1 => Self::SECP128R1,
-            kmip_2_1::kmip_types::RecommendedCurve::SECP128R2 => Self::SECP128R2,
-            kmip_2_1::kmip_types::RecommendedCurve::SECP160R1 => Self::SECP160R1,
-            kmip_2_1::kmip_types::RecommendedCurve::SECP160K1 => Self::SECP160K1,
-            kmip_2_1::kmip_types::RecommendedCurve::SECP256K1 => Self::SECP256K1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP160R1 => Self::BRAINPOOLP160R1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP160T1 => Self::BRAINPOOLP160T1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP192R1 => Self::BRAINPOOLP192R1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP192T1 => Self::BRAINPOOLP192T1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP224R1 => Self::BRAINPOOLP224R1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP224T1 => Self::BRAINPOOLP224T1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP256R1 => Self::BRAINPOOLP256R1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP256T1 => Self::BRAINPOOLP256T1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP320R1 => Self::BRAINPOOLP320R1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP320T1 => Self::BRAINPOOLP320T1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP384R1 => Self::BRAINPOOLP384R1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP384T1 => Self::BRAINPOOLP384T1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP512R1 => Self::BRAINPOOLP512R1,
-            kmip_2_1::kmip_types::RecommendedCurve::BRAINPOOLP512T1 => Self::BRAINPOOLP512T1,
-            x => {
-                return Err(KmipError::InvalidKmip14Value(
-                    ResultReason::OperationNotSupported,
-                    format!("RecommendedCurve not supported in KMIP 1: {x:?}"),
-                ));
-            }
-        })
-    }
-}
+impl_try_from_with_error!(kmip_2_1::kmip_types::RecommendedCurve => RecommendedCurve, [
+    P192, K163, B163, P224, K233, B233, P256, K283, B283, P384, K409, B409, P521, K571, B571,
+    SECP112R1, SECP112R2, SECP128R1, SECP128R2, SECP160R1, SECP160K1, SECP256K1,
+    BRAINPOOLP160R1, BRAINPOOLP160T1, BRAINPOOLP192R1, BRAINPOOLP192T1,
+    BRAINPOOLP224R1, BRAINPOOLP224T1, BRAINPOOLP256R1, BRAINPOOLP256T1,
+    BRAINPOOLP320R1, BRAINPOOLP320T1, BRAINPOOLP384R1, BRAINPOOLP384T1,
+    BRAINPOOLP512R1, BRAINPOOLP512T1,
+], "RecommendedCurve not supported in KMIP 1");
 
 /// KMIP 1.4 Digital Signature Algorithm Enumeration
 #[kmip_enum]
@@ -1382,28 +1103,12 @@ pub enum DigitalSignatureAlgorithm {
     ECDSAWithSHA512 = 0x10,
 }
 
-impl From<DigitalSignatureAlgorithm> for kmip_2_1::kmip_types::DigitalSignatureAlgorithm {
-    fn from(val: DigitalSignatureAlgorithm) -> Self {
-        match val {
-            DigitalSignatureAlgorithm::MD2WithRSAEncryption => Self::MD2WithRSAEncryption,
-            DigitalSignatureAlgorithm::MD5WithRSAEncryption => Self::MD5WithRSAEncryption,
-            DigitalSignatureAlgorithm::SHA1WithRSAEncryption => Self::SHA1WithRSAEncryption,
-            DigitalSignatureAlgorithm::SHA224WithRSAEncryption => Self::SHA224WithRSAEncryption,
-            DigitalSignatureAlgorithm::SHA256WithRSAEncryption => Self::SHA256WithRSAEncryption,
-            DigitalSignatureAlgorithm::SHA384WithRSAEncryption => Self::SHA384WithRSAEncryption,
-            DigitalSignatureAlgorithm::SHA512WithRSAEncryption => Self::SHA512WithRSAEncryption,
-            DigitalSignatureAlgorithm::RSASSAPSS => Self::RSASSAPSS,
-            DigitalSignatureAlgorithm::DSAWithSHA1 => Self::DSAWithSHA1,
-            DigitalSignatureAlgorithm::DSAWithSHA224 => Self::DSAWithSHA224,
-            DigitalSignatureAlgorithm::DSAWithSHA256 => Self::DSAWithSHA256,
-            DigitalSignatureAlgorithm::ECDSAWithSHA1 => Self::ECDSAWithSHA1,
-            DigitalSignatureAlgorithm::ECDSAWithSHA224 => Self::ECDSAWithSHA224,
-            DigitalSignatureAlgorithm::ECDSAWithSHA256 => Self::ECDSAWithSHA256,
-            DigitalSignatureAlgorithm::ECDSAWithSHA384 => Self::ECDSAWithSHA384,
-            DigitalSignatureAlgorithm::ECDSAWithSHA512 => Self::ECDSAWithSHA512,
-        }
-    }
-}
+impl_from_1to1!(DigitalSignatureAlgorithm => kmip_2_1::kmip_types::DigitalSignatureAlgorithm, [
+    MD2WithRSAEncryption, MD5WithRSAEncryption, SHA1WithRSAEncryption,
+    SHA224WithRSAEncryption, SHA256WithRSAEncryption, SHA384WithRSAEncryption,
+    SHA512WithRSAEncryption, RSASSAPSS, DSAWithSHA1, DSAWithSHA224, DSAWithSHA256,
+    ECDSAWithSHA1, ECDSAWithSHA224, ECDSAWithSHA256, ECDSAWithSHA384, ECDSAWithSHA512,
+]);
 
 impl TryFrom<kmip_2_1::kmip_types::DigitalSignatureAlgorithm> for DigitalSignatureAlgorithm {
     type Error = KmipError;
@@ -1462,13 +1167,7 @@ pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
 }
 
-impl From<OpaqueDataType> for kmip_2_1::kmip_types::OpaqueDataType {
-    fn from(val: OpaqueDataType) -> Self {
-        match val {
-            OpaqueDataType::Unknown => Self::Unknown,
-        }
-    }
-}
+impl_from_1to1!(OpaqueDataType => kmip_2_1::kmip_types::OpaqueDataType, [Unknown]);
 
 impl TryFrom<kmip_2_1::kmip_types::OpaqueDataType> for OpaqueDataType {
     type Error = KmipError;

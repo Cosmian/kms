@@ -1,7 +1,8 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useCallback, useEffect, useState } from "react";
 import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface AccessGrantFormData {
     user_id: string;
@@ -25,12 +26,8 @@ const KMIP_OPERATIONS = [
 
 const AccessGrantForm: React.FC = () => {
     const [form] = Form.useForm<AccessGrantFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [isPrivilegedUser, setIsPrivilegedUser] = useState<boolean | undefined>(undefined);
-
-    const responseRef = useRef<HTMLDivElement>(null);
 
     const fetchPrivilegedAccess = useCallback(async () => {
         setIsPrivilegedUser(undefined);
@@ -46,27 +43,14 @@ const AccessGrantForm: React.FC = () => {
         fetchPrivilegedAccess();
     }, [fetchPrivilegedAccess]);
 
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
-
     const onFinish = async (values: AccessGrantFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             if (values.grant_create_access_right) {
                 values.operation_types.push("create");
             }
             const response = await postNoTTLVRequest("/access/grant", values, idToken, serverUrl);
-            setRes(response.success);
-        } catch (e) {
-            setRes(`Error granting access: ${e}`);
-            console.error("Error granting access:", e);
-        } finally {
-            setIsLoading(false);
-        }
+            return response.success;
+        });
     };
 
     return (
@@ -154,11 +138,7 @@ const AccessGrantForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Grant access response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Grant access response" />
         </div>
     );
 };

@@ -1,10 +1,11 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { FormUpload } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import { import_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 type ImportKeyFormat = "json-ttlv" | "pem" | "sec1" | "pkcs1-priv" | "pkcs1-pub" | "pkcs8-pub" | "pkcs8-priv" | "aes" | "chacha20";
 
@@ -37,21 +38,10 @@ type KeyImportResponse = {
 
 const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
     const [form] = Form.useForm<ImportKeyFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ImportKeyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = import_ttlv_request(
                 values.keyId,
                 values.keyFile,
@@ -68,14 +58,9 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str);
-                setRes(`File has been imported - imported object id: ${result.UniqueIdentifier}`);
+                return `File has been imported - imported object id: ${result.UniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error importing: ${e}`);
-            console.error("Error importing:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     let key_formats = [];
@@ -292,11 +277,7 @@ const KeyImportForm: React.FC<KeyImportFormProps> = ({ key_type }) => {
                 </Space>
             </Form>
 
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Import Response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Import Response" />
         </div>
     );
 };

@@ -110,45 +110,11 @@ pub(crate) async fn signature_verify(
     let verification_key = extract_verification_key(uid_owm.object())?;
 
     // Resolve cryptographic parameters: prefer request values, but fall back to
-    // the stored key Attributes when the request omits them. This mirrors how
-    // other operations (e.g., Encrypt/Decrypt) respect registered parameters.
-    let effective_crypto_params: CryptographicParameters = {
-        let stored_cp = uid_owm
-            .object()
-            .attributes()
-            .ok()
-            .and_then(|a| a.cryptographic_parameters.clone())
-            .unwrap_or_default();
-        match request.cryptographic_parameters.clone() {
-            None => stored_cp,
-            Some(mut req_cp) => {
-                if req_cp.cryptographic_algorithm.is_none() {
-                    req_cp.cryptographic_algorithm = stored_cp.cryptographic_algorithm;
-                }
-                if req_cp.padding_method.is_none() {
-                    req_cp.padding_method = stored_cp.padding_method;
-                }
-                if req_cp.hashing_algorithm.is_none() {
-                    req_cp.hashing_algorithm = stored_cp.hashing_algorithm;
-                }
-                if req_cp.digital_signature_algorithm.is_none() {
-                    req_cp.digital_signature_algorithm = stored_cp.digital_signature_algorithm;
-                }
-                // Carry through ancillary parameters if present in stored attributes and omitted in request
-                if req_cp.mask_generator.is_none() {
-                    req_cp.mask_generator = stored_cp.mask_generator;
-                }
-                if req_cp.mask_generator_hashing_algorithm.is_none() {
-                    req_cp.mask_generator_hashing_algorithm =
-                        stored_cp.mask_generator_hashing_algorithm;
-                }
-                if req_cp.p_source.is_none() {
-                    req_cp.p_source = stored_cp.p_source;
-                }
-                req_cp
-            }
-        }
-    };
+    // the stored key Attributes when the request omits them.
+    let effective_crypto_params = super::state_utils::merge_crypto_params(
+        request.cryptographic_parameters.clone(),
+        uid_owm.object(),
+    );
 
     // Handle streaming verification
     if request.init_indicator == Some(true) || request.correlation_value.is_some() {

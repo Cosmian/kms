@@ -1,9 +1,9 @@
 import { Button, Card, Form, Input, Radio, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect, useState } from "react";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
 
 interface SymmetricHashFormData {
     inputMode: "file" | "text";
@@ -15,18 +15,9 @@ interface SymmetricHashFormData {
 
 const SymmetricHashForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricHashFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const inputMode = Form.useWatch("inputMode", form);
     const [algorithmOptions, setAlgorithmOptions] = useState<{ value: string; label: string }[]>([]);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         try {
@@ -39,19 +30,17 @@ const SymmetricHashForm: React.FC = () => {
     }, []);
 
     const onFinish = async (values: SymmetricHashFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             let data: Uint8Array;
             if (values.inputMode === "file") {
                 if (!values.inputFile || values.inputFile.byteLength === 0) {
-                    setRes("Please select a file to hash.");
+                    return "Please select a file to hash.";
                     return;
                 }
                 data = values.inputFile;
             } else {
                 if (!values.inputText) {
-                    setRes("Please enter text to hash.");
+                    return "Please enter text to hash.";
                     return;
                 }
                 data = new TextEncoder().encode(values.inputText);
@@ -74,14 +63,9 @@ const SymmetricHashForm: React.FC = () => {
                 const hexHash = Array.from(hashBytes)
                     .map((b) => b.toString(16).padStart(2, "0"))
                     .join("");
-                setRes(hexHash);
+                return hexHash;
             }
-        } catch (e) {
-            setRes(`Error hashing: ${e}`);
-            console.error("Error hashing:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

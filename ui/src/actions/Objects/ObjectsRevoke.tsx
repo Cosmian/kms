@@ -1,9 +1,9 @@
 import { WarningFilled } from "@ant-design/icons";
 import { Button, Card, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { getObjectLabel, getTypeString, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { parse_revoke_ttlv_response, revoke_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import { useActionState } from "../../hooks/useActionState";
 
 interface RevokeFormData {
     revocationReasonMessage: string;
@@ -21,41 +21,23 @@ type RevokeResponse = {
 
 const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
     const [form] = Form.useForm<RevokeFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const label = getObjectLabel(objectType);
 
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
-
     const onFinish = async (values: RevokeFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.objectId || (values.tags ? JSON.stringify(values.tags) : undefined);
-        if (!id) {
-            setRes(`Missing ${label} identifier.`);
-            throw new Error(`Missing ${label} identifier`);
-        }
-
-        try {
+        await execute(async () => {
+            if (!id) {
+                throw new Error(`Missing ${label} identifier.`);
+            }
             const request = revoke_ttlv_request(id, values.revocationReasonMessage);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: RevokeResponse = await parse_revoke_ttlv_response(result_str);
-                setRes(`${result.UniqueIdentifier} has been revoked.`);
+                return `${result.UniqueIdentifier} has been revoked.`;
             }
-        } catch (e) {
-            setRes(`Error revoking ${label}: ${e}`);
-            console.error(`Error revoking ${label}:`, e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

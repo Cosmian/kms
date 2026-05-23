@@ -24,6 +24,7 @@ use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
+        operations::state_utils::record_cascading_metrics,
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -222,7 +223,7 @@ pub(crate) async fn recursively_revoke_key(
                                 ids_to_skip.clone(),
                             )
                             .await?;
-                            record_cascading_revoke_metrics(op_start, kms, user);
+                            record_cascading_metrics("Revoke", op_start, kms, user);
                         }
                     }
                 }
@@ -256,7 +257,7 @@ pub(crate) async fn recursively_revoke_key(
                                 ids_to_skip.clone(),
                             )
                             .await?;
-                            record_cascading_revoke_metrics(op_start, kms, user);
+                            record_cascading_metrics("Revoke", op_start, kms, user);
                         }
                     }
                 }
@@ -345,13 +346,4 @@ async fn revoke_key_core(
     debug!("Object with unique identifier: {} revoked", owm.id());
 
     Ok(())
-}
-
-// Record cascading revoke operations for linked objects
-fn record_cascading_revoke_metrics(op_start: std::time::Instant, kms: &KMS, user: &str) {
-    if let Some(metrics) = &kms.metrics {
-        metrics.record_kmip_operation("Revoke", user);
-        let duration = op_start.elapsed().as_secs_f64();
-        metrics.record_kmip_operation_duration("Revoke", duration);
-    }
 }

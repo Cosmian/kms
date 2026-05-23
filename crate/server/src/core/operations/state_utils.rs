@@ -5,18 +5,117 @@ use cosmian_kms_server_database::{
     reexport::{
         cosmian_kmip::{
             kmip_0::kmip_types::State,
-            kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
+            kmip_2_1::{
+                KmipOperation,
+                kmip_attributes::Attributes,
+                kmip_objects::{Object, ObjectType},
+                kmip_types::{CryptographicParameters, UniqueIdentifier},
+            },
             time_normalize,
         },
         cosmian_kms_interfaces::ObjectWithMetadata,
     },
 };
+use time::OffsetDateTime;
 
+use super::digest::digest;
 use crate::{
     core::{KMS, uid_utils::has_prefix},
     error::KmsError,
     result::KResult,
 };
+
+/// Initialize lifecycle attributes on a newly created or imported object.
+///
+/// Sets state (`PreActive` or `Active` based on `requested_activation_date`), digest,
+/// `initial_date`, `original_creation_date`, `last_change_date`, `activation_date` (if `Active`),
+/// and `object_type` on the object's attributes. Returns a clone of the final attributes.
+pub(crate) fn setup_object_lifecycle(
+    object: &mut Object,
+    object_type: ObjectType,
+    requested_activation_date: Option<OffsetDateTime>,
+) -> KResult<Attributes> {
+    let now = time_normalize()?;
+    let digest = digest(object)?;
+    let attributes = object.attributes_mut()?;
+
+    let activation_allows_active = requested_activation_date.is_some_and(|d| d <= now);
+    let state = if activation_allows_active {
+        State::Active
+    } else {
+        State::PreActive
+    };
+
+    attributes.state = Some(state);
+    attributes.digest = digest;
+    attributes.object_type = Some(object_type);
+    attributes.initial_date = Some(now);
+    attributes.original_creation_date = Some(now);
+    attributes.last_change_date = Some(now);
+    if state == State::Active {
+        attributes.activation_date = Some(now);
+    }
+
+    Ok(attributes.clone())
+}
+
+/// Fill missing (None) fields in `target` from `source`.
+///
+/// Every `Option` field of `CryptographicParameters` that is `None` in `target`
+/// gets overwritten with the value from `source`.
+pub(crate) fn fill_missing_cp_fields(
+    target: &mut CryptographicParameters,
+    source: &CryptographicParameters,
+) {
+    macro_rules! fill {
+        ($($field:ident),* $(,)?) => {
+            $(if target.$field.is_none() { target.$field = source.$field.clone(); })*
+        };
+    }
+    fill!(
+        block_cipher_mode,
+        padding_method,
+        hashing_algorithm,
+        key_role_type,
+        digital_signature_algorithm,
+        cryptographic_algorithm,
+        random_iv,
+        iv_length,
+        tag_length,
+        fixed_field_length,
+        invocation_field_length,
+        counter_length,
+        initial_counter_value,
+        salt_length,
+        mask_generator,
+        mask_generator_hashing_algorithm,
+        p_source,
+        trailer_field,
+    );
+}
+
+/// Merge request-supplied cryptographic parameters with stored key attributes.
+///
+/// If the request supplies no parameters, the stored ones are returned as-is.
+/// If the request partially specifies parameters, the stored values fill in any
+/// `None` fields. This mirrors how other operations respect registered parameters.
+pub(crate) fn merge_crypto_params(
+    request_params: Option<CryptographicParameters>,
+    object: &Object,
+) -> CryptographicParameters {
+    let stored_cp = object
+        .attributes()
+        .ok()
+        .and_then(|a| a.cryptographic_parameters.clone())
+        .unwrap_or_default();
+    match request_params {
+        None => stored_cp,
+        Some(mut req_cp) => {
+            fill_missing_cp_fields(&mut req_cp, &stored_cp);
+            req_cp
+        }
+    }
+}
 
 /// Determine the effective state of an object based on its stored state and `activation_date`.
 ///
@@ -176,6 +275,21 @@ where
                  use a unique identifier"
             )))
         }
+    }
+}
+
+/// Record metrics for a cascading (linked-object) operation.
+///
+/// Used by `destroy` and `revoke` when they cascade to related keys.
+pub(crate) fn record_cascading_metrics(
+    op_name: &str,
+    op_start: std::time::Instant,
+    kms: &KMS,
+    user: &str,
+) {
+    if let Some(metrics) = &kms.metrics {
+        metrics.record_kmip_operation(op_name, user);
+        metrics.record_kmip_operation_duration(op_name, op_start.elapsed().as_secs_f64());
     }
 }
 

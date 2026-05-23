@@ -1,7 +1,7 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { sendKmipRequest } from "../../utils/utils";
+import { useActionState } from "../../hooks/useActionState";
 
 interface MacComputeFormData {
     keyId?: string;
@@ -38,25 +38,13 @@ const buildMacRequest = (keyId: string, algorithm: string, dataHex: string) => (
 
 const MacComputeForm: React.FC = () => {
     const [form] = Form.useForm<MacComputeFormData>();
-    const [res, setRes] = useState<string | undefined>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: MacComputeFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing key identifier.");
-                throw Error("Missing key identifier");
+                throw new Error("Missing key identifier.");
             }
             const request = buildMacRequest(id, values.algorithm, values.data);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -64,17 +52,12 @@ const MacComputeForm: React.FC = () => {
                 const response = JSON.parse(result_str) as { tag?: string; value?: Array<{ tag: string; type: string; value: string }> };
                 const dataItem = response.value?.find((item) => item.tag === "MACData");
                 if (dataItem) {
-                    setRes(`MAC (hex): ${dataItem.value}`);
+                    return `MAC (hex): ${dataItem.value}`;
                 } else {
-                    setRes(`Response: ${result_str}`);
+                    return `Response: ${result_str}`;
                 }
             }
-        } catch (e) {
-            setRes(`Error computing MAC: ${e}`);
-            console.error("Error computing MAC:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

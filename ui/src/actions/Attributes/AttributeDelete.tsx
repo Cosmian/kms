@@ -1,8 +1,8 @@
 import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import { delete_attribute_ttlv_request, parse_delete_attribute_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import { useActionState } from "../../hooks/useActionState";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -30,29 +30,17 @@ interface AttributeDeleteFormData {
 
 const DeleteAttribute: React.FC = () => {
     const [form] = Form.useForm<AttributeDeleteFormData>();
-    const [res, setRes] = useState<string | undefined>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { serverUrl, idToken } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: AttributeDeleteFormData) => {
-        setIsLoading(true);
         const id = values.id ? values.id : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing object identifier.");
-                throw Error("Missing object identifier");
+                throw new Error("Missing object identifier.");
             }
 
             if (!values.attribute_name) {
-                setRes("Missing attribute name.");
-                throw Error("Missing attribute name");
+                throw new Error("Missing attribute name.");
             }
 
             const request = delete_attribute_ttlv_request(id, values.attribute_name);
@@ -60,14 +48,9 @@ const DeleteAttribute: React.FC = () => {
 
             if (result_str) {
                 const response = parse_delete_attribute_ttlv_response(result_str);
-                setRes(`Attribute '${values.attribute_name}' has been deleted for ${response.UniqueIdentifier}`);
+                return `Attribute '${values.attribute_name}' has been deleted for ${response.UniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error deleting attribute: ${e}`);
-            console.error("Error deleting attribute:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

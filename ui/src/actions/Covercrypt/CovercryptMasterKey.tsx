@@ -1,9 +1,10 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_cc_master_keypair_ttlv_request, parse_create_keypair_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface CovercryptMasterKeyFormData {
     specification: string;
@@ -28,22 +29,11 @@ const SPECIFICATION_EXAMPLE = `{
 
 const CovercryptMasterKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptMasterKeyFormData>();
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [specificationType, setSpecificationType] = React.useState<"json-file" | "json-text">("json-file");
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     const onFinish = async (values: CovercryptMasterKeyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = create_cc_master_keypair_ttlv_request(
                 values.specification,
                 values.tags,
@@ -53,16 +43,9 @@ const CovercryptMasterKeyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result = await parse_create_keypair_ttlv_response(result_str);
-                setRes(
-                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
-                );
+                return `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`${e}`);
-            console.error(e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     const SpecificationExplanation = () => (
@@ -207,11 +190,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Covercrypt Master keys creation response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Covercrypt Master keys creation response" />
         </div>
     );
 };

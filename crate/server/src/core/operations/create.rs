@@ -1,23 +1,16 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip,
-    cosmian_kmip::{
-        kmip_0::kmip_types::State::{Active, PreActive},
-        kmip_2_1::{
-            kmip_objects::ObjectType,
-            kmip_operations::{Create, CreateResponse},
-            kmip_types::UniqueIdentifier,
-        },
-        time_normalize,
+    cosmian_kmip::kmip_2_1::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Create, CreateResponse},
+        kmip_types::UniqueIdentifier,
     },
 };
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{
-        KMS, operations::digest::digest, retrieve_object_utils::user_has_permission,
-        wrapping::wrap_and_cache,
-    },
+    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -93,49 +86,11 @@ pub(crate) async fn create(
     );
 
     // Set lifecycle attributes and copy them before the key gets wrapped
-    let attributes = {
-        let digest = digest(&object)?;
-        let attributes = object.attributes_mut()?;
-        // Determine state per KMIP 2.1 spec: default PreActive.
-        // Become Active only if ActivationDate was provided in request attributes and is <= now.
-        // InitialDate, ActivationDate, OriginalCreationDate, LastChangeDate are set by the server below.
-        let now = time_normalize()?;
-        let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
-        trace!(
-            "now: {now}, activation_allows_active: {}",
-            activation_allows_active
-        );
-        let desired_state = if activation_allows_active {
-            Active
-        } else {
-            PreActive
-        };
-        attributes.state = Some(desired_state);
-        // Ensure ObjectType is set by the server at creation
-        attributes.object_type = Some(request.object_type);
-        // Do not auto-set AlwaysSensitive; PyKMIP clients may not support this tag.
-        // Keep client-provided value if present, otherwise leave it unset.
-        // update the digest
-        attributes.digest = digest;
-        // KMIP 2.1: Key Format Type is a required attribute for cryptographic objects and is set by the server.
-        // For symmetric keys produced by Create, the default/export format is Raw. Some clients may
-        // include TransparentSymmetricKey in the request attributes, but our default behavior (and
-        // test expectations) is to export Raw unless explicitly requested at Get/Export time.
-        // To keep behavior consistent, set Attributes.key_format_type=Raw for SymmetricKey on Create.
-        // if request.object_type == ObjectType::SymmetricKey {
-        //     attributes.key_format_type = Some(KeyFormatType::Raw);
-        // }
-        // OriginalCreationDate/LastChangeDate are always set to now
-        // Zero milliseconds for KMIP serialization compatibility
-        let now_stored = time_normalize()?;
-        attributes.original_creation_date = Some(now_stored);
-        attributes.last_change_date = Some(now_stored);
-        attributes.initial_date = Some(now_stored);
-        if desired_state == Active {
-            attributes.activation_date = Some(now_stored);
-        }
-        attributes.clone()
-    };
+    let attributes = super::state_utils::setup_object_lifecycle(
+        &mut object,
+        request.object_type,
+        request.attributes.activation_date,
+    )?;
 
     trace!(
         "Creating object of type {:?} with UID {} and attributes {}",

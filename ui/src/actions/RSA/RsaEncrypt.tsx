@@ -1,9 +1,10 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_rsa_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface RsaEncryptFormData {
     inputFile: Uint8Array;
@@ -30,25 +31,13 @@ const HASH_ALGORITHMS = [
 
 const RsaEncryptForm: React.FC = () => {
     const [form] = Form.useForm<RsaEncryptFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: RsaEncryptFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing key identifier.");
-                throw Error("Missing key identifier");
+                throw new Error("Missing key identifier.");
             }
             const request = encrypt_rsa_ttlv_request(id, values.inputFile, values.encryptionAlgorithm, values.hashingAlgorithm);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -58,14 +47,9 @@ const RsaEncryptForm: React.FC = () => {
                 const mimeType = "application/octet-stream";
                 const filename = `${values.fileName}.enc`;
                 downloadFile(data, filename, mimeType);
-                setRes("File has been encrypted");
+                return "File has been encrypted";
             }
-        } catch (e) {
-            setRes(`Error encrypting: ${e}`);
-            console.error("Error encrypting:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -158,11 +142,7 @@ const RsaEncryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="RSA encrypt response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="RSA encrypt response" />
         </div>
     );
 };

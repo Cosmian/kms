@@ -86,351 +86,115 @@ pub(crate) async fn modify_attribute(
 
     let mut attributes = owm.attributes_mut().clone();
 
-    match request.new_attribute {
-        Attribute::ActivationDate(activation_date) => {
-            trace!("ModifyAttribute: Activation Date: {}", activation_date);
-            attributes.activation_date = Some(activation_date);
-            // Per KMIP spec §3.22: if the new date is in the past or present, transition to Active.
-            let now = time_normalize()?;
-            if activation_date <= now {
-                attributes.state = Some(State::Active);
-                activate = true;
+    match_set_attribute! {
+        "ModifyAttribute", request.new_attribute, attributes,
+        simple {
+            CryptographicAlgorithm => cryptographic_algorithm,
+            CryptographicLength => cryptographic_length,
+            CryptographicParameters => cryptographic_parameters,
+            CryptographicDomainParameters => cryptographic_domain_parameters,
+            CryptographicUsageMask => cryptographic_usage_mask,
+            Digest => digest,
+            DeactivationDate => deactivation_date,
+            ObjectGroup => object_group,
+            ContactInformation => contact_information,
+            ObjectType => object_type,
+            UniqueIdentifier => unique_identifier,
+            X509CertificateSubject => x_509_certificate_subject,
+            X509CertificateIssuer => x_509_certificate_issuer,
+            AlternativeName => alternative_name,
+            AlwaysSensitive => always_sensitive,
+            ApplicationSpecificInformation => application_specific_information,
+            ArchiveDate => archive_date,
+            AttributeIndex => attribute_index,
+            CertificateAttributes => certificate_attributes,
+            CertificateType => certificate_type,
+            CertificateLength => certificate_length,
+            Comment => comment,
+            CompromiseDate => compromise_date,
+            CompromiseOccurrenceDate => compromise_occurrence_date,
+            Critical => critical,
+            Description => description,
+            DestroyDate => destroy_date,
+            DigitalSignatureAlgorithm => digital_signature_algorithm,
+            Extractable => extractable,
+            Fresh => fresh,
+            InitialDate => initial_date,
+            KeyFormatType => key_format_type,
+            KeyValueLocation => key_value_location,
+            KeyValuePresent => key_value_present,
+            LastChangeDate => last_change_date,
+            LeaseTime => lease_time,
+            NeverExtractable => never_extractable,
+            NistKeyType => nist_key_type,
+            ObjectGroupMember => object_group_member,
+            OpaqueDataType => opaque_data_type,
+            OriginalCreationDate => original_creation_date,
+            Pkcs12FriendlyName => pkcs_12_friendly_name,
+            ProcessStartDate => process_start_date,
+            ProtectStopDate => protect_stop_date,
+            ProtectionLevel => protection_level,
+            ProtectionPeriod => protection_period,
+            ProtectionStorageMasks => protection_storage_masks,
+            QuantumSafe => quantum_safe,
+            RandomNumberGenerator => random_number_generator,
+            RevocationReason => revocation_reason,
+            RotateDate => rotate_date,
+            RotateGeneration => rotate_generation,
+            RotateInterval => rotate_interval,
+            RotateLatest => rotate_latest,
+            RotateName => rotate_name,
+            RotateOffset => rotate_offset,
+            Sensitive => sensitive,
+            ShortUniqueIdentifier => short_unique_identifier,
+            UsageLimits => usage_limits,
+            X509CertificateIdentifier => x_509_certificate_identifier,
+        }
+        custom {
+            Attribute::ActivationDate(activation_date) => {
+                trace!("ModifyAttribute: ActivationDate: {:?}", activation_date);
+                attributes.activation_date = Some(activation_date);
+                // Per KMIP spec §3.22: if the new date is in the past or present, transition to Active.
+                let now = time_normalize()?;
+                if activation_date <= now {
+                    attributes.state = Some(State::Active);
+                    activate = true;
+                }
             }
-        }
-        Attribute::CryptographicAlgorithm(cryptographic_algorithm) => {
-            trace!(
-                "ModifyAttribute: Cryptographic Algorithm: {}",
-                cryptographic_algorithm
-            );
-            attributes.cryptographic_algorithm = Some(cryptographic_algorithm);
-        }
-        Attribute::CryptographicLength(length) => {
-            trace!("ModifyAttribute: Cryptographic Length: {}", length);
-            attributes.cryptographic_length = Some(length);
-        }
-        Attribute::CryptographicParameters(parameters) => {
-            trace!("ModifyAttribute: Cryptographic Parameters: {}", parameters);
-            attributes.cryptographic_parameters = Some(parameters);
-        }
-        Attribute::CryptographicDomainParameters(domain_parameters) => {
-            trace!(
-                "ModifyAttribute: Cryptographic Domain Parameters: {}",
-                domain_parameters
-            );
-            attributes.cryptographic_domain_parameters = Some(domain_parameters);
-        }
-        Attribute::CryptographicUsageMask(usage_mask) => {
-            trace!("ModifyAttribute: Cryptographic Usage Mask: {}", usage_mask);
-            attributes.cryptographic_usage_mask = Some(usage_mask);
-        }
-        Attribute::Digest(digest) => {
-            trace!("ModifyAttribute: Digest: {}", digest);
-            attributes.digest = Some(digest);
-        }
-        Attribute::Link(link) => {
-            trace!("ModifyAttribute: Link: {}", link.linked_object_identifier);
-            attributes.set_link(link.link_type, link.linked_object_identifier);
-        }
-        Attribute::VendorAttribute(vendor_attribute) => {
-            trace!("ModifyAttribute: Vendor Attribute: {}", vendor_attribute);
-            attributes.set_vendor_attribute(
-                &vendor_attribute.vendor_identification,
-                &vendor_attribute.attribute_name,
-                vendor_attribute.attribute_value,
-            );
-        }
-        Attribute::DeactivationDate(deactivation_date) => {
-            trace!("ModifyAttribute: Deactivation Date: {}", deactivation_date);
-            attributes.deactivation_date = Some(deactivation_date);
-        }
-        Attribute::ObjectGroup(object_group) => {
-            trace!("ModifyAttribute: Object Group: {}", object_group);
-            attributes.object_group = Some(object_group);
-        }
-        Attribute::ContactInformation(contact_information) => {
-            trace!(
-                "ModifyAttribute: Contact Information: {}",
-                contact_information
-            );
-            attributes.contact_information = Some(contact_information);
-        }
-        Attribute::ObjectType(object_type) => {
-            trace!("ModifyAttribute: Object Type: {}", object_type);
-            attributes.object_type = Some(object_type);
-        }
-        Attribute::Name(name) => {
-            trace!("ModifyAttribute: Name: {}", name);
-            // ModifyAttribute replaces an existing single-valued attribute.
-            // For Name (multi-valued), we replace the first entry if one exists,
-            // otherwise we add the new name (KMIP 1.x index-0 semantics).
-            match attributes.name.as_mut() {
-                Some(names) if !names.is_empty() => {
-                    if let Some(first) = names.get_mut(0) {
-                        *first = name;
+            Attribute::Link(link) => {
+                trace!("ModifyAttribute: Link: {}", link.linked_object_identifier);
+                attributes.set_link(link.link_type, link.linked_object_identifier);
+            }
+            Attribute::VendorAttribute(vendor_attribute) => {
+                trace!("ModifyAttribute: VendorAttribute: {}", vendor_attribute);
+                attributes.set_vendor_attribute(
+                    &vendor_attribute.vendor_identification,
+                    &vendor_attribute.attribute_name,
+                    vendor_attribute.attribute_value,
+                );
+            }
+            Attribute::Name(name) => {
+                trace!("ModifyAttribute: Name: {}", name);
+                match attributes.name.as_mut() {
+                    Some(names) if !names.is_empty() => {
+                        if let Some(first) = names.get_mut(0) {
+                            *first = name;
+                        }
+                    }
+                    Some(names) => {
+                        names.push(name);
+                    }
+                    None => {
+                        attributes.name = Some(vec![name]);
                     }
                 }
-                Some(names) => {
-                    names.push(name);
-                }
-                None => {
-                    attributes.name = Some(vec![name]);
-                }
             }
-        }
-        Attribute::UniqueIdentifier(unique_identifier) => {
-            trace!("ModifyAttribute: Unique Identifier: {}", unique_identifier);
-            attributes.unique_identifier = Some(unique_identifier);
-        }
-        Attribute::X509CertificateSubject(x509_certificate_subject) => {
-            trace!(
-                "ModifyAttribute: X509 Certificate Subject: {}",
-                x509_certificate_subject
-            );
-            attributes.x_509_certificate_subject = Some(x509_certificate_subject);
-        }
-        Attribute::X509CertificateIssuer(x509_certificate_issuer) => {
-            trace!(
-                "ModifyAttribute: X509 Certificate Issuer: {}",
-                x509_certificate_issuer
-            );
-            attributes.x_509_certificate_issuer = Some(x509_certificate_issuer);
-        }
-        Attribute::AlternativeName(alternative_name) => {
-            trace!("ModifyAttribute: Alternative Name: {}", alternative_name);
-            attributes.alternative_name = Some(alternative_name);
-        }
-        Attribute::AlwaysSensitive(always_sensitive) => {
-            trace!("ModifyAttribute: Always Sensitive: {}", always_sensitive);
-            attributes.always_sensitive = Some(always_sensitive);
-        }
-        Attribute::ApplicationSpecificInformation(application_specific_information) => {
-            trace!(
-                "ModifyAttribute: Application Specific Information: {}",
-                application_specific_information
-            );
-            attributes.application_specific_information = Some(application_specific_information);
-        }
-        Attribute::ArchiveDate(archive_date) => {
-            trace!("ModifyAttribute: Archive Date: {:?}", archive_date);
-            attributes.archive_date = Some(archive_date);
-        }
-        Attribute::AttributeIndex(attribute_index) => {
-            trace!("ModifyAttribute: Attribute Index: {:?}", attribute_index);
-            attributes.attribute_index = Some(attribute_index);
-        }
-        Attribute::CertificateAttributes(certificate_attributes) => {
-            trace!(
-                "ModifyAttribute: Certificate Attributes: {}",
-                certificate_attributes
-            );
-            attributes.certificate_attributes = Some(certificate_attributes);
-        }
-        Attribute::CertificateType(certificate_type) => {
-            trace!("ModifyAttribute: Certificate Type: {}", certificate_type);
-            attributes.certificate_type = Some(certificate_type);
-        }
-        Attribute::CertificateLength(certificate_length) => {
-            trace!(
-                "ModifyAttribute: Certificate Length: {}",
-                certificate_length
-            );
-            attributes.certificate_length = Some(certificate_length);
-        }
-        Attribute::Comment(comment) => {
-            trace!("ModifyAttribute: Comment: {}", comment);
-            attributes.comment = Some(comment);
-        }
-        Attribute::CompromiseDate(compromise_date) => {
-            trace!("ModifyAttribute: Compromise Date: {}", compromise_date);
-            attributes.compromise_date = Some(compromise_date);
-        }
-        Attribute::CompromiseOccurrenceDate(compromise_occurrence_date) => {
-            trace!(
-                "ModifyAttribute: Compromise Occurrence Date: {}",
-                compromise_occurrence_date
-            );
-            attributes.compromise_occurrence_date = Some(compromise_occurrence_date);
-        }
-        Attribute::Critical(critical) => {
-            trace!("ModifyAttribute: Critical: {}", critical);
-            attributes.critical = Some(critical);
-        }
-        Attribute::Description(description) => {
-            trace!("ModifyAttribute: Description: {}", description);
-            attributes.description = Some(description);
-        }
-        Attribute::DestroyDate(destroy_date) => {
-            trace!("ModifyAttribute: Destroy Date: {}", destroy_date);
-            attributes.destroy_date = Some(destroy_date);
-        }
-        Attribute::DigitalSignatureAlgorithm(digital_signature_algorithm) => {
-            trace!(
-                "ModifyAttribute: Digital Signature Algorithm: {}",
-                digital_signature_algorithm
-            );
-            attributes.digital_signature_algorithm = Some(digital_signature_algorithm);
-        }
-        Attribute::Extractable(extractable) => {
-            trace!("ModifyAttribute: Extractable: {}", extractable);
-            attributes.extractable = Some(extractable);
-        }
-        Attribute::Fresh(fresh) => {
-            trace!("ModifyAttribute: Fresh: {}", fresh);
-            attributes.fresh = Some(fresh);
-        }
-        Attribute::InitialDate(initial_date) => {
-            trace!("ModifyAttribute: Initial Date: {}", initial_date);
-            attributes.initial_date = Some(initial_date);
-        }
-        Attribute::KeyFormatType(key_format_type) => {
-            trace!("ModifyAttribute: Key Format Type: {}", key_format_type);
-            attributes.key_format_type = Some(key_format_type);
-        }
-        Attribute::KeyValueLocation(key_value_location) => {
-            trace!(
-                "ModifyAttribute: Key Value Location: {}",
-                key_value_location
-            );
-            attributes.key_value_location = Some(key_value_location);
-        }
-        Attribute::KeyValuePresent(key_value_present) => {
-            trace!("ModifyAttribute: Key Value Present: {}", key_value_present);
-            attributes.key_value_present = Some(key_value_present);
-        }
-        Attribute::LastChangeDate(last_change_date) => {
-            trace!("ModifyAttribute: Last Change Date: {}", last_change_date);
-            attributes.last_change_date = Some(last_change_date);
-        }
-        Attribute::LeaseTime(lease_time) => {
-            trace!("ModifyAttribute: Lease Time: {}", lease_time);
-            attributes.lease_time = Some(lease_time);
-        }
-        Attribute::NeverExtractable(never_extractable) => {
-            trace!("ModifyAttribute: Never Extractable: {}", never_extractable);
-            attributes.never_extractable = Some(never_extractable);
-        }
-        Attribute::NistKeyType(nist_key_type) => {
-            trace!("ModifyAttribute: Nist Key Type: {}", nist_key_type);
-            attributes.nist_key_type = Some(nist_key_type);
-        }
-        Attribute::ObjectGroupMember(object_group_member) => {
-            trace!(
-                "ModifyAttribute: Object Group Member: {}",
-                object_group_member
-            );
-            attributes.object_group_member = Some(object_group_member);
-        }
-        Attribute::OpaqueDataType(opaque_data_type) => {
-            trace!("ModifyAttribute: Opaque Data Type: {}", opaque_data_type);
-            attributes.opaque_data_type = Some(opaque_data_type);
-        }
-        Attribute::OriginalCreationDate(original_creation_date) => {
-            trace!(
-                "ModifyAttribute: Original Creation Date: {}",
-                original_creation_date
-            );
-            attributes.original_creation_date = Some(original_creation_date);
-        }
-        Attribute::Pkcs12FriendlyName(pkcs12_friendly_name) => {
-            trace!(
-                "ModifyAttribute: PKCS12 Friendly Name: {}",
-                pkcs12_friendly_name
-            );
-            attributes.pkcs_12_friendly_name = Some(pkcs12_friendly_name);
-        }
-        Attribute::ProcessStartDate(process_start_date) => {
-            trace!(
-                "ModifyAttribute: Process Start Date: {}",
-                process_start_date
-            );
-            attributes.process_start_date = Some(process_start_date);
-        }
-        Attribute::ProtectStopDate(protect_stop_date) => {
-            trace!("ModifyAttribute: Protect Stop Date: {}", protect_stop_date);
-            attributes.protect_stop_date = Some(protect_stop_date);
-        }
-        Attribute::ProtectionLevel(protection_level) => {
-            trace!("ModifyAttribute: Protection Level: {}", protection_level);
-            attributes.protection_level = Some(protection_level);
-        }
-        Attribute::ProtectionPeriod(protection_period) => {
-            trace!("ModifyAttribute: Protection Period: {}", protection_period);
-            attributes.protection_period = Some(protection_period);
-        }
-        Attribute::ProtectionStorageMasks(protection_storage_masks) => {
-            trace!(
-                "ModifyAttribute: Protection Storage Masks: {}",
-                protection_storage_masks
-            );
-            attributes.protection_storage_masks = Some(protection_storage_masks);
-        }
-        Attribute::QuantumSafe(quantum_safe) => {
-            trace!("ModifyAttribute: Quantum Safe: {}", quantum_safe);
-            attributes.quantum_safe = Some(quantum_safe);
-        }
-        Attribute::RandomNumberGenerator(random_number_generator) => {
-            trace!(
-                "ModifyAttribute: Random Number Generator: {}",
-                random_number_generator
-            );
-            attributes.random_number_generator = Some(random_number_generator);
-        }
-        Attribute::RevocationReason(revocation_reason) => {
-            trace!("ModifyAttribute: Revocation Reason: {}", revocation_reason);
-            attributes.revocation_reason = Some(revocation_reason);
-        }
-        Attribute::RotateDate(rotate_date) => {
-            trace!("ModifyAttribute: Rotate Date: {}", rotate_date);
-            attributes.rotate_date = Some(rotate_date);
-        }
-        Attribute::RotateGeneration(rotate_generation) => {
-            trace!("ModifyAttribute: Rotate Generation: {}", rotate_generation);
-            attributes.rotate_generation = Some(rotate_generation);
-        }
-        Attribute::RotateInterval(rotate_interval) => {
-            trace!("ModifyAttribute: Rotate Interval: {}", rotate_interval);
-            attributes.rotate_interval = Some(rotate_interval);
-        }
-        Attribute::RotateLatest(rotate_latest) => {
-            trace!("ModifyAttribute: Rotate Latest: {}", rotate_latest);
-            attributes.rotate_latest = Some(rotate_latest);
-        }
-        Attribute::RotateName(rotate_name) => {
-            trace!("ModifyAttribute: Rotate Name: {}", rotate_name);
-            attributes.rotate_name = Some(rotate_name);
-        }
-        Attribute::RotateOffset(rotate_offset) => {
-            trace!("ModifyAttribute: Rotate Offset: {}", rotate_offset);
-            attributes.rotate_offset = Some(rotate_offset);
-        }
-        Attribute::Sensitive(sensitive) => {
-            trace!("ModifyAttribute: Sensitive: {}", sensitive);
-            attributes.sensitive = Some(sensitive);
-        }
-        Attribute::ShortUniqueIdentifier(short_unique_identifier) => {
-            trace!(
-                "ModifyAttribute: Short Unique Identifier: {}",
-                short_unique_identifier
-            );
-            attributes.short_unique_identifier = Some(short_unique_identifier);
-        }
-        Attribute::State(_state) => {
-            // Already caught by the read-only guard above; unreachable, but be explicit.
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Attribute_Read_Only,
-                "ModifyAttribute: State is read-only".to_owned(),
-            ));
-        }
-        Attribute::UsageLimits(usage_limits) => {
-            trace!("ModifyAttribute: Usage Limits: {}", usage_limits);
-            attributes.usage_limits = Some(usage_limits);
-        }
-        Attribute::X509CertificateIdentifier(x509_certificate_identifier) => {
-            trace!(
-                "ModifyAttribute: X509 Certificate Identifier: {}",
-                x509_certificate_identifier
-            );
-            attributes.x_509_certificate_identifier = Some(x509_certificate_identifier);
+            Attribute::State(_state) => {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Read_Only,
+                    "ModifyAttribute: State is read-only".to_owned(),
+                ));
+            }
         }
     }
 

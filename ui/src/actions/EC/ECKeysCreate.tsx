@@ -1,8 +1,9 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect, useState } from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface ECKeyCreateFormData {
     privateKeyId?: string;
@@ -19,17 +20,8 @@ type CreateKeyPairResponse = {
 
 const ECKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<ECKeyCreateFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [curveOptions, setCurveOptions] = useState<{ value: string; label: string }[]>([]);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         try {
@@ -52,9 +44,7 @@ const ECKeyCreateForm: React.FC = () => {
     }, [curveOptions, form]);
 
     const onFinish = async (values: ECKeyCreateFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = wasm.create_ec_key_pair_ttlv_request(
                 values.privateKeyId,
                 values.tags,
@@ -65,16 +55,9 @@ const ECKeyCreateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
-                setRes(
-                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
-                );
+                return `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error creating EC keypair: ${e}`);
-            console.error("Error creating EC keypair:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -148,11 +131,7 @@ const ECKeyCreateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="EC key pair creation response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="EC key pair creation response" />
         </div>
     );
 };

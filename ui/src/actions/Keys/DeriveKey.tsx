@@ -1,6 +1,5 @@
 import { Button, Card, Form, Input, InputNumber, Radio, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import {
     create_secret_data_ttlv_request,
@@ -8,6 +7,7 @@ import {
     parse_derive_key_ttlv_response,
     parse_import_ttlv_response,
 } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
 
 const HASHING_ALGORITHMS = [
     { label: "SHA-256", value: "SHA256" },
@@ -58,23 +58,12 @@ type DeriveKeyResponse = { UniqueIdentifier: string };
 
 const DeriveKeyForm: React.FC = () => {
     const [form] = Form.useForm<DeriveKeyFormData>();
-    const [res, setRes] = useState<string | undefined>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const sourceType = Form.useWatch("sourceType", form);
     const derivationMethod = Form.useWatch("derivationMethod", form);
 
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
-
     const onFinish = async (values: DeriveKeyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             let baseKeyId: string;
 
             if (values.sourceType === "password") {
@@ -111,14 +100,9 @@ const DeriveKeyForm: React.FC = () => {
             const resultStr = await sendKmipRequest(request, idToken, serverUrl);
             if (resultStr) {
                 const result: DeriveKeyResponse = await parse_derive_key_ttlv_response(resultStr);
-                setRes(`Derived key created with ID: ${result.UniqueIdentifier}`);
+                return `Derived key created with ID: ${result.UniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error deriving key: ${e}`);
-            console.error("Error deriving key:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

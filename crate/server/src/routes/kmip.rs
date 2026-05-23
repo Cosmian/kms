@@ -107,34 +107,30 @@ fn error_response_ttlv(major: i32, minor: i32, error_message: &str) -> TTLV {
 /// Response message containing a header and a Batch Item without Operation,
 /// but with the Result Status field set to Operation Failed
 fn invalid_response_message(major: i32, minor: i32, error_message: String) -> ResponseMessage {
+    macro_rules! error_batch_item {
+        ($variant:ident, $mod:ident) => {
+            ResponseMessageBatchItemVersioned::$variant(
+                cosmian_kmip::$mod::kmip_messages::ResponseMessageBatchItem {
+                    operation: None,
+                    unique_batch_item_id: None,
+                    result_status:
+                        cosmian_kmip::kmip_0::kmip_types::ResultStatusEnumeration::OperationFailed,
+                    result_reason: Some(
+                        cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Message,
+                    ),
+                    result_message: Some(error_message),
+                    asynchronous_correlation_value: None,
+                    response_payload: None,
+                    message_extension: None,
+                },
+            )
+        };
+    }
+
     let batch_item = if major == 2 {
-        ResponseMessageBatchItemVersioned::V21(
-            cosmian_kmip::kmip_2_1::kmip_messages::ResponseMessageBatchItem {
-                operation: None,
-                unique_batch_item_id: None,
-                result_status:
-                    cosmian_kmip::kmip_0::kmip_types::ResultStatusEnumeration::OperationFailed,
-                result_reason: Some(cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Message),
-                result_message: Some(error_message),
-                asynchronous_correlation_value: None,
-                response_payload: None,
-                message_extension: None,
-            },
-        )
+        error_batch_item!(V21, kmip_2_1)
     } else {
-        ResponseMessageBatchItemVersioned::V14(
-            cosmian_kmip::kmip_1_4::kmip_messages::ResponseMessageBatchItem {
-                operation: None,
-                unique_batch_item_id: None,
-                result_status:
-                    cosmian_kmip::kmip_0::kmip_types::ResultStatusEnumeration::OperationFailed,
-                result_reason: Some(cosmian_kmip::kmip_0::kmip_types::ErrorReason::Invalid_Message),
-                result_message: Some(error_message),
-                asynchronous_correlation_value: None,
-                response_payload: None,
-                message_extension: None,
-            },
-        )
+        error_batch_item!(V14, kmip_1_4)
     };
 
     ResponseMessage {
@@ -165,7 +161,7 @@ pub(crate) async fn kmip_2_1_json(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let ttlv = Box::pin(handle_ttlv_2_1(&kms, ttlv, &user)).await?;
+    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 
     Ok(Json(ttlv))
 }
@@ -177,48 +173,22 @@ pub(crate) async fn kmip_2_1_json(
 ///
 /// The input request could be either a single KMIP `Operation` or
 /// multiple KMIP `Operation` serialized in a single KMIP `Message`
-async fn handle_ttlv_2_1(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<TTLV> {
+async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "RequestMessage" {
         let req = match from_ttlv::<RequestMessage>(ttlv) {
             Ok(req) => req,
             Err(e) => {
                 error!(target: "kmip", "Failed to parse RequestMessage: {}", e);
-                return Ok(error_response_ttlv(2, 1, &e.to_string()));
+                return Ok(error_response_ttlv(major, minor, &e.to_string()));
             }
         };
         let resp = kms.message(req, user).await.unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to process request: {}", e);
-            invalid_response_message(2, 1, e.to_string())
+            invalid_response_message(major, minor, e.to_string())
         });
         Ok(to_ttlv(&resp).unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
-            error_response_ttlv(2, 1, e.to_string().as_str())
-        }))
-    } else {
-        let operation = Box::pin(dispatch(kms, ttlv, user)).await?;
-        Ok(to_ttlv(&operation)?)
-    }
-}
-
-/// Handle input TTLV requests for KMIP 1.4 (JSON)
-///
-/// Mirrors the 2.1 handler but returns 1.4-compatible error envelopes.
-async fn handle_ttlv_1_4(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<TTLV> {
-    if ttlv.tag.as_str() == "RequestMessage" {
-        let req = match from_ttlv::<RequestMessage>(ttlv) {
-            Ok(req) => req,
-            Err(e) => {
-                error!(target: "kmip", "Failed to parse RequestMessage: {}", e);
-                return Ok(error_response_ttlv(1, 4, &e.to_string()));
-            }
-        };
-        let resp = kms.message(req, user).await.unwrap_or_else(|e| {
-            error!(target: "kmip", "Failed to process request: {}", e);
-            invalid_response_message(1, 4, e.to_string())
-        });
-        Ok(to_ttlv(&resp).unwrap_or_else(|e| {
-            error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
-            error_response_ttlv(1, 4, e.to_string().as_str())
+            error_response_ttlv(major, minor, e.to_string().as_str())
         }))
     } else {
         let operation = Box::pin(dispatch(kms, ttlv, user)).await?;
@@ -294,12 +264,8 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
         "POST /kmip {}.{} JSON. Request: {:?} {}", major ,minor, ttlv.tag.as_str(), user
     );
 
-    if major == 2 && minor == 1 {
-        let ttlv = Box::pin(handle_ttlv_2_1(&kms, ttlv, &user)).await?;
-        Ok(ttlv)
-    } else if major == 1 && minor == 4 {
-        let ttlv = Box::pin(handle_ttlv_1_4(&kms, ttlv, &user)).await?;
-        Ok(ttlv)
+    if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
+        Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor)).await
     } else {
         Err(KmsError::InvalidRequest(
             "The /kmip endpoint only accepts KMIP 2.1 or 1.4 requests".to_owned(),

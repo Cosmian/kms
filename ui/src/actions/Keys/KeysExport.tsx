@@ -1,8 +1,8 @@
 import { Button, Card, Checkbox, Divider, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect } from "react";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { export_ttlv_request, parse_export_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
 
 interface KeyExportFormData {
     keyId?: string;
@@ -48,10 +48,7 @@ interface KeyExportFormProps {
 
 const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     const [form] = Form.useForm<KeyExportFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const wrapKeyId = Form.useWatch("wrapKeyId", form);
     const selectedAlgorithm: WrappingAlgorithm | undefined = Form.useWatch("wrappingAlgorithm", form);
 
@@ -59,12 +56,6 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     const isOpaqueObject = key_type === "opaque-object";
     const isDataLike = isSecretData || isOpaqueObject;
     const displayName = isSecretData ? "Secret Data" : isOpaqueObject ? "Opaque Object" : key_type.toUpperCase();
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         if (!wrapKeyId) {
@@ -82,13 +73,10 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     }, [selectedAlgorithm, form]);
 
     const onFinish = async (values: KeyExportFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (!id) {
-                setRes("Missing identifier.");
-                throw new Error("Missing object identifier");
+                throw new Error("Missing identifier.");
             }
             const request = export_ttlv_request(id, values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -102,14 +90,9 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                           ? "text/plain"
                           : "application/octet-stream";
                 downloadFile(data, filename, mimeType);
-                setRes("File has been exported");
+                return "File has been exported";
             }
-        } catch (e) {
-            setRes(`Error exporting ${isSecretData ? "secret data" : "key"}: ${e}`);
-            console.error("Export error:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     let keyFormats = [];

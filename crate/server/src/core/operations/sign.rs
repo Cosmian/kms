@@ -283,43 +283,10 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             }
 
             // Resolve effective cryptographic parameters: request overrides, stored attributes fill missing
-            let effective_cp = {
-                let stored_cp = owm
-                    .object()
-                    .attributes()
-                    .ok()
-                    .and_then(|a| a.cryptographic_parameters.clone())
-                    .unwrap_or_default();
-                match request.cryptographic_parameters.clone() {
-                    None => stored_cp,
-                    Some(mut req_cp) => {
-                        if req_cp.cryptographic_algorithm.is_none() {
-                            req_cp.cryptographic_algorithm = stored_cp.cryptographic_algorithm;
-                        }
-                        if req_cp.padding_method.is_none() {
-                            req_cp.padding_method = stored_cp.padding_method;
-                        }
-                        if req_cp.hashing_algorithm.is_none() {
-                            req_cp.hashing_algorithm = stored_cp.hashing_algorithm;
-                        }
-                        if req_cp.digital_signature_algorithm.is_none() {
-                            req_cp.digital_signature_algorithm =
-                                stored_cp.digital_signature_algorithm;
-                        }
-                        if req_cp.mask_generator.is_none() {
-                            req_cp.mask_generator = stored_cp.mask_generator;
-                        }
-                        if req_cp.mask_generator_hashing_algorithm.is_none() {
-                            req_cp.mask_generator_hashing_algorithm =
-                                stored_cp.mask_generator_hashing_algorithm;
-                        }
-                        if req_cp.p_source.is_none() {
-                            req_cp.p_source = stored_cp.p_source;
-                        }
-                        req_cp
-                    }
-                }
-            };
+            let effective_cp = super::state_utils::merge_crypto_params(
+                request.cryptographic_parameters.clone(),
+                owm.object(),
+            );
 
             // Streaming support: if init or a correlation_value is present, accumulate data
             if request.init_indicator == Some(true) || request.correlation_value.is_some() {

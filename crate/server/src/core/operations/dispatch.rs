@@ -23,6 +23,35 @@ use crate::{
     result::KResult,
 };
 
+/// Generate a match arm that deserializes TTLV, calls `kms.$method(req, user)`, and wraps in
+/// `Operation::$Response`.
+macro_rules! op {
+    ($ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $kms.$method(req, $user).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for operations that also need privileged_users
+    (priv $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let privileged_users = $kms.params.privileged_users.clone();
+        let resp = $kms.$method(req, $user, privileged_users).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for operations returning a boxed response
+    (boxed $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $kms.$method(req, $user).await?;
+        Operation::$Resp(Box::new(resp))
+    }};
+    // Variant for operations that need Box::pin (deep recursion)
+    (pin $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = Box::pin($kms.$method(req, $user)).await?;
+        Operation::$Resp(resp)
+    }};
+}
+
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<Operation> {
     let operation_tag = ttlv.tag.clone();
@@ -56,120 +85,67 @@ async fn dispatch_inner(
     enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
 
     Ok(match operation_tag {
-        "Activate" => {
-            let req = from_ttlv::<Activate>(ttlv)?;
-            let resp = kms.activate(req, user).await?;
-            Operation::ActivateResponse(resp)
-        }
-        "AddAttribute" => {
-            let req = from_ttlv::<AddAttribute>(ttlv)?;
-            let resp = kms.add_attribute(req, user).await?;
-            Operation::AddAttributeResponse(resp)
-        }
-        "Certify" => {
-            let req = from_ttlv::<Certify>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms.certify(req, user, privileged_users).await?;
-            Operation::CertifyResponse(resp)
-        }
+        "Activate" => op!(ttlv, kms, user, Activate, activate, ActivateResponse),
+        "AddAttribute" => op!(
+            ttlv,
+            kms,
+            user,
+            AddAttribute,
+            add_attribute,
+            AddAttributeResponse
+        ),
+        "Certify" => op!(priv ttlv, kms, user, Certify, certify, CertifyResponse),
         "Check" => {
             let req = from_ttlv::<Check>(ttlv)?;
             let resp = crate::core::operations::check::check(kms, req, user).await?;
             Operation::CheckResponse(resp)
         }
-        "Create" => {
-            let req = from_ttlv::<Create>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms.create(req, user, privileged_users).await?;
-            Operation::CreateResponse(resp)
-        }
+        "Create" => op!(priv ttlv, kms, user, Create, create, CreateResponse),
         "CreateKeyPair" => {
-            let req = from_ttlv::<CreateKeyPair>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms.create_key_pair(req, user, privileged_users).await?;
-            Operation::CreateKeyPairResponse(resp)
+            op!(priv ttlv, kms, user, CreateKeyPair, create_key_pair, CreateKeyPairResponse)
         }
-        "Decrypt" => {
-            let req = from_ttlv::<Decrypt>(ttlv)?;
-            let resp = kms.decrypt(req, user).await?;
-            Operation::DecryptResponse(resp)
-        }
+        "Decrypt" => op!(ttlv, kms, user, Decrypt, decrypt, DecryptResponse),
         "DeleteAttribute" => {
-            let req = from_ttlv::<DeleteAttribute>(ttlv)?;
-            let resp = kms.delete_attribute(req, user).await?;
-            Operation::DeleteAttributeResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                DeleteAttribute,
+                delete_attribute,
+                DeleteAttributeResponse
+            )
         }
-        "DeriveKey" => {
-            let req = from_ttlv::<DeriveKey>(ttlv)?;
-            let resp = Box::pin(kms.derive_key(req, user)).await?;
-            Operation::DeriveKeyResponse(resp)
-        }
-        "Destroy" => {
-            let req = from_ttlv::<Destroy>(ttlv)?;
-            let resp = kms.destroy(req, user).await?;
-            Operation::DestroyResponse(resp)
-        }
+        "DeriveKey" => op!(pin ttlv, kms, user, DeriveKey, derive_key, DeriveKeyResponse),
+        "Destroy" => op!(ttlv, kms, user, Destroy, destroy, DestroyResponse),
         "DiscoverVersions" => {
             let req = from_ttlv::<DiscoverVersions>(ttlv)?;
             let resp = kms.discover_versions(req, user).await;
             Operation::DiscoverVersionsResponse(resp)
         }
-        "Encrypt" => {
-            let req = from_ttlv::<Encrypt>(ttlv)?;
-            let resp = kms.encrypt(req, user).await?;
-            Operation::EncryptResponse(resp)
-        }
-        "Export" => {
-            let req = from_ttlv::<Export>(ttlv)?;
-            let resp = kms.export(req, user).await?;
-            Operation::ExportResponse(Box::new(resp))
-        }
-        "Get" => {
-            let req = from_ttlv::<Get>(ttlv)?;
-            let resp = kms.get(req, user).await?;
-            Operation::GetResponse(resp)
-        }
+        "Encrypt" => op!(ttlv, kms, user, Encrypt, encrypt, EncryptResponse),
+        "Export" => op!(boxed ttlv, kms, user, Export, export, ExportResponse),
+        "Get" => op!(ttlv, kms, user, Get, get, GetResponse),
         "GetAttributeList" => {
             let req = from_ttlv::<GetAttributeList>(ttlv)?;
             let resp = Box::pin(get_attribute_list(kms, req, user)).await?;
             Operation::GetAttributeListResponse(resp)
         }
         "GetAttributes" => {
-            let req = from_ttlv::<GetAttributes>(ttlv)?;
-            let resp = kms.get_attributes(req, user).await?;
-            Operation::GetAttributesResponse(Box::new(resp))
+            op!(boxed ttlv, kms, user, GetAttributes, get_attributes, GetAttributesResponse)
         }
-        "Hash" => {
-            let req = from_ttlv::<Hash>(ttlv)?;
-            let resp = kms.hash(req, user).await?;
-            Operation::HashResponse(resp)
-        }
-        "RNGRetrieve" => {
-            let req = from_ttlv::<RNGRetrieve>(ttlv)?;
-            let resp = kms.rng_retrieve(req, user).await?;
-            Operation::RNGRetrieveResponse(resp)
-        }
-        "RNGSeed" => {
-            let req = from_ttlv::<RNGSeed>(ttlv)?;
-            let resp = kms.rng_seed(req, user).await?;
-            Operation::RNGSeedResponse(resp)
-        }
-        "Import" => {
-            let req = from_ttlv::<Import>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms.import(req, user, privileged_users).await?;
-            Operation::ImportResponse(resp)
-        }
-        "Locate" => {
-            let req = from_ttlv::<Locate>(ttlv)?;
-            let resp = kms.locate(req, user).await?;
-            Operation::LocateResponse(resp)
-        }
-        "Mac" | "MAC" => {
-            let req = from_ttlv::<MAC>(ttlv)?;
-            let resp = kms.mac(req, user).await?;
-            Operation::MACResponse(resp)
-        }
+        "Hash" => op!(ttlv, kms, user, Hash, hash, HashResponse),
+        "RNGRetrieve" => op!(
+            ttlv,
+            kms,
+            user,
+            RNGRetrieve,
+            rng_retrieve,
+            RNGRetrieveResponse
+        ),
+        "RNGSeed" => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
+        "Import" => op!(priv ttlv, kms, user, Import, import, ImportResponse),
+        "Locate" => op!(ttlv, kms, user, Locate, locate, LocateResponse),
+        "Mac" | "MAC" => op!(ttlv, kms, user, MAC, mac, MACResponse),
         "MACVerify" => {
             let req = from_ttlv::<MACVerify>(ttlv)?;
             let resp = Box::pin(mac_verify(kms, req, user)).await?;
@@ -177,38 +153,25 @@ async fn dispatch_inner(
         }
         "Query" => {
             let req = from_ttlv::<Query>(ttlv)?;
-            // Use operation-level query to keep parity with message.rs
             let resp = query_op(req, kms.vendor_id()).await?;
             Operation::QueryResponse(Box::new(resp))
         }
         "ModifyAttribute" => {
-            let req = from_ttlv::<ModifyAttribute>(ttlv)?;
-            let resp = kms.modify_attribute(req, user).await?;
-            Operation::ModifyAttributeResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                ModifyAttribute,
+                modify_attribute,
+                ModifyAttributeResponse
+            )
         }
-        "ReKey" => {
-            let req = from_ttlv::<ReKey>(ttlv)?;
-            let resp = kms.rekey(req, user).await?;
-            Operation::ReKeyResponse(resp)
-        }
+        "ReKey" => op!(ttlv, kms, user, ReKey, rekey, ReKeyResponse),
         "ReKeyKeyPair" => {
-            let req = from_ttlv::<ReKeyKeyPair>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-
-            let resp = kms.rekey_keypair(req, user, privileged_users).await?;
-            Operation::ReKeyKeyPairResponse(resp)
+            op!(priv ttlv, kms, user, ReKeyKeyPair, rekey_keypair, ReKeyKeyPairResponse)
         }
-        "Register" => {
-            let req = from_ttlv::<Register>(ttlv)?;
-            let privileged_users = kms.params.privileged_users.clone();
-            let resp = kms.register(req, user, privileged_users).await?;
-            Operation::RegisterResponse(resp)
-        }
-        "Revoke" => {
-            let req = from_ttlv::<Revoke>(ttlv)?;
-            let resp = kms.revoke(req, user).await?;
-            Operation::RevokeResponse(resp)
-        }
+        "Register" => op!(priv ttlv, kms, user, Register, register, RegisterResponse),
+        "Revoke" => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
         "SetAttribute" => {
             debug!("SetAttribute TTLV {ttlv:#?}");
             let req = from_ttlv::<SetAttribute>(ttlv)?;
@@ -216,21 +179,18 @@ async fn dispatch_inner(
             let resp = kms.set_attribute(req, user).await?;
             Operation::SetAttributeResponse(resp)
         }
-        "Sign" => {
-            let req = from_ttlv::<Sign>(ttlv)?;
-            let resp = kms.sign(req, user).await?;
-            Operation::SignResponse(resp)
-        }
+        "Sign" => op!(ttlv, kms, user, Sign, sign, SignResponse),
         "SignatureVerify" => {
-            let req = from_ttlv::<SignatureVerify>(ttlv)?;
-            let resp = kms.signature_verify(req, user).await?;
-            Operation::SignatureVerifyResponse(resp)
+            op!(
+                ttlv,
+                kms,
+                user,
+                SignatureVerify,
+                signature_verify,
+                SignatureVerifyResponse
+            )
         }
-        "Validate" => {
-            let req = from_ttlv::<Validate>(ttlv)?;
-            let resp = kms.validate(req, user).await?;
-            Operation::ValidateResponse(resp)
-        }
+        "Validate" => op!(ttlv, kms, user, Validate, validate, ValidateResponse),
         x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
     })
 }
