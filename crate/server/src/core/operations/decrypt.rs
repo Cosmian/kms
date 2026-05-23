@@ -43,11 +43,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-            check_process_window, select_eligible_oracle_uid, select_unique_key_for_operation,
-        },
-        uid_utils::uids_from_unique_identifier,
+        operations::{CryptoOpSpec, ResolvedKey, resolve_key_for_operation},
     },
     error::KmsError,
     kms_bail,
@@ -55,6 +51,68 @@ use crate::{
 };
 
 const EMPTY_SLICE: &[u8] = &[];
+
+/// Marker type for the Decrypt operation's key selection requirements.
+pub(crate) struct DecryptOp;
+
+impl CryptoOpSpec for DecryptOp {
+    const KMIP_OP: KmipOperation = KmipOperation::Decrypt;
+    const OP_NAME: &'static str = "Decrypt";
+    const SUPPORTS_ORACLE: bool = true;
+
+    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+        if let Object::SymmetricKey { .. } = owm.object() {
+            let attributes = owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes());
+            return attributes
+                .is_usage_authorized_for(CryptographicUsageMask::Decrypt)
+                .unwrap_or(false);
+        }
+        if let Object::PrivateKey { .. } = owm.object() {
+            let attributes = owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes());
+            if !attributes
+                .is_usage_authorized_for(CryptographicUsageMask::Decrypt)
+                .unwrap_or(false)
+            {
+                return false;
+            }
+            #[cfg(feature = "non-fips")]
+            if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                use cosmian_kms_server_database::reexport::{
+                    cosmian_kmip::kmip_2_1::extra::VENDOR_ID_COSMIAN,
+                    cosmian_kms_crypto::crypto::access_policy_from_attributes,
+                };
+                if access_policy_from_attributes(VENDOR_ID_COSMIAN, attributes).is_err() {
+                    return false;
+                }
+            }
+            return true;
+        }
+        false
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) => KmsError::ItemNotFound(format!(
+                "Decrypt: failed to retrieve the key: {unique_identifier}"
+            )),
+            KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
+                "Decrypt: the user {user} does not have the permission to decrypt using the key: \
+                 {unique_identifier}"
+            )),
+            other => other,
+        }
+    }
+}
 
 pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
     trace!(
@@ -71,109 +129,35 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
-        .await
-        .context("Decrypt")?;
-    debug!("candidate uids: {uids:?}");
 
-    // Determine which UID to select. The decision process mirrors encrypt.rs:
-    // Phase 1: If any UID has a prefix (crypto oracle), use that key immediately.
-    // Phase 2: Call the shared selection function for the standard database path; it enforces
-    //          Active state, permissions, and uniqueness (fail on multiple eligible keys).
-
-    // Phase 1 — Oracle (prefix) UIDs.  Collect all eligible ones and enforce uniqueness.
-    if let Some((uid, prefix)) = select_eligible_oracle_uid(
-        KmipOperation::Decrypt,
-        "Decrypt",
-        &uids,
-        unique_identifier,
-        kms,
-        user,
-    )
-    .await?
-    {
-        debug!("{user} is authorized to decrypt using: {uid} from crypto oracle");
-        return decrypt_using_crypto_oracle(kms, &request, &uid, &prefix).await;
-    }
-
-    // Phase 2 — Standard database path via shared selection function.
-    let mut owm = select_unique_key_for_operation(
-        "Decrypt",
-        &uids,
-        unique_identifier,
-        KmipOperation::Decrypt,
-        kms,
-        user,
-        |owm| {
-            if let Object::SymmetricKey { .. } = owm.object() {
-                let attributes = owm
-                    .object()
-                    .attributes()
-                    .unwrap_or_else(|_| owm.attributes());
-                return Ok(attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)?);
-            }
-            if let Object::PrivateKey { .. } = owm.object() {
-                let attributes = owm
-                    .object()
-                    .attributes()
-                    .unwrap_or_else(|_| owm.attributes());
-                if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
-                    return Ok(false);
-                }
-                // Covercrypt secret keys require an access policy that allows decryption
-                #[cfg(feature = "non-fips")]
-                if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
-                    if access_policy_from_attributes(kms.vendor_id(), attributes).is_err() {
-                        return Ok(false);
-                    }
-                }
-                return Ok(true);
-            }
-            Ok(false)
-        },
-    )
-    .await
-    .map_err(|e| match e {
-        KmsError::ItemNotFound(_) => {
-            KmsError::ItemNotFound(format!("Decrypt: failed to retrieve the key: {unique_identifier}"))
+    match resolve_key_for_operation::<DecryptOp>(unique_identifier, kms, user).await? {
+        ResolvedKey::Oracle { uid, prefix } => {
+            debug!("{user} is authorized to decrypt using: {uid} from crypto oracle");
+            return decrypt_using_crypto_oracle(kms, &request, &uid, &prefix).await;
         }
-        KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
-            "Decrypt: the user {user} does not have the permission to decrypt using the key: \
-             {unique_identifier}"
-        )),
-        other => other,
-    })?;
+        ResolvedKey::Local(owm) => {
+            let mut owm = *owm;
+            // Unwrap + second-stage enforcement.
+            super::unwrap_and_enforce_policy(kms, &mut owm, "Decrypt", user)
+                .await
+                .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?;
 
-    // Enforce time window constraints for Decrypt mirroring Encrypt semantics: deny usage when
-    // current time is before ProcessStartDate or after ProtectStopDate. Required for vectors like
-    // CS-BC-M-14-21 which expect WrongKeyLifecycleState prior to revocation.
-    check_process_window(&owm)?;
+            let res = BulkData::deserialize(data).map_or_else(
+                |_| decrypt_single(&owm, &kms.params, &request),
+                |bulk_data| decrypt_bulk(&owm, &kms.params, &request, bulk_data),
+            )?;
 
-    // if the key is wrapped, we need to unwrap it
-    owm.set_object(
-        kms.get_unwrapped(owm.id(), owm.object(), user)
-            .await
-            .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?,
-    );
+            info!(
+                uid = owm.id(),
+                user = user,
+                "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
+                request.data.as_ref().map_or(0, Vec::len),
+                res.data.as_ref().map_or(0, |d| d.len()),
+            );
 
-    // Second-stage enforcement: validate the retrieved key's stored attributes.
-    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "Decrypt", owm.id(), &owm)?;
-
-    let res = BulkData::deserialize(data).map_or_else(
-        |_| decrypt_single(&owm, &kms.params, &request),
-        |bulk_data| decrypt_bulk(&owm, &kms.params, &request, bulk_data),
-    )?;
-
-    info!(
-        uid = owm.id(),
-        user = user,
-        "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
-        request.data.as_ref().map_or(0, Vec::len),
-        res.data.as_ref().map_or(0, |d| d.len()),
-    );
-
-    Ok(res)
+            Ok(res)
+        }
+    }
 }
 
 /// Decrypt using a decryption oracle.

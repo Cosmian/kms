@@ -496,6 +496,8 @@ export async function createHmacKey(_page: Page, algorithm = "HMACSHA256"): Prom
                     { tag: "CryptographicLength", type: "Integer", value: 256 },
                     // MACGenerate (0x80=128) | MACVerify (0x100=256) = 384
                     { tag: "CryptographicUsageMask", type: "Integer", value: 384 },
+                    // Activate immediately so the key is usable for crypto operations
+                    { tag: "ActivationDate", type: "DateTime", value: "2024-01-01T00:00:00Z" },
                 ],
             },
         ],

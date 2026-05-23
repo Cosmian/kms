@@ -79,7 +79,7 @@ pub(crate) use set_attribute::set_attribute;
 pub(crate) use sign::sign;
 pub(crate) use signature_verify::signature_verify;
 pub(crate) use state_utils::{
-    check_process_window, select_eligible_oracle_uid, select_unique_key_for_operation,
+    CryptoOpSpec, ResolvedKey, resolve_key_for_operation, unwrap_and_enforce_policy,
 };
 #[cfg(feature = "non-fips")]
 pub(crate) use state_utils::{is_pqc_signature_algorithm, resolve_key_algorithm};

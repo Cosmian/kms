@@ -1,13 +1,12 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason},
         kmip_2_1::{
             KmipOperation,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
             kmip_types::{KeyFormatType, UniqueIdentifier},
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -24,16 +23,48 @@ use openssl::pkey::{Id, PKey, Private};
 use crate::{
     core::{
         KMS,
-        operations::{
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-            select_eligible_oracle_uid, select_unique_key_for_operation,
-        },
-        uid_utils::uids_from_unique_identifier,
+        operations::{CryptoOpSpec, ResolvedKey, resolve_key_for_operation},
     },
     error::KmsError,
     kms_bail,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
+
+/// Marker type for the Sign operation's key selection requirements.
+pub(crate) struct SignOp;
+
+impl CryptoOpSpec for SignOp {
+    const KMIP_OP: KmipOperation = KmipOperation::Sign;
+    const OP_NAME: &'static str = "Sign";
+    const SUPPORTS_ORACLE: bool = true;
+
+    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+        if let Object::PrivateKey { .. } = owm.object() {
+            let attributes = owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes());
+            return attributes
+                .is_usage_authorized_for(CryptographicUsageMask::Sign)
+                .unwrap_or(false);
+        }
+        false
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        _user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("sign: no valid private key for id: {unique_identifier}"),
+            ),
+            other => other,
+        }
+    }
+}
 
 pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignResponse> {
     debug!("{request}");
@@ -50,100 +81,31 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
-        .await
-        .context("sign")?;
-    trace!("candidate uids: {uids:?}");
 
-    // Determine which UID to select. The decision process mirrors encrypt.rs:
-    // Phase 1: If any UID has a prefix (signing oracle), use that key immediately.
-    // Phase 2: Call the shared selection function for the standard database path; it enforces
-    //          Active state, permissions, and uniqueness (fail on multiple eligible keys).
+    match resolve_key_for_operation::<SignOp>(unique_identifier, kms, user).await? {
+        ResolvedKey::Oracle { uid, prefix } => {
+            debug!("user: {user} is authorized to sign using: {uid} from signing oracle");
+            return sign_using_crypto_oracle(kms, &request, &uid, &prefix).await;
+        }
+        ResolvedKey::Local(owm) => {
+            let mut owm = *owm;
 
-    // Phase 1 — Oracle (prefix) UIDs.  Collect all eligible ones and enforce uniqueness.
-    if let Some((uid, prefix)) = select_eligible_oracle_uid(
-        KmipOperation::Sign,
-        "Sign",
-        &uids,
-        unique_identifier,
-        kms,
-        user,
-    )
-    .await?
-    {
-        debug!("user: {user} is authorized to sign using: {uid} from signing oracle");
-        return sign_using_crypto_oracle(kms, &request, &uid, &prefix).await;
-    }
+            // Unwrap + second-stage enforcement.
+            super::unwrap_and_enforce_policy(kms, &mut owm, "Sign", user).await?;
 
-    // Phase 2 — Standard database path via shared selection function.
-    let mut owm = select_unique_key_for_operation(
-        "Sign",
-        &uids,
-        unique_identifier,
-        KmipOperation::Sign,
-        kms,
-        user,
-        |owm| {
-            if let Object::PrivateKey { .. } = owm.object() {
-                let attributes = owm
-                    .object()
-                    .attributes()
-                    .unwrap_or_else(|_| owm.attributes());
-                trace!("attributes: {attributes}");
-                return Ok(attributes.is_usage_authorized_for(CryptographicUsageMask::Sign)?);
-            }
-            Ok(false)
-        },
-    )
-    .await
-    .map_err(|e| match e {
-        // Sign must report Item_Not_Found via the KMIP Kmip21Error variant.
-        KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("sign: no valid private key for id: {unique_identifier}"),
-        ),
-        other => other,
-    })?;
+            // Only private keys can be used for signing
+            let res = match owm.object() {
+                Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
+                other => kms_bail!(KmsError::NotSupported(format!(
+                    "signing with keys of type: {} is not supported",
+                    other.object_type()
+                ))),
+            }?;
 
-    // Lifecycle gating for mandatory profile vector CS-AC-M-8-21: a key that is Active but whose
-    // ProcessStartDate is in the future (not yet usable) or whose ProtectStopDate is in the past
-    // (no longer protected) must cause Sign to return Wrong_Key_Lifecycle_State / "DENIED".
-    {
-        let attributes = owm
-            .object()
-            .attributes()
-            .unwrap_or_else(|_| owm.attributes());
-        let now = time_normalize()?;
-        let activation_ok = attributes
-            .activation_date
-            .map_or_else(|| owm.state() == State::Active, |ad| ad <= now);
-        let process_window_ok = attributes.process_start_date.is_none_or(|psd| psd <= now)
-            && attributes.protect_stop_date.is_none_or(|psd| psd > now);
-        if !(activation_ok && process_window_ok) {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Wrong_Key_Lifecycle_State,
-                "DENIED".to_owned(),
-            ));
+            info!(uid = owm.id(), user = user, "sign response = {res}");
+            Ok(res)
         }
     }
-
-    // unwrap if wrapped
-    owm.set_object(kms.get_unwrapped(owm.id(), owm.object(), user).await?);
-
-    // Second-stage enforcement: validate the retrieved key's stored attributes.
-    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "Sign", owm.id(), &owm)?;
-
-    // Only private keys can be used for signing
-    let res = match owm.object() {
-        Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
-        other => kms_bail!(KmsError::NotSupported(format!(
-            "signing with keys of type: {} is not supported",
-            other.object_type()
-        ))),
-    }?;
-
-    info!(uid = owm.id(), user = user, "sign response = {res}");
-    Ok(res)
 }
 
 /// Sign using a signing oracle (external key store / HSM identified by a prefix UID).

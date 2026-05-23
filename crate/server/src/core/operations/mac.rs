@@ -1,13 +1,16 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
-    kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attributes,
-        kmip_data_structures::KeyBlock,
-        kmip_objects::Object,
-        kmip_operations::{MAC, MACResponse, MACVerify, MACVerifyResponse},
-        kmip_types::{CryptographicAlgorithm, UniqueIdentifier, ValidityIndicator},
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attributes,
+            kmip_data_structures::KeyBlock,
+            kmip_objects::Object,
+            kmip_operations::{MAC, MACResponse, MACVerify, MACVerifyResponse},
+            kmip_types::{CryptographicAlgorithm, UniqueIdentifier, ValidityIndicator},
+        },
     },
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::trace;
 use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
@@ -16,15 +19,70 @@ use crate::{
     core::{
         KMS,
         operations::{
+            CryptoOpSpec, ResolvedKey,
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-            check_process_window, select_unique_key_for_operation,
+            resolve_key_for_operation,
         },
-        uid_utils::uids_from_unique_identifier,
     },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
 };
+
+/// Marker type for the MAC operation's key selection requirements.
+pub(crate) struct MacOp;
+
+impl CryptoOpSpec for MacOp {
+    const KMIP_OP: KmipOperation = KmipOperation::MAC;
+    const OP_NAME: &'static str = "MAC";
+    const SUPPORTS_ORACLE: bool = false;
+
+    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+        // MAC does NOT enforce CryptographicUsageMask::MACGenerate for backward compat.
+        matches!(owm.object(), Object::SymmetricKey { .. })
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        _user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("MAC: no valid key for id: {unique_identifier}"),
+            ),
+            other => other,
+        }
+    }
+}
+
+/// Marker type for the `MACVerify` operation's key selection requirements.
+pub(crate) struct MacVerifyOp;
+
+impl CryptoOpSpec for MacVerifyOp {
+    const KMIP_OP: KmipOperation = KmipOperation::MAC;
+    const OP_NAME: &'static str = "MACVerify";
+    const SUPPORTS_ORACLE: bool = false;
+
+    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+        matches!(owm.object(), Object::SymmetricKey { .. })
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        _user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("MACVerify: no valid key for id: {unique_identifier}"),
+            ),
+            other => other,
+        }
+    }
+}
 
 fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult<Vec<u8>> {
     let message_digest = match algorithm {
@@ -109,35 +167,14 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
-        .await
-        .context("MAC")?;
-
-    // Phase 2 — Standard database path via shared selection function.
-    // MAC has no Phase 1 (no oracle/HSM support for MAC operations).
-    // Note: the original MAC implementation did not enforce CryptographicUsageMask::MACGenerate;
-    // it accepted any symmetric key the user can Get. We preserve that behavior for backward
-    // compatibility with existing test vectors and deployments.
-    let owm = select_unique_key_for_operation(
-        "MAC",
-        &uids,
-        unique_identifier,
-        KmipOperation::MAC,
-        kms,
-        user,
-        |owm| Ok(matches!(owm.object(), Object::SymmetricKey { .. })),
-    )
-    .await
-    .map_err(|e| match e {
-        KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("MAC: no valid key for id: {unique_identifier}"),
-        ),
-        other => other,
-    })?;
-
-    // Enforce time window constraints (ProcessStartDate / ProtectStopDate).
-    check_process_window(&owm)?;
+    let owm = match resolve_key_for_operation::<MacOp>(unique_identifier, kms, user).await? {
+        ResolvedKey::Local(owm) => *owm,
+        ResolvedKey::Oracle { .. } => {
+            return Err(KmsError::NotSupported(
+                "MAC: oracle keys not supported".to_owned(),
+            ));
+        }
+    };
 
     // Second-stage enforcement: validate the retrieved key's stored attributes.
     enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MAC", owm.id(), &owm)?;
@@ -184,31 +221,15 @@ pub(crate) async fn mac_verify(
     trace!("uid={}", request.unique_identifier);
 
     let unique_identifier = &request.unique_identifier;
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
-        .await
-        .context("MACVerify")?;
 
-    // Phase 2 — Standard database path via shared selection function.
-    let owm = select_unique_key_for_operation(
-        "MACVerify",
-        &uids,
-        unique_identifier,
-        KmipOperation::MAC,
-        kms,
-        user,
-        |owm| Ok(matches!(owm.object(), Object::SymmetricKey { .. })),
-    )
-    .await
-    .map_err(|e| match e {
-        KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("MACVerify: no valid key for id: {unique_identifier}"),
-        ),
-        other => other,
-    })?;
-
-    // Enforce time window constraints (ProcessStartDate / ProtectStopDate).
-    check_process_window(&owm)?;
+    let owm = match resolve_key_for_operation::<MacVerifyOp>(unique_identifier, kms, user).await? {
+        ResolvedKey::Local(owm) => *owm,
+        ResolvedKey::Oracle { .. } => {
+            return Err(KmsError::NotSupported(
+                "MACVerify: oracle keys not supported".to_owned(),
+            ));
+        }
+    };
 
     // Second-stage enforcement: validate the retrieved key's stored attributes.
     enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MACVerify", owm.id(), &owm)?;

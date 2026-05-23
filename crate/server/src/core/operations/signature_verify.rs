@@ -7,7 +7,6 @@ use cosmian_kms_server_database::reexport::{
             kmip_operations::{SignatureVerify, SignatureVerifyResponse},
             kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -16,6 +15,7 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_public_key_to_openssl,
     },
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::debug;
 use openssl::pkey::{Id, PKey, Public};
@@ -24,15 +24,54 @@ use crate::{
     core::{
         KMS,
         operations::{
+            CryptoOpSpec, ResolvedKey,
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-            select_unique_key_for_operation,
+            resolve_key_for_operation,
         },
-        uid_utils::uids_from_unique_identifier,
     },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
 };
+
+/// Marker type for the `SignatureVerify` operation's key selection requirements.
+pub(crate) struct SignatureVerifyOp;
+
+impl CryptoOpSpec for SignatureVerifyOp {
+    const KMIP_OP: KmipOperation = KmipOperation::SignatureVerify;
+    const OP_NAME: &'static str = "SignatureVerify";
+    const SUPPORTS_ORACLE: bool = false;
+
+    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+        if let Object::PublicKey { .. } = owm.object() {
+            let attrs = owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes());
+            return match attrs.cryptographic_usage_mask {
+                None => true,
+                Some(_) => attrs
+                    .is_usage_authorized_for(CryptographicUsageMask::Verify)
+                    .unwrap_or(false),
+            };
+        }
+        false
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        _user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("SignatureVerify: no valid public key for id: {unique_identifier}"),
+            ),
+            other => other,
+        }
+    }
+}
 /// * `kms` - A reference to the KMS (Key Management Service) instance.
 /// * `request` - The `SignatureVerify` request containing the verification parameters.
 /// * `user` - A string slice representing the user requesting the verification.
@@ -75,42 +114,15 @@ pub(crate) async fn signature_verify(
 
     debug!("Retrieving verification key with UID: {unique_identifier}");
 
-    // Phase 2 — Standard database path via shared selection function.
-    // SignatureVerify has no Phase 1 (no oracle/HSM support for verification).
     let uid_ref = UniqueIdentifier::TextString(unique_identifier.clone());
-    let uids = uids_from_unique_identifier(&uid_ref, kms)
-        .await
-        .context("SignatureVerify")?;
-
-    let uid_owm = select_unique_key_for_operation(
-        "SignatureVerify",
-        &uids,
-        &uid_ref,
-        KmipOperation::SignatureVerify,
-        kms,
-        user,
-        |owm| {
-            if let Object::PublicKey { .. } = owm.object() {
-                let attrs = owm
-                    .object()
-                    .attributes()
-                    .unwrap_or_else(|_| owm.attributes());
-                return match attrs.cryptographic_usage_mask {
-                    None => Ok(true),
-                    Some(_) => Ok(attrs.is_usage_authorized_for(CryptographicUsageMask::Verify)?),
-                };
-            }
-            Ok(false)
-        },
-    )
-    .await
-    .map_err(|e| match e {
-        KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-            ErrorReason::Item_Not_Found,
-            format!("SignatureVerify: no valid public key for id: {unique_identifier}"),
-        ),
-        other => other,
-    })?;
+    let uid_owm = match resolve_key_for_operation::<SignatureVerifyOp>(&uid_ref, kms, user).await? {
+        ResolvedKey::Local(owm) => *owm,
+        ResolvedKey::Oracle { .. } => {
+            return Err(KmsError::NotSupported(
+                "SignatureVerify: oracle keys not supported".to_owned(),
+            ));
+        }
+    };
 
     // Second-stage enforcement: validate the retrieved key's stored attributes.
     enforce_kmip_algorithm_policy_for_retrieved_key(
@@ -119,23 +131,6 @@ pub(crate) async fn signature_verify(
         uid_owm.id(),
         &uid_owm,
     )?;
-
-    // Lifecycle gating (mirror Sign operation behavior): deny verification if outside allowed
-    // usage window. Mandatory profile CS-AC-M-8-21 expects Wrong_Key_Lifecycle_State for
-    // SignatureVerify prior to revocation when ProcessStartDate is in the future or
-    // ProtectStopDate has passed.
-    if let Ok(attrs) = uid_owm.object().attributes() {
-        let now = time_normalize()?;
-        let activation_ok = attrs.activation_date.is_none_or(|ad| ad <= now);
-        let process_window_ok = attrs.process_start_date.is_none_or(|psd| psd <= now)
-            && attrs.protect_stop_date.is_none_or(|psd| psd > now);
-        if !(activation_ok && process_window_ok) {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Wrong_Key_Lifecycle_State,
-                "DENIED".to_owned(),
-            ));
-        }
-    }
 
     let verification_key = extract_verification_key(uid_owm.object())?;
 

@@ -52,18 +52,62 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-            check_process_window, select_eligible_oracle_uid, select_unique_key_for_operation,
-        },
-        uid_utils::uids_from_unique_identifier,
+        operations::{CryptoOpSpec, ResolvedKey, resolve_key_for_operation},
     },
     error::KmsError,
     kms_bail,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 const EMPTY_SLICE: &[u8] = &[];
+
+/// Marker type for the Encrypt operation's key selection requirements.
+pub(crate) struct EncryptOp;
+
+impl CryptoOpSpec for EncryptOp {
+    const KMIP_OP: KmipOperation = KmipOperation::Encrypt;
+    const OP_NAME: &'static str = "Encrypt";
+    const SUPPORTS_ORACLE: bool = true;
+
+    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+        if let Object::Certificate { .. } = owm.object() {
+            let attrs = owm.attributes();
+            return match attrs.cryptographic_usage_mask {
+                None => true,
+                Some(_) => attrs
+                    .is_usage_authorized_for(CryptographicUsageMask::Encrypt)
+                    .unwrap_or(false),
+            };
+        }
+        if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
+            let attributes = owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes());
+            return attributes
+                .is_usage_authorized_for(CryptographicUsageMask::Encrypt)
+                .unwrap_or(false);
+        }
+        false
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) => {
+                KmsError::ItemNotFound(format!("Encrypt: key id: {unique_identifier}, not found"))
+            }
+            KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
+                "Encrypt: the user {user} does not have permission to encrypt using the key: \
+                 {unique_identifier}"
+            )),
+            other => other,
+        }
+    }
+}
 
 pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
     trace!(
@@ -82,191 +126,118 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
-        .await
-        .context("Encrypt")?;
-    trace!("candidate uids: {uids:?}");
 
-    // Determine which UID to select. The decision process is as follows:
-    // Phase 1: If any UID has a prefix (crypto oracle), use that key immediately.
-    // Phase 2: Call the shared selection function for the standard database path; it enforces
-    //          Active state, permissions, and uniqueness (fail on multiple eligible keys).
-
-    // Phase 1 — Oracle (prefix) UIDs.  Collect all eligible ones and enforce uniqueness.
-    if let Some((uid, prefix)) = select_eligible_oracle_uid(
-        KmipOperation::Encrypt,
-        "Encrypt",
-        &uids,
-        unique_identifier,
-        kms,
-        user,
-    )
-    .await?
-    {
-        debug!("user: {user} is authorized to encrypt using: {uid} from crypto oracle");
-        return encrypt_using_crypto_oracle(kms, &request, data, &uid, &prefix).await;
-    }
-
-    // Phase 2 — Standard database path via shared selection function.
-    let mut owm = select_unique_key_for_operation(
-        "Encrypt",
-        &uids,
-        unique_identifier,
-        KmipOperation::Encrypt,
-        kms,
-        user,
-        |owm| {
-            if let Object::Certificate { .. } = owm.object() {
-                // Certificates have no key_block, so usage masks live only in metadata attributes.
-                // When no mask is set (common for imported certificates), allow by default.
-                let attrs = owm.attributes();
-                return match attrs.cryptographic_usage_mask {
-                    None => Ok(true),
-                    Some(_) => Ok(attrs.is_usage_authorized_for(CryptographicUsageMask::Encrypt)?),
-                };
-            }
-            if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
-                // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
-                // and the attributes of the object will be empty. Use the metadata attributes.
-                let attributes = owm
-                    .object()
-                    .attributes()
-                    .unwrap_or_else(|_| owm.attributes());
-                trace!("attributes: {attributes}");
-                return Ok(attributes.is_usage_authorized_for(CryptographicUsageMask::Encrypt)?);
-            }
-            Ok(false)
-        },
-    )
-    .await
-    .map_err(|e| match e {
-        KmsError::ItemNotFound(_) => {
-            KmsError::ItemNotFound(format!("Encrypt: key id: {unique_identifier}, not found"))
+    match resolve_key_for_operation::<EncryptOp>(unique_identifier, kms, user).await? {
+        ResolvedKey::Oracle { uid, prefix } => {
+            debug!("user: {user} is authorized to encrypt using: {uid} from crypto oracle");
+            return encrypt_using_crypto_oracle(kms, &request, data, &uid, &prefix).await;
         }
-        KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
-            "Encrypt: the user {user} does not have permission to encrypt using the key: \
-             {unique_identifier}"
-        )),
-        other => other,
-    })?;
+        ResolvedKey::Local(owm) => {
+            let mut owm = *owm;
 
-    // Enforce time window constraints: Active key is unusable for Encrypt if current time is
-    // before ProcessStartDate OR after ProtectStopDate (when those attributes are present).
-    // The CS-BC-M-14-21 vector sets ActivationDate in the past, ProcessStartDate in the future
-    // and ProtectStopDate in the past expecting Encrypt to fail with WrongKeyLifecycleState.
-    check_process_window(&owm)?;
+            // Unwrap + enforce on a clone; preserve the original for UsageLimits accounting.
+            let mut unwrapped_owm = owm.clone();
+            super::unwrap_and_enforce_policy(kms, &mut unwrapped_owm, "Encrypt", user).await?;
 
-    // get unwrapped object for encryption but preserve original wrapped object
-    let unwrapped_object = match owm.object() {
-        Object::Certificate { .. } => owm.object().clone(),
-        _ => kms.get_unwrapped(owm.id(), owm.object(), user).await?,
-    };
+            // plaintext length for logging
+            let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
 
-    // Create a new ObjectWithMetadata with the unwrapped object for encryption operations
-    let mut unwrapped_owm = owm.clone();
-    unwrapped_owm.set_object(unwrapped_object);
-
-    // Second-stage enforcement: validate the retrieved key's stored attributes.
-    enforce_kmip_algorithm_policy_for_retrieved_key(
-        &kms.params,
-        "Encrypt",
-        unwrapped_owm.id(),
-        &unwrapped_owm,
-    )?;
-
-    // plaintext length for logging
-    let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
-
-    // Enforce UsageLimits. The vector CS-BC-M-7-21 sets a UsageLimitsTotal=16 (bytes)
-    // and performs two 16-byte ECB encrypts expecting the second to fail with PermissionDenied.
-    // We implement a simple in-memory decrement persisted via attributes update.
-    // NOTE: For durability a DB column would be better; for conformance tests this suffices.
-    {
-        let usage_limits = owm.attributes().usage_limits.as_ref();
-        if let Some(ul) = usage_limits {
-            match ul.usage_limits_unit {
-                UsageLimitsUnit::Byte => {
-                    let remaining = ul.usage_limits_total;
-                    let needed = i64::try_from(plaintext_len).map_or(i64::MAX, |v| v);
-                    if remaining < needed {
-                        return Err(KmsError::Kmip21Error(
-                            ErrorReason::Permission_Denied,
-                            "DENIED".to_owned(),
-                        ));
-                    }
-                }
-                // Object, Block, and Operation units: deny when exhausted
-                UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
-                    if ul.usage_limits_total <= 0 {
-                        return Err(KmsError::Kmip21Error(
-                            ErrorReason::Permission_Denied,
-                            "DENIED".to_owned(),
-                        ));
+            // Enforce UsageLimits. The vector CS-BC-M-7-21 sets a UsageLimitsTotal=16 (bytes)
+            // and performs two 16-byte ECB encrypts expecting the second to fail with PermissionDenied.
+            // We implement a simple in-memory decrement persisted via attributes update.
+            // NOTE: For durability a DB column would be better; for conformance tests this suffices.
+            {
+                let usage_limits = owm.attributes().usage_limits.as_ref();
+                if let Some(ul) = usage_limits {
+                    match ul.usage_limits_unit {
+                        UsageLimitsUnit::Byte => {
+                            let remaining = ul.usage_limits_total;
+                            let needed = i64::try_from(plaintext_len).map_or(i64::MAX, |v| v);
+                            if remaining < needed {
+                                return Err(KmsError::Kmip21Error(
+                                    ErrorReason::Permission_Denied,
+                                    "DENIED".to_owned(),
+                                ));
+                            }
+                        }
+                        // Object, Block, and Operation units: deny when exhausted
+                        UsageLimitsUnit::Object
+                        | UsageLimitsUnit::Block
+                        | UsageLimitsUnit::Operation => {
+                            if ul.usage_limits_total <= 0 {
+                                return Err(KmsError::Kmip21Error(
+                                    ErrorReason::Permission_Denied,
+                                    "DENIED".to_owned(),
+                                ));
+                            }
+                        }
                     }
                 }
             }
-        }
-    }
 
-    // It may be a bulk encryption request; if not, fallback to single encryption
-    let res = match BulkData::deserialize(data) {
-        Ok(bulk_data) => {
-            // It is a bulk encryption request
-            encrypt_bulk(&unwrapped_owm, &kms.params, request, bulk_data)
-        }
-        Err(_) => {
-            // fallback to single encryption
-            encrypt_single(&unwrapped_owm, &kms.params, &request)
-        }
-    }?;
+            // It may be a bulk encryption request; if not, fallback to single encryption
+            let res = match BulkData::deserialize(data) {
+                Ok(bulk_data) => {
+                    // It is a bulk encryption request
+                    encrypt_bulk(&unwrapped_owm, &kms.params, request, bulk_data)
+                }
+                Err(_) => {
+                    // fallback to single encryption
+                    encrypt_single(&unwrapped_owm, &kms.params, &request)
+                }
+            }?;
 
-    // Post-encryption: decrement usage limits directly on owm.attributes_mut(), then persist.
-    // Operates on the original owm (which holds the wrapped key as stored in the DB) to avoid
-    // the copy-back pattern; no unwrapped_owm involvement needed for attribute persistence.
-    let mut usage_limits_decremented = false;
-    if let Some(ref mut ul) = owm.attributes_mut().usage_limits {
-        match ul.usage_limits_unit {
-            UsageLimitsUnit::Byte => {
-                let p = i64::try_from(plaintext_len).unwrap_or(i64::MAX);
-                ul.usage_limits_total = (ul.usage_limits_total - p).max(0);
-                usage_limits_decremented = true;
+            // Post-encryption: decrement usage limits directly on owm.attributes_mut(), then persist.
+            // Operates on the original owm (which holds the wrapped key as stored in the DB) to avoid
+            // the copy-back pattern; no unwrapped_owm involvement needed for attribute persistence.
+            let mut usage_limits_decremented = false;
+            if let Some(ref mut ul) = owm.attributes_mut().usage_limits {
+                match ul.usage_limits_unit {
+                    UsageLimitsUnit::Byte => {
+                        let p = i64::try_from(plaintext_len).unwrap_or(i64::MAX);
+                        ul.usage_limits_total = (ul.usage_limits_total - p).max(0);
+                        usage_limits_decremented = true;
+                    }
+                    UsageLimitsUnit::Object
+                    | UsageLimitsUnit::Block
+                    | UsageLimitsUnit::Operation => {
+                        ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
+                        usage_limits_decremented = true;
+                    }
+                }
             }
-            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
-                ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
-                usage_limits_decremented = true;
+
+            // Only persist when usage limits were actually decremented.
+            // Skipping this UPDATE on the hot path (e.g. AWS XKS encrypt with no usage limits)
+            // eliminates row-level lock contention that severely degrades throughput under concurrency.
+            if usage_limits_decremented {
+                let attributes = owm.attributes().clone();
+                if let Err(e) = kms
+                    .database
+                    .update_object(
+                        owm.id(),
+                        owm.object(),
+                        &attributes,
+                        None, // tags unchanged
+                    )
+                    .await
+                {
+                    return Err(KmsError::ServerError(format!(
+                        "Encrypt: failed to persist updated usage limits: {e}"
+                    )));
+                }
             }
+
+            info!(
+                uid = owm.id(),
+                user = user,
+                "Encrypted data of: {} bytes -> ciphertext length: {}",
+                plaintext_len,
+                res.data.as_ref().map_or(0, Vec::len),
+            );
+            Ok(res)
         }
     }
-
-    // Only persist when usage limits were actually decremented.
-    // Skipping this UPDATE on the hot path (e.g. AWS XKS encrypt with no usage limits)
-    // eliminates row-level lock contention that severely degrades throughput under concurrency.
-    if usage_limits_decremented {
-        let attributes = owm.attributes().clone();
-        if let Err(e) = kms
-            .database
-            .update_object(
-                owm.id(),
-                owm.object(),
-                &attributes,
-                None, // tags unchanged
-            )
-            .await
-        {
-            return Err(KmsError::ServerError(format!(
-                "Encrypt: failed to persist updated usage limits: {e}"
-            )));
-        }
-    }
-
-    info!(
-        uid = owm.id(),
-        user = user,
-        "Encrypted data of: {} bytes -> ciphertext length: {}",
-        plaintext_len,
-        res.data.as_ref().map_or(0, Vec::len),
-    );
-    Ok(res)
 }
 
 /// Encrypt using a crypto oracle.

@@ -22,9 +22,12 @@ use time::OffsetDateTime;
 
 use super::digest::digest;
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{
+        KMS,
+        uid_utils::{has_prefix, uids_from_unique_identifier},
+    },
     error::KmsError,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 /// Initialize lifecycle attributes on a newly created or imported object.
@@ -424,6 +427,140 @@ pub(crate) fn record_cascading_metrics(
         metrics.record_kmip_operation(op_name, user);
         metrics.record_kmip_operation_duration(op_name, op_start.elapsed().as_secs_f64());
     }
+}
+
+// ─── Generic crypto operation key resolution ─────────────────────────────────
+
+/// Result of key resolution for a cryptographic operation.
+pub(crate) enum ResolvedKey {
+    /// Key lives on an external crypto oracle (HSM / external key store).
+    /// The caller dispatches to the oracle using the `uid` and `prefix`.
+    Oracle { uid: String, prefix: String },
+    /// Key is in the local database: selected, Active, lifecycle-validated.
+    /// NOT yet unwrapped — the caller handles unwrapping based on operation needs.
+    Local(Box<ObjectWithMetadata>),
+}
+
+/// Declarative specification for KMIP cryptographic operations key resolution.
+///
+/// Implemented by zero-sized marker types (one per operation). A generic resolution
+/// function uses these associated constants and methods to perform oracle routing,
+/// database key selection, lifecycle enforcement, and policy checks without closures.
+///
+/// # Design
+///
+/// Each KMIP cryptographic operation (`Encrypt`, `Decrypt`, `Sign`, `SignatureVerify`, `MAC`)
+/// implements this trait on a unit struct. The constants describe the operation's
+/// characteristics and the methods provide key eligibility logic.
+pub(crate) trait CryptoOpSpec {
+    /// Human-readable operation name for error messages (e.g. `"Encrypt"`, `"Sign"`).
+    const OP_NAME: &'static str;
+
+    /// The KMIP operation enum value used for permission checks.
+    const KMIP_OP: KmipOperation;
+
+    /// Whether this operation supports oracle (HSM / external key store) routing.
+    /// When `false`, oracle UIDs are skipped entirely.
+    const SUPPORTS_ORACLE: bool;
+
+    /// Determine if the given managed object is eligible for this operation.
+    ///
+    /// Checks object type and `CryptographicUsageMask` as required by the operation.
+    /// Returns `true` if the object can be used, `false` otherwise.
+    ///
+    /// Implementations should handle attribute parsing errors gracefully by returning
+    /// `false` (ineligible) rather than propagating errors.
+    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool;
+
+    /// Map key-selection errors to operation-specific KMIP error messages.
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        user: &str,
+    ) -> KmsError;
+}
+
+/// Resolve the key for a cryptographic operation using the [`CryptoOpSpec`] trait.
+///
+/// Performs the entire key selection pipeline generically:
+/// 1. Resolves UIDs from the `unique_identifier`.
+/// 2. Attempts oracle (HSM) routing if `Op::SUPPORTS_ORACLE`.
+/// 3. Selects the key from the database with `Op::is_key_eligible`.
+/// 4. Applies error mapping via `Op::map_selection_error`.
+/// 5. Enforces process window constraints (`ProcessStartDate` / `ProtectStopDate`).
+///
+/// Returns [`ResolvedKey::Oracle`] for HSM keys or [`ResolvedKey::Local`] for DB keys.
+/// Local keys are NOT unwrapped — the caller must call [`unwrap_and_enforce_policy`]
+/// or handle unwrapping based on operation needs.
+pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
+    unique_identifier: &UniqueIdentifier,
+    kms: &KMS,
+    user: &str,
+) -> KResult<ResolvedKey> {
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
+        .await
+        .context(Op::OP_NAME)?;
+
+    // Phase 1 — Oracle (HSM / prefix) routing.
+    if Op::SUPPORTS_ORACLE {
+        if let Some((uid, prefix)) = select_eligible_oracle_uid(
+            Op::KMIP_OP,
+            Op::OP_NAME,
+            &uids,
+            unique_identifier,
+            kms,
+            user,
+        )
+        .await?
+        {
+            return Ok(ResolvedKey::Oracle { uid, prefix });
+        }
+    }
+
+    // Phase 2 — Standard database path.
+    let owm = select_unique_key_for_operation(
+        Op::OP_NAME,
+        &uids,
+        unique_identifier,
+        Op::KMIP_OP,
+        kms,
+        user,
+        |owm| Ok(Op::is_key_eligible(owm)),
+    )
+    .await
+    .map_err(|e| Op::map_selection_error(e, unique_identifier, user))?;
+
+    // Lifecycle enforcement: always check process window.
+    check_process_window(&owm)?;
+
+    Ok(ResolvedKey::Local(Box::new(owm)))
+}
+
+/// Unwrap a key (if wrapped) and enforce the KMIP algorithm policy.
+///
+/// This is the generic second-stage enforcement step shared by all cryptographic
+/// operations after key resolution. It:
+/// 1. Unwraps the key material (Certificates are never unwrapped).
+/// 2. Validates the unwrapped key against the server's configured algorithm policy.
+///
+/// The operation is performed in-place on `owm`. For operations that need to preserve
+/// the original wrapped object (e.g. Encrypt for `UsageLimits` accounting), the caller
+/// should clone before calling this function.
+pub(crate) async fn unwrap_and_enforce_policy(
+    kms: &KMS,
+    owm: &mut ObjectWithMetadata,
+    op_name: &str,
+    user: &str,
+) -> KResult<()> {
+    if !matches!(owm.object(), Object::Certificate { .. }) {
+        owm.set_object(kms.get_unwrapped(owm.id(), owm.object(), user).await?);
+    }
+    super::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key(
+        &kms.params,
+        op_name,
+        owm.id(),
+        owm,
+    )
 }
 
 #[cfg(test)]
