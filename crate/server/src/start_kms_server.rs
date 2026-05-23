@@ -58,8 +58,8 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
-        get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, crypto, get_hsm_status,
+        get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
@@ -1001,6 +1001,35 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
             .service(get_version);
+
+        // REST Native Crypto API — /v1/crypto/*
+        let crypto_scope = web::scope("/v1/crypto")
+            .app_data(
+                web::JsonConfig::default()
+                    .error_handler(crypto::crypto_json_error_handler),
+            )
+            .wrap(EnsureAuth::new(
+                kms_server_for_http.clone(),
+                use_jwt_auth || use_cert_auth || use_api_token_auth,
+            ))
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server_for_http.clone()),
+            ))
+            .wrap(Condition::new(
+                use_jwt_auth,
+                JwtAuth::new(jwt_configurations.clone()),
+            ))
+            .wrap(Condition::new(use_cert_auth, TlsAuth))
+            .wrap(Cors::permissive())
+            .service(crypto::encrypt_handler)
+            .service(crypto::decrypt_handler)
+            .service(crypto::sign_handler)
+            .service(crypto::verify_handler)
+            .service(crypto::mac_handler)
+            .service(crypto::create_key_handler)
+            .service(crypto::delete_key_handler);
+        app = app.service(crypto_scope);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")

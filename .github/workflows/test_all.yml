@@ -33,6 +33,7 @@ jobs:
           - gcp_cmek
           - openssh
           - luks
+          - jose
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -52,6 +53,9 @@ jobs:
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
+            features: fips
+          # jose (REST crypto + jwcrypto interop) runs only with non-fips
+          - type: jose
             features: fips
 
     steps:

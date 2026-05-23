@@ -480,6 +480,9 @@ test_command() {
   azure_ekm)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_azure_ekm.sh"
     ;;
+  jose)
+    SCRIPT="$REPO_ROOT/.github/scripts/test/test_jose.sh"
+    ;;
   gcp_cmek)
     SCRIPT="$REPO_ROOT/.github/scripts/test/test_gcp_cmek.sh"
     ;;
@@ -544,7 +547,7 @@ test_command() {
     ;;
   *)
     echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, jose, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
     usage
     ;;
   esac
@@ -557,8 +560,8 @@ test_command() {
   if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
-  # For PyKMIP and Synology DSM tests, ensure Python tooling is present inside the Nix shell
-  if [ "$TEST_TYPE" = "pykmip" ]; then
+  # For PyKMIP/Synology DSM tests and JOSE interop, ensure Python tooling is present inside the Nix shell
+  if [ "$TEST_TYPE" = "pykmip" ] || [ "$TEST_TYPE" = "jose" ]; then
     export WITH_PYTHON=1
   fi
   # For OpenSSH PKCS#11 tests, ensure openssh (ssh-keygen) is present on Linux CI
@@ -571,7 +574,7 @@ test_command() {
   fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; then
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ] || [ "$TEST_TYPE" = "jose" ]; then
     export WITH_CURL=1
   fi
 
