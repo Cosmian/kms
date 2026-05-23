@@ -38,6 +38,12 @@ pub(crate) enum CryptoApiError {
     #[error("{0}")]
     CryptoFailure(String),
 
+    /// 422 — uniform decryption failure (RSA-OAEP padding or AES-GCM tag mismatch).
+    /// Returns the same message regardless of the underlying cause to prevent
+    /// padding oracle attacks (RFC 7516 §11.5).
+    #[error("Decryption failed")]
+    DecryptionFailed,
+
     /// 500 — unexpected server error
     #[error("{0}")]
     InternalError(String),
@@ -47,7 +53,7 @@ impl actix_web::error::ResponseError for CryptoApiError {
     fn status_code(&self) -> StatusCode {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::UnsupportedAlgorithm(_) | Self::CryptoFailure(_) => {
+            Self::UnsupportedAlgorithm(_) | Self::CryptoFailure(_) | Self::DecryptionFailed => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
@@ -65,6 +71,7 @@ impl actix_web::error::ResponseError for CryptoApiError {
             Self::BadRequest(msg) => ("bad_request", msg.as_str()),
             Self::UnsupportedAlgorithm(msg) => ("unsupported_algorithm", msg.as_str()),
             Self::CryptoFailure(msg) => ("crypto_failure", msg.as_str()),
+            Self::DecryptionFailed => ("decryption_failed", "Decryption failed"),
             Self::Forbidden(_) => ("forbidden", "Access denied"),
             Self::NotFound(_) => ("not_found", "Key not found"),
             Self::InternalError(_) => ("internal_error", "Internal server error"),

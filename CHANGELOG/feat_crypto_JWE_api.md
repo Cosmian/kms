@@ -7,11 +7,12 @@
   [RFC 7516](https://www.rfc-editor.org/rfc/rfc7516), [RFC 7518](https://www.rfc-editor.org/rfc/rfc7518)):
     - `POST /v1/crypto/keys` — Generate keys (symmetric, RSA, EC; OKP non-FIPS)
     - `DELETE /v1/crypto/keys/{kid}` — Revoke + destroy key (cascades to linked keys)
-    - `POST /v1/crypto/encrypt` — AES-GCM (`dir` + `A128/192/256GCM`)
-    - `POST /v1/crypto/decrypt` — AES-GCM with AAD binding
+    - `POST /v1/crypto/encrypt` — AES-GCM direct (`dir`) and RSA-OAEP / RSA-OAEP-256 key wrapping with `A128/192/256GCM`
+    - `POST /v1/crypto/decrypt` — AES-GCM with AAD binding; RSA-OAEP key unwrap with implicit rejection
     - `POST /v1/crypto/sign` — RS256/384/512, PS256/384/512, ES256/384/512 (+ EdDSA, MLDSA44 non-FIPS)
     - `POST /v1/crypto/verify` — JWS signature verification
     - `POST /v1/crypto/mac` — HMAC compute and verify (HS256/384/512)
+- Added RSA-OAEP and RSA-OAEP-256 key management for JWE encryption/decryption (RFC 7518 §4.3)
 - Added documentation: [`documentation/docs/integrations/rest_crypto_api.md`](documentation/docs/integrations/rest_crypto_api.md)
 
 ## Bug Fixes

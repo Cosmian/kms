@@ -374,16 +374,24 @@ where
     B: actix_web::body::MessageBody,
 {
     let key = &v["key"];
-    let (kid, _) = provision_key(app, key).await?;
+    let (kid, kid_public) = provision_key(app, key).await?;
 
+    let alg = v["algorithm"].as_str().unwrap_or("dir");
     let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
     let plaintext = resolve_plaintext(&v["request"]);
     let plaintext_b64 = URL_SAFE_NO_PAD.encode(&plaintext);
 
+    // For RSA-OAEP, encrypt with the public key (or private — handler resolves)
+    let encrypt_kid = if alg == "dir" {
+        kid.clone()
+    } else {
+        kid_public.clone().unwrap_or_else(|| kid.clone())
+    };
+
     // Encrypt
     let enc_resp: Value = test_utils::post_json_with_uri(
         app,
-        json!({"kid": kid, "alg": "dir", "enc": enc_alg, "data": plaintext_b64}),
+        json!({"kid": encrypt_kid, "alg": alg, "enc": enc_alg, "data": plaintext_b64}),
         "/v1/crypto/encrypt",
     )
     .await?;
@@ -401,18 +409,30 @@ where
         "Vector {filename}: missing tag"
     );
 
-    // Decrypt
-    let dec_resp: Value = test_utils::post_json_with_uri(
-        app,
-        json!({
-            "protected":  enc_resp["protected"],
-            "iv":         enc_resp["iv"],
-            "ciphertext": enc_resp["ciphertext"],
-            "tag":        enc_resp["tag"]
-        }),
-        "/v1/crypto/decrypt",
-    )
-    .await?;
+    // For RSA-OAEP, encrypted_key must be present and non-empty
+    if alg != "dir" {
+        let ek = enc_resp["encrypted_key"]
+            .as_str()
+            .expect("RSA-OAEP encrypt must return encrypted_key");
+        assert!(
+            !ek.is_empty(),
+            "Vector {filename}: encrypted_key must be non-empty for {alg}"
+        );
+    }
+
+    // Decrypt — include encrypted_key if present
+    let mut decrypt_payload = json!({
+        "protected":  enc_resp["protected"],
+        "iv":         enc_resp["iv"],
+        "ciphertext": enc_resp["ciphertext"],
+        "tag":        enc_resp["tag"]
+    });
+    if let Some(ek) = enc_resp.get("encrypted_key") {
+        decrypt_payload["encrypted_key"] = ek.clone();
+    }
+
+    let dec_resp: Value =
+        test_utils::post_json_with_uri(app, decrypt_payload, "/v1/crypto/decrypt").await?;
 
     let recovered = URL_SAFE_NO_PAD
         .decode(dec_resp["data"].as_str().expect("missing data"))
@@ -432,16 +452,23 @@ where
     B: actix_web::body::MessageBody,
 {
     let key = &v["key"];
-    let (kid, _) = provision_key(app, key).await?;
+    let (kid, kid_public) = provision_key(app, key).await?;
 
+    let alg = v["algorithm"].as_str().unwrap_or("dir");
     let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
     let plaintext = resolve_plaintext(&v["request"]);
     let plaintext_b64 = URL_SAFE_NO_PAD.encode(&plaintext);
 
+    let encrypt_kid = if alg == "dir" {
+        kid.clone()
+    } else {
+        kid_public.clone().unwrap_or_else(|| kid.clone())
+    };
+
     // Encrypt
     let enc_resp: Value = test_utils::post_json_with_uri(
         app,
-        json!({"kid": kid, "alg": "dir", "enc": enc_alg, "data": plaintext_b64}),
+        json!({"kid": encrypt_kid, "alg": alg, "enc": enc_alg, "data": plaintext_b64}),
         "/v1/crypto/encrypt",
     )
     .await?;
@@ -455,6 +482,9 @@ where
         "ciphertext": enc_resp["ciphertext"],
         "tag":        enc_resp["tag"]
     });
+    if let Some(ek) = enc_resp.get("encrypted_key") {
+        decrypt_payload["encrypted_key"] = ek.clone();
+    }
 
     match tamper_field {
         "protected" => {
@@ -477,6 +507,14 @@ where
                 .unwrap();
             ct_bytes[0] ^= 0xFF;
             decrypt_payload["ciphertext"] = Value::String(URL_SAFE_NO_PAD.encode(&ct_bytes));
+        }
+        "encrypted_key" => {
+            let ek_str = enc_resp["encrypted_key"]
+                .as_str()
+                .expect("encrypted_key must be present for tamper test");
+            let mut ek_bytes = URL_SAFE_NO_PAD.decode(ek_str).unwrap();
+            ek_bytes[0] ^= 0xFF;
+            decrypt_payload["encrypted_key"] = Value::String(URL_SAFE_NO_PAD.encode(&ek_bytes));
         }
         f => panic!("Vector {filename}: unsupported tamper field: {f}"),
     }
@@ -576,9 +614,14 @@ where
         }
         "encrypt" => {
             let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
+            let encrypt_kid = if alg == "dir" {
+                kid.clone()
+            } else {
+                kid_public.clone().unwrap_or_else(|| kid.clone())
+            };
             let enc_resp: Value = test_utils::post_json_with_uri(
                 app,
-                json!({"kid": kid, "alg": "dir", "enc": enc_alg, "data": data_b64}),
+                json!({"kid": encrypt_kid, "alg": alg, "enc": enc_alg, "data": data_b64}),
                 "/v1/crypto/encrypt",
             )
             .await?;
@@ -587,17 +630,18 @@ where
                 "Vector {filename}: encrypt must return ciphertext"
             );
 
-            let dec_resp: Value = test_utils::post_json_with_uri(
-                app,
-                json!({
-                    "protected":  enc_resp["protected"],
-                    "iv":         enc_resp["iv"],
-                    "ciphertext": enc_resp["ciphertext"],
-                    "tag":        enc_resp["tag"]
-                }),
-                "/v1/crypto/decrypt",
-            )
-            .await?;
+            let mut decrypt_payload = json!({
+                "protected":  enc_resp["protected"],
+                "iv":         enc_resp["iv"],
+                "ciphertext": enc_resp["ciphertext"],
+                "tag":        enc_resp["tag"]
+            });
+            if let Some(ek) = enc_resp.get("encrypted_key") {
+                decrypt_payload["encrypted_key"] = ek.clone();
+            }
+
+            let dec_resp: Value =
+                test_utils::post_json_with_uri(app, decrypt_payload, "/v1/crypto/decrypt").await?;
             let recovered = URL_SAFE_NO_PAD
                 .decode(dec_resp["data"].as_str().expect("missing data"))
                 .expect("base64 decode");
@@ -626,7 +670,7 @@ where
             let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
             actix_test::TestRequest::post()
                 .uri("/v1/crypto/encrypt")
-                .set_json(&json!({"kid": kid, "alg": "dir", "enc": enc_alg, "data": data_b64}))
+                .set_json(&json!({"kid": kid, "alg": alg, "enc": enc_alg, "data": data_b64}))
                 .to_request()
         }
         op => panic!("Vector {filename}: unsupported post-delete check for '{op}'"),

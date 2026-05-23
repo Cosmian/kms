@@ -21,6 +21,13 @@ pub(crate) enum JoseAlgorithm {
     /// Direct key agreement — no key wrapping (RFC 7518 §4.5)
     #[serde(rename = "dir")]
     Dir,
+    // ── RSA-OAEP key management (RFC 7518 §4.3) ──
+    /// RSAES-OAEP using SHA-1 and MGF1 with SHA-1
+    #[serde(rename = "RSA-OAEP")]
+    RsaOaep,
+    /// RSAES-OAEP using SHA-256 and MGF1 with SHA-256
+    #[serde(rename = "RSA-OAEP-256")]
+    RsaOaep256,
     // ── RSA PKCS#1 v1.5 signatures (RFC 7518 §3.3) ──
     RS256,
     RS384,
@@ -48,6 +55,8 @@ impl fmt::Display for JoseAlgorithm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::Dir => "dir",
+            Self::RsaOaep => "RSA-OAEP",
+            Self::RsaOaep256 => "RSA-OAEP-256",
             Self::RS256 => "RS256",
             Self::RS384 => "RS384",
             Self::RS512 => "RS512",
@@ -75,6 +84,8 @@ impl FromStr for JoseAlgorithm {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "dir" => Ok(Self::Dir),
+            "RSA-OAEP" => Ok(Self::RsaOaep),
+            "RSA-OAEP-256" => Ok(Self::RsaOaep256),
             "RS256" => Ok(Self::RS256),
             "RS384" => Ok(Self::RS384),
             "RS512" => Ok(Self::RS512),
@@ -92,9 +103,9 @@ impl FromStr for JoseAlgorithm {
             #[cfg(feature = "non-fips")]
             "MLDSA44" => Ok(Self::MLDSA44),
             other => Err(format!(
-                "Unknown JOSE alg identifier '{other}'. Supported: dir, RS256, RS384, RS512, \
-                 PS256, PS384, PS512, ES256, ES384, ES512, HS256, HS384, HS512, \
-                 EdDSA (non-FIPS), MLDSA44 (non-FIPS)."
+                "Unknown JOSE alg identifier '{other}'. Supported: dir, RSA-OAEP, RSA-OAEP-256, \
+                 RS256, RS384, RS512, PS256, PS384, PS512, ES256, ES384, ES512, HS256, HS384, \
+                 HS512, EdDSA (non-FIPS), MLDSA44 (non-FIPS)."
             )),
         }
     }
@@ -151,14 +162,22 @@ pub(crate) fn jose_to_kmip_params(
 }
 
 /// Build KMIP parameters for content-encryption operations (encrypt/decrypt).
+///
+/// For `dir`: returns AES-GCM parameters (used directly by KMIP Encrypt).
+/// For `RSA-OAEP` / `RSA-OAEP-256`: returns AES-GCM parameters for the CEK
+/// (the RSA wrapping is handled inline by the REST handler, not via KMIP).
 fn build_enc_params(
     alg: JoseAlgorithm,
     enc: JoseEncAlgorithm,
 ) -> Result<CryptographicParameters, CryptoApiError> {
-    if alg != JoseAlgorithm::Dir {
-        return Err(CryptoApiError::UnsupportedAlgorithm(format!(
-            "Unsupported key management algorithm '{alg}'. /v1/crypto supports only 'dir'."
-        )));
+    match alg {
+        JoseAlgorithm::Dir | JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {}
+        _ => {
+            return Err(CryptoApiError::UnsupportedAlgorithm(format!(
+                "Unsupported key management algorithm '{alg}'. Supported: dir, RSA-OAEP, \
+                 RSA-OAEP-256."
+            )));
+        }
     }
 
     // padding_method is co-located with block_cipher_mode intentionally:
@@ -335,5 +354,38 @@ pub(crate) fn symmetric_algorithm_from_alg(
         other => Err(CryptoApiError::BadRequest(format!(
             "Algorithm '{other}' is not a symmetric/MAC algorithm."
         ))),
+    }
+}
+
+// ─── RSA-OAEP helpers ───────────────────────────────────────────────────────
+
+/// Return `(oaep_hash, mgf1_hash)` for an RSA-OAEP key management algorithm.
+///
+/// Per RFC 7518 §4.3:
+/// - `RSA-OAEP`     → SHA-1  + MGF1-SHA-1
+/// - `RSA-OAEP-256` → SHA-256 + MGF1-SHA-256
+pub(crate) fn jose_oaep_hashes(
+    alg: JoseAlgorithm,
+) -> Result<(HashingAlgorithm, HashingAlgorithm), CryptoApiError> {
+    match alg {
+        JoseAlgorithm::RsaOaep => Ok((HashingAlgorithm::SHA1, HashingAlgorithm::SHA1)),
+        JoseAlgorithm::RsaOaep256 => Ok((HashingAlgorithm::SHA256, HashingAlgorithm::SHA256)),
+        other => Err(CryptoApiError::InternalError(format!(
+            "jose_oaep_hashes called with non-OAEP alg '{other}'"
+        ))),
+    }
+}
+
+/// Return the CEK size in bytes for a given content-encryption algorithm.
+///
+/// Per RFC 7518 §5.1:
+/// - A128GCM → 16 bytes (128 bits)
+/// - A192GCM → 24 bytes (192 bits)
+/// - A256GCM → 32 bytes (256 bits)
+pub(crate) const fn cek_size_bytes(enc: JoseEncAlgorithm) -> usize {
+    match enc {
+        JoseEncAlgorithm::A128GCM => 16,
+        JoseEncAlgorithm::A192GCM => 24,
+        JoseEncAlgorithm::A256GCM => 32,
     }
 }

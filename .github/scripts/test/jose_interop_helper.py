@@ -4,10 +4,12 @@
 
 Subcommands
 -----------
-verify-jws   Verify a detached JWS using a DER-encoded public key (via jwcrypto).
-decrypt-jwe  Decrypt a flattened JWE using raw symmetric key bytes (via jwcrypto).
-encrypt-jwe  Encrypt plaintext as a flattened JWE using raw symmetric key bytes (via jwcrypto).
-mac-sha256   Compute HMAC-SHA256 over raw bytes using a base64url key (via jwcrypto).
+verify-jws          Verify a detached JWS using a DER-encoded public key (via jwcrypto).
+decrypt-jwe         Decrypt a flattened JWE using raw symmetric key bytes (via jwcrypto).
+encrypt-jwe         Encrypt plaintext as a flattened JWE using raw symmetric key bytes (via jwcrypto).
+decrypt-jwe-rsa     Decrypt a flattened JWE using an RSA private key (RSA-OAEP / RSA-OAEP-256).
+encrypt-jwe-rsa     Encrypt plaintext as a flattened JWE using an RSA public key (RSA-OAEP / RSA-OAEP-256).
+mac-sha256          Compute HMAC-SHA256 over raw bytes using a base64url key (via jwcrypto).
 
 All inputs/outputs use hex or base64url encoding to be shell-friendly.
 
@@ -130,13 +132,78 @@ def cmd_encrypt_jwe(args: argparse.Namespace) -> None:
     print(serialized)
 
 
+# ── encrypt-jwe-rsa ───────────────────────────────────────────────────────────
+
+
+def cmd_encrypt_jwe_rsa(args: argparse.Namespace) -> None:
+    """Encrypt plaintext as flattened JWE using an RSA public key (RSA-OAEP)."""
+    from cryptography.hazmat.primitives.serialization import load_der_public_key
+
+    pub_der = binascii.unhexlify(args.pub_der_hex)
+    plaintext = binascii.unhexlify(args.plaintext_hex)
+
+    pub_key_crypto = load_der_public_key(pub_der)
+    key = jwk.JWK()
+    key.import_from_pyca(pub_key_crypto)
+
+    protected_header = {
+        'alg': args.alg,
+        'enc': args.enc,
+        'kid': args.kid,
+    }
+
+    jwe_obj = jwe.JWE(
+        plaintext,
+        recipient=key,
+        protected=json.dumps(protected_header),
+    )
+
+    serialized = jwe_obj.serialize(compact=False)
+    print(serialized)
+
+
+# ── decrypt-jwe-rsa ───────────────────────────────────────────────────────────
+
+
+def cmd_decrypt_jwe_rsa(args: argparse.Namespace) -> None:
+    """Decrypt a flattened JWE using an RSA private key (RSA-OAEP)."""
+    from cryptography.hazmat.primitives.serialization import load_der_private_key
+
+    priv_der = binascii.unhexlify(args.priv_der_hex)
+    priv_key_crypto = load_der_private_key(priv_der, password=None)
+
+    key = jwk.JWK()
+    key.import_from_pyca(priv_key_crypto)
+
+    jwe_dict = {
+        'protected': args.protected,
+        'encrypted_key': args.encrypted_key,
+        'iv': args.iv,
+        'ciphertext': args.ciphertext,
+        'tag': args.tag,
+    }
+    if args.aad:
+        jwe_dict['aad'] = args.aad
+
+    jwe_json = json.dumps(jwe_dict)
+
+    jwe_obj = jwe.JWE()
+    try:
+        jwe_obj.deserialize(jwe_json, key)
+        plaintext = jwe_obj.payload
+        print(plaintext.hex())
+    except Exception as e:
+        print(f"error={e}", file=sys.stderr)
+        sys.exit(1)
+
+
 # ── mac-sha256 ────────────────────────────────────────────────────────────────
 
 
 def cmd_mac_sha256(args: argparse.Namespace) -> None:
     """Compute HMAC-SHA256 over raw bytes and output as base64url."""
-    import hmac
     import hashlib
+    import hmac
 
     key_bytes = _b64url_decode(args.key_b64url)
     data_bytes = binascii.unhexlify(args.data_hex)
@@ -175,13 +242,47 @@ def main() -> None:
     p_dj.add_argument('--aad', default=None, help='AAD (base64url)')
 
     # encrypt-jwe
-    p_ej = sub.add_parser('encrypt-jwe', help='Encrypt as flattened JWE')
+    p_ej = sub.add_parser('encrypt-jwe', help='Encrypt as flattened JWE (dir)')
     p_ej.add_argument('--key-hex', required=True, help='Raw symmetric key bytes (hex)')
     p_ej.add_argument('--kid', required=True, help='KMS key UID for protected header')
     p_ej.add_argument(
         '--enc', default='A256GCM', help='Content encryption alg (default: A256GCM)'
     )
     p_ej.add_argument('--plaintext-hex', required=True, help='Plaintext bytes (hex)')
+
+    # encrypt-jwe-rsa
+    p_ejr = sub.add_parser(
+        'encrypt-jwe-rsa', help='Encrypt as flattened JWE (RSA-OAEP)'
+    )
+    p_ejr.add_argument(
+        '--pub-der-hex', required=True, help='RSA public key in DER format (hex)'
+    )
+    p_ejr.add_argument('--kid', required=True, help='KMS key UID for protected header')
+    p_ejr.add_argument(
+        '--alg',
+        default='RSA-OAEP-256',
+        help='Key management alg (default: RSA-OAEP-256)',
+    )
+    p_ejr.add_argument(
+        '--enc', default='A256GCM', help='Content encryption alg (default: A256GCM)'
+    )
+    p_ejr.add_argument('--plaintext-hex', required=True, help='Plaintext bytes (hex)')
+
+    # decrypt-jwe-rsa
+    p_djr = sub.add_parser('decrypt-jwe-rsa', help='Decrypt a flattened JWE (RSA-OAEP)')
+    p_djr.add_argument(
+        '--priv-der-hex', required=True, help='RSA private key in DER format (hex)'
+    )
+    p_djr.add_argument(
+        '--protected', required=True, help='Protected header (base64url)'
+    )
+    p_djr.add_argument(
+        '--encrypted-key', required=True, help='Encrypted key (base64url)'
+    )
+    p_djr.add_argument('--iv', required=True, help='IV (base64url)')
+    p_djr.add_argument('--ciphertext', required=True, help='Ciphertext (base64url)')
+    p_djr.add_argument('--tag', required=True, help='Tag (base64url)')
+    p_djr.add_argument('--aad', default=None, help='AAD (base64url)')
 
     # mac-sha256
     p_mac = sub.add_parser('mac-sha256', help='Compute HMAC-SHA256')
@@ -196,6 +297,8 @@ def main() -> None:
         'verify-jws': cmd_verify_jws,
         'decrypt-jwe': cmd_decrypt_jwe,
         'encrypt-jwe': cmd_encrypt_jwe,
+        'decrypt-jwe-rsa': cmd_decrypt_jwe_rsa,
+        'encrypt-jwe-rsa': cmd_encrypt_jwe_rsa,
         'mac-sha256': cmd_mac_sha256,
     }
     commands[args.command](args)

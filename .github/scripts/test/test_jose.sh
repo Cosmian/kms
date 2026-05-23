@@ -28,10 +28,13 @@ KMS_CONF_PATH=""
 VENV_DIR=""
 
 cleanup() {
-    [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" 2>/dev/null || true; wait "${KMS_PID}" 2>/dev/null || true; }
-    [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
-    [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
-    [ -n "${VENV_DIR:-}" ] && { rm -rf "${VENV_DIR}" || true; }
+  [ -n "${KMS_PID:-}" ] && {
+    kill "${KMS_PID}" 2>/dev/null || true
+    wait "${KMS_PID}" 2>/dev/null || true
+  }
+  [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
+  [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
+  [ -n "${VENV_DIR:-}" ] && { rm -rf "${VENV_DIR}" || true; }
 }
 trap cleanup EXIT
 
@@ -39,83 +42,83 @@ trap cleanup EXIT
 
 # Encode a literal string to base64url without padding.
 b64url_encode() {
-    printf '%s' "$1" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '='
+  printf '%s' "$1" | base64 | tr -d '\n' | tr '+/' '-_' | tr -d '='
 }
 
 # Extract a string-typed field from a flat JSON REST response.
 json_str() {
-    printf '%s' "$1" | grep -o "\"$2\":\"[^\"]*\"" | head -1 | sed 's/.*":"//;s/"$//'
+  printf '%s' "$1" | grep -o "\"$2\":\"[^\"]*\"" | head -1 | sed 's/.*":"//;s/"$//'
 }
 
 # Extract a boolean field from a flat JSON REST response.
 json_bool() {
-    printf '%s' "$1" | grep -oE "\"$2\":(true|false)" | head -1 | sed 's/.*://'
+  printf '%s' "$1" | grep -oE "\"$2\":(true|false)" | head -1 | sed 's/.*://'
 }
 
 # Extract a TextString value by KMIP tag name from a JSON-TTLV response.
 kmip_tag() {
-    printf '%s' "$1" | \
-        grep -o "\"tag\":\"$2\",\"type\":\"TextString\",\"value\":\"[^\"]*\"" | \
-        grep -o '"value":"[^"]*"' | \
-        sed 's/"value":"//;s/"$//'
+  printf '%s' "$1" |
+    grep -o "\"tag\":\"$2\",\"type\":\"TextString\",\"value\":\"[^\"]*\"" |
+    grep -o '"value":"[^"]*"' |
+    sed 's/"value":"//;s/"$//'
 }
 
 # Extract a ByteString value (hex-encoded key material) from a JSON-TTLV response.
 kmip_bytestring() {
-    printf '%s' "$1" | \
-        grep -o "\"tag\":\"$2\",\"type\":\"ByteString\",\"value\":\"[^\"]*\"" | \
-        grep -o '"value":"[^"]*"' | \
-        sed 's/"value":"//;s/"$//'
+  printf '%s' "$1" |
+    grep -o "\"tag\":\"$2\",\"type\":\"ByteString\",\"value\":\"[^\"]*\"" |
+    grep -o '"value":"[^"]*"' |
+    sed 's/"value":"//;s/"$//'
 }
 
 # POST JSON to the KMIP 2.1 endpoint and return the full response body.
 kmip_post() {
-    curl -sS -X POST "${KMS_URL}/kmip/2_1" \
-        -H "Content-Type: application/json" \
-        -d "$1"
+  curl -sS -X POST "${KMS_URL}/kmip/2_1" \
+    -H "Content-Type: application/json" \
+    -d "$1"
 }
 
 # POST JSON to /v1/crypto/<endpoint> and return the full response body.
 crypto_post() {
-    local endpoint="$1" body="$2"
-    curl -sS -X POST "${KMS_URL}/v1/crypto/${endpoint}" \
-        -H "Content-Type: application/json" \
-        -d "$body"
+  local endpoint="$1" body="$2"
+  curl -sS -X POST "${KMS_URL}/v1/crypto/${endpoint}" \
+    -H "Content-Type: application/json" \
+    -d "$body"
 }
 
 # Like crypto_post but return only the HTTP status code and discard the body.
 crypto_status() {
-    local endpoint="$1" body="$2"
-    curl -s -o /dev/null -w "%{http_code}" \
-        -X POST "${KMS_URL}/v1/crypto/${endpoint}" \
-        -H "Content-Type: application/json" \
-        -d "$body"
+  local endpoint="$1" body="$2"
+  curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "${KMS_URL}/v1/crypto/${endpoint}" \
+    -H "Content-Type: application/json" \
+    -d "$body"
 }
 
 assert_eq() {
-    local got="$1" expected="$2" label="${3:-assertion}"
-    if [ "$got" != "$expected" ]; then
-        echo "FAIL [${label}]: expected '${expected}', got '${got}'" >&2
-        exit 1
-    fi
-    echo "PASS: ${label}"
+  local got="$1" expected="$2" label="${3:-assertion}"
+  if [ "$got" != "$expected" ]; then
+    echo "FAIL [${label}]: expected '${expected}', got '${got}'" >&2
+    exit 1
+  fi
+  echo "PASS: ${label}"
 }
 
 assert_status() {
-    local got="$1" expected="$2" label="${3:-HTTP status}"
-    assert_eq "$got" "$expected" "${label} (HTTP ${expected})"
+  local got="$1" expected="$2" label="${3:-HTTP status}"
+  assert_eq "$got" "$expected" "${label} (HTTP ${expected})"
 }
 
 # ── KMIP key-creation helpers ─────────────────────────────────────────────────
 
 activate_key() {
-    kmip_post "{\"tag\":\"Activate\",\"type\":\"Structure\",\"value\":[{\"tag\":\"UniqueIdentifier\",\"type\":\"TextString\",\"value\":\"$1\"}]}" >/dev/null
+  kmip_post "{\"tag\":\"Activate\",\"type\":\"Structure\",\"value\":[{\"tag\":\"UniqueIdentifier\",\"type\":\"TextString\",\"value\":\"$1\"}]}" >/dev/null
 }
 
 create_aes_key() {
-    local uid="$1" bits="$2"
-    kmip_post "$(
-        cat <<JSON
+  local uid="$1" bits="$2"
+  kmip_post "$(
+    cat <<JSON
 {
   "tag": "Create", "type": "Structure",
   "value": [
@@ -130,14 +133,14 @@ create_aes_key() {
   ]
 }
 JSON
-    )" >/dev/null
-    activate_key "$uid"
+  )" >/dev/null
+  activate_key "$uid"
 }
 
 create_mac_key() {
-    local uid="$1" bits="${2:-256}"
-    kmip_post "$(
-        cat <<JSON
+  local uid="$1" bits="${2:-256}"
+  kmip_post "$(
+    cat <<JSON
 {
   "tag": "Create", "type": "Structure",
   "value": [
@@ -152,13 +155,13 @@ create_mac_key() {
   ]
 }
 JSON
-    )" >/dev/null
-    activate_key "$uid"
+  )" >/dev/null
+  activate_key "$uid"
 }
 
 create_rsa_keypair() {
-    local resp
-    resp=$(kmip_post '{"tag":"CreateKeyPair","type":"Structure","value":[
+  local resp
+  resp=$(kmip_post '{"tag":"CreateKeyPair","type":"Structure","value":[
       {"tag":"CommonAttributes","type":"Structure","value":[
         {"tag":"CryptographicAlgorithm","type":"Enumeration","value":"RSA"},
         {"tag":"CryptographicLength","type":"Integer","value":2048}
@@ -170,15 +173,15 @@ create_rsa_keypair() {
         {"tag":"CryptographicUsageMask","type":"Integer","value":2}
       ]}
     ]}')
-    RSA_PRIV_UID=$(kmip_tag "$resp" "PrivateKeyUniqueIdentifier")
-    RSA_PUB_UID=$(kmip_tag  "$resp" "PublicKeyUniqueIdentifier")
-    activate_key "$RSA_PRIV_UID"
-    activate_key "$RSA_PUB_UID"
+  RSA_PRIV_UID=$(kmip_tag "$resp" "PrivateKeyUniqueIdentifier")
+  RSA_PUB_UID=$(kmip_tag "$resp" "PublicKeyUniqueIdentifier")
+  activate_key "$RSA_PRIV_UID"
+  activate_key "$RSA_PUB_UID"
 }
 
 create_ec_keypair() {
-    local resp
-    resp=$(kmip_post '{"tag":"CreateKeyPair","type":"Structure","value":[
+  local resp
+  resp=$(kmip_post '{"tag":"CreateKeyPair","type":"Structure","value":[
       {"tag":"CommonAttributes","type":"Structure","value":[
         {"tag":"CryptographicAlgorithm","type":"Enumeration","value":"EC"},
         {"tag":"CryptographicDomainParameters","type":"Structure","value":[
@@ -192,10 +195,10 @@ create_ec_keypair() {
         {"tag":"CryptographicUsageMask","type":"Integer","value":2}
       ]}
     ]}')
-    EC_PRIV_UID=$(kmip_tag "$resp" "PrivateKeyUniqueIdentifier")
-    EC_PUB_UID=$(kmip_tag  "$resp" "PublicKeyUniqueIdentifier")
-    activate_key "$EC_PRIV_UID"
-    activate_key "$EC_PUB_UID"
+  EC_PRIV_UID=$(kmip_tag "$resp" "PrivateKeyUniqueIdentifier")
+  EC_PUB_UID=$(kmip_tag "$resp" "PublicKeyUniqueIdentifier")
+  activate_key "$EC_PRIV_UID"
+  activate_key "$EC_PUB_UID"
 }
 
 # ── Server startup ────────────────────────────────────────────────────────────
@@ -219,13 +222,13 @@ cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
 
 # shellcheck disable=SC2068
 cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
-    --config "${KMS_CONF_PATH}" \
-    &
+  --config "${KMS_CONF_PATH}" \
+  &
 KMS_PID=$!
 
 if ! _wait_for_port "${KMS_HTTP_HOST}" "${KMS_PORT}" 60; then
-    echo "ERROR: KMS server failed to start on port ${KMS_PORT}" >&2
-    exit 1
+  echo "ERROR: KMS server failed to start on port ${KMS_PORT}" >&2
+  exit 1
 fi
 
 # ── Create test keys ──────────────────────────────────────────────────────────
@@ -237,7 +240,7 @@ create_aes_key "aes-256" 256
 create_mac_key "mac-hmac" 256
 
 RSA_PRIV_UID="" RSA_PUB_UID=""
-EC_PRIV_UID=""  EC_PUB_UID=""
+EC_PRIV_UID="" EC_PUB_UID=""
 create_rsa_keypair
 create_ec_keypair
 
@@ -265,20 +268,20 @@ echo "==========================================="
 # ── Section A: Encrypt / Decrypt ─────────────────────────────────────────────
 
 run_enc_dec_roundtrip() {
-    local kid="$1" enc="$2"
-    local enc_resp protected iv ciphertext tag dec_resp got_data
+  local kid="$1" enc="$2"
+  local enc_resp protected iv ciphertext tag dec_resp got_data
 
-    enc_resp=$(crypto_post "encrypt" \
-        "{\"kid\":\"${kid}\",\"alg\":\"dir\",\"enc\":\"${enc}\",\"data\":\"${PLAINTEXT_B64}\"}")
-    protected=$(json_str "$enc_resp" "protected")
-    iv=$(json_str "$enc_resp" "iv")
-    ciphertext=$(json_str "$enc_resp" "ciphertext")
-    tag=$(json_str "$enc_resp" "tag")
+  enc_resp=$(crypto_post "encrypt" \
+    "{\"kid\":\"${kid}\",\"alg\":\"dir\",\"enc\":\"${enc}\",\"data\":\"${PLAINTEXT_B64}\"}")
+  protected=$(json_str "$enc_resp" "protected")
+  iv=$(json_str "$enc_resp" "iv")
+  ciphertext=$(json_str "$enc_resp" "ciphertext")
+  tag=$(json_str "$enc_resp" "tag")
 
-    dec_resp=$(crypto_post "decrypt" \
-        "{\"protected\":\"${protected}\",\"encrypted_key\":\"\",\"iv\":\"${iv}\",\"ciphertext\":\"${ciphertext}\",\"tag\":\"${tag}\"}")
-    got_data=$(json_str "$dec_resp" "data")
-    assert_eq "$got_data" "$PLAINTEXT_B64" "${enc} round-trip"
+  dec_resp=$(crypto_post "decrypt" \
+    "{\"protected\":\"${protected}\",\"encrypted_key\":\"\",\"iv\":\"${iv}\",\"ciphertext\":\"${ciphertext}\",\"tag\":\"${tag}\"}")
+  got_data=$(json_str "$dec_resp" "data")
+  assert_eq "$got_data" "$PLAINTEXT_B64" "${enc} round-trip"
 }
 
 echo ""
@@ -293,74 +296,74 @@ run_enc_dec_roundtrip "aes-256" "A256GCM"
 echo "==> A4: A256GCM with AAD — round-trip"
 AAD_B64=$(b64url_encode "context-data")
 ENC_AAD=$(crypto_post "encrypt" \
-    "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\",\"aad\":\"${AAD_B64}\"}")
+  "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\",\"aad\":\"${AAD_B64}\"}")
 P_AAD=$(json_str "$ENC_AAD" "protected")
 IV_AAD=$(json_str "$ENC_AAD" "iv")
 CT_AAD=$(json_str "$ENC_AAD" "ciphertext")
 TAG_AAD=$(json_str "$ENC_AAD" "tag")
 DEC_AAD=$(crypto_post "decrypt" \
-    "{\"protected\":\"${P_AAD}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\",\"aad\":\"${AAD_B64}\"}")
+  "{\"protected\":\"${P_AAD}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\",\"aad\":\"${AAD_B64}\"}")
 assert_eq "$(json_str "$DEC_AAD" "data")" "$PLAINTEXT_B64" "A256GCM AAD round-trip"
 
 echo "==> A5: AAD tamper must fail (422)"
 WRONG_AAD_B64=$(b64url_encode "tampered-context")
 assert_status \
-    "$(crypto_status "decrypt" "{\"protected\":\"${P_AAD}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\",\"aad\":\"${WRONG_AAD_B64}\"}")" \
-    "422" "AAD tamper"
+  "$(crypto_status "decrypt" "{\"protected\":\"${P_AAD}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\",\"aad\":\"${WRONG_AAD_B64}\"}")" \
+  "422" "AAD tamper"
 
 echo "==> A6: Protected header tamper must fail (422)"
 MOD_PROT=$(b64url_encode "{\"alg\":\"dir\",\"enc\":\"A256GCM\",\"kid\":\"aes-256\",\"x\":1}")
 assert_status \
-    "$(crypto_status "decrypt" "{\"protected\":\"${MOD_PROT}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\",\"aad\":\"${AAD_B64}\"}")" \
-    "422" "Protected header tamper"
+  "$(crypto_status "decrypt" "{\"protected\":\"${MOD_PROT}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\",\"aad\":\"${AAD_B64}\"}")" \
+  "422" "Protected header tamper"
 
 echo "==> A7: Unsupported enc (A128CBC-HS256) returns 400"
 assert_status \
-    "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A128CBC-HS256\",\"data\":\"${PLAINTEXT_B64}\"}" )" \
-    "400" "Unsupported enc"
+  "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A128CBC-HS256\",\"data\":\"${PLAINTEXT_B64}\"}")" \
+  "400" "Unsupported enc"
 
-echo "==> A8: Unsupported alg (RSA-OAEP) returns 400"
+echo "==> A8: Unsupported alg (A128KW) returns 400"
 assert_status \
-    "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"RSA-OAEP\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\"}" )" \
-    "400" "Unsupported alg"
+  "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"A128KW\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\"}")" \
+  "400" "Unsupported alg"
 
 echo "==> A9: Non-existent kid returns 404"
 FAKE_PROT=$(b64url_encode '{"alg":"dir","enc":"A256GCM","kid":"does-not-exist"}')
 assert_status \
-    "$(crypto_status "decrypt" "{\"protected\":\"${FAKE_PROT}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\"}")" \
-    "404" "Non-existent kid"
+  "$(crypto_status "decrypt" "{\"protected\":\"${FAKE_PROT}\",\"encrypted_key\":\"\",\"iv\":\"${IV_AAD}\",\"ciphertext\":\"${CT_AAD}\",\"tag\":\"${TAG_AAD}\"}")" \
+  "404" "Non-existent kid"
 
 # ── Section B: Sign / Verify ──────────────────────────────────────────────────
 
 run_sign_verify() {
-    local priv_kid="$1" alg="$2"
-    local payload_b64 sign_resp protected signature ver_resp
+  local priv_kid="$1" alg="$2"
+  local payload_b64 sign_resp protected signature ver_resp
 
-    payload_b64=$(b64url_encode "sign me: ${alg}")
-    sign_resp=$(crypto_post "sign" \
-        "{\"kid\":\"${priv_kid}\",\"alg\":\"${alg}\",\"data\":\"${payload_b64}\"}")
-    protected=$(json_str "$sign_resp" "protected")
-    signature=$(json_str "$sign_resp" "signature")
+  payload_b64=$(b64url_encode "sign me: ${alg}")
+  sign_resp=$(crypto_post "sign" \
+    "{\"kid\":\"${priv_kid}\",\"alg\":\"${alg}\",\"data\":\"${payload_b64}\"}")
+  protected=$(json_str "$sign_resp" "protected")
+  signature=$(json_str "$sign_resp" "signature")
 
-    # Happy path
-    ver_resp=$(crypto_post "verify" \
-        "{\"protected\":\"${protected}\",\"data\":\"${payload_b64}\",\"signature\":\"${signature}\"}")
-    assert_eq "$(json_bool "${ver_resp}" "valid")" "true" "${alg} sign/verify round-trip"
+  # Happy path
+  ver_resp=$(crypto_post "verify" \
+    "{\"protected\":\"${protected}\",\"data\":\"${payload_b64}\",\"signature\":\"${signature}\"}")
+  assert_eq "$(json_bool "${ver_resp}" "valid")" "true" "${alg} sign/verify round-trip"
 
-    # Tampered data → valid=false
-    local tampered_b64
-    tampered_b64=$(b64url_encode "tampered payload for ${alg}")
-    ver_resp=$(crypto_post "verify" \
-        "{\"protected\":\"${protected}\",\"data\":\"${tampered_b64}\",\"signature\":\"${signature}\"}")
-    assert_eq "$(json_bool "${ver_resp}" "valid")" "false" "${alg} tampered data → invalid"
+  # Tampered data → valid=false
+  local tampered_b64
+  tampered_b64=$(b64url_encode "tampered payload for ${alg}")
+  ver_resp=$(crypto_post "verify" \
+    "{\"protected\":\"${protected}\",\"data\":\"${tampered_b64}\",\"signature\":\"${signature}\"}")
+  assert_eq "$(json_bool "${ver_resp}" "valid")" "false" "${alg} tampered data → invalid"
 
-    # Corrupted signature → valid=false
-    local bad_sig bad_char
-    if [ "${signature:0:1}" = "A" ]; then bad_char="B"; else bad_char="A"; fi
-    bad_sig="${bad_char}${signature:1}"
-    ver_resp=$(crypto_post "verify" \
-        "{\"protected\":\"${protected}\",\"data\":\"${payload_b64}\",\"signature\":\"${bad_sig}\"}")
-    assert_eq "$(json_bool "${ver_resp}" "valid")" "false" "${alg} corrupted signature → invalid"
+  # Corrupted signature → valid=false
+  local bad_sig bad_char
+  if [ "${signature:0:1}" = "A" ]; then bad_char="B"; else bad_char="A"; fi
+  bad_sig="${bad_char}${signature:1}"
+  ver_resp=$(crypto_post "verify" \
+    "{\"protected\":\"${protected}\",\"data\":\"${payload_b64}\",\"signature\":\"${bad_sig}\"}")
+  assert_eq "$(json_bool "${ver_resp}" "valid")" "false" "${alg} corrupted signature → invalid"
 }
 
 echo ""
@@ -372,8 +375,8 @@ run_sign_verify "$EC_PRIV_UID" "ES256"
 
 echo "==> B3: Unknown alg returns 400"
 assert_status \
-    "$(crypto_status "sign" "{\"kid\":\"${RSA_PRIV_UID}\",\"alg\":\"UNKNOWN\",\"data\":\"${PLAINTEXT_B64}\"}" )" \
-    "400" "Unknown sign alg"
+  "$(crypto_status "sign" "{\"kid\":\"${RSA_PRIV_UID}\",\"alg\":\"UNKNOWN\",\"data\":\"${PLAINTEXT_B64}\"}")" \
+  "400" "Unknown sign alg"
 
 # ── Section C: MAC ────────────────────────────────────────────────────────────
 
@@ -383,29 +386,29 @@ MAC_DATA_B64=$(b64url_encode "mac test message")
 
 echo "==> C1: HS256 compute + verify round-trip"
 MAC_COMPUTE=$(crypto_post "mac" \
-    "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\"}")
+  "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\"}")
 MAC_VALUE=$(json_str "$MAC_COMPUTE" "mac")
 MAC_VER=$(crypto_post "mac" \
-    "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\",\"mac\":\"${MAC_VALUE}\"}")
+  "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\",\"mac\":\"${MAC_VALUE}\"}")
 assert_eq "$(json_bool "${MAC_VER}" "valid")" "true" "HS256 compute + verify"
 
 echo "==> C2: HS256 tampered data → invalid"
 WRONG_DATA_B64=$(b64url_encode "different message")
 MAC_WRONG=$(crypto_post "mac" \
-    "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${WRONG_DATA_B64}\",\"mac\":\"${MAC_VALUE}\"}")
+  "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${WRONG_DATA_B64}\",\"mac\":\"${MAC_VALUE}\"}")
 assert_eq "$(json_bool "${MAC_WRONG}" "valid")" "false" "HS256 tampered data"
 
 echo "==> C3: HS256 corrupted mac → invalid"
 if [ "${MAC_VALUE:0:1}" = "A" ]; then MAC_BAD_CHAR="B"; else MAC_BAD_CHAR="A"; fi
 BAD_MAC="${MAC_BAD_CHAR}${MAC_VALUE:1}"
 MAC_BAD=$(crypto_post "mac" \
-    "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\",\"mac\":\"${BAD_MAC}\"}")
+  "{\"kid\":\"mac-hmac\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\",\"mac\":\"${BAD_MAC}\"}")
 assert_eq "$(json_bool "${MAC_BAD}" "valid")" "false" "HS256 corrupted mac"
 
 echo "==> C4: MAC with non-existent kid returns 404"
 assert_status \
-    "$(crypto_status "mac" "{\"kid\":\"no-such-key\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\"}")" \
-    "404" "MAC non-existent kid"
+  "$(crypto_status "mac" "{\"kid\":\"no-such-key\",\"alg\":\"HS256\",\"data\":\"${MAC_DATA_B64}\"}")" \
+  "404" "MAC non-existent kid"
 
 # ── Section D: Error cases ────────────────────────────────────────────────────
 
@@ -414,25 +417,25 @@ echo "==> Section D: Error cases"
 
 echo "==> D1: Invalid base64url in data returns 400"
 assert_status \
-    "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"not!valid!!\"}")" \
-    "400" "Invalid base64url"
+  "$(crypto_status "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"not!valid!!\"}")" \
+  "400" "Invalid base64url"
 
 echo "==> D2: Missing required field (kid) returns 400"
 assert_status \
-    "$(crypto_status "encrypt" "{\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\"}")" \
-    "400" "Missing kid"
+  "$(crypto_status "encrypt" "{\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"${PLAINTEXT_B64}\"}")" \
+  "400" "Missing kid"
 
 echo "==> D3: Empty body returns 400"
 assert_status \
-    "$(crypto_status "encrypt" "{}")" \
-    "400" "Empty body"
+  "$(crypto_status "encrypt" "{}")" \
+  "400" "Empty body"
 
 echo "==> D4: Error body has correct JSON schema"
 ERR_RESP=$(crypto_post "encrypt" "{\"kid\":\"aes-256\",\"alg\":\"dir\",\"enc\":\"BOGUS\",\"data\":\"${PLAINTEXT_B64}\"}")
 ERR_FIELD=$(json_str "$ERR_RESP" "error")
 if [ -z "$ERR_FIELD" ]; then
-    echo "FAIL [Error schema]: response missing 'error' field: ${ERR_RESP}" >&2
-    exit 1
+  echo "FAIL [Error schema]: response missing 'error' field: ${ERR_RESP}" >&2
+  exit 1
 fi
 echo "PASS: Error schema (error='${ERR_FIELD}')"
 
@@ -458,8 +461,8 @@ source "${VENV_DIR}/bin/activate"
 pip install --quiet jwcrypto cryptography
 
 python3 "${HELPER}" --help >/dev/null 2>&1 || {
-    echo "ERROR: jose_interop_helper.py failed to load" >&2
-    exit 1
+  echo "ERROR: jose_interop_helper.py failed to load" >&2
+  exit 1
 }
 echo "    Python venv OK ($(python3 --version), jwcrypto $(pip show jwcrypto | grep ^Version | awk '{print $2}'))"
 
@@ -470,7 +473,8 @@ echo "==> Importing known AES keys for interop..."
 
 AES_KEY_HEX=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 
-IMPORT_RESP=$(kmip_post "$(cat <<JSON
+IMPORT_RESP=$(kmip_post "$(
+  cat <<JSON
 {
   "tag": "Import", "type": "Structure",
   "value": [
@@ -500,7 +504,8 @@ echo "    AES-256 (imported) ${AES_UID}"
 
 AES128_KEY_HEX=$(python3 -c "import secrets; print(secrets.token_hex(16))")
 
-kmip_post "$(cat <<JSON
+kmip_post "$(
+  cat <<JSON
 {
   "tag": "Import", "type": "Structure",
   "value": [
@@ -529,7 +534,8 @@ echo "    AES-128 (imported) jose-aes-128"
 
 # ── Export public keys for jwcrypto verification ──────────────────────────────
 
-RSA_GET_RESP=$(kmip_post "$(cat <<JSON
+RSA_GET_RESP=$(kmip_post "$(
+  cat <<JSON
 {
   "tag": "Get", "type": "Structure",
   "value": [
@@ -542,7 +548,8 @@ JSON
 RSA_PUB_DER_HEX=$(kmip_bytestring "$RSA_GET_RESP" "KeyMaterial")
 echo "    RSA pub DER exported (${#RSA_PUB_DER_HEX} hex chars)"
 
-EC_GET_RESP=$(kmip_post "$(cat <<JSON
+EC_GET_RESP=$(kmip_post "$(
+  cat <<JSON
 {
   "tag": "Get", "type": "Structure",
   "value": [
@@ -563,16 +570,16 @@ PAYLOAD="JOSE interop test payload for RS256"
 PAYLOAD_B64=$(b64url_encode "${PAYLOAD}")
 
 SIGN_RESP=$(crypto_post "sign" \
-    "{\"kid\":\"${RSA_PRIV_UID}\",\"alg\":\"RS256\",\"data\":\"${PAYLOAD_B64}\"}")
+  "{\"kid\":\"${RSA_PRIV_UID}\",\"alg\":\"RS256\",\"data\":\"${PAYLOAD_B64}\"}")
 SIGN_PROTECTED=$(json_str "$SIGN_RESP" "protected")
 SIGN_SIGNATURE=$(json_str "$SIGN_RESP" "signature")
 
 COMPACT_JWS="${SIGN_PROTECTED}.${PAYLOAD_B64}.${SIGN_SIGNATURE}"
 
 VERIFY_OUT=$(python3 "${HELPER}" verify-jws \
-    --alg RS256 \
-    --pub-der-hex "${RSA_PUB_DER_HEX}" \
-    --compact "${COMPACT_JWS}" 2>&1) || true
+  --alg RS256 \
+  --pub-der-hex "${RSA_PUB_DER_HEX}" \
+  --compact "${COMPACT_JWS}" 2>&1) || true
 assert_eq "$(echo "${VERIFY_OUT}" | head -1)" "valid=true" "E1: RS256 KMS sign → jwcrypto verify"
 
 # ── Test E2: JWS ES256 — KMS sign → jwcrypto verify ──────────────────────────
@@ -583,16 +590,16 @@ EC_PAYLOAD="JOSE interop test payload for ES256"
 EC_PAYLOAD_B64=$(b64url_encode "${EC_PAYLOAD}")
 
 EC_SIGN_RESP=$(crypto_post "sign" \
-    "{\"kid\":\"${EC_PRIV_UID}\",\"alg\":\"ES256\",\"data\":\"${EC_PAYLOAD_B64}\"}")
+  "{\"kid\":\"${EC_PRIV_UID}\",\"alg\":\"ES256\",\"data\":\"${EC_PAYLOAD_B64}\"}")
 EC_SIGN_PROTECTED=$(json_str "$EC_SIGN_RESP" "protected")
 EC_SIGN_SIGNATURE=$(json_str "$EC_SIGN_RESP" "signature")
 
 EC_COMPACT_JWS="${EC_SIGN_PROTECTED}.${EC_PAYLOAD_B64}.${EC_SIGN_SIGNATURE}"
 
 EC_VERIFY_OUT=$(python3 "${HELPER}" verify-jws \
-    --alg ES256 \
-    --pub-der-hex "${EC_PUB_DER_HEX}" \
-    --compact "${EC_COMPACT_JWS}" 2>&1) || true
+  --alg ES256 \
+  --pub-der-hex "${EC_PUB_DER_HEX}" \
+  --compact "${EC_COMPACT_JWS}" 2>&1) || true
 assert_eq "$(echo "${EC_VERIFY_OUT}" | head -1)" "valid=true" "E2: ES256 KMS sign → jwcrypto verify"
 
 # ── Test E3: JWE dir+A256GCM — KMS encrypt → jwcrypto decrypt ────────────────
@@ -604,18 +611,18 @@ JWE_PLAINTEXT_B64=$(b64url_encode "${JWE_PLAINTEXT}")
 JWE_PLAINTEXT_HEX=$(python3 -c "print('${JWE_PLAINTEXT}'.encode().hex(), end='')")
 
 ENC_RESP=$(crypto_post "encrypt" \
-    "{\"kid\":\"${AES_UID}\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"${JWE_PLAINTEXT_B64}\"}")
+  "{\"kid\":\"${AES_UID}\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"${JWE_PLAINTEXT_B64}\"}")
 ENC_PROTECTED=$(json_str "$ENC_RESP" "protected")
 ENC_IV=$(json_str "$ENC_RESP" "iv")
 ENC_CT=$(json_str "$ENC_RESP" "ciphertext")
 ENC_TAG=$(json_str "$ENC_RESP" "tag")
 
 DECRYPT_HEX=$(python3 "${HELPER}" decrypt-jwe \
-    --key-hex "${AES_KEY_HEX}" \
-    --protected "${ENC_PROTECTED}" \
-    --iv "${ENC_IV}" \
-    --ciphertext "${ENC_CT}" \
-    --tag "${ENC_TAG}")
+  --key-hex "${AES_KEY_HEX}" \
+  --protected "${ENC_PROTECTED}" \
+  --iv "${ENC_IV}" \
+  --ciphertext "${ENC_CT}" \
+  --tag "${ENC_TAG}")
 assert_eq "${DECRYPT_HEX}" "${JWE_PLAINTEXT_HEX}" "E3: A256GCM KMS encrypt → jwcrypto decrypt"
 
 # ── Test E4: JWE dir+A128GCM — jwcrypto encrypt → KMS decrypt ────────────────
@@ -626,10 +633,10 @@ E4_PLAINTEXT="Encrypt me with A128GCM from jwcrypto!"
 E4_PLAINTEXT_HEX=$(python3 -c "print('${E4_PLAINTEXT}'.encode().hex(), end='')")
 
 JWE_JSON=$(python3 "${HELPER}" encrypt-jwe \
-    --key-hex "${AES128_KEY_HEX}" \
-    --kid "jose-aes-128" \
-    --enc "A128GCM" \
-    --plaintext-hex "${E4_PLAINTEXT_HEX}")
+  --key-hex "${AES128_KEY_HEX}" \
+  --kid "jose-aes-128" \
+  --enc "A128GCM" \
+  --plaintext-hex "${E4_PLAINTEXT_HEX}")
 
 JWE_PROTECTED=$(json_str "$JWE_JSON" "protected")
 JWE_IV=$(json_str "$JWE_JSON" "iv")
@@ -637,7 +644,7 @@ JWE_CT=$(json_str "$JWE_JSON" "ciphertext")
 JWE_TAG=$(json_str "$JWE_JSON" "tag")
 
 DEC_RESP=$(crypto_post "decrypt" \
-    "{\"protected\":\"${JWE_PROTECTED}\",\"encrypted_key\":\"\",\"iv\":\"${JWE_IV}\",\"ciphertext\":\"${JWE_CT}\",\"tag\":\"${JWE_TAG}\"}")
+  "{\"protected\":\"${JWE_PROTECTED}\",\"encrypted_key\":\"\",\"iv\":\"${JWE_IV}\",\"ciphertext\":\"${JWE_CT}\",\"tag\":\"${JWE_TAG}\"}")
 DEC_DATA=$(json_str "$DEC_RESP" "data")
 
 # Decode base64url → hex for comparison
@@ -659,8 +666,8 @@ SIGNING_INPUT="eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJl
 SIGNING_INPUT_HEX=$(python3 -c "print('${SIGNING_INPUT}'.encode().hex(), end='')")
 
 JWCRYPTO_MAC=$(python3 "${HELPER}" mac-sha256 \
-    --key-b64url "${RFC_KEY_B64}" \
-    --data-hex "${SIGNING_INPUT_HEX}")
+  --key-b64url "${RFC_KEY_B64}" \
+  --data-hex "${SIGNING_INPUT_HEX}")
 
 EXPECTED_MAC="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 assert_eq "${JWCRYPTO_MAC}" "${EXPECTED_MAC}" "E5: RFC 7515 §A.1 HS256 jwcrypto known-answer"

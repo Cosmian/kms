@@ -1,3 +1,4 @@
+mod aes_gcm;
 mod algorithm;
 mod models;
 
@@ -12,7 +13,9 @@ pub(crate) mod verify;
 // Re-export handlers under names that callers (start_kms_server, test_utils) can use
 // directly without the double-path (crypto::encrypt::encrypt).
 // Re-export shared types used by handlers and algorithm module
-pub(crate) use algorithm::{JoseAlgorithm, JoseEncAlgorithm, jose_to_kmip_params};
+pub(crate) use algorithm::{
+    JoseAlgorithm, JoseEncAlgorithm, cek_size_bytes, jose_oaep_hashes, jose_to_kmip_params,
+};
 pub(crate) use decrypt::decrypt as decrypt_handler;
 pub(crate) use encrypt::encrypt as encrypt_handler;
 pub(crate) use error::{

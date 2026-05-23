@@ -32,7 +32,7 @@ async fn test_unknown_encrypt_alg_returns_422() -> KResult<()> {
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/encrypt")
-        .set_json(&json!({"kid": kid, "alg": "RSA-OAEP-256", "enc": "A256GCM", "data": "dGVzdA"}))
+        .set_json(&json!({"kid": kid, "alg": "A128KW", "enc": "A256GCM", "data": "dGVzdA"}))
         .to_request();
     let resp = test::call_service(&app, req).await;
     // With typed JoseAlgorithm enum, unknown alg values are rejected at

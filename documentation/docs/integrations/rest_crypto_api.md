@@ -108,28 +108,76 @@ key in the pair.
 
 ### `POST /v1/crypto/encrypt`
 
-Encrypt plaintext using a symmetric key identified by `kid`.
+Encrypt plaintext using either:
 
-**v1 supports**: `alg=dir` with `enc` in `{A128GCM, A192GCM, A256GCM}`.
+- **Direct encryption** (`alg=dir`): uses a symmetric key directly as the content encryption key (CEK).
+- **RSA-OAEP key wrapping** (`alg=RSA-OAEP` or `alg=RSA-OAEP-256`): generates an ephemeral CEK, wraps it with the RSA public key, and encrypts data with AES-GCM.
+
+**Supported `alg` values**: `dir`, `RSA-OAEP`, `RSA-OAEP-256`.
+**Supported `enc` values**: `A128GCM`, `A192GCM`, `A256GCM`.
+
+#### Flow — Direct (`dir`)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant KMS
+    Client->>KMS: POST /v1/crypto/keys {"kty":"oct","alg":"A256GCM"}
+    KMS-->>Client: {"kid":"<uuid>"}
+    Client->>KMS: POST /v1/crypto/encrypt {"kid":"<uuid>","alg":"dir","enc":"A256GCM","data":"..."}
+    Note over KMS: AES-GCM encrypt with symmetric key
+    KMS-->>Client: {"protected":"...","encrypted_key":"","iv":"...","ciphertext":"...","tag":"..."}
+    Client->>KMS: POST /v1/crypto/decrypt {"protected":"...","iv":"...","ciphertext":"...","tag":"..."}
+    Note over KMS: AES-GCM decrypt with symmetric key
+    KMS-->>Client: {"kid":"<uuid>","data":"..."}
+    Client->>KMS: DELETE /v1/crypto/keys/<uuid>
+    KMS-->>Client: 204 No Content
+```
+
+#### Flow — RSA-OAEP
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant KMS
+    Client->>KMS: POST /v1/crypto/keys {"kty":"RSA","bits":2048}
+    KMS-->>Client: {"kid":"<priv-uuid>","kid_public":"<pub-uuid>"}
+    Client->>KMS: POST /v1/crypto/encrypt {"kid":"<pub-uuid>","alg":"RSA-OAEP-256","enc":"A256GCM","data":"..."}
+    Note over KMS: Generate ephemeral CEK<br/>Wrap CEK with RSA-OAEP-256<br/>AES-GCM encrypt data<br/>Wipe CEK from memory
+    KMS-->>Client: {"protected":"...","encrypted_key":"<wrapped-CEK>","iv":"...","ciphertext":"...","tag":"..."}
+    Client->>KMS: POST /v1/crypto/decrypt {"protected":"...","encrypted_key":"<wrapped-CEK>","iv":"...","ciphertext":"...","tag":"..."}
+    Note over KMS: RSA-OAEP unwrap → CEK<br/>AES-GCM decrypt<br/>(implicit rejection on OAEP failure)
+    KMS-->>Client: {"kid":"<priv-uuid>","data":"..."}
+    Client->>KMS: DELETE /v1/crypto/keys/<priv-uuid>
+    KMS-->>Client: 204 No Content (cascades to public key)
+```
 
 #### Request body
 
 ```json
 {
   "kid": "<key-uuid>",
-  "alg": "dir",
+  "alg": "RSA-OAEP",
   "enc": "A256GCM",
   "data": "<base64url-encoded plaintext>",
   "aad": "<base64url-encoded AAD>"   // optional
 }
 ```
 
+| Field | Required | Description |
+|-------|----------|-------------|
+| `kid` | ✓ | Key UUID (symmetric key for `dir`; RSA private or public key for `RSA-OAEP`/`RSA-OAEP-256`) |
+| `alg` | ✓ | Key management algorithm: `dir`, `RSA-OAEP`, or `RSA-OAEP-256` |
+| `enc` | ✓ | Content encryption algorithm: `A128GCM`, `A192GCM`, `A256GCM` |
+| `data` | ✓ | Base64url-encoded plaintext |
+| `aad` | | Optional additional authenticated data (base64url) |
+
 #### Response body (Flattened JWE)
 
 ```json
 {
   "protected":     "<base64url JWE Protected Header>",
-  "encrypted_key": "",
+  "encrypted_key": "<base64url wrapped CEK>",
   "iv":            "<base64url IV>",
   "ciphertext":    "<base64url ciphertext>",
   "tag":           "<base64url GCM authentication tag>",
@@ -137,17 +185,55 @@ Encrypt plaintext using a symmetric key identified by `kid`.
 }
 ```
 
-#### Example (curl)
+For `alg=dir`, the `encrypted_key` field is an empty string. For RSA-OAEP, it contains
+the RSA-OAEP-wrapped CEK.
+
+#### Example — Direct encryption (curl)
 
 ```bash
 # 1. Create a 256-bit AES key
-KEY_ID=$(ckms sym keys create -a aes -l 256 | grep 'Unique identifier' | awk '{print $NF}')
+KID=$(curl -s -X POST https://kms.example.com/v1/crypto/keys \
+  -H 'Content-Type: application/json' \
+  -d '{"kty":"oct","alg":"A256GCM"}' | jq -r '.kid')
 
 # 2. Encrypt
 DATA_B64=$(printf 'Hello KMS!' | base64 | tr '+/' '-_' | tr -d '=')
-curl -s -X POST https://kms.example.com/v1/crypto/encrypt \
+JWE=$(curl -s -X POST https://kms.example.com/v1/crypto/encrypt \
   -H 'Content-Type: application/json' \
-  -d "{\"kid\":\"$KEY_ID\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"$DATA_B64\"}"
+  -d "{\"kid\":\"$KID\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"$DATA_B64\"}")
+
+# 3. Decrypt
+curl -s -X POST https://kms.example.com/v1/crypto/decrypt \
+  -H 'Content-Type: application/json' \
+  -d "$JWE" | jq -r '.data | @base64d'
+
+# 4. Clean up
+curl -s -X DELETE https://kms.example.com/v1/crypto/keys/$KID
+```
+
+#### Example — RSA-OAEP (curl)
+
+```bash
+# 1. Create an RSA-2048 key pair
+KEYS=$(curl -s -X POST https://kms.example.com/v1/crypto/keys \
+  -H 'Content-Type: application/json' \
+  -d '{"kty":"RSA","bits":2048}')
+KID=$(echo "$KEYS" | jq -r '.kid')
+KID_PUB=$(echo "$KEYS" | jq -r '.kid_public')
+
+# 2. Encrypt with RSA-OAEP-256 using the public key
+DATA_B64=$(printf 'Secret message' | base64 | tr '+/' '-_' | tr -d '=')
+JWE=$(curl -s -X POST https://kms.example.com/v1/crypto/encrypt \
+  -H 'Content-Type: application/json' \
+  -d "{\"kid\":\"$KID_PUB\",\"alg\":\"RSA-OAEP-256\",\"enc\":\"A256GCM\",\"data\":\"$DATA_B64\"}")
+
+# 3. Decrypt (kid in protected header resolves to private key automatically)
+curl -s -X POST https://kms.example.com/v1/crypto/decrypt \
+  -H 'Content-Type: application/json' \
+  -d "$JWE" | jq -r '.data | @base64d'
+
+# 4. Clean up (cascades to the linked public key)
+curl -s -X DELETE https://kms.example.com/v1/crypto/keys/$KID
 ```
 
 ---
@@ -156,18 +242,37 @@ curl -s -X POST https://kms.example.com/v1/crypto/encrypt \
 
 Decrypt a Flattened JWE token.
 
+Supports both `alg=dir` (direct AES-GCM) and `alg=RSA-OAEP`/`RSA-OAEP-256`
+(RSA-OAEP key unwrapping + AES-GCM content decryption).
+
+The `kid` in the JWE protected header identifies the decryption key. For RSA-OAEP,
+this can be either the private key or the public key UUID (the server resolves to
+the private key automatically).
+
+> The decrypt endpoint has no standalone flow diagram — it is the second half of
+> the encrypt/decrypt flows shown in the [encrypt section](#post-v1cryptoencrypt) above.
+
 #### Request body
 
 ```json
 {
   "protected":     "<base64url JWE Protected Header>",
-  "encrypted_key": "",            // must be empty or absent for "dir"
+  "encrypted_key": "<base64url wrapped CEK>",
   "iv":            "<base64url IV>",
   "ciphertext":    "<base64url ciphertext>",
   "tag":           "<base64url GCM authentication tag>",
   "aad":           "<base64url AAD>"  // optional; must match the value used during encryption
 }
 ```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `protected` | ✓ | Base64url-encoded JWE Protected Header (must contain `alg`, `enc`, `kid`) |
+| `encrypted_key` | For RSA-OAEP | The RSA-OAEP-wrapped CEK (empty or absent for `dir`) |
+| `iv` | ✓ | 12-byte initialization vector (base64url) |
+| `ciphertext` | ✓ | Encrypted data (base64url) |
+| `tag` | ✓ | 16-byte GCM authentication tag (base64url) |
+| `aad` | | Additional authenticated data (base64url) |
 
 #### Response body
 
@@ -178,13 +283,21 @@ Decrypt a Flattened JWE token.
 }
 ```
 
+#### Security: implicit rejection
+
+For RSA-OAEP decryption, the server implements **implicit rejection** as recommended
+by [RFC 7516 §11.5](https://www.rfc-editor.org/rfc/rfc7516#section-11.5). If the
+RSA-OAEP unwrap fails (indicating a tampered or invalid `encrypted_key`), the server
+substitutes a random CEK and proceeds with AES-GCM decryption — which will fail
+with the same generic "Decryption failed" error. This prevents padding oracle attacks.
+
 #### Example (curl)
 
 ```bash
-# Continues from the encrypt example; JWE_BODY is the encrypt response JSON
+# JWE is the JSON response from POST /v1/crypto/encrypt
 PLAINTEXT=$(curl -s -X POST https://kms.example.com/v1/crypto/decrypt \
   -H 'Content-Type: application/json' \
-  -d "$JWE_BODY" | jq -r '.data' | base64 -d)
+  -d "$JWE" | jq -r '.data | @base64d')
 echo "$PLAINTEXT"
 ```
 
@@ -197,6 +310,24 @@ in the response).
 
 **Supported algorithms**: `RS256`, `RS384`, `RS512`, `PS256`, `PS384`, `PS512`,
 `ES256`, `ES384`, `ES512`; `EdDSA` and `MLDSA44` (non-FIPS builds only).
+
+#### Flow — Sign and verify
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant KMS
+    Client->>KMS: POST /v1/crypto/keys {"kty":"RSA","alg":"PS256"}
+    KMS-->>Client: {"kid":"<priv-uuid>","kid_public":"<pub-uuid>"}
+    Client->>KMS: POST /v1/crypto/sign {"kid":"<priv-uuid>","alg":"PS256","data":"<b64>"}
+    Note over KMS: RSA-PSS sign with private key
+    KMS-->>Client: {"protected":"<b64-header>","signature":"<b64>"}
+    Client->>KMS: POST /v1/crypto/verify {"protected":"<b64-header>","data":"<b64>","signature":"<b64>"}
+    Note over KMS: Decode protected header → kid<br/>Fetch public key<br/>RSA-PSS verify
+    KMS-->>Client: {"kid":"<pub-uuid>","valid":true}
+    Client->>KMS: DELETE /v1/crypto/keys/<priv-uuid>
+    KMS-->>Client: 204 No Content (cascades to public key)
+```
 
 #### Request body
 
@@ -220,14 +351,26 @@ in the response).
 #### Example (curl)
 
 ```bash
-# Create RSA-2048 key pair
-KEY_IDS=$(ckms rsa keys create --size_in_bits 2048)
-PRIV_ID=$(echo "$KEY_IDS" | grep 'Private key' | awk '{print $NF}')
-
-DATA_B64=$(printf 'data to sign' | base64 | tr '+/' '-_' | tr -d '=')
-curl -s -X POST https://kms.example.com/v1/crypto/sign \
+# 1. Create an RSA-2048 key pair
+KEYS=$(curl -s -X POST https://kms.example.com/v1/crypto/keys \
   -H 'Content-Type: application/json' \
-  -d "{\"kid\":\"$PRIV_ID\",\"alg\":\"RS256\",\"data\":\"$DATA_B64\"}"
+  -d '{"kty":"RSA","alg":"RS256"}')
+KID=$(echo "$KEYS" | jq -r '.kid')
+
+# 2. Sign
+DATA_B64=$(printf 'data to sign' | base64 | tr '+/' '-_' | tr -d '=')
+SIGN_RESP=$(curl -s -X POST https://kms.example.com/v1/crypto/sign \
+  -H 'Content-Type: application/json' \
+  -d "{\"kid\":\"$KID\",\"alg\":\"RS256\",\"data\":\"$DATA_B64\"}")
+
+# 3. Verify
+curl -s -X POST https://kms.example.com/v1/crypto/verify \
+  -H 'Content-Type: application/json' \
+  -d "$(jq -n --argjson s "$SIGN_RESP" --arg d "$DATA_B64" \
+       '{protected:$s.protected,data:$d,signature:$s.signature}')"
+
+# 4. Clean up
+curl -s -X DELETE https://kms.example.com/v1/crypto/keys/$KID
 ```
 
 ---
@@ -239,6 +382,9 @@ Verify a detached JWS signature. The KMS looks up the public key from the `prote
 > **Required**: the JWS protected header decoded from `protected` **must** contain a `kid` field
 > set to the KMS public key UUID. Requests without `kid` are rejected with `400`.
 > This field is set automatically by `POST /v1/crypto/sign`.
+>
+> The verify endpoint is the second half of the sign/verify flow shown in the
+> [sign section](#post-v1cryptosign) above.
 
 #### Request body
 
@@ -259,15 +405,6 @@ Verify a detached JWS signature. The KMS looks up the public key from the `prote
 }
 ```
 
-#### Example (curl)
-
-```bash
-# SIGN_RESP is the response from /v1/crypto/sign
-curl -s -X POST https://kms.example.com/v1/crypto/verify \
-  -H 'Content-Type: application/json' \
-  -d "{\"protected\":$(echo $SIGN_RESP | jq .protected),\"data\":\"$DATA_B64\",\"signature\":$(echo $SIGN_RESP | jq .signature)}"
-```
-
 ---
 
 ### `POST /v1/crypto/mac`
@@ -278,6 +415,24 @@ Compute or verify a MAC (Message Authentication Code).
 - **Verify**: include the `mac` field → the KMS returns `valid: true/false`.
 
 **Supported algorithms**: `HS256`, `HS384`, `HS512`.
+
+#### Flow — MAC compute and verify
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant KMS
+    Client->>KMS: POST /v1/crypto/keys {"kty":"oct","alg":"HS256"}
+    KMS-->>Client: {"kid":"<uuid>"}
+    Client->>KMS: POST /v1/crypto/mac {"kid":"<uuid>","alg":"HS256","data":"<b64>"}
+    Note over KMS: HMAC-SHA256 compute
+    KMS-->>Client: {"kid":"<uuid>","mac":"<b64>"}
+    Client->>KMS: POST /v1/crypto/mac {"kid":"<uuid>","alg":"HS256","data":"<b64>","mac":"<b64>"}
+    Note over KMS: HMAC-SHA256 verify
+    KMS-->>Client: {"kid":"<uuid>","valid":true}
+    Client->>KMS: DELETE /v1/crypto/keys/<uuid>
+    KMS-->>Client: 204 No Content
+```
 
 #### Request body
 
@@ -323,17 +478,25 @@ It reproduces the exact HS256 result from [RFC 7515 §Appendix A.1](https://www.
 #### Example (curl)
 
 ```bash
-# Compute MAC
+# 1. Create an HMAC-SHA256 key
+KID=$(curl -s -X POST https://kms.example.com/v1/crypto/keys \
+  -H 'Content-Type: application/json' \
+  -d '{"kty":"oct","alg":"HS256"}' | jq -r '.kid')
+
+# 2. Compute MAC
 DATA_B64=$(printf 'message' | base64 | tr '+/' '-_' | tr -d '=')
 MAC_RESP=$(curl -s -X POST https://kms.example.com/v1/crypto/mac \
   -H 'Content-Type: application/json' \
-  -d "{\"kid\":\"$KEY_ID\",\"alg\":\"HS256\",\"data\":\"$DATA_B64\"}")
+  -d "{\"kid\":\"$KID\",\"alg\":\"HS256\",\"data\":\"$DATA_B64\"}")
 MAC_VALUE=$(echo "$MAC_RESP" | jq -r '.mac')
 
-# Verify MAC
+# 3. Verify MAC
 curl -s -X POST https://kms.example.com/v1/crypto/mac \
   -H 'Content-Type: application/json' \
-  -d "{\"kid\":\"$KEY_ID\",\"alg\":\"HS256\",\"data\":\"$DATA_B64\",\"mac\":\"$MAC_VALUE\"}"
+  -d "{\"kid\":\"$KID\",\"alg\":\"HS256\",\"data\":\"$DATA_B64\",\"mac\":\"$MAC_VALUE\"}"
+
+# 4. Clean up
+curl -s -X DELETE https://kms.example.com/v1/crypto/keys/$KID
 ```
 
 ---
@@ -355,12 +518,10 @@ an appropriate HTTP status code:
 
 ## Known limitations
 
-The following JOSE features are **not yet implemented** in v1 of this API.
-They are listed in the test suite (`rfc_vectors.rs`) as blocked.
+The following JOSE features are **not yet implemented** in this API.
 
 | Missing feature | Blocked by |
 |---|---|
-| JWE `alg=RSA-OAEP` (RFC 7516 §A.1) | RSA-OAEP key management not implemented |
 | JWE `alg=RSA-PKCS1-v1_5` + `enc=A128CBC-HS256` (RFC 7516 §A.2) | RSA-PKCS1v1.5 + AES-CBC not implemented |
 | JWE `alg=A128KW` + `enc=A128CBC-HS256` (RFC 7516 §A.3) | AES key-wrap + AES-CBC not implemented |
 | JWE `alg=dir` + `enc=A128CBC-HS256` (RFC 7516 §A.5) | AES-CBC enc not implemented |
@@ -374,15 +535,34 @@ They are listed in the test suite (`rfc_vectors.rs`) as blocked.
 
 ## Algorithm support matrix
 
-| Algorithm   | FIPS | Operation         |
-|-------------|------|-------------------|
-| `dir`       | ✓    | encrypt / decrypt |
-| `A128GCM`   | ✓    | enc (with dir)    |
-| `A192GCM`   | ✓    | enc (with dir)    |
-| `A256GCM`   | ✓    | enc (with dir)    |
-| `RS256/384/512` | ✓ | sign / verify   |
-| `PS256/384/512` | ✓ | sign / verify   |
-| `ES256/384/512` | ✓ | sign / verify   |
-| `EdDSA`     | ✗    | sign / verify (non-FIPS) |
-| `MLDSA44`   | ✗    | sign / verify (non-FIPS) |
-| `HS256/384/512` | ✓ | mac compute / verify |
+### Key management algorithms (`alg`)
+
+| Algorithm     | FIPS | Operation         | Notes |
+|---------------|------|-------------------|-------|
+| `dir`         | ✓    | encrypt / decrypt | Direct use of symmetric key as CEK |
+| `RSA-OAEP`   | ✓    | encrypt / decrypt | RSA-OAEP with SHA-1 (RFC 7518 §4.3) |
+| `RSA-OAEP-256`| ✓   | encrypt / decrypt | RSA-OAEP with SHA-256 (RFC 7518 §4.3) |
+
+### Content encryption algorithms (`enc`)
+
+| Algorithm   | FIPS | Key size | Notes |
+|-------------|------|----------|-------|
+| `A128GCM`   | ✓    | 128 bits | AES-GCM with 96-bit IV, 128-bit tag |
+| `A192GCM`   | ✓    | 192 bits | AES-GCM with 96-bit IV, 128-bit tag |
+| `A256GCM`   | ✓    | 256 bits | AES-GCM with 96-bit IV, 128-bit tag |
+
+### Signature algorithms
+
+| Algorithm       | FIPS | Operation       |
+|-----------------|------|-----------------|
+| `RS256/384/512` | ✓    | sign / verify   |
+| `PS256/384/512` | ✓    | sign / verify   |
+| `ES256/384/512` | ✓    | sign / verify   |
+| `EdDSA`         | ✗    | sign / verify (non-FIPS) |
+| `MLDSA44`       | ✗    | sign / verify (non-FIPS) |
+
+### MAC algorithms
+
+| Algorithm       | FIPS | Operation              |
+|-----------------|------|------------------------|
+| `HS256/384/512` | ✓    | mac compute / verify   |

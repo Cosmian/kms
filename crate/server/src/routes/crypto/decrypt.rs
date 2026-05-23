@@ -4,23 +4,36 @@ use actix_web::{
     HttpRequest, post,
     web::{Data, Json},
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_operations::Decrypt, kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        KmipOperation,
+        kmip_objects::Object,
+        kmip_operations::Decrypt,
+        kmip_types::{LinkType, UniqueIdentifier},
+    },
+    cosmian_kms_crypto::{
+        crypto::rsa::ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
+        openssl::kmip_private_key_to_openssl,
+    },
 };
-use cosmian_logger::trace;
+use cosmian_logger::{debug, trace};
+use openssl::rand::rand_bytes;
+use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, CryptoResult, DecryptRequest, DecryptResponse as CryptoDecryptResponse,
-    JoseAlgorithm, JoseEncAlgorithm, b64_decode, b64_encode, encrypt::build_jwe_aad,
-    jose_to_kmip_params,
+    JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode,
+    cek_size_bytes, encrypt::build_jwe_aad, jose_oaep_hashes, jose_to_kmip_params,
 };
-use crate::core::KMS;
+use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
 
-/// `POST /v1/crypto/decrypt` — JOSE AES-GCM (dir) content decryption.
+/// `POST /v1/crypto/decrypt` — JOSE content decryption (JWE Flattened JSON).
 ///
-/// Follows RFC 7516 §5.2 step 15 for AAD reconstruction:
-/// - no `aad` field: AAD = `ASCII(protected_b64)`
-/// - `aad` field present: AAD = `ASCII(protected_b64 + "." + aad_b64)`
+/// Supports:
+/// - `alg=dir`: direct AES-GCM decryption using the symmetric key referenced by `kid`
+/// - `alg=RSA-OAEP` / `alg=RSA-OAEP-256`: RSA-OAEP unwrapping of the CEK, then AES-GCM decrypt
+///
+/// Follows RFC 7516 §5.2 step 15 for AAD reconstruction.
 #[post("/decrypt")]
 pub(crate) async fn decrypt(
     req: HttpRequest,
@@ -32,6 +45,7 @@ pub(crate) async fn decrypt(
 
     trace!(user = user, "POST /v1/crypto/decrypt");
 
+    // Parse protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
     let header_json: serde_json::Value = serde_json::from_slice(&header_bytes).map_err(|e| {
         CryptoApiError::BadRequest(format!(
@@ -56,20 +70,6 @@ pub(crate) async fn decrypt(
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
-    // Validate encrypted_key now that alg is known.
-    // 'dir' transmits no key material — encrypted_key must be absent or empty.
-    // Future key-wrapping algs (RSA-OAEP, ECDH-ES) will have a non-empty encrypted_key;
-    // add a new branch here rather than removing this guard.
-    if alg == JoseAlgorithm::Dir {
-        if let Some(ref ek) = body.encrypted_key {
-            if !ek.is_empty() {
-                return Err(CryptoApiError::BadRequest(
-                    "'encrypted_key' must be absent or empty for 'dir' key management".to_owned(),
-                ));
-            }
-        }
-    }
-
     let enc: JoseEncAlgorithm = header_json
         .get("enc")
         .and_then(|v| v.as_str())
@@ -79,11 +79,39 @@ pub(crate) async fn decrypt(
         .parse()
         .map_err(CryptoApiError::UnsupportedAlgorithm)?;
 
+    match alg {
+        JoseAlgorithm::Dir => decrypt_dir(&kms, &user, kid, alg, enc, &body).await,
+        JoseAlgorithm::RsaOaep | JoseAlgorithm::RsaOaep256 => {
+            Box::pin(decrypt_rsa_oaep(&kms, &user, kid, alg, enc, &body)).await
+        }
+        _ => Err(CryptoApiError::UnsupportedAlgorithm(format!(
+            "Algorithm '{alg}' is not a key-management algorithm. Supported: dir, RSA-OAEP, \
+             RSA-OAEP-256."
+        ))),
+    }
+}
+
+/// Direct AES-GCM decryption — delegates to the KMIP Decrypt pipeline.
+async fn decrypt_dir(
+    kms: &KMS,
+    user: &str,
+    kid: String,
+    alg: JoseAlgorithm,
+    enc: JoseEncAlgorithm,
+    body: &DecryptRequest,
+) -> CryptoResult<CryptoDecryptResponse> {
+    // 'dir' transmits no key material — encrypted_key must be absent or empty.
+    if let Some(ref ek) = body.encrypted_key {
+        if !ek.is_empty() {
+            return Err(CryptoApiError::BadRequest(
+                "'encrypted_key' must be absent or empty for 'dir' key management".to_owned(),
+            ));
+        }
+    }
+
     let kmip_params = jose_to_kmip_params(alg, Some(enc))?;
 
     let iv_bytes = b64_decode("iv", &body.iv)?;
-    // AES-GCM mandates a 96-bit (12-byte) IV.  Non-96-bit IVs cause OpenSSL to
-    // use GHASH to reduce the IV, which weakens the security guarantees.
     if iv_bytes.len() != 12 {
         return Err(CryptoApiError::BadRequest(format!(
             "GCM initialization vector must be exactly 96 bits (12 bytes), got {} bytes",
@@ -92,8 +120,6 @@ pub(crate) async fn decrypt(
     }
     let ciphertext_bytes = b64_decode("ciphertext", &body.ciphertext)?;
     let tag_bytes = b64_decode("tag", &body.tag)?;
-    // JOSE GCM always uses 128-bit (16-byte) authentication tags (RFC 7518 §4.7).
-    // Accepting shorter tags would increase forgery probability.
     if tag_bytes.len() != 16 {
         return Err(CryptoApiError::BadRequest(format!(
             "GCM authentication tag must be exactly 128 bits (16 bytes), got {} bytes",
@@ -101,7 +127,6 @@ pub(crate) async fn decrypt(
         )));
     }
 
-    // RFC 7516 §5.2 step 15
     let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;
 
     let decrypt_req = Decrypt {
@@ -115,7 +140,7 @@ pub(crate) async fn decrypt(
     };
 
     let resp = kms
-        .decrypt(decrypt_req, &user)
+        .decrypt(decrypt_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -126,5 +151,137 @@ pub(crate) async fn decrypt(
     Ok(Json(CryptoDecryptResponse {
         kid,
         data: b64_encode(&plaintext_bytes),
+    }))
+}
+
+/// RSA-OAEP decrypt with implicit rejection (RFC 7516 §11.5 countermeasure).
+///
+/// 1. Unwrap `encrypted_key` with RSA private key to recover CEK
+/// 2. On OAEP failure: substitute a random CEK (do NOT return an error)
+/// 3. AES-GCM decrypt with the CEK (real or random)
+/// 4. Return uniform "Decryption failed" on any failure
+async fn decrypt_rsa_oaep(
+    kms: &KMS,
+    user: &str,
+    kid: String,
+    alg: JoseAlgorithm,
+    enc: JoseEncAlgorithm,
+    body: &DecryptRequest,
+) -> CryptoResult<CryptoDecryptResponse> {
+    // RSA-OAEP requires a non-empty encrypted_key
+    let encrypted_key_b64 = body
+        .encrypted_key
+        .as_deref()
+        .filter(|ek| !ek.is_empty())
+        .ok_or_else(|| {
+            CryptoApiError::BadRequest(
+                "'encrypted_key' must be present and non-empty for RSA-OAEP key management"
+                    .to_owned(),
+            )
+        })?;
+
+    let encrypted_key_bytes = b64_decode("encrypted_key", encrypted_key_b64)?;
+    let iv_bytes = b64_decode("iv", &body.iv)?;
+    let ciphertext_bytes = b64_decode("ciphertext", &body.ciphertext)?;
+    let tag_bytes = b64_decode("tag", &body.tag)?;
+
+    // Resolve the private key — accept either private or public key UID
+    let owm = retrieve_object_for_operation(&kid, KmipOperation::Decrypt, kms, user)
+        .await
+        .map_err(CryptoApiError::from)?;
+
+    // Determine the private key object
+    let private_key_owm = match owm.object() {
+        Object::PrivateKey { .. } => owm,
+        Object::PublicKey { .. } => {
+            // Resolve linked private key
+            let priv_key_uid = owm
+                .attributes()
+                .get_link(LinkType::PrivateKeyLink)
+                .ok_or_else(|| {
+                    CryptoApiError::CryptoFailure(
+                        "RSA-OAEP decrypt: public key has no linked private key".to_owned(),
+                    )
+                })?;
+            retrieve_object_for_operation(
+                &priv_key_uid.to_string(),
+                KmipOperation::Decrypt,
+                kms,
+                user,
+            )
+            .await
+            .map_err(CryptoApiError::from)?
+        }
+        _ => {
+            return Err(CryptoApiError::CryptoFailure(format!(
+                "RSA-OAEP decrypt: key '{}' is not an RSA key pair (got {:?})",
+                kid,
+                owm.object().object_type()
+            )));
+        }
+    };
+
+    // Convert KMIP private key to OpenSSL PKey<Private>
+    let private_key = kmip_private_key_to_openssl(private_key_owm.object()).map_err(|e| {
+        CryptoApiError::CryptoFailure(format!("RSA-OAEP decrypt: failed to load private key: {e}"))
+    })?;
+
+    // Validate RSA key type and minimum size
+    if private_key.id() != openssl::pkey::Id::RSA {
+        return Err(CryptoApiError::CryptoFailure(format!(
+            "RSA-OAEP decrypt: key '{}' is not an RSA key (got {:?})",
+            kid,
+            private_key.id()
+        )));
+    }
+    if private_key.bits() < 2048 {
+        return Err(CryptoApiError::CryptoFailure(format!(
+            "RSA-OAEP decrypt: RSA key too small ({} bits). Minimum: 2048 bits.",
+            private_key.bits()
+        )));
+    }
+
+    let (oaep_hash, mgf1_hash) = jose_oaep_hashes(alg)?;
+    let expected_cek_len = cek_size_bytes(enc);
+
+    // Implicit rejection: attempt unwrap; on failure substitute random CEK.
+    // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
+    let cek: Zeroizing<Vec<u8>> = match ckm_rsa_pkcs_oaep_key_unwrap(
+        &private_key,
+        oaep_hash,
+        mgf1_hash,
+        None,
+        &encrypted_key_bytes,
+    ) {
+        Ok(unwrapped) if unwrapped.len() == expected_cek_len => unwrapped,
+        _ => {
+            // Substitute random CEK — AES-GCM will fail on tag verification
+            debug!("RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection");
+            let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
+            rand_bytes(&mut random_cek).map_err(|e| {
+                CryptoApiError::InternalError(format!(
+                    "Failed to generate random CEK for implicit rejection: {e}"
+                ))
+            })?;
+            random_cek
+        }
+    };
+
+    // AAD reconstruction (RFC 7516 §5.2 step 15)
+    let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;
+
+    // AES-GCM decrypt — will fail with DecryptionFailed if CEK is wrong (implicit rejection)
+    let plaintext = aes_gcm_decrypt(
+        &cek,
+        enc,
+        &iv_bytes,
+        &ciphertext_bytes,
+        &tag_bytes,
+        &aad_bytes,
+    )?;
+
+    Ok(Json(CryptoDecryptResponse {
+        kid,
+        data: b64_encode(&plaintext),
     }))
 }
