@@ -79,6 +79,7 @@ pub(crate) use set_attribute::set_attribute;
 pub(crate) use sign::sign;
 pub(crate) use signature_verify::signature_verify;
 pub(crate) use state_utils::{
-    get_effective_state, is_user_authorized_for_operation, select_unique_key_for_operation,
+    get_effective_state, is_user_authorized_for_operation, select_eligible_oracle_uid,
+    select_unique_key_for_operation,
 };
 pub(crate) use validate::validate_operation;

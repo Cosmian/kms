@@ -28,9 +28,9 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-            is_user_authorized_for_operation, select_unique_key_for_operation,
+            select_eligible_oracle_uid, select_unique_key_for_operation,
         },
-        uid_utils::{has_prefix, uids_from_unique_identifier},
+        uid_utils::uids_from_unique_identifier,
     },
     error::KmsError,
     kms_bail,
@@ -63,31 +63,18 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
     //          Active state, permissions, and uniqueness (fail on multiple eligible keys).
 
     // Phase 1 — Oracle (prefix) UIDs.  Collect all eligible ones and enforce uniqueness.
-    let mut eligible_oracles: Vec<(&str, &str)> = Vec::new(); // (uid, prefix)
-    for uid in &uids {
-        if let Some(prefix) = has_prefix(uid) {
-            if !is_user_authorized_for_operation(&kms.database, uid, user, KmipOperation::Sign)
-                .await?
-            {
-                continue;
-            }
-            eligible_oracles.push((uid, prefix));
-        }
-    }
-    match eligible_oracles.as_slice() {
-        [] => {} // fall through to Phase 2
-        &[(uid, prefix)] => {
-            debug!("user: {user} is authorized to sign using: {uid} from signing oracle");
-            return sign_using_crypto_oracle(kms, &request, uid, prefix).await;
-        }
-        multiple => {
-            let ids: Vec<&str> = multiple.iter().map(|(uid, _)| *uid).collect();
-            return Err(KmsError::InvalidRequest(format!(
-                "Sign: identifier {unique_identifier} resolves to {} valid oracle keys \
-                 {ids:?}; use a unique identifier",
-                multiple.len()
-            )));
-        }
+    if let Some((uid, prefix)) = select_eligible_oracle_uid(
+        KmipOperation::Sign,
+        "Sign",
+        &uids,
+        unique_identifier,
+        kms,
+        user,
+    )
+    .await?
+    {
+        debug!("user: {user} is authorized to sign using: {uid} from signing oracle");
+        return sign_using_crypto_oracle(kms, &request, &uid, &prefix).await;
     }
 
     // Phase 2 — Standard database path via shared selection function.

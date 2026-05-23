@@ -193,6 +193,46 @@ pub(crate) async fn is_user_authorized_for_operation(
         .any(|p| *p == operation || *p == KmipOperation::Get))
 }
 
+/// Collect the single eligible crypto-oracle UID for a cryptographic operation.
+///
+/// Iterates over `candidate_uids`, retains those that carry a recognized prefix (oracle
+/// keys), and filters out any for which the current `user` lacks authorization.
+///
+/// Returns:
+/// * `Ok(None)` — no oracle UID is eligible; the caller should fall through to the standard
+///   database path.
+/// * `Ok(Some((uid, prefix)))` — exactly one oracle UID is eligible; use it.
+/// * `Err(KmsError::InvalidRequest)` — more than one oracle UID is eligible (ambiguous).
+pub(crate) async fn select_eligible_oracle_uid(
+    operation: KmipOperation,
+    op_name: &str,
+    candidate_uids: &HashSet<String>,
+    unique_identifier: &UniqueIdentifier,
+    kms: &KMS,
+    user: &str,
+) -> KResult<Option<(String, String)>> {
+    let mut eligible: Vec<(String, String)> = Vec::new();
+    for uid in candidate_uids {
+        if let Some(prefix) = has_prefix(uid) {
+            if !is_user_authorized_for_operation(&kms.database, uid, user, operation).await? {
+                continue;
+            }
+            eligible.push((uid.clone(), prefix.to_owned()));
+        }
+    }
+    match eligible.len() {
+        0 => Ok(None),
+        1 => Ok(eligible.into_iter().next()),
+        n => {
+            let ids: Vec<&str> = eligible.iter().map(|(uid, _)| uid.as_str()).collect();
+            Err(KmsError::InvalidRequest(format!(
+                "{op_name}: identifier {unique_identifier} resolves to {n} valid oracle keys \
+                 {ids:?}; use a unique identifier",
+            )))
+        }
+    }
+}
+
 /// Select exactly one key from a set of candidate UIDs for a cryptographic operation.
 ///
 /// `candidate_uids` is a `HashSet` as returned by `uid_utils::uids_from_unique_identifier`.

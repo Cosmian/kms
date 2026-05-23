@@ -10,3 +10,6 @@
 - **WASM client**: extract shared helper macros into `crate/clients/wasm/src/macros.rs`
 
 **Net result**: 72 files changed, 5 002 deletions, 1 825 insertions (−3 177 net lines).
+
+- **Pivot functions — oracle selection**: extract `select_eligible_oracle_uid()` into `state_utils.rs`, unifying the duplicate "Phase 1 oracle key selection" blocks in `encrypt.rs` and `sign.rs` (~30 lines saved)
+- **Pivot functions — Azure EKM wrap/unwrap**: extract `kmip_encrypt_dek()` and `kmip_decrypt_dek()` into `crate/server/src/routes/azure_ekm/handlers.rs`, unifying duplicated KMIP `Encrypt`/`Decrypt` construction in `wrap_with_aes`+`wrap_with_rsa` and `unwrap_with_aes`+`unwrap_with_rsa` (~50 lines saved)
