@@ -1,7 +1,7 @@
-# VAST Data — Storage Encryption with Cosmian KMS
+# VAST Data — Storage Encryption with Eviden KMS
 
 VAST Data storage clusters use KMIP for external encryption key management
-(EKM). By connecting a VAST Data cluster to Cosmian KMS, you ensure that
+(EKM). By connecting a VAST Data cluster to Eviden KMS, you ensure that
 data encryption keys (DEKs) and key encryption keys (KEKs) are centrally
 managed, audited, and never stored unprotected on the storage appliance.
 
@@ -16,7 +16,7 @@ managed, audited, and never stored unprotected on the storage appliance.
 | **Key types** | AES-256 symmetric keys (KEK and DEK) |
 | **Key wrapping** | AES Key Wrap RFC 3394 (NISTKeyWrap) |
 | **VAST version** | VAST Data Platform 5.x and above |
-| **Cosmian KMS mode** | FIPS and non-FIPS builds supported |
+| **Eviden KMS mode** | FIPS and non-FIPS builds supported |
 
 ### What VAST Data does
 
@@ -51,7 +51,7 @@ and returns the wrapped bytes. VAST then unwraps locally using its PyKMIP client
 
 !!! important "RFC 3394 vs. RFC 5649"
     VAST's PyKMIP client uses `aes_key_unwrap` (RFC 3394, no padding), **not**
-    `aes_key_unwrap_padded` (RFC 5649). The Cosmian KMS correctly defaults to
+    `aes_key_unwrap_padded` (RFC 5649). The Eviden KMS correctly defaults to
     `NISTKeyWrap` (RFC 3394) when no `CryptographicParameters` are supplied in
     the `KeyWrappingSpecification`.
 
@@ -59,7 +59,7 @@ and returns the wrapped bytes. VAST then unwraps locally using its PyKMIP client
 
 ## Prerequisites
 
-- Cosmian KMS server running (FIPS or non-FIPS mode)
+- Eviden KMS server running (FIPS or non-FIPS mode)
 - TLS enabled on the KMS with mutual certificate authentication
 - Client certificate and CA certificate configured for the VAST cluster
 - VAST Data Platform 5.x or later with External Key Manager (EKM) feature enabled
@@ -140,7 +140,7 @@ connectivity. A successful test performs a `Create` + `Get` + `Destroy` cycle.
 
 VAST sends the `OperationPolicyName("default")` attribute in some requests.
 This is a KMIP 1.x attribute that was deprecated in KMIP 1.3 and removed in
-KMIP 2.0. The Cosmian KMS silently ignores this attribute with a log warning:
+KMIP 2.0. The Eviden KMS silently ignores this attribute with a log warning:
 
 ```text
 WARN KMIP 2.1 does not support the KMIP 1 attribute OperationPolicyName("default")
@@ -165,8 +165,8 @@ specific encryption groups.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `unsupported KMIP 1 operation: ReKey` | KMS version < 4.21.0 missing ReKey support | Upgrade Cosmian KMS to 4.21.0+ |
-| `InvalidUnwrap` in VAST logs | KMS wrapping with RFC 5649 instead of RFC 3394 | Upgrade Cosmian KMS to 4.21.0+ (defaults to RFC 3394) |
+| `unsupported KMIP 1 operation: ReKey` | KMS version < 4.21.0 missing ReKey support | Upgrade Eviden KMS to 4.21.0+ |
+| `InvalidUnwrap` in VAST logs | KMS wrapping with RFC 5649 instead of RFC 3394 | Upgrade Eviden KMS to 4.21.0+ (defaults to RFC 3394) |
 | `OperationPolicyName` warnings in KMS logs | Normal — VAST sends this deprecated KMIP 1.x attribute | No action required; informational warning only |
 | Connection refused on port 5696 | Socket server not enabled | Add `socket_server_start = true` to `kms.toml` |
 | TLS handshake failure | Certificate mismatch or missing CA | Verify `clients_ca_cert_file` matches the CA that signed VAST's client cert |

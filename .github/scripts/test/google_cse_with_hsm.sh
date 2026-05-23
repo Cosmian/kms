@@ -30,7 +30,6 @@ tls_client_pkcs12_password = "password"
 # COSMIAN="ckms -c $TLS_CONFIG"
 COSMIAN="cargo run -p ckms -- -c $TLS_CONFIG"
 
-
 $COSMIAN certificates certify \
   --certificate-id acme_root_ca \
   --generate-key-pair \

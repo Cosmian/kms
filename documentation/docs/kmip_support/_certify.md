@@ -43,7 +43,7 @@ The KMIP implementation does not:
 - specify how the certificate extensions are provided
 - and only supports Certificate Signing Request (CSR) and certifying public keys
 
-Cosmian has extended the specifications and offers 4 possibilities to generate a
+Eviden has extended the specifications and offers 4 possibilities to generate a
 certificate
 
 1. Providing a Certificate Signing Request (CSR)
@@ -67,7 +67,7 @@ will be generated.
 
 #### Post-quantum (PQC) certificates
 
-The Cosmian KMS generates fully standards-compliant X.509 v3 certificates for all
+The Eviden KMS generates fully standards-compliant X.509 v3 certificates for all
 NIST-standardized post-quantum algorithms:
 
 - **ML-DSA** (CRYSTALS-Dilithium) — [RFC 9881](https://www.rfc-editor.org/info/rfc9881):

@@ -12,15 +12,15 @@ COMPOSE_FILE=".github/scripts/docker-compose.yml"
 # FIPS images: ghcr.io/cosmian/kms-fips or cosmian-kms:* -fips (not -non-fips)
 # Non-FIPS images: ghcr.io/cosmian/kms or cosmian-kms:* -non-fips
 if [[ "${DOCKER_IMAGE_NAME:-}" == *"-non-fips"* ]]; then
-    export KMS_TLS_CONFIG_FLAVOR="non_fips"
-    echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
+  export KMS_TLS_CONFIG_FLAVOR="non_fips"
+  echo "Detected non-FIPS image: ${DOCKER_IMAGE_NAME}"
 elif [[ "${DOCKER_IMAGE_NAME:-}" == *"-fips"* ]] || [[ "${DOCKER_IMAGE_NAME:-}" == *"kms-fips"* ]]; then
-    export KMS_TLS_CONFIG_FLAVOR="fips"
-    echo "Detected FIPS image: ${DOCKER_IMAGE_NAME}"
+  export KMS_TLS_CONFIG_FLAVOR="fips"
+  echo "Detected FIPS image: ${DOCKER_IMAGE_NAME}"
 else
-    # Default to non-FIPS if ambiguous
-    export KMS_TLS_CONFIG_FLAVOR="non_fips"
-    echo "Image variant ambiguous; defaulting to non-FIPS: ${DOCKER_IMAGE_NAME}"
+  # Default to non-FIPS if ambiguous
+  export KMS_TLS_CONFIG_FLAVOR="non_fips"
+  echo "Image variant ambiguous; defaulting to non-FIPS: ${DOCKER_IMAGE_NAME}"
 fi
 
 # Config paths
@@ -65,17 +65,17 @@ tls_client_pkcs12_password = "password"
 
 # Use cargo run to execute ckms from the workspace instead of installing
 if command -v cargo >/dev/null 2>&1; then
-    COSMIAN_BIN="cargo run -p ckms --"
-    echo "Using cargo run to execute ckms from workspace"
+  COSMIAN_BIN="cargo run -p ckms --"
+  echo "Using cargo run to execute ckms from workspace"
 else
-    COSMIAN_BIN=""
-    echo "Warning: cargo not available; skipping CLI-dependent tests."
+  COSMIAN_BIN=""
+  echo "Warning: cargo not available; skipping CLI-dependent tests."
 fi
 
 if [[ -z "$COSMIAN_BIN" ]]; then
-    echo "Warning: KMS CLI not available; skipping CLI-dependent tests."
+  echo "Warning: KMS CLI not available; skipping CLI-dependent tests."
 else
-    $COSMIAN_BIN --version
+  $COSMIAN_BIN --version
 fi
 
 # Start all stacks; --wait blocks until every service with a healthcheck is healthy.
@@ -90,37 +90,37 @@ echo "Docker image name: ${DOCKER_IMAGE_NAME:-not set}"
 
 # Function to test OpenSSL connections
 openssl_test() {
-    local host_port=$1
-    local tls_version=$2
-    echo "Testing $host_port with TLS $tls_version"
-    echo "QUIT" | openssl s_client -"$tls_version" -connect "$host_port" \
-        -CAfile "$CA_CERT" \
-        -cert "$CLIENT_CERT" \
-        -key "$CLIENT_KEY" \
-        -verify_return_error \
-        -brief
+  local host_port=$1
+  local tls_version=$2
+  echo "Testing $host_port with TLS $tls_version"
+  echo "QUIT" | openssl s_client -"$tls_version" -connect "$host_port" \
+    -CAfile "$CA_CERT" \
+    -cert "$CLIENT_CERT" \
+    -key "$CLIENT_KEY" \
+    -verify_return_error \
+    -brief
 }
 
 # Function to test expected TLS failures
 test_tls_failure() {
-    local host_port=$1
-    local tls_version=$2
-    local description=$3
+  local host_port=$1
+  local tls_version=$2
+  local description=$3
 
-    if openssl_test "$host_port" "$tls_version"; then
-        echo "ERROR: $description - TLS $tls_version test should have failed on $host_port"
-        exit 1
-    else
-        echo "EXPECTED: $description - TLS $tls_version correctly rejected on $host_port"
-    fi
+  if openssl_test "$host_port" "$tls_version"; then
+    echo "ERROR: $description - TLS $tls_version test should have failed on $host_port"
+    exit 1
+  else
+    echo "EXPECTED: $description - TLS $tls_version correctly rejected on $host_port"
+  fi
 }
 
 # Create symmetric keys
 if [[ -n "$COSMIAN_BIN" ]]; then
-    $COSMIAN_BIN -c "$CONFIG" sym keys create
-    $COSMIAN_BIN -c "$TLS_CONFIG" sym keys create
+  $COSMIAN_BIN -c "$CONFIG" sym keys create
+  $COSMIAN_BIN -c "$TLS_CONFIG" sym keys create
 else
-    echo "Skipping key creation: KMS CLI not available"
+  echo "Skipping key creation: KMS CLI not available"
 fi
 
 # Test TLS on HTTP server with default options
@@ -183,31 +183,31 @@ echo "Oracle TDE HSM test completed successfully"
 # SSH into the remote Oracle server and verify the new KMS image works end-to-end.
 # Only runs on non-fips amd64 (RUN_ORACLE_TESTS=true), set by the CI matrix.
 if [[ "${RUN_ORACLE_TESTS:-false}" == "true" ]]; then
-    echo "Running Oracle TDE remote upgrade and smoke test"
-    TAG_ONLY="${DOCKER_IMAGE_NAME##*:}"
+  echo "Running Oracle TDE remote upgrade and smoke test"
+  TAG_ONLY="${DOCKER_IMAGE_NAME##*:}"
 
-    echo "Copy upgrade script to oracle"
-    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-        'cat > /tmp/upgrade-kms.sh' \
-        < .github/scripts/oracle/upgrade-kms.sh
+  echo "Copy upgrade script to oracle"
+  ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+    'cat > /tmp/upgrade-kms.sh' \
+    <.github/scripts/oracle/upgrade-kms.sh
 
-    echo "Run KMS upgrade on oracle"
-    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-        bash /tmp/upgrade-kms.sh "${TAG_ONLY}"
+  echo "Run KMS upgrade on oracle"
+  ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+    bash /tmp/upgrade-kms.sh "${TAG_ONLY}"
 
-    echo "Copy smoke test script to oracle"
-    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-        'cat > /tmp/smoke-test-tde.sh' \
-        < .github/scripts/oracle/smoke-test-tde.sh
+  echo "Copy smoke test script to oracle"
+  ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+    'cat > /tmp/smoke-test-tde.sh' \
+    <.github/scripts/oracle/smoke-test-tde.sh
 
-    echo "Run TDE smoke test on oracle"
-    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-        bash /tmp/smoke-test-tde.sh \
-            "${ORACLE_KMS_DEMO_USER_PASS}" "${TAG_ONLY}" "${COSMIAN_HSM_PIN}"
+  echo "Run TDE smoke test on oracle"
+  ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+    bash /tmp/smoke-test-tde.sh \
+    "${ORACLE_KMS_DEMO_USER_PASS}" "${TAG_ONLY}" "${COSMIAN_HSM_PIN}"
 
-    echo "Cleanup smoke test script on oracle"
-    ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
-        rm -f /tmp/smoke-test-tde.sh /tmp/upgrade-kms.sh
+  echo "Cleanup smoke test script on oracle"
+  ssh -o StrictHostKeyChecking=no ec2-user@oracle.netbird.selfhosted \
+    rm -f /tmp/smoke-test-tde.sh /tmp/upgrade-kms.sh
 
-    echo "Oracle TDE remote upgrade and smoke test completed successfully"
+  echo "Oracle TDE remote upgrade and smoke test completed successfully"
 fi

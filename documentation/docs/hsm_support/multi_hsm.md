@@ -1,6 +1,6 @@
 # Multi-HSM Support
 
-Cosmian KMS can connect to **multiple Hardware Security Modules simultaneously**.
+Eviden KMS can connect to **multiple Hardware Security Modules simultaneously**.
 Each HSM instance is independently initialised via PKCS#11 and exposed to the rest
 of the server through a unique *routing prefix* derived from its model name.
 

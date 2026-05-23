@@ -1,10 +1,10 @@
 import { UploadOutlined } from "@ant-design/icons";
-import { Button, Card, Form, Input, Select, Space, Upload, Tabs } from "antd";
+import { Button, Card, Form, Input, Select, Space, Tabs, Upload } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import ExternalLink from "../../components/common/ExternalLink";
 import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
-import ExternalLink from "../../components/common/ExternalLink";
 
 interface ImportAwsKekFormData {
     kekFile?: Uint8Array;
@@ -226,7 +226,7 @@ const ImportAwsKekForm: React.FC = () => {
                         <h3 className="text-m font-bold mb-4">KMS Key ID</h3>
                         <Form.Item
                             name="keyId"
-                            label="Key ID in the Cosmian KMS"
+                            label="Key ID in the Eviden KMS"
                             help="The unique ID for this key in the KMS. A random UUID will be generated if not specified."
                         >
                             <Input placeholder="Custom Key ID (optional)" />

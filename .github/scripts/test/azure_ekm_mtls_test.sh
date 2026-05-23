@@ -21,10 +21,13 @@ EKM_INFO_URL="https://localhost:${KMS_PORT}/azureekm/${EKM_PREFIX}/info?api-vers
 
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via trap
 cleanup() {
-    echo "Stopping KMS server..."
-    [ -n "${KMS_PID:-}" ] && { kill "${KMS_PID}" || true; wait "${KMS_PID}" || true; }
-    [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
-    [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
+  echo "Stopping KMS server..."
+  [ -n "${KMS_PID:-}" ] && {
+    kill "${KMS_PID}" || true
+    wait "${KMS_PID}" || true
+  }
+  [ -n "${SQLITE_PATH:-}" ] && { rm -rf "${SQLITE_PATH}" || true; }
+  [ -n "${KMS_CONF_PATH:-}" ] && { rm -f "${KMS_CONF_PATH}" || true; }
 }
 trap cleanup EXIT
 
@@ -64,14 +67,14 @@ azure_ekm_disable_client_auth = false
 EOF
 
 cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
-    --config "${KMS_CONF_PATH}" \
-    &
+  --config "${KMS_CONF_PATH}" \
+  &
 KMS_PID=$!
 
 echo "Waiting for KMS port ${KMS_PORT} to be open (up to 30s)..."
 if ! _wait_for_port localhost "${KMS_PORT}" 30; then
-    echo "ERROR: KMS server (mTLS) failed to start or bind to port ${KMS_PORT}"
-    exit 1
+  echo "ERROR: KMS server (mTLS) failed to start or bind to port ${KMS_PORT}"
+  exit 1
 fi
 echo "KMS server (mTLS) is ready!"
 
@@ -80,13 +83,13 @@ echo "KMS server (mTLS) is ready!"
 # ---------------------------------------------------------------------------
 echo "==> Sad path: calling /info WITHOUT a client certificate"
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${EKM_INFO_URL}" \
-    --cacert "${SERVER_CA}" \
-    -H "Content-Type: application/json" \
-    -d '{"request_context":{"request_id":"sad","correlation_id":"sad","pool_name":"sad"}}')
+  --cacert "${SERVER_CA}" \
+  -H "Content-Type: application/json" \
+  -d '{"request_context":{"request_id":"sad","correlation_id":"sad","pool_name":"sad"}}')
 
 if [ "${HTTP_STATUS}" != "401" ]; then
-    echo "ERROR: Expected HTTP 401 for missing client cert, but got ${HTTP_STATUS}"
-    exit 1
+  echo "ERROR: Expected HTTP 401 for missing client cert, but got ${HTTP_STATUS}"
+  exit 1
 fi
 echo "==> Sad path successfully returned 401"
 
@@ -95,11 +98,11 @@ echo "==> Sad path successfully returned 401"
 # ---------------------------------------------------------------------------
 echo "==> Happy path: calling /info with valid client certificate"
 curl -sSf -X POST "${EKM_INFO_URL}" \
-    --cacert "${SERVER_CA}" \
-    --cert   "${CLIENT_CERT}" \
-    --key    "${CLIENT_KEY}" \
-    -H "Content-Type: application/json" \
-    -d '{"request_context":{"request_id":"test","correlation_id":"test","pool_name":"test"}}' > /dev/null
+  --cacert "${SERVER_CA}" \
+  --cert "${CLIENT_CERT}" \
+  --key "${CLIENT_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"request_context":{"request_id":"test","correlation_id":"test","pool_name":"test"}}' >/dev/null
 
 echo "==> Happy path successfully returned 200"
 

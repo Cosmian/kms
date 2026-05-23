@@ -18,9 +18,9 @@ set -ex
 #
 
 if [ -z "${DOCKER_IMAGE_NAME}" ]; then
-    echo "ERROR: DOCKER_IMAGE_NAME must be set to the KMS docker image name."
-    echo "  Example: export DOCKER_IMAGE_NAME=cosmian-kms:5.10.0-non-fips"
-    exit 1
+  echo "ERROR: DOCKER_IMAGE_NAME must be set to the KMS docker image name."
+  echo "  Example: export DOCKER_IMAGE_NAME=cosmian-kms:5.10.0-non-fips"
+  exit 1
 fi
 
 rm -f libcosmian_pkcs11.so

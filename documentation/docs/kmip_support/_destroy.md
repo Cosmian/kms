@@ -9,14 +9,14 @@ only be destroyed if they are in either Pre-Active or Deactivated state.
 To destroy a key, it must be revoked using the `Revoke` operation first, unless it belongs to an external store,
 such as an HSM.
 
-Cosmian has added an option `Remove` flag to the `Destroy` operation. If the `Remove` flag is set to `true`, the key
+Eviden has added an option `Remove` flag to the `Destroy` operation. If the `Remove` flag is set to `true`, the key
 is completely removed from the database. This does not follow the KMIP 2.1 specification, but is useful in scenarios
 where the key was incorrectly created and the ID must ne re-used or for GDPR compliance, when the key is associated
 with personal data.
 
 HSM keys are systematically removed when calling the destroy operation.
 
-Unless, they are removed, destroyed keys are set in the state `destroyed` on the Cosmian KMS Server. They can only be
+Unless, they are removed, destroyed keys are set in the state `destroyed` on the Eviden KMS Server. They can only be
 retrieved using the`Export` operation. The `Get` operation will return an error. No key material will be returned by the
 `Export` operation, only metadata.
 

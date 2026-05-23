@@ -298,7 +298,10 @@ fn test_import_export_wrap_private_key(
             );
         }
         unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
-        assert!(wrapped_private_key.key_block()?.key_value == private_key.key_block()?.key_value);
+        assert_eq!(
+            wrapped_private_key.key_block()?.key_value,
+            private_key.key_block()?.key_value
+        );
     }
 
     // test the unwrapping on import

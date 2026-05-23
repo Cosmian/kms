@@ -178,6 +178,11 @@ else
 fi
 
 # Build the web-target WASM package and run React unit tests using the real artifacts.
+# Remove any stale pkg/ directory before building: wasm-pack 0.15 writes
+# "collaborators" as a JSON array (when Cargo.toml lists multiple authors) but
+# then fails to deserialise it back as a string on a subsequent build.
+# A clean pkg/ avoids the "invalid type: sequence, expected a string" error.
+rm -rf crate/clients/wasm/pkg
 run_wasm_pack build --target web "${FEATURES_FLAG[@]}"
 
 WASM_DIR="ui/src/wasm"

@@ -21,7 +21,7 @@ echo "Creating Covercrypt master key pair"
 
 # Create temporary JSON file with access structure specifications
 TEMP_JSON=$(mktemp)
-cat > "$TEMP_JSON" << 'EOF'
+cat >"$TEMP_JSON" <<'EOF'
 {
     "Security Level::<": [
         "Protected",

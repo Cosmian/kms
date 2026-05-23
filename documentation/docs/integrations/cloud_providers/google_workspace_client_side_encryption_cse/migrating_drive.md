@@ -1,25 +1,25 @@
 # Migrating existing Google Drive encrypted content to a new key service
 
-This guide explains how to migrate encrypted content in Google Drive to a new key management service (KMS), specifically using Cosmian KMS.
+This guide explains how to migrate encrypted content in Google Drive to a new key management service (KMS), specifically using Eviden KMS.
 
 For a complete overview of Google's migration flow and all available options, refer to
 [Google's official technical documentation](https://support.google.com/a/answer/12850453#migrate).
 
-## Cosmian KMS migration support and configuration
+## Eviden KMS migration support and configuration
 
-Cosmian KMS supports the Google Client-Side Encryption (CSE) migration process by implementing the required endpoints, including:
+Eviden KMS supports the Google Client-Side Encryption (CSE) migration process by implementing the required endpoints, including:
 
 - `POST <KMS_PUBLIC_URL>/google_cse/rewrap`
 
 - `POST <KMS_PUBLIC_URL>/google_cse/privilegedunwrap`
 
-These endpoints allow Cosmian KMS to serve as either the source or target key service during a migration.
+These endpoints allow Eviden KMS to serve as either the source or target key service during a migration.
 
 ## JWT Authentication for Migration
 
 Google's migration flow requires both key services (KACLS) to authenticate with each other via signed JWTs. To support this:
 
-Cosmian KMS generates a dedicated RSA key pair at startup (if not already present in the database).
+Eviden KMS generates a dedicated RSA key pair at startup (if not already present in the database).
 
 - The private key is stored under the ID: `google_cse_rsa`
 - The public key is stored under the ID: `google_cse_rsa_pk`
@@ -35,7 +35,7 @@ This key must be in PEM-encoded PKCS#8 format.
 
 ## Public Key Exposure
 
-To allow other KACLS to verify JWT signatures, Cosmian KMS exposes its public RSA key at:
+To allow other KACLS to verify JWT signatures, Eviden KMS exposes its public RSA key at:
 
 - `GET <KMS_PUBLIC_URL>/google_cse/certs`
 

@@ -16,7 +16,7 @@ This CA will issue your users certificates:
 1. either your intermediate CA is one of the Google recommended CA, follow this [page](https://support.google.com/a/answer/7448393) to make sure it is (note that Actalis can provide CA certificates for free).
     In that case:
 
-    - at first, you need to import the issuer intermediate CA certificate into Cosmian KMS since Google already trusts the root CA.
+    - at first, you need to import the issuer intermediate CA certificate into Eviden KMS since Google already trusts the root CA.
 
         ```sh
         ckms certificates import -f pkcs12 issuer_ca_certificate.p12 -p \

@@ -39,11 +39,11 @@ OUT_REST_MD="documentation/docs/benchmarks.md"
 KMS_PID=""
 
 cleanup() {
-    if [ -n "${KMS_PID}" ] && kill -0 "${KMS_PID}" 2>/dev/null; then
-        echo "Stopping KMS server (PID ${KMS_PID})…"
-        kill "${KMS_PID}" 2>/dev/null || true
-        wait "${KMS_PID}" 2>/dev/null || true
-    fi
+  if [ -n "${KMS_PID}" ] && kill -0 "${KMS_PID}" 2>/dev/null; then
+    echo "Stopping KMS server (PID ${KMS_PID})…"
+    kill "${KMS_PID}" 2>/dev/null || true
+    wait "${KMS_PID}" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
@@ -59,19 +59,19 @@ echo "============================================================"
 
 # ─── Check binaries ──────────────────────────────────────────────────────────
 for bin in ${KMS_BIN}; do
-    if [ ! -x "${bin}" ]; then
-        echo "ERROR: ${bin} not found or not executable."
-        echo "Build with: cargo build --release --features non-fips"
-        exit 1
-    fi
+  if [ ! -x "${bin}" ]; then
+    echo "ERROR: ${bin} not found or not executable."
+    echo "Build with: cargo build --release --features non-fips"
+    exit 1
+  fi
 done
 if ! command -v cargo >/dev/null 2>&1; then
-    echo "ERROR: cargo is required but was not found in PATH."
-    exit 1
+  echo "ERROR: cargo is required but was not found in PATH."
+  exit 1
 fi
 if [ ! -f "${KMS_CONF}" ]; then
-    echo "ERROR: KMS config not found: ${KMS_CONF}"
-    exit 1
+  echo "ERROR: KMS config not found: ${KMS_CONF}"
+  exit 1
 fi
 
 # ─── Start KMS server ────────────────────────────────────────────────────────
@@ -86,28 +86,28 @@ KMS_PORT="${KMS_PORT:-9998}"
 
 # Detect if TLS is enabled (tls_p12_file for PKCS#12 configs, tls_cert_file for PEM configs)
 if grep -qE 'tls_p12_file|tls_cert_file' "${KMS_CONF}"; then
-    KMS_SCHEME="https"
-    CURL_EXTRA="-k"
+  KMS_SCHEME="https"
+  CURL_EXTRA="-k"
 else
-    KMS_SCHEME="http"
-    CURL_EXTRA=""
+  KMS_SCHEME="http"
+  CURL_EXTRA=""
 fi
 
 MAX_WAIT=30
 for _ in $(seq 1 "${MAX_WAIT}"); do
-    if curl -sf ${CURL_EXTRA} "${KMS_SCHEME}://localhost:${KMS_PORT}/version" >/dev/null 2>&1; then
-        echo "    KMS server ready (${KMS_SCHEME}://${KMS_PORT}, PID ${KMS_PID})"
-        break
-    fi
-    if ! kill -0 "${KMS_PID}" 2>/dev/null; then
-        echo "ERROR: KMS server exited prematurely"
-        exit 1
-    fi
-    sleep 1
+  if curl -sf ${CURL_EXTRA} "${KMS_SCHEME}://localhost:${KMS_PORT}/version" >/dev/null 2>&1; then
+    echo "    KMS server ready (${KMS_SCHEME}://${KMS_PORT}, PID ${KMS_PID})"
+    break
+  fi
+  if ! kill -0 "${KMS_PID}" 2>/dev/null; then
+    echo "ERROR: KMS server exited prematurely"
+    exit 1
+  fi
+  sleep 1
 done
 if ! curl -sf ${CURL_EXTRA} "${KMS_SCHEME}://localhost:${KMS_PORT}/version" >/dev/null 2>&1; then
-    echo "ERROR: KMS server did not become ready within ${MAX_WAIT}s"
-    exit 1
+  echo "ERROR: KMS server did not become ready within ${MAX_WAIT}s"
+  exit 1
 fi
 
 # ─── REST benchmarks ─────────────────────────────────────────────────────────
@@ -121,8 +121,8 @@ RUST_LOG=off cargo run -q -p ckms "${CKMS_CARGO_ARGS[@]}" -- --conf-path "${CKMS
 BENCH_STATUS=$?
 set -e
 if [[ ${BENCH_STATUS} -ne 0 ]]; then
-    echo "ERROR: ckms bench command failed"
-    exit ${BENCH_STATUS}
+  echo "ERROR: ckms bench command failed"
+  exit ${BENCH_STATUS}
 fi
 
 CRITERION_MD="target/criterion/benchmarks.md"
@@ -133,9 +133,9 @@ echo ""
 echo "[3/3] Writing ${OUT_REST_MD}…"
 
 if [ -f "${CRITERION_MD}" ]; then
-    BENCH_MD="$(cat "${CRITERION_MD}")"
+  BENCH_MD="$(cat "${CRITERION_MD}")"
 else
-    BENCH_MD="No markdown report generated."
+  BENCH_MD="No markdown report generated."
 fi
 
 # Collect machine info and server version

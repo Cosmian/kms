@@ -1,6 +1,6 @@
 # API
 
-The Cosmian KMS server implements the JSON TTLV profile of the KMIP 1.x and 2.x specifications.
+The Eviden KMS server implements the JSON TTLV profile of the KMIP 1.x and 2.x specifications.
 In addition, the server exposes a few additional endpoints for authorization operations.
 
 ## Calling the KMIP API
@@ -13,7 +13,7 @@ This API is documented in the [authorization section](../configuration/authoriza
 
 ## Authentication
 
-The Cosmian server supports various authorization mechanisms: see
+The Eviden server supports various authorization mechanisms: see
 the [authentication section](../configuration/authentication.md)
 of this manual for details. When authenticating using JWT, an HTTP `Authorization` header must be
 passed with the JWT token as a bearer token.

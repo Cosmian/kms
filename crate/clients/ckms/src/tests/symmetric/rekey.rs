@@ -100,7 +100,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
     );
 
     // Compare the attributes
-    assert!(old_object.attributes()? == new_object.attributes()?);
+    assert_eq!(old_object.attributes()?, new_object.attributes()?);
     assert_eq!(
         new_object.attributes()?.cryptographic_length.unwrap(),
         i32::try_from(AES_KEY_SIZE).unwrap()

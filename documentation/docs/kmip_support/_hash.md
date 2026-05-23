@@ -15,7 +15,7 @@ When a stream or by-parts operation is requested:
 
 #### Implementation
 
-The Cosmian KMS server supports the following hashing algorithms:
+The Eviden KMS server supports the following hashing algorithms:
 
 - SHA256
 - SHA384

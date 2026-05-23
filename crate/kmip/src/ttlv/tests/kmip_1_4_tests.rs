@@ -398,7 +398,7 @@ fn test_locate_template_attribute_fortigate() {
         .expect("TemplateAttribute.attribute should be present");
     assert_eq!(attrs.len(), 1, "Expected exactly one filter attribute");
     let Attribute::Name(name_attr) = &attrs[0] else {
-        panic!("Expected Name attribute, got {:?}", &attrs[0]);
+        panic!("Expected Name attribute, got {:?}", attrs[0]);
     };
     assert_eq!(name_attr.name_value, key_name);
     assert_eq!(name_attr.name_type, NameType::UninterpretedTextString);

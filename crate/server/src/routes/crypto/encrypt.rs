@@ -218,7 +218,7 @@ async fn encrypt_rsa_oaep(
     );
 
     // Build protected header with private key UID (so decrypt handler can use it directly)
-    let protected_json = format!(r#"{{"alg":"{alg}","enc":"{enc}","kid":"{private_key_uid}"}}"#,);
+    let protected_json = format!(r#"{{"alg":"{alg}","enc":"{enc}","kid":"{private_key_uid}"}}"#);
     let protected_b64 = b64_encode(protected_json.as_bytes());
 
     // RFC 7516 §5.1 step 14 — AAD construction

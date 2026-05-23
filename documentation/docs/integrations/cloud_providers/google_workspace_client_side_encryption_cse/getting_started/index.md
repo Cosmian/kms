@@ -1,6 +1,6 @@
 # Getting started
 
-The Cosmian Key Management Server is compatible with [Google Workspace client-side encryption](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA). Using this feature, your users can encrypt files and documents, in their browsers, before sending them to Google servers. The ephemeral encryption keys are protected by "key wrapping keys", stored in the KMS and unavailable to Google. Only users that have the right to unwrap the ephemeral encryption keys inside the KMS, can decrypt the files. An overview is provided in Google's [About client-side encryption page](https://support.google.com/a/answer/10741897?hl=en).
+The Eviden Key Management Server is compatible with [Google Workspace client-side encryption](https://support.google.com/a/answer/14326936?fl=1&sjid=15335080317297331676-NA). Using this feature, your users can encrypt files and documents, in their browsers, before sending them to Google servers. The ephemeral encryption keys are protected by "key wrapping keys", stored in the KMS and unavailable to Google. Only users that have the right to unwrap the ephemeral encryption keys inside the KMS, can decrypt the files. An overview is provided in Google's [About client-side encryption page](https://support.google.com/a/answer/10741897?hl=en).
 
 !!! info
     To enable client-side encryption (CSE) in Google Workspace, connect as an admin to the admin console and go to the [Google Workspace client-side encryption page](https://admin.google.com/ac/cse?hl=en).
@@ -15,11 +15,11 @@ Google has extensive documentation on how to enable CSE in Google Workspace. The
     - A Google Workspace account
     - A Certificate Authority (CA) [compliant with Gmail](https://support.google.com/a/answer/7448393) to generate the certificates for the users
     - An Identity Provider (IdP) (in this tutorial the [Google Identity Provider](../configuring-the-well-known-file-and-server.md#using-google-as-an-identity-provider))
-    - The [Cosmian Key Management Server](../../../../installation/marketplace_guide.md) behind a `Nginx` server:
+    - The [Eviden Key Management Server](../../../../installation/marketplace_guide.md) behind a `Nginx` server:
         - exposing a valid TLS certificate
         - and serving the [`.well-known`](../configuring-the-well-known-file-and-server.md) file used by the Identity Provider
     - The [KMS CLI](../../../../../kms_clients/index.md)
-        - to generate the [Google CSE key](#creating-google_cse-key) in the Cosmian KMS with correct access rights
+        - to generate the [Google CSE key](#creating-google_cse-key) in the Eviden KMS with correct access rights
         - to generate the [Gmail users keys](../configuring_gmail_cse.md#create-user-key-pair)
 
 ## Choosing the Certificate Authority
@@ -50,7 +50,7 @@ cat fullchain.pem
 
 ## Choosing and configuring the Identity Provider
 
-The first thing that will need to be done is to configure the Identity Provider. This is the service that the Cosmian Key Management Server will use to authenticate users before they can encrypt files or access encrypted files.
+The first thing that will need to be done is to configure the Identity Provider. This is the service that the Eviden Key Management Server will use to authenticate users before they can encrypt files or access encrypted files.
 
 The Identity Provider (IdP) is either a third party IdP or Google identity.
 
@@ -83,7 +83,7 @@ The KMS must be behind a valid TLS certificate when started.
 Assuming it is running at `https://cse.example.com` (kms-public-url parameter from server configuration), you should add the External Key Service with KACLS URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
 
 !!! important
-    To enable Client Side Encryption on the Cosmian KMS server, it must be started with the `--kms-public-url` option, and the `--google-cse-enable` option.
+    To enable Client Side Encryption on the Eviden KMS server, it must be started with the `--kms-public-url` option, and the `--google-cse-enable` option.
     This URL option is at which the KMS will serve the Key Access Control Lists (KACLs) for the Google CSE service.
     The KACLs are used by the Google CSE service to determine which users have access to which keys.
     The KACLs are served by the KMS at the URL `https://cse.example.com/google_cse` in the example above.
@@ -134,11 +134,11 @@ Then test the connection; it should show:
 
 Finalize the configuration. The Client Side Encryption page should now show the service to be active and you will now have to decide whether to assign this service to all users or to a subset of users.
 
-![Cosmian KMS active](./images/cosmian_kms_active.png)
+![Eviden KMS active](./images/cosmian_kms_active.png)
 
 ## Creating google_cse key
 
-Once your CSE Cosmian KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
+Once your CSE Eviden KMS is up and running, you need to import the AES wrapping key, which will be responsible for wrapping the keys managed by Google.
 This key MUST be created under the `google_cse` ID.
 
 Using the [KMS CLI](../../../../../kms_clients/index.md), ensure that it is properly configured and that [authentication is handled correctly](../../../../../kms_clients/authentication.md#oauth2oidc-authentication).
@@ -171,9 +171,9 @@ As an administrator, you can allow external users to access your encrypted conte
 
 For more information on this configuration, refer to [Google documentation](https://support.google.com/a/answer/14757842?hl=en-0).
 
-Cosmian KMS supports this feature, and to enable it:
+Eviden KMS supports this feature, and to enable it:
 
-- Add the identity provider's information in the server-side [Cosmian KMS configuration](../../../../configuration/authentication.md)
+- Add the identity provider's information in the server-side [Eviden KMS configuration](../../../../configuration/authentication.md)
 - Ensure that external users can access the Google CSE symmetric key
 
 ## User experience

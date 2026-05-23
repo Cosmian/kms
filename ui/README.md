@@ -1,6 +1,6 @@
-# React App for Cosmian KMS UI
+# React App for Eviden KMS UI
 
-This is a React-based frontend for the **Cosmian KMS**. It is designed to be
+This is a React-based frontend for the **Eviden KMS**. It is designed to be
 built as a static web application and served by the KMS server.
 
 ---

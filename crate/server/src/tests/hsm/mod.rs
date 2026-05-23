@@ -197,13 +197,13 @@ async fn create_key_pair(key_uid: &str, owner: &str, kms: &Arc<KMS>) -> KResult<
     let Operation::CreateKeyPairResponse(create_response) = &response[0] else {
         return Err(KmsError::ServerError("invalid response".to_owned()));
     };
-    assert!(
-        create_response.private_key_unique_identifier
-            == UniqueIdentifier::TextString(key_uid.to_owned())
+    assert_eq!(
+        create_response.private_key_unique_identifier,
+        UniqueIdentifier::TextString(key_uid.to_owned())
     );
-    assert!(
-        create_response.public_key_unique_identifier
-            == UniqueIdentifier::TextString(key_uid.to_owned().add(SYSTEM_TAG_PUBLIC_KEY))
+    assert_eq!(
+        create_response.public_key_unique_identifier,
+        UniqueIdentifier::TextString(key_uid.to_owned().add(SYSTEM_TAG_PUBLIC_KEY))
     );
     Ok(())
 }

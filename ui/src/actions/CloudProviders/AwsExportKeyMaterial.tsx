@@ -1,9 +1,9 @@
 import { Button, Card, Form, Input, Space } from "antd";
 import React, { useEffect, useRef, useState } from "react";
+import ExternalLink from "../../components/common/ExternalLink";
 import { useAuth } from "../../contexts/AuthContext";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg/cosmian_kms_client_wasm";
-import ExternalLink from "../../components/common/ExternalLink";
 
 const getTags = (attributes: Map<string, never>): string[] => {
     const vendor_attributes: Array<Map<string, never>> | undefined = attributes.get("vendor_attributes");
@@ -158,7 +158,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
         <div className="p-6">
             <h1 className="text-2xl font-bold mb-6">Export AWS Key Material</h1>
             <div className="mb-8 space-y-2">
-                <p>Wrap a Cosmian KMS key with an AWS KMS wrapping key and generate the key material to be imported into.</p>
+                <p>Wrap a Eviden KMS key with an AWS KMS wrapping key and generate the key material to be imported into.</p>
                 <p>The KEK must be previously imported using the Import KEK command.</p>
                 <p className="text-sm text-gray-600">
                     See:{" "}

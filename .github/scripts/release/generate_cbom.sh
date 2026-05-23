@@ -40,10 +40,10 @@ YELLOW=$'\e[33m\e[1m'
 CYAN=$'\e[36m\e[1m'
 RED=$'\e[31m\e[1m'
 RESET=$'\e[0m'
-info()  { echo "${CYAN}[CBOM]${RESET} $*"; }
-ok()    { echo "${GREEN}[ OK ]${RESET} $*"; }
-warn()  { echo "${YELLOW}[WARN]${RESET} $*"; }
-fail()  { echo "${RED}[FAIL]${RESET} $*" >&2; }
+info() { echo "${CYAN}[CBOM]${RESET} $*"; }
+ok() { echo "${GREEN}[ OK ]${RESET} $*"; }
+warn() { echo "${YELLOW}[WARN]${RESET} $*"; }
+fail() { echo "${RED}[FAIL]${RESET} $*" >&2; }
 
 info "KMS version : $VERSION"
 info "Output      : $OUTPUT"
@@ -55,10 +55,10 @@ LIB_ARGS=()
 if command -v cdxgen &>/dev/null; then
   info "Running cdxgen for Cargo.lock → CycloneDX library SBOM …"
   if cdxgen \
-      --type rust \
-      --output "$DEP_SBOM" \
-      --spec-version 1.6 \
-      "$REPO_ROOT" 2>/dev/null; then
+    --type rust \
+    --output "$DEP_SBOM" \
+    --spec-version 1.6 \
+    "$REPO_ROOT" 2>/dev/null; then
     ok "cdxgen SBOM → $DEP_SBOM"
     LIB_ARGS=(--lib-input "$DEP_SBOM")
   else

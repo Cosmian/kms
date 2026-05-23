@@ -3,13 +3,13 @@
 #
 # Verifies that after a KMS container upgrade, Oracle TDE continues to work correctly.
 # Handles three states:
-#   - OPEN              : keys exist in KMS and match Oracle's active MEK — proceed directly
-#   - OPEN_NO_MASTER_KEY: KMS is fresh (no keys at all) — SET KEY to create the first MEK
-#   - ORA-28353 (CLOSED): Oracle holds a stale MEK ID that no longer exists in KMS
+#   - OPEN              : keys exist in KMS and match Oracle's active ME — proceed directly
+#   - OPEN_NO_MASTER_KEY: KMS is fresh (no keys at all) — SET KEY to create the first ME
+#   - ORA-28353 (CLOSED): Oracle holds a stale ME ID that no longer exists in KMS
 #                         (e.g. KMS data was lost while Oracle's control file / PROPS$ still
 #                         reference the old key). Recovery: import a random placeholder key
 #                         into KMS under the exact KMIP ID Oracle expects
-#                         (ORACLE.TDE.HSM.MK.<MEK_ID>), open the keystore (now succeeds),
+#                         (ORACLE.TDE.HSM.MK.<ME_ID>), open the keystore (now succeeds),
 #                         then immediately rekey with SET KEY so real, persistent keys exist.
 #
 # Usage: bash smoke-test-tde.sh <ORACLE_KMS_DEMO_USER_PASS> <TAG_ONLY> <COSMIAN_HSM_PIN>
@@ -62,14 +62,23 @@ echo "Phase 0 done"
 # ── HEALTH CHECK ───────────────────────────────────────────────────────────────
 
 echo "==> Health check: verify Docker image tag"
-docker ps | grep cosmian-kms \
-  || { echo "ERROR: cosmian-kms container is not running" >&2; exit 1; }
+docker ps | grep cosmian-kms ||
+  {
+    echo "ERROR: cosmian-kms container is not running" >&2
+    exit 1
+  }
 running_image=$(docker inspect cosmian-kms --format '{{.Config.Image}}')
 echo "Running image: ${running_image}"
-echo "${running_image}" | grep -q "${TAG_ONLY}" \
-  || { echo "ERROR: running image '${running_image}' does not contain '${TAG_ONLY}'" >&2; exit 1; }
-timeout 30 bash -c 'until curl -sf http://localhost:9998/version >/dev/null 2>&1; do sleep 2; done' \
-  || { echo "ERROR: KMS not responding" >&2; exit 1; }
+echo "${running_image}" | grep -q "${TAG_ONLY}" ||
+  {
+    echo "ERROR: running image '${running_image}' does not contain '${TAG_ONLY}'" >&2
+    exit 1
+  }
+timeout 30 bash -c 'until curl -sf http://localhost:9998/version >/dev/null 2>&1; do sleep 2; done' ||
+  {
+    echo "ERROR: KMS not responding" >&2
+    exit 1
+  }
 echo "KMS: $(curl -sf http://localhost:9998/version)"
 echo "Health check passed"
 
@@ -79,11 +88,10 @@ echo "Health check passed"
 #   OPEN_NO_MASTER_KEY— KMS is fresh (empty DB properly initialised), just SET KEY
 #   CLOSED (ORA-28353)— KMS DB was corrupt/empty with no schema; after upgrade-kms.sh
 #                       fix the DB is now properly initialised but Oracle has a stale
-#                       MEK ID → recover via FILE wallet creation then MIGRATE to HSM
+#                       ME ID → recover via FILE wallet creation then MIGRATE to HSM
 
 open_wallet_in_container() {
-  local container="${1}"       # CDB or PDB (for logging)
-  local extra_sql="${2:-}"     # Optional ALTER SESSION SET CONTAINER=... prefix
+  local extra_sql="${2:-}" # Optional ALTER SESSION SET CONTAINER=... prefix
   local pin="${COSMIAN_HSM_PIN}"
 
   sudo -u oracle bash -s -- "${pin}" -- "${extra_sql}" <<'ORACLEBASH'
@@ -156,40 +164,41 @@ cdb_status=$(wallet_status "" | tr -d '[:space:]')
 echo "CDB wallet status: ${cdb_status}"
 
 # ── Recovery: stale SYS.ENC$ entries → KMS empty ──────────────────────────────
-# Triggered when KEYSTORE OPEN returns ORA-28353 (CLOSED): Oracle knows a MEK ID
+# Triggered when KEYSTORE OPEN returns ORA-28353 (CLOSED): Oracle knows a ME ID
 # in enc$ that no longer exists in KMS (data lost, fresh container, etc.).
 # Fix: purge enc$ (safe here because Phase 0 already dropped all encrypted
 # tablespaces, so there is no encrypted data to corrupt), restart Oracle so it
 # re-reads enc$ from disk, then OPEN → OPEN_NO_MASTER_KEY → SET KEY.
 
-# ── Recovery: stale MEK IDs → KMS empty / replaced ────────────────────────────
+# ── Recovery: stale ME IDs → KMS empty / replaced ────────────────────────────
 # Triggered when KEYSTORE OPEN returns ORA-28353 (CLOSED): Oracle's control file
-# and PROPS$ reference a MEK that no longer exists in KMS (data lost, fresh KMS
+# and PROPS$ reference a ME that no longer exists in KMS (data lost, fresh KMS
 # container, etc.).
-# Fix: find the stale MEK ID(s) from CDB and PDB PROPS$, import a random placeholder
+# Fix: find the stale ME ID(s) from CDB and PDB PROPS$, import a random placeholder
 # AES-256 key into KMS under the exact KMIP object ID Oracle expects
-# (ORACLE.TDE.HSM.MK.<MEK_ID>).  Oracle's KEYSTORE OPEN will now find that key
+# (ORACLE.TDE.HSM.MK.<ME_ID>).  Oracle's KEYSTORE OPEN will now find that key
 # and return OPEN.  We immediately call SET KEY to create real, persistent MEKs,
 # making the placeholder keys orphans that can be cleaned up later.
 # No SYS.ENC$ manipulation or Oracle restart needed — PROPS$ already holds the
-# correct stale MEK IDs; we must NOT delete them or Oracle will crash (ORA-00600).
+# correct stale ME IDs; we must NOT delete them or Oracle will crash (ORA-00600).
 
 if echo "${cdb_status}" | grep -q "CLOSED"; then
   echo "WARNING: CDB wallet CLOSED (ORA-28353) — importing placeholder MEKs into KMS"
 
   # Helper: import a placeholder AES-256 key into KMS under the given ORACLE.TDE.HSM.MK.* ID
-  import_placeholder_mek() {
-    local mek_id="$1"
-    local kmip_id="ORACLE.TDE.HSM.MK.${mek_id}"
-    dd if=/dev/urandom bs=32 count=1 > /tmp/placeholder_mek.bin 2>/dev/null
-    ckms sym keys import --key-format aes /tmp/placeholder_mek.bin "${kmip_id}" 2>/dev/null \
-      && echo "  Imported placeholder key: ${kmip_id}" \
-      || echo "  Key already exists (or import failed): ${kmip_id}"
+  import_placeholder_me() {
+    local me_id="$1"
+    local kmip_id="ORACLE.TDE.HSM.MK.${me_id}"
+    dd if=/dev/urandom bs=32 count=1 >/tmp/placeholder_mek.bin 2>/dev/null
+    ckms sym keys import --key-format aes /tmp/placeholder_mek.bin "${kmip_id}" 2>/dev/null &&
+      echo "  Imported placeholder key: ${kmip_id}" ||
+      echo "  Key already exists (or import failed): ${kmip_id}"
     rm -f /tmp/placeholder_mek.bin
   }
 
-  # ── R1: Read stale CDB MEK ID from PROPS$ ────────────────────────────────────
-  cdb_mek_raw=$(sudo -u oracle bash -s <<'ORACLEBASH'
+  # ── R1: Read stale CDB ME ID from PROPS$ ────────────────────────────────────
+  cdb_me_raw=$(
+    sudo -u oracle bash -s <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
 "${ORACLE_HOME}/bin/sqlplus" -s / as sysdba <<'SQLEOF'
@@ -198,16 +207,17 @@ SELECT VALUE$ FROM SYS.PROPS$ WHERE NAME='TDE_MASTER_KEY_ID';
 EXIT;
 SQLEOF
 ORACLEBASH
-)
-  cdb_mek_id=$(echo "${cdb_mek_raw}" | tr -d '[:space:]' | grep -E "^[0-9A-Fa-f]{30,40}$" | head -1)
-  if [ -n "${cdb_mek_id}" ]; then
-    import_placeholder_mek "${cdb_mek_id}"
+  )
+  cdb_me_id=$(echo "${cdb_me_raw}" | tr -d '[:space:]' | grep -E "^[0-9A-Fa-f]{30,40}$" | head -1)
+  if [ -n "${cdb_me_id}" ]; then
+    import_placeholder_me "${cdb_me_id}"
   else
     echo "  WARNING: no TDE_MASTER_KEY_ID found in CDB PROPS$ — KMS may already have the right key"
   fi
 
-  # ── R2: Read stale PDB MEK ID from FREEPDB1 PROPS$ ───────────────────────────
-  pdb_mek_raw=$(sudo -u oracle bash -s <<'ORACLEBASH'
+  # ── R2: Read stale PDB ME ID from FREEPDB1 PROPS$ ───────────────────────────
+  pdb_me_raw=$(
+    sudo -u oracle bash -s <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
 "${ORACLE_HOME}/bin/sqlplus" -s / as sysdba <<'SQLEOF'
@@ -218,10 +228,10 @@ SELECT VALUE$ FROM PROPS$ WHERE NAME='TDE_MASTER_KEY_ID';
 EXIT;
 SQLEOF
 ORACLEBASH
-)
-  pdb_mek_id=$(echo "${pdb_mek_raw}" | tr -d '[:space:]' | grep -E "^[0-9A-Fa-f]{30,40}$" | head -1)
-  if [ -n "${pdb_mek_id}" ]; then
-    import_placeholder_mek "${pdb_mek_id}"
+  )
+  pdb_me_id=$(echo "${pdb_me_raw}" | tr -d '[:space:]' | grep -E "^[0-9A-Fa-f]{30,40}$" | head -1)
+  if [ -n "${pdb_me_id}" ]; then
+    import_placeholder_me "${pdb_me_id}"
   else
     echo "  WARNING: no TDE_MASTER_KEY_ID found in PDB PROPS$ — PDB might be handled by CDB key"
   fi
@@ -233,7 +243,7 @@ ORACLEBASH
   echo "  CDB wallet status after recovery: ${cdb_status}"
 
   if echo "${cdb_status}" | grep -q "CLOSED"; then
-    echo "ERROR: CDB wallet still CLOSED after importing placeholder MEK — check KMS logs" >&2
+    echo "ERROR: CDB wallet still CLOSED after importing placeholder ME — check KMS logs" >&2
     docker logs cosmian-kms --tail 20 >&2 || true
     exit 1
   fi
@@ -262,8 +272,11 @@ if echo "${cdb_status}" | grep -q "OPEN_NO_MASTER_KEY"; then
   echo "CDB wallet status after SET KEY: ${cdb_status}"
 fi
 
-echo "${cdb_status}" | grep -q "OPEN" \
-  || { echo "ERROR: CDB wallet is not OPEN (status: ${cdb_status})" >&2; exit 1; }
+echo "${cdb_status}" | grep -q "OPEN" ||
+  {
+    echo "ERROR: CDB wallet is not OPEN (status: ${cdb_status})" >&2
+    exit 1
+  }
 
 echo "==> Phase 1: Open TDE wallet (PDB)"
 open_wallet_in_container "PDB" "ALTER SESSION SET CONTAINER=FREEPDB1;"
@@ -277,8 +290,11 @@ if echo "${pdb_status}" | grep -q "OPEN_NO_MASTER_KEY"; then
   echo "PDB wallet status after SET KEY: ${pdb_status}"
 fi
 
-echo "${pdb_status}" | grep -q "OPEN" \
-  || { echo "ERROR: PDB wallet is not OPEN (status: ${pdb_status})" >&2; exit 1; }
+echo "${pdb_status}" | grep -q "OPEN" ||
+  {
+    echo "ERROR: PDB wallet is not OPEN (status: ${pdb_status})" >&2
+    exit 1
+  }
 echo "Wallet opened successfully (CDB: ${cdb_status}, PDB: ${pdb_status})"
 
 # ── PROOF 1: Wallet is OPEN ────────────────────────────────────────────────────
@@ -323,7 +339,8 @@ echo "KMS_DEMO_TS + kms_demo + DEMO_PERSONS created"
 # ── PROOF 2: Active master key ─────────────────────────────────────────────────
 
 echo "==> PROOF 2: Active master key"
-key_count=$(sudo -u oracle bash -s <<'ORACLEBASH'
+key_count=$(
+  sudo -u oracle bash -s <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
 "${ORACLE_HOME}/bin/sqlplus" -s / as sysdba <<'SQLEOF'
@@ -334,15 +351,19 @@ SQLEOF
 ORACLEBASH
 )
 key_count=$(echo "${key_count}" | tr -d '[:space:]')
-[ "${key_count:-0}" -gt 0 ] \
-  || { echo "ERROR: no active encryption keys" >&2; exit 1; }
+[ "${key_count:-0}" -gt 0 ] ||
+  {
+    echo "ERROR: no active encryption keys" >&2
+    exit 1
+  }
 echo "PROOF 2 passed: ${key_count} master key(s)"
 PASSED=$((PASSED + 1))
 
 # ── PROOF 3: AES256 on KMS_DEMO_TS ────────────────────────────────────────────
 
 echo "==> PROOF 3: AES256 encryption on KMS_DEMO_TS"
-alg=$(sudo -u oracle bash -s <<'ORACLEBASH'
+alg=$(
+  sudo -u oracle bash -s <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
 "${ORACLE_HOME}/bin/sqlplus" -s / as sysdba <<'SQLEOF'
@@ -356,15 +377,19 @@ SQLEOF
 ORACLEBASH
 )
 echo "Algorithm: ${alg}"
-echo "${alg}" | grep -q "AES256" \
-  || { echo "ERROR: AES256 not found on KMS_DEMO_TS (got: ${alg})" >&2; exit 1; }
+echo "${alg}" | grep -q "AES256" ||
+  {
+    echo "ERROR: AES256 not found on KMS_DEMO_TS (got: ${alg})" >&2
+    exit 1
+  }
 echo "PROOF 3 passed: KMS_DEMO_TS encrypted with AES256"
 PASSED=$((PASSED + 1))
 
 # ── PROOF 4: SQL*Net data read ─────────────────────────────────────────────────
 
 echo "==> PROOF 4: SQL*Net data read"
-PORT=$(sudo -u oracle bash -s <<'ORACLEBASH'
+PORT=$(
+  sudo -u oracle bash -s <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 "${ORACLE_HOME}/bin/lsnrctl" status 2>/dev/null \
   | grep -oP "PORT=\K[0-9]+" | head -n1
@@ -372,7 +397,8 @@ ORACLEBASH
 )
 PORT="${PORT:-1521}"
 echo "Oracle listener port: ${PORT}"
-data=$(sudo -u oracle bash -s -- "${ORACLE_KMS_DEMO_USER_PASS}" "${PORT}" <<'ORACLEBASH'
+data=$(
+  sudo -u oracle bash -s -- "${ORACLE_KMS_DEMO_USER_PASS}" "${PORT}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 ORACLE_KMS_DEMO_USER_PASS="$1"; PORT="$2"
 "${ORACLE_HOME}/bin/sqlplus" -s "kms_demo/${ORACLE_KMS_DEMO_USER_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
@@ -383,35 +409,50 @@ SQLEOF
 ORACLEBASH
 )
 echo "DEMO_PERSONS: ${data}"
-echo "${data}" | grep -q "Thomas"  || { echo "ERROR: Thomas not found"  >&2; exit 1; }
-echo "${data}" | grep -q "Aurelie" || { echo "ERROR: Aurelie not found" >&2; exit 1; }
-echo "${data}" | grep -q "Chris"   || { echo "ERROR: Chris not found"   >&2; exit 1; }
+echo "${data}" | grep -q "Thomas" || {
+  echo "ERROR: Thomas not found" >&2
+  exit 1
+}
+echo "${data}" | grep -q "Aurelie" || {
+  echo "ERROR: Aurelie not found" >&2
+  exit 1
+}
+echo "${data}" | grep -q "Chris" || {
+  echo "ERROR: Chris not found" >&2
+  exit 1
+}
 echo "PROOF 4 passed: data readable via SQL*Net"
 PASSED=$((PASSED + 1))
 
 # ── PROOF 5: At-rest encryption ────────────────────────────────────────────────
 
 echo "==> PROOF 5: At-rest encryption"
-sudo test -f "${DBF}" || { echo "ERROR: DBF not found: ${DBF}" >&2; exit 1; }
+sudo test -f "${DBF}" || {
+  echo "ERROR: DBF not found: ${DBF}" >&2
+  exit 1
+}
 if sudo strings "${DBF}" | grep -iE "Thomas|Aurelie|Chris"; then
-  echo "ERROR: plaintext names found in DBF" >&2; exit 1
+  echo "ERROR: plaintext names found in DBF" >&2
+  exit 1
 fi
 if sudo strings "${DBF}" | grep -E "[0-9]-[0-9]{2}-[0-9]{6}"; then
-  echo "ERROR: plaintext SSNs found in DBF" >&2; exit 1
+  echo "ERROR: plaintext SSNs found in DBF" >&2
+  exit 1
 fi
 echo "PROOF 5 passed: no plaintext data in DBF"
 PASSED=$((PASSED + 1))
 
-# ── PROOF 6: TDE REKEY — rotate MEK within HSM (K1 → K2) ─────────────────────
-# Proves that key rotation works: a new MEK (K2) is generated in Cosmian KMS,
+# ── PROOF 6: TDE REKEY — rotate ME within HSM (K1 → K2) ─────────────────────
+# Proves that key rotation works: a new ME (K2) is generated in Cosmian KMS,
 # all tablespace encryption keys are re-wrapped (K1→K2), and data remains readable.
 # Note: Oracle 23ai Free does not support HSM↔FILE wallet migration via REVERSE
 # MIGRATE / MIGRATE USING because BACKUP KEYSTORE is not supported for PKCS#11
 # keystores (ORA-00600: kzckmbkup: invalid keystore location [4]).
 
-echo "==> PROOF 6: TDE REKEY (MEK rotation K1 → K2 within HSM)"
+echo "==> PROOF 6: TDE REKEY (ME rotation K1 → K2 within HSM)"
 
-K1_MASTERKEYID=$(sudo -u oracle bash -s <<'ORACLEBASH'
+K1_MASTERKEYID=$(
+  sudo -u oracle bash -s <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
 "${ORACLE_HOME}/bin/sqlplus" -s / as sysdba <<'SQLEOF'
@@ -426,10 +467,11 @@ ORACLEBASH
 K1_MASTERKEYID=$(echo "${K1_MASTERKEYID}" | tr -d '[:space:]')
 echo "  K1_MASTERKEYID=${K1_MASTERKEYID}"
 
-# Rotate MEK: Oracle generates K2 in KMS, re-wraps all TEKs (K1→K2)
+# Rotate ME: Oracle generates K2 in KMS, re-wraps all TEKs (K1→K2)
 set_key_in_container "ALTER SESSION SET CONTAINER=FREEPDB1;" "rekey_k2"
 
-K2_MASTERKEYID=$(sudo -u oracle bash -s <<'ORACLEBASH'
+K2_MASTERKEYID=$(
+  sudo -u oracle bash -s <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 export ORACLE_SID=FREE
 "${ORACLE_HOME}/bin/sqlplus" -s / as sysdba <<'SQLEOF'
@@ -444,10 +486,14 @@ ORACLEBASH
 K2_MASTERKEYID=$(echo "${K2_MASTERKEYID}" | tr -d '[:space:]')
 echo "  K2_MASTERKEYID=${K2_MASTERKEYID}"
 
-[ "${K2_MASTERKEYID}" != "${K1_MASTERKEYID}" ] \
-  || { echo "ERROR [6]: MASTERKEYID unchanged after REKEY (K1=${K1_MASTERKEYID})" >&2; exit 1; }
+[ "${K2_MASTERKEYID}" != "${K1_MASTERKEYID}" ] ||
+  {
+    echo "ERROR [6]: MASTERKEYID unchanged after REKEY (K1=${K1_MASTERKEYID})" >&2
+    exit 1
+  }
 
-data_6=$(sudo -u oracle bash -s -- "${ORACLE_KMS_DEMO_USER_PASS}" "${PORT}" <<'ORACLEBASH'
+data_6=$(
+  sudo -u oracle bash -s -- "${ORACLE_KMS_DEMO_USER_PASS}" "${PORT}" <<'ORACLEBASH'
 export ORACLE_HOME=/opt/oracle/product/23ai/dbhomeFree
 ORACLE_KMS_DEMO_USER_PASS="$1"; PORT="$2"
 "${ORACLE_HOME}/bin/sqlplus" -s "kms_demo/${ORACLE_KMS_DEMO_USER_PASS}@localhost:${PORT}/FREEPDB1" <<SQLEOF
@@ -457,11 +503,21 @@ EXIT;
 SQLEOF
 ORACLEBASH
 )
-echo "${data_6}" | grep -q "Thomas"  || { echo "ERROR [6]: Thomas missing after rekey"  >&2; exit 1; }
-echo "${data_6}" | grep -q "Aurelie" || { echo "ERROR [6]: Aurelie missing after rekey" >&2; exit 1; }
-echo "${data_6}" | grep -q "Chris"   || { echo "ERROR [6]: Chris missing after rekey"   >&2; exit 1; }
+echo "${data_6}" | grep -q "Thomas" || {
+  echo "ERROR [6]: Thomas missing after rekey" >&2
+  exit 1
+}
+echo "${data_6}" | grep -q "Aurelie" || {
+  echo "ERROR [6]: Aurelie missing after rekey" >&2
+  exit 1
+}
+echo "${data_6}" | grep -q "Chris" || {
+  echo "ERROR [6]: Chris missing after rekey" >&2
+  exit 1
+}
 if sudo strings "${DBF}" | grep -iE "Thomas|Aurelie|Chris"; then
-  echo "ERROR [6]: plaintext in DBF after REKEY" >&2; exit 1
+  echo "ERROR [6]: plaintext in DBF after REKEY" >&2
+  exit 1
 fi
 echo "PROOF 6 passed: MASTERKEYID rotated (${K1_MASTERKEYID} → ${K2_MASTERKEYID}), TEK re-wrapped, data intact"
 PASSED=$((PASSED + 1))

@@ -210,8 +210,7 @@ impl Display for MainDBConfig {
                 "redis-findex" => write!(
                     f,
                     "redis-findex: {}, password: [****]",
-                    &self
-                        .database_url
+                    self.database_url
                         .as_ref()
                         .map_or("[INVALID URL]", |url| url.as_str()),
                 ),
@@ -226,7 +225,7 @@ impl Display for MainDBConfig {
 
 impl std::fmt::Debug for MainDBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", &self))
+        f.write_fmt(format_args!("{self}"))
     }
 }
 

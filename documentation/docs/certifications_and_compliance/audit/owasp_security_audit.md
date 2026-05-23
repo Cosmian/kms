@@ -1,8 +1,8 @@
-# Cosmian KMS — OWASP Security Audit Plan & Report
+# Eviden KMS — OWASP Security Audit Plan & Report
 
 **Document type**: Security Audit Plan & Report Template
 **Standard**: OWASP Top 10 (2021) + OWASP ASVS v4.0 (selective)
-**Repository**: `Cosmian/kms` — branch `develop`
+**Repository**: `Eviden/kms` — branch `develop`
 **Workspace root**: `crate/` (Rust workspace) + `ui/` (React/TypeScript)
 **Audit date**: 2026-04-18 (re-run with remediation verification: 2026-04-14)
 **Auditor(s)**: GitHub Copilot (automated static analysis)

@@ -1,15 +1,15 @@
 ---
 site_name: Key Management System
 site_url: https://docs.cosmian.com/
-copyright: © Copyright 2018-2026 Cosmian. All rights reserved
+copyright: © Copyright 2018-2026 Eviden. All rights reserved
 dev_addr: localhost:8003
 theme:
   name: material
   language: en
   font:
     text: Open Sans
-  favicon: favicon.png
-  logo: images/docslogo-2x.png
+  favicon: eviden-favicon.svg
+  logo: eviden-logo-orange.svg
   custom_dir: theme_overrides
   features:
     - content.tabs.link
@@ -58,7 +58,7 @@ plugins:
   - kroki
   - meta-descriptions
 nav:
-  - Why use the Cosmian KMS: index.md
+  - Why use the Eviden KMS: index.md
   - Quick start: quick_start.md
   - Use cases:
       - Encrypting and decrypting at scale: use_cases/encrypting_and_decrypting_at_scale.md
@@ -76,7 +76,6 @@ nav:
       - Other HSMs: hsm_support/other_hsms.md
   - Integrations:
       - API Endpoints: integrations/api.md
-      - REST Native Crypto API: integrations/rest_crypto_api.md
       - Cloud providers:
           - Amazon Web Services (AWS):
               - ECS Fargate: integrations/cloud_providers/aws/fargate.md

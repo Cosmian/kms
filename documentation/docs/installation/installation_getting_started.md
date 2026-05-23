@@ -1,7 +1,7 @@
-Cosmian KMS can be installed on various platforms, including Docker, Ubuntu, Rocky Linux, macOS, and Windows.
+Eviden KMS can be installed on various platforms, including Docker, Ubuntu, Rocky Linux, macOS, and Windows.
 It is prepackaged with an integrated web ui (except for macOS) that is available on the `/ui` path of the server.
 
-The KMS is also available on the marketplaces of major cloud providers, prepackaged to run confidentially in a Cosmian VM.
+The KMS is also available on the marketplaces of major cloud providers, prepackaged to run confidentially in an Eviden VM.
 Please check [this page](./marketplace_guide.md) for more information.
 
 When installed using the options below, the KMS server will be automatically configured to run
@@ -12,10 +12,10 @@ For high availability and scalability, refer to the [High Availability Guide](./
 
 ## Verifying release signatures
 
-All Cosmian KMS release packages (DEB, RPM, DMG) are GPG-signed.
+All Eviden KMS release packages (DEB, RPM, DMG) are GPG-signed.
 Each package is accompanied by a `.asc` signature file that can be used to verify its authenticity and integrity.
 
-### Import the Cosmian public key**
+### Import the Eviden public key**
 
 ```sh
 gpg --import cosmian-kms-public.asc
@@ -48,7 +48,7 @@ gpg --verify cosmian-kms-server-non-fips-static-openssl-5.22.0_arm64.dmg.asc \
 A successful verification prints:
 
 ```text
-gpg: Good signature from "Cosmian KMS Release <tech@cosmian.com>"
+gpg: Good signature from "Eviden KMS Release <tech@cosmian.com>"
 ```
 
 !!!warning
@@ -203,7 +203,7 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     https://package.cosmian.com/kms/5.22.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-server-non-fips-static-openssl_5.22.0_x86_64.exe
     ```
 
-    Run the installer to install Cosmian KMS Server. The installer will:
+    Run the installer to install Eviden KMS Server. The installer will:
     - Install the KMS server with integrated web UI
     - Set up the configuration file at `%LOCALAPPDATA%\Cosmian KMS Server\kms.toml`
 

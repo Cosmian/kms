@@ -1,14 +1,14 @@
-A KMS-ready instance based on Cosmian Confidential VM can be deployed on virtual machines
+A KMS-ready instance based on Eviden Confidential VM can be deployed on virtual machines
 that supports AMD SEV-SNP or Intel TDX technologies, and is available on the marketplace of the major cloud providers.
 
-If you are interested in the confidential computing technology and the Cosmian VM,
-please first read the guide about [how to setup a Cosmian VM](../../cosmian_vm/deployment_guide.md).
+If you are interested in the confidential computing technology and the Eviden VM,
+please first read the guide about [how to setup an Eviden VM](../../cosmian_vm/deployment_guide.md).
 
-## Deploy Cosmian VM KMS on a cloud provider
+## Deploy Eviden VM KMS on a cloud provider
 
-Go the Cosmian marketplace webpage of the chosen [cloud provider](https://cosmian.com/fr/marketplaces-fr/).
+Go the Eviden marketplace webpage of the chosen [cloud provider](https://cosmian.com/fr/marketplaces-fr/).
 
-Select an OS and continue until the Cosmian VM KMS instance is spawned.
+Select an OS and continue until the Eviden VM KMS instance is spawned.
 
 !!! important Cloud provider support
 
@@ -25,11 +25,11 @@ Select an OS and continue until the Cosmian VM KMS instance is spawned.
     |                | ECesv5-series     |              |               |
     |                | (preview)         |              |               |
 
-The Cosmian KMS contains:
+The Eviden KMS contains:
 
 - a ready-to-go Nginx setup (listening on port `443` and locally on port `9998`)
 - a ready-to-go KMS service
-- the Cosmian VM software stack. As reminder, Cosmian VM Agent is listening
+- the Eviden VM software stack. As reminder, Eviden VM Agent is listening
   on port `5555`.
 
 ## Configure the KMS 📜
@@ -70,30 +70,30 @@ hostname = "0.0.0.0"
 
 !!! important Protect your secrets
 
-    The Cosmian KMS configuration can potentially contain secrets
+    The Eviden KMS configuration can potentially contain secrets
     (such as this `redis_master_password` field), that is why
     the configuration file is save in a LUKS container (default path: `/var/lib/cosmian_vm/data`).
     To override the default
     configuration, a new configuration SHOULD be sent remotely and securely via
-    the Cosmian VM CLI following [see app init](#override-the-default-configuration).
+    the Eviden VM CLI following [see app init](#override-the-default-configuration).
 
 ### Override the default configuration
 
 The default configuration can be overridden remotely by using the
-[Cosmian VM CLI](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli-on-your-local-machine)
+[Eviden VM CLI](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli-on-your-local-machine)
 without any SSH connection.
 
 It is safe to provide secrets (such as passwords) in
 the configuration file because this file is going to be stored in the encrypted
-folder (LUKS) of the Cosmian VM KMS (which is mounted by default on `/var/lib/cosmian_vm/data`).
+folder (LUKS) of the Eviden VM KMS (which is mounted by default on `/var/lib/cosmian_vm/data`).
 
-Cosmian VM CLI has to be installed on the client machine (Ubuntu, RHEL or via Docker).
+Eviden VM CLI has to be installed on the client machine (Ubuntu, RHEL or via Docker).
 Please follow the [installation instructions](../../cosmian_vm/deployment_guide.md#install-the-cosmian-vm-cli-on-your-local-machine).
 
 Then proceed as follows:
 
 ```shell title="On the local machine"
-cosmian_vm --url https://${COSMIAN_KMS_IP_ADDR}:5555 \
+cosmian_vm --url https://${EVIDEN_KMS_IP_ADDR}:5555 \
            --allow-insecure-tls \
            app init -c kms.toml
 
@@ -127,7 +127,7 @@ redis_master_password = "master-password"
 
 ### Service
 
-`Systemd` is used to supervise and run the KMS server and the Cosmian VM agent.
+`Systemd` is used to supervise and run the KMS server and the Eviden VM agent.
 As an administrator, you can see the running services with the following commands:
 
 ```sh
@@ -145,7 +145,7 @@ journalctl -u cosmian_vm_agent
 ### Check the connection with the KMS
 
 ```console
-$ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
+$ curl --insecure https://${EVIDEN_VM_IP_ADDR}/version
 "5.22.0"
 ```
 
@@ -161,7 +161,7 @@ $ curl --insecure https://${COSMIAN_VM_IP_ADDR}/version
 
 ## Snapshot the VM 📸
 
-Once the VM is configured as needed, Cosmian VM Agent can do a snapshot of the
+Once the VM is configured as needed, Eviden VM Agent can do a snapshot of the
 VM containing fingerprint of the executables and metadata related to TEE and TPM.
 
 The agent creates an encrypted folder (LUKS container) to store sensitive
@@ -175,19 +175,19 @@ In short, to generate a snapshot, please [follow](../../cosmian_vm/deployment_gu
 The associated command is:
 
 ```console title="On the local machine"
-cosmian_vm --url https://${COSMIAN_VM_IP_ADDR}:5555 --allow-insecure-tls snapshot
+cosmian_vm --url https://${EVIDEN_VM_IP_ADDR}:5555 --allow-insecure-tls snapshot
 ```
 
-## Verify the Cosmian VM KMS integrity ✅
+## Verify the Eviden VM KMS integrity ✅
 
-Verifying trustworthiness of the Cosmian VM KMS is exactly the same process
-as [verifying the Cosmian VM](../../cosmian_vm/index.md) itself.
+Verifying trustworthiness of the Eviden VM KMS is exactly the same process
+as [verifying the Eviden VM](../../cosmian_vm/index.md) itself.
 
 In short, to verify a snapshot, please [follow](../../cosmian_vm/deployment_guide.md#verify-the-vm-snapshot).
 
 The associated command is:
 
 ```console title="On the local machine"
-cosmian_vm --url https://${COSMIAN_VM_IP_ADDR}:5555 --allow-insecure-tls verify \
+cosmian_vm --url https://${EVIDEN_VM_IP_ADDR}:5555 --allow-insecure-tls verify \
 --snapshot cosmian_vm.snapshot
 ```

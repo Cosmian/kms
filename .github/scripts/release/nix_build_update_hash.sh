@@ -51,31 +51,37 @@ drv_to_hash_file() {
   local attr="$2"
 
   if [[ "$drv_name" =~ ui-deps.*(fips|non-fips).*pnpm-deps ]]; then
-    echo "$EXPECTED_DIR/ui.pnpm.${OS}.sha256"; return
+    echo "$EXPECTED_DIR/ui.pnpm.${OS}.sha256"
+    return
   fi
   if [[ "$drv_name" =~ ui-wasm-non-fips.*vendor ]]; then
     # ui.vendor.*.sha256 are Linux-only; skip on macOS to avoid overwriting them.
     [[ "$OS" != "Linux" ]] && echo "" && return
-    echo "$EXPECTED_DIR/ui.vendor.non-fips.sha256"; return
+    echo "$EXPECTED_DIR/ui.vendor.non-fips.sha256"
+    return
   fi
   if [[ "$drv_name" =~ ui-wasm-fips.*vendor ]]; then
     [[ "$OS" != "Linux" ]] && echo "" && return
-    echo "$EXPECTED_DIR/ui.vendor.fips.sha256"; return
+    echo "$EXPECTED_DIR/ui.vendor.fips.sha256"
+    return
   fi
   if [[ "$drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
     if [[ "$OS" == "Linux" ]]; then
-      echo "$EXPECTED_DIR/cli.vendor.linux.sha256"; return
+      echo "$EXPECTED_DIR/cli.vendor.linux.sha256"
+      return
     fi
     local link="static"
     [[ "$drv_name" == *dynamic* || "$attr" == *dynamic* ]] && link="dynamic"
-    echo "$EXPECTED_DIR/cli.vendor.${link}.darwin.sha256"; return
+    echo "$EXPECTED_DIR/cli.vendor.${link}.darwin.sha256"
+    return
   fi
   if [[ "$drv_name" =~ (kms-server|server).*vendor ]]; then
     # server.vendor.*.sha256 are Linux-only; skip on macOS.
     [[ "$OS" != "Linux" ]] && echo "" && return
     local link="static"
     [[ "$drv_name" == *dynamic* || "$attr" == *dynamic* ]] && link="dynamic"
-    echo "$EXPECTED_DIR/server.vendor.${link}.sha256"; return
+    echo "$EXPECTED_DIR/server.vendor.${link}.sha256"
+    return
   fi
   echo ""
 }
@@ -124,7 +130,7 @@ build_attr() {
           target_file=$(drv_to_hash_file "$last_drv" "$attr")
           if [[ -n "$target_file" ]]; then
             echo "    Updating $(basename "$target_file"): $got_hash"
-            echo "$got_hash" > "$target_file"
+            echo "$got_hash" >"$target_file"
             updated=$((updated + 1))
           else
             echo "    Skipping (managed by peer OS runner): $last_drv"
