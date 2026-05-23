@@ -51,10 +51,6 @@ pub(crate) static ONCE_SERVER_WITH_NON_REVOCABLE_KEY: OnceCell<TestsContext> =
     OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 pub(crate) static ONCE_SERVER_WITH_KEK: OnceCell<TestsContext> = OnceCell::const_new();
-#[allow(dead_code)]
-pub(crate) static ONCE_SERVER_WITH_KEK_SOFTHSM2: OnceCell<TestsContext> = OnceCell::const_new();
-#[allow(dead_code)]
-pub(crate) static ONCE_SERVER_WITH_MULTI_HSM: OnceCell<TestsContext> = OnceCell::const_new();
 /// Dedicated cell for the three-SoftHSM2 multi-instance test server.
 /// Uses `hsm:` (old single config on slot 1) + two `[[hsm_instances]]` entries
 /// (new config on slots 2 and 3).  Slot IDs are read from `HSM_SLOT_ID_1/2/3`.
@@ -551,6 +547,41 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
         error!("failed to start test server with softhsm2 hsm: {e}");
         std::process::abort();
     })
+}
+
+/// Start a `SoftHSM2` + KEK test server for use by the vector runner.
+///
+/// Unlike [`start_default_test_kms_server_with_softhsm2_and_kek`], this function
+/// returns a `Result` and does not use a global `OnceCell` — the vector runner
+/// manages its own singleton cell (`ONCE_VECTOR_HSM_KEK`).
+///
+/// # Errors
+/// Returns an error if `HSM_SLOT_ID` is not set or if the server fails to start.
+///
+/// # Panics
+/// Panics if `workspace_dir` does not exist or `kek_id` is empty after bootstrap.
+pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
+-> Result<TestsContext, KmsClientError> {
+    let slot = get_softhsm2_slot_id();
+    let (workspace_dir, kek_id) = Box::pin(create_softhsm2_kek_in_db()).await?;
+    trace!(
+        "SoftHSM2 KEK (vectors): {kek_id} in workspace {}",
+        workspace_dir.display()
+    );
+    assert!(
+        workspace_dir.exists() && !kek_id.is_empty(),
+        "workspace_dir must exist and kek_id must be non-empty"
+    );
+
+    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let mut config = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_slot = vec![slot];
+    config.db.sqlite_path = workspace_dir.join("sqlite-data");
+    config.db.clear_database = false;
+    config.workspace.root_data_path = workspace_dir.join("workspace");
+    config.workspace.tmp_path = workspace_dir.join("tmp");
+    config.key_encryption_key = Some(kek_id);
+    start_server_from_config(config, &config_path).await
 }
 
 /// Start a test KMS server with three `SoftHSM2` instances:

@@ -1,5 +1,3 @@
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
@@ -223,33 +221,10 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             let private_key = kmip_private_key_to_openssl(owm.object())?;
             trace!("OpenSSL Private Key instantiated before signing");
 
-            // ML-DSA: handle PQC signing before the classic dispatch
+            // ML-DSA / SLH-DSA: handle PQC signing before the classic dispatch
             #[cfg(feature = "non-fips")]
             {
-                let key_algo = key_block
-                    .cryptographic_algorithm()
-                    .copied()
-                    .or_else(|| owm.attributes().cryptographic_algorithm);
-                if matches!(
-                    key_algo,
-                    Some(
-                        CryptographicAlgorithm::MLDSA_44
-                            | CryptographicAlgorithm::MLDSA_65
-                            | CryptographicAlgorithm::MLDSA_87
-                            | CryptographicAlgorithm::SLHDSA_SHA2_128s
-                            | CryptographicAlgorithm::SLHDSA_SHA2_128f
-                            | CryptographicAlgorithm::SLHDSA_SHA2_192s
-                            | CryptographicAlgorithm::SLHDSA_SHA2_192f
-                            | CryptographicAlgorithm::SLHDSA_SHA2_256s
-                            | CryptographicAlgorithm::SLHDSA_SHA2_256f
-                            | CryptographicAlgorithm::SLHDSA_SHAKE_128s
-                            | CryptographicAlgorithm::SLHDSA_SHAKE_128f
-                            | CryptographicAlgorithm::SLHDSA_SHAKE_192s
-                            | CryptographicAlgorithm::SLHDSA_SHAKE_192f
-                            | CryptographicAlgorithm::SLHDSA_SHAKE_256s
-                            | CryptographicAlgorithm::SLHDSA_SHAKE_256f
-                    )
-                ) {
+                if super::is_pqc_signature_algorithm(super::resolve_key_algorithm(owm)) {
                     use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_sign;
                     let data: &[u8] = if let Some(d) = request.data.as_ref() {
                         d.as_slice()

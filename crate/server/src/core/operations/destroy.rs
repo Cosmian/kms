@@ -119,14 +119,10 @@ pub(crate) async fn recursively_destroy_object(
 
         // Check if the object is owned by the user
         // If the object is not owned by the user, check if the user has destroy permissions
-        if user != owm.owner() {
-            let permissions = kms
-                .database
-                .list_user_operations_on_object(owm.id(), user, false)
-                .await?;
-            if !permissions.contains(&KmipOperation::Destroy) {
-                continue;
-            }
+        if !super::state_utils::user_can_perform_operation(&owm, user, &KmipOperation::Destroy, kms)
+            .await?
+        {
+            continue;
         }
 
         // Determine the effective current state. In some historical paths the DB "state" column

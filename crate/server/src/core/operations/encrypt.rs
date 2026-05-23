@@ -12,9 +12,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         KmipError,
-        kmip_0::kmip_types::{
-            BlockCipherMode, CryptographicUsageMask, ErrorReason, PaddingMethod, State,
-        },
+        kmip_0::kmip_types::{BlockCipherMode, CryptographicUsageMask, ErrorReason, PaddingMethod},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
@@ -26,7 +24,6 @@ use cosmian_kms_server_database::reexport::{
                 UsageLimitsUnit,
             },
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -56,8 +53,8 @@ use crate::{
     core::{
         KMS,
         operations::{
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
-            select_eligible_oracle_uid, select_unique_key_for_operation,
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
+            check_process_window, select_eligible_oracle_uid, select_unique_key_for_operation,
         },
         uid_utils::uids_from_unique_identifier,
     },
@@ -157,19 +154,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
     // before ProcessStartDate OR after ProtectStopDate (when those attributes are present).
     // The CS-BC-M-14-21 vector sets ActivationDate in the past, ProcessStartDate in the future
     // and ProtectStopDate in the past expecting Encrypt to fail with WrongKeyLifecycleState.
-    if get_effective_state(&owm)? == State::Active {
-        if let Ok(attrs) = owm.object().attributes() {
-            let now = time_normalize()?;
-            let too_early = attrs.process_start_date.is_some_and(|d| now < d);
-            let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
-            if too_early || too_late {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Wrong_Key_Lifecycle_State,
-                    "DENIED".to_owned(),
-                ));
-            }
-        }
-    }
+    check_process_window(&owm)?;
 
     // get unwrapped object for encryption but preserve original wrapped object
     let unwrapped_object = match owm.object() {

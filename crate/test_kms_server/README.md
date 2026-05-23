@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**211 vectors** across 7 categories:
+**227 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -172,6 +172,23 @@ replays the steps sequentially.
 | Access Control | `unauthorized_access` | Create, Get (user fail — no grant) | 2 |
 | Access Control | `owner_full_access` | Create, Get (owner), Encrypt (owner), Decrypt (owner) | 4 |
 | Access Control | `grant_partial_permissions` | Create, GrantAccess (Get only), Get (user ok), Encrypt (user fail) | 4 |
+| **HSM (requires SoftHSM2 + `HSM_SLOT_ID`)** | | | |
+| HSM / KEK | `hsm/kek_encrypt_decrypt` | Create (HSM+KEK), Encrypt, Decrypt, Destroy | 4 |
+| HSM / KEK | `hsm/kek_sign_verify` | CreateKeyPair (HSM+KEK RSA), Sign, SignatureVerify, Destroy ×2 | 5 |
+| HSM / Resident | `hsm/hsm_resident_encrypt` | Create (HSM-resident AES), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Resident | `hsm/hsm_resident_sign` | CreateKeyPair (HSM-resident RSA), Sign, SignatureVerify, Destroy ×2 | 5 |
+| HSM / Negative | `hsm/wrong_prefix` | Create (bad prefix) → error | 1 |
+| HSM / Negative | `hsm/no_kek_baseline` | Create (AES, no HSM prefix), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Permissions | `hsm/permissions/admin_create_encrypt_destroy` | Create (admin), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Permissions | `hsm/permissions/admin_grant_encrypt_decrypt` | Create, GrantAccess (Encrypt+Decrypt), user Encrypt, user Decrypt, Destroy | 5 |
+| HSM / Permissions | `hsm/permissions/get_not_wildcard` | Create, GrantAccess (Get only), user Get (ok), user Encrypt (fail), Destroy | 5 |
+| HSM / Permissions | `hsm/permissions/admin_grant_revoke` | Create, Grant Encrypt, user Encrypt (ok), Revoke, user Encrypt (fail), Destroy | 6 |
+| HSM / Permissions | `hsm/permissions/user_cannot_create` | user Create → error (non-admin denied) | 1 |
+| HSM / Permissions | `hsm/permissions/user_cannot_destroy` | Create (admin), user Destroy → error, admin Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/user_cannot_encrypt` | Create (admin), user Encrypt → error (not found), Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/user_cannot_grant` | Create (admin), user GrantAccess → error (not owner), Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/cannot_grant_destroy` | Create (admin), admin GrantAccess (Destroy) → error (reserved), Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/locate_visibility` | Create ×2, Grant user key1, admin Locate (sees both), user Locate (sees only key1), Destroy ×2 | 7 |
 | **Integrations** | | | |
 | Integrations | `fips/integrations/synology_dsm` | Query ×4, Locate, Register, ModifyAttribute, Locate, Activate, Revoke, Destroy (binary TTLV / KMIP 1.2) | 11 |
 | Integrations | `fips/integrations/veeam` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.4) | 5 |
@@ -369,9 +386,25 @@ assert_error_reason = "PermissionDenied"           # match ResultReason tag
 [steps.assert_fields_absent]
 fields = ["SensitiveField"]
 
+# Count assertions: verify exact number of occurrences of a tag
+# (useful for Locate responses — but only safe when the test owns the full DB state)
+[steps.assert_count]
+UniqueIdentifier = 2
+
 # Assert that a captured value appears among results (for multi-result Locate)
 [steps.assert_any_field]
 UniqueIdentifier = "{{key_id}}"
+
+# Negative value assertion: verify a specific value does NOT appear
+# (concurrency-safe alternative to assert_count for shared-server Locate tests)
+[steps.assert_none_field]
+UniqueIdentifier = "hsm::{{$HSM_SLOT_ID}}::key_that_should_be_invisible"
+
+# Best-effort (cleanup/setup) step — outcome is ignored regardless of success/failure
+[[steps]]
+operation = "Destroy"
+request = "cleanup_destroy.json"
+allow_failure = true
 ```
 
 ---
@@ -419,7 +452,9 @@ JSON-mode vectors use KMIP 2.1 `Attributes` format:
 }
 ```
 
-Placeholders use `{{variable_name}}` syntax and are substituted from captured values:
+Placeholders use `{{variable_name}}` syntax and are substituted from captured values.
+Environment variables use `{{$ENV_VAR}}` syntax. Both work in request JSON files
+**and** in assertion values (`assert_fields`, `assert_any_field`, `assert_none_field`).
 
 ```json
 {

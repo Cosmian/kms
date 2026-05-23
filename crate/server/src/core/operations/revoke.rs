@@ -159,16 +159,11 @@ pub(crate) async fn recursively_revoke_key(
         {
             continue;
         }
-        // if the user is not the owner, we need to check if the user has the right to decrypt
-        // or get the key (in which case it can decrypt on its side)
-        if user != owm.owner() {
-            let permissions = kms
-                .database
-                .list_user_operations_on_object(owm.id(), user, false)
-                .await?;
-            if !permissions.contains(&KmipOperation::Revoke) {
-                continue;
-            }
+        // if the user is not the owner, we need to check if the user has the right to revoke
+        if !super::state_utils::user_can_perform_operation(&owm, user, &KmipOperation::Revoke, kms)
+            .await?
+        {
+            continue;
         }
         count += 1;
         // Perform the chain of revoke operations depending on the type of object

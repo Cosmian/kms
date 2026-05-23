@@ -13,3 +13,9 @@
 
 - **Pivot functions — oracle selection**: extract `select_eligible_oracle_uid()` into `state_utils.rs`, unifying the duplicate "Phase 1 oracle key selection" blocks in `encrypt.rs` and `sign.rs` (~30 lines saved)
 - **Pivot functions — Azure EKM wrap/unwrap**: extract `kmip_encrypt_dek()` and `kmip_decrypt_dek()` into `crate/server/src/routes/azure_ekm/handlers.rs`, unifying duplicated KMIP `Encrypt`/`Decrypt` construction in `wrap_with_aes`+`wrap_with_rsa` and `unwrap_with_aes`+`unwrap_with_rsa` (~50 lines saved)
+- **Decrypt key selection**: apply Phase 1+2 deterministic key-selection pattern to `decrypt.rs` — oracle-eligible keys dispatched via `select_eligible_oracle_uid`, DB keys via `select_unique_key_for_operation`
+- **Signature verify key selection**: apply Phase 2 key-selection pattern to `signature_verify.rs` with PQC algorithm dispatch
+- **Lifecycle guard**: extract `check_process_window()` helper into `state_utils.rs`, replacing inline ProcessStartDate/ProtectStopDate checks in `encrypt.rs`, `decrypt.rs`, and `sign.rs`
+- **Auth guard**: extract `user_can_perform_operation()` helper into `state_utils.rs`, deduplicating authorization checks in `destroy.rs` and `revoke.rs`
+- **PQC dispatch**: extract `resolve_key_algorithm()` and `is_pqc_signature_algorithm()` helpers into `state_utils.rs`, replacing duplicated 15-variant PQC match blocks in `sign.rs` and `signature_verify.rs`
+- **MAC modernization**: rewrite `mac.rs` with Phase 2 key selection, lifecycle gating, and extracted `hmac_algorithm_to_hashing`/`infer_hmac_hashing_algorithm` helpers

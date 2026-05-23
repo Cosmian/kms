@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
@@ -20,7 +20,6 @@ use cosmian_kms_server_database::reexport::{
                 CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
             },
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -45,10 +44,10 @@ use crate::{
     core::{
         KMS,
         operations::{
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, get_effective_state,
-            is_user_authorized_for_operation,
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
+            check_process_window, select_eligible_oracle_uid, select_unique_key_for_operation,
         },
-        uid_utils::{has_prefix, uids_from_unique_identifier},
+        uid_utils::uids_from_unique_identifier,
     },
     error::KmsError,
     kms_bail,
@@ -77,112 +76,79 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
         .context("Decrypt")?;
     debug!("candidate uids: {uids:?}");
 
-    // Determine which UID to select. The decision process is as follows: loop through the uids
-    // 1. If the UID has a prefix, try using that
-    // 2. If the UID does not have a prefix, fetch the corresponding object and check that
-    //   a- the object is active
-    //   b- the object is a Private Key, a Symmetric Key
-    //   c- the object is authorized for Decryption
-    //
-    // Permissions checks are done AFTER the object is fetched in the default database
-    // to avoid calling `database.is_object_owned_by()` and hence a double call to the DB
-    // for each uid. This is also based on the high probability that there is still a single object
-    // in the candidates' list.
-    let mut selected_owm = None;
-    let mut found_but_no_permission = false;
-    for uid in uids {
-        if let Some(prefix) = has_prefix(&uid) {
-            if !is_user_authorized_for_operation(&kms.database, &uid, user, KmipOperation::Decrypt)
-                .await?
-            {
-                debug!("{user} is not authorized to decrypt using: {uid}");
-                continue;
-            }
-            debug!("{user} is authorized to decrypt using: {uid}");
-            return decrypt_using_crypto_oracle(kms, &request, &uid, prefix).await;
-        }
+    // Determine which UID to select. The decision process mirrors encrypt.rs:
+    // Phase 1: If any UID has a prefix (crypto oracle), use that key immediately.
+    // Phase 2: Call the shared selection function for the standard database path; it enforces
+    //          Active state, permissions, and uniqueness (fail on multiple eligible keys).
 
-        // Default database
-        let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
-            debug!("failed to retrieve the key: {uid}");
-            KmsError::ItemNotFound(format!("Decrypt: failed to retrieve the key: {uid}"))
-        })?;
-        // Check effective state (PreActive with past activation_date counts as Active)
-        if get_effective_state(&owm)? != State::Active {
-            debug!("{uid} is not active");
-            continue;
-        }
-        // If an HSM wraps the object, likely the wrapping will be done with NoEncoding
-        // and the attributes of the object will be empty. Use the metadata attributes.
-        let attributes = owm
-            .object()
-            .attributes()
-            .unwrap_or_else(|_| owm.attributes());
-        if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
-            debug!("{uid} is not authorized for decryption");
-            continue;
-        }
-        // check user permissions - owner can always decrypt
-        if owm.owner() != user {
-            let ops = kms
-                .database
-                .list_user_operations_on_object(&uid, user, false)
-                .await?;
-            if !ops
-                .iter()
-                .any(|p| [KmipOperation::Decrypt, KmipOperation::Get].contains(p))
-            {
-                debug!("{user} is not authorized to decrypt using: {uid}");
-                found_but_no_permission = true;
-                continue;
-            }
-        }
-        debug!("{user} is authorized to decrypt using: {uid}");
-        // user is authorized to decrypt with the key
-        if let Object::SymmetricKey { .. } = owm.object() {
-            selected_owm = Some(owm);
-            break;
-        }
-        if let Object::PrivateKey { .. } = owm.object() {
-            // Is it a Covercrypt secret key?
-            #[cfg(feature = "non-fips")]
-            if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                // does it have an access access structure that allows decryption?
-                use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
-                if access_policy_from_attributes(kms.vendor_id(), attributes).is_err() {
-                    continue;
-                }
-            }
-            selected_owm = Some(owm);
-            break;
-        }
+    // Phase 1 — Oracle (prefix) UIDs.  Collect all eligible ones and enforce uniqueness.
+    if let Some((uid, prefix)) = select_eligible_oracle_uid(
+        KmipOperation::Decrypt,
+        "Decrypt",
+        &uids,
+        unique_identifier,
+        kms,
+        user,
+    )
+    .await?
+    {
+        debug!("{user} is authorized to decrypt using: {uid} from crypto oracle");
+        return decrypt_using_crypto_oracle(kms, &request, &uid, &prefix).await;
     }
-    let mut owm = selected_owm.ok_or_else(|| {
-        if found_but_no_permission {
-            KmsError::Unauthorized(format!(
-                "Decrypt: the user {user} does not have the permission to decrypt using the key: {unique_identifier}"
-            ))
-        } else {
-            KmsError::ItemNotFound(format!("Decrypt: key id: {unique_identifier}, not found"))
+
+    // Phase 2 — Standard database path via shared selection function.
+    let mut owm = select_unique_key_for_operation(
+        "Decrypt",
+        &uids,
+        unique_identifier,
+        KmipOperation::Decrypt,
+        kms,
+        user,
+        |owm| {
+            if let Object::SymmetricKey { .. } = owm.object() {
+                let attributes = owm
+                    .object()
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes());
+                return Ok(attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)?);
+            }
+            if let Object::PrivateKey { .. } = owm.object() {
+                let attributes = owm
+                    .object()
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes());
+                if !attributes.is_usage_authorized_for(CryptographicUsageMask::Decrypt)? {
+                    return Ok(false);
+                }
+                // Covercrypt secret keys require an access policy that allows decryption
+                #[cfg(feature = "non-fips")]
+                if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                    use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
+                    if access_policy_from_attributes(kms.vendor_id(), attributes).is_err() {
+                        return Ok(false);
+                    }
+                }
+                return Ok(true);
+            }
+            Ok(false)
+        },
+    )
+    .await
+    .map_err(|e| match e {
+        KmsError::ItemNotFound(_) => {
+            KmsError::ItemNotFound(format!("Decrypt: failed to retrieve the key: {unique_identifier}"))
         }
+        KmsError::Unauthorized(_) => KmsError::Unauthorized(format!(
+            "Decrypt: the user {user} does not have the permission to decrypt using the key: \
+             {unique_identifier}"
+        )),
+        other => other,
     })?;
 
     // Enforce time window constraints for Decrypt mirroring Encrypt semantics: deny usage when
     // current time is before ProcessStartDate or after ProtectStopDate. Required for vectors like
     // CS-BC-M-14-21 which expect WrongKeyLifecycleState prior to revocation.
-    if get_effective_state(&owm)? == State::Active {
-        if let Ok(attrs) = owm.object().attributes() {
-            let now = time_normalize()?;
-            let too_early = attrs.process_start_date.is_some_and(|d| now < d);
-            let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
-            if too_early || too_late {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Wrong_Key_Lifecycle_State,
-                    "DENIED".to_owned(),
-                ));
-            }
-        }
-    }
+    check_process_window(&owm)?;
 
     // if the key is wrapped, we need to unwrap it
     owm.set_object(

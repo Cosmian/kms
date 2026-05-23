@@ -1,7 +1,10 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::HashingAlgorithm,
+    kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
     kmip_2_1::{
         KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_data_structures::KeyBlock,
+        kmip_objects::Object,
         kmip_operations::{MAC, MACResponse, MACVerify, MACVerifyResponse},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier, ValidityIndicator},
     },
@@ -11,8 +14,12 @@ use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 
 use crate::{
     core::{
-        KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-        retrieve_object_utils::retrieve_object_for_operation,
+        KMS,
+        operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
+            check_process_window, select_unique_key_for_operation,
+        },
+        uid_utils::uids_from_unique_identifier,
     },
     error::KmsError,
     kms_bail,
@@ -43,108 +50,106 @@ fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult
     Ok(hmac)
 }
 
+/// Map a `CryptographicAlgorithm` HMAC variant to its `HashingAlgorithm`.
+fn hmac_algorithm_to_hashing(ca: CryptographicAlgorithm) -> KResult<HashingAlgorithm> {
+    match ca {
+        CryptographicAlgorithm::HMACSHA1 => Ok(HashingAlgorithm::SHA1),
+        CryptographicAlgorithm::HMACSHA224 => Ok(HashingAlgorithm::SHA224),
+        CryptographicAlgorithm::HMACSHA256 => Ok(HashingAlgorithm::SHA256),
+        CryptographicAlgorithm::HMACSHA384 => Ok(HashingAlgorithm::SHA384),
+        CryptographicAlgorithm::HMACSHA512 => Ok(HashingAlgorithm::SHA512),
+        CryptographicAlgorithm::HMACSHA3224 => Ok(HashingAlgorithm::SHA3224),
+        CryptographicAlgorithm::HMACSHA3256 => Ok(HashingAlgorithm::SHA3256),
+        CryptographicAlgorithm::HMACSHA3384 => Ok(HashingAlgorithm::SHA3384),
+        CryptographicAlgorithm::HMACSHA3512 => Ok(HashingAlgorithm::SHA3512),
+        other => Err(KmsError::InvalidRequest(format!(
+            "Unsupported HMAC algorithm for inference: {other:?}"
+        ))),
+    }
+}
+
+/// Infer the `HashingAlgorithm` from the key's `KeyBlock` or `Attributes`.
+///
+/// Tries (in order):
+/// 1. `key_block.cryptographic_algorithm` (HMAC variant → direct mapping)
+/// 2. `attrs.cryptographic_parameters.cryptographic_algorithm` (fallback)
+fn infer_hmac_hashing_algorithm(
+    key_block: &KeyBlock,
+    attrs: &Attributes,
+) -> KResult<HashingAlgorithm> {
+    // Try key_block algorithm first
+    if let Some(ca) = key_block.cryptographic_algorithm {
+        if let Ok(ha) = hmac_algorithm_to_hashing(ca) {
+            return Ok(ha);
+        }
+        // Non-HMAC algorithm on key_block: fall through to attributes
+    }
+    // Fallback to attributes cryptographic_parameters
+    let cp = attrs
+        .cryptographic_parameters
+        .as_ref()
+        .ok_or_else(|| KmsError::InvalidRequest(
+            "Cryptographic parameters are required or inferable from key's cryptographic algorithm or attributes".to_owned(),
+        ))?;
+    let ca = cp.cryptographic_algorithm.ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "Missing cryptographic algorithm for MAC inference (attributes cryptographic \
+             parameters present without algorithm)"
+                .to_owned(),
+        )
+    })?;
+    hmac_algorithm_to_hashing(ca)
+}
+
 pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
     trace!("uid={:?}", request.unique_identifier);
 
-    let uid = request
+    let unique_identifier = request
         .unique_identifier
         .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("Mac: unique_identifier must be a string")?;
-    trace!("Mac: Unique identifier: {uid}");
+        .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
+        .await
+        .context("MAC")?;
+
+    // Phase 2 — Standard database path via shared selection function.
+    // MAC has no Phase 1 (no oracle/HSM support for MAC operations).
+    // Note: the original MAC implementation did not enforce CryptographicUsageMask::MACGenerate;
+    // it accepted any symmetric key the user can Get. We preserve that behavior for backward
+    // compatibility with existing test vectors and deployments.
+    let owm = select_unique_key_for_operation(
+        "MAC",
+        &uids,
+        unique_identifier,
+        KmipOperation::MAC,
+        kms,
+        user,
+        |owm| Ok(matches!(owm.object(), Object::SymmetricKey { .. })),
+    )
+    .await
+    .map_err(|e| match e {
+        KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+            ErrorReason::Item_Not_Found,
+            format!("MAC: no valid key for id: {unique_identifier}"),
+        ),
+        other => other,
+    })?;
+
+    // Enforce time window constraints (ProcessStartDate / ProtectStopDate).
+    check_process_window(&owm)?;
+
+    // Second-stage enforcement: validate the retrieved key's stored attributes.
+    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MAC", owm.id(), &owm)?;
 
     // Determine hashing algorithm: if explicit cryptographic_parameters supplied use them,
-    // otherwise attempt inference from the key's registered CryptographicAlgorithm or its
-    // attributes. This aligns with mandatory profile vectors (e.g. CS-AC-M-4-21) that omit
-    // explicit cryptographic parameters while expecting a successful MAC computation.
+    // otherwise infer from the key's registered CryptographicAlgorithm or its attributes.
     let algorithm = if let Some(cp) = request.cryptographic_parameters {
         cp.hashing_algorithm
             .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?
     } else {
-        // Retrieve key now (needed for inference)
-        let owm = Box::pin(retrieve_object_for_operation(
-            uid,
-            KmipOperation::Get,
-            kms,
-            user,
-        ))
-        .await?;
-
-        enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MAC", uid, &owm)?;
         let key_block = owm.object().key_block()?;
-        if let Some(ca) = key_block.cryptographic_algorithm {
-            match ca {
-                CryptographicAlgorithm::HMACSHA1 => HashingAlgorithm::SHA1,
-                CryptographicAlgorithm::HMACSHA224 => HashingAlgorithm::SHA224,
-                CryptographicAlgorithm::HMACSHA256 => HashingAlgorithm::SHA256,
-                CryptographicAlgorithm::HMACSHA384 => HashingAlgorithm::SHA384,
-                CryptographicAlgorithm::HMACSHA512 => HashingAlgorithm::SHA512,
-                CryptographicAlgorithm::HMACSHA3224 => HashingAlgorithm::SHA3224,
-                CryptographicAlgorithm::HMACSHA3256 => HashingAlgorithm::SHA3256,
-                CryptographicAlgorithm::HMACSHA3384 => HashingAlgorithm::SHA3384,
-                CryptographicAlgorithm::HMACSHA3512 => HashingAlgorithm::SHA3512,
-                // Non-HMAC algorithms (e.g., AES) cannot directly infer hashing algorithm; try attributes
-                _ => {
-                    let attrs = owm.attributes();
-                    if let Some(cp) = &attrs.cryptographic_parameters {
-                        if let Some(ca2) = cp.cryptographic_algorithm {
-                            match ca2 {
-                                CryptographicAlgorithm::HMACSHA1 => HashingAlgorithm::SHA1,
-                                CryptographicAlgorithm::HMACSHA224 => HashingAlgorithm::SHA224,
-                                CryptographicAlgorithm::HMACSHA256 => HashingAlgorithm::SHA256,
-                                CryptographicAlgorithm::HMACSHA384 => HashingAlgorithm::SHA384,
-                                CryptographicAlgorithm::HMACSHA512 => HashingAlgorithm::SHA512,
-                                CryptographicAlgorithm::HMACSHA3224 => HashingAlgorithm::SHA3224,
-                                CryptographicAlgorithm::HMACSHA3256 => HashingAlgorithm::SHA3256,
-                                CryptographicAlgorithm::HMACSHA3384 => HashingAlgorithm::SHA3384,
-                                CryptographicAlgorithm::HMACSHA3512 => HashingAlgorithm::SHA3512,
-                                other => kms_bail!(
-                                    "Unsupported HMAC algorithm for MAC inference: {other:?}"
-                                ),
-                            }
-                        } else {
-                            kms_bail!(
-                                "Missing cryptographic algorithm for MAC inference (attributes cryptographic parameters present without algorithm)"
-                            )
-                        }
-                    } else {
-                        kms_bail!(
-                            "Cryptographic parameters are required or inferable from key's cryptographic algorithm or attributes"
-                        )
-                    }
-                }
-            }
-        } else {
-            // No algorithm on key_block: fallback to attributes cryptographic_parameters
-            let attrs = owm.attributes();
-            if let Some(cp) = &attrs.cryptographic_parameters {
-                if let Some(ca) = cp.cryptographic_algorithm {
-                    match ca {
-                        CryptographicAlgorithm::HMACSHA1 => HashingAlgorithm::SHA1,
-                        CryptographicAlgorithm::HMACSHA224 => HashingAlgorithm::SHA224,
-                        CryptographicAlgorithm::HMACSHA256 => HashingAlgorithm::SHA256,
-                        CryptographicAlgorithm::HMACSHA384 => HashingAlgorithm::SHA384,
-                        CryptographicAlgorithm::HMACSHA512 => HashingAlgorithm::SHA512,
-                        CryptographicAlgorithm::HMACSHA3224 => HashingAlgorithm::SHA3224,
-                        CryptographicAlgorithm::HMACSHA3256 => HashingAlgorithm::SHA3256,
-                        CryptographicAlgorithm::HMACSHA3384 => HashingAlgorithm::SHA3384,
-                        CryptographicAlgorithm::HMACSHA3512 => HashingAlgorithm::SHA3512,
-                        other => {
-                            kms_bail!("Unsupported HMAC algorithm for MAC inference: {other:?}")
-                        }
-                    }
-                } else {
-                    kms_bail!(
-                        "Missing cryptographic algorithm for MAC inference (attributes cryptographic parameters present without algorithm)"
-                    )
-                }
-            } else {
-                kms_bail!(
-                    "Cryptographic parameters are required or inferable from key's cryptographic algorithm or attributes"
-                )
-            }
-        }
+        infer_hmac_hashing_algorithm(key_block, owm.attributes())?
     };
     trace!("Mac: algorithm: {algorithm:?}");
 
@@ -158,22 +163,12 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
     let digest = if let Some(correlation_value) = request.correlation_value {
         compute_hmac(&correlation_value, &data, algorithm)?
     } else {
-        // We may already have retrieved object above for inference; retrieve again (cheap) to simplify code.
-        let owm = Box::pin(retrieve_object_for_operation(
-            uid,
-            KmipOperation::Get,
-            kms,
-            user,
-        ))
-        .await?;
-
-        enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MAC", uid, &owm)?;
         let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
         compute_hmac(key_bytes.as_slice(), &data, algorithm)?
     };
 
     let response = MACResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         mac_data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
         correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
     };
@@ -187,88 +182,51 @@ pub(crate) async fn mac_verify(
     user: &str,
 ) -> KResult<MACVerifyResponse> {
     trace!("uid={}", request.unique_identifier);
-    let UniqueIdentifier::TextString(uid) = &request.unique_identifier else {
-        kms_bail!("MacVerify: unique_identifier must be a string")
-    };
-    trace!("MacVerify: Unique identifier: {uid}");
 
-    // Retrieve key
-    let owm = Box::pin(retrieve_object_for_operation(
-        uid,
-        KmipOperation::Get,
+    let unique_identifier = &request.unique_identifier;
+    let uids = uids_from_unique_identifier(unique_identifier, kms)
+        .await
+        .context("MACVerify")?;
+
+    // Phase 2 — Standard database path via shared selection function.
+    let owm = select_unique_key_for_operation(
+        "MACVerify",
+        &uids,
+        unique_identifier,
+        KmipOperation::MAC,
         kms,
         user,
-    ))
-    .await?;
+        |owm| Ok(matches!(owm.object(), Object::SymmetricKey { .. })),
+    )
+    .await
+    .map_err(|e| match e {
+        KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+            ErrorReason::Item_Not_Found,
+            format!("MACVerify: no valid key for id: {unique_identifier}"),
+        ),
+        other => other,
+    })?;
 
-    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MACVerify", uid, &owm)?;
+    // Enforce time window constraints (ProcessStartDate / ProtectStopDate).
+    check_process_window(&owm)?;
+
+    // Second-stage enforcement: validate the retrieved key's stored attributes.
+    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MACVerify", owm.id(), &owm)?;
+
     let key_block = owm.object().key_block()?;
     let key_bytes = key_block.key_bytes().context("mac_verify")?;
 
-    // Determine hashing algorithm: prefer explicit request param; otherwise infer from key cryptographic algorithm
+    // Determine hashing algorithm: prefer explicit request param; otherwise infer from key.
     let algorithm = if let Some(cp) = request.cryptographic_parameters {
-        if let Some(hash) = cp.hashing_algorithm {
-            hash
-        } else {
-            kms_bail!("Hashing algorithm is required in cryptographic parameters if provided")
-        }
+        cp.hashing_algorithm.ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "Hashing algorithm is required in cryptographic parameters if provided".to_owned(),
+            )
+        })?
     } else {
-        // Primary inference from key_block's cryptographic_algorithm if it's an HMAC variant
-        if let Some(alg) = key_block.cryptographic_algorithm {
-            match alg {
-                CryptographicAlgorithm::HMACSHA1 => HashingAlgorithm::SHA1,
-                CryptographicAlgorithm::HMACSHA224 => HashingAlgorithm::SHA224,
-                CryptographicAlgorithm::HMACSHA256 => HashingAlgorithm::SHA256,
-                CryptographicAlgorithm::HMACSHA384 => HashingAlgorithm::SHA384,
-                CryptographicAlgorithm::HMACSHA512 => HashingAlgorithm::SHA512,
-                other_alg => {
-                    // Fallback: look into attributes cryptographic_parameters
-                    let attrs = owm.attributes();
-                    if let Some(cp) = &attrs.cryptographic_parameters {
-                        if let Some(ca) = cp.cryptographic_algorithm {
-                            match ca {
-                                CryptographicAlgorithm::HMACSHA1 => HashingAlgorithm::SHA1,
-                                CryptographicAlgorithm::HMACSHA224 => HashingAlgorithm::SHA224,
-                                CryptographicAlgorithm::HMACSHA256 => HashingAlgorithm::SHA256,
-                                CryptographicAlgorithm::HMACSHA384 => HashingAlgorithm::SHA384,
-                                CryptographicAlgorithm::HMACSHA512 => HashingAlgorithm::SHA512,
-                                other => kms_bail!(
-                                    "Unsupported HMAC algorithm for inference: {other:?} (key block alg: {other_alg:?})"
-                                ),
-                            }
-                        } else {
-                            kms_bail!("Unsupported HMAC algorithm for inference: {other_alg:?}")
-                        }
-                    } else {
-                        kms_bail!("Unsupported HMAC algorithm for inference: {other_alg:?}")
-                    }
-                }
-            }
-        } else {
-            // No algorithm on key_block: try attributes cryptographic_parameters
-            let attrs = owm.attributes();
-            if let Some(cp) = &attrs.cryptographic_parameters {
-                if let Some(ca) = cp.cryptographic_algorithm {
-                    match ca {
-                        CryptographicAlgorithm::HMACSHA1 => HashingAlgorithm::SHA1,
-                        CryptographicAlgorithm::HMACSHA224 => HashingAlgorithm::SHA224,
-                        CryptographicAlgorithm::HMACSHA256 => HashingAlgorithm::SHA256,
-                        CryptographicAlgorithm::HMACSHA384 => HashingAlgorithm::SHA384,
-                        CryptographicAlgorithm::HMACSHA512 => HashingAlgorithm::SHA512,
-                        other => kms_bail!("Unsupported HMAC algorithm for inference: {other:?}"),
-                    }
-                } else {
-                    kms_bail!(
-                        "Missing cryptographic algorithm for MACVerify inference (attributes cryptographic parameters present without algorithm)"
-                    )
-                }
-            } else {
-                kms_bail!("Missing cryptographic algorithm on key for MACVerify inference")
-            }
-        }
+        infer_hmac_hashing_algorithm(key_block, owm.attributes())?
     };
 
-    // Re-compute algorithm if previous branch attempted unreachable placeholder usage.
     let expected_mac = compute_hmac(key_bytes.as_slice(), &request.data, algorithm)?;
     let validity = if expected_mac == request.mac_data {
         ValidityIndicator::Valid
@@ -276,16 +234,13 @@ pub(crate) async fn mac_verify(
         ValidityIndicator::Invalid
     };
     let response = MACVerifyResponse {
-        unique_identifier: request.unique_identifier,
+        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         validity_indicator: validity,
-    };
-    let uid_str = match &response.unique_identifier {
-        UniqueIdentifier::TextString(s) => s.as_str(),
-        _ => "<non-text-uid>",
     };
     trace!(
         "MacVerify response: uid={}, validity={:?}",
-        uid_str, response.validity_indicator
+        owm.id(),
+        response.validity_indicator
     );
     Ok(response)
 }

@@ -1,10 +1,12 @@
 use std::collections::HashSet;
 
+#[cfg(feature = "non-fips")]
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::{
     Database,
     reexport::{
         cosmian_kmip::{
-            kmip_0::kmip_types::State,
+            kmip_0::kmip_types::{ErrorReason, State},
             kmip_2_1::{
                 KmipOperation,
                 kmip_attributes::Attributes,
@@ -115,6 +117,97 @@ pub(crate) fn merge_crypto_params(
             req_cp
         }
     }
+}
+
+/// Resolve the effective cryptographic algorithm for a managed object.
+///
+/// Checks the key block's algorithm first, then falls back to the object's
+/// external attributes.  Returns `None` when neither source provides a value.
+#[cfg(feature = "non-fips")]
+pub(crate) fn resolve_key_algorithm(owm: &ObjectWithMetadata) -> Option<CryptographicAlgorithm> {
+    owm.object()
+        .key_block()
+        .ok()
+        .and_then(|kb| kb.cryptographic_algorithm().copied())
+        .or_else(|| owm.attributes().cryptographic_algorithm)
+}
+
+/// Returns `true` when `algo` is a PQC signature algorithm (ML-DSA or SLH-DSA).
+///
+/// These algorithms are dispatched to dedicated PQC signing / verification
+/// routines instead of the classic OpenSSL code-path.
+#[cfg(feature = "non-fips")]
+pub(crate) const fn is_pqc_signature_algorithm(algo: Option<CryptographicAlgorithm>) -> bool {
+    use CryptographicAlgorithm::{
+        MLDSA_44, MLDSA_65, MLDSA_87, SLHDSA_SHA2_128f, SLHDSA_SHA2_128s, SLHDSA_SHA2_192f,
+        SLHDSA_SHA2_192s, SLHDSA_SHA2_256f, SLHDSA_SHA2_256s, SLHDSA_SHAKE_128f, SLHDSA_SHAKE_128s,
+        SLHDSA_SHAKE_192f, SLHDSA_SHAKE_192s, SLHDSA_SHAKE_256f, SLHDSA_SHAKE_256s,
+    };
+    matches!(
+        algo,
+        Some(
+            MLDSA_44
+                | MLDSA_65
+                | MLDSA_87
+                | SLHDSA_SHA2_128s
+                | SLHDSA_SHA2_128f
+                | SLHDSA_SHA2_192s
+                | SLHDSA_SHA2_192f
+                | SLHDSA_SHA2_256s
+                | SLHDSA_SHA2_256f
+                | SLHDSA_SHAKE_128s
+                | SLHDSA_SHAKE_128f
+                | SLHDSA_SHAKE_192s
+                | SLHDSA_SHAKE_192f
+                | SLHDSA_SHAKE_256s
+                | SLHDSA_SHAKE_256f
+        )
+    )
+}
+
+/// Enforce the KMIP process-window constraints on a managed object.
+///
+/// An Active key whose current time is before `ProcessStartDate` or after
+/// `ProtectStopDate` must be rejected with `Wrong_Key_Lifecycle_State`.
+/// This implements the guard required by mandatory profile vectors such as
+/// CS-BC-M-14-21 (Encrypt/Decrypt) and CS-AC-M-8-21 (Sign).
+pub(crate) fn check_process_window(owm: &ObjectWithMetadata) -> KResult<()> {
+    if get_effective_state(owm)? == State::Active {
+        if let Ok(attrs) = owm.object().attributes() {
+            let now = time_normalize()?;
+            let too_early = attrs.process_start_date.is_some_and(|d| now < d);
+            let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
+            if too_early || too_late {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Wrong_Key_Lifecycle_State,
+                    "DENIED".to_owned(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Check whether `user` is allowed to perform `operation` on the given object.
+///
+/// Returns `true` if the user is the owner **or** has been explicitly granted
+/// the requested operation. This is the common authorisation guard used by
+/// Destroy and Revoke when iterating over linked objects — callers typically
+/// `continue` when the function returns `false`.
+pub(crate) async fn user_can_perform_operation(
+    owm: &ObjectWithMetadata,
+    user: &str,
+    operation: &KmipOperation,
+    kms: &KMS,
+) -> KResult<bool> {
+    if user == owm.owner() {
+        return Ok(true);
+    }
+    let permissions = kms
+        .database
+        .list_user_operations_on_object(owm.id(), user, false)
+        .await?;
+    Ok(permissions.contains(operation))
 }
 
 /// Determine the effective state of an object based on its stored state and `activation_date`.
