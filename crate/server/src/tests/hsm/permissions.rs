@@ -21,7 +21,9 @@ use cosmian_kms_client_utils::reexport::cosmian_kmip::kmip_2_1::{
     requests::symmetric_key_create_request,
 };
 use cosmian_kms_interfaces::as_hsm_uid;
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::KmipOperation;
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason, kmip_2_1::KmipOperation,
+};
 use cosmian_logger::info;
 use uuid::Uuid;
 
@@ -475,9 +477,21 @@ async fn test_non_admin_decrypt_with_grant(kms: &Arc<KMS>, aes_uid: &str) -> KRe
 // ── Get/Export tests ─────────────────────────────────────────────────────
 
 /// #25: Admin can export HSM key
+///
+/// Some HSMs (e.g. `Crypt2Pay`) enforce `CKA_SENSITIVE = true` at the hardware level
+/// regardless of the requested template. In that case the KMIP Export correctly
+/// returns `ResultReason=Sensitive`, which proves the permission check passed (the
+/// request reached the export logic) — the HSM just refuses to release key material.
 async fn test_admin_export(kms: &Arc<KMS>, aes_uid: &str) -> KResult<()> {
     info!("Permissions #25: Admin exports HSM key");
-    export_object(kms, ADMIN, aes_uid).await?;
+    match export_object(kms, ADMIN, aes_uid).await {
+        Ok(_) => {} // export succeeded — HSM allows extraction
+        Err(KmsError::Kmip21Error(ErrorReason::Sensitive, _)) => {
+            // HSM enforces non-extractable keys — acceptable, permission was granted
+            info!("Permissions #25: HSM enforces sensitive keys — export correctly denied");
+        }
+        Err(e) => return Err(e),
+    }
     Ok(())
 }
 
@@ -493,10 +507,21 @@ async fn test_non_admin_export_no_grant(kms: &Arc<KMS>, aes_uid: &str) -> KResul
 }
 
 /// #27: Non-admin can export with Get grant
+///
+/// Same as #25: if the HSM enforces `CKA_SENSITIVE`, the Sensitive/DENIED response
+/// proves the permission check succeeded — the request was not rejected for lack of
+/// authorization.
 async fn test_non_admin_export_with_get(kms: &Arc<KMS>, aes_uid: &str) -> KResult<()> {
     info!("Permissions #27: Non-admin exports with Get grant");
     grant_ops(kms, ADMIN, USER, aes_uid, vec![KmipOperation::Get]).await?;
-    export_object(kms, USER, aes_uid).await?;
+    match export_object(kms, USER, aes_uid).await {
+        Ok(_) => {} // export succeeded
+        Err(KmsError::Kmip21Error(ErrorReason::Sensitive, _)) => {
+            // HSM enforces non-extractable keys — acceptable, permission was granted
+            info!("Permissions #27: HSM enforces sensitive keys — export correctly denied");
+        }
+        Err(e) => return Err(e),
+    }
     revoke_ops(kms, ADMIN, USER, aes_uid, vec![KmipOperation::Get]).await?;
     Ok(())
 }

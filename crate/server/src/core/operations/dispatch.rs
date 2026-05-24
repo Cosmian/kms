@@ -8,14 +8,13 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
     ttlv::{TTLV, from_ttlv},
 };
-use cosmian_logger::debug;
 
 use crate::{
     core::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
-            attributes::get_attribute_list, mac::mac_verify, query::query as query_op,
+            attributes::get_attribute_list, check, mac::mac_verify, query::query as query_op,
         },
     },
     error::KmsError,
@@ -49,6 +48,30 @@ macro_rules! op {
         let req = from_ttlv::<$Req>($ttlv)?;
         let resp = Box::pin($kms.$method(req, $user)).await?;
         Operation::$Resp(resp)
+    }};
+    // Variant for free functions: fn(kms, req, user) -> Result<Resp>
+    (fn $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $func:expr, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $func($kms, req, $user).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for free functions with Box::pin
+    (pin_fn $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $func:expr, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = Box::pin($func($kms, req, $user)).await?;
+        Operation::$Resp(resp)
+    }};
+    // Variant for infallible KMS methods (no `?`)
+    (infallible $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $kms.$method(req, $user).await;
+        Operation::$Resp(resp)
+    }};
+    // Variant for free functions: fn(req, extra) -> Result<Resp> with boxed response
+    (query $ttlv:expr, $kms:expr, $Req:ty, $func:expr, $Resp:ident) => {{
+        let req = from_ttlv::<$Req>($ttlv)?;
+        let resp = $func(req, $kms.vendor_id()).await?;
+        Operation::$Resp(Box::new(resp))
     }};
 }
 
@@ -96,9 +119,7 @@ async fn dispatch_inner(
         ),
         "Certify" => op!(priv ttlv, kms, user, Certify, certify, CertifyResponse),
         "Check" => {
-            let req = from_ttlv::<Check>(ttlv)?;
-            let resp = crate::core::operations::check::check(kms, req, user).await?;
-            Operation::CheckResponse(resp)
+            op!(fn ttlv, kms, user, Check, check, CheckResponse)
         }
         "Create" => op!(priv ttlv, kms, user, Create, create, CreateResponse),
         "CreateKeyPair" => {
@@ -118,17 +139,13 @@ async fn dispatch_inner(
         "DeriveKey" => op!(pin ttlv, kms, user, DeriveKey, derive_key, DeriveKeyResponse),
         "Destroy" => op!(ttlv, kms, user, Destroy, destroy, DestroyResponse),
         "DiscoverVersions" => {
-            let req = from_ttlv::<DiscoverVersions>(ttlv)?;
-            let resp = kms.discover_versions(req, user).await;
-            Operation::DiscoverVersionsResponse(resp)
+            op!(infallible ttlv, kms, user, DiscoverVersions, discover_versions, DiscoverVersionsResponse)
         }
         "Encrypt" => op!(ttlv, kms, user, Encrypt, encrypt, EncryptResponse),
         "Export" => op!(boxed ttlv, kms, user, Export, export, ExportResponse),
         "Get" => op!(ttlv, kms, user, Get, get, GetResponse),
         "GetAttributeList" => {
-            let req = from_ttlv::<GetAttributeList>(ttlv)?;
-            let resp = Box::pin(get_attribute_list(kms, req, user)).await?;
-            Operation::GetAttributeListResponse(resp)
+            op!(pin_fn ttlv, kms, user, GetAttributeList, get_attribute_list, GetAttributeListResponse)
         }
         "GetAttributes" => {
             op!(boxed ttlv, kms, user, GetAttributes, get_attributes, GetAttributesResponse)
@@ -147,15 +164,9 @@ async fn dispatch_inner(
         "Locate" => op!(ttlv, kms, user, Locate, locate, LocateResponse),
         "Mac" | "MAC" => op!(ttlv, kms, user, MAC, mac, MACResponse),
         "MACVerify" => {
-            let req = from_ttlv::<MACVerify>(ttlv)?;
-            let resp = Box::pin(mac_verify(kms, req, user)).await?;
-            Operation::MACVerifyResponse(resp)
+            op!(pin_fn ttlv, kms, user, MACVerify, mac_verify, MACVerifyResponse)
         }
-        "Query" => {
-            let req = from_ttlv::<Query>(ttlv)?;
-            let resp = query_op(req, kms.vendor_id()).await?;
-            Operation::QueryResponse(Box::new(resp))
-        }
+        "Query" => op!(query ttlv, kms, Query, query_op, QueryResponse),
         "ModifyAttribute" => {
             op!(
                 ttlv,
@@ -172,13 +183,14 @@ async fn dispatch_inner(
         }
         "Register" => op!(priv ttlv, kms, user, Register, register, RegisterResponse),
         "Revoke" => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
-        "SetAttribute" => {
-            debug!("SetAttribute TTLV {ttlv:#?}");
-            let req = from_ttlv::<SetAttribute>(ttlv)?;
-            debug!("SetAttribute request received");
-            let resp = kms.set_attribute(req, user).await?;
-            Operation::SetAttributeResponse(resp)
-        }
+        "SetAttribute" => op!(
+            ttlv,
+            kms,
+            user,
+            SetAttribute,
+            set_attribute,
+            SetAttributeResponse
+        ),
         "Sign" => op!(ttlv, kms, user, Sign, sign, SignResponse),
         "SignatureVerify" => {
             op!(
