@@ -43,7 +43,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, ResolvedKey, resolve_key_for_operation},
+        operations::{CryptoOpSpec, ResolvedKey, has_usage_mask, resolve_key_for_operation},
     },
     error::KmsError,
     kms_bail,
@@ -60,34 +60,28 @@ impl CryptoOpSpec for DecryptOp {
     const OP_NAME: &'static str = "Decrypt";
     const SUPPORTS_ORACLE: bool = true;
 
-    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+    fn is_key_eligible(owm: &ObjectWithMetadata, vendor_id: &str) -> bool {
         if let Object::SymmetricKey { .. } = owm.object() {
-            let attributes = owm
-                .object()
-                .attributes()
-                .unwrap_or_else(|_| owm.attributes());
-            return attributes
-                .is_usage_authorized_for(CryptographicUsageMask::Decrypt)
-                .unwrap_or(false);
+            return has_usage_mask(owm, CryptographicUsageMask::Decrypt, false);
         }
         if let Object::PrivateKey { .. } = owm.object() {
-            let attributes = owm
-                .object()
-                .attributes()
-                .unwrap_or_else(|_| owm.attributes());
-            if !attributes
-                .is_usage_authorized_for(CryptographicUsageMask::Decrypt)
-                .unwrap_or(false)
-            {
+            if !has_usage_mask(owm, CryptographicUsageMask::Decrypt, false) {
                 return false;
             }
             #[cfg(feature = "non-fips")]
-            if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                use cosmian_kms_server_database::reexport::{
-                    cosmian_kmip::kmip_2_1::extra::VENDOR_ID_COSMIAN,
-                    cosmian_kms_crypto::crypto::access_policy_from_attributes,
-                };
-                if access_policy_from_attributes(VENDOR_ID_COSMIAN, attributes).is_err() {
+            if owm
+                .object()
+                .attributes()
+                .unwrap_or_else(|_| owm.attributes())
+                .key_format_type
+                == Some(KeyFormatType::CoverCryptSecretKey)
+            {
+                use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::access_policy_from_attributes;
+                let attributes = owm
+                    .object()
+                    .attributes()
+                    .unwrap_or_else(|_| owm.attributes());
+                if access_policy_from_attributes(vendor_id, attributes).is_err() {
                     return false;
                 }
             }
@@ -142,16 +136,24 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
                 .await
                 .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?;
 
+            let ciphertext_len = request.data.as_ref().map_or(0, Vec::len);
+
+            // Enforce UsageLimits before the operation.
+            super::enforce_usage_limits(&owm, ciphertext_len)?;
+
             let res = BulkData::deserialize(data).map_or_else(
                 |_| decrypt_single(&owm, &kms.params, &request),
                 |bulk_data| decrypt_bulk(&owm, &kms.params, &request, bulk_data),
             )?;
 
+            // Post-operation: decrement and persist usage limits.
+            super::decrement_usage_limits(kms, &mut owm, "Decrypt", ciphertext_len).await?;
+
             info!(
                 uid = owm.id(),
                 user = user,
                 "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
-                request.data.as_ref().map_or(0, Vec::len),
+                ciphertext_len,
                 res.data.as_ref().map_or(0, |d| d.len()),
             );
 

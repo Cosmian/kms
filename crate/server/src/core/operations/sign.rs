@@ -23,7 +23,7 @@ use openssl::pkey::{Id, PKey, Private};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, ResolvedKey, resolve_key_for_operation},
+        operations::{CryptoOpSpec, ResolvedKey, has_usage_mask, resolve_key_for_operation},
     },
     error::KmsError,
     kms_bail,
@@ -38,15 +38,9 @@ impl CryptoOpSpec for SignOp {
     const OP_NAME: &'static str = "Sign";
     const SUPPORTS_ORACLE: bool = true;
 
-    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+    fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::PrivateKey { .. } = owm.object() {
-            let attributes = owm
-                .object()
-                .attributes()
-                .unwrap_or_else(|_| owm.attributes());
-            return attributes
-                .is_usage_authorized_for(CryptographicUsageMask::Sign)
-                .unwrap_or(false);
+            return has_usage_mask(owm, CryptographicUsageMask::Sign, false);
         }
         false
     }
@@ -93,6 +87,15 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
             // Unwrap + second-stage enforcement.
             super::unwrap_and_enforce_policy(kms, &mut owm, "Sign", user).await?;
 
+            let data_len = request
+                .data
+                .as_ref()
+                .map_or(0, |d| d.len())
+                .max(request.digested_data.as_ref().map_or(0, Vec::len));
+
+            // Enforce UsageLimits before the operation.
+            super::enforce_usage_limits(&owm, data_len)?;
+
             // Only private keys can be used for signing
             let res = match owm.object() {
                 Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
@@ -101,6 +104,9 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
                     other.object_type()
                 ))),
             }?;
+
+            // Post-operation: decrement and persist usage limits.
+            super::decrement_usage_limits(kms, &mut owm, "Sign", data_len).await?;
 
             info!(uid = owm.id(), user = user, "sign response = {res}");
             Ok(res)

@@ -25,7 +25,7 @@ use crate::{
         KMS,
         operations::{
             CryptoOpSpec, ResolvedKey,
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, has_usage_mask,
             resolve_key_for_operation,
         },
     },
@@ -42,18 +42,9 @@ impl CryptoOpSpec for SignatureVerifyOp {
     const OP_NAME: &'static str = "SignatureVerify";
     const SUPPORTS_ORACLE: bool = false;
 
-    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+    fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::PublicKey { .. } = owm.object() {
-            let attrs = owm
-                .object()
-                .attributes()
-                .unwrap_or_else(|_| owm.attributes());
-            return match attrs.cryptographic_usage_mask {
-                None => true,
-                Some(_) => attrs
-                    .is_usage_authorized_for(CryptographicUsageMask::Verify)
-                    .unwrap_or(false),
-            };
+            return has_usage_mask(owm, CryptographicUsageMask::Verify, true);
         }
         false
     }
@@ -115,14 +106,15 @@ pub(crate) async fn signature_verify(
     debug!("Retrieving verification key with UID: {unique_identifier}");
 
     let uid_ref = UniqueIdentifier::TextString(unique_identifier.clone());
-    let uid_owm = match resolve_key_for_operation::<SignatureVerifyOp>(&uid_ref, kms, user).await? {
-        ResolvedKey::Local(owm) => *owm,
-        ResolvedKey::Oracle { .. } => {
-            return Err(KmsError::NotSupported(
-                "SignatureVerify: oracle keys not supported".to_owned(),
-            ));
-        }
-    };
+    let mut uid_owm =
+        match resolve_key_for_operation::<SignatureVerifyOp>(&uid_ref, kms, user).await? {
+            ResolvedKey::Local(owm) => *owm,
+            ResolvedKey::Oracle { .. } => {
+                return Err(KmsError::NotSupported(
+                    "SignatureVerify: oracle keys not supported".to_owned(),
+                ));
+            }
+        };
 
     // Second-stage enforcement: validate the retrieved key's stored attributes.
     enforce_kmip_algorithm_policy_for_retrieved_key(
@@ -131,6 +123,15 @@ pub(crate) async fn signature_verify(
         uid_owm.id(),
         &uid_owm,
     )?;
+
+    let data_len = request
+        .data
+        .as_ref()
+        .map_or(0, Vec::len)
+        .max(request.digested_data.as_ref().map_or(0, Vec::len));
+
+    // Enforce UsageLimits before the operation.
+    super::enforce_usage_limits(&uid_owm, data_len)?;
 
     let verification_key = extract_verification_key(uid_owm.object())?;
 
@@ -143,6 +144,7 @@ pub(crate) async fn signature_verify(
 
     // Handle streaming verification
     if request.init_indicator == Some(true) || request.correlation_value.is_some() {
+        super::decrement_usage_limits(kms, &mut uid_owm, "SignatureVerify", data_len).await?;
         return handle_streaming_verification(request, uid_owm.id().to_owned(), &verification_key);
     }
 
@@ -191,6 +193,7 @@ pub(crate) async fn signature_verify(
             } else {
                 ValidityIndicator::Invalid
             };
+            super::decrement_usage_limits(kms, &mut uid_owm, "SignatureVerify", data_len).await?;
             return Ok(SignatureVerifyResponse {
                 unique_identifier: UniqueIdentifier::TextString(uid_owm.id().to_owned()),
                 validity_indicator: Some(vi),
@@ -209,6 +212,9 @@ pub(crate) async fn signature_verify(
     )?;
 
     debug!("Signature verification result: {validity_indicator:?}");
+
+    // Post-operation: decrement and persist usage limits.
+    super::decrement_usage_limits(kms, &mut uid_owm, "SignatureVerify", data_len).await?;
 
     Ok(SignatureVerifyResponse {
         unique_identifier: UniqueIdentifier::TextString(uid_owm.id().to_owned()),

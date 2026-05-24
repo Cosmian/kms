@@ -216,6 +216,7 @@ replays the steps sequentially.
 | Negative / Protocol | `negative/empty_data_encrypt` | Encrypt with empty plaintext → success | 2 |
 | Negative / Protocol | `negative/invalid_iv_length` | Encrypt with wrong-length IV → error | 2 |
 | Negative / Protocol | `negative/sign_with_encrypt_key` | Sign with Encrypt-mask-only key → error | 2 |
+| Negative / Protocol | `negative/duplicate_tags_encrypt` | Encrypt with tag resolving to 2 keys → error | 7 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_mode` | Unsupported BlockCipherMode → success | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_padding` | Unsupported PaddingMethod with GCM → success | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_mode_algo_mismatch` | ChaCha20 key + AES CryptographicParameters → success | 2 |

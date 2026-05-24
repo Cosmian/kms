@@ -37,7 +37,7 @@ impl CryptoOpSpec for MacOp {
     const OP_NAME: &'static str = "MAC";
     const SUPPORTS_ORACLE: bool = false;
 
-    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+    fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         // MAC does NOT enforce CryptographicUsageMask::MACGenerate for backward compat.
         matches!(owm.object(), Object::SymmetricKey { .. })
     }
@@ -65,7 +65,7 @@ impl CryptoOpSpec for MacVerifyOp {
     const OP_NAME: &'static str = "MACVerify";
     const SUPPORTS_ORACLE: bool = false;
 
-    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool {
+    fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         matches!(owm.object(), Object::SymmetricKey { .. })
     }
 
@@ -167,7 +167,7 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    let owm = match resolve_key_for_operation::<MacOp>(unique_identifier, kms, user).await? {
+    let mut owm = match resolve_key_for_operation::<MacOp>(unique_identifier, kms, user).await? {
         ResolvedKey::Local(owm) => *owm,
         ResolvedKey::Oracle { .. } => {
             return Err(KmsError::NotSupported(
@@ -191,7 +191,11 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
     trace!("Mac: algorithm: {algorithm:?}");
 
     let data = request.data.unwrap_or_default();
+    let data_len = data.len();
     trace!("Mac: data: {data:?}");
+
+    // Enforce UsageLimits before the operation.
+    super::enforce_usage_limits(&owm, data_len)?;
 
     if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
         kms_bail!("Invalid request: init_indicator and final_indicator cannot both be true");
@@ -203,6 +207,9 @@ pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACRespo
         let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
         compute_hmac(key_bytes.as_slice(), &data, algorithm)?
     };
+
+    // Post-operation: decrement and persist usage limits.
+    super::decrement_usage_limits(kms, &mut owm, "MAC", data_len).await?;
 
     let response = MACResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
@@ -222,17 +229,23 @@ pub(crate) async fn mac_verify(
 
     let unique_identifier = &request.unique_identifier;
 
-    let owm = match resolve_key_for_operation::<MacVerifyOp>(unique_identifier, kms, user).await? {
-        ResolvedKey::Local(owm) => *owm,
-        ResolvedKey::Oracle { .. } => {
-            return Err(KmsError::NotSupported(
-                "MACVerify: oracle keys not supported".to_owned(),
-            ));
-        }
-    };
+    let mut owm =
+        match resolve_key_for_operation::<MacVerifyOp>(unique_identifier, kms, user).await? {
+            ResolvedKey::Local(owm) => *owm,
+            ResolvedKey::Oracle { .. } => {
+                return Err(KmsError::NotSupported(
+                    "MACVerify: oracle keys not supported".to_owned(),
+                ));
+            }
+        };
 
     // Second-stage enforcement: validate the retrieved key's stored attributes.
     enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MACVerify", owm.id(), &owm)?;
+
+    let data_len = request.data.len();
+
+    // Enforce UsageLimits before the operation.
+    super::enforce_usage_limits(&owm, data_len)?;
 
     let key_block = owm.object().key_block()?;
     let key_bytes = key_block.key_bytes().context("mac_verify")?;
@@ -254,6 +267,10 @@ pub(crate) async fn mac_verify(
     } else {
         ValidityIndicator::Invalid
     };
+
+    // Post-operation: decrement and persist usage limits.
+    super::decrement_usage_limits(kms, &mut owm, "MACVerify", data_len).await?;
+
     let response = MACVerifyResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
         validity_indicator: validity,

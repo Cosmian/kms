@@ -2790,6 +2790,14 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/negative/lifecycle/reactivate_deactivated").await
     }
 
+    // ── Negative tests: duplicate tags (ambiguous key selection) ─────────
+
+    #[tokio::test]
+    async fn test_neg_duplicate_tags_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/duplicate_tags_encrypt").await
+    }
+
     // ── KMIP operations: ReKeyKeyPair ───────────────────────────────────
 
     #[cfg(feature = "non-fips")]

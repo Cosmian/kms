@@ -6,12 +6,12 @@ use cosmian_kms_server_database::{
     Database,
     reexport::{
         cosmian_kmip::{
-            kmip_0::kmip_types::{ErrorReason, State},
+            kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
             kmip_2_1::{
                 KmipOperation,
                 kmip_attributes::Attributes,
                 kmip_objects::{Object, ObjectType},
-                kmip_types::{CryptographicParameters, UniqueIdentifier},
+                kmip_types::{CryptographicParameters, UniqueIdentifier, UsageLimitsUnit},
             },
             time_normalize,
         },
@@ -441,6 +441,36 @@ pub(crate) enum ResolvedKey {
     Local(Box<ObjectWithMetadata>),
 }
 
+/// Check whether a managed object's usage mask permits the given operation.
+///
+/// Resolves the object's effective attributes (prefers the object's own key-block
+/// attributes, falls back to externally-stored metadata) and tests against the
+/// required `CryptographicUsageMask` flag.
+///
+/// # `lenient` mode
+///
+/// When `true`, a **missing** usage mask (`None`) is treated as "allowed".
+/// This backward-compatibility mode is used for Certificates and Public Keys that
+/// were imported without a usage mask.
+///
+/// When `false`, a missing mask means the key is **rejected**.
+pub(crate) fn has_usage_mask(
+    owm: &ObjectWithMetadata,
+    required: CryptographicUsageMask,
+    lenient: bool,
+) -> bool {
+    let attributes = owm
+        .object()
+        .attributes()
+        .unwrap_or_else(|_| owm.attributes());
+    if lenient && attributes.cryptographic_usage_mask.is_none() {
+        return true;
+    }
+    attributes
+        .is_usage_authorized_for(required)
+        .unwrap_or(false)
+}
+
 /// Declarative specification for KMIP cryptographic operations key resolution.
 ///
 /// Implemented by zero-sized marker types (one per operation). A generic resolution
@@ -470,7 +500,7 @@ pub(crate) trait CryptoOpSpec {
     ///
     /// Implementations should handle attribute parsing errors gracefully by returning
     /// `false` (ineligible) rather than propagating errors.
-    fn is_key_eligible(owm: &ObjectWithMetadata) -> bool;
+    fn is_key_eligible(owm: &ObjectWithMetadata, vendor_id: &str) -> bool;
 
     /// Map key-selection errors to operation-specific KMIP error messages.
     fn map_selection_error(
@@ -525,7 +555,7 @@ pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
         Op::KMIP_OP,
         kms,
         user,
-        |owm| Ok(Op::is_key_eligible(owm)),
+        |owm| Ok(Op::is_key_eligible(owm, kms.vendor_id())),
     )
     .await
     .map_err(|e| Op::map_selection_error(e, unique_identifier, user))?;
@@ -561,6 +591,82 @@ pub(crate) async fn unwrap_and_enforce_policy(
         owm.id(),
         owm,
     )
+}
+
+// ─── UsageLimits helpers ─────────────────────────────────────────────────────
+
+/// Enforce `UsageLimits` before a cryptographic operation.
+///
+/// Returns `Err(Permission_Denied / "DENIED")` when the key's remaining usage
+/// budget is insufficient for the requested `data_len` bytes.
+///
+/// For `Byte`-based limits the check is data-length-aware; for `Object`, `Block`,
+/// and `Operation` units the limit simply cannot be zero.
+pub(crate) fn enforce_usage_limits(owm: &ObjectWithMetadata, data_len: usize) -> KResult<()> {
+    let Some(ul) = owm.attributes().usage_limits.as_ref() else {
+        return Ok(());
+    };
+    match ul.usage_limits_unit {
+        UsageLimitsUnit::Byte => {
+            let needed = i64::try_from(data_len).unwrap_or(i64::MAX);
+            if ul.usage_limits_total < needed {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Permission_Denied,
+                    "DENIED".to_owned(),
+                ));
+            }
+        }
+        UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+            if ul.usage_limits_total <= 0 {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Permission_Denied,
+                    "DENIED".to_owned(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Decrement and persist `UsageLimits` after a successful cryptographic operation.
+///
+/// For `Byte`-based limits, `data_len` bytes are subtracted from the remaining total.
+/// For `Object`, `Block`, and `Operation` units, one unit is consumed.
+///
+/// Persistence (database UPDATE) is skipped when no usage limits are set on the key,
+/// avoiding unnecessary row-level lock contention on the hot path.
+pub(crate) async fn decrement_usage_limits(
+    kms: &KMS,
+    owm: &mut ObjectWithMetadata,
+    op_name: &str,
+    data_len: usize,
+) -> KResult<()> {
+    let mut decremented = false;
+    if let Some(ref mut ul) = owm.attributes_mut().usage_limits {
+        match ul.usage_limits_unit {
+            UsageLimitsUnit::Byte => {
+                let consumed = i64::try_from(data_len).unwrap_or(i64::MAX);
+                ul.usage_limits_total = (ul.usage_limits_total - consumed).max(0);
+                decremented = true;
+            }
+            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+                ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
+                decremented = true;
+            }
+        }
+    }
+    if decremented {
+        let attributes = owm.attributes().clone();
+        kms.database
+            .update_object(owm.id(), owm.object(), &attributes, None)
+            .await
+            .map_err(|e| {
+                KmsError::ServerError(format!(
+                    "{op_name}: failed to persist updated usage limits: {e}"
+                ))
+            })?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
