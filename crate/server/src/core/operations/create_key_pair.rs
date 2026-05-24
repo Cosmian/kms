@@ -112,7 +112,7 @@ pub(crate) async fn create_key_pair(
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
 
     let mut private_key = key_pair.private_key().to_owned();
-    let private_key_attributes = super::state_utils::setup_object_lifecycle(
+    let private_key_attributes = super::key_ops::setup_object_lifecycle(
         &mut private_key,
         ObjectType::PrivateKey,
         requested_sk_activation_date,
@@ -133,7 +133,7 @@ pub(crate) async fn create_key_pair(
     .await?;
 
     let mut public_key = key_pair.public_key().to_owned();
-    let public_key_attributes = super::state_utils::setup_object_lifecycle(
+    let public_key_attributes = super::key_ops::setup_object_lifecycle(
         &mut public_key,
         ObjectType::PublicKey,
         requested_pk_activation_date,

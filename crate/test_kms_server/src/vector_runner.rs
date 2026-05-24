@@ -2891,21 +2891,169 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_vec_hsm_resident_encrypt() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/hsm_resident_encrypt").await
-    }
-
-    #[tokio::test]
     async fn test_vec_hsm_kek_sign_verify() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/kek_sign_verify").await
     }
 
     #[tokio::test]
-    async fn test_vec_hsm_resident_sign() -> Result<(), KmsClientError> {
+    async fn test_vec_hsm_kek_aes256_create_encrypt() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/hsm/hsm_resident_sign").await
+        run_test_vector("test_data/vectors/hsm/kek_aes256_create_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_rsa2048_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_rsa2048_create_sign").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_ec_p256_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_ec_p256_create_sign").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_ed25519_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_ed25519_create_sign").await
+    }
+
+    #[tokio::test]
+    #[cfg(not(feature = "non-fips"))]
+    async fn test_vec_hsm_kek_rsa1024_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_rsa1024_rejected").await
+    }
+
+    // ── HSM Resident: Key Creation ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes128_create_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes128_create_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes256_create_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes256_create_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa4096_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa4096_create_sign").await
+    }
+
+    // ── HSM Resident: Encryption ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes256_encrypt_cbc() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes256_encrypt_cbc").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_encrypt_oaep_sha256() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha256").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_encrypt_oaep_sha1() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha1").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_encrypt_pkcs1v15() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_pkcs1v15").await
+    }
+
+    // ── HSM Resident: Signing ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_pkcs1v15() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_pkcs1v15").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha1() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha1").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha256() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha256").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha384() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha384").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha512() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha512").await
+    }
+
+    // ── HSM Resident: Negative tests ─────────────────────────────────────
+
+    #[tokio::test]
+    #[cfg(not(feature = "non-fips"))]
+    async fn test_vec_hsm_resident_rsa1024_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa1024_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_ec_p256_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ec_p256_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_ec_p384_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ec_p384_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_ed25519_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ed25519_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_non_aes_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_non_aes_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes256_encrypt_ecb_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes256_encrypt_ecb_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_ecdsa_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_ecdsa_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_dsa_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_dsa_rejected").await
     }
 
     #[tokio::test]

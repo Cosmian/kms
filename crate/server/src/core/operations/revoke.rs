@@ -24,7 +24,7 @@ use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        operations::state_utils::{ObjectWithMetadataOps, record_cascading_metrics},
+        operations::key_ops::{ObjectWithMetadataOps, record_cascading_metrics},
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,

@@ -16,6 +16,7 @@ mod export_get;
 mod get;
 mod hash;
 mod import;
+mod key_ops;
 mod locate;
 mod mac;
 mod message;
@@ -29,7 +30,6 @@ mod rng_retrieve;
 mod rng_seed;
 mod sign;
 mod signature_verify;
-mod state_utils;
 mod validate;
 
 pub(crate) use activate::activate;
@@ -60,6 +60,10 @@ pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;
 pub(crate) use register::register;
 pub(crate) mod algorithm_policy;
+pub(crate) use key_ops::{
+    CryptoOpSpec, ResolvedKey, decrement_usage_limits, enforce_usage_limits, has_usage_mask,
+    resolve_key_for_operation, unwrap_and_enforce_policy,
+};
 pub(crate) use rekey::rekey;
 pub(crate) use rekey_keypair::rekey_keypair;
 #[cfg(feature = "non-fips")]
@@ -69,8 +73,4 @@ pub(crate) use rng_retrieve::rng_retrieve;
 pub(crate) use rng_seed::rng_seed;
 pub(crate) use sign::sign;
 pub(crate) use signature_verify::signature_verify;
-pub(crate) use state_utils::{
-    CryptoOpSpec, ResolvedKey, decrement_usage_limits, enforce_usage_limits, has_usage_mask,
-    resolve_key_for_operation, unwrap_and_enforce_policy,
-};
 pub(crate) use validate::validate_operation;

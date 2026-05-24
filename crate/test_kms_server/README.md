@@ -175,8 +175,31 @@ replays the steps sequentially.
 | **HSM (requires SoftHSM2 + `HSM_SLOT_ID`)** | | | |
 | HSM / KEK | `hsm/kek_encrypt_decrypt` | Create (HSM+KEK), Encrypt, Decrypt, Destroy | 4 |
 | HSM / KEK | `hsm/kek_sign_verify` | CreateKeyPair (HSM+KEK RSA), Sign, SignatureVerify, Destroy ×2 | 5 |
-| HSM / Resident | `hsm/hsm_resident_encrypt` | Create (HSM-resident AES), Encrypt, Decrypt, Destroy | 4 |
-| HSM / Resident | `hsm/hsm_resident_sign` | CreateKeyPair (HSM-resident RSA), Sign, SignatureVerify, Destroy ×2 | 5 |
+| HSM / KEK Create | `hsm/kek_aes256_create_encrypt` | Create (AES-256, KEK-wrapped), Encrypt, Decrypt, Destroy | 3 |
+| HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | CreateKeyPair (RSA-2048, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | CreateKeyPair (EC P-256, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK Create | `hsm/kek_ed25519_create_sign` | CreateKeyPair (Ed25519, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | CreateKeyPair (RSA-1024, KEK-wrapped) → FIPS rejection | 1 |
+| HSM / Resident Create | `hsm/resident_aes128_create_encrypt` | Create (AES-128, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Resident Create | `hsm/resident_aes256_create_encrypt` | Create (AES-256, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Resident Create | `hsm/resident_rsa4096_create_sign` | CreateKeyPair (RSA-4096, HSM-resident), Sign, Destroy ×2 | 4 |
+| HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Create (AES-256, HSM), Encrypt (AES-CBC), Decrypt, Destroy | 4 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | CreateKeyPair (RSA-2048, HSM), Encrypt (OAEP-SHA256), Decrypt, Destroy ×2 | 5 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | CreateKeyPair (RSA-2048, HSM), Encrypt (OAEP-SHA1), Decrypt, Destroy ×2 | 5 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | CreateKeyPair (RSA-2048, HSM), Encrypt (PKCS#1 v1.5), Decrypt, Destroy ×2 | 5 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_pkcs1v15` | CreateKeyPair (RSA-2048, HSM), Sign (raw PKCS#1 v1.5), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha1` | CreateKeyPair (RSA-2048, HSM), Sign (SHA1WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha256` | CreateKeyPair (RSA-2048, HSM), Sign (SHA256WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha384` | CreateKeyPair (RSA-2048, HSM), Sign (SHA384WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha512` | CreateKeyPair (RSA-2048, HSM), Sign (SHA512WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | CreateKeyPair (RSA-1024, HSM-resident) → FIPS rejection | 1 |
+| HSM / Resident Negative | `hsm/resident_ec_p256_rejected` | CreateKeyPair (EC P-256, HSM-resident) → unsupported key type | 1 |
+| HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | CreateKeyPair (EC P-384, HSM-resident) → unsupported key type | 1 |
+| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | CreateKeyPair (Ed25519, HSM-resident) → unsupported key type | 1 |
+| HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Create (3DES, HSM-resident) → only AES allowed | 1 |
+| HSM / Resident Negative | `hsm/resident_aes256_encrypt_ecb_rejected` | Create (AES-256, HSM), Encrypt (ECB) → unsupported mode | 3 |
+| HSM / Resident Negative | `hsm/resident_rsa2048_sign_ecdsa_rejected` | CreateKeyPair (RSA-2048, HSM), Sign (ECDSAWithSHA256) → unsupported algorithm | 2 |
+| HSM / Resident Negative | `hsm/resident_rsa2048_sign_dsa_rejected` | CreateKeyPair (RSA-2048, HSM), Sign (DSAWithSHA256) → unsupported algorithm | 2 |
 | HSM / Negative | `hsm/wrong_prefix` | Create (bad prefix) → error | 1 |
 | HSM / Negative | `hsm/no_kek_baseline` | Create (AES, no HSM prefix), Encrypt, Decrypt, Destroy | 4 |
 | HSM / Permissions | `hsm/permissions/admin_create_encrypt_destroy` | Create (admin), Encrypt, Decrypt, Destroy | 4 |

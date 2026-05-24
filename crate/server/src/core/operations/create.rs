@@ -86,7 +86,7 @@ pub(crate) async fn create(
     );
 
     // Set lifecycle attributes and copy them before the key gets wrapped
-    let attributes = super::state_utils::setup_object_lifecycle(
+    let attributes = super::key_ops::setup_object_lifecycle(
         &mut object,
         request.object_type,
         request.attributes.activation_date,
