@@ -61,6 +61,8 @@ impl CryptoOpSpec for DecryptOp {
     const SUPPORTS_ORACLE: bool = true;
 
     fn is_key_eligible(owm: &ObjectWithMetadata, vendor_id: &str) -> bool {
+        #[cfg(not(feature = "non-fips"))]
+        let _ = vendor_id;
         if let Object::SymmetricKey { .. } = owm.object() {
             return has_usage_mask(owm, CryptographicUsageMask::Decrypt, false);
         }

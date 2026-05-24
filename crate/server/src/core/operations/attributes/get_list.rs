@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// Returns the names of all attributes currently set on the object.
-pub(super) async fn get_attribute_list(
+pub(crate) async fn get_attribute_list(
     kms: &KMS,
     request: GetAttributeList,
     user: &str,
@@ -23,7 +23,7 @@ pub(super) async fn get_attribute_list(
     get_attribute_list_with_protocol_version(kms, request, user, None).await
 }
 
-pub(super) async fn get_attribute_list_with_protocol_version(
+pub(crate) async fn get_attribute_list_with_protocol_version(
     kms: &KMS,
     request: GetAttributeList,
     user: &str,

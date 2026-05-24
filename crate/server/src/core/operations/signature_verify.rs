@@ -137,7 +137,7 @@ pub(crate) async fn signature_verify(
 
     // Resolve cryptographic parameters: prefer request values, but fall back to
     // the stored key Attributes when the request omits them.
-    let effective_crypto_params = super::state_utils::merge_crypto_params(
+    let effective_crypto_params = CryptographicParameters::merged_with_object(
         request.cryptographic_parameters.clone(),
         uid_owm.object(),
     );
@@ -185,7 +185,10 @@ pub(crate) async fn signature_verify(
     // ML-DSA: check the key's algorithm; if PQC, use ml_dsa_verify directly
     #[cfg(feature = "non-fips")]
     {
-        if super::is_pqc_signature_algorithm(super::resolve_key_algorithm(&uid_owm)) {
+        if uid_owm
+            .resolve_key_algorithm()
+            .is_some_and(|a| a.is_pqc_signature())
+        {
             use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_verify;
             let valid = ml_dsa_verify(&verification_key, &data_to_verify, signature_data)?;
             let vi = if valid {

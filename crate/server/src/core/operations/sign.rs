@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::{
             KmipOperation,
             kmip_objects::Object,
             kmip_operations::{Sign, SignResponse},
-            kmip_types::{KeyFormatType, UniqueIdentifier},
+            kmip_types::{CryptographicParameters, KeyFormatType, UniqueIdentifier},
         },
     },
     cosmian_kms_crypto::{
@@ -192,7 +192,10 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             // ML-DSA / SLH-DSA: handle PQC signing before the classic dispatch
             #[cfg(feature = "non-fips")]
             {
-                if super::is_pqc_signature_algorithm(super::resolve_key_algorithm(owm)) {
+                if owm
+                    .resolve_key_algorithm()
+                    .is_some_and(|a| a.is_pqc_signature())
+                {
                     use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_sign;
                     let data: &[u8] = if let Some(d) = request.data.as_ref() {
                         d.as_slice()
@@ -213,7 +216,7 @@ fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<Si
             }
 
             // Resolve effective cryptographic parameters: request overrides, stored attributes fill missing
-            let effective_cp = super::state_utils::merge_crypto_params(
+            let effective_cp = CryptographicParameters::merged_with_object(
                 request.cryptographic_parameters.clone(),
                 owm.object(),
             );

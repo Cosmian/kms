@@ -444,7 +444,7 @@ pub(super) async fn process_public_key(
             // overlay them so they are preserved for future verify operations when request CP is omitted.
             if let Some(orig) = original_cp {
                 let existing = attributes.cryptographic_parameters.get_or_insert_default();
-                super::state_utils::fill_missing_cp_fields(existing, &orig);
+                existing.fill_missing_fields(&orig);
             }
         }
     }
@@ -571,7 +571,7 @@ pub(super) async fn process_private_key(
             // This is mandatory for tests "CS-AC - Cryptographic Service - Asymmetric Cryptography"
             if let Some(orig) = original_cp {
                 let existing = attributes.cryptographic_parameters.get_or_insert_default();
-                super::state_utils::fill_missing_cp_fields(existing, &orig);
+                existing.fill_missing_fields(&orig);
             }
         }
     }

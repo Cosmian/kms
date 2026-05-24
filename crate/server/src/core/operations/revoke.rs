@@ -24,7 +24,7 @@ use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        operations::state_utils::record_cascading_metrics,
+        operations::state_utils::{ObjectWithMetadataOps, record_cascading_metrics},
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -160,7 +160,8 @@ pub(crate) async fn recursively_revoke_key(
             continue;
         }
         // if the user is not the owner, we need to check if the user has the right to revoke
-        if !super::state_utils::user_can_perform_operation(&owm, user, &KmipOperation::Revoke, kms)
+        if !owm
+            .user_can_perform_operation(user, &KmipOperation::Revoke, kms)
             .await?
         {
             continue;

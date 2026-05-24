@@ -15,7 +15,7 @@ use crate::{
         KMS,
         operations::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
-            get_attribute_list::get_attribute_list, mac::mac_verify, query::query as query_op,
+            attributes::get_attribute_list, mac::mac_verify, query::query as query_op,
         },
     },
     error::KmsError,

@@ -23,7 +23,7 @@ use crate::core::cover_crypt::destroy_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        operations::state_utils::record_cascading_metrics,
+        operations::state_utils::{ObjectWithMetadataOps, record_cascading_metrics},
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -119,7 +119,8 @@ pub(crate) async fn recursively_destroy_object(
 
         // Check if the object is owned by the user
         // If the object is not owned by the user, check if the user has destroy permissions
-        if !super::state_utils::user_can_perform_operation(&owm, user, &KmipOperation::Destroy, kms)
+        if !owm
+            .user_can_perform_operation(user, &KmipOperation::Destroy, kms)
             .await?
         {
             continue;
