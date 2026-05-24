@@ -109,6 +109,16 @@ impl Database {
                 return Ok(store.clone());
             }
         }
+        // If the UID carries an HSM prefix (starts with "hsm::") but no HSM store
+        // is registered, refuse to route it to the default SQL store.  Silently
+        // storing an HSM-prefixed object in the SQL backend would corrupt the key
+        // namespace and make the object unreachable once a real HSM is attached.
+        if uid.starts_with("hsm::") {
+            return Err(DbError::InvalidRequest(format!(
+                "No HSM is configured for UID '{uid}'. \
+                 Start the server with an HSM plugin to create HSM keys."
+            )));
+        }
         // No registered prefix matched – fall back to the default store.
         map.get("")
             .ok_or_else(|| DbError::InvalidRequest("No default object store available".to_owned()))
@@ -362,5 +372,40 @@ impl Database {
             }
         }
         Ok(ids)
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, clippy::panic)]
+mod tests {
+    use std::{collections::HashMap, time::Duration};
+
+    use super::Database;
+    use crate::core::MainDbParams;
+
+    /// Verify that a UID with an HSM prefix is rejected when no HSM store is registered.
+    #[tokio::test]
+    async fn test_hsm_uid_rejected_without_hsm_store() {
+        let tmp = std::env::temp_dir();
+        let db = Database::instantiate(
+            &MainDbParams::Sqlite(tmp, None),
+            false,
+            HashMap::new(), // no HSM stores registered
+            Duration::from_secs(1),
+        )
+        .await
+        .expect("Failed to instantiate in-memory database");
+
+        let result = db.get_object_store("hsm::softhsm2::0::mykey").await;
+        match result {
+            Ok(_) => panic!("Expected an error for an HSM-prefixed UID with no HSM store"),
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("No HSM is configured"),
+                    "Expected 'No HSM is configured' in error, got: {msg}"
+                );
+            }
+        }
     }
 }

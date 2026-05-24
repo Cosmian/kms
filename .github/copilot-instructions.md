@@ -12,14 +12,14 @@ and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
 Always fetch the **latest published version** of any specification before implementing or referencing it. Never rely on a draft, a locally-cached copy, or a version number recalled from memory.
 
-| Standard family | Canonical source |
-| --------------- | ---------------- |
-| IETF RFCs | `https://www.rfc-editor.org/rfc/rfcXXXX.html` |
-| KMIP | OASIS specification pages |
-| NIST algorithms & FIPS | `https://csrc.nist.gov/` |
-| X.509 / ASN.1 OIDs | `https://oid-rep.orange-labs.fr/` or `https://oidref.com/` |
+| Standard family        | Canonical source                                           |
+| ---------------------- | ---------------------------------------------------------- |
+| IETF RFCs              | `https://www.rfc-editor.org/rfc/rfcXXXX.html`              |
+| KMIP                   | OASIS specification pages                                  |
+| NIST algorithms & FIPS | `https://csrc.nist.gov/`                                   |
+| X.509 / ASN.1 OIDs     | `https://oid-rep.orange-labs.fr/` or `https://oidref.com/` |
 
-> **AI agent rule**: when implementing or commenting on cryptographic standards (RFCs, NIST FIPS, KMIP spec), use the `fetch_webpage` tool to retrieve the live document and verify section numbers, OIDs, algorithm identifiers, and normative requirements before writing code or comments. Do **not** rely on training-data knowledge of a specification — always fetch it.
+> **AI agent rule — mandatory**: Before writing ANY code or comment that references a cryptographic standard, use the `fetch_webpage` tool to retrieve the live document. Verify section numbers, OIDs, algorithm identifiers, and normative requirements directly from the source. Do **not** rely on training-data knowledge of a specification — always fetch it.
 
 ---
 
@@ -191,7 +191,7 @@ You must always verify that changes related to KMIP protocol are compliant with 
 
 | Flag            | Default | Effect                                                                                       |
 | --------------- | ------- | -------------------------------------------------------------------------------------------- |
-| *(none / fips)* | **on**  | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider                          |
+| _(none / fips)_ | **on**  | FIPS-140-3 mode; only NIST-approved algorithms; loads FIPS provider                          |
 | `non-fips`      | off     | Legacy OpenSSL provider, Covercrypt, Redis-findex, PQC CLI module, AES-XTS                   |
 | `interop`       | **on**  | Enables extra KMIP interoperability test operations (on by default; do not disable in tests) |
 | `insecure`      | off     | Skips OAuth token expiration check and allows self-signed TLS — **dev/test only**            |
@@ -319,29 +319,85 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed
 
 ---
 
+## Mandatory per-prompt checklist
+
+After **every** code-changing prompt, execute the following steps **in order** before declaring done. Do not skip any step, and do not ask the user whether to run them — run them unconditionally.
+
+### 1. CHANGELOG update (always)
+
+Determine the current branch: `git branch --show-current`.
+Write a one-line entry to `CHANGELOG/<branch_name_with_slashes_replaced_by_underscores>.md`.
+Create the file if it does not exist. Use the section convention: `Features`, `Bug Fixes`,
+`Refactor`, `Testing`, `Security`, `Documentation`. Add a PR/issue link when known.
+
+### 2. Test vector (for every behavioral change)
+
+For every new feature, bug fix, or behavioral guard added:
+
+1. Add a test vector under `test_data/vectors/` that directly exercises the new behavior.
+   - Negative tests → `test_data/vectors/negative/`.
+   - HSM-specific tests → `test_data/vectors/hsm/`.
+2. Register the new vector in `crate/test_kms_server/src/vector_runner.rs`.
+3. Run `cargo test -p test_kms_server <test_fn_name>` and confirm it passes.
+
+### 3. Clippy (always)
+
+```bash
+cargo clippy-all   # clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+Fix every warning reported. Do not suppress with `#[allow]` unless there is a documented,
+irreducible reason — and then add an inline comment explaining why.
+
+### 4. Tests (always)
+
+```bash
+cargo test-non-fips   # test --lib --workspace --features non-fips
+```
+
+Fix every failing test. Never skip or mark tests as `#[ignore]` to make the suite green.
+
+### 5. Documentation (when behavior or user interface changes)
+
+If the prompt adds or changes a user-visible feature, flag, endpoint, or configuration option:
+
+- Update or add a page under `documentation/docs/`.
+- Register the page in `documentation/mkdocs.yml`.
+- Update `README.md` with a brief summary and link (no full duplication).
+
+> These five steps are **not optional suggestions**. They are part of every response that
+> touches code. An incomplete response is one that skips any of them.
+
+---
+
 ## Coding rules
 
-- **Function length**: keep functions under 100 lines; extract helpers for longer ones.
+- **Function length**: keep functions under 50 lines; extract helpers for longer ones.
+- **Clones**: avoid unnecessary clones; prefer references and borrowing.
+- **Use Rust Generics and Traits** to abstract over common patterns and avoid code duplication.
+- **Use Rust macros** to eliminate boilerplate, especially for repetitive match blocks and trait implementations.
 - **Imports**: Rust `use` statements go at the top of each file, never inline inside function bodies.
 - **Error handling**: use `?` propagation; never use `.unwrap()` in production code; never ignore errors in tests.
 - **Feature flags**: gate non-FIPS code with `#[cfg(feature = "non-fips")]` at the function level, not inline inside function bodies.
 - **Unsafe code**: avoid unless strictly necessary; every `unsafe` block requires a `// SAFETY:` comment.
 - **Clippy**: all code must pass `cargo clippy --workspace --all-targets --all-features -- -D warnings` with zero warnings.
 - **Tests**: write unit tests in a `#[cfg(test)]` submodule close to the code they exercise.
-- **Documentation**: add `///` doc comments to all public items; internal helpers should explain *why*, not just *what*.
+- **Documentation**: add `///` doc comments to all public items; internal helpers should explain _why_, not just _what_.
 - **Naming**: follow Rust idioms — `snake_case` for functions/variables, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
 - **Logging**: use `trace!` for per-request detail, `debug!` for internal state, `info!` for lifecycle events; `warn!`/`error!` only for operator-actionable problems.
 - **CHANGELOG**: update `CHANGELOG/<branch_name_without_slashes>.md` for every user-visible change (see "Updating CHANGELOG.md").
 - **Commit scope**: make minimal, focused changes. Don't refactor surrounding code alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`.
 
-### Test vectors synchronization
+### Test vectors
 
-When adding, removing, or modifying test vectors under `test_data/vectors/`:
+For every feature added or bug fixed, a test vector **must** be added to `test_data/vectors/`.
+This is not optional — it is enforced by the mandatory checklist above.
 
-1. Update `crate/test_kms_server/README.md` to reflect the current test vector structure.
-2. If a new vector directory or manifest is added, register the corresponding test function in `crate/test_kms_server/src/vector_runner.rs`.
-3. Keep the README's table/listing in sync with the actual directory tree.
+1. Model the vector on existing examples in `test_data/vectors/`.
+2. Register the corresponding test function in `crate/test_kms_server/src/vector_runner.rs`.
+3. Run the test and confirm it passes: `cargo test -p test_kms_server <fn_name>`.
+4. Update `crate/test_kms_server/README.md` to keep the table in sync with the directory tree.
 
 ### Server configuration & wizard synchronization
 
@@ -357,10 +413,12 @@ When modifying `ClapConfig` or any of its nested config structs:
 
 ## Updating CHANGELOG.md
 
-> **IMPORTANT — file location**: Changes go in `CHANGELOG/<branch_name_without_slashes>.md`
-> (replace `/` with `_` in the branch name, e.g. branch `feature/foo` → `CHANGELOG/feature_foo.md`).
+> **IMPORTANT — mandatory on every code-changing prompt. Do not skip.**
+> File location: `CHANGELOG/<branch_name_without_slashes>.md`
+> (replace `/` with `_`, e.g. branch `feature/foo` → `CHANGELOG/feature_foo.md`).
 > The **root `CHANGELOG.md` is generated by `git-cliff` and must NEVER be edited manually.**
-> If the branch-specific file does not exist yet, create it.
+> Create the branch-specific file if it does not exist yet.
+> Determine the branch name by running `git branch --show-current` — never guess.
 
 For each change, add a **one-line summary** in the branch-specific file. Use the sections convention: `Features`, `Bug Fixes`, `Build`, `Refactor`, `Documentation`, `Testing`, `CI`, `Security`. Under a section, regroup by sub-feature or component when multiple entries relate to the same area.
 

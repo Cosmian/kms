@@ -24,14 +24,22 @@
 
 - **KEK wrapping bypass via attribute operations**: fix a security bug where `ModifyAttribute`, `SetAttribute`, `AddAttribute`, and `Activate` would auto-unwrap HSM-wrapped keys via `retrieve_object_for_operation()` and then persist the unwrapped key material back to the database, defeating KEK encryption at rest. The fix skips auto-unwrapping for `GetAttributes`-type operations since they only need object metadata, not key material ([#960](https://github.com/Cosmian/kms/issues/960))
 
+## Features
+
+- **HSM key creation guard**: reject `Create`/`CreateKeyPair`/`Atomic` requests with an `hsm::` UID prefix when no HSM store is registered, preventing silent routing to the SQL backend (`database_objects.rs::get_object_store`) ([#959](https://github.com/Cosmian/kms/pull/959))
+- **Agent instructions**: add mandatory per-prompt checklist to `.github/copilot-instructions.md` (CHANGELOG, test vectors, clippy, tests, docs) ([#959](https://github.com/Cosmian/kms/pull/959))
+
+## Testing
+
+- **HSM key without HSM plugin**: new negative test vector `test_data/vectors/negative/lifecycle/create_hsm_key_without_hsm` asserts that creating an `hsm::*` key on a non-HSM server returns `"No HSM is configured"` ([#959](https://github.com/Cosmian/kms/pull/959))
+- **Unit test**: `cosmian_kms_server_database::core::database_objects::tests::test_hsm_uid_rejected_without_hsm_store` verifies the guard at the database routing layer ([#959](https://github.com/Cosmian/kms/pull/959))
+- **HSM Crypt2Pay permissions**: fix tests #25 and #27 in `crate/server/src/tests/hsm/permissions.rs` to accept `Kmip21Error(Sensitive, "DENIED")` as a valid outcome when the HSM hardware enforces non-extractable keys ([#959](https://github.com/Cosmian/kms/pull/959))
+- **Synology DSM vectors**: add GetAttributeList, GetAttributes, and Get steps to the Synology DSM integration vector to exercise the full key retrieval flow after Activate (requires `server_type = "hsm_kek"` with `HSM_SLOT_ID`)
+- **Synology DSM Rust test**: extend `test_synology_dsm_volume_lifecycle` with GetAttributeList, GetAttributes, and Get operations matching the post-Activate DSM sequence
+
 ## Bug Fixes
 
 - **Synology DSM + HSM-wrapped keys**: add `default_unwrap_type = ["SecretData", "SymmetricKey"]` to the HSM KEK vector test server, reproducing the exact configuration from issue #960 where DSM fails to retrieve keys wrapped by a hardware KEK ([#960](https://github.com/Cosmian/kms/issues/960))
 - **Logging repetition in KMIP routes**: remove `span.enter()` calls from async route handlers in `routes/kmip.rs` that caused span names to repeat 70+ times in trace output when concurrent requests shared worker threads; per-operation instrumentation already exists in `core/kms/kmip.rs`
-
-## Testing
-
-- **Synology DSM vectors**: add GetAttributeList, GetAttributes, and Get steps to the Synology DSM integration vector to exercise the full key retrieval flow after Activate (requires `server_type = "hsm_kek"` with `HSM_SLOT_ID`)
-- **Synology DSM Rust test**: extend `test_synology_dsm_volume_lifecycle` with GetAttributeList, GetAttributes, and Get operations matching the post-Activate DSM sequence
 
 Closes #960

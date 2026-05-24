@@ -2750,6 +2750,12 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/negative/lifecycle/create_zero_length_key").await
     }
 
+    #[tokio::test]
+    async fn test_neg_create_hsm_key_without_hsm() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/lifecycle/create_hsm_key_without_hsm").await
+    }
+
     // ── Negative tests: type mismatch ───────────────────────────────────
 
     #[tokio::test]
