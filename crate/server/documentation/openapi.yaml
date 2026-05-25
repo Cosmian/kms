@@ -1,0 +1,2750 @@
+---
+openapi: 3.1.0
+
+info:
+  title: Cosmian KMS
+  version: 5.0.0
+  description: |
+    High-performance, FIPS 140-3 compliant Key Management System implementing **KMIP 2.1 and 1.4** over HTTP/TLS.
+
+    ## Authentication
+
+    Most endpoints require one of the following authentication methods:
+
+    - **Bearer JWT** — pass a JWT from your OIDC provider in `Authorization: Bearer <token>`
+    - **API Token** — pass an API token in `Authorization: Bearer <token>` (server-issued opaque token)
+    - **Mutual TLS (mTLS)** — present a client certificate during the TLS handshake
+
+    Public endpoints (`/health`, `/version`) require no authentication.
+    API documentation (`/openapi.yaml`, `/swagger`) requires authentication.
+
+servers:
+  - url: /
+    description: Current server
+
+tags:
+  - name: Public
+    description: Unauthenticated endpoints — health probes and API discovery
+  - name: KMIP
+    description: KMIP 2.1 and 1.4 protocol over JSON/TTLV — create, get, destroy, encrypt, decrypt, and all other KMIP operations
+  - name: Access
+    description: Access-control and permission management for KMS objects
+  - name: Server
+    description: Server information and HSM status
+  - name: REST Crypto API
+    description: Simplified JWE/JWS/HMAC REST API built on top of KMIP keys
+  - name: Google CSE
+    description: Google Workspace Client-Side Encryption (CSE) KACLS endpoints
+  - name: AWS XKS
+    description: AWS External Key Store (XKS) proxy endpoints — authenticated with AWS SigV4
+  - name: Azure EKM
+    description: Azure External Key Management (EKM) proxy endpoints — authenticated with mTLS
+  - name: MS DKE
+    description: Microsoft 365 Double Key Encryption (DKE) endpoints
+  - name: UI Auth
+    description: OAuth2/OIDC flow endpoints for the built-in web UI — not part of the KMS API proper
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT issued by your OIDC provider, or an opaque API token issued by the KMS server
+    mtls:
+      type: mutualTLS
+      description: Client certificate presented during TLS handshake
+
+  schemas:
+
+    # ── TTLV JSON ────────────────────────────────────────────────────────────
+
+    TtlvNode:
+      description: >
+        A single node in the TTLV-as-JSON encoding. A node is either a Structure
+        (array of child nodes, no `type` field) or a primitive (has a `type` field).
+      oneOf:
+        - $ref: '#/components/schemas/TtlvStructure'
+        - $ref: '#/components/schemas/TtlvInteger'
+        - $ref: '#/components/schemas/TtlvLongInteger'
+        - $ref: '#/components/schemas/TtlvBigInteger'
+        - $ref: '#/components/schemas/TtlvEnumeration'
+        - $ref: '#/components/schemas/TtlvBoolean'
+        - $ref: '#/components/schemas/TtlvTextString'
+        - $ref: '#/components/schemas/TtlvByteString'
+        - $ref: '#/components/schemas/TtlvDateTime'
+        - $ref: '#/components/schemas/TtlvInterval'
+        - $ref: '#/components/schemas/TtlvDateTimeExtended'
+
+    TtlvStructure:
+      type: object
+      required: [tag, value]
+      properties:
+        tag:
+          type: string
+          description: KMIP field name (PascalCase)
+          example: RequestMessage
+        value:
+          type: array
+          items:
+            $ref: '#/components/schemas/TtlvNode'
+      example:
+        tag: ProtocolVersion
+        value:
+          - {tag: ProtocolVersionMajor, type: Integer, value: 2}
+          - {tag: ProtocolVersionMinor, type: Integer, value: 1}
+
+    TtlvInteger:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [Integer]
+        value:
+          type: integer
+          format: int32
+      example:
+        tag: CryptographicLength
+        type: Integer
+        value: 256
+
+    TtlvLongInteger:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [LongInteger]
+        value:
+          type: string
+          description: Hex-encoded 64-bit signed integer, prefixed with "0x"
+          example: '0x0000000000000001'
+
+    TtlvBigInteger:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [BigInteger]
+        value:
+          type: string
+          description: Hex-encoded arbitrary-precision integer, prefixed with "0x"
+          example: '0x01234567890ABCDEF'
+
+    TtlvEnumeration:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [Enumeration]
+        value:
+          type: string
+          description: Enumeration variant name (PascalCase or as defined in KMIP spec)
+          example: AES
+      example:
+        tag: CryptographicAlgorithm
+        type: Enumeration
+        value: AES
+
+    TtlvBoolean:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [Boolean]
+        value:
+          type: boolean
+
+    TtlvTextString:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [TextString]
+        value:
+          type: string
+      example:
+        tag: UniqueIdentifier
+        type: TextString
+        value: 550e8400-e29b-41d4-a716-446655440000
+
+    TtlvByteString:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [ByteString]
+        value:
+          type: string
+          description: Hex-encoded bytes (uppercase, no prefix)
+          example: DEADBEEF
+
+    TtlvDateTime:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [DateTime]
+        value:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp
+
+    TtlvInterval:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [Interval]
+        value:
+          type: integer
+          format: int32
+          description: Duration in seconds
+
+    TtlvDateTimeExtended:
+      type: object
+      required: [tag, type, value]
+      properties:
+        tag:
+          type: string
+        type:
+          type: string
+          enum: [DateTimeExtended]
+        value:
+          type: string
+          description: Hex-encoded 64-bit microseconds since epoch, prefixed with "0x"
+
+    # ── REST Crypto API ───────────────────────────────────────────────────────
+
+    JoseAlgorithm:
+      type: string
+      description: >
+        JOSE algorithm identifier (RFC 7518). Used for key management (`alg`) and
+        signature/MAC operations.
+      enum:
+        - dir
+        - RSA-OAEP
+        - RSA-OAEP-256
+        - RS256
+        - RS384
+        - RS512
+        - PS256
+        - PS384
+        - PS512
+        - ES256
+        - ES384
+        - ES512
+        - HS256
+        - HS384
+        - HS512
+        - EdDSA
+        - MLDSA44
+
+    JoseEncAlgorithm:
+      type: string
+      description: JOSE content-encryption algorithm identifier (RFC 7518 §5.1)
+      enum:
+        - A128GCM
+        - A192GCM
+        - A256GCM
+
+    EncryptRequest:
+      type: object
+      required: [kid, alg, enc, data]
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the key (symmetric or asymmetric public key)
+        alg:
+          $ref: '#/components/schemas/JoseAlgorithm'
+          description: Key management algorithm. Use `dir` for direct encryption with a symmetric key.
+        enc:
+          $ref: '#/components/schemas/JoseEncAlgorithm'
+          description: Content encryption algorithm
+        data:
+          type: string
+          description: Plaintext bytes encoded as base64url (no padding)
+        aad:
+          type: string
+          description: Additional Authenticated Data encoded as base64url (optional)
+      example:
+        kid: 550e8400-e29b-41d4-a716-446655440000
+        alg: dir
+        enc: A256GCM
+        data: SGVsbG8gV29ybGQ
+
+    EncryptResponse:
+      type: object
+      required: [protected, encrypted_key, iv, ciphertext, tag]
+      description: JWE Flattened JSON Serialization (RFC 7516 §7.2.2)
+      properties:
+        protected:
+          type: string
+          description: BASE64URL(UTF8(JWE Protected Header))
+        encrypted_key:
+          type: string
+          description: BASE64URL(JWE Encrypted Key) — empty string for `dir` key management
+        iv:
+          type: string
+          description: Initialization vector as base64url
+        ciphertext:
+          type: string
+          description: Ciphertext as base64url
+        tag:
+          type: string
+          description: Authentication tag as base64url
+        aad:
+          type: string
+          description: Additional Authenticated Data echo (present if request had `aad`)
+
+    DecryptRequest:
+      type: object
+      required: [protected, iv, ciphertext, tag]
+      description: JWE Flattened JSON Serialization (RFC 7516 §7.2.2) — the `kid` is read from the protected header
+      properties:
+        protected:
+          type: string
+          description: BASE64URL(UTF8(JWE Protected Header)) — must contain `kid` claim
+        encrypted_key:
+          type: string
+          description: BASE64URL(JWE Encrypted Key) — absent or empty string for `dir`
+        iv:
+          type: string
+          description: Initialization vector as base64url
+        ciphertext:
+          type: string
+          description: Ciphertext as base64url
+        tag:
+          type: string
+          description: Authentication tag as base64url
+        aad:
+          type: string
+          description: Additional Authenticated Data as base64url (must match encrypt call)
+
+    DecryptResponse:
+      type: object
+      required: [kid, data]
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the key used for decryption
+        data:
+          type: string
+          description: Recovered plaintext as base64url
+
+    SignRequest:
+      type: object
+      required: [kid, alg, data]
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the private signing key
+        alg:
+          $ref: '#/components/schemas/JoseAlgorithm'
+          description: Signing algorithm (RS256, ES256, HS256, EdDSA, …)
+        data:
+          type: string
+          description: Payload bytes as base64url
+
+    SignResponse:
+      type: object
+      required: [protected, signature]
+      description: Detached JWS (RFC 7515 §7.2) — the payload is not included in the response
+      properties:
+        protected:
+          type: string
+          description: BASE64URL(UTF8(JWS Protected Header)) containing `alg` and `kid`
+        signature:
+          type: string
+          description: Signature as base64url
+
+    VerifyRequest:
+      type: object
+      required: [protected, data, signature]
+      properties:
+        protected:
+          type: string
+          description: BASE64URL(UTF8(JWS Protected Header)) — must contain `alg` and `kid`
+        data:
+          type: string
+          description: Original payload bytes as base64url
+        signature:
+          type: string
+          description: Signature as base64url
+
+    VerifyResponse:
+      type: object
+      required: [kid, valid]
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the verification key
+        valid:
+          type: boolean
+          description: true if the signature is valid
+
+    MacRequest:
+      type: object
+      required: [kid, alg, data]
+      description: >
+        Compute or verify an HMAC. If `mac` is absent, the server computes the MAC and returns it.
+        If `mac` is present, the server verifies it and returns `valid`.
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the HMAC key
+        alg:
+          $ref: '#/components/schemas/JoseAlgorithm'
+          description: HMAC algorithm (HS256, HS384, HS512)
+        data:
+          type: string
+          description: Message bytes as base64url
+        mac:
+          type: string
+          description: Expected MAC as base64url — if present, perform verification; if absent, compute
+
+    MacComputeResponse:
+      type: object
+      required: [kid, mac]
+      properties:
+        kid:
+          type: string
+        mac:
+          type: string
+          description: Computed MAC as base64url
+
+    MacVerifyResponse:
+      type: object
+      required: [kid, valid]
+      properties:
+        kid:
+          type: string
+        valid:
+          type: boolean
+          description: true if the provided MAC is valid
+
+    KeyCreateRequest:
+      type: object
+      required: [kty]
+      description: Generate a new key. Import is not yet supported (returns 400).
+      properties:
+        kty:
+          type: string
+          description: JWK key type
+          enum: [oct, EC, RSA, OKP]
+        alg:
+          type: string
+          description: JOSE algorithm this key will be used for (infers key_ops if omitted)
+        crv:
+          type: string
+          description: Elliptic curve or OKP curve name
+          enum: [P-256, P-384, P-521, Ed25519]
+        bits:
+          type: integer
+          description: RSA key size in bits (default 2048)
+          example: 2048
+        key_ops:
+          type: array
+          items:
+            type: string
+          description: JWK key_ops — inferred from `alg` if absent
+      examples:
+        symmetric_aes256:
+          summary: AES-256 symmetric key for AES-GCM encryption
+          value: {kty: oct, alg: A256GCM}
+        ec_p256:
+          summary: EC P-256 key for ES256 signing
+          value: {kty: EC, crv: P-256, alg: ES256}
+        rsa_2048:
+          summary: RSA-2048 key for RS256 signing
+          value: {kty: RSA, bits: 2048, alg: RS256}
+
+    KeyCreateResponse:
+      type: object
+      required: [kid, kty, key_ops]
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the private/symmetric key
+        kid_public:
+          type: string
+          description: KMS unique identifier of the public key (asymmetric keys only)
+        kty:
+          type: string
+          description: JWK key type
+        alg:
+          type: string
+          description: Algorithm this key is bound to
+        crv:
+          type: string
+          description: EC/OKP curve
+        key_ops:
+          type: array
+          items:
+            type: string
+          description: Permitted key operations
+        x:
+          type: string
+          description: EC/OKP x-coordinate (base64url) — public keys only
+        y:
+          type: string
+          description: EC y-coordinate (base64url) — public keys only
+        n:
+          type: string
+          description: RSA modulus (base64url) — public keys only
+        e:
+          type: string
+          description: RSA public exponent (base64url) — public keys only
+
+    # ── Access Control ────────────────────────────────────────────────────────
+
+    CurrentUserResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          type: string
+          description: Username resolved for the current request
+
+    Access:
+      type: object
+      required: [user_id, operation_types]
+      properties:
+        unique_identifier:
+          type: string
+          description: KMS object UID — if omitted, applies to all objects owned by the user
+        user_id:
+          type: string
+          description: Identity of the user receiving or losing access
+        operation_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/KmipOperation'
+          description: KMIP operation names to grant or revoke (lowercase, e.g. get, create, encrypt)
+      example:
+        unique_identifier: 550e8400-e29b-41d4-a716-446655440000
+        user_id: alice@example.com
+        operation_types: [get, encrypt, decrypt]
+
+    KmipOperation:
+      type: string
+      enum:
+        - create
+        - certify
+        - decrypt
+        - derivekey
+        - destroy
+        - encrypt
+        - export
+        - get
+        - getattributes
+        - hash
+        - import
+        - locate
+        - mac
+        - revoke
+        - rekey
+        - sign
+        - signatureverify
+        - validate
+        - setattribute
+        - modifyattribute
+        - addattribute
+        - deleteattribute
+      description: KMIP operation type (lowercase)
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    ObjectOwnedResponse:
+      type: object
+      required: [object_id, state, attributes]
+      properties:
+        object_id:
+          type: string
+          description: KMS unique identifier of the object
+        state:
+          type: string
+          description: KMIP state (e.g. Active, Deactivated, Destroyed)
+        attributes:
+          type: object
+          description: KMIP Attributes of the object
+
+    AccessRightsObtainedResponse:
+      type: object
+      required: [object_id, owner_id, state, operations]
+      properties:
+        object_id:
+          type: string
+        owner_id:
+          type: string
+        state:
+          type: string
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/KmipOperation'
+          description: KMIP operation names for which access is granted
+
+    UserAccessResponse:
+      type: object
+      required: [user_id, operations]
+      properties:
+        user_id:
+          type: string
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/KmipOperation'
+          description: Sorted set of allowed KMIP operations
+
+    # ── Google CSE ────────────────────────────────────────────────────────────
+
+    GoogleCseStatusResponse:
+      type: object
+      required: [server_type, vendor_id, version, name, kacls_url, operations_supported]
+      properties:
+        server_type:
+          type: string
+          example: KACLS
+        vendor_id:
+          type: string
+          example: Cosmian
+        version:
+          type: string
+          example: 5.0.0
+        name:
+          type: string
+          example: Cosmian KMS KACLS
+        kacls_url:
+          type: string
+          description: HTTPS URL of this KACLS service
+        operations_supported:
+          type: array
+          items:
+            type: string
+
+    GoogleCsePublicKeyElements:
+      type: object
+      required: [kty, use, alg, n, e, kid]
+      properties:
+        kty:
+          type: string
+          example: RSA
+        use:
+          type: string
+          example: sig
+        alg:
+          type: string
+          example: RS256
+        n:
+          type: string
+          description: RSA modulus (base64url)
+        e:
+          type: string
+          description: RSA public exponent (base64url)
+        kid:
+          type: string
+          description: Key identifier
+
+    GoogleCseCertsResponse:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoogleCsePublicKeyElements'
+
+    GoogleCseWrapRequest:
+      type: object
+      required: [authentication, authorization, key, reason]
+      properties:
+        authentication:
+          type: string
+          description: Google-issued JWT for the end user
+        authorization:
+          type: string
+          description: Google-issued JWT authorising this KACLS operation
+        key:
+          type: string
+          description: Base64-encoded Data Encryption Key (DEK) to wrap (max 128 bytes)
+        reason:
+          type: string
+          description: Context JSON string (max 1 KB)
+
+    GoogleCseWrapResponse:
+      type: object
+      required: [wrapped_key]
+      properties:
+        wrapped_key:
+          type: string
+          description: Base64-encoded wrapped DEK
+
+    GoogleCseUnwrapRequest:
+      type: object
+      required: [authentication, authorization, reason, wrapped_key]
+      properties:
+        authentication:
+          type: string
+        authorization:
+          type: string
+        reason:
+          type: string
+          description: Context JSON string (max 1 KB)
+        wrapped_key:
+          type: string
+          description: Base64-encoded wrapped DEK from a prior wrap call
+
+    GoogleCseUnwrapResponse:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+          description: Base64-encoded unwrapped DEK
+
+    GoogleCseDigestRequest:
+      type: object
+      required: [authorization, wrapped_key, reason]
+      properties:
+        authorization:
+          type: string
+        wrapped_key:
+          type: string
+          description: Base64-encoded wrapped DEK
+        reason:
+          type: string
+
+    GoogleCseDigestResponse:
+      type: object
+      required: [resource_key_hash]
+      properties:
+        resource_key_hash:
+          type: string
+          description: Base64-encoded SHA-256 hash of the unwrapped key
+
+    GoogleCseRewrapRequest:
+      type: object
+      required: [authorization, original_kacls_url, reason, wrapped_key]
+      properties:
+        authorization:
+          type: string
+        original_kacls_url:
+          type: string
+          description: HTTPS URL of the original KACLS service
+        reason:
+          type: string
+        wrapped_key:
+          type: string
+          description: Base64-encoded wrapped DEK from the original KACLS
+
+    GoogleCseRewrapResponse:
+      type: object
+      required: [resource_key_hash, wrapped_key]
+      properties:
+        resource_key_hash:
+          type: string
+          description: Base64-encoded hash of the unwrapped key
+        wrapped_key:
+          type: string
+          description: Base64-encoded re-wrapped DEK
+
+    GoogleCsePrivilegedWrapRequest:
+      type: object
+      required: [authentication, key, perimeter_id, resource_name, reason]
+      properties:
+        authentication:
+          type: string
+          description: Google-issued JWT for an admin or automated service
+        key:
+          type: string
+          description: Base64-encoded DEK to wrap
+        perimeter_id:
+          type: string
+          description: Perimeter identifier for access boundary
+        resource_name:
+          type: string
+          description: Google Drive resource name
+        reason:
+          type: string
+
+    GoogleCsePrivilegedWrapResponse:
+      type: object
+      required: [wrapped_key]
+      properties:
+        wrapped_key:
+          type: string
+
+    GoogleCsePrivilegedUnwrapRequest:
+      type: object
+      required: [authentication, reason, resource_name, wrapped_key]
+      properties:
+        authentication:
+          type: string
+        reason:
+          type: string
+        resource_name:
+          type: string
+        wrapped_key:
+          type: string
+
+    GoogleCsePrivilegedUnwrapResponse:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+          description: Base64-encoded DEK
+
+    GoogleCsePrivilegedPrivateKeyDecryptRequest:
+      type: object
+      required: [authentication, algorithm, encrypted_data_encryption_key, reason, wrapped_private_key, spki_hash, spki_hash_algorithm]
+      properties:
+        authentication:
+          type: string
+        algorithm:
+          type: string
+          description: RSA padding algorithm (e.g. RSAES-OAEP-SHA-256)
+        encrypted_data_encryption_key:
+          type: string
+          description: Base64-encoded encrypted DEK (max 1 KB)
+        rsa_oaep_label:
+          type: string
+          description: Base64-encoded OAEP label (only for RSAES-OAEP variants)
+        reason:
+          type: string
+          description: Context JSON string (max 1 KB)
+        wrapped_private_key:
+          type: string
+          description: Base64-encoded wrapped private key (max 8 KB)
+        spki_hash:
+          type: string
+          description: Base64-encoded SubjectPublicKeyInfo hash
+        spki_hash_algorithm:
+          type: string
+          description: Hash algorithm used for spki_hash (e.g. SHA-256)
+
+    GoogleCsePrivilegedPrivateKeyDecryptResponse:
+      type: object
+      required: [data_encryption_key]
+      properties:
+        data_encryption_key:
+          type: string
+          description: Base64-encoded DEK
+
+    GoogleCsePrivateKeySignRequest:
+      type: object
+      required: [authentication, authorization, algorithm, digest, reason, wrapped_private_key]
+      properties:
+        authentication:
+          type: string
+        authorization:
+          type: string
+        algorithm:
+          type: string
+          description: Signature algorithm (e.g. SHA512withRSA, SHA512withRSA/PSS)
+        digest:
+          type: string
+          description: Base64-encoded digest to sign
+        rsa_pss_salt_length:
+          type: integer
+          description: Salt length for RSASSA-PSS (only for PSS variants)
+        reason:
+          type: string
+          description: Context JSON string (max 1 KB)
+        wrapped_private_key:
+          type: string
+          description: Base64-encoded wrapped private key (max 8 KB)
+
+    GoogleCsePrivateKeySignResponse:
+      type: object
+      required: [signature]
+      properties:
+        signature:
+          type: string
+          description: Base64-encoded signature
+
+    GoogleCsePrivateKeyDecryptRequest:
+      type: object
+      required: [authentication, authorization, algorithm, encrypted_data_encryption_key, reason, wrapped_private_key]
+      properties:
+        authentication:
+          type: string
+        authorization:
+          type: string
+        algorithm:
+          type: string
+          description: RSA padding algorithm (e.g. RSAES-OAEP-SHA-256)
+        encrypted_data_encryption_key:
+          type: string
+          description: Base64-encoded encrypted DEK (max 1 KB)
+        rsa_oaep_label:
+          type: string
+          description: Base64-encoded OAEP label (only for RSAES-OAEP variants)
+        reason:
+          type: string
+          description: Context JSON string (max 1 KB)
+        wrapped_private_key:
+          type: string
+          description: Base64-encoded wrapped private key (max 8 KB)
+
+    GoogleCsePrivateKeyDecryptResponse:
+      type: object
+      required: [data_encryption_key]
+      properties:
+        data_encryption_key:
+          type: string
+          description: Base64-encoded DEK
+
+    GoogleCseWrapPrivateKeyRequest:
+      type: object
+      required: [authentication, perimeter_id, private_key]
+      properties:
+        authentication:
+          type: string
+        perimeter_id:
+          type: string
+        private_key:
+          type: string
+          description: Base64-encoded private key to wrap
+
+    # ── MS DKE ────────────────────────────────────────────────────────────────
+
+    DkePublicKey:
+      type: object
+      required: [kty, n, e, alg, kid]
+      properties:
+        kty:
+          type: string
+          enum: [RSA]
+        n:
+          type: string
+          description: RSA modulus in base64 format
+        e:
+          type: integer
+          description: RSA public exponent in base-10 format
+          example: 65537
+        alg:
+          type: string
+          description: Supported algorithm
+          enum: [RSA-OAEP-256, RS256]
+        kid:
+          type: string
+          description: Key ID URI in format {base_url}/{key_name}/{key_version-guid}
+
+    DkePublicKeyCache:
+      type: object
+      required: [exp]
+      properties:
+        exp:
+          type: string
+          description: Expiration date in format yyyy-MM-ddTHH:mm:ss
+          example: '2026-12-31T23:59:59'
+
+    DkeKeyData:
+      type: object
+      required: [key, cache]
+      properties:
+        key:
+          $ref: '#/components/schemas/DkePublicKey'
+        cache:
+          $ref: '#/components/schemas/DkePublicKeyCache'
+
+    DkeEncryptedData:
+      type: object
+      required: [alg, value]
+      properties:
+        alg:
+          type: string
+          enum: [RSA-OAEP-256, RS256]
+          description: Algorithm used to encrypt the data
+        value:
+          type: string
+          description: Base64-encoded encrypted bytes
+
+    DkeDecryptedData:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          description: Base64-encoded decrypted bytes
+
+    # ── AWS XKS ───────────────────────────────────────────────────────────────
+
+    XksHealthRequestMetadata:
+      type: object
+      required: [kmsRequestId, kmsOperation]
+      properties:
+        kmsRequestId:
+          type: string
+          format: uuid
+          description: UUID of the KMS health check request (visible in CloudTrail)
+        kmsOperation:
+          type: string
+          description: >
+            KMS operation triggering the health check:
+            CreateCustomKeyStore, ConnectCustomKeyStore, UpdateCustomKeyStore, or KmsHealthCheck
+          example: KmsHealthCheck
+
+    XksGetHealthStatusRequest:
+      type: object
+      required: [requestMetadata]
+      properties:
+        requestMetadata:
+          $ref: '#/components/schemas/XksHealthRequestMetadata'
+
+    XksEkmFleetDetails:
+      type: object
+      required: [id, model, healthStatus]
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the EKM instance
+        model:
+          type: string
+          description: Product name and version
+        healthStatus:
+          type: string
+          enum: [ACTIVE, DEGRADED, UNAVAILABLE]
+
+    XksGetHealthStatusResponse:
+      type: object
+      required: [xksProxyFleetSize, xksProxyVendor, xksProxyModel, ekmVendor, ekmFleetDetails]
+      properties:
+        xksProxyFleetSize:
+          type: integer
+          minimum: 1
+          description: Number of XKS proxy instances (must be > 0)
+        xksProxyVendor:
+          type: string
+          example: Cosmian
+        xksProxyModel:
+          type: string
+          description: XKS proxy product name and version
+        ekmVendor:
+          type: string
+          description: External key manager vendor name
+        ekmFleetDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/XksEkmFleetDetails'
+
+    XksKeyMetadataRequestMetadata:
+      type: object
+      required: [awsPrincipalArn, kmsOperation, kmsRequestId]
+      properties:
+        awsPrincipalArn:
+          type: string
+          description: ARN of the principal that invoked the KMS API
+        awsSourceVpc:
+          type: string
+          description: VPC where the request originated (if using VPC endpoint)
+        awsSourceVpce:
+          type: string
+          description: VPC endpoint used for the request
+        kmsOperation:
+          type: string
+          description: KMS API that triggered this call (GetKeyMetadata, DescribeKey, CreateKey)
+        kmsRequestId:
+          type: string
+          format: uuid
+          description: UUID visible in CloudTrail
+
+    XksGetKeyMetadataRequest:
+      type: object
+      required: [requestMetadata]
+      properties:
+        requestMetadata:
+          $ref: '#/components/schemas/XksKeyMetadataRequestMetadata'
+
+    XksKeyUsage:
+      type: string
+      enum: [ENCRYPT, DECRYPT, SIGN, VERIFY, WRAP, UNWRAP]
+
+    XksGetKeyMetadataResponse:
+      type: object
+      required: [keySpec, keyUsage, keyStatus]
+      properties:
+        keySpec:
+          type: string
+          description: Key specification (e.g. AES_256, RSA_2048)
+          example: AES_256
+        keyUsage:
+          type: array
+          items:
+            $ref: '#/components/schemas/XksKeyUsage'
+        keyStatus:
+          type: string
+          enum: [ENABLED, DISABLED]
+
+    XksEncryptRequestMetadata:
+      type: object
+      required: [awsPrincipalArn, kmsOperation, kmsRequestId]
+      allOf:
+        - $ref: '#/components/schemas/XksKeyMetadataRequestMetadata'
+
+    XksEncryptRequest:
+      type: object
+      required: [requestMetadata, plaintext, encryptionAlgorithm]
+      properties:
+        requestMetadata:
+          $ref: '#/components/schemas/XksKeyMetadataRequestMetadata'
+        plaintext:
+          type: string
+          description: Base64-encoded plaintext (up to 4300 bytes before encoding)
+        encryptionAlgorithm:
+          type: string
+          enum: [AES_GCM]
+          description: Must be AES_GCM for XKS v1
+        additionalAuthenticatedData:
+          type: string
+          description: Base64-encoded AAD (up to 8192 bytes)
+        ciphertextDataIntegrityValueAlgorithm:
+          type: string
+          enum: [SHA_256]
+          description: If present, server computes a CDIV over the response fields
+
+    XksEncryptResponse:
+      type: object
+      required: [ciphertext, initializationVector, authenticationTag]
+      properties:
+        ciphertext:
+          type: string
+          description: Base64-encoded ciphertext (same length as plaintext)
+        ciphertextMetadata:
+          type: string
+          description: Base64-encoded vendor-specific metadata (up to 20 bytes)
+        initializationVector:
+          type: string
+          description: Base64-encoded IV — 12 bytes (96 bits) or 16 bytes (128 bits)
+        authenticationTag:
+          type: string
+          description: Base64-encoded authentication tag — 16 bytes (128 bits)
+        ciphertextDataIntegrityValue:
+          type: string
+          description: >
+            Base64-encoded SHA-256 HMAC over AAD, ciphertextMetadata, IV, ciphertext, and tag —
+            only present if `ciphertextDataIntegrityValueAlgorithm` was requested
+
+    XksDecryptRequest:
+      type: object
+      required: [requestMetadata, ciphertext, encryptionAlgorithm, initializationVector, authenticationTag]
+      properties:
+        requestMetadata:
+          $ref: '#/components/schemas/XksKeyMetadataRequestMetadata'
+        ciphertext:
+          type: string
+          description: Base64-encoded ciphertext from the corresponding encrypt call
+        ciphertextMetadata:
+          type: string
+          description: Base64-encoded ciphertextMetadata from the encrypt response (if present)
+        encryptionAlgorithm:
+          type: string
+          enum: [AES_GCM]
+        additionalAuthenticatedData:
+          type: string
+          description: Base64-encoded AAD — must match the value used during encrypt
+        initializationVector:
+          type: string
+          description: Base64-encoded IV from the encrypt response
+        authenticationTag:
+          type: string
+          description: Base64-encoded authentication tag from the encrypt response
+
+    XksDecryptResponse:
+      type: object
+      required: [plaintext]
+      properties:
+        plaintext:
+          type: string
+          description: Base64-encoded plaintext
+
+    XksErrorName:
+      type: string
+      enum:
+        - ValidationException
+        - InvalidStateException
+        - InvalidCiphertextException
+        - InvalidKeyUsageException
+        - AuthenticationFailedException
+        - AccessDeniedException
+        - KeyNotFoundException
+        - InvalidUriPathException
+        - ThrottlingException
+        - UnsupportedOperationException
+        - DependencyTimeoutException
+        - InternalException
+
+    XksErrorReply:
+      type: object
+      required: [errorName]
+      properties:
+        errorName:
+          $ref: '#/components/schemas/XksErrorName'
+        errorMessage:
+          type: string
+          description: Optional human-readable error detail
+
+    # ── Azure EKM ─────────────────────────────────────────────────────────────
+
+    AzureRequestContext:
+      type: object
+      required: [correlation_id, pool_name]
+      properties:
+        request_id:
+          type: string
+          description: Optional request identifier
+        correlation_id:
+          type: string
+          description: Correlation identifier for tracing
+        pool_name:
+          type: string
+          description: Key pool name
+
+    AzureProxyInfoRequest:
+      type: object
+      required: [request_context]
+      properties:
+        request_context:
+          $ref: '#/components/schemas/AzureRequestContext'
+
+    AzureProxyInfoResponse:
+      type: object
+      required: [api_version, proxy_vendor, proxy_name, ekm_vendor, ekm_product]
+      properties:
+        api_version:
+          type: string
+          example: 0.1-preview
+        proxy_vendor:
+          type: string
+          example: Cosmian
+        proxy_name:
+          type: string
+          example: Cosmian KMS
+        ekm_vendor:
+          type: string
+        ekm_product:
+          type: string
+
+    AzureKeyMetadataRequest:
+      type: object
+      required: [request_context]
+      properties:
+        request_context:
+          $ref: '#/components/schemas/AzureRequestContext'
+
+    AzureKeyMetadataResponse:
+      type: object
+      required: [key_type, key_size, key_ops]
+      properties:
+        key_type:
+          type: string
+          enum: [oct, RSA]
+          description: '`oct` for AES keys, `RSA` for RSA keys'
+        key_size:
+          type: integer
+          description: Key size in bits (256 for AES, 2048/3072/4096 for RSA)
+          example: 256
+        key_ops:
+          type: array
+          items:
+            type: string
+          example: [wrapKey, unwrapKey]
+        n:
+          type: string
+          description: Base64url-encoded RSA modulus (RSA keys only)
+        e:
+          type: string
+          description: Base64url-encoded RSA public exponent (RSA keys only)
+
+    AzureWrapAlgorithm:
+      type: string
+      enum: [A256KW, A256KWP, RSA-OAEP-256]
+      description: >
+        Key wrapping algorithm.
+        `A256KW` = AES Key Wrap (RFC 3394) with 256-bit key.
+        `A256KWP` = AES Key Wrap with Padding (RFC 5649).
+        `RSA-OAEP-256` = RSA-OAEP with SHA-256.
+
+    AzureWrapKeyRequest:
+      type: object
+      required: [request_context, alg, value]
+      properties:
+        request_context:
+          $ref: '#/components/schemas/AzureRequestContext'
+        alg:
+          $ref: '#/components/schemas/AzureWrapAlgorithm'
+        value:
+          type: string
+          description: Base64url-encoded key material to wrap (the DEK)
+
+    AzureWrapKeyResponse:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          description: Base64url-encoded wrapped key
+
+    AzureUnwrapKeyRequest:
+      type: object
+      required: [request_context, alg, value]
+      properties:
+        request_context:
+          $ref: '#/components/schemas/AzureRequestContext'
+        alg:
+          $ref: '#/components/schemas/AzureWrapAlgorithm'
+        value:
+          type: string
+          description: Base64url-encoded wrapped key from a prior wrapkey call
+
+    AzureUnwrapKeyResponse:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          description: Base64url-encoded unwrapped key
+
+    AzureEkmErrorReply:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: >
+            Error code string. Possible values: InvalidRequest, UnsupportedApiVersion,
+            UnsupportedAlgorithm (400); Unauthorized (401); Forbidden, KeyDisabled,
+            OperationNotAllowed (403); KeyNotFound (404); TooManyRequests (429); InternalError (500)
+        message:
+          type: string
+          description: Human-readable error description
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── Public ──────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [Public]
+      summary: Health check
+      description: >
+        Returns the global UP/DOWN status and per-dependency (database) status.
+        Used by load balancers and service dependency checks.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Server and all dependencies are healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [UP, DOWN]
+                  latency_ms:
+                    type: integer
+                  dependencies:
+                    type: object
+                    properties:
+                      database:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          status:
+                            type: string
+                            enum: [UP, DOWN]
+                          message:
+                            type: string
+              example:
+                status: UP
+                latency_ms: 3
+                dependencies:
+                  database: {name: sqlite, status: UP}
+        '503':
+          description: One or more dependencies are DOWN
+
+  /version:
+    get:
+      tags: [Public]
+      summary: Server version
+      description: Returns the KMS version string including OpenSSL version and FIPS mode.
+      operationId: getVersion
+      responses:
+        '200':
+          description: Version string
+          content:
+            application/json:
+              schema:
+                type: string
+              example: '"5.x.y (OpenSSL 3.6.0 6 Apr 2025-FIPS)"'
+
+  /openapi.yaml:
+    get:
+      tags: [Server]
+      summary: OpenAPI schema
+      description: Returns this OpenAPI 3.1 schema in YAML format.
+      operationId: getOpenapiYaml
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: OpenAPI YAML schema
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /swagger:
+    get:
+      tags: [Server]
+      summary: Swagger UI
+      description: Browser-accessible Swagger UI for this API.
+      operationId: getSwaggerUi
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Swagger UI HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  # ── KMIP ────────────────────────────────────────────────────────────────────
+
+  /kmip/2_1:
+    post:
+      tags: [KMIP]
+      summary: KMIP 2.1 / 1.4 over JSON/TTLV
+      description: |
+        Submit one or more KMIP operations (2.1 or 1.4) encoded as TTLV-as-JSON.
+
+        The request body can be:
+        - A full `RequestMessage` node (enables KMIP batching with multiple `BatchItem` entries)
+        - A single operation node (e.g. `{"tag":"Create",...}`) dispatched directly
+
+        **TTLV JSON format:**
+        Each node is `{"tag": "PascalCaseName", "type": "TypeString", "value": ...}`.
+        For Structure nodes the `type` field is omitted and `value` is an array of child nodes.
+
+        **Supported operations (non-exhaustive):** Create, CreateKeyPair, Register, Get, GetAttributes,
+        SetAttributes, Destroy, Locate, Encrypt, Decrypt, Sign, Verify, MAC, MACVerify,
+        Certify, ReKey, DeriveKey, Import, Export, Query.
+      operationId: kmip21Json
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TtlvNode'
+            examples:
+              create_aes256:
+                summary: Create AES-256 symmetric key (RequestMessage)
+                value:
+                  tag: RequestMessage
+                  value:
+                    - tag: RequestHeader
+                      value:
+                        - tag: ProtocolVersion
+                          value:
+                            - {tag: ProtocolVersionMajor, type: Integer, value: 2}
+                            - {tag: ProtocolVersionMinor, type: Integer, value: 1}
+                        - {tag: BatchCount, type: Integer, value: 1}
+                    - tag: BatchItem
+                      value:
+                        - {tag: Operation, type: Enumeration, value: Create}
+                        - tag: RequestPayload
+                          value:
+                            - {tag: ObjectType, type: Enumeration, value: SymmetricKey}
+                            - tag: Attributes
+                              value:
+                                - {tag: CryptographicAlgorithm, type: Enumeration, value: AES}
+                                - {tag: CryptographicLength, type: Integer, value: 256}
+                                - {tag: CryptographicUsageMask, type: Integer, value: 12}
+              create_aes256_direct:
+                summary: Create AES-256 symmetric key (direct operation, no envelope)
+                value:
+                  tag: Create
+                  value:
+                    - {tag: ObjectType, type: Enumeration, value: SymmetricKey}
+                    - tag: Attributes
+                      value:
+                        - {tag: CryptographicAlgorithm, type: Enumeration, value: AES}
+                        - {tag: CryptographicLength, type: Integer, value: 256}
+                        - {tag: CryptographicUsageMask, type: Integer, value: 12}
+              get_object:
+                summary: Get a KMS object by UID
+                value:
+                  tag: Get
+                  value:
+                    - {tag: UniqueIdentifier, type: TextString, value: 550e8400-e29b-41d4-a716-446655440000}
+              locate:
+                summary: Locate objects by attributes
+                value:
+                  tag: Locate
+                  value:
+                    - tag: Attributes
+                      value:
+                        - {tag: ObjectType, type: Enumeration, value: SymmetricKey}
+                        - {tag: CryptographicAlgorithm, type: Enumeration, value: AES}
+              destroy:
+                summary: Destroy (delete) a KMS object
+                value:
+                  tag: Destroy
+                  value:
+                    - {tag: UniqueIdentifier, type: TextString, value: 550e8400-e29b-41d4-a716-446655440000}
+      responses:
+        '200':
+          description: KMIP response — a TtlvNode (ResponseMessage or single operation response)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TtlvNode'
+        '401':
+          description: Unauthorized — missing or invalid credentials
+        '422':
+          description: Invalid KMIP request (malformed JSON or protocol error)
+
+  /kmip:
+    post:
+      tags: [KMIP]
+      summary: Legacy KMIP over binary TTLV
+      description: |
+        Submit KMIP operations using the binary TTLV wire format (bytes).
+        Used by native KMIP clients (PyKMIP, etc.). Prefers `/kmip/2_1` for REST clients.
+      operationId: kmipTtlv
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: KMIP binary TTLV response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          description: Unauthorized
+
+  # ── Access Control ───────────────────────────────────────────────────────────
+
+  /me:
+    get:
+      tags: [Access]
+      summary: Current user identity
+      description: Returns the username the server resolves for the current request (JWT sub, cert CN, or API token owner).
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserResponse'
+              example:
+                user: alice@example.com
+
+  /access/owned:
+    get:
+      tags: [Access]
+      summary: List owned objects
+      description: Lists all KMS objects owned by the current user (i.e. objects for which the user has full access).
+      operationId: listOwnedObjects
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: List of owned objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ObjectOwnedResponse'
+
+  /access/obtained:
+    get:
+      tags: [Access]
+      summary: List obtained access rights
+      description: Lists objects not owned by the user for which access has been granted by another user.
+      operationId: listAccessRightsObtained
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: List of objects with granted access
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccessRightsObtainedResponse'
+
+  /access/list/{object_id}:
+    get:
+      tags: [Access]
+      summary: List access rights for an object
+      description: Returns all users and their permitted operations for a specific KMS object. Requires ownership of the object.
+      operationId: listAccesses
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: object_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: KMS unique identifier of the object
+      responses:
+        '200':
+          description: Per-user access rights
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserAccessResponse'
+
+  /access/grant:
+    post:
+      tags: [Access]
+      summary: Grant access to a user
+      description: Grants one or more KMIP operations on an object to another user. Only the object owner may grant access.
+      operationId: grantAccess
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Access'
+      responses:
+        '200':
+          description: Access granted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /access/revoke:
+    post:
+      tags: [Access]
+      summary: Revoke access from a user
+      description: Revokes one or more KMIP operations on an object from another user. Only the object owner may revoke access.
+      operationId: revokeAccess
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Access'
+      responses:
+        '200':
+          description: Access revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /access/create:
+    get:
+      tags: [Access]
+      summary: Check create permission
+      description: Returns whether the current user has permission to create new KMS objects.
+      operationId: checkCreatePermission
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Create permission status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [has_create_permission]
+                properties:
+                  has_create_permission:
+                    type: boolean
+                    description: True if the user may create new KMS objects
+              example:
+                has_create_permission: true
+
+  /access/privileged:
+    get:
+      tags: [Access]
+      summary: Check privileged access
+      description: Returns whether the current user has privileged (admin-level) access.
+      operationId: checkPrivilegedAccess
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Privileged access status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [has_privileged_access]
+                properties:
+                  has_privileged_access:
+                    type: boolean
+                    description: True if the user has privileged (admin-level) access
+              example:
+                has_privileged_access: false
+
+  # ── Server ───────────────────────────────────────────────────────────────────
+
+  /server-info:
+    get:
+      tags: [Server]
+      summary: Server configuration info
+      description: Returns KMS version, FIPS mode, HSM instances, and the default username. Requires authentication.
+      operationId: getServerInfo
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: Server info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: string
+                  fips_mode:
+                    type: boolean
+                  hsm_instances:
+                    type: array
+                    items:
+                      type: object
+                  default_username:
+                    type: string
+
+  /hsm/status:
+    get:
+      tags: [Server]
+      summary: HSM status
+      description: Returns the status of all configured HSM instances.
+      operationId: getHsmStatus
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: HSM status list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  # ── REST Crypto API ──────────────────────────────────────────────────────────
+
+  /v1/crypto/encrypt:
+    post:
+      tags: [REST Crypto API]
+      summary: Encrypt (JWE)
+      description: |
+        Encrypts plaintext using a KMS key. Returns a JWE Flattened JSON Serialization (RFC 7516 §7.2.2).
+
+        - For symmetric keys: use `alg: "dir"` — the key is used directly as the CEK.
+        - For asymmetric keys: use `alg: "RSA-OAEP"` or `"RSA-OAEP-256"` — the CEK is wrapped with the public key.
+      operationId: cryptoEncrypt
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncryptRequest'
+      responses:
+        '200':
+          description: JWE Flattened JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncryptResponse'
+
+  /v1/crypto/decrypt:
+    post:
+      tags: [REST Crypto API]
+      summary: Decrypt (JWE)
+      description: |
+        Decrypts a JWE Flattened JSON Serialization. The `kid` is read from the protected header.
+      operationId: cryptoDecrypt
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecryptRequest'
+      responses:
+        '200':
+          description: Decrypted plaintext
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecryptResponse'
+
+  /v1/crypto/sign:
+    post:
+      tags: [REST Crypto API]
+      summary: Sign (JWS detached)
+      description: |
+        Signs a payload using a KMS private key or HMAC key.
+        Returns a detached JWS — the payload is NOT included in the response.
+      operationId: cryptoSign
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRequest'
+      responses:
+        '200':
+          description: JWS detached signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignResponse'
+
+  /v1/crypto/verify:
+    post:
+      tags: [REST Crypto API]
+      summary: Verify (JWS detached)
+      description: |
+        Verifies a detached JWS. Pass the `protected` header and `signature` from the sign response,
+        together with the original `data` bytes.
+      operationId: cryptoVerify
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
+      responses:
+        '200':
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResponse'
+
+  /v1/crypto/mac:
+    post:
+      tags: [REST Crypto API]
+      summary: HMAC compute or verify
+      description: |
+        - **Compute**: omit `mac` in the request — returns the computed MAC.
+        - **Verify**: include `mac` in the request — returns `{kid, valid: true/false}`.
+      operationId: cryptoMac
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MacRequest'
+      responses:
+        '200':
+          description: MAC compute or verify result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MacComputeResponse'
+                  - $ref: '#/components/schemas/MacVerifyResponse'
+
+  /v1/crypto/keys:
+    post:
+      tags: [REST Crypto API]
+      summary: Generate a key
+      description: |
+        Generates a new key in the KMS and returns its public metadata.
+        Private key material is never returned.
+      operationId: cryptoCreateKey
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KeyCreateRequest'
+      responses:
+        '200':
+          description: Key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyCreateResponse'
+        '400':
+          description: Bad request — required field missing or JSON deserialization error
+
+  /v1/crypto/keys/{kid}:
+    delete:
+      tags: [REST Crypto API]
+      summary: Destroy a key
+      description: Permanently destroys a key stored in the KMS. This operation is irreversible.
+      operationId: cryptoDestroyKey
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: kid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: KMS unique identifier of the key to destroy
+      responses:
+        '204':
+          description: Key destroyed — no content
+
+  # ── Google CSE ───────────────────────────────────────────────────────────────
+
+  /google_cse/status:
+    get:
+      tags: [Google CSE]
+      summary: KACLS status
+      description: Returns the KACLS service status and supported operations. No authentication required.
+      operationId: googleCseStatus
+      responses:
+        '200':
+          description: KACLS status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCseStatusResponse'
+
+  /google_cse/certs:
+    get:
+      tags: [Google CSE]
+      summary: KACLS public certificates (JWKS)
+      description: Returns the public keys used by the KACLS to sign authentication JWTs. No authentication required.
+      operationId: googleCseCerts
+      responses:
+        '200':
+          description: Public key set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCseCertsResponse'
+
+  /google_cse/wrap:
+    post:
+      tags: [Google CSE]
+      summary: Wrap a DEK
+      description: Wraps a Data Encryption Key (DEK) using the KACLS wrapping key.
+      operationId: googleCseWrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCseWrapRequest'
+      responses:
+        '200':
+          description: Wrapped DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCseWrapResponse'
+
+  /google_cse/unwrap:
+    post:
+      tags: [Google CSE]
+      summary: Unwrap a DEK
+      description: Unwraps a previously wrapped DEK after validating the caller's JWT tokens.
+      operationId: googleCseUnwrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCseUnwrapRequest'
+      responses:
+        '200':
+          description: Unwrapped DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCseUnwrapResponse'
+
+  /google_cse/digest:
+    post:
+      tags: [Google CSE]
+      summary: Compute key digest
+      description: Computes a digest (hash) of the unwrapped DEK for integrity verification purposes.
+      operationId: googleCseDigest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCseDigestRequest'
+      responses:
+        '200':
+          description: Key digest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCseDigestResponse'
+
+  /google_cse/rewrap:
+    post:
+      tags: [Google CSE]
+      summary: Re-wrap a DEK (KACLS migration)
+      description: Unwraps a DEK from the original KACLS and re-wraps it with this KACLS. Used during service migrations.
+      operationId: googleCseRewrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCseRewrapRequest'
+      responses:
+        '200':
+          description: Re-wrapped DEK and hash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCseRewrapResponse'
+
+  /google_cse/privilegedwrap:
+    post:
+      tags: [Google CSE]
+      summary: Privileged wrap (admin)
+      description: Wraps a DEK using privileged (admin/service-account) credentials. Bypasses end-user authorization check.
+      operationId: googleCsePrivilegedWrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCsePrivilegedWrapRequest'
+      responses:
+        '200':
+          description: Wrapped DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCsePrivilegedWrapResponse'
+
+  /google_cse/privilegedunwrap:
+    post:
+      tags: [Google CSE]
+      summary: Privileged unwrap (admin)
+      description: Unwraps a DEK using privileged credentials. Used by admin workflows and data recovery.
+      operationId: googleCsePrivilegedUnwrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCsePrivilegedUnwrapRequest'
+      responses:
+        '200':
+          description: Unwrapped DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCsePrivilegedUnwrapResponse'
+
+  /google_cse/privilegedprivatekeydecrypt:
+    post:
+      tags: [Google CSE]
+      summary: Privileged private key decrypt (admin)
+      description: Decrypts a DEK using a wrapped private key under privileged credentials, with SPKI hash verification.
+      operationId: googleCsePrivilegedPrivateKeyDecrypt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCsePrivilegedPrivateKeyDecryptRequest'
+      responses:
+        '200':
+          description: Decrypted DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCsePrivilegedPrivateKeyDecryptResponse'
+
+  /google_cse/privatekeysign:
+    post:
+      tags: [Google CSE]
+      summary: Sign with private key
+      description: Signs a digest using a wrapped private key. Used for S/MIME and other end-to-end signing workflows.
+      operationId: googleCsePrivateKeySign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCsePrivateKeySignRequest'
+      responses:
+        '200':
+          description: Signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCsePrivateKeySignResponse'
+
+  /google_cse/privatekeydecrypt:
+    post:
+      tags: [Google CSE]
+      summary: Decrypt with private key
+      description: Decrypts a DEK using a wrapped private key. Used for end-to-end encrypted email (S/MIME).
+      operationId: googleCsePrivateKeyDecrypt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCsePrivateKeyDecryptRequest'
+      responses:
+        '200':
+          description: Decrypted DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCsePrivateKeyDecryptResponse'
+
+  /google_cse/wrapprivatekey:
+    post:
+      tags: [Google CSE]
+      summary: Wrap a private key
+      description: Stub — accepted but not yet fully implemented. Returns 200 with empty body.
+      operationId: googleCseWrapPrivateKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCseWrapPrivateKeyRequest'
+      responses:
+        '200':
+          description: Accepted (stub — no response body)
+
+  /google_cse/delegate:
+    post:
+      tags: [Google CSE]
+      summary: Delegate access
+      description: Stub — accepted but not yet fully implemented. Returns 200 with empty body.
+      operationId: googleCseDelegate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleCseWrapPrivateKeyRequest'
+      responses:
+        '200':
+          description: Accepted (stub — no response body)
+
+  # ── AWS XKS ──────────────────────────────────────────────────────────────────
+
+  /aws/kms/xks/v1/health:
+    post:
+      tags: [AWS XKS]
+      summary: XKS proxy health check
+      description: |
+        Returns the health status of the XKS proxy and its underlying EKM fleet.
+
+        **Authentication**: AWS Signature Version 4 (HMAC-SHA256 over request body and headers).
+        The `Authorization` header must contain a valid SigV4 signature computed with the
+        access key ID and secret key configured on the KMS server.
+      operationId: xksGetHealthStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/XksGetHealthStatusRequest'
+      responses:
+        '200':
+          description: XKS proxy health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksGetHealthStatusResponse'
+        '401':
+          description: Authentication failed (invalid SigV4 signature)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksErrorReply'
+
+  /aws/kms/xks/v1/keys/{key_id}/metadata:
+    post:
+      tags: [AWS XKS]
+      summary: Get XKS key metadata
+      description: Returns the specification, usage, and status of a key stored in the KMS.
+      operationId: xksGetKeyMetadata
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: KMS object UID of the key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/XksGetKeyMetadataRequest'
+      responses:
+        '200':
+          description: Key metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksGetKeyMetadataResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksErrorReply'
+        '404':
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksErrorReply'
+
+  /aws/kms/xks/v1/keys/{key_id}/encrypt:
+    post:
+      tags: [AWS XKS]
+      summary: XKS encrypt
+      description: Encrypts plaintext using AES-GCM with the specified key.
+      operationId: xksEncrypt
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/XksEncryptRequest'
+      responses:
+        '200':
+          description: Ciphertext and authentication tag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksEncryptResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksErrorReply'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksErrorReply'
+
+  /aws/kms/xks/v1/keys/{key_id}/decrypt:
+    post:
+      tags: [AWS XKS]
+      summary: XKS decrypt
+      description: Decrypts AES-GCM ciphertext using the specified key.
+      operationId: xksDecrypt
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/XksDecryptRequest'
+      responses:
+        '200':
+          description: Decrypted plaintext
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksDecryptResponse'
+        '400':
+          description: Invalid ciphertext or request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksErrorReply'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/XksErrorReply'
+
+  # ── Azure EKM ────────────────────────────────────────────────────────────────
+
+  /azureekm/info:
+    post:
+      tags: [Azure EKM]
+      summary: Proxy info
+      description: |
+        Returns proxy and EKM vendor information.
+
+        **Authentication**: mTLS — client certificate required.
+        **Query parameter**: `api-version` must be `"0.1-preview"`.
+      operationId: azureEkmInfo
+      parameters:
+        - name: api-version
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [0.1-preview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AzureProxyInfoRequest'
+      responses:
+        '200':
+          description: Proxy info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureProxyInfoResponse'
+        '400':
+          description: Invalid request or unsupported api-version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureEkmErrorReply'
+
+  /azureekm/{key_name}/metadata:
+    post:
+      tags: [Azure EKM]
+      summary: Key metadata
+      description: Returns type, size, and public parameters of a KMS key.
+      operationId: azureEkmKeyMetadata
+      parameters:
+        - name: key_name
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-zA-Z0-9-]{1,64}$
+          description: Key name (1–64 chars, [a-zA-Z0-9-])
+        - name: api-version
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [0.1-preview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AzureKeyMetadataRequest'
+      responses:
+        '200':
+          description: Key metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureKeyMetadataResponse'
+        '404':
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureEkmErrorReply'
+
+  /azureekm/{key_name}/wrapkey:
+    post:
+      tags: [Azure EKM]
+      summary: Wrap key (DEK)
+      description: Wraps a Data Encryption Key using AES Key Wrap or RSA-OAEP-256.
+      operationId: azureEkmWrapKey
+      parameters:
+        - name: key_name
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-zA-Z0-9-]{1,64}$
+        - name: api-version
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [0.1-preview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AzureWrapKeyRequest'
+      responses:
+        '200':
+          description: Wrapped DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureWrapKeyResponse'
+        '400':
+          description: Invalid request or unsupported algorithm
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureEkmErrorReply'
+        '403':
+          description: Key disabled or operation not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureEkmErrorReply'
+
+  /azureekm/{key_name}/unwrapkey:
+    post:
+      tags: [Azure EKM]
+      summary: Unwrap key (DEK)
+      description: Unwraps a previously wrapped Data Encryption Key.
+      operationId: azureEkmUnwrapKey
+      parameters:
+        - name: key_name
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[a-zA-Z0-9-]{1,64}$
+        - name: api-version
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [0.1-preview]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AzureUnwrapKeyRequest'
+      responses:
+        '200':
+          description: Unwrapped DEK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureUnwrapKeyResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureEkmErrorReply'
+        '403':
+          description: Key disabled or operation not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzureEkmErrorReply'
+
+  # ── MS DKE ───────────────────────────────────────────────────────────────────
+
+  /ms_dke/version:
+    get:
+      tags: [MS DKE]
+      summary: DKE server version
+      description: Returns the DKE service version string. No authentication required.
+      operationId: dkeVersion
+      responses:
+        '200':
+          description: Version string
+          content:
+            application/json:
+              schema:
+                type: string
+
+  /ms_dke/{key_name}:
+    get:
+      tags: [MS DKE]
+      summary: Get DKE public key
+      description: Returns the RSA public key and cache expiry for a named DKE key. Used by Microsoft 365 clients to locate the encryption key.
+      operationId: dkeGetKey
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the DKE key
+      responses:
+        '200':
+          description: DKE public key and cache info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DkeKeyData'
+        '404':
+          description: Key not found
+
+  /ms_dke/{key_name}/{key_id}/decrypt:
+    post:
+      tags: [MS DKE]
+      summary: DKE decrypt
+      description: Decrypts data encrypted with the DKE public key using the corresponding private key stored in the KMS.
+      operationId: dkeDecrypt
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: GUID of the key version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DkeEncryptedData'
+      responses:
+        '200':
+          description: Decrypted data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DkeDecryptedData'
+        '401':
+          description: Unauthorized
+        '404':
+          description: Key not found
+
+  # ── Download CLI ──────────────────────────────────────────────────────────────
+
+  /download-cli:
+    get:
+      tags: [Server]
+      summary: Download CLI archive
+      description: |
+        Downloads the `ckms` CLI binary archive (ZIP) for the current platform.
+        Returns 404 if no CLI archive has been placed in the server's resources folder.
+      operationId: downloadCli
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: CLI ZIP archive
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: CLI archive not available
+    head:
+      tags: [Server]
+      summary: Check CLI archive availability
+      description: Returns 200 if a CLI archive is available for download, 404 otherwise.
+      operationId: checkCliArchive
+      security:
+        - bearerAuth: []
+        - mtls: []
+      responses:
+        '200':
+          description: CLI archive is available
+        '404':
+          description: CLI archive not available
+
+  # ── UI Auth ───────────────────────────────────────────────────────────────────
+
+  /ui/login_flow:
+    get:
+      tags: [UI Auth]
+      summary: Initiate OIDC login
+      description: |
+        Redirects the browser to the configured OIDC provider's authorization endpoint.
+        Only available when the web UI is enabled and an OIDC provider is configured.
+      operationId: uiLoginFlow
+      responses:
+        '302':
+          description: Redirect to OIDC authorization endpoint
+        '200':
+          description: Login page HTML (when no OIDC provider configured)
+
+  /ui/callback:
+    get:
+      tags: [UI Auth]
+      summary: OIDC authorization callback
+      description: Handles the OIDC provider redirect after successful authentication. Exchanges the authorization code for tokens and sets the session
+        cookie.
+      operationId: uiCallback
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+          description: Authorization code from the OIDC provider
+        - name: state
+          in: query
+          schema:
+            type: string
+          description: State parameter (CSRF protection)
+      responses:
+        '302':
+          description: Redirect to the web UI after successful login
+        '400':
+          description: Invalid callback parameters
+
+  /ui/token:
+    get:
+      tags: [UI Auth]
+      summary: Get current JWT token
+      description: Returns the JWT access token for the currently authenticated UI session.
+      operationId: uiGetToken
+      responses:
+        '200':
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT access token
+        '401':
+          description: Not authenticated
+
+  /ui/logout:
+    get:
+      tags: [UI Auth]
+      summary: Logout
+      description: Clears the session cookie and optionally redirects to the OIDC provider's logout endpoint.
+      operationId: uiLogout
+      responses:
+        '302':
+          description: Redirect after logout
+
+  /ui/auth_method:
+    get:
+      tags: [UI Auth]
+      summary: Auth method configuration
+      description: Returns the authentication method configured on the server (JWT, cert, API token, or none).
+      operationId: uiAuthMethod
+      responses:
+        '200':
+          description: Auth method info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auth_method:
+                    type: string
+                    enum: [jwt, cert, api_token, none]
+                  oidc_issuer:
+                    type: string
+                    description: OIDC issuer URL (only when auth_method is jwt)

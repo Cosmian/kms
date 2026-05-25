@@ -41,4 +41,5 @@ tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
+reqwest = { workspace = true, features = ["rustls-tls"] }
 zeroize = { workspace = true }

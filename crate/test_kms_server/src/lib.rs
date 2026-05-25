@@ -47,3 +47,6 @@ pub mod reexport {
 
 #[cfg(test)]
 mod certify_tests;
+
+#[cfg(test)]
+mod openapi_validation;
