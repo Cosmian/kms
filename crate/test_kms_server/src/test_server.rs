@@ -556,10 +556,11 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
 /// manages its own singleton cell (`ONCE_VECTOR_HSM_KEK`).
 ///
 /// # Errors
-/// Returns an error if `HSM_SLOT_ID` is not set or if the server fails to start.
+/// Returns an error if the server fails to start.
 ///
 /// # Panics
-/// Panics if `workspace_dir` does not exist or `kek_id` is empty after bootstrap.
+/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`, if `workspace_dir`
+/// does not exist, or if `kek_id` is empty after bootstrap.
 pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
 -> Result<TestsContext, KmsClientError> {
     let slot = get_softhsm2_slot_id();

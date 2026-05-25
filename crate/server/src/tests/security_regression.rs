@@ -50,7 +50,7 @@ async fn create_aes_key(kms: &KMS, user: &str) -> KResult<UniqueIdentifier> {
 /// ciphertext. This test ensures that the encrypt operation works correctly after
 /// the trace was changed to only log data lengths.
 ///
-/// Guards: COSMIAN-2026-005 (sensitive data in logs)
+/// Guards: COSMIAN-2026-014 (sensitive data exposed in log/trace output)
 #[tokio::test]
 async fn test_encrypt_no_plaintext_in_traces() -> KResult<()> {
     cosmian_logger::log_init(Some("trace"));
@@ -87,7 +87,7 @@ async fn test_encrypt_no_plaintext_in_traces() -> KResult<()> {
 /// Previously, the trace! macro in decrypt.rs would log the full request including
 /// ciphertext data. This test ensures decrypt works correctly after the trace change.
 ///
-/// Guards: COSMIAN-2026-005 (sensitive data in logs)
+/// Guards: COSMIAN-2026-014 (sensitive data exposed in log/trace output)
 #[tokio::test]
 async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
     cosmian_logger::log_init(Some("trace"));
@@ -143,7 +143,7 @@ async fn test_decrypt_no_ciphertext_in_traces() -> KResult<()> {
 /// Previously, the trace! macro in hash.rs would serialize the full request (including
 /// the data being hashed). This test ensures hash works correctly after the trace change.
 ///
-/// Guards: COSMIAN-2026-005 (sensitive data in logs)
+/// Guards: COSMIAN-2026-014 (sensitive data exposed in log/trace output)
 #[tokio::test]
 async fn test_hash_no_data_in_traces() -> KResult<()> {
     cosmian_logger::log_init(Some("trace"));
@@ -178,7 +178,7 @@ async fn test_hash_no_data_in_traces() -> KResult<()> {
 /// Previously, the debug! macro in mac.rs would log the full HMAC value.
 /// This test ensures MAC compute works correctly after the trace change.
 ///
-/// Guards: COSMIAN-2026-005 (sensitive data in logs)
+/// Guards: COSMIAN-2026-014 (sensitive data exposed in log/trace output)
 #[tokio::test]
 async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
     cosmian_logger::log_init(Some("trace"));
@@ -226,7 +226,7 @@ async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
 /// and then `decrement_usage_limits` persisted the plaintext key back to the database,
 /// silently stripping KEK encryption at rest.
 ///
-/// Guards: COSMIAN-2026-006 (KEK plaintext leak via `UsageLimits` persist in Decrypt)
+/// Guards: COSMIAN-2026-015 (KEK plaintext leak via `UsageLimits` persist in Decrypt)
 #[tokio::test]
 async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
@@ -356,7 +356,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
 /// Same vulnerability pattern as Decrypt: `sign.rs` unwrapped in-place and then
 /// `decrement_usage_limits` persisted plaintext.
 ///
-/// Guards: COSMIAN-2026-006 (KEK plaintext leak via `UsageLimits` persist in Sign)
+/// Guards: COSMIAN-2026-015 (KEK plaintext leak via `UsageLimits` persist in Sign)
 #[tokio::test]
 async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{

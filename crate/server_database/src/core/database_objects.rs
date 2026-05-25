@@ -380,15 +380,17 @@ impl Database {
 mod tests {
     use std::{collections::HashMap, time::Duration};
 
+    use tempfile::TempDir;
+
     use super::Database;
     use crate::core::MainDbParams;
 
     /// Verify that a UID with an HSM prefix is rejected when no HSM store is registered.
     #[tokio::test]
     async fn test_hsm_uid_rejected_without_hsm_store() {
-        let tmp = std::env::temp_dir();
+        let tmp = TempDir::new().expect("Failed to create temp dir");
         let db = Database::instantiate(
-            &MainDbParams::Sqlite(tmp, None),
+            &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
             false,
             HashMap::new(), // no HSM stores registered
             Duration::from_secs(1),

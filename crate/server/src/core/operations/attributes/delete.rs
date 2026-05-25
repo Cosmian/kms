@@ -30,7 +30,7 @@ pub(crate) async fn delete_attribute(
 
     let mut owm = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
-        KmipOperation::GetAttributes,
+        KmipOperation::DeleteAttribute,
         kms,
         user,
     ))

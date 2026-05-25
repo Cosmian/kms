@@ -137,7 +137,7 @@ pub(crate) trait CryptoOpSpec {
 /// operation-specific execution logic.
 ///
 /// The clone-before-unwrap pattern ensures wrapped key material is
-/// never persisted in plaintext (COSMIAN-2026-006).
+/// never persisted in plaintext (COSMIAN-2026-015).
 pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
     kms: &KMS,
     request: Op::Request,

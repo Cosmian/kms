@@ -33,7 +33,7 @@ pub(crate) async fn set_attribute(
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
-        KmipOperation::GetAttributes,
+        KmipOperation::SetAttribute,
         kms,
         user,
     ))

@@ -35,13 +35,11 @@ const SymmetricHashForm: React.FC = () => {
             if (values.inputMode === "file") {
                 if (!values.inputFile || values.inputFile.byteLength === 0) {
                     return "Please select a file to hash.";
-                    return;
                 }
                 data = values.inputFile;
             } else {
                 if (!values.inputText) {
                     return "Please enter text to hash.";
-                    return;
                 }
                 data = new TextEncoder().encode(values.inputText);
             }

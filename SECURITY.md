@@ -54,7 +54,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | High                                                                        |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.17.0 before 5.21.1                                                   |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian engineering                                                          |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -73,7 +73,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | High                                                                        |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1                                                    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -92,7 +92,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | High                                                                        |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1                                                    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -111,7 +111,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | High                                                                        |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1                                                    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -130,7 +130,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | Moderate                                                                    |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.15.0 before 5.21.1                                                   |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -149,7 +149,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | Moderate                                                                    |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1                                                    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -168,7 +168,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | Low                                                                         |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1                                                    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -187,7 +187,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | Moderate                                                                    |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1                                                    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -206,7 +206,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | Low                                                                         |
 | Published    | 25 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1                                                    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -215,6 +215,44 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 **Impact:** Secrets leaked to log files accessible to operators or log aggregation systems.
 
 **Mitigation:** Upgrade to 5.21.1. Sensitive fields are now masked as `[configured]` in Debug output.
+
+---
+
+#### COSMIAN-2026-015 — KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign
+
+| Field        | Value                                                                       |
+| ------------ | --------------------------------------------------------------------------- |
+| Severity     | High                                                                        |
+| Published    | 25 May 2026                                                                 |
+| Affected     | from 5.0.0 before 5.22.0                                                   |
+| Fixed in     | 5.22.0                                                                      |
+| Found by     | Cosmian engineering                                                         |
+| References   | [#959](https://github.com/Cosmian/kms/pull/959)                            |
+
+**Summary:** The `decrypt.rs` and `sign.rs` operations called `unwrap_and_enforce_policy` on the fetched key object, which decrypted the key material in-place. The subsequent `decrement_usage_limits` call then persisted this modified (plaintext) object back to the database, silently stripping the KEK encryption at rest. Any key with a `UsageLimits` attribute and an active KEK wrapping was vulnerable.
+
+**Impact:** Loss of encryption-at-rest for keys protected by a Key Encryption Key (KEK). After the first Decrypt or Sign operation on such a key, the database stored its plaintext material, making future database-level protection ineffective.
+
+**Mitigation:** Upgrade to 5.22.0. The fix decouples the usage-limit decrement from the unwrapped object path: `decrement_usage_limits` now operates on the original wrapped object fetched directly from the database, never on the in-place-unwrapped copy.
+
+---
+
+#### COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type
+
+| Field        | Value                                                                       |
+| ------------ | --------------------------------------------------------------------------- |
+| Severity     | Moderate                                                                    |
+| Published    | 25 May 2026                                                                 |
+| Affected     | from 5.0.0 before 5.23.0                                                   |
+| Fixed in     | 5.23.0                                                                      |
+| Found by     | Copilot code review (GitHub PR #959)                                        |
+| References   | [#960](https://github.com/Cosmian/kms/issues/960)                          |
+
+**Summary:** The `SetAttribute`, `ModifyAttribute`, `AddAttribute`, and `DeleteAttribute` KMIP operations all passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. That function's permission check uses a relaxed "any-permission" policy for `GetAttributes`, so any user holding *any* grant on an object (e.g., `Encrypt`-only) could mutate its attributes — including security-sensitive attributes such as `CryptographicUsageMask` — without the required `Modify` or full-access grant.
+
+**Impact:** Privilege escalation: a user with a limited grant (e.g., encrypt-only) could change key attributes, potentially widening the usage mask, altering sensitive metadata, or compromising the key's intended usage restrictions.
+
+**Mitigation:** Upgrade to 5.23.0. Each attribute-mutation operation now uses its own `KmipOperation` variant (`SetAttribute`, `ModifyAttribute`, `AddAttribute`, `DeleteAttribute`), which enforces the correct permission check (explicit grant or `Get` wildcard required).
 
 ---
 
@@ -244,7 +282,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Severity     | Critical                                                                    |
 | Published    | 21 April 2026                                                               |
 | Affected     | from 5.0.0 before 5.21.1 (when OTLP configured with `http://` endpoint)    |
-| Fixed in     | 5.21.1 (pending release)                                                    |
+| Fixed in     | 5.22.0                                                    |
 | Found by     | Cosmian security audit                                                      |
 | References   | [#928](https://github.com/Cosmian/kms/pull/928)                             |
 
@@ -528,6 +566,8 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 | ID               | Severity | Affected                      | Fixed in | Title                                                          |
 | ---------------- | -------- | ----------------------------- | -------- | -------------------------------------------------------------- |
+| COSMIAN-2026-016 | Moderate | 5.0.0 – 5.22.x               | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type   |
+| COSMIAN-2026-015 | High     | 5.0.0 – 5.21.x               | 5.22.0   | KEK plaintext leak via UsageLimits persist in Decrypt/Sign      |
 | COSMIAN-2026-014 | Low      | 5.0.0 – 5.21.0               | 5.21.1   | Sensitive config values exposed in Debug output                 |
 | COSMIAN-2026-013 | Moderate | 5.0.0 – 5.21.0               | 5.21.1   | Internal error details leaked in HTTP 5xx responses             |
 | COSMIAN-2026-012 | Low      | 5.0.0 – 5.21.0               | 5.21.1   | `/server-info` endpoint accessible without authentication      |

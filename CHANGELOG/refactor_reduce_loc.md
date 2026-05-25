@@ -24,7 +24,9 @@
 ## Security
 
 - **KEK wrapping bypass via attribute operations**: fix a security bug where `ModifyAttribute`, `SetAttribute`, `AddAttribute`, and `Activate` would auto-unwrap HSM-wrapped keys via `retrieve_object_for_operation()` and then persist the unwrapped key material back to the database, defeating KEK encryption at rest. The fix skips auto-unwrapping for `GetAttributes`-type operations since they only need object metadata, not key material ([#960](https://github.com/Cosmian/kms/issues/960))
-- **KEK plaintext leak via UsageLimits persist in Decrypt/Sign** (COSMIAN-2026-006): `decrypt.rs` and `sign.rs` unwrapped the key material in-place via `unwrap_and_enforce_policy`, then `decrement_usage_limits` persisted the plaintext key back to the database when UsageLimits were configured, silently stripping KEK encryption at rest. Fixed by cloning before unwrapping (same pattern already used in `encrypt.rs`) so `decrement_usage_limits` always persists the original wrapped object ([#959](https://github.com/Cosmian/kms/pull/959))
+- **KEK plaintext leak via UsageLimits persist in Decrypt/Sign** (COSMIAN-2026-015): `decrypt.rs` and `sign.rs` unwrapped the key material in-place via `unwrap_and_enforce_policy`, then `decrement_usage_limits` persisted the plaintext key back to the database when UsageLimits were configured, silently stripping KEK encryption at rest. Fixed by cloning before unwrapping (same pattern already used in `encrypt.rs`) so `decrement_usage_limits` always persists the original wrapped object ([#959](https://github.com/Cosmian/kms/pull/959))
+- **Attribute-mutation authorization bypass**: `SetAttribute`, `ModifyAttribute`, `AddAttribute`, and `DeleteAttribute` were all calling `retrieve_object_for_operation` with `KmipOperation::GetAttributes`, which uses a relaxed "any permission" check. Any authorized user (e.g. Encrypt-only) could therefore mutate object attributes. Fixed by passing the correct KMIP operation type for each operation; `retrieve_object_for_operation` now skips auto-unwrapping for all four attribute-mutating operations (not just `GetAttributes`). Added `SetAttribute`, `ModifyAttribute`, `AddAttribute`, and `DeleteAttribute` variants to `KmipOperation`. ([#959](https://github.com/Cosmian/kms/pull/959))
+- **KMIP compliance — attribute ops on Compromised objects**: the `state_allows` guard in `retrieve_object_utils.rs` now permits `AddAttribute`, `ModifyAttribute`, `SetAttribute`, and `DeleteAttribute` on `Compromised`-state objects. KMIP spec allows attribute mutation regardless of lifecycle state (SKFF-M-9-14 / SKFF-M-9-21 test vectors verify this).
 
 ## Features
 
@@ -36,7 +38,7 @@
 - **HSM key without HSM plugin**: new negative test vector `test_data/vectors/negative/lifecycle/create_hsm_key_without_hsm` asserts that creating an `hsm::*` key on a non-HSM server returns `"No HSM is configured"` ([#959](https://github.com/Cosmian/kms/pull/959))
 - **Unit test**: `cosmian_kms_server_database::core::database_objects::tests::test_hsm_uid_rejected_without_hsm_store` verifies the guard at the database routing layer ([#959](https://github.com/Cosmian/kms/pull/959))
 - **HSM Crypt2Pay permissions**: fix tests #25 and #27 in `crate/server/src/tests/hsm/permissions.rs` to accept `Kmip21Error(Sensitive, "DENIED")` as a valid outcome when the HSM hardware enforces non-extractable keys ([#959](https://github.com/Cosmian/kms/pull/959))
-- **KEK wrapping regression tests** (COSMIAN-2026-006): add `test_decrypt_preserves_kek_wrapping_with_usage_limits` and `test_sign_preserves_kek_wrapping_with_usage_limits` in `security_regression.rs` that create a KEK-wrapped key with UsageLimits, perform Decrypt/Sign, then verify the raw DB object is still wrapped ([#959](https://github.com/Cosmian/kms/pull/959))
+- **KEK wrapping regression tests** (COSMIAN-2026-015): add `test_decrypt_preserves_kek_wrapping_with_usage_limits` and `test_sign_preserves_kek_wrapping_with_usage_limits` in `security_regression.rs` that create a KEK-wrapped key with UsageLimits, perform Decrypt/Sign, then verify the raw DB object is still wrapped ([#959](https://github.com/Cosmian/kms/pull/959))
 - **Synology DSM vectors**: add GetAttributeList, GetAttributes, and Get steps to the Synology DSM integration vector to exercise the full key retrieval flow after Activate (requires `server_type = "hsm_kek"` with `HSM_SLOT_ID`)
 - **Synology DSM Rust test**: extend `test_synology_dsm_volume_lifecycle` with GetAttributeList, GetAttributes, and Get operations matching the post-Activate DSM sequence
 
@@ -44,5 +46,16 @@
 
 - **Synology DSM + HSM-wrapped keys**: add `default_unwrap_type = ["SecretData", "SymmetricKey"]` to the HSM KEK vector test server, reproducing the exact configuration from issue #960 where DSM fails to retrieve keys wrapped by a hardware KEK ([#960](https://github.com/Cosmian/kms/issues/960))
 - **Logging repetition in KMIP routes**: remove `span.enter()` calls from async route handlers in `routes/kmip.rs` that caused span names to repeat 70+ times in trace output when concurrent requests shared worker threads; per-operation instrumentation already exists in `core/kms/kmip.rs`
+
+## Security Documentation
+
+- **COSMIAN-2026-015**: add SECURITY.md entry for KEK plaintext leak via UsageLimits persist in Decrypt/Sign (assigned correct ID — previously incorrectly referenced as COSMIAN-2026-006 in code and CHANGELOG) ([#959](https://github.com/Cosmian/kms/pull/959))
+- **COSMIAN-2026-016**: add SECURITY.md entry for attribute-mutation authorization bypass (fixed in 5.23.0) ([#960](https://github.com/Cosmian/kms/issues/960))
+- **Vulnerability ID corrections**: fix incorrect `COSMIAN-2026-005` references (lines 53/90/146/181 of `security_regression.rs`) → `COSMIAN-2026-014`; fix incorrect `COSMIAN-2026-006` references (lines 229/359 of `security_regression.rs` and line 140 of `crypto_op.rs`) → `COSMIAN-2026-015`
+
+## CI
+
+- **Freeze Python deps for JOSE tests**: add `.github/scripts/test/requirements-jose.txt` pinning `jwcrypto==1.5.6` and `cryptography<45.0.0`; update `test_jose.sh` to use `pip install -r` instead of bare install ([#959](https://github.com/Cosmian/kms/pull/959))
+- **Fix argparse `-` prefix bug**: use `--flag="${VAR}"` (equals syntax) for all base64url arguments passed to `jose_interop_helper.py` to prevent Python argparse from misinterpreting ciphertexts or signatures that start with `-` as option flags
 
 Closes #960
