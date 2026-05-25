@@ -114,6 +114,9 @@ test.describe("Certificate encrypt → decrypt roundtrip", () => {
     });
 
     test("decrypt with wrong key fails", async ({ page }) => {
+        // Creates two self-signed certs (two RSA key-pair generations);
+        // under heavy SQLite write load this can exceed the default 90 s timeout.
+        test.setTimeout(180_000);
         const { certId } = await createSelfSignedCert(page, "CN=Key1");
         const { privKeyId: otherPriv } = await createSelfSignedCert(page, "CN=Key2");
 

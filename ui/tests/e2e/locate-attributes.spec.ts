@@ -196,6 +196,10 @@ test.describe("Locate – attribute display correctness (software keys)", () => 
 
 test.describe("Locate – no N/A in Type column", () => {
     test("all located objects have a valid Type", async ({ page }) => {
+        // No-filter locate returns every object in the DB; with 10 parallel
+        // workers this can exceed the default 90 s test timeout when the
+        // server is under heavy SQLite write load.
+        test.setTimeout(180_000);
         // Create at least one key so the table is not empty
         await createSymKey(page);
 

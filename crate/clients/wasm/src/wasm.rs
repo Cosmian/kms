@@ -657,7 +657,13 @@ pub fn get_kmip_operations() -> Result<JsValue, JsValue> {
     let operations: Vec<AlgoOption> = all_ops
         .iter()
         .map(|op| {
-            let value = op.to_string();
+            // Use serde_json to get the canonical serialised name (matches
+            // `#[serde(rename_all = "lowercase")]` on KmipOperation), e.g.
+            // "setattribute" instead of the Display value "set_attribute".
+            let value = serde_json::to_string(op)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_owned();
             let label = match op {
                 KmipOperation::DeriveKey => "Derive Key".to_owned(),
                 KmipOperation::GetAttributes => "Get Attributes".to_owned(),

@@ -46,8 +46,12 @@ const MTLS_AVAILABLE = CERT_DIR !== "";
  * Walk every page of the Ant Design Table and count HSM / Unknown rows.
  * Returns the number of hsm:: UIDs with Active state and the total entries
  * showing "Unknown" state.
+ *
+ * @param earlyExitCount - Stop paginating once `hsmActive` reaches this
+ *   value.  Pass `undefined` (default) to scan all pages — needed when the
+ *   caller also uses the `unknown` count.
  */
-async function collectHsmKeysAcrossPages(page: Page): Promise<{ hsmActive: number; unknown: number }> {
+async function collectHsmKeysAcrossPages(page: Page, earlyExitCount?: number): Promise<{ hsmActive: number; unknown: number }> {
     let hsmActive = 0;
     let unknown = 0;
 
@@ -66,9 +70,12 @@ async function collectHsmKeysAcrossPages(page: Page): Promise<{ hsmActive: numbe
     // Scan the first page
     await scanVisibleRows();
 
-    // Click "Next Page" until no more pages remain (safety cap at 50)
+    // Click "Next Page" until no more pages remain (safety cap at 50).
+    // When earlyExitCount is set, stop as soon as enough HSM keys are found
+    // to avoid iterating through hundreds of pages under parallel-worker load.
     let remaining = 50;
     while (remaining-- > 0) {
+        if (earlyExitCount !== undefined && hsmActive >= earlyExitCount) break;
         const nextBtn = page.locator(".ant-pagination-next button:not([disabled])");
         if (!(await nextBtn.count())) break;
         await nextBtn.click();
@@ -121,11 +128,17 @@ test.describe("Locate – HSM keys (real SoftHSM2)", () => {
         const rows = page.locator(".ant-table-tbody .ant-table-row");
         await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
 
-        const { hsmActive } = await collectHsmKeysAcrossPages(page);
+        // earlyExitCount: stop paginating once the required count is found.
+        const { hsmActive } = await collectHsmKeysAcrossPages(page, HSM_KEY_COUNT);
         expect(hsmActive).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
     });
 
     test("no-filter Locate includes HSM keys with Active state", async ({ page }) => {
+        // No-filter locate returns every object in the DB; with 10 parallel
+        // workers this can be hundreds of rows spread over many pages.  Set a
+        // generous timeout and stop paginating as soon as enough HSM keys are
+        // found to avoid iterating needlessly through non-HSM pages.
+        test.setTimeout(180_000);
         await gotoAndWait(page, "/ui/locate");
         await submitAndWaitForResponse(page);
 
@@ -133,7 +146,7 @@ test.describe("Locate – HSM keys (real SoftHSM2)", () => {
         const rows = page.locator(".ant-table-tbody .ant-table-row");
         await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
 
-        const { hsmActive } = await collectHsmKeysAcrossPages(page);
+        const { hsmActive } = await collectHsmKeysAcrossPages(page, HSM_KEY_COUNT);
         expect(hsmActive).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
     });
 });
