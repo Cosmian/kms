@@ -26,6 +26,8 @@ static ONCE_VECTOR_MYSQL: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_REDIS_FINDEX: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring mTLS cert-auth (`cert_auth.toml`).
 static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests requiring server-only TLS (`auth_https.toml`).
+static ONCE_VECTOR_AUTH_HTTPS: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring `SoftHSM2` + KEK.
 static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 
@@ -813,13 +815,26 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
             manifest.name
         );
 
-        // Manifests with a custom server_config use a singleton cert-auth server
-        // (avoids macOS Security.framework race conditions with parallel PKCS#12 loading).
-        if manifest.server_config.is_some() {
-            let config_path = root.join(manifest.server_config.as_deref().unwrap_or_default());
-            let context = ONCE_VECTOR_CERT_AUTH
-                .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
-                .await?;
+        // Manifests with a custom server_config use a per-config singleton server.
+        // Each config file gets its own OnceCell to prevent race conditions where a
+        // different config (e.g. auth_https.toml without mTLS) could poison the
+        // ONCE_VECTOR_CERT_AUTH cell and cause all cert-auth tests to run against
+        // the wrong server (reproduces non-deterministically on slower runners like ARM).
+        if let Some(server_config) = &manifest.server_config {
+            let config_path = root.join(server_config);
+            let context = match server_config.as_str() {
+                "test_data/configs/server/test/auth_https.toml" => {
+                    ONCE_VECTOR_AUTH_HTTPS
+                        .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
+                        .await?
+                }
+                _ => {
+                    // Default: cert_auth.toml and any future mTLS configs
+                    ONCE_VECTOR_CERT_AUTH
+                        .get_or_try_init(|| crate::start_test_server_from_toml(&config_path))
+                        .await?
+                }
+            };
             execute_steps(context, &manifest, &vector_path).await?;
         } else {
             let context = get_or_init_vector_server(backend).await?;
