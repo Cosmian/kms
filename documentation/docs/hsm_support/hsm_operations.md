@@ -72,32 +72,42 @@ HSM keys follow a stricter permission model than regular KMS keys. The key princ
 
 ### Operations by role
 
-| Operation        | HSM Admin            | Non-admin (granted)          | Non-admin (no grant) |
-|------------------|----------------------|------------------------------|----------------------|
-| Create           | ✅                   | ❌                            | ❌                   |
-| CreateKeyPair    | ✅                   | ❌                            | ❌                   |
-| Destroy          | ✅                   | ❌ (cannot be granted)        | ❌                   |
-| Locate           | All HSM keys         | Granted keys only            | None                 |
-| Grant / Revoke   | ✅ (any HSM key)     | ❌                            | ❌                   |
-| Encrypt          | ✅                   | ✅                            | ❌                   |
-| Decrypt          | ✅                   | ✅                            | ❌                   |
-| Sign             | ✅                   | ✅                            | ❌                   |
-| Verify           | ✅                   | ✅                            | ❌                   |
-| Get / Export      | ✅                   | ✅ (metadata if sensitive)    | ❌                   |
-| Revoke (state)   | ❌ (not supported)   | ❌                            | ❌                   |
+| Operation                                                         | HSM Admin            | Non-admin (granted)          | Non-admin (no grant) |
+|-------------------------------------------------------------------|----------------------|------------------------------|----------------------|
+| Create / CreateKeyPair                                            | ✅                   | ❌                            | ❌                   |
+| Destroy                                                           | ✅                   | ❌ (cannot be granted)        | ❌                   |
+| Locate                                                            | All HSM keys         | Granted keys only            | None                 |
+| Grant / Revoke (access rights)                                    | ✅ (any HSM key)     | ❌                            | ❌                   |
+| Encrypt                                                           | ✅                   | ✅                            | ❌                   |
+| Decrypt                                                           | ✅                   | ✅                            | ❌                   |
+| Sign                                                              | ✅                   | ✅                            | ❌                   |
+| SignatureVerify                                                    | ✅                   | ✅                            | ❌                   |
+| MAC                                                               | ✅                   | ✅                            | ❌                   |
+| Get / Export                                                      | ✅                   | ✅ (metadata if sensitive)    | ❌                   |
+| GetAttributes                                                     | ✅                   | ✅                            | ❌                   |
+| SetAttribute / ModifyAttribute / AddAttribute / DeleteAttribute   | ✅                   | ✅                            | ❌                   |
+| Revoke (lifecycle state)                                          | ❌ (not supported)   | ❌                            | ❌                   |
 
 ### Grantable operations on HSM keys
 
-| Operation   | Can be granted? | Notes                                     |
-|-------------|-----------------|-------------------------------------------|
-| Encrypt     | ✅              | Symmetric (AES) and asymmetric (RSA)      |
-| Decrypt     | ✅              | Symmetric (AES) and asymmetric (RSA)      |
-| Sign        | ✅              | RSA private keys only                     |
-| Verify      | ✅              | RSA public keys only                      |
-| Get         | ✅              | Export key material or metadata            |
-| Destroy     | ❌              | Admin-only — irreversible hardware operation |
-| Revoke      | ❌              | HSM keys do not support state changes     |
-| Create      | ❌              | Admin-only — not a per-key grant           |
+| Operation          | Can be granted? | Notes                                                          |
+|--------------------|-----------------|----------------------------------------------------------------|
+| `encrypt`          | ✅              | Symmetric (AES) and asymmetric (RSA)                           |
+| `decrypt`          | ✅              | Symmetric (AES) and asymmetric (RSA)                           |
+| `sign`             | ✅              | RSA private keys only                                          |
+| `signature_verify` | ✅              | RSA public keys only                                           |
+| `mac`              | ✅              | Compute a Message Authentication Code using the HSM key        |
+| `get`              | ✅              | Retrieve key material or metadata; also implies `export`       |
+| `export`           | ✅              | Export key; also implies `get`                                 |
+| `get_attributes`   | ✅              | Read KMS metadata                                              |
+| `locate`           | ✅              | Search visibility for this key                                 |
+| `set_attribute`    | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `modify_attribute` | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `add_attribute`    | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `delete_attribute` | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `destroy`          | ❌              | Admin-only — irreversible hardware operation                   |
+| `revoke`           | ❌              | HSM keys do not support KMIP lifecycle state changes           |
+| `create`           | ❌              | Admin-only — not a per-key grant                               |
 
 !!! warning Get is not a wildcard for HSM keys
     Unlike regular KMS keys, granting `Get` on an HSM key does **not** implicitly grant all other operations.

@@ -1437,13 +1437,6 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/kmip_operations/locate").await
     }
 
-    #[cfg(feature = "non-fips")]
-    #[tokio::test]
-    async fn test_vec_revoke_key() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/access_control/revoke").await
-    }
-
     // ── New: Parametric key-size variants ─────────────────────────────────
 
     #[cfg(feature = "non-fips")]
@@ -2886,6 +2879,34 @@ ObjectType = "SymmetricKey"
     async fn test_vec_access_grant_partial() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/access_control/grant_partial_permissions").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_revoke_key_lifecycle() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/revoke_key_lifecycle").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_self_grant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/privilege_escalation_self_grant").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_non_owner_grant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/privilege_escalation_non_owner_grant")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_destroy() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/access_control/privilege_escalation_destroy_without_permission",
+        )
+        .await
     }
 
     // ── HSM + KEK vectors ─────────────────────────────────────────────────

@@ -165,9 +165,11 @@ fn path_to_string(p: &Path) -> Result<String, KmsClientError> {
 /// No TLS, no certificate authentication
 /// # Panics
 /// - if the server fails to start
-pub async fn start_test_kms_server_with_config(config: ClapConfig) -> &'static TestsContext {
+pub async fn start_test_kms_server_with_config(mut config: ClapConfig) -> &'static TestsContext {
     trace!("Starting test server with config : {:#?}", config);
     ONCE.get_or_try_init(|| async move {
+        // Allocate a dynamic port to avoid conflicts with other test servers
+        allocate_dynamic_port(&mut config)?;
         let server_params = ServerParams::try_from(config).context(
             "Failed to create ServerParams from ClapConfig in start_default_test_kms_server",
         )?;
@@ -883,22 +885,9 @@ fn set_access_token(
 ///
 /// This is the shared logic used by both [`start_test_server_from_toml`] and
 /// the singleton wrappers that need to patch the config before starting.
-fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClientError> {
-    let toml_content = std::fs::read_to_string(config_path).map_err(|e| {
-        KmsClientError::UnexpectedError(format!(
-            "Cannot read test server config at {}: {e}",
-            config_path.display()
-        ))
-    })?;
-    let mut config: ClapConfig = toml::from_str(&toml_content).map_err(|e| {
-        KmsClientError::UnexpectedError(format!(
-            "Cannot parse test server config at {}: {e}",
-            config_path.display()
-        ))
-    })?;
-
-    // Allocate a guaranteed-unique port: bind to :0, read the port, then
-    // release so the KMS server can bind it immediately after.
+/// Allocate a dynamic port for the HTTP server (and socket server if enabled)
+/// to avoid conflicts when multiple test servers run in parallel.
+fn allocate_dynamic_port(config: &mut ClapConfig) -> Result<(), KmsClientError> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| {
         KmsClientError::UnexpectedError(format!("Failed to allocate port for test server: {e}"))
     })?;
@@ -911,8 +900,6 @@ fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClien
     drop(listener);
     config.http.port = port;
 
-    // Also dynamically allocate the socket server port to avoid conflicts
-    // when multiple test servers run in parallel.
     if config.socket_server.socket_server_start {
         let socket_listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| {
             KmsClientError::UnexpectedError(format!(
@@ -930,6 +917,25 @@ fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClien
         drop(socket_listener);
         config.socket_server.socket_server_port = socket_port;
     }
+    Ok(())
+}
+
+fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClientError> {
+    let toml_content = std::fs::read_to_string(config_path).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Cannot read test server config at {}: {e}",
+            config_path.display()
+        ))
+    })?;
+    let mut config: ClapConfig = toml::from_str(&toml_content).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Cannot parse test server config at {}: {e}",
+            config_path.display()
+        ))
+    })?;
+
+    // Allocate a guaranteed-unique port for safe parallel test execution
+    allocate_dynamic_port(&mut config)?;
 
     // Use a unique temp directory for SQLite and workspace to avoid collisions.
     // Combine timestamp with an atomic counter so that tests starting within

@@ -27,6 +27,7 @@ use cosmian_kms_client_utils::{
             kmip_types::{CertificateType, RevocationReason, RevocationReasonCode, SecretDataType},
         },
         kmip_2_1::{
+            KmipOperation,
             extra::tagging::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
@@ -623,6 +624,62 @@ pub fn get_object_states() -> Result<JsValue, JsValue> {
         });
     }
     serde_wasm_bindgen::to_value(&states).map_err(|e| JsValue::from(e.to_string()))
+}
+
+/// Returns the list of delegable KMIP operations for the access-rights UI.
+/// The `create` operation is excluded because it is handled separately
+/// (it applies to the wildcard object `*`, not to a specific object).
+#[wasm_bindgen]
+pub fn get_kmip_operations() -> Result<JsValue, JsValue> {
+    let all_ops = [
+        KmipOperation::Certify,
+        KmipOperation::Decrypt,
+        KmipOperation::DeriveKey,
+        KmipOperation::Destroy,
+        KmipOperation::Encrypt,
+        KmipOperation::Export,
+        KmipOperation::Get,
+        KmipOperation::GetAttributes,
+        KmipOperation::Hash,
+        KmipOperation::Import,
+        KmipOperation::Locate,
+        KmipOperation::MAC,
+        KmipOperation::Revoke,
+        KmipOperation::Rekey,
+        KmipOperation::Sign,
+        KmipOperation::SignatureVerify,
+        KmipOperation::Validate,
+        KmipOperation::SetAttribute,
+        KmipOperation::ModifyAttribute,
+        KmipOperation::AddAttribute,
+        KmipOperation::DeleteAttribute,
+    ];
+    let operations: Vec<AlgoOption> = all_ops
+        .iter()
+        .map(|op| {
+            let value = op.to_string();
+            let label = match op {
+                KmipOperation::DeriveKey => "Derive Key".to_owned(),
+                KmipOperation::GetAttributes => "Get Attributes".to_owned(),
+                KmipOperation::SignatureVerify => "Signature Verify".to_owned(),
+                KmipOperation::SetAttribute => "Set Attribute".to_owned(),
+                KmipOperation::ModifyAttribute => "Modify Attribute".to_owned(),
+                KmipOperation::AddAttribute => "Add Attribute".to_owned(),
+                KmipOperation::DeleteAttribute => "Delete Attribute".to_owned(),
+                KmipOperation::MAC => "MAC".to_owned(),
+                _ => {
+                    // Capitalize first letter
+                    let s = op.to_string();
+                    let mut chars = s.chars();
+                    chars.next().map_or_else(String::new, |c| {
+                        c.to_uppercase().collect::<String>() + chars.as_str()
+                    })
+                }
+            };
+            AlgoOption { value, label }
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&operations).map_err(|e| JsValue::from(e.to_string()))
 }
 
 #[wasm_bindgen(start)]

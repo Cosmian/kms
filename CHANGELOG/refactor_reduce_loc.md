@@ -31,7 +31,7 @@
 ## Features
 
 - **HSM key creation guard**: reject `Create`/`CreateKeyPair`/`Atomic` requests with an `hsm::` UID prefix when no HSM store is registered, preventing silent routing to the SQL backend (`database_objects.rs::get_object_store`) ([#959](https://github.com/Cosmian/kms/pull/959))
-- **Agent instructions**: add mandatory per-prompt checklist to `.github/copilot-instructions.md` (CHANGELOG, test vectors, clippy, tests, docs) ([#959](https://github.com/Cosmian/kms/pull/959))
+- **Agent instructions**: add mandatory per-prompt checklist to `.github/copilot-instructions.md` (CHANGELOG, test vectors, clippy, tests, docs); convert `AGENTS.md` from real file to symlink → `.github/copilot-instructions.md` so all three names (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`) resolve to the same canonical source ([#959](https://github.com/Cosmian/kms/pull/959))
 
 ## Testing
 
@@ -41,17 +41,25 @@
 - **KEK wrapping regression tests** (COSMIAN-2026-015): add `test_decrypt_preserves_kek_wrapping_with_usage_limits` and `test_sign_preserves_kek_wrapping_with_usage_limits` in `security_regression.rs` that create a KEK-wrapped key with UsageLimits, perform Decrypt/Sign, then verify the raw DB object is still wrapped ([#959](https://github.com/Cosmian/kms/pull/959))
 - **Synology DSM vectors**: add GetAttributeList, GetAttributes, and Get steps to the Synology DSM integration vector to exercise the full key retrieval flow after Activate (requires `server_type = "hsm_kek"` with `HSM_SLOT_ID`)
 - **Synology DSM Rust test**: extend `test_synology_dsm_volume_lifecycle` with GetAttributeList, GetAttributes, and Get operations matching the post-Activate DSM sequence
+- **Access control privilege escalation vectors**: add 3 new test vectors exercising privilege escalation attacks — self-grant (owner grants self), non-owner grant (user tries to grant on owner's key), and destroy without permission (user with only Get attempts Destroy). Moved `fips/access_control/revoke` → `access_control/revoke_key_lifecycle` (not FIPS-specific) ([#959](https://github.com/Cosmian/kms/pull/959))
+- **Dynamic port allocation**: extract `allocate_dynamic_port()` in `test_server.rs` and apply it to `start_test_kms_server_with_config()`, preventing port conflicts when multiple test servers run in parallel ([#959](https://github.com/Cosmian/kms/pull/959))
 
 ## Bug Fixes
 
 - **Synology DSM + HSM-wrapped keys**: add `default_unwrap_type = ["SecretData", "SymmetricKey"]` to the HSM KEK vector test server, reproducing the exact configuration from issue #960 where DSM fails to retrieve keys wrapped by a hardware KEK ([#960](https://github.com/Cosmian/kms/issues/960))
 - **Logging repetition in KMIP routes**: remove `span.enter()` calls from async route handlers in `routes/kmip.rs` that caused span names to repeat 70+ times in trace output when concurrent requests shared worker threads; per-operation instrumentation already exists in `core/kms/kmip.rs`
+- **Web UI Access operations list**: `AccessGrant` and `AccessRevoke` forms had a hardcoded list of only 8 KMIP operations; replaced with a WASM-exported `get_kmip_operations()` that dynamically provides all 21 delegable operations from the `KmipOperation` enum, ensuring the UI always stays in sync with the server ([#959](https://github.com/Cosmian/kms/pull/959))
 
 ## Security Documentation
 
 - **COSMIAN-2026-015**: add SECURITY.md entry for KEK plaintext leak via UsageLimits persist in Decrypt/Sign (assigned correct ID — previously incorrectly referenced as COSMIAN-2026-006 in code and CHANGELOG) ([#959](https://github.com/Cosmian/kms/pull/959))
 - **COSMIAN-2026-016**: add SECURITY.md entry for attribute-mutation authorization bypass (fixed in 5.23.0) ([#960](https://github.com/Cosmian/kms/issues/960))
 - **Vulnerability ID corrections**: fix incorrect `COSMIAN-2026-005` references (lines 53/90/146/181 of `security_regression.rs`) → `COSMIAN-2026-014`; fix incorrect `COSMIAN-2026-006` references (lines 229/359 of `security_regression.rs` and line 140 of `crypto_op.rs`) → `COSMIAN-2026-015`
+
+## Documentation
+
+- **Authorization**: add `set_attribute`, `modify_attribute`, `add_attribute`, `delete_attribute` to the delegable operations table in `documentation/docs/configuration/authorization.md` ([#959](https://github.com/Cosmian/kms/pull/959))
+- **HSM operations**: sync `documentation/docs/hsm_support/hsm_operations.md` with `authorization.md` — add `export`, `get_attributes`, `locate`, `mac`, `set_attribute`, `modify_attribute`, `add_attribute`, `delete_attribute` to the "Grantable operations" and "Operations by role" tables; fix `Verify` → `SignatureVerify` naming ([#959](https://github.com/Cosmian/kms/pull/959))
 
 ## CI
 

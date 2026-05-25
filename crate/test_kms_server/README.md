@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**227 vectors** across 8 categories:
+**266 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -166,12 +166,15 @@ replays the steps sequentially.
 | KMIP Operations | `rng_seed` | RNGSeed | 1 |
 | KMIP Operations | `secret_data` | Register, Get, Activate, Revoke, Destroy | 5 |
 | **Access Control** | | | |
-| Access Control | `revoke` | Create, Revoke, Encrypt (fail) | 3 |
+| Access Control | `revoke_key_lifecycle` | Create, Revoke, Encrypt (fail — revoked) | 3 |
 | Access Control | `grant_access_aes` | Create, GrantAccess, Get (user), Encrypt (user), Decrypt (user) | 5 |
 | Access Control | `revoke_access` | Create, GrantAccess, Get (user ok), RevokeAccess, Get (user fail) | 5 |
 | Access Control | `unauthorized_access` | Create, Get (user fail — no grant) | 2 |
 | Access Control | `owner_full_access` | Create, Get (owner), Encrypt (owner), Decrypt (owner) | 4 |
-| Access Control | `grant_partial_permissions` | Create, GrantAccess (Get only), Get (user ok), Encrypt (user fail) | 4 |
+| Access Control | `grant_partial_permissions` | Create, GrantAccess (Get only), Get (user ok), Encrypt (user ok — Get is wildcard for crypto) | 4 |
+| Access Control | `privilege_escalation_self_grant` | Create, GrantAccess (owner → self) → denied | 2 |
+| Access Control | `privilege_escalation_non_owner_grant` | Create, GrantAccess by user (not owner) → denied ×2 | 3 |
+| Access Control | `privilege_escalation_destroy_without_permission` | Create, GrantAccess (Get only), Get (ok), Destroy (denied — Get not wildcard for lifecycle ops), Get (still exists) | 5 |
 | **HSM (requires SoftHSM2 + `HSM_SLOT_ID`)** | | | |
 | HSM / KEK | `hsm/kek_encrypt_decrypt` | Create (HSM+KEK), Encrypt, Decrypt, Destroy | 4 |
 | HSM / KEK | `hsm/kek_sign_verify` | CreateKeyPair (HSM+KEK RSA), Sign, SignatureVerify, Destroy ×2 | 5 |

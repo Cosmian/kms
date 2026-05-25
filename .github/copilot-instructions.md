@@ -339,6 +339,7 @@ For every new feature, bug fix, or behavioral guard added:
    - HSM-specific tests → `test_data/vectors/hsm/`.
 2. Register the new vector in `crate/test_kms_server/src/vector_runner.rs`.
 3. Run `cargo test -p test_kms_server <test_fn_name>` and confirm it passes.
+4. Update `crate/test_kms_server/README.md`: add the new vector to the table and update the total vector count at the top of the table.
 
 ### 3. Clippy and format (always)
 

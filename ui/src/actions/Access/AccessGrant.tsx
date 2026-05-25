@@ -1,33 +1,31 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import * as wasm from "../../wasm/pkg";
 
 interface AccessGrantFormData {
     user_id: string;
     unique_identifier: string;
-    operation_types: Array<
-        "create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy"
-    >;
+    operation_types: string[];
     grant_create_access_right: boolean;
 }
-
-const KMIP_OPERATIONS = [
-    { label: "Get", value: "get" },
-    { label: "GetAttributes", value: "getattributes" },
-    { label: "Encrypt", value: "encrypt" },
-    { label: "Decrypt", value: "decrypt" },
-    { label: "Revoke", value: "revoke" },
-    { label: "Locate", value: "locate" },
-    { label: "Rekey", value: "rekey" },
-    { label: "Destroy", value: "destroy" },
-];
 
 const AccessGrantForm: React.FC = () => {
     const [form] = Form.useForm<AccessGrantFormData>();
     const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [isPrivilegedUser, setIsPrivilegedUser] = useState<boolean | undefined>(undefined);
+
+    const kmipOperations = useMemo(() => {
+        try {
+            const ops = wasm.get_kmip_operations() as unknown as { value: string; label: string }[];
+            if (Array.isArray(ops)) return ops;
+        } catch {
+            /* WASM not ready */
+        }
+        return [];
+    }, []);
 
     const fetchPrivilegedAccess = useCallback(async () => {
         setIsPrivilegedUser(undefined);
@@ -82,7 +80,7 @@ const AccessGrantForm: React.FC = () => {
                         <Form.Item name="operation_types" label="KMIP Operations" help="Select one or more operations to grant access to">
                             <Select
                                 mode="multiple"
-                                options={KMIP_OPERATIONS}
+                                options={kmipOperations}
                                 placeholder="Select operations"
                                 data-testid="operation-types-select"
                                 onChange={() => {
