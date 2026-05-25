@@ -15,10 +15,7 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::ObjectWithMetadata,
     },
 };
-pub(crate) use crypto_op::{
-    CryptoOpSpec, ResolvedKey, decrement_usage_limits, enforce_usage_limits, has_usage_mask,
-    resolve_key_for_operation, unwrap_and_enforce_policy,
-};
+pub(crate) use crypto_op::{CryptoOpSpec, has_usage_mask, perform_crypto_operation};
 use time::OffsetDateTime;
 
 use super::digest::digest;

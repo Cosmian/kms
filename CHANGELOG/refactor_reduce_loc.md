@@ -19,10 +19,12 @@
 - **Auth guard**: extract `user_can_perform_operation()` helper into `state_utils.rs`, deduplicating authorization checks in `destroy.rs` and `revoke.rs`
 - **PQC dispatch**: extract `resolve_key_algorithm()` and `is_pqc_signature_algorithm()` helpers into `state_utils.rs`, replacing duplicated 15-variant PQC match blocks in `sign.rs` and `signature_verify.rs`
 - **MAC modernization**: rewrite `mac.rs` with Phase 2 key selection, lifecycle gating, and extracted `hmac_algorithm_to_hashing`/`infer_hmac_hashing_algorithm` helpers
+- **Generic crypto dispatch**: introduce `CryptoOpSpec` trait with associated types (`Request`, `Response`) and `perform_crypto_operation<Op>()` generic entry point, unifying all 6 crypto operations (Encrypt, Decrypt, Sign, SignatureVerify, MAC, MACVerify) into a single code path for key resolution, oracle routing, policy enforcement, usage-limit accounting, and clone-before-unwrap security ([#959](https://github.com/Cosmian/kms/pull/959))
 
 ## Security
 
 - **KEK wrapping bypass via attribute operations**: fix a security bug where `ModifyAttribute`, `SetAttribute`, `AddAttribute`, and `Activate` would auto-unwrap HSM-wrapped keys via `retrieve_object_for_operation()` and then persist the unwrapped key material back to the database, defeating KEK encryption at rest. The fix skips auto-unwrapping for `GetAttributes`-type operations since they only need object metadata, not key material ([#960](https://github.com/Cosmian/kms/issues/960))
+- **KEK plaintext leak via UsageLimits persist in Decrypt/Sign** (COSMIAN-2026-006): `decrypt.rs` and `sign.rs` unwrapped the key material in-place via `unwrap_and_enforce_policy`, then `decrement_usage_limits` persisted the plaintext key back to the database when UsageLimits were configured, silently stripping KEK encryption at rest. Fixed by cloning before unwrapping (same pattern already used in `encrypt.rs`) so `decrement_usage_limits` always persists the original wrapped object ([#959](https://github.com/Cosmian/kms/pull/959))
 
 ## Features
 
@@ -34,6 +36,7 @@
 - **HSM key without HSM plugin**: new negative test vector `test_data/vectors/negative/lifecycle/create_hsm_key_without_hsm` asserts that creating an `hsm::*` key on a non-HSM server returns `"No HSM is configured"` ([#959](https://github.com/Cosmian/kms/pull/959))
 - **Unit test**: `cosmian_kms_server_database::core::database_objects::tests::test_hsm_uid_rejected_without_hsm_store` verifies the guard at the database routing layer ([#959](https://github.com/Cosmian/kms/pull/959))
 - **HSM Crypt2Pay permissions**: fix tests #25 and #27 in `crate/server/src/tests/hsm/permissions.rs` to accept `Kmip21Error(Sensitive, "DENIED")` as a valid outcome when the HSM hardware enforces non-extractable keys ([#959](https://github.com/Cosmian/kms/pull/959))
+- **KEK wrapping regression tests** (COSMIAN-2026-006): add `test_decrypt_preserves_kek_wrapping_with_usage_limits` and `test_sign_preserves_kek_wrapping_with_usage_limits` in `security_regression.rs` that create a KEK-wrapped key with UsageLimits, perform Decrypt/Sign, then verify the raw DB object is still wrapped ([#959](https://github.com/Cosmian/kms/pull/959))
 - **Synology DSM vectors**: add GetAttributeList, GetAttributes, and Get steps to the Synology DSM integration vector to exercise the full key retrieval flow after Activate (requires `server_type = "hsm_kek"` with `HSM_SLOT_ID`)
 - **Synology DSM Rust test**: extend `test_synology_dsm_volume_lifecycle` with GetAttributeList, GetAttributes, and Get operations matching the post-Activate DSM sequence
 

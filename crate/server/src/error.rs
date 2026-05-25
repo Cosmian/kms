@@ -256,7 +256,10 @@ impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
 
 impl From<InterfaceError> for KmsError {
     fn from(value: InterfaceError) -> Self {
-        Self::Default(value.to_string())
+        match value {
+            InterfaceError::NotSupported(msg) => Self::NotSupported(msg),
+            other => Self::Default(other.to_string()),
+        }
     }
 }
 

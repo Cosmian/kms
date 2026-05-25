@@ -36,7 +36,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, trace};
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -51,7 +51,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, ResolvedKey, has_usage_mask, resolve_key_for_operation},
+        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -64,9 +64,19 @@ const EMPTY_SLICE: &[u8] = &[];
 pub(crate) struct EncryptOp;
 
 impl CryptoOpSpec for EncryptOp {
+    type Request = Encrypt;
+    type Response = EncryptResponse;
+
     const KMIP_OP: KmipOperation = KmipOperation::Encrypt;
     const OP_NAME: &'static str = "Encrypt";
-    const SUPPORTS_ORACLE: bool = true;
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request.data.as_ref().map_or(0, |d| d.len())
+    }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::Certificate { .. } = owm.object() {
@@ -94,6 +104,60 @@ impl CryptoOpSpec for EncryptOp {
             other => other,
         }
     }
+
+    async fn execute_local(
+        kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &str,
+    ) -> KResult<Self::Response> {
+        let data = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+        })?;
+        BulkData::deserialize(data).map_or_else(
+            |_| encrypt_single(owm, &kms.params, request),
+            |bulk_data| encrypt_bulk(owm, &kms.params, request.clone(), bulk_data),
+        )
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let data = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+        })?;
+        let lock = kms.crypto_oracles.read().await;
+        let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+            KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
+        })?;
+        let ca = request
+            .cryptographic_parameters
+            .as_ref()
+            .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
+            .transpose()?;
+        let encrypted_content = crypto_oracle
+            .encrypt(
+                uid,
+                data,
+                ca.clone(),
+                request.authenticated_encryption_additional_data.as_deref(),
+            )
+            .await?;
+        debug!(
+            "algorithm: {ca:?}, ciphertext length: {}",
+            encrypted_content.ciphertext.len()
+        );
+        Ok(EncryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            data: Some(encrypted_content.ciphertext.clone()),
+            i_v_counter_nonce: encrypted_content.iv,
+            correlation_value: request.correlation_value.clone(),
+            authenticated_encryption_tag: encrypted_content.tag,
+        })
+    }
 }
 
 pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
@@ -102,110 +166,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         request.unique_identifier,
         request.data.as_ref().map_or(0, |d| d.len())
     );
-
-    // We do not (yet) support continuation cases
-    let data = request.data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
-    })?;
-
-    // Get the uids from the unique identifier
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-
-    match resolve_key_for_operation::<EncryptOp>(unique_identifier, kms, user).await? {
-        ResolvedKey::Oracle { uid, prefix } => {
-            debug!("user: {user} is authorized to encrypt using: {uid} from crypto oracle");
-            return encrypt_using_crypto_oracle(kms, &request, data, &uid, &prefix).await;
-        }
-        ResolvedKey::Local(owm) => {
-            let mut owm = *owm;
-
-            // Unwrap + enforce on a clone; preserve the original for UsageLimits accounting.
-            let mut unwrapped_owm = owm.clone();
-            super::unwrap_and_enforce_policy(kms, &mut unwrapped_owm, "Encrypt", user).await?;
-
-            // plaintext length for logging
-            let plaintext_len = request.data.as_ref().map_or(0, |d| d.len());
-
-            // Enforce UsageLimits before the operation.
-            super::enforce_usage_limits(&owm, plaintext_len)?;
-
-            // It may be a bulk encryption request; if not, fallback to single encryption
-            let res = match BulkData::deserialize(data) {
-                Ok(bulk_data) => {
-                    // It is a bulk encryption request
-                    encrypt_bulk(&unwrapped_owm, &kms.params, request, bulk_data)
-                }
-                Err(_) => {
-                    // fallback to single encryption
-                    encrypt_single(&unwrapped_owm, &kms.params, &request)
-                }
-            }?;
-
-            // Post-operation: decrement and persist usage limits.
-            super::decrement_usage_limits(kms, &mut owm, "Encrypt", plaintext_len).await?;
-
-            info!(
-                uid = owm.id(),
-                user = user,
-                "Encrypted data of: {} bytes -> ciphertext length: {}",
-                plaintext_len,
-                res.data.as_ref().map_or(0, Vec::len),
-            );
-            Ok(res)
-        }
-    }
-}
-
-/// Encrypt using a crypto oracle.
-///
-/// # Arguments
-/// * `kms` - the KMS
-/// * `request` - the encrypted request
-/// * `data` - the data to encrypt
-/// * `uid` - the unique identifier of the key
-/// * `prefix` - the prefix of the crypto oracle
-///
-/// # Returns
-/// * the encrypted response
-async fn encrypt_using_crypto_oracle(
-    kms: &KMS,
-    request: &Encrypt,
-    data: &Zeroizing<Vec<u8>>,
-    uid: &str,
-    prefix: &str,
-) -> KResult<EncryptResponse> {
-    let lock = kms.crypto_oracles.read().await;
-    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!("Encrypt: unknown crypto oracle prefix: {prefix}"))
-    })?;
-    let ca = request
-        .cryptographic_parameters
-        .as_ref()
-        .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
-        .transpose()?;
-    let encrypted_content = crypto_oracle
-        .encrypt(
-            uid,
-            data,
-            ca.clone(),
-            request.authenticated_encryption_additional_data.as_deref(),
-        )
-        .await?;
-    debug!(
-        "algorithm: {ca:?}, ciphertext length: {}",
-        encrypted_content.ciphertext.len()
-    );
-
-    Ok(EncryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: Some(encrypted_content.ciphertext.clone()),
-        i_v_counter_nonce: encrypted_content.iv,
-        correlation_value: request.correlation_value.clone(),
-        authenticated_encryption_tag: encrypted_content.tag,
-    })
+    Box::pin(perform_crypto_operation::<EncryptOp>(kms, request, user)).await
 }
 
 /// Encrypt a single plaintext with the key

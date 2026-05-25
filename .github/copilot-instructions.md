@@ -340,7 +340,7 @@ For every new feature, bug fix, or behavioral guard added:
 2. Register the new vector in `crate/test_kms_server/src/vector_runner.rs`.
 3. Run `cargo test -p test_kms_server <test_fn_name>` and confirm it passes.
 
-### 3. Clippy (always)
+### 3. Clippy and format (always)
 
 ```bash
 cargo clippy-all   # clippy --workspace --all-targets --all-features -- -D warnings
@@ -348,6 +348,12 @@ cargo clippy-all   # clippy --workspace --all-targets --all-features -- -D warni
 
 Fix every warning reported. Do not suppress with `#[allow]` unless there is a documented,
 irreducible reason — and then add an inline comment explaining why.
+
+Do not miss the reformat using:
+
+```bash
+cargo fmt --all
+```
 
 ### 4. Tests (always)
 

@@ -18,11 +18,7 @@ use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 use crate::{
     core::{
         KMS,
-        operations::{
-            CryptoOpSpec, ResolvedKey,
-            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-            resolve_key_for_operation,
-        },
+        operations::{CryptoOpSpec, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -33,9 +29,19 @@ use crate::{
 pub(crate) struct MacOp;
 
 impl CryptoOpSpec for MacOp {
+    type Request = MAC;
+    type Response = MACResponse;
+
     const KMIP_OP: KmipOperation = KmipOperation::MAC;
     const OP_NAME: &'static str = "MAC";
-    const SUPPORTS_ORACLE: bool = false;
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request.data.as_ref().map_or(0, Vec::len)
+    }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         // MAC does NOT enforce CryptographicUsageMask::MACGenerate for backward compat.
@@ -55,15 +61,85 @@ impl CryptoOpSpec for MacOp {
             other => other,
         }
     }
+
+    async fn execute_local(
+        _kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &str,
+    ) -> KResult<Self::Response> {
+        // Determine hashing algorithm: if explicit cryptographic_parameters supplied use them,
+        // otherwise infer from the key's registered CryptographicAlgorithm or its attributes.
+        let algorithm = if let Some(cp) = &request.cryptographic_parameters {
+            cp.hashing_algorithm.ok_or_else(|| {
+                KmsError::InvalidRequest("Hashing algorithm is required".to_owned())
+            })?
+        } else {
+            let key_block = owm.object().key_block()?;
+            infer_hmac_hashing_algorithm(key_block, owm.attributes())?
+        };
+        trace!("Mac: algorithm: {algorithm:?}");
+
+        let data = request.data.as_deref().unwrap_or_default();
+        trace!("Mac: data len: {}", data.len());
+
+        if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
+            kms_bail!("Invalid request: init_indicator and final_indicator cannot both be true");
+        }
+
+        let digest = if let Some(correlation_value) = &request.correlation_value {
+            compute_hmac(correlation_value, data, algorithm)?
+        } else {
+            let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
+            compute_hmac(key_bytes.as_slice(), data, algorithm)?
+        };
+
+        Ok(MACResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            mac_data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
+            correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
+        })
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let data = request.data.as_deref().unwrap_or_default();
+        let lock = kms.crypto_oracles.read().await;
+        let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+            KmsError::InvalidRequest(format!("MAC: unknown crypto oracle prefix: {prefix}"))
+        })?;
+        let mac_data = crypto_oracle
+            .mac(uid, data, request.cryptographic_parameters.as_ref())
+            .await?;
+        Ok(MACResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            mac_data: Some(mac_data),
+            correlation_value: None,
+        })
+    }
 }
 
 /// Marker type for the `MACVerify` operation's key selection requirements.
 pub(crate) struct MacVerifyOp;
 
 impl CryptoOpSpec for MacVerifyOp {
+    type Request = MACVerify;
+    type Response = MACVerifyResponse;
+
     const KMIP_OP: KmipOperation = KmipOperation::MAC;
     const OP_NAME: &'static str = "MACVerify";
-    const SUPPORTS_ORACLE: bool = false;
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        Some(&request.unique_identifier)
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request.data.len()
+    }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         matches!(owm.object(), Object::SymmetricKey { .. })
@@ -82,7 +158,85 @@ impl CryptoOpSpec for MacVerifyOp {
             other => other,
         }
     }
+
+    async fn execute_local(
+        _kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &str,
+    ) -> KResult<Self::Response> {
+        let key_block = owm.object().key_block()?;
+        let key_bytes = key_block.key_bytes().context("mac_verify")?;
+
+        // Determine hashing algorithm: prefer explicit request param; otherwise infer from key.
+        let algorithm = if let Some(cp) = &request.cryptographic_parameters {
+            cp.hashing_algorithm.ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "Hashing algorithm is required in cryptographic parameters if provided"
+                        .to_owned(),
+                )
+            })?
+        } else {
+            infer_hmac_hashing_algorithm(key_block, owm.attributes())?
+        };
+
+        let expected_mac = compute_hmac(key_bytes.as_slice(), &request.data, algorithm)?;
+        let validity = if expected_mac == request.mac_data {
+            ValidityIndicator::Valid
+        } else {
+            ValidityIndicator::Invalid
+        };
+
+        Ok(MACVerifyResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            validity_indicator: validity,
+        })
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let lock = kms.crypto_oracles.read().await;
+        let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+            KmsError::InvalidRequest(format!("MACVerify: unknown crypto oracle prefix: {prefix}"))
+        })?;
+        let valid = crypto_oracle
+            .mac_verify(
+                uid,
+                &request.data,
+                &request.mac_data,
+                request.cryptographic_parameters.as_ref(),
+            )
+            .await?;
+        Ok(MACVerifyResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            validity_indicator: if valid {
+                ValidityIndicator::Valid
+            } else {
+                ValidityIndicator::Invalid
+            },
+        })
+    }
 }
+
+pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
+    trace!("uid={:?}", request.unique_identifier);
+    Box::pin(perform_crypto_operation::<MacOp>(kms, request, user)).await
+}
+
+pub(crate) async fn mac_verify(
+    kms: &KMS,
+    request: MACVerify,
+    user: &str,
+) -> KResult<MACVerifyResponse> {
+    trace!("uid={}", request.unique_identifier);
+    Box::pin(perform_crypto_operation::<MacVerifyOp>(kms, request, user)).await
+}
+
+// ─── Helper functions ────────────────────────────────────────────────────────
 
 fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult<Vec<u8>> {
     let message_digest = match algorithm {
@@ -102,7 +256,7 @@ fn compute_hmac(key: &[u8], data: &[u8], algorithm: HashingAlgorithm) -> KResult
     let mut ctx = MdCtx::new()?;
     ctx.digest_sign_init(Some(message_digest), &key)?;
     ctx.digest_sign_update(data)?;
-    let mut hmac = Vec::with_capacity(64); // 512 bits being the maximum size of supported hash functions
+    let mut hmac = Vec::with_capacity(64);
     ctx.digest_sign_final_to_vec(&mut hmac)?;
     trace!("HMAC computed: {} bytes", hmac.len());
     Ok(hmac)
@@ -127,22 +281,15 @@ fn hmac_algorithm_to_hashing(ca: CryptographicAlgorithm) -> KResult<HashingAlgor
 }
 
 /// Infer the `HashingAlgorithm` from the key's `KeyBlock` or `Attributes`.
-///
-/// Tries (in order):
-/// 1. `key_block.cryptographic_algorithm` (HMAC variant → direct mapping)
-/// 2. `attrs.cryptographic_parameters.cryptographic_algorithm` (fallback)
 fn infer_hmac_hashing_algorithm(
     key_block: &KeyBlock,
     attrs: &Attributes,
 ) -> KResult<HashingAlgorithm> {
-    // Try key_block algorithm first
     if let Some(ca) = key_block.cryptographic_algorithm {
         if let Ok(ha) = hmac_algorithm_to_hashing(ca) {
             return Ok(ha);
         }
-        // Non-HMAC algorithm on key_block: fall through to attributes
     }
-    // Fallback to attributes cryptographic_parameters
     let cp = attrs
         .cryptographic_parameters
         .as_ref()
@@ -157,130 +304,6 @@ fn infer_hmac_hashing_algorithm(
         )
     })?;
     hmac_algorithm_to_hashing(ca)
-}
-
-pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
-    trace!("uid={:?}", request.unique_identifier);
-
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-
-    let mut owm = match resolve_key_for_operation::<MacOp>(unique_identifier, kms, user).await? {
-        ResolvedKey::Local(owm) => *owm,
-        ResolvedKey::Oracle { .. } => {
-            return Err(KmsError::NotSupported(
-                "MAC: oracle keys not supported".to_owned(),
-            ));
-        }
-    };
-
-    // Second-stage enforcement: validate the retrieved key's stored attributes.
-    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MAC", owm.id(), &owm)?;
-
-    // Determine hashing algorithm: if explicit cryptographic_parameters supplied use them,
-    // otherwise infer from the key's registered CryptographicAlgorithm or its attributes.
-    let algorithm = if let Some(cp) = request.cryptographic_parameters {
-        cp.hashing_algorithm
-            .ok_or_else(|| KmsError::InvalidRequest("Hashing algorithm is required".to_owned()))?
-    } else {
-        let key_block = owm.object().key_block()?;
-        infer_hmac_hashing_algorithm(key_block, owm.attributes())?
-    };
-    trace!("Mac: algorithm: {algorithm:?}");
-
-    let data = request.data.unwrap_or_default();
-    let data_len = data.len();
-    trace!("Mac: data: {data:?}");
-
-    // Enforce UsageLimits before the operation.
-    super::enforce_usage_limits(&owm, data_len)?;
-
-    if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
-        kms_bail!("Invalid request: init_indicator and final_indicator cannot both be true");
-    }
-
-    let digest = if let Some(correlation_value) = request.correlation_value {
-        compute_hmac(&correlation_value, &data, algorithm)?
-    } else {
-        let key_bytes = owm.object().key_block()?.key_bytes().context("mac")?;
-        compute_hmac(key_bytes.as_slice(), &data, algorithm)?
-    };
-
-    // Post-operation: decrement and persist usage limits.
-    super::decrement_usage_limits(kms, &mut owm, "MAC", data_len).await?;
-
-    let response = MACResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        mac_data: (!request.init_indicator.unwrap_or(false)).then_some(digest.clone()),
-        correlation_value: request.init_indicator.unwrap_or(false).then_some(digest),
-    };
-    trace!("Mac response: {response}");
-    Ok(response)
-}
-
-pub(crate) async fn mac_verify(
-    kms: &KMS,
-    request: MACVerify,
-    user: &str,
-) -> KResult<MACVerifyResponse> {
-    trace!("uid={}", request.unique_identifier);
-
-    let unique_identifier = &request.unique_identifier;
-
-    let mut owm =
-        match resolve_key_for_operation::<MacVerifyOp>(unique_identifier, kms, user).await? {
-            ResolvedKey::Local(owm) => *owm,
-            ResolvedKey::Oracle { .. } => {
-                return Err(KmsError::NotSupported(
-                    "MACVerify: oracle keys not supported".to_owned(),
-                ));
-            }
-        };
-
-    // Second-stage enforcement: validate the retrieved key's stored attributes.
-    enforce_kmip_algorithm_policy_for_retrieved_key(&kms.params, "MACVerify", owm.id(), &owm)?;
-
-    let data_len = request.data.len();
-
-    // Enforce UsageLimits before the operation.
-    super::enforce_usage_limits(&owm, data_len)?;
-
-    let key_block = owm.object().key_block()?;
-    let key_bytes = key_block.key_bytes().context("mac_verify")?;
-
-    // Determine hashing algorithm: prefer explicit request param; otherwise infer from key.
-    let algorithm = if let Some(cp) = request.cryptographic_parameters {
-        cp.hashing_algorithm.ok_or_else(|| {
-            KmsError::InvalidRequest(
-                "Hashing algorithm is required in cryptographic parameters if provided".to_owned(),
-            )
-        })?
-    } else {
-        infer_hmac_hashing_algorithm(key_block, owm.attributes())?
-    };
-
-    let expected_mac = compute_hmac(key_bytes.as_slice(), &request.data, algorithm)?;
-    let validity = if expected_mac == request.mac_data {
-        ValidityIndicator::Valid
-    } else {
-        ValidityIndicator::Invalid
-    };
-
-    // Post-operation: decrement and persist usage limits.
-    super::decrement_usage_limits(kms, &mut owm, "MACVerify", data_len).await?;
-
-    let response = MACVerifyResponse {
-        unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-        validity_indicator: validity,
-    };
-    trace!(
-        "MacVerify response: uid={}, validity={:?}",
-        owm.id(),
-        response.validity_indicator
-    );
-    Ok(response)
 }
 
 #[cfg(test)]

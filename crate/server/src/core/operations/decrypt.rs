@@ -33,7 +33,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{CryptoAlgorithm, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 use zeroize::Zeroizing;
 
@@ -43,11 +43,11 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, ResolvedKey, has_usage_mask, resolve_key_for_operation},
+        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 const EMPTY_SLICE: &[u8] = &[];
@@ -56,9 +56,19 @@ const EMPTY_SLICE: &[u8] = &[];
 pub(crate) struct DecryptOp;
 
 impl CryptoOpSpec for DecryptOp {
+    type Request = Decrypt;
+    type Response = DecryptResponse;
+
     const KMIP_OP: KmipOperation = KmipOperation::Decrypt;
     const OP_NAME: &'static str = "Decrypt";
-    const SUPPORTS_ORACLE: bool = true;
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request.data.as_ref().map_or(0, Vec::len)
+    }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, vendor_id: &str) -> bool {
         #[cfg(not(feature = "non-fips"))]
@@ -108,6 +118,75 @@ impl CryptoOpSpec for DecryptOp {
             other => other,
         }
     }
+
+    async fn execute_local(
+        kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &str,
+    ) -> KResult<Self::Response> {
+        let data = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+        })?;
+        BulkData::deserialize(data).map_or_else(
+            |_| decrypt_single(owm, &kms.params, request),
+            |bulk_data| decrypt_bulk(owm, &kms.params, request, bulk_data),
+        )
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let mut data = request
+            .i_v_counter_nonce
+            .as_ref()
+            .map_or(vec![], Clone::clone);
+        data.extend(
+            request
+                .data
+                .as_ref()
+                .ok_or_else(|| {
+                    KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+                })?
+                .clone(),
+        );
+        if let Some(tag) = &request.authenticated_encryption_tag {
+            data.extend(tag.iter().copied());
+        }
+        debug!(
+            "Decryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long",
+            data.len()
+        );
+        let cleartext = kms
+            .crypto_oracles
+            .read()
+            .await
+            .get(prefix)
+            .ok_or_else(|| {
+                KmsError::InvalidRequest(format!(
+                    "Decrypt: unknown decryption oracle prefix: {prefix}"
+                ))
+            })?
+            .decrypt(
+                uid,
+                data.as_slice(),
+                request
+                    .cryptographic_parameters
+                    .as_ref()
+                    .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
+                    .transpose()?,
+                request.authenticated_encryption_additional_data.as_deref(),
+            )
+            .await?;
+        Ok(DecryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            data: Some(cleartext),
+            correlation_value: request.correlation_value.clone(),
+        })
+    }
 }
 
 pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
@@ -116,116 +195,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
         request.unique_identifier,
         request.data.as_ref().map_or(0, Vec::len)
     );
-    let data = request.data.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
-    })?;
-
-    // Get the uids from the unique identifier
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-
-    match resolve_key_for_operation::<DecryptOp>(unique_identifier, kms, user).await? {
-        ResolvedKey::Oracle { uid, prefix } => {
-            debug!("{user} is authorized to decrypt using: {uid} from crypto oracle");
-            return decrypt_using_crypto_oracle(kms, &request, &uid, &prefix).await;
-        }
-        ResolvedKey::Local(owm) => {
-            let mut owm = *owm;
-            // Unwrap + second-stage enforcement.
-            super::unwrap_and_enforce_policy(kms, &mut owm, "Decrypt", user)
-                .await
-                .with_context(|| format!("Decrypt: the key: {}, cannot be unwrapped.", owm.id()))?;
-
-            let ciphertext_len = request.data.as_ref().map_or(0, Vec::len);
-
-            // Enforce UsageLimits before the operation.
-            super::enforce_usage_limits(&owm, ciphertext_len)?;
-
-            let res = BulkData::deserialize(data).map_or_else(
-                |_| decrypt_single(&owm, &kms.params, &request),
-                |bulk_data| decrypt_bulk(&owm, &kms.params, &request, bulk_data),
-            )?;
-
-            // Post-operation: decrement and persist usage limits.
-            super::decrement_usage_limits(kms, &mut owm, "Decrypt", ciphertext_len).await?;
-
-            info!(
-                uid = owm.id(),
-                user = user,
-                "Decrypted ciphertext of: {} bytes -> plaintext length: {}",
-                ciphertext_len,
-                res.data.as_ref().map_or(0, |d| d.len()),
-            );
-
-            Ok(res)
-        }
-    }
-}
-
-/// Decrypt using a decryption oracle.
-///
-/// # Arguments
-/// * `kms` - the KMS
-/// * `request` - the decrypt request
-/// * `uid` - the unique identifier of the key
-/// * `prefix` - the prefix of the decryption oracle
-///
-/// # Returns
-/// * the decrypt response
-async fn decrypt_using_crypto_oracle(
-    kms: &KMS,
-    request: &Decrypt,
-    uid: &str,
-    prefix: &str,
-) -> KResult<DecryptResponse> {
-    let mut data = request
-        .i_v_counter_nonce
-        .as_ref()
-        .map_or(vec![], Clone::clone);
-    data.extend(
-        request
-            .data
-            .as_ref()
-            .ok_or_else(|| {
-                KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
-            })?
-            .clone(),
-    );
-    if let Some(tag) = &request.authenticated_encryption_tag {
-        data.extend(tag.iter().copied());
-    }
-    debug!(
-        "Encryption Oracle for prefix: {prefix}, total ciphertext is {} bytes long",
-        data.len()
-    );
-    let cleartext = kms
-        .crypto_oracles
-        .read()
-        .await
-        .get(prefix)
-        .ok_or_else(|| {
-            KmsError::InvalidRequest(format!(
-                "Decrypt: unknown decryption oracle prefix: {prefix}"
-            ))
-        })?
-        .decrypt(
-            uid,
-            data.as_slice(),
-            request
-                .cryptographic_parameters
-                .as_ref()
-                .and_then(|cp| CryptoAlgorithm::from_kmip(cp).transpose())
-                .transpose()?,
-            request.authenticated_encryption_additional_data.as_deref(),
-        )
-        .await?;
-    Ok(DecryptResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        data: Some(cleartext),
-        correlation_value: request.correlation_value.clone(),
-    })
+    Box::pin(perform_crypto_operation::<DecryptOp>(kms, request, user)).await
 }
 
 fn decrypt_bulk(

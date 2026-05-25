@@ -219,3 +219,250 @@ async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
 
     Ok(())
 }
+
+/// Regression test: KEK-wrapped keys must remain wrapped after Decrypt with `UsageLimits`.
+///
+/// Previously, `decrypt.rs` unwrapped the key in-place via `unwrap_and_enforce_policy`
+/// and then `decrement_usage_limits` persisted the plaintext key back to the database,
+/// silently stripping KEK encryption at rest.
+///
+/// Guards: COSMIAN-2026-006 (KEK plaintext leak via `UsageLimits` persist in Decrypt)
+#[tokio::test]
+async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
+        UsageLimits, UsageLimitsUnit,
+    };
+
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
+
+    // Phase 1: create a wrapping key (KEK) on a plain KMS (no KEK configured yet)
+    let clap_config = https_clap_config();
+    let sqlite_path = clap_config.db.sqlite_path.clone();
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = "test_kek_wrapping_regression@example.com";
+
+    let kek_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms
+        .create(kek_request, owner, None)
+        .await?
+        .unique_identifier;
+    drop(kms);
+
+    // Phase 2: re-instantiate KMS with KEK configured
+    let mut clap_config_kek = https_clap_config();
+    clap_config_kek.db.sqlite_path = sqlite_path;
+    clap_config_kek.key_encryption_key = Some(kek_id.to_string());
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+
+    // Create a data encryption key (DEK) — auto-wrapped by KEK — with UsageLimits
+    let mut dek_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    dek_request.attributes.usage_limits = Some(UsageLimits {
+        usage_limits_unit: UsageLimitsUnit::Operation,
+        usage_limits_count: None,
+        usage_limits_total: 100,
+    });
+    let dek_id = kms
+        .create(dek_request, owner, None)
+        .await?
+        .unique_identifier;
+
+    // Verify the DEK is stored wrapped
+    let raw_object_before = kms
+        .database
+        .retrieve_object(dek_id.as_str().unwrap())
+        .await?
+        .expect("DEK must exist in DB");
+    assert!(
+        raw_object_before.object().is_wrapped(),
+        "DEK must be KEK-wrapped after creation"
+    );
+
+    // Phase 3: Encrypt → Decrypt cycle (Decrypt triggers decrement_usage_limits)
+    let plaintext = b"Regression test: KEK wrapping must survive decrypt";
+    let encrypt_response = kms
+        .encrypt(
+            Encrypt {
+                unique_identifier: Some(dek_id.clone()),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(plaintext.to_vec())),
+                ..Default::default()
+            },
+            owner,
+        )
+        .await?;
+
+    let ciphertext = encrypt_response.data.unwrap();
+    let decrypt_response = kms
+        .decrypt(
+            Decrypt {
+                unique_identifier: Some(dek_id.clone()),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                    ..Default::default()
+                }),
+                data: Some(ciphertext),
+                i_v_counter_nonce: encrypt_response.i_v_counter_nonce,
+                authenticated_encryption_tag: encrypt_response.authenticated_encryption_tag,
+                ..Default::default()
+            },
+            owner,
+        )
+        .await?;
+    assert_eq!(
+        decrypt_response.data.as_ref().map(|d| d.as_slice()),
+        Some(plaintext.as_slice()),
+        "Decrypt must return original plaintext"
+    );
+
+    // Phase 4: CRITICAL CHECK — the DEK must still be wrapped in the database
+    // Before the fix, decrement_usage_limits would persist the unwrapped plaintext.
+    let raw_object_after = kms
+        .database
+        .retrieve_object(dek_id.as_str().unwrap())
+        .await?
+        .expect("DEK must still exist in DB after decrypt");
+    assert!(
+        raw_object_after.object().is_wrapped(),
+        "SECURITY REGRESSION: KEK-wrapped key was persisted as plaintext after Decrypt \
+         with UsageLimits! The decrement_usage_limits path must preserve wrapping."
+    );
+
+    Ok(())
+}
+
+/// Regression test: KEK-wrapped keys must remain wrapped after Sign with `UsageLimits`.
+///
+/// Same vulnerability pattern as Decrypt: `sign.rs` unwrapped in-place and then
+/// `decrement_usage_limits` persisted plaintext.
+///
+/// Guards: COSMIAN-2026-006 (KEK plaintext leak via `UsageLimits` persist in Sign)
+#[tokio::test]
+async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        kmip_operations::Sign,
+        kmip_types::{RecommendedCurve, UsageLimits, UsageLimitsUnit},
+        requests::create_ec_key_pair_request,
+    };
+
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
+
+    // Phase 1: create a wrapping key (KEK) on a plain KMS
+    let clap_config = https_clap_config();
+    let sqlite_path = clap_config.db.sqlite_path.clone();
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let owner = "test_kek_sign_regression@example.com";
+
+    let kek_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    let kek_id = kms
+        .create(kek_request, owner, None)
+        .await?
+        .unique_identifier;
+    drop(kms);
+
+    // Phase 2: re-instantiate KMS with KEK
+    let mut clap_config_kek = https_clap_config();
+    clap_config_kek.db.sqlite_path = sqlite_path;
+    clap_config_kek.key_encryption_key = Some(kek_id.to_string());
+    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config_kek)?)).await?);
+
+    // Create an Ed25519 keypair with UsageLimits on the private key
+    let mut create_request = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        EMPTY_TAGS,
+        RecommendedCurve::CURVEED25519,
+        false,
+        None,
+    )
+    .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
+    // Set UsageLimits on private key attributes
+    if let Some(ref mut pk_attrs) = create_request.private_key_attributes {
+        pk_attrs.usage_limits = Some(UsageLimits {
+            usage_limits_unit: UsageLimitsUnit::Operation,
+            usage_limits_count: None,
+            usage_limits_total: 100,
+        });
+    }
+    let create_response = kms.create_key_pair(create_request, owner, None).await?;
+    let private_key_id = create_response.private_key_unique_identifier;
+
+    // Verify the private key is stored wrapped
+    let raw_before = kms
+        .database
+        .retrieve_object(private_key_id.as_str().unwrap())
+        .await?
+        .expect("Private key must exist in DB");
+    assert!(
+        raw_before.object().is_wrapped(),
+        "Private key must be KEK-wrapped after creation"
+    );
+
+    // Phase 3: Sign (triggers decrement_usage_limits)
+    let sign_response = kms
+        .sign(
+            Sign {
+                unique_identifier: Some(private_key_id.clone()),
+                cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
+                    ..Default::default()
+                }),
+                data: Some(Zeroizing::new(
+                    b"Regression test: KEK wrapping must survive sign".to_vec(),
+                )),
+                digested_data: None,
+                correlation_value: None,
+                init_indicator: None,
+                final_indicator: None,
+            },
+            owner,
+        )
+        .await?;
+    assert!(
+        sign_response.signature_data.is_some(),
+        "Sign must return a signature"
+    );
+
+    // Phase 4: CRITICAL CHECK — private key must still be wrapped
+    let raw_after = kms
+        .database
+        .retrieve_object(private_key_id.as_str().unwrap())
+        .await?
+        .expect("Private key must still exist after sign");
+    assert!(
+        raw_after.object().is_wrapped(),
+        "SECURITY REGRESSION: KEK-wrapped private key was persisted as plaintext after Sign \
+         with UsageLimits! The decrement_usage_limits path must preserve wrapping."
+    );
+
+    Ok(())
+}

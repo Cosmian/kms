@@ -63,17 +63,18 @@ pub(crate) fn has_usage_mask(
         .unwrap_or(false)
 }
 
-/// Declarative specification for KMIP cryptographic operations key resolution.
+/// Declarative specification for KMIP cryptographic operations.
 ///
-/// Implemented by zero-sized marker types (one per operation). A generic resolution
-/// function uses these associated constants and methods to perform oracle routing,
-/// database key selection, lifecycle enforcement, and policy checks without closures.
+/// Implemented by zero-sized marker types (one per operation). A generic
+/// `perform_crypto_operation` function uses these associated constants and methods
+/// to perform oracle routing, database key selection, lifecycle enforcement,
+/// policy checks, usage-limit accounting, and dispatches to the operation-specific
+/// execution logic.
 ///
 /// # Design
 ///
-/// Each KMIP cryptographic operation (`Encrypt`, `Decrypt`, `Sign`, `SignatureVerify`, `MAC`)
-/// implements this trait on a unit struct. The constants describe the operation's
-/// characteristics and the methods provide key eligibility logic.
+/// Each KMIP cryptographic operation (`Encrypt`, `Decrypt`, `Sign`, `SignatureVerify`,
+/// `MAC`, `MACVerify`) implements this trait on a unit struct.
 pub(crate) trait CryptoOpSpec {
     /// Human-readable operation name for error messages (e.g. `"Encrypt"`, `"Sign"`).
     const OP_NAME: &'static str;
@@ -81,17 +82,28 @@ pub(crate) trait CryptoOpSpec {
     /// The KMIP operation enum value used for permission checks.
     const KMIP_OP: KmipOperation;
 
-    /// Whether this operation supports oracle (HSM / external key store) routing.
-    /// When `false`, oracle UIDs are skipped entirely.
-    const SUPPORTS_ORACLE: bool;
+    /// The KMIP request type for this operation.
+    type Request: Send + Sync;
+
+    /// The KMIP response type for this operation.
+    type Response: Send;
+
+    /// Extract the `UniqueIdentifier` from the typed request.
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier>;
+
+    /// Compute the data length for `UsageLimits` enforcement.
+    ///
+    /// The meaning varies per operation:
+    /// - Encrypt: plaintext length
+    /// - Decrypt: ciphertext length
+    /// - Sign/SignatureVerify: max(data, `digested_data`) length
+    /// - MAC/MACVerify: data length
+    fn usage_data_len(request: &Self::Request) -> usize;
 
     /// Determine if the given managed object is eligible for this operation.
     ///
     /// Checks object type and `CryptographicUsageMask` as required by the operation.
     /// Returns `true` if the object can be used, `false` otherwise.
-    ///
-    /// Implementations should handle attribute parsing errors gracefully by returning
-    /// `false` (ineligible) rather than propagating errors.
     fn is_key_eligible(owm: &ObjectWithMetadata, vendor_id: &str) -> bool;
 
     /// Map key-selection errors to operation-specific KMIP error messages.
@@ -100,6 +112,68 @@ pub(crate) trait CryptoOpSpec {
         unique_identifier: &UniqueIdentifier,
         user: &str,
     ) -> KmsError;
+
+    /// Execute the operation locally using unwrapped key material.
+    fn execute_local(
+        kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        user: &str,
+    ) -> impl std::future::Future<Output = KResult<Self::Response>> + Send;
+
+    /// Execute the operation via a crypto oracle (HSM / external key store).
+    fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> impl std::future::Future<Output = KResult<Self::Response>> + Send;
+}
+
+/// Generic entry point for all cryptographic operations.
+///
+/// Resolves the key (oracle or local), enforces algorithm policy,
+/// enforces and decrements usage limits, and dispatches to the
+/// operation-specific execution logic.
+///
+/// The clone-before-unwrap pattern ensures wrapped key material is
+/// never persisted in plaintext (COSMIAN-2026-006).
+pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
+    kms: &KMS,
+    request: Op::Request,
+    user: &str,
+) -> KResult<Op::Response> {
+    let unique_identifier =
+        Op::unique_identifier(&request).ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    match resolve_key_for_operation::<Op>(unique_identifier, kms, user).await? {
+        ResolvedKey::Oracle { uid, prefix } => {
+            Op::execute_oracle(kms, &request, &uid, &prefix).await
+        }
+        ResolvedKey::Local(owm) => {
+            let mut owm = *owm;
+
+            // Clone before unwrap: preserve the wrapped key for DB persistence.
+            let mut unwrapped_owm = owm.clone();
+            unwrap_and_enforce_policy(kms, &mut unwrapped_owm, Op::OP_NAME, user)
+                .await
+                .with_context(|| {
+                    format!(
+                        "{}: the key: {}, cannot be unwrapped.",
+                        Op::OP_NAME,
+                        owm.id()
+                    )
+                })?;
+
+            let data_len = Op::usage_data_len(&request);
+            enforce_usage_limits(&owm, data_len)?;
+
+            let res = Op::execute_local(kms, &unwrapped_owm, &request, user).await?;
+
+            decrement_usage_limits(kms, &mut owm, Op::OP_NAME, data_len).await?;
+            Ok(res)
+        }
+    }
 }
 
 /// Collect the single eligible crypto-oracle UID for a cryptographic operation.
@@ -239,14 +313,13 @@ where
 ///
 /// Performs the entire key selection pipeline generically:
 /// 1. Resolves UIDs from the `unique_identifier`.
-/// 2. Attempts oracle (HSM) routing if `Op::SUPPORTS_ORACLE`.
+/// 2. Attempts oracle (HSM) routing.
 /// 3. Selects the key from the database with `Op::is_key_eligible`.
 /// 4. Applies error mapping via `Op::map_selection_error`.
 /// 5. Enforces process window constraints (`ProcessStartDate` / `ProtectStopDate`).
 ///
 /// Returns [`ResolvedKey::Oracle`] for HSM keys or [`ResolvedKey::Local`] for DB keys.
-/// Local keys are NOT unwrapped — the caller must call [`unwrap_and_enforce_policy`]
-/// or handle unwrapping based on operation needs.
+/// Local keys are NOT unwrapped — `perform_crypto_operation` handles unwrapping.
 pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
     unique_identifier: &UniqueIdentifier,
     kms: &KMS,
@@ -257,19 +330,17 @@ pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
         .context(Op::OP_NAME)?;
 
     // Phase 1 — Oracle (HSM / prefix) routing.
-    if Op::SUPPORTS_ORACLE {
-        if let Some((uid, prefix)) = select_eligible_oracle_uid(
-            Op::KMIP_OP,
-            Op::OP_NAME,
-            &uids,
-            unique_identifier,
-            kms,
-            user,
-        )
-        .await?
-        {
-            return Ok(ResolvedKey::Oracle { uid, prefix });
-        }
+    if let Some((uid, prefix)) = select_eligible_oracle_uid(
+        Op::KMIP_OP,
+        Op::OP_NAME,
+        &uids,
+        unique_identifier,
+        kms,
+        user,
+    )
+    .await?
+    {
+        return Ok(ResolvedKey::Oracle { uid, prefix });
     }
 
     // Phase 2 — Standard database path.
@@ -298,9 +369,13 @@ pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
 /// 1. Unwraps the key material (Certificates are never unwrapped).
 /// 2. Validates the unwrapped key against the server's configured algorithm policy.
 ///
-/// The operation is performed in-place on `owm`. For operations that need to preserve
-/// the original wrapped object (e.g. Encrypt for `UsageLimits` accounting), the caller
-/// should clone before calling this function.
+/// # Security
+///
+/// The operation is performed **in-place** on `owm`, replacing the wrapped key material
+/// with plaintext.  Callers that later persist `owm` (e.g. via `decrement_usage_limits`)
+/// **MUST clone** before calling this function and pass the original (still-wrapped)
+/// `owm` to the persistence path.  Failing to do so silently stores the plaintext key
+/// in the database, defeating KEK encryption at rest.
 pub(crate) async fn unwrap_and_enforce_policy(
     kms: &KMS,
     owm: &mut ObjectWithMetadata,

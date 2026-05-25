@@ -17,13 +17,13 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, ResolvedKey, has_usage_mask, resolve_key_for_operation},
+        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -34,9 +34,23 @@ use crate::{
 pub(crate) struct SignOp;
 
 impl CryptoOpSpec for SignOp {
+    type Request = Sign;
+    type Response = SignResponse;
+
     const KMIP_OP: KmipOperation = KmipOperation::Sign;
     const OP_NAME: &'static str = "Sign";
-    const SUPPORTS_ORACLE: bool = true;
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request
+            .data
+            .as_ref()
+            .map_or(0, |d| d.len())
+            .max(request.digested_data.as_ref().map_or(0, Vec::len))
+    }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::PrivateKey { .. } = owm.object() {
@@ -58,10 +72,57 @@ impl CryptoOpSpec for SignOp {
             other => other,
         }
     }
+
+    async fn execute_local(
+        _kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &str,
+    ) -> KResult<Self::Response> {
+        match owm.object() {
+            Object::PrivateKey { .. } => sign_with_private_key(request, owm),
+            other => Err(KmsError::NotSupported(format!(
+                "signing with keys of type: {} is not supported",
+                other.object_type()
+            ))),
+        }
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let lock = kms.crypto_oracles.read().await;
+        let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+            KmsError::InvalidRequest(format!("Sign: unknown crypto oracle prefix: {prefix}"))
+        })?;
+        let data: &[u8] = request
+            .data
+            .as_ref()
+            .map(|d| d.as_slice())
+            .or(request.digested_data.as_deref())
+            .ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "Sign: no data or digested data provided for oracle signing".to_owned(),
+                )
+            })?;
+        let signature = crypto_oracle
+            .sign(uid, data, request.cryptographic_parameters.as_ref())
+            .await
+            .map_err(|e| KmsError::InvalidRequest(format!("Sign: crypto oracle error: {e}")))?;
+        debug!("user signed data via crypto oracle using: {uid}");
+        Ok(SignResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            signature_data: Some(signature),
+            correlation_value: request.correlation_value.clone(),
+        })
+    }
 }
 
 pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignResponse> {
-    debug!("{request}");
+    trace!("{request}");
 
     // KMIP 2.1 §6.30: data and digested_data are mutually exclusive
     if request.data.is_some() && request.digested_data.is_some() {
@@ -70,90 +131,7 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
         ));
     }
 
-    // Get the uids from the unique identifier
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-
-    match resolve_key_for_operation::<SignOp>(unique_identifier, kms, user).await? {
-        ResolvedKey::Oracle { uid, prefix } => {
-            debug!("user: {user} is authorized to sign using: {uid} from signing oracle");
-            return sign_using_crypto_oracle(kms, &request, &uid, &prefix).await;
-        }
-        ResolvedKey::Local(owm) => {
-            let mut owm = *owm;
-
-            // Unwrap + second-stage enforcement.
-            super::unwrap_and_enforce_policy(kms, &mut owm, "Sign", user).await?;
-
-            let data_len = request
-                .data
-                .as_ref()
-                .map_or(0, |d| d.len())
-                .max(request.digested_data.as_ref().map_or(0, Vec::len));
-
-            // Enforce UsageLimits before the operation.
-            super::enforce_usage_limits(&owm, data_len)?;
-
-            // Only private keys can be used for signing
-            let res = match owm.object() {
-                Object::PrivateKey { .. } => sign_with_private_key(&request, &owm),
-                other => kms_bail!(KmsError::NotSupported(format!(
-                    "signing with keys of type: {} is not supported",
-                    other.object_type()
-                ))),
-            }?;
-
-            // Post-operation: decrement and persist usage limits.
-            super::decrement_usage_limits(kms, &mut owm, "Sign", data_len).await?;
-
-            info!(uid = owm.id(), user = user, "sign response = {res}");
-            Ok(res)
-        }
-    }
-}
-
-/// Sign using a signing oracle (external key store / HSM identified by a prefix UID).
-///
-/// This mirrors `encrypt_using_crypto_oracle` in `encrypt.rs`. The oracle is looked up by
-/// its prefix in `kms.crypto_oracles`.
-///
-/// # Arguments
-/// * `kms` - the KMS instance
-/// * `request` - the Sign request
-/// * `uid` - the full prefixed UID (e.g. `"hsm0::key-id"`)
-/// * `prefix` - the prefix part used to look up the oracle (e.g. `"hsm0"`)
-async fn sign_using_crypto_oracle(
-    kms: &KMS,
-    request: &Sign,
-    uid: &str,
-    prefix: &str,
-) -> KResult<SignResponse> {
-    let lock = kms.crypto_oracles.read().await;
-    let crypto_oracle = lock.get(prefix).ok_or_else(|| {
-        KmsError::InvalidRequest(format!("Sign: unknown crypto oracle prefix: {prefix}"))
-    })?;
-    let data: &[u8] = request
-        .data
-        .as_ref()
-        .map(|d| d.as_slice())
-        .or(request.digested_data.as_deref())
-        .ok_or_else(|| {
-            KmsError::InvalidRequest(
-                "Sign: no data or digested data provided for oracle signing".to_owned(),
-            )
-        })?;
-    let signature = crypto_oracle
-        .sign(uid, data, request.cryptographic_parameters.as_ref())
-        .await
-        .map_err(|e| KmsError::InvalidRequest(format!("Sign: crypto oracle error: {e}")))?;
-    debug!("user signed data via crypto oracle using: {uid}");
-    Ok(SignResponse {
-        unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
-        signature_data: Some(signature),
-        correlation_value: request.correlation_value.clone(),
-    })
+    Box::pin(perform_crypto_operation::<SignOp>(kms, request, user)).await
 }
 
 fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {
