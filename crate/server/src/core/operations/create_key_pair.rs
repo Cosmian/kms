@@ -1,4 +1,4 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize;
+use cosmian_kms_server_database::reexport::cosmian_kmip;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_keygen;
 #[cfg(feature = "non-fips")]
@@ -12,7 +12,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::reexport::cosmian
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::{
     create_secp_key_pair, create_x448_key_pair, create_x25519_key_pair
 };
-use cosmian_kms_server_database::reexport::{cosmian_kmip, cosmian_kms_crypto::crypto::{
+use cosmian_kms_server_database::reexport::{cosmian_kms_crypto::crypto::{
     elliptic_curves::operation::{
         create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair
     }, rsa::operation::create_rsa_key_pair, KeyPair
@@ -28,7 +28,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, RecommendedCurve, UniqueIdentifier},
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::State::{Active,PreActive};
 #[cfg(feature = "non-fips")]
 use cosmian_logger::warn;
 use cosmian_logger::{debug, info, trace};
@@ -39,7 +38,6 @@ use crate::{
     kms_bail,
     result::KResult,
 };
-use crate::core::operations::digest::digest;
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
@@ -112,38 +110,13 @@ pub(crate) async fn create_key_pair(
     let key_pair = generate_key_pair(kms.vendor_id(), request, &sk_uid, &pk_uid)?;
 
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
-    let now = time_normalize()?;
 
     let mut private_key = key_pair.private_key().to_owned();
-    // Set lifecycle fields and copy the attributes before the key gets wrapped
-    let private_key_attributes = {
-        let digest = digest(&private_key)?;
-        let attributes = private_key.attributes_mut()?;
-        // Determine State based on requested InitialDate or ActivationDate (if provided)
-        let activation_allows_active = requested_sk_activation_date.is_some_and(|d| d <= now);
-        let state = if activation_allows_active {
-            Active
-        } else {
-            PreActive
-        };
-        attributes.state = Some(state);
-        // update the digest
-        attributes.digest = digest;
-        // Set InitialDate only if provided in the request (no auto-setting)
-        attributes.initial_date = Some(now);
-        // Set ActivationDate only if provided in the request (no auto-setting)
-        if state == Active {
-            attributes.activation_date = Some(now);
-        }
-
-        // Ensure ObjectType is set for private key
-        attributes.object_type = Some(ObjectType::PrivateKey);
-        // update original creation date
-        attributes.original_creation_date = Some(now);
-        // update the last change date
-        attributes.last_change_date = Some(now);
-        attributes.clone()
-    };
+    let private_key_attributes = super::key_ops::setup_object_lifecycle(
+        &mut private_key,
+        ObjectType::PrivateKey,
+        requested_sk_activation_date,
+    )?;
     trace!(
         "Private key attributes after lifecycle update: {}",
         private_key_attributes
@@ -160,36 +133,11 @@ pub(crate) async fn create_key_pair(
     .await?;
 
     let mut public_key = key_pair.public_key().to_owned();
-    // Set lifecycle fields and copy the attributes before the key gets wrapped
-    let public_key_attributes = {
-        let digest = digest(&public_key)?;
-        let attributes = public_key.attributes_mut()?;
-        // Determine State based on requested InitialDate or ActivationDate (if provided)
-        let activation_allows_active = requested_pk_activation_date.is_some_and(|d| d <= now);
-        let state = if activation_allows_active {
-            Active
-        } else {
-            PreActive
-        };
-        attributes.state = Some(state);
-        // update the digest
-        attributes.digest = digest;
-        // Set InitialDate only if provided in the request (no auto-setting)
-        // Zero milliseconds for KMIP serialization compatibility
-        let now_stored = time_normalize()?;
-        attributes.initial_date = Some(now_stored);
-        // Set ActivationDate only if provided in the request (no auto-setting)
-        if state == Active {
-            attributes.activation_date = Some(now_stored);
-        }
-        // Ensure ObjectType is set for public key
-        attributes.object_type = Some(ObjectType::PublicKey);
-        // update original creation date
-        attributes.original_creation_date = Some(now);
-        // update the last change date
-        attributes.last_change_date = Some(now);
-        attributes.clone()
-    };
+    let public_key_attributes = super::key_ops::setup_object_lifecycle(
+        &mut public_key,
+        ObjectType::PublicKey,
+        requested_pk_activation_date,
+    )?;
     trace!(
         "Public key attributes after lifecycle update: {}",
         public_key_attributes

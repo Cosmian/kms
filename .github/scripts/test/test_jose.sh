@@ -458,7 +458,7 @@ VENV_DIR="$(mktemp -d -t jose-interop-venv-XXXXXX)"
 python3 -m venv "${VENV_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
-pip install --quiet jwcrypto cryptography
+pip install --quiet -r "${SCRIPT_DIR}/requirements-jose.txt"
 
 python3 "${HELPER}" --help >/dev/null 2>&1 || {
   echo "ERROR: jose_interop_helper.py failed to load" >&2
@@ -577,9 +577,9 @@ SIGN_SIGNATURE=$(json_str "$SIGN_RESP" "signature")
 COMPACT_JWS="${SIGN_PROTECTED}.${PAYLOAD_B64}.${SIGN_SIGNATURE}"
 
 VERIFY_OUT=$(python3 "${HELPER}" verify-jws \
-  --alg RS256 \
-  --pub-der-hex "${RSA_PUB_DER_HEX}" \
-  --compact "${COMPACT_JWS}" 2>&1) || true
+  --alg=RS256 \
+  --pub-der-hex="${RSA_PUB_DER_HEX}" \
+  --compact="${COMPACT_JWS}" 2>&1) || true
 assert_eq "$(echo "${VERIFY_OUT}" | head -1)" "valid=true" "E1: RS256 KMS sign → jwcrypto verify"
 
 # ── Test E2: JWS ES256 — KMS sign → jwcrypto verify ──────────────────────────
@@ -597,9 +597,9 @@ EC_SIGN_SIGNATURE=$(json_str "$EC_SIGN_RESP" "signature")
 EC_COMPACT_JWS="${EC_SIGN_PROTECTED}.${EC_PAYLOAD_B64}.${EC_SIGN_SIGNATURE}"
 
 EC_VERIFY_OUT=$(python3 "${HELPER}" verify-jws \
-  --alg ES256 \
-  --pub-der-hex "${EC_PUB_DER_HEX}" \
-  --compact "${EC_COMPACT_JWS}" 2>&1) || true
+  --alg=ES256 \
+  --pub-der-hex="${EC_PUB_DER_HEX}" \
+  --compact="${EC_COMPACT_JWS}" 2>&1) || true
 assert_eq "$(echo "${EC_VERIFY_OUT}" | head -1)" "valid=true" "E2: ES256 KMS sign → jwcrypto verify"
 
 # ── Test E3: JWE dir+A256GCM — KMS encrypt → jwcrypto decrypt ────────────────
@@ -618,11 +618,11 @@ ENC_CT=$(json_str "$ENC_RESP" "ciphertext")
 ENC_TAG=$(json_str "$ENC_RESP" "tag")
 
 DECRYPT_HEX=$(python3 "${HELPER}" decrypt-jwe \
-  --key-hex "${AES_KEY_HEX}" \
-  --protected "${ENC_PROTECTED}" \
-  --iv "${ENC_IV}" \
-  --ciphertext "${ENC_CT}" \
-  --tag "${ENC_TAG}")
+  --key-hex="${AES_KEY_HEX}" \
+  --protected="${ENC_PROTECTED}" \
+  --iv="${ENC_IV}" \
+  --ciphertext="${ENC_CT}" \
+  --tag="${ENC_TAG}")
 assert_eq "${DECRYPT_HEX}" "${JWE_PLAINTEXT_HEX}" "E3: A256GCM KMS encrypt → jwcrypto decrypt"
 
 # ── Test E4: JWE dir+A128GCM — jwcrypto encrypt → KMS decrypt ────────────────
@@ -633,10 +633,10 @@ E4_PLAINTEXT="Encrypt me with A128GCM from jwcrypto!"
 E4_PLAINTEXT_HEX=$(python3 -c "print('${E4_PLAINTEXT}'.encode().hex(), end='')")
 
 JWE_JSON=$(python3 "${HELPER}" encrypt-jwe \
-  --key-hex "${AES128_KEY_HEX}" \
-  --kid "jose-aes-128" \
-  --enc "A128GCM" \
-  --plaintext-hex "${E4_PLAINTEXT_HEX}")
+  --key-hex="${AES128_KEY_HEX}" \
+  --kid="jose-aes-128" \
+  --enc="A128GCM" \
+  --plaintext-hex="${E4_PLAINTEXT_HEX}")
 
 JWE_PROTECTED=$(json_str "$JWE_JSON" "protected")
 JWE_IV=$(json_str "$JWE_JSON" "iv")
@@ -666,8 +666,8 @@ SIGNING_INPUT="eyJ0eXAiOiJKV1QiLA0KICJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJl
 SIGNING_INPUT_HEX=$(python3 -c "print('${SIGNING_INPUT}'.encode().hex(), end='')")
 
 JWCRYPTO_MAC=$(python3 "${HELPER}" mac-sha256 \
-  --key-b64url "${RFC_KEY_B64}" \
-  --data-hex "${SIGNING_INPUT_HEX}")
+  --key-b64url="${RFC_KEY_B64}" \
+  --data-hex="${SIGNING_INPUT_HEX}")
 
 EXPECTED_MAC="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 assert_eq "${JWCRYPTO_MAC}" "${EXPECTED_MAC}" "E5: RFC 7515 §A.1 HS256 jwcrypto known-answer"

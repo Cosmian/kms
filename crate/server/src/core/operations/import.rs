@@ -443,35 +443,8 @@ pub(super) async fn process_public_key(
             // If the client supplied richer cryptographic parameters (e.g., PSS/hash),
             // overlay them so they are preserved for future verify operations when request CP is omitted.
             if let Some(orig) = original_cp {
-                let merged = match attributes.cryptographic_parameters.clone() {
-                    Some(mut existing) => {
-                        if existing.padding_method.is_none() {
-                            existing.padding_method = orig.padding_method;
-                        }
-                        if existing.hashing_algorithm.is_none() {
-                            existing.hashing_algorithm = orig.hashing_algorithm;
-                        }
-                        if existing.digital_signature_algorithm.is_none() {
-                            existing.digital_signature_algorithm = orig.digital_signature_algorithm;
-                        }
-                        if existing.cryptographic_algorithm.is_none() {
-                            existing.cryptographic_algorithm = orig.cryptographic_algorithm;
-                        }
-                        if existing.mask_generator.is_none() {
-                            existing.mask_generator = orig.mask_generator;
-                        }
-                        if existing.mask_generator_hashing_algorithm.is_none() {
-                            existing.mask_generator_hashing_algorithm =
-                                orig.mask_generator_hashing_algorithm;
-                        }
-                        if existing.p_source.is_none() && orig.p_source.is_some() {
-                            existing.p_source = orig.p_source;
-                        }
-                        Some(existing)
-                    }
-                    None => Some(orig),
-                };
-                attributes.cryptographic_parameters = merged;
+                let existing = attributes.cryptographic_parameters.get_or_insert_default();
+                existing.fill_missing_fields(&orig);
             }
         }
     }
@@ -597,65 +570,8 @@ pub(super) async fn process_private_key(
             // overlay them so they are preserved for future decrypt operations when request CP is omitted.
             // This is mandatory for tests "CS-AC - Cryptographic Service - Asymmetric Cryptography"
             if let Some(orig) = original_cp {
-                let merged = match attributes.cryptographic_parameters.clone() {
-                    Some(mut existing) => {
-                        if existing.padding_method.is_none() {
-                            existing.padding_method = orig.padding_method;
-                        }
-                        if existing.hashing_algorithm.is_none() {
-                            existing.hashing_algorithm = orig.hashing_algorithm;
-                        }
-                        if existing.mask_generator.is_none() {
-                            existing.mask_generator = orig.mask_generator;
-                        }
-                        if existing.mask_generator_hashing_algorithm.is_none() {
-                            existing.mask_generator_hashing_algorithm =
-                                orig.mask_generator_hashing_algorithm;
-                        }
-                        if existing.p_source.is_none() && orig.p_source.is_some() {
-                            existing.p_source = orig.p_source;
-                        }
-                        if existing.block_cipher_mode.is_none() {
-                            existing.block_cipher_mode = orig.block_cipher_mode;
-                        }
-                        if existing.trailer_field.is_none() {
-                            existing.trailer_field = orig.trailer_field;
-                        }
-                        if existing.key_role_type.is_none() {
-                            existing.key_role_type = orig.key_role_type;
-                        }
-                        if existing.digital_signature_algorithm.is_none() {
-                            existing.digital_signature_algorithm = orig.digital_signature_algorithm;
-                        }
-                        if existing.random_iv.is_none() {
-                            existing.random_iv = orig.random_iv;
-                        }
-                        if existing.iv_length.is_none() {
-                            existing.iv_length = orig.iv_length;
-                        }
-                        if existing.tag_length.is_none() {
-                            existing.tag_length = orig.tag_length;
-                        }
-                        if existing.fixed_field_length.is_none() {
-                            existing.fixed_field_length = orig.fixed_field_length;
-                        }
-                        if existing.invocation_field_length.is_none() {
-                            existing.invocation_field_length = orig.invocation_field_length;
-                        }
-                        if existing.counter_length.is_none() {
-                            existing.counter_length = orig.counter_length;
-                        }
-                        if existing.initial_counter_value.is_none() {
-                            existing.initial_counter_value = orig.initial_counter_value;
-                        }
-                        if existing.salt_length.is_none() {
-                            existing.salt_length = orig.salt_length;
-                        }
-                        Some(existing)
-                    }
-                    None => Some(orig),
-                };
-                attributes.cryptographic_parameters = merged;
+                let existing = attributes.cryptographic_parameters.get_or_insert_default();
+                existing.fill_missing_fields(&orig);
             }
         }
     }

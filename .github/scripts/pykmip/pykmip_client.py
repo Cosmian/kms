@@ -1218,6 +1218,7 @@ def perform_encrypt(proxy, verbose=False):
 
     try:
         # Create a symmetric key for encryption using proper template approach
+        from datetime import datetime, timezone
         from kmip.core import objects as cobjects
         from kmip.core.factories.attributes import AttributeFactory
 
@@ -1229,8 +1230,16 @@ def perform_encrypt(proxy, verbose=False):
         length_attr = attribute_factory.create_attribute(
             enums.AttributeType.CRYPTOGRAPHIC_LENGTH, 256
         )
+        # ActivationDate in the past so the key is immediately Active.
+        # Required: resolve_key_for_operation enforces Active state for Encrypt.
+        activation_date_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
 
-        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        template = cobjects.TemplateAttribute(
+            attributes=[algorithm_attr, length_attr, activation_date_attr]
+        )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
         # Check if create operation succeeded
@@ -1466,6 +1475,7 @@ def perform_mac(proxy, verbose=False):
 
     try:
         # Create a symmetric key first for MAC generation
+        from datetime import datetime, timezone
         from kmip.core import objects as cobjects
         from kmip.core.factories.attributes import AttributeFactory
 
@@ -1479,8 +1489,16 @@ def perform_mac(proxy, verbose=False):
         length_attr = attribute_factory.create_attribute(
             enums.AttributeType.CRYPTOGRAPHIC_LENGTH, 256
         )
+        # ActivationDate in the past so the key is immediately Active.
+        # Required: resolve_key_for_operation enforces Active state for MAC.
+        activation_date_attr = attribute_factory.create_attribute(
+            enums.AttributeType.ACTIVATION_DATE,
+            int(datetime.now(timezone.utc).timestamp()),
+        )
 
-        template = cobjects.TemplateAttribute(attributes=[algorithm_attr, length_attr])
+        template = cobjects.TemplateAttribute(
+            attributes=[algorithm_attr, length_attr, activation_date_attr]
+        )
         result = proxy.create(enums.ObjectType.SYMMETRIC_KEY, template)
 
         # Check if create operation succeeded

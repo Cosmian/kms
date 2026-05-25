@@ -1,10 +1,10 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Select, Space, Tabs, Upload } from "antd";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import ExternalLink from "../../components/common/ExternalLink";
-import { useAuth } from "../../contexts/AuthContext";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
 
 interface ImportAwsKekFormData {
     kekFile?: Uint8Array;
@@ -36,22 +36,11 @@ const WRAPPING_ALGORITHMS = [
 
 const ImportAwsKekForm: React.FC = () => {
     const [form] = Form.useForm<ImportAwsKekFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [inputType, setInputType] = useState<"file" | "base64">("file");
 
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
-
     const onFinish = async (values: ImportAwsKekFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const tags = ["aws", `wrapping_algorithm:${values.wrappingAlgorithm}`];
             // only include key_arn if provided:
             if (values.keyArn) {
@@ -75,9 +64,7 @@ const ImportAwsKekForm: React.FC = () => {
                 kekData = bytes;
                 kekFormat = "pkcs8-pub";
             } else {
-                setRes("Please provide the KEK as a file or base64 string.");
-                setIsLoading(false);
-                return;
+                return "Please provide the KEK as a file or base64 string.";
             }
 
             const request = wasm.import_ttlv_request(
@@ -97,14 +84,9 @@ const ImportAwsKekForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await wasm.parse_import_ttlv_response(result_str);
-                setRes(`AWS KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`);
+                return `AWS KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error importing AWS KEK: ${e}`);
-            console.error("Error importing AWS KEK:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

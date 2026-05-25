@@ -1,12 +1,13 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Form, Input, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { FormUpload } from "../../components/common/FormUpload";
 import { azureKekKeyUsage, azureKekTags } from "../../utils/azureKek";
 import { sendKmipRequest } from "../../utils/utils";
 import { import_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
 import ExternalLink from "../../components/common/ExternalLink";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface ImportAzureKekFormData {
     kekFile: Uint8Array;
@@ -20,21 +21,10 @@ type KeyImportResponse = {
 
 const ImportAzureKekForm: React.FC = () => {
     const [form] = Form.useForm<ImportAzureKekFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ImportAzureKekFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             // Import the KEK with Azure-specific tags and key usage
             const tags = azureKekTags(values.kid);
             const keyUsage = azureKekKeyUsage;
@@ -56,14 +46,9 @@ const ImportAzureKekForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str);
-                setRes(`Azure KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`);
+                return `Azure KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error importing Azure KEK: ${e}`);
-            console.error("Error importing Azure KEK:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -159,11 +144,7 @@ const ImportAzureKekForm: React.FC = () => {
                 </Space>
             </Form>
 
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Import Response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Import Response" />
         </div>
     );
 };

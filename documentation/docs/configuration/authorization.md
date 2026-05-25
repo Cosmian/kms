@@ -12,26 +12,30 @@ The authorization system in the Eviden Key Management Service (KMS) operates bas
 
 Owners can delegate the following KMIP operations to other users via the `grant` and `revoke` endpoints (or the CLI commands `ckms access-rights grant` / `ckms access-rights revoke`):
 
-| Operation          | Description                                                     |
-| ------------------ | --------------------------------------------------------------- |
-| `create`           | Create new cryptographic objects (symmetric keys, key pairs, …) |
-| `certify`          | Issue or renew X.509 certificates                               |
-| `decrypt`          | Decrypt ciphertext using a managed key                          |
-| `derive_key`       | Derive a new key from an existing key                           |
-| `destroy`          | Permanently destroy an object                                   |
-| `encrypt`          | Encrypt plaintext using a managed key                           |
-| `export`           | Export an object (key material + metadata) from the KMS         |
-| `get`              | Retrieve an object — **this is a super-privilege** (see below)  |
-| `get_attributes`   | Read the KMIP attributes of an object                           |
-| `hash`             | Compute a cryptographic hash                                    |
-| `import`           | Import an external object into the KMS                          |
-| `locate`           | Search for objects matching given attributes                    |
-| `mac`              | Compute a Message Authentication Code                           |
-| `revoke`           | Revoke (deactivate) an object                                   |
-| `rekey`            | Re-key an existing symmetric key                                |
-| `sign`             | Generate a digital signature                                    |
-| `signature_verify` | Verify a digital signature                                      |
-| `validate`         | Validate a certificate chain                                    |
+| Operation           | Description                                                     |
+| ------------------- | --------------------------------------------------------------- |
+| `create`            | Create new cryptographic objects (symmetric keys, key pairs, …) |
+| `certify`           | Issue or renew X.509 certificates                               |
+| `decrypt`           | Decrypt ciphertext using a managed key                          |
+| `derive_key`        | Derive a new key from an existing key                           |
+| `destroy`           | Permanently destroy an object                                   |
+| `encrypt`           | Encrypt plaintext using a managed key                           |
+| `export`            | Export an object (key material + metadata) from the KMS         |
+| `get`               | Retrieve an object — **this is a super-privilege** (see below)  |
+| `get_attributes`    | Read the KMIP attributes of an object                           |
+| `hash`              | Compute a cryptographic hash                                    |
+| `import`            | Import an external object into the KMS                          |
+| `locate`            | Search for objects matching given attributes                    |
+| `mac`               | Compute a Message Authentication Code                           |
+| `revoke`            | Revoke (deactivate) an object                                   |
+| `rekey`             | Re-key an existing symmetric key                                |
+| `sign`              | Generate a digital signature                                    |
+| `signature_verify`  | Verify a digital signature                                      |
+| `validate`          | Validate a certificate chain                                    |
+| `set_attribute`     | Set (replace) an attribute on an object                         |
+| `modify_attribute`  | Modify an existing attribute on an object                       |
+| `add_attribute`     | Add a new attribute value to an object                          |
+| `delete_attribute`  | Remove an attribute from an object                              |
 
 Multiple operations can be granted or revoked in a single call. For example, using the CLI:
 
@@ -150,10 +154,11 @@ Request arrives for operation OP on key hsm::<model>::<slot>::<id>
 
 | Operation | Delegable via `grant`? | Notes |
 |---|:---:|---|
-| `encrypt`, `decrypt`, `sign`, `mac`, … | Yes | All standard operations |
+| `encrypt`, `decrypt`, `sign`, `mac` | Yes | All standard cryptographic operations |
 | `get` | Yes | Also implies `export` (equivalence) |
 | `export` | Yes | Also implies `get` (equivalence) |
 | `get_attributes`, `locate` | Yes | |
+| `set_attribute`, `modify_attribute`, `add_attribute`, `delete_attribute` | Yes | Operate on KMS metadata only; do not access HSM hardware |
 | `create` | Yes (admin to another admin) | Non-admin cannot receive `create` on HSM |
 | `destroy` | **No** | Blocked — admin-only, cannot be delegated |
 | `revoke` | **No** | Blocked — HSM objects do not use KMIP lifecycle states |

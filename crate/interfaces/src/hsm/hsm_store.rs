@@ -522,6 +522,47 @@ impl CryptoOracle for HsmStore {
             .sign(slot_id, key_id.as_bytes(), algorithm, data)
             .await
     }
+
+    async fn signature_verify(
+        &self,
+        uid: &str,
+        _data: &[u8],
+        _signature: &[u8],
+        _cryptographic_parameters: Option<
+            &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
+        >,
+    ) -> InterfaceResult<bool> {
+        Err(InterfaceError::NotSupported(format!(
+            "SignatureVerify via HSM is not yet implemented for key: {uid}"
+        )))
+    }
+
+    async fn mac(
+        &self,
+        uid: &str,
+        _data: &[u8],
+        _cryptographic_parameters: Option<
+            &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
+        >,
+    ) -> InterfaceResult<Vec<u8>> {
+        Err(InterfaceError::NotSupported(format!(
+            "MAC via HSM is not yet implemented for key: {uid}"
+        )))
+    }
+
+    async fn mac_verify(
+        &self,
+        uid: &str,
+        _data: &[u8],
+        _mac_data: &[u8],
+        _cryptographic_parameters: Option<
+            &cosmian_kmip::kmip_2_1::kmip_types::CryptographicParameters,
+        >,
+    ) -> InterfaceResult<bool> {
+        Err(InterfaceError::NotSupported(format!(
+            "MACVerify via HSM is not yet implemented for key: {uid}"
+        )))
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

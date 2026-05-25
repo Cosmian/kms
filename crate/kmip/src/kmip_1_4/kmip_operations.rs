@@ -35,6 +35,34 @@ use crate::{
     kmip_2_1::{self, kmip_attributes::Attributes},
 };
 
+/// Implements `Debug` by delegating to `Display`.
+macro_rules! debug_from_display {
+    ($($t:ty),+ $(,)?) => {
+        $(
+            impl fmt::Debug for $t {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    write!(f, "{self}")
+                }
+            }
+        )+
+    };
+}
+
+debug_from_display!(
+    CreateKeyPairResponse,
+    RegisterResponse,
+    LocateResponse,
+    CheckResponse,
+    GetResponse,
+    GetAttributesResponse,
+    ActivateResponse,
+    DestroyResponse,
+    SignResponse,
+    SignatureVerifyResponse,
+    MACVerifyResponse,
+    RNGSeedResponse,
+);
+
 /// 4.1 Create
 /// This operation requests the server to generate a new managed cryptographic object. The request
 /// contains information about the type of object being created, and some of the attributes to be
@@ -178,12 +206,6 @@ impl Display for CreateKeyPairResponse {
     }
 }
 
-impl fmt::Debug for CreateKeyPairResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
 /// 4.3 Register
 /// This operation requests the server to register a Managed Object that was created by the client
 /// or obtained by the client through some other means.
@@ -240,12 +262,6 @@ impl Display for RegisterResponse {
             "RegisterResponse {{ unique_identifier: {} }}",
             self.unique_identifier
         )
-    }
-}
-
-impl fmt::Debug for RegisterResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
     }
 }
 
@@ -547,12 +563,6 @@ impl Display for LocateResponse {
     }
 }
 
-impl fmt::Debug for LocateResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
 /// 4.10 Check
 /// This operation requests that the server check for use of a Managed Object according
 /// to values specified in the request.
@@ -599,12 +609,6 @@ impl Display for CheckResponse {
             write!(f, ", lease_time: {v}")?;
         }
         write!(f, " }}")
-    }
-}
-
-impl fmt::Debug for CheckResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
     }
 }
 
@@ -708,12 +712,6 @@ impl Display for GetResponse {
     }
 }
 
-impl fmt::Debug for GetResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
 /// 4.12 Get Attributes
 /// This operation requests one or more attributes associated with a Managed Object.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -807,12 +805,6 @@ impl Display for GetAttributesResponse {
             "GetAttributesResponse {{ unique_identifier: {} }}",
             self.unique_identifier
         )
-    }
-}
-
-impl fmt::Debug for GetAttributesResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
     }
 }
 
@@ -1161,12 +1153,6 @@ impl Display for ActivateResponse {
     }
 }
 
-impl fmt::Debug for ActivateResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
 /// 4.20 Revoke
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1254,12 +1240,6 @@ impl Display for DestroyResponse {
             "DestroyResponse {{ unique_identifier: {} }}",
             self.unique_identifier
         )
-    }
-}
-
-impl fmt::Debug for DestroyResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
     }
 }
 
@@ -1810,12 +1790,6 @@ impl Display for SignResponse {
     }
 }
 
-impl fmt::Debug for SignResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
 /// 4.32 Signature Verify
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -1898,12 +1872,6 @@ impl Display for SignatureVerifyResponse {
             "SignatureVerifyResponse {{ unique_identifier: {}, validity_indicator: {:?} }}",
             self.unique_identifier, self.validity_indicator
         )
-    }
-}
-
-impl fmt::Debug for SignatureVerifyResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
     }
 }
 
@@ -2028,12 +1996,6 @@ impl Display for MACVerifyResponse {
     }
 }
 
-impl fmt::Debug for MACVerifyResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
 /// 4.35 RNG Retrieve
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
@@ -2096,12 +2058,6 @@ impl Display for RNGSeedResponse {
             "RNGSeedResponse {{ amount_of_seed_data: {} }}",
             self.amount_of_seed_data
         )
-    }
-}
-
-impl fmt::Debug for RNGSeedResponse {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
     }
 }
 

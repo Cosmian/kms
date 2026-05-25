@@ -26,6 +26,8 @@ static ONCE_VECTOR_MYSQL: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_REDIS_FINDEX: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring mTLS cert-auth (`cert_auth.toml`).
 static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests requiring `SoftHSM2` + KEK.
+static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 
 /// A test vector manifest loaded from a TOML file.
 ///
@@ -67,6 +69,18 @@ pub struct TestManifest {
     /// Path to a TOML server config file (relative to the repo root).
     /// If omitted, defaults to `test_data/configs/server/test/auth_plain.toml`.
     pub server_config: Option<String>,
+    /// Server type to use for this vector.
+    ///
+    /// Controls which singleton server is started:
+    /// - `"hsm_kek"` — `SoftHSM2` with a Key Encryption Key (uses `ONCE_VECTOR_HSM_KEK`)
+    /// - anything else or omitted — standard backend-driven servers
+    pub server_type: Option<String>,
+    /// Environment variables required to run this vector.
+    ///
+    /// If any variable in this list is not set, the vector is skipped gracefully.
+    /// Used for HSM tests that require `HSM_SLOT_ID` to be set by the CI script.
+    #[serde(default)]
+    pub requires_env: Vec<String>,
     /// Database backends this vector should be tested against.
     ///
     /// Defaults to `["sqlite"]`. When `KMS_TEST_BACKENDS` env var is set
@@ -156,10 +170,24 @@ pub struct TestStep {
     /// return multiple `UniqueIdentifier` items — only one of them needs to match).
     #[serde(default)]
     pub assert_any_field: HashMap<String, String>,
+    /// Opposite of `assert_any_field`: asserts that **no** occurrence of the tag has
+    /// the given value. Useful to verify that a specific object is NOT returned by
+    /// Locate (e.g. a key not granted to the requesting user).
+    /// Supports `{{captured}}` and `{{$ENV}}` variable substitution.
+    #[serde(default)]
+    pub assert_none_field: HashMap<String, String>,
     /// Assert that these TTLV tags are **absent** from the response.
     /// Useful to verify fields have been properly removed (e.g. Veeam compatibility).
     #[serde(default)]
     pub assert_fields_absent: Vec<String>,
+    /// Assert the number of occurrences of a given TTLV tag in the response.
+    /// Keys are TTLV tag names; values are the expected count.
+    /// Useful for `Locate` responses to verify exactly how many objects are returned.
+    ///
+    /// Example: `assert_count = { UniqueIdentifier = 2 }` checks that the response
+    /// contains exactly 2 `UniqueIdentifier` tags.
+    #[serde(default)]
+    pub assert_count: HashMap<String, usize>,
     /// When `assert_success` is `false`, optionally assert that the error response
     /// contains a specific `ResultReason` value (e.g. `"Item_Not_Found"`).
     pub assert_error_reason: Option<String>,
@@ -192,6 +220,11 @@ pub struct TestStep {
     /// identity  = "user"
     /// ```
     pub identity: Option<String>,
+    /// When `true`, the step outcome (success or failure) is ignored.
+    /// Useful for cleanup/setup steps that may or may not succeed (e.g. destroying
+    /// a key that may not exist from a prior run).
+    #[serde(default)]
+    pub allow_failure: bool,
 }
 
 const fn default_true() -> bool {
@@ -380,7 +413,8 @@ pub fn load_manifest(manifest_path: &Path) -> Result<TestManifest, KmsClientErro
 }
 
 /// Load a TTLV-JSON request payload, substituting `{{variable}}` placeholders
-/// with captured values from previous steps.
+/// with captured values from previous steps, and `{{$ENV_VAR}}` placeholders
+/// with environment variable values.
 fn load_request_json(
     path: &Path,
     captures: &HashMap<String, String>,
@@ -392,7 +426,30 @@ fn load_request_json(
         ))
     })?;
 
-    // Substitute all {{variable}} placeholders
+    // Substitute environment variable placeholders {{$VAR_NAME}} first
+    while let Some(start) = content.find("{{$") {
+        let rest = &content[start + 3..];
+        let end = rest.find("}}").ok_or_else(|| {
+            KmsClientError::UnexpectedError(format!(
+                "Unclosed env-var placeholder in {}: found '{{{{$' without matching '}}}}'",
+                path.display()
+            ))
+        })?;
+        let var_name = &rest[..end];
+        let var_value = std::env::var(var_name).map_err(|_e| {
+            KmsClientError::UnexpectedError(format!(
+                "Environment variable '{var_name}' referenced in {} is not set",
+                path.display()
+            ))
+        })?;
+        content = format!(
+            "{}{var_value}{}",
+            &content[..start],
+            &content[start + 3 + end + 2..]
+        );
+    }
+
+    // Substitute all {{variable}} placeholders (captured values)
     for (name, value) in captures {
         content = content.replace(&format!("{{{{{name}}}}}"), value);
     }
@@ -403,6 +460,27 @@ fn load_request_json(
             path.display()
         ))
     })
+}
+
+/// Resolve `{{$ENV_VAR}}` and `{{captured}}` placeholders in an assertion value.
+fn resolve_assertion_value(template: &str, captures: &HashMap<String, String>) -> String {
+    let mut result = template.to_owned();
+    // Substitute environment variable placeholders {{$VAR_NAME}}
+    while let Some(start) = result.find("{{$") {
+        let rest = &result[start + 3..];
+        if let Some(end) = rest.find("}}") {
+            let var_name = &rest[..end];
+            let var_value = std::env::var(var_name).unwrap_or_default();
+            result = format!("{}{}{}", &result[..start], var_value, &rest[end + 2..]);
+        } else {
+            break;
+        }
+    }
+    // Substitute captured variable placeholders {{name}}
+    for (name, value) in captures {
+        result = result.replace(&format!("{{{{{name}}}}}"), value);
+    }
+    result
 }
 
 /// Collect ALL leaf values for a given tag name in the TTLV JSON tree.
@@ -661,6 +739,42 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
     let manifest_path = vector_path.join("manifest.toml");
     let manifest = load_manifest(&manifest_path)?;
 
+    // Check required environment variables; skip gracefully if any is missing
+    for env_var in &manifest.requires_env {
+        if std::env::var(env_var).is_err() {
+            eprintln!(
+                "SKIP vector '{}': required env var '{env_var}' is not set",
+                manifest.name
+            );
+            return Ok(());
+        }
+    }
+
+    // If server_type is set, use a dedicated server instead of the backend-driven ones
+    if let Some(server_type) = &manifest.server_type {
+        match server_type.as_str() {
+            "hsm_kek" => {
+                let context = ONCE_VECTOR_HSM_KEK
+                    .get_or_try_init(|| async {
+                        crate::start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
+                            .await
+                    })
+                    .await?;
+                eprintln!(
+                    "▶ Running vector '{}' on server_type 'hsm_kek'",
+                    manifest.name
+                );
+                return execute_steps(context, &manifest, &vector_path).await;
+            }
+            other => {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Unknown server_type '{other}' in manifest for vector '{}'",
+                    manifest.name
+                )));
+            }
+        }
+    }
+
     // Determine which backends to test
     let (requested, explicit) = requested_backends();
     let backends_to_run: Vec<&String> = manifest
@@ -670,7 +784,11 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
         .collect();
 
     if backends_to_run.is_empty() {
-        // No intersection — nothing to do (vector's backends not requested)
+        // Vector does not target any of the requested backends — skip gracefully.
+        eprintln!(
+            "SKIP vector '{}': its backends {:?} are not in the current run set {:?}",
+            manifest.name, manifest.backends, requested
+        );
         return Ok(());
     }
 
@@ -752,7 +870,7 @@ async fn execute_access_step(
     };
     match result {
         Ok(_) => {
-            if !step.assert_success {
+            if !step.assert_success && !step.allow_failure {
                 return Err(KmsClientError::UnexpectedError(format!(
                     "Step {} '{}': expected failure but got success",
                     i, step.operation
@@ -760,13 +878,14 @@ async fn execute_access_step(
             }
         }
         Err(e) => {
-            if step.assert_success {
+            if step.allow_failure {
+                // Best-effort step — ignore the error
+            } else if step.assert_success {
                 return Err(KmsClientError::UnexpectedError(format!(
                     "Step {} '{}': expected success, got error: {e}",
                     i, step.operation
                 )));
-            }
-            if let Some(substr) = &step.assert_error_contains {
+            } else if let Some(substr) = &step.assert_error_contains {
                 let msg = e.to_string();
                 if !msg.contains(substr.as_str()) {
                     return Err(KmsClientError::UnexpectedError(format!(
@@ -916,9 +1035,9 @@ async fn execute_steps(
                 }
                 Err(e) => {
                     // Transport-level failure (server crash, connection reset,
-                    // etc.). When assert_success is false, treat it as an
-                    // expected failure and continue.
-                    if !step.assert_success {
+                    // etc.). When assert_success is false or allow_failure is set,
+                    // treat it as an expected failure and continue.
+                    if !step.assert_success || step.allow_failure {
                         eprintln!(
                             "Step {i} '{}': transport error (expected failure): {e}",
                             step.operation
@@ -942,6 +1061,10 @@ async fn execute_steps(
         }
 
         if step.assert_success {
+            // When allow_failure is set, skip all assertions — the step is best-effort
+            if step.allow_failure {
+                continue;
+            }
             // Expect success: HTTP 2xx and ResultStatus == Success
             if !http_success {
                 return Err(KmsClientError::UnexpectedError(format!(
@@ -1000,17 +1123,12 @@ async fn execute_steps(
             continue;
         }
 
-        // Assert specific fields (substitute captured variables in expected values)
+        // Assert specific fields (substitute env vars and captured variables in expected values)
         if !step.assert_fields.is_empty() {
             let resolved: HashMap<String, String> = step
                 .assert_fields
                 .iter()
-                .map(|(k, v)| {
-                    let resolved_v = captures.iter().fold(v.clone(), |acc, (name, val)| {
-                        acc.replace(&format!("{{{{{name}}}}}"), val)
-                    });
-                    (k.clone(), resolved_v)
-                })
+                .map(|(k, v)| (k.clone(), resolve_assertion_value(v, &captures)))
                 .collect();
             assert_response_fields(&response_json, &resolved, &step.operation)?;
         }
@@ -1019,16 +1137,29 @@ async fn execute_steps(
         // (used for Locate responses that return multiple UniqueIdentifiers)
         if !step.assert_any_field.is_empty() {
             for (tag, expected_template) in &step.assert_any_field {
-                let expected = captures
-                    .iter()
-                    .fold(expected_template.clone(), |acc, (name, val)| {
-                        acc.replace(&format!("{{{{{name}}}}}"), val)
-                    });
+                let expected = resolve_assertion_value(expected_template, &captures);
                 let all_values = find_all_fields_in_json(&response_json, tag);
                 if !all_values.contains(&expected) {
                     return Err(KmsClientError::UnexpectedError(format!(
                         "Step '{}': field '{tag}' expected to contain '{expected}', \
                          but got: [{}]",
+                        step.operation,
+                        all_values.join(", ")
+                    )));
+                }
+            }
+        }
+
+        // Assert that the expected value does NOT appear in any occurrence of the field
+        // (used to verify a specific object is not returned by Locate)
+        if !step.assert_none_field.is_empty() {
+            for (tag, forbidden_template) in &step.assert_none_field {
+                let forbidden = resolve_assertion_value(forbidden_template, &captures);
+                let all_values = find_all_fields_in_json(&response_json, tag);
+                if all_values.contains(&forbidden) {
+                    return Err(KmsClientError::UnexpectedError(format!(
+                        "Step '{}': field '{tag}' must NOT contain '{forbidden}', \
+                         but it was found in: [{}]",
                         step.operation,
                         all_values.join(", ")
                     )));
@@ -1042,6 +1173,18 @@ async fn execute_steps(
                 return Err(KmsClientError::UnexpectedError(format!(
                     "Step {i} '{}': field '{absent_tag}' should be absent but was found \
                      in response",
+                    step.operation
+                )));
+            }
+        }
+
+        // Assert occurrence counts
+        for (tag, expected_count) in &step.assert_count {
+            let actual_count = find_all_fields_in_json(&response_json, tag).len();
+            if actual_count != *expected_count {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {i} '{}': expected {expected_count} occurrence(s) of '{tag}', \
+                     got {actual_count}",
                     step.operation
                 )));
             }
@@ -1292,13 +1435,6 @@ ObjectType = "SymmetricKey"
     async fn test_vec_locate() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/locate").await
-    }
-
-    #[cfg(feature = "non-fips")]
-    #[tokio::test]
-    async fn test_vec_revoke_key() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/access_control/revoke").await
     }
 
     // ── New: Parametric key-size variants ─────────────────────────────────
@@ -2607,6 +2743,12 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/negative/lifecycle/create_zero_length_key").await
     }
 
+    #[tokio::test]
+    async fn test_neg_create_hsm_key_without_hsm() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/lifecycle/create_hsm_key_without_hsm").await
+    }
+
     // ── Negative tests: type mismatch ───────────────────────────────────
 
     #[tokio::test]
@@ -2645,6 +2787,14 @@ ObjectType = "SymmetricKey"
     async fn test_neg_reactivate_deactivated() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/lifecycle/reactivate_deactivated").await
+    }
+
+    // ── Negative tests: duplicate tags (ambiguous key selection) ─────────
+
+    #[tokio::test]
+    async fn test_neg_duplicate_tags_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/duplicate_tags_encrypt").await
     }
 
     // ── KMIP operations: ReKeyKeyPair ───────────────────────────────────
@@ -2729,5 +2879,281 @@ ObjectType = "SymmetricKey"
     async fn test_vec_access_grant_partial() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/access_control/grant_partial_permissions").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_revoke_key_lifecycle() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/revoke_key_lifecycle").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_self_grant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/privilege_escalation_self_grant").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_non_owner_grant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/access_control/privilege_escalation_non_owner_grant")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_destroy() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/access_control/privilege_escalation_destroy_without_permission",
+        )
+        .await
+    }
+
+    // ── HSM + KEK vectors ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_encrypt_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_encrypt_decrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_sign_verify() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_sign_verify").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_aes256_create_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_aes256_create_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_rsa2048_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_rsa2048_create_sign").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_ec_p256_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_ec_p256_create_sign").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_ed25519_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_ed25519_create_sign").await
+    }
+
+    #[tokio::test]
+    #[cfg(not(feature = "non-fips"))]
+    async fn test_vec_hsm_kek_rsa1024_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_rsa1024_rejected").await
+    }
+
+    // ── HSM Resident: Key Creation ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes128_create_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes128_create_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes256_create_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes256_create_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa4096_create_sign() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa4096_create_sign").await
+    }
+
+    // ── HSM Resident: Encryption ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes256_encrypt_cbc() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes256_encrypt_cbc").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_encrypt_oaep_sha256() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha256").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_encrypt_oaep_sha1() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_oaep_sha1").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_encrypt_pkcs1v15() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_encrypt_pkcs1v15").await
+    }
+
+    // ── HSM Resident: Signing ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_pkcs1v15() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_pkcs1v15").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha1() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha1").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha256() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha256").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha384() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha384").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_sha512() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_sha512").await
+    }
+
+    // ── HSM Resident: Negative tests ─────────────────────────────────────
+
+    #[tokio::test]
+    #[cfg(not(feature = "non-fips"))]
+    async fn test_vec_hsm_resident_rsa1024_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa1024_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_ec_p256_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ec_p256_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_ec_p384_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ec_p384_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_ed25519_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_ed25519_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_non_aes_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_non_aes_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_aes256_encrypt_ecb_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_aes256_encrypt_ecb_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_ecdsa_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_ecdsa_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_rsa2048_sign_dsa_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_rsa2048_sign_dsa_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_wrong_prefix() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/wrong_prefix").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_no_kek_baseline() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/no_kek_baseline").await
+    }
+
+    // ── HSM permission vectors ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_admin_create_encrypt_destroy() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/admin_create_encrypt_destroy").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_admin_grant_encrypt_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/admin_grant_encrypt_decrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_get_not_wildcard() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/get_not_wildcard").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_admin_grant_revoke() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/admin_grant_revoke").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_user_cannot_create() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/user_cannot_create").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_user_cannot_destroy() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/user_cannot_destroy").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_user_cannot_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/user_cannot_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_user_cannot_grant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/user_cannot_grant").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_cannot_grant_destroy() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/cannot_grant_destroy").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_perm_locate_visibility() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/permissions/locate_visibility").await
     }
 }

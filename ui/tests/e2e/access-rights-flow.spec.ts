@@ -74,6 +74,87 @@ test.describe("Access rights", () => {
         expect(revokeText.length).toBeGreaterThan(0);
     });
 
+    /**
+     * Regression test for the serialisation bug where the WASM function
+     * `get_kmip_operations()` returned Display values with underscores
+     * (e.g. `set_attribute`) instead of the serde-lowercase values the server
+     * expects (e.g. `setattribute`), causing HTTP 400 errors.
+     *
+     * Iterates over every operation label exposed by the UI and verifies that
+     * each grant request is accepted without error by the server.
+     */
+    test("grant access with every operation type succeeds", async ({ page }) => {
+        const testUser = "all-ops-e2e@example.com";
+        const keyId = await createSymKey(page);
+
+        // All labels produced by the WASM get_kmip_operations() call (excluding
+        // "Create" which is handled separately via its own checkbox).
+        const operations = [
+            "Certify",
+            "Decrypt",
+            "Derive Key",
+            "Destroy",
+            "Encrypt",
+            "Export",
+            "Get",
+            "Get Attributes",
+            "Hash",
+            "Import",
+            "Locate",
+            "MAC",
+            "Revoke",
+            "Rekey",
+            "Sign",
+            "Signature Verify",
+            "Validate",
+            "Set Attribute",
+            "Modify Attribute",
+            "Add Attribute",
+            "Delete Attribute",
+        ];
+
+        await gotoAndWait(page, "/ui/access-rights/grant");
+        await page.fill('input[placeholder="Enter user identifier"]', testUser);
+
+        // Select all 21 operations in one multi-select session and submit a
+        // single grant request.  Doing 21 separate page navigations + API
+        // calls would exceed the 90 s test timeout; a single bulk grant still
+        // exercises every operation label through the WASM serialiser.
+        const selectWrapper = page.locator('[data-testid="operation-types-select"]');
+        await selectWrapper.click();
+        const dropdown = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+        await dropdown.waitFor({ state: "visible", timeout: 5_000 });
+
+        const searchInput = selectWrapper.locator(".ant-select-selection-search-input");
+
+        for (const operation of operations) {
+            // Search by the first word only — Ant Design treats a Space keypress
+            // as "select the highlighted option", so typing "Derive Key" would
+            // commit the highlighted entry via keyboard rather than append to
+            // the filter text.  The locator regex still matches the full label.
+            const searchTerm = operation.split(" ")[0];
+            await searchInput.pressSequentially(searchTerm, { delay: 30 });
+            const escapedText = operation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const filteredOption = dropdown
+                .locator(".ant-select-item-option", {
+                    hasText: new RegExp(`^\\s*${escapedText}\\s*$`),
+                })
+                .first();
+            await filteredOption.waitFor({ state: "visible", timeout: 10_000 });
+            await filteredOption.dispatchEvent("click");
+            // Clear any leftover search text so the next iteration starts fresh.
+            await searchInput.press("Control+a");
+            await searchInput.press("Delete");
+        }
+
+        // Close the dropdown before interacting with other fields.
+        await page.keyboard.press("Escape");
+
+        await page.fill('input[placeholder="Enter object UID"]', keyId);
+        const text = await submitAndWaitForResponse(page);
+        expect(text).toMatch(/successfully added/i);
+    });
+
     test("navigate to owned objects page", async ({ page }) => {
         await gotoAndWait(page, "/ui/access-rights/owned");
         // Page auto-loads on mount; verify specific heading text

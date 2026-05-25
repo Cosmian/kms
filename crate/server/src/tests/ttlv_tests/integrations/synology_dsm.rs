@@ -153,6 +153,15 @@ fn test_synology_dsm_volume_lifecycle() {
 
     // Operation 9: Activate — transitions the key from PreActive → Active.
     activate_volume_key(&client, &uid);
+
+    // Operation 10: GetAttributeList — DSM retrieves the attribute names.
+    get_attribute_list(&client, &uid);
+
+    // Operation 11: GetAttributes — DSM retrieves State and ObjectType.
+    get_attributes(&client, &uid);
+
+    // Operation 12: Get — DSM retrieves the key material (verifies unwrap).
+    get_key(&client, &uid);
 }
 
 // ─── Step implementations ─────────────────────────────────────────────────────
@@ -376,8 +385,142 @@ fn activate_volume_key(client: &SocketClient, uid: &str) {
     );
 }
 
-/// KMIP 1.2 `ModifyAttribute` – replaces `Name[0]` with the volume UUID.
-///
+/// KMIP 1.2 `GetAttributeList` – retrieves the list of attribute names for the key.
+fn get_attribute_list(client: &SocketClient, uid: &str) {
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: kmip12(),
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::GetAttributeList,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::GetAttributeList(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_operations::GetAttributeList {
+                        unique_identifier: Some(uid.to_owned()),
+                    },
+                ),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("GetAttributeList: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("GetAttributeList: expected V14 response");
+    };
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::Success,
+        "GetAttributeList failed: {:?}",
+        batch_item.result_reason
+    );
+}
+
+/// KMIP 1.2 `GetAttributes` – retrieves State and Object Type attributes.
+fn get_attributes(client: &SocketClient, uid: &str) {
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: kmip12(),
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::GetAttributes,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::GetAttributes(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_operations::GetAttributes {
+                        unique_identifier: Some(uid.to_owned()),
+                        attribute_name: Some(vec![
+                            "State".to_owned(),
+                            "Object Type".to_owned(),
+                        ]),
+                    },
+                ),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("GetAttributes: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("GetAttributes: expected V14 response");
+    };
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::Success,
+        "GetAttributes failed: {:?}",
+        batch_item.result_reason
+    );
+}
+
+/// KMIP 1.2 `Get` – retrieves the key material (verifies auto-unwrap with HSM KEK).
+fn get_key(client: &SocketClient, uid: &str) {
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: kmip12(),
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Get,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Get(
+                    cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_operations::Get {
+                        unique_identifier: Some(uid.to_owned()),
+                        key_format_type: None,
+                        key_compression_type: None,
+                        key_wrapping_specification: None,
+                    },
+                ),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("Get: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("Get: expected V14 response");
+    };
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::Success,
+        "Get failed: {:?}",
+        batch_item.result_reason
+    );
+
+    let Some(Operation::GetResponse(get_resp)) = &batch_item.response_payload else {
+        panic!("Get: expected GetResponse payload");
+    };
+    assert_eq!(
+        get_resp.unique_identifier, uid,
+        "GetResponse UID must match the registered key"
+    );
+    assert_eq!(
+        get_resp.object_type,
+        ObjectType::SecretData,
+        "GetResponse must return SecretData"
+    );
+}
 /// DSM sends this immediately after Register to rename the initial SHA-512
 /// name to the canonical volume UUID that it uses for future Locate calls.
 fn modify_name_to_uuid(client: &SocketClient, uid: &str, new_name: &str) {

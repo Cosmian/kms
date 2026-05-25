@@ -1,35 +1,31 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
+import * as wasm from "../../wasm/pkg";
 
 interface AccessRevokeFormData {
     user_id: string;
     unique_identifier: string;
-    operation_types: Array<
-        "create" | "get" | "getattributes" | "encrypt" | "decrypt" | "import" | "revoke" | "locate" | "rekey" | "destroy"
-    >;
+    operation_types: string[];
     revoke_create_access_right: boolean;
 }
 
-const KMIP_OPERATIONS = [
-    { label: "Get", value: "get" },
-    { label: "GetAttributes", value: "getattributes" },
-    { label: "Encrypt", value: "encrypt" },
-    { label: "Decrypt", value: "decrypt" },
-    { label: "Revoke", value: "revoke" },
-    { label: "Locate", value: "locate" },
-    { label: "Rekey", value: "rekey" },
-    { label: "Destroy", value: "destroy" },
-];
-
 const AccessRevokeForm: React.FC = () => {
     const [form] = Form.useForm<AccessRevokeFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [isPrivilegedUser, setIsPrivilegedUser] = useState<boolean | undefined>(undefined);
+
+    const kmipOperations = useMemo(() => {
+        try {
+            const ops = wasm.get_kmip_operations() as unknown as { value: string; label: string }[];
+            if (Array.isArray(ops)) return ops;
+        } catch {
+            /* WASM not ready */
+        }
+        return [];
+    }, []);
 
     const fetchPrivilegedAccess = useCallback(async () => {
         setIsPrivilegedUser(undefined);
@@ -45,28 +41,14 @@ const AccessRevokeForm: React.FC = () => {
         fetchPrivilegedAccess();
     }, [fetchPrivilegedAccess]);
 
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
-
     const onFinish = async (values: AccessRevokeFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-
-        try {
+        await execute(async () => {
             if (values.revoke_create_access_right) {
                 values.operation_types.push("create");
             }
             const response = await postNoTTLVRequest("/access/revoke", values, idToken, serverUrl);
-            setRes(response.success);
-        } catch (e) {
-            setRes(`Error revoking access: ${e}`);
-            console.error("Error revoking access:", e);
-        } finally {
-            setIsLoading(false);
-        }
+            return response.success;
+        });
     };
 
     return (
@@ -98,7 +80,7 @@ const AccessRevokeForm: React.FC = () => {
                         <Form.Item name="operation_types" label="KMIP Operations" help="Select one or more operations to revoke access to">
                             <Select
                                 mode="multiple"
-                                options={KMIP_OPERATIONS}
+                                options={kmipOperations}
                                 placeholder="Select operations"
                                 onChange={() => {
                                     form.validateFields(["unique_identifier"]);
@@ -152,11 +134,7 @@ const AccessRevokeForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Revoke access response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Revoke access response" />
         </div>
     );
 };

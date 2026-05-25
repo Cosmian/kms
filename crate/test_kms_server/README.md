@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**211 vectors** across 7 categories:
+**266 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -166,12 +166,55 @@ replays the steps sequentially.
 | KMIP Operations | `rng_seed` | RNGSeed | 1 |
 | KMIP Operations | `secret_data` | Register, Get, Activate, Revoke, Destroy | 5 |
 | **Access Control** | | | |
-| Access Control | `revoke` | Create, Revoke, Encrypt (fail) | 3 |
+| Access Control | `revoke_key_lifecycle` | Create, Revoke, Encrypt (fail — revoked) | 3 |
 | Access Control | `grant_access_aes` | Create, GrantAccess, Get (user), Encrypt (user), Decrypt (user) | 5 |
 | Access Control | `revoke_access` | Create, GrantAccess, Get (user ok), RevokeAccess, Get (user fail) | 5 |
 | Access Control | `unauthorized_access` | Create, Get (user fail — no grant) | 2 |
 | Access Control | `owner_full_access` | Create, Get (owner), Encrypt (owner), Decrypt (owner) | 4 |
-| Access Control | `grant_partial_permissions` | Create, GrantAccess (Get only), Get (user ok), Encrypt (user fail) | 4 |
+| Access Control | `grant_partial_permissions` | Create, GrantAccess (Get only), Get (user ok), Encrypt (user ok — Get is wildcard for crypto) | 4 |
+| Access Control | `privilege_escalation_self_grant` | Create, GrantAccess (owner → self) → denied | 2 |
+| Access Control | `privilege_escalation_non_owner_grant` | Create, GrantAccess by user (not owner) → denied ×2 | 3 |
+| Access Control | `privilege_escalation_destroy_without_permission` | Create, GrantAccess (Get only), Get (ok), Destroy (denied — Get not wildcard for lifecycle ops), Get (still exists) | 5 |
+| **HSM (requires SoftHSM2 + `HSM_SLOT_ID`)** | | | |
+| HSM / KEK | `hsm/kek_encrypt_decrypt` | Create (HSM+KEK), Encrypt, Decrypt, Destroy | 4 |
+| HSM / KEK | `hsm/kek_sign_verify` | CreateKeyPair (HSM+KEK RSA), Sign, SignatureVerify, Destroy ×2 | 5 |
+| HSM / KEK Create | `hsm/kek_aes256_create_encrypt` | Create (AES-256, KEK-wrapped), Encrypt, Decrypt, Destroy | 3 |
+| HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | CreateKeyPair (RSA-2048, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | CreateKeyPair (EC P-256, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK Create | `hsm/kek_ed25519_create_sign` | CreateKeyPair (Ed25519, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | CreateKeyPair (RSA-1024, KEK-wrapped) → FIPS rejection | 1 |
+| HSM / Resident Create | `hsm/resident_aes128_create_encrypt` | Create (AES-128, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Resident Create | `hsm/resident_aes256_create_encrypt` | Create (AES-256, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Resident Create | `hsm/resident_rsa4096_create_sign` | CreateKeyPair (RSA-4096, HSM-resident), Sign, Destroy ×2 | 4 |
+| HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Create (AES-256, HSM), Encrypt (AES-CBC), Decrypt, Destroy | 4 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | CreateKeyPair (RSA-2048, HSM), Encrypt (OAEP-SHA256), Decrypt, Destroy ×2 | 5 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | CreateKeyPair (RSA-2048, HSM), Encrypt (OAEP-SHA1), Decrypt, Destroy ×2 | 5 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | CreateKeyPair (RSA-2048, HSM), Encrypt (PKCS#1 v1.5), Decrypt, Destroy ×2 | 5 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_pkcs1v15` | CreateKeyPair (RSA-2048, HSM), Sign (raw PKCS#1 v1.5), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha1` | CreateKeyPair (RSA-2048, HSM), Sign (SHA1WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha256` | CreateKeyPair (RSA-2048, HSM), Sign (SHA256WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha384` | CreateKeyPair (RSA-2048, HSM), Sign (SHA384WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha512` | CreateKeyPair (RSA-2048, HSM), Sign (SHA512WithRSA), Destroy ×2 | 4 |
+| HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | CreateKeyPair (RSA-1024, HSM-resident) → FIPS rejection | 1 |
+| HSM / Resident Negative | `hsm/resident_ec_p256_rejected` | CreateKeyPair (EC P-256, HSM-resident) → unsupported key type | 1 |
+| HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | CreateKeyPair (EC P-384, HSM-resident) → unsupported key type | 1 |
+| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | CreateKeyPair (Ed25519, HSM-resident) → unsupported key type | 1 |
+| HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Create (3DES, HSM-resident) → only AES allowed | 1 |
+| HSM / Resident Negative | `hsm/resident_aes256_encrypt_ecb_rejected` | Create (AES-256, HSM), Encrypt (ECB) → unsupported mode | 3 |
+| HSM / Resident Negative | `hsm/resident_rsa2048_sign_ecdsa_rejected` | CreateKeyPair (RSA-2048, HSM), Sign (ECDSAWithSHA256) → unsupported algorithm | 2 |
+| HSM / Resident Negative | `hsm/resident_rsa2048_sign_dsa_rejected` | CreateKeyPair (RSA-2048, HSM), Sign (DSAWithSHA256) → unsupported algorithm | 2 |
+| HSM / Negative | `hsm/wrong_prefix` | Create (bad prefix) → error | 1 |
+| HSM / Negative | `hsm/no_kek_baseline` | Create (AES, no HSM prefix), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Permissions | `hsm/permissions/admin_create_encrypt_destroy` | Create (admin), Encrypt, Decrypt, Destroy | 4 |
+| HSM / Permissions | `hsm/permissions/admin_grant_encrypt_decrypt` | Create, GrantAccess (Encrypt+Decrypt), user Encrypt, user Decrypt, Destroy | 5 |
+| HSM / Permissions | `hsm/permissions/get_not_wildcard` | Create, GrantAccess (Get only), user Get (ok), user Encrypt (fail), Destroy | 5 |
+| HSM / Permissions | `hsm/permissions/admin_grant_revoke` | Create, Grant Encrypt, user Encrypt (ok), Revoke, user Encrypt (fail), Destroy | 6 |
+| HSM / Permissions | `hsm/permissions/user_cannot_create` | user Create → error (non-admin denied) | 1 |
+| HSM / Permissions | `hsm/permissions/user_cannot_destroy` | Create (admin), user Destroy → error, admin Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/user_cannot_encrypt` | Create (admin), user Encrypt → error (not found), Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/user_cannot_grant` | Create (admin), user GrantAccess → error (not owner), Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/cannot_grant_destroy` | Create (admin), admin GrantAccess (Destroy) → error (reserved), Destroy | 3 |
+| HSM / Permissions | `hsm/permissions/locate_visibility` | Create ×2, Grant user key1, admin Locate (sees both), user Locate (sees only key1), Destroy ×2 | 7 |
 | **Integrations** | | | |
 | Integrations | `fips/integrations/synology_dsm` | Query ×4, Locate, Register, ModifyAttribute, Locate, Activate, Revoke, Destroy (binary TTLV / KMIP 1.2) | 11 |
 | Integrations | `fips/integrations/veeam` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.4) | 5 |
@@ -199,6 +242,7 @@ replays the steps sequentially.
 | Negative / Protocol | `negative/empty_data_encrypt` | Encrypt with empty plaintext → success | 2 |
 | Negative / Protocol | `negative/invalid_iv_length` | Encrypt with wrong-length IV → error | 2 |
 | Negative / Protocol | `negative/sign_with_encrypt_key` | Sign with Encrypt-mask-only key → error | 2 |
+| Negative / Protocol | `negative/duplicate_tags_encrypt` | Encrypt with tag resolving to 2 keys → error | 7 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_mode` | Unsupported BlockCipherMode → success | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_padding` | Unsupported PaddingMethod with GCM → success | 2 |
 | Negative / CryptoParams | `negative/crypto_params/encrypt_mode_algo_mismatch` | ChaCha20 key + AES CryptographicParameters → success | 2 |
@@ -369,9 +413,25 @@ assert_error_reason = "PermissionDenied"           # match ResultReason tag
 [steps.assert_fields_absent]
 fields = ["SensitiveField"]
 
+# Count assertions: verify exact number of occurrences of a tag
+# (useful for Locate responses — but only safe when the test owns the full DB state)
+[steps.assert_count]
+UniqueIdentifier = 2
+
 # Assert that a captured value appears among results (for multi-result Locate)
 [steps.assert_any_field]
 UniqueIdentifier = "{{key_id}}"
+
+# Negative value assertion: verify a specific value does NOT appear
+# (concurrency-safe alternative to assert_count for shared-server Locate tests)
+[steps.assert_none_field]
+UniqueIdentifier = "hsm::{{$HSM_SLOT_ID}}::key_that_should_be_invisible"
+
+# Best-effort (cleanup/setup) step — outcome is ignored regardless of success/failure
+[[steps]]
+operation = "Destroy"
+request = "cleanup_destroy.json"
+allow_failure = true
 ```
 
 ---
@@ -419,7 +479,9 @@ JSON-mode vectors use KMIP 2.1 `Attributes` format:
 }
 ```
 
-Placeholders use `{{variable_name}}` syntax and are substituted from captured values:
+Placeholders use `{{variable_name}}` syntax and are substituted from captured values.
+Environment variables use `{{$ENV_VAR}}` syntax. Both work in request JSON files
+**and** in assertion values (`assert_fields`, `assert_any_field`, `assert_none_field`).
 
 ```json
 {

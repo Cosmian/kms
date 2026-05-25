@@ -48,7 +48,16 @@ pub(crate) async fn retrieve_object_for_operation(
             State::Active | State::PreActive | State::Deactivated => true,
             State::Compromised => matches!(
                 operation_type,
-                KmipOperation::Get | KmipOperation::Export | KmipOperation::GetAttributes
+                KmipOperation::Get
+                    | KmipOperation::Export
+                    | KmipOperation::GetAttributes
+                    // Attribute operations do not expose key material; KMIP allows
+                    // adding/modifying/deleting attributes on compromised objects
+                    // (SKFF-M-9 test vectors exercise exactly this flow).
+                    | KmipOperation::AddAttribute
+                    | KmipOperation::ModifyAttribute
+                    | KmipOperation::SetAttribute
+                    | KmipOperation::DeleteAttribute
             ),
             State::Destroyed | State::Destroyed_Compromised => {
                 // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
@@ -139,13 +148,29 @@ pub(crate) async fn retrieve_object_for_operation(
 
             // Automatic object unwrapping (if object type is not filtered)
             // Skip unwrapping for destroyed objects as they have empty key material
-            if let Some(defaults) = &kms.params.default_unwrap_types {
-                if defaults.contains(&owm.object().object_type())
-                    && state != State::Destroyed
-                    && state != State::Destroyed_Compromised
-                {
-                    let unwrapped_object = kms.get_unwrapped(owm.id(), owm.object(), user).await?;
-                    owm.set_object(unwrapped_object);
+            // Skip unwrapping for attribute-only operations to prevent persisting the
+            // unwrapped key back to the database when the caller later calls update_object
+            // (e.g. ModifyAttribute, SetAttribute, AddAttribute, DeleteAttribute, Activate).
+            // Operations that need the key material (Get, Export) handle unwrapping
+            // themselves in export_get.rs.
+            let skip_unwrap = matches!(
+                operation_type,
+                KmipOperation::GetAttributes
+                    | KmipOperation::SetAttribute
+                    | KmipOperation::ModifyAttribute
+                    | KmipOperation::AddAttribute
+                    | KmipOperation::DeleteAttribute
+            );
+            if !skip_unwrap {
+                if let Some(defaults) = &kms.params.default_unwrap_types {
+                    if defaults.contains(&owm.object().object_type())
+                        && state != State::Destroyed
+                        && state != State::Destroyed_Compromised
+                    {
+                        let unwrapped_object =
+                            kms.get_unwrapped(owm.id(), owm.object(), user).await?;
+                        owm.set_object(unwrapped_object);
+                    }
                 }
             }
 

@@ -91,6 +91,27 @@ env \
 
 echo "SoftHSM2 KMS server tests completed successfully."
 
+# ─── test_kms_server HSM vector tests ────────────────────────────────────────
+# Run the HSM non-regression vectors that exercise KEK wrapping and key-id
+# selection (requires HSM_SLOT_ID so the vectors are not skipped).
+echo "========================================="
+echo "Running test_kms_server HSM vector tests"
+echo "========================================="
+env \
+  PATH="$PATH" \
+  LD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${LD_LIBRARY_PATH:-}" \
+  DYLD_LIBRARY_PATH="${SOFTHSM2_LIB_DIR:+$SOFTHSM2_LIB_DIR:}${NIX_OPENSSL_OUT:+$NIX_OPENSSL_OUT/lib:}${DYLD_LIBRARY_PATH:-}" \
+  SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
+  HSM_MODEL="softhsm2" \
+  HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
+  HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
+  cargo test \
+  -p test_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  --lib \
+  -- test_vec_hsm
+echo "test_kms_server HSM vector tests completed successfully."
+
 # Run KMIP 1.2 TTLV integration test for issue #933 (non-fips only, as the
 # ttlv_tests module is gated behind #[cfg(feature = "non-fips")]).
 if [[ " ${FEATURES_FLAG[*]:-} " == *"non-fips"* ]]; then
