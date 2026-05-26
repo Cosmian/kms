@@ -2,6 +2,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
+            KmipOperation,
             kmip_objects::ObjectType,
             kmip_operations::{Create, ReKey, ReKeyResponse},
             kmip_types::{LinkType, LinkedObjectIdentifier, UniqueIdentifier},
@@ -14,7 +15,11 @@ use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
 use crate::{
-    core::{KMS, operations::key_ops::setup_object_lifecycle, wrapping::wrap_and_cache},
+    core::{
+        KMS,
+        operations::key_ops::{ObjectWithMetadataOps, setup_object_lifecycle},
+        wrapping::wrap_and_cache,
+    },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -60,6 +65,15 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
         }
 
         let old_uid = owm.id().to_owned();
+
+        // Verify the caller is allowed to rekey this object
+        if !owm
+            .user_can_perform_operation(owner, &KmipOperation::Rekey, kms)
+            .await?
+        {
+            continue;
+        }
+
         let now = time_normalize()?;
 
         // Build attributes for the new key, copying from the existing key
@@ -140,7 +154,7 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
             old_uid = old_uid,
             new_uid = new_uid,
             user = owner,
-            "Re-keyed symmetric key: old key deactivated, new replacement key created",
+            "Re-keyed symmetric key: new replacement key created, old key remains Active",
         );
 
         return Ok(ReKeyResponse {
