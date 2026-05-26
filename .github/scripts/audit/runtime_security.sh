@@ -44,12 +44,25 @@ INSECURE=false
 OVERALL_EXIT=0
 
 # ─── Colour helpers ───────────────────────────────────────────────────────────
-RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; CYAN=$'\e[36m'; BOLD=$'\e[1m'; RESET=$'\e[0m'
-info()   { echo "${CYAN}${BOLD}[RUNTIME]${RESET} $*"; }
-ok()     { echo "${GREEN}${BOLD}[  PASS  ]${RESET} $*"; }
-warn()   { echo "${YELLOW}${BOLD}[  WARN  ]${RESET} $*"; }
-fail()   { echo "${RED}${BOLD}[  FAIL  ]${RESET} $*"; OVERALL_EXIT=1; }
-banner() { echo; echo "${BOLD}══════════════════════════════════════════════════${RESET}"; echo "${BOLD}  $*${RESET}"; echo "${BOLD}══════════════════════════════════════════════════${RESET}"; }
+RED=$'\e[31m'
+GREEN=$'\e[32m'
+YELLOW=$'\e[33m'
+CYAN=$'\e[36m'
+BOLD=$'\e[1m'
+RESET=$'\e[0m'
+info() { echo "${CYAN}${BOLD}[RUNTIME]${RESET} $*"; }
+ok() { echo "${GREEN}${BOLD}[  PASS  ]${RESET} $*"; }
+warn() { echo "${YELLOW}${BOLD}[  WARN  ]${RESET} $*"; }
+fail() {
+  echo "${RED}${BOLD}[  FAIL  ]${RESET} $*"
+  OVERALL_EXIT=1
+}
+banner() {
+  echo
+  echo "${BOLD}══════════════════════════════════════════════════${RESET}"
+  echo "${BOLD}  $*${RESET}"
+  echo "${BOLD}══════════════════════════════════════════════════${RESET}"
+}
 
 usage() {
   cat <<'EOF'
@@ -71,15 +84,43 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --server-url)  SERVER_URL="$2"; shift 2 ;;
-    --cert)        CLIENT_CERT="$2"; shift 2 ;;
-    --key)         CLIENT_KEY="$2"; shift 2 ;;
-    --ca)          CA_CERT="$2"; shift 2 ;;
-    --output-dir)  OUTPUT_DIR="$2"; shift 2 ;;
-    --report)      REPORT_PATH="$2"; shift 2 ;;
-    --insecure)    INSECURE=true; shift ;;
-    --help|-h)     usage; exit 0 ;;
-    *) echo "Unknown option: $1"; usage; exit 2 ;;
+    --server-url)
+      SERVER_URL="$2"
+      shift 2
+      ;;
+    --cert)
+      CLIENT_CERT="$2"
+      shift 2
+      ;;
+    --key)
+      CLIENT_KEY="$2"
+      shift 2
+      ;;
+    --ca)
+      CA_CERT="$2"
+      shift 2
+      ;;
+    --output-dir)
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --report)
+      REPORT_PATH="$2"
+      shift 2
+      ;;
+    --insecure)
+      INSECURE=true
+      shift
+      ;;
+    --help | -h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 2
+      ;;
   esac
 done
 
@@ -97,7 +138,10 @@ SCHEME=$(python3 -c "from urllib.parse import urlparse; u=urlparse('$SERVER_URL'
 CURL_BASE_ARGS=()
 OPENSSL_CA_ARGS=()
 [[ "$INSECURE" == true ]] && CURL_BASE_ARGS+=("-k")
-[[ -n "$CA_CERT" ]] && { OPENSSL_CA_ARGS+=("-CAfile" "$CA_CERT"); CURL_BASE_ARGS+=("--cacert" "$CA_CERT"); }
+[[ -n "$CA_CERT" ]] && {
+  OPENSSL_CA_ARGS+=("-CAfile" "$CA_CERT")
+  CURL_BASE_ARGS+=("--cacert" "$CA_CERT")
+}
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -151,7 +195,7 @@ if timeout 10 bash -c "echo > /dev/tcp/$HOST/$PORT" 2>/dev/null; then
 else
   fail "Port $PORT is not reachable — cannot continue"
   record_check "port_open" "FAIL" "Port $PORT is not reachable" "CRITICAL"
-  echo "Cannot reach $HOST:$PORT — aborting." > "$REACH_OUT"
+  echo "Cannot reach $HOST:$PORT — aborting." >"$REACH_OUT"
   exit 1
 fi
 
@@ -172,7 +216,6 @@ else
   record_check "kmip_responsive" "WARN" "Unexpected HTTP $HTTP_CODE for KMIP probe" "MEDIUM"
 fi
 
-
 # ════════════════════════════════════════════════════════════════════════════════
 banner "2/7 — TLS Protocol Version & Cipher Suite Analysis"
 # ════════════════════════════════════════════════════════════════════════════════
@@ -188,7 +231,7 @@ info "Connecting with openssl s_client to inspect TLS …"
     -servername "$HOST" \
     "${OPENSSL_CA_ARGS[@]}" \
     -showcerts 2>&1
-} > "$TLS_OUT" || true
+} >"$TLS_OUT" || true
 
 # Extract negotiated protocol + cipher
 PROTO=$(grep -oP '(?<=Protocol  : ).*' "$TLS_OUT" 2>/dev/null | head -1 || echo "unknown")
@@ -200,8 +243,8 @@ info "Negotiated : $PROTO / $CIPHER"
 
 # Save just the certificate
 openssl s_client -connect "${HOST}:${PORT}" -servername "$HOST" \
-  "${OPENSSL_CA_ARGS[@]}" </dev/null 2>/dev/null \
-  | openssl x509 -noout -text > "${OUTPUT_DIR}/cert_details.txt" 2>/dev/null || true
+  "${OPENSSL_CA_ARGS[@]}" </dev/null 2>/dev/null |
+  openssl x509 -noout -text >"${OUTPUT_DIR}/cert_details.txt" 2>/dev/null || true
 
 # Check deprecated TLS versions
 for bad_proto in ssl2 ssl3 tls1 tls1_1; do
@@ -280,7 +323,6 @@ else
   record_check "forward_secrecy" "WARN" "No PFS cipher available" "HIGH"
 fi
 
-
 # ════════════════════════════════════════════════════════════════════════════════
 banner "3/7 — Certificate Chain & Validity"
 # ════════════════════════════════════════════════════════════════════════════════
@@ -289,9 +331,9 @@ info "Inspecting certificate chain …"
 
 # Extract cert to file
 openssl s_client -connect "${HOST}:${PORT}" -servername "$HOST" \
-  "${OPENSSL_CA_ARGS[@]}" </dev/null 2>/dev/null \
-  | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' \
-  > "$CERT_OUT" 2>/dev/null || true
+  "${OPENSSL_CA_ARGS[@]}" </dev/null 2>/dev/null |
+  sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' \
+    >"$CERT_OUT" 2>/dev/null || true
 
 if [[ -s "$CERT_OUT" ]]; then
   CERT_SUBJECT=$(openssl x509 -in "$CERT_OUT" -noout -subject 2>/dev/null | sed 's/subject=//' || echo "unknown")
@@ -309,9 +351,9 @@ if [[ -s "$CERT_OUT" ]]; then
 
   # Check expiry
   set +e
-  openssl x509 -in "$CERT_OUT" -noout -checkend 2592000 2>/dev/null  # 30-day warning
+  openssl x509 -in "$CERT_OUT" -noout -checkend 2592000 2>/dev/null # 30-day warning
   EXPIRY_SOON=$?
-  openssl x509 -in "$CERT_OUT" -noout -checkend 0 2>/dev/null         # expired?
+  openssl x509 -in "$CERT_OUT" -noout -checkend 0 2>/dev/null # expired?
   EXPIRED=$?
   set -e
   if [[ "$EXPIRED" -ne 0 ]]; then
@@ -348,7 +390,6 @@ else
   record_check "cert_valid" "WARN" "Could not retrieve certificate" "MEDIUM"
 fi
 
-
 # ════════════════════════════════════════════════════════════════════════════════
 banner "4/7 — HTTP Security Headers"
 # ════════════════════════════════════════════════════════════════════════════════
@@ -358,9 +399,9 @@ info "Fetching HTTP security headers …"
 
 curl -s -I "${CURL_BASE_ARGS[@]}" \
   -H "Content-Type: application/json" \
-  "${SERVER_URL}/ui/" 2>/dev/null > "$HEADERS_OUT" || \
-curl -s -I "${CURL_BASE_ARGS[@]}" \
-  "${SERVER_URL}/" 2>/dev/null > "$HEADERS_OUT" || true
+  "${SERVER_URL}/ui/" 2>/dev/null >"$HEADERS_OUT" ||
+  curl -s -I "${CURL_BASE_ARGS[@]}" \
+    "${SERVER_URL}/" 2>/dev/null >"$HEADERS_OUT" || true
 
 check_header() {
   local header="$1" severity="$2" note="$3"
@@ -381,10 +422,10 @@ check_header() {
 }
 
 check_header "Strict-Transport-Security" "HIGH" "required for HTTPS enforcement"
-check_header "X-Content-Type-Options"    "MEDIUM" "enables MIME-sniffing protection"
-check_header "X-Frame-Options"           "MEDIUM" "clickjacking protection"
-check_header "Content-Security-Policy"  "MEDIUM" "XSS mitigation"
-check_header "Cache-Control"             "LOW" "prevents caching secrets"
+check_header "X-Content-Type-Options" "MEDIUM" "enables MIME-sniffing protection"
+check_header "X-Frame-Options" "MEDIUM" "clickjacking protection"
+check_header "Content-Security-Policy" "MEDIUM" "XSS mitigation"
+check_header "Cache-Control" "LOW" "prevents caching secrets"
 
 # Check for server information disclosure
 SERVER_HEADER=$(grep -i "^Server:" "$HEADERS_OUT" 2>/dev/null | head -1 || echo "")
@@ -411,7 +452,6 @@ else
   record_check "cors_wildcard" "PASS" "No CORS on KMIP endpoint" "INFO"
 fi
 
-
 # ════════════════════════════════════════════════════════════════════════════════
 banner "5/7 — mTLS Authentication Analysis"
 # ════════════════════════════════════════════════════════════════════════════════
@@ -420,7 +460,7 @@ MTLS_OUT="$OUTPUT_DIR/mtls_analysis.txt"
 {
   echo Q | openssl s_client -connect "${HOST}:${PORT}" \
     -servername "$HOST" "${OPENSSL_CA_ARGS[@]}" 2>&1 | grep -E "Verify|Request|Required|Accept" || true
-} > "$MTLS_OUT"
+} >"$MTLS_OUT"
 
 # Check if server requests client cert
 if grep -qi "Request CERT\|SSL client certificate requested\|Acceptable client certificate" "$MTLS_OUT" 2>/dev/null; then
@@ -452,7 +492,6 @@ else
   info "No client certificate provided — skipping mTLS auth test"
   info "  Use --cert and --key to test mTLS authentication"
 fi
-
 
 # ════════════════════════════════════════════════════════════════════════════════
 banner "6/7 — KMIP Protocol Security Probes"
@@ -608,7 +647,6 @@ if kmip_path.exists():
     res_path.write_text(json.dumps(main, indent=2))
 PYEOF
 
-
 # ════════════════════════════════════════════════════════════════════════════════
 banner "7/7 — Optional Tools (nmap / sslyze / nuclei)"
 # ════════════════════════════════════════════════════════════════════════════════
@@ -626,7 +664,7 @@ if command -v nmap &>/dev/null; then
   fi
 else
   info "nmap not found — skipping. Install: apt-get install nmap"
-  echo "(nmap not available)" > "$NMAP_OUT"
+  echo "(nmap not available)" >"$NMAP_OUT"
 fi
 
 SSLYZE_OUT="$OUTPUT_DIR/sslyze.json"
@@ -639,7 +677,7 @@ if python3 -c "import sslyze" 2>/dev/null; then
   ok "sslyze output → $SSLYZE_OUT"
 else
   info "sslyze not found — skipping. Install: pip3 install sslyze"
-  echo '{"note":"sslyze not available"}' > "$SSLYZE_OUT"
+  echo '{"note":"sslyze not available"}' >"$SSLYZE_OUT"
 fi
 
 NUCLEI_OUT="$OUTPUT_DIR/nuclei.txt"
@@ -652,9 +690,8 @@ if command -v nuclei &>/dev/null; then
   ok "nuclei output → $NUCLEI_OUT"
 else
   info "nuclei not found — skipping. Install: go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"
-  echo "(nuclei not available)" > "$NUCLEI_OUT"
+  echo "(nuclei not available)" >"$NUCLEI_OUT"
 fi
-
 
 # ════════════════════════════════════════════════════════════════════════════════
 banner "Analysis Summary"

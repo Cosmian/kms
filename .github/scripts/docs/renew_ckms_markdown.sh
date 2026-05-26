@@ -22,5 +22,5 @@ USAGE_MD="${REPO_ROOT}/cli_documentation/docs/usage.md"
   echo '```sh'
   "${REPO_ROOT}/target/debug/ckms" --help 2>&1 | sed 's/[[:space:]]*$//'
   echo '```'
-} > "${USAGE_MD}"
+} >"${USAGE_MD}"
 echo "Markdown generated to ${USAGE_MD}"

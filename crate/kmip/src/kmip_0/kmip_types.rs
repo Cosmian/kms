@@ -74,15 +74,10 @@ pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
     MD5 = 0x0000_0003,
-    // #[serde(rename = "SHA-1")]
     SHA1 = 0x0000_0004,
-    // #[serde(rename = "SHA-224")]
     SHA224 = 0x0000_0005,
-    // #[serde(rename = "SHA-256")]
     SHA256 = 0x0000_0006,
-    // #[serde(rename = "SHA-384")]
     SHA384 = 0x0000_0007,
-    // #[serde(rename = "SHA-512")]
     SHA512 = 0x0000_0008,
     // #[serde(rename = "RIPEMD-160")]
     RIPEMD160 = 0x0000_0009,

@@ -31,9 +31,9 @@ flowchart TB
     end
 
     subgraph kms_cluster["🛡️ KMS nodes"]
-        node1["Cosmian KMS<br/>Node 1"]:::kms
-        node2["Cosmian KMS<br/>Node 2"]:::kms
-        nodeN["Cosmian KMS<br/>Node n"]:::kms
+        node1["Eviden KMS<br/>Node 1"]:::kms
+        node2["Eviden KMS<br/>Node 2"]:::kms
+        nodeN["Eviden KMS<br/>Node n"]:::kms
     end
 
     db[("🗄️ Shared database<br/>(SQL / Redis)")]:::db
@@ -63,10 +63,10 @@ Because the KMS nodes are stateless, the **shared database is the source of trut
 
 Since the KMS servers are stateless, any load-balancing strategy may be selected, such as a simple round-robin.
 
-When the Cosmian KMS servers are configured to export an HTTPS port (as is the case when running inside a confidential
+When the Eviden KMS servers are configured to export an HTTPS port (as is the case when running inside a confidential
 VM):
 
-- all the Cosmian KMS servers should expose the same server certificate on their HTTPS port
+- all the Eviden KMS servers should expose the same server certificate on their HTTPS port
 - and the load balancer should be configured as an SSL load balancer (HAProxy is a good example of a high-performance
   SSL load balancer)
 
@@ -89,7 +89,7 @@ On systemd-based distributions, after updating the configuration you can restart
 sudo systemctl restart haproxy
 ```
 
-Health checks use the Cosmian KMS `/health` endpoint on the HTTP port (`9998`), while KMIP traffic is forwarded to
+Health checks use the Eviden KMS `/health` endpoint on the HTTP port (`9998`), while KMIP traffic is forwarded to
 port `5696`. Add or remove `server` lines in the backend to match your number of KMS nodes.
 
 ```haproxy
@@ -116,7 +116,7 @@ backend kmip_backend
     mode tcp
     balance roundrobin
 
-    # Health check via Cosmian KMS /health endpoint (HTTP port 9998)
+    # Health check via Eviden KMS /health endpoint (HTTP port 9998)
     option httpchk GET /health
     http-check expect status 200
 

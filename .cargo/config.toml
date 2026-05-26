@@ -14,7 +14,7 @@ test-non-fips = "test --lib --workspace --features non-fips"
 clippy-all = "clippy --workspace --all-targets --all-features -- -D warnings"
 
 # Run coverage
-coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude-files resources/* apps/*"
+coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude-files crate/crypto/build.rs"
 
 # Find unused dependencies
 deps = "udeps --workspace --all-targets --all-features --backend depinfo"

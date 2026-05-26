@@ -408,7 +408,7 @@ async fn process_operation(
         }
         Operation::InteropResponse(r) => Operation::InteropResponse(r),
         Operation::GetAttributeList(kmip_request) => Operation::GetAttributeListResponse(
-            crate::core::operations::get_attribute_list::get_attribute_list_with_protocol_version(
+            crate::core::operations::attributes::get_attribute_list_with_protocol_version(
                 kms,
                 kmip_request,
                 user,

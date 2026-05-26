@@ -1,9 +1,9 @@
 import { Button, Card, Form, Input, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
+import ExternalLink from "../../components/common/ExternalLink";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg/cosmian_kms_client_wasm";
-import ExternalLink from "../../components/common/ExternalLink";
+import { useActionState } from "../../hooks/useActionState";
 
 const getTags = (attributes: Map<string, never>): string[] => {
     const vendor_attributes: Array<Map<string, never>> | undefined = attributes.get("vendor_attributes");
@@ -40,27 +40,16 @@ interface AwsExportKeyMaterialFormData {
 
 const AwsExportKeyMaterialForm: React.FC = () => {
     const [form] = Form.useForm<AwsExportKeyMaterialFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: AwsExportKeyMaterialFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             // Step 1: Get KEK attributes to retrieve AWS tags
             const getAttrsRequest = wasm.get_attributes_ttlv_request_with_options(values.kekId, true);
             const attrsResultStr = await sendKmipRequest(getAttrsRequest, idToken, serverUrl);
 
             if (!attrsResultStr) {
-                setRes("Failed to retrieve KEK attributes");
+                return "Failed to retrieve KEK attributes";
                 return;
             }
 
@@ -80,7 +69,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             const tags = getTags(attributes);
 
             if (!tags.includes("aws")) {
-                setRes("The KEK is not an AWS Key Encryption Key: missing 'aws' tag. Import it using the Import KEK command.");
+                return "The KEK is not an AWS Key Encryption Key: missing 'aws' tag. Import it using the Import KEK command.";
                 return;
             }
 
@@ -89,7 +78,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
 
             const wrappingAlgTag = tags.find((t: string) => t.startsWith("wrapping_algorithm:"));
             if (!wrappingAlgTag) {
-                setRes("The KEK is not an AWS Key Encryption Key: wrapping algorithm not found. Import it using the Import KEK command.");
+                return "The KEK is not an AWS Key Encryption Key: wrapping algorithm not found. Import it using the Import KEK command.";
                 return;
             }
             const wrappingAlgorithm = wrappingAlgTag.substring(19);
@@ -106,7 +95,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
             const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
 
             if (!exportResultStr) {
-                setRes("Failed to export wrapped key");
+                return "Failed to export wrapped key";
                 return;
             }
 
@@ -122,7 +111,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
                     wrappedKeyBytes[i] = binaryString.charCodeAt(i);
                 }
             } else {
-                setRes("Unexpected wrapped key format");
+                return "Unexpected wrapped key format";
                 return;
             }
 
@@ -138,20 +127,13 @@ const AwsExportKeyMaterialForm: React.FC = () => {
     --import-token fileb://${values.tokenFile || "<IMPORT_TOKEN_FILE>"} \\
     --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE`;
 
-                setRes(
-                    `The encrypted key material (${wrappedKeyBytes.length} bytes) was successfully written to ${values.byokFile} for key ${values.wrappedKeyId}.\n\nTo import into AWS KMS using the CLI, you can run:\n\n${awsCommand}`,
-                );
+                return `The encrypted key material (${wrappedKeyBytes.length} bytes) was successfully written to ${values.byokFile} for key ${values.wrappedKeyId}.\n\nTo import into AWS KMS using the CLI, you can run:\n\n${awsCommand}`;
             } else {
                 // Display as base64
                 const b64Key = btoa(String.fromCharCode(...wrappedKeyBytes));
-                setRes(`Wrapped key material (base64-encoded):\n\n${b64Key}`);
+                return `Wrapped key material (base64-encoded):\n\n${b64Key}`;
             }
-        } catch (e) {
-            setRes(`Error exporting key material: ${e}`);
-            console.error("Error exporting key material:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

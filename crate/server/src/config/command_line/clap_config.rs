@@ -62,6 +62,7 @@ impl Default for ClapConfig {
             info: false,
             print_default_config: false,
             hsm: HsmConfig::default(),
+            hsm_instances: vec![],
             key_encryption_key: None,
             default_unwrap_type: None,
             non_revocable_key_id: None,
@@ -116,9 +117,19 @@ pub struct ClapConfig {
     #[serde(skip)]
     pub print_default_config: bool,
 
+    /// Legacy single-HSM configuration (flat CLI flags / top-level TOML fields).
+    /// Keys use the old prefix convention: `hsm::<slot_id>::<key_id>`.
+    /// Kept for backward compatibility; prefer `[[hsm_instances]]` for new deployments.
     #[clap(flatten)]
     #[serde(flatten)]
     pub hsm: HsmConfig,
+
+    /// HSM instances, configured via the TOML `[[hsm_instances]]` array.
+    /// Each entry uses the fields: `hsm_model`, `hsm_admin`, `hsm_slot`, `hsm_password`.
+    /// Keys use the new prefix convention: `hsm::<model>::<slot_id>::<key_id>`.
+    #[clap(skip)]
+    #[serde(default, rename = "hsm_instances")]
+    pub hsm_instances: Vec<HsmConfig>,
 
     /// Force all keys imported or created in the KMS, which are not protected by a key encryption key,
     /// to be wrapped by the specified key encryption key (KEK)
@@ -601,25 +612,23 @@ impl fmt::Debug for ClapConfig {
         );
         let x = x.field("telemetry", &self.logging);
         let x = x.field("info", &self.info);
-        let x = x.field("HSM admin username", &self.hsm.hsm_admin);
-        let x = x.field(
-            "hsm_model",
-            if self.hsm.hsm_slot.is_empty() {
-                &"NO HSM"
-            } else {
-                &self.hsm.hsm_model
-            },
-        );
-        let x = x.field("hsm_slots", &self.hsm.hsm_slot);
-        let x = x.field(
-            "hsm_passwords",
-            &self
-                .hsm
-                .hsm_password
-                .iter()
-                .map(|_| "********")
-                .collect::<Vec<&str>>(),
-        );
+        let x = if self.hsm.hsm_slot.is_empty() {
+            x.field("hsm (legacy)", &"not configured")
+        } else {
+            x.field("hsm_model (legacy)", &self.hsm.hsm_model)
+                .field("hsm_admin (legacy)", &self.hsm.hsm_admin)
+                .field("hsm_slots (legacy)", &self.hsm.hsm_slot)
+                .field(
+                    "hsm_passwords (legacy)",
+                    &self
+                        .hsm
+                        .hsm_password
+                        .iter()
+                        .map(|_| "********")
+                        .collect::<Vec<_>>(),
+                )
+        };
+        let x = x.field("hsm_instances count", &self.hsm_instances.len());
         let x = x.field("key wrapping key", &self.key_encryption_key);
         let x = x.field("default unwrap type", &self.default_unwrap_type);
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);

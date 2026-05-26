@@ -24,6 +24,7 @@ use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
+        operations::key_ops::{ObjectWithMetadataOps, record_cascading_metrics},
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -158,16 +159,12 @@ pub(crate) async fn recursively_revoke_key(
         {
             continue;
         }
-        // if the user is not the owner, we need to check if the user has the right to decrypt
-        // or get the key (in which case it can decrypt on its side)
-        if user != owm.owner() {
-            let permissions = kms
-                .database
-                .list_user_operations_on_object(owm.id(), user, false)
-                .await?;
-            if !permissions.contains(&KmipOperation::Revoke) {
-                continue;
-            }
+        // if the user is not the owner, we need to check if the user has the right to revoke
+        if !owm
+            .user_can_perform_operation(user, &KmipOperation::Revoke, kms)
+            .await?
+        {
+            continue;
         }
         count += 1;
         // Perform the chain of revoke operations depending on the type of object
@@ -222,7 +219,7 @@ pub(crate) async fn recursively_revoke_key(
                                 ids_to_skip.clone(),
                             )
                             .await?;
-                            record_cascading_revoke_metrics(op_start, kms, user);
+                            record_cascading_metrics("Revoke", op_start, kms, user);
                         }
                     }
                 }
@@ -256,7 +253,7 @@ pub(crate) async fn recursively_revoke_key(
                                 ids_to_skip.clone(),
                             )
                             .await?;
-                            record_cascading_revoke_metrics(op_start, kms, user);
+                            record_cascading_metrics("Revoke", op_start, kms, user);
                         }
                     }
                 }
@@ -345,13 +342,4 @@ async fn revoke_key_core(
     debug!("Object with unique identifier: {} revoked", owm.id());
 
     Ok(())
-}
-
-// Record cascading revoke operations for linked objects
-fn record_cascading_revoke_metrics(op_start: std::time::Instant, kms: &KMS, user: &str) {
-    if let Some(metrics) = &kms.metrics {
-        metrics.record_kmip_operation("Revoke", user);
-        let duration = op_start.elapsed().as_secs_f64();
-        metrics.record_kmip_operation_duration("Revoke", duration);
-    }
 }

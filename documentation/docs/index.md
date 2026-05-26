@@ -1,6 +1,8 @@
-# Cosmian KMS
+# Eviden KMS
 
-The **Cosmian KMS** is a high-performance, [**source available**](https://github.com/Cosmian/kms), [**FIPS 140-3 compliant**](./certifications_and_compliance/fips.md) server application written in [**Rust**](https://www.rust-lang.org/) with unique capabilities.
+> **Note**: Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
+
+The **Eviden KMS** is a high-performance, [**source available**](https://github.com/Cosmian/kms), [**FIPS 140-3 compliant**](./certifications_and_compliance/fips.md) server application written in [**Rust**](https://www.rust-lang.org/) with unique capabilities.
 
 ## High-scale, secure encryption, anywhere
 
@@ -8,7 +10,7 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
   with master keys held in a secure HSM-backed environment.
 - **Flexible pricing**: Per-CPU pricing with no hidden costs, all connectors are included; deploying any number of
   servers.
-- **Runs securely in public clouds**:  or zero-trust environments using Cosmian VMs available on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/). See our [deployment guide](installation/marketplace_guide.md).
+- **Runs securely in public clouds**:  or zero-trust environments using Eviden VMs available on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/). See our [deployment guide](installation/marketplace_guide.md).
 
 ## Standards' compliance
 
@@ -52,8 +54,9 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
     - [VMware](./integrations/storage/vcenter.md)
     - [Veeam Backup & Replication](./integrations/storage/veeam.md)
     - [Synology DSM](./integrations/storage/synology_dsm.md)
-    - [Snowflake](./integrations/databases/snowflake_native_app/index.md)
-    - [Databricks, Spark,..  UDFs](./integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md)
+- **Big Data**:
+    - [Snowflake](./integrations/big_data/snowflake_native_app/index.md)
+    - [Databricks, Spark,..  UDFs](./integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md)
 - **Other integrations**:
     - [FortiGate / FortiOS](./integrations/fortigate.md)
     - [S/MIME email encryption](./integrations/smime.md)
@@ -65,7 +68,7 @@ The **Cosmian KMS** is a high-performance, [**source available**](https://github
 
 ## Three-in-one: Key lifecycle management + Encryption oracle + Public key infrastructure
 
-The **Cosmian KMS** combines the functions of a Key Management System, an Encryption Oracle, and a Public Key
+The **Eviden KMS** combines the functions of a Key Management System, an Encryption Oracle, and a Public Key
 Infrastructure:
 
 - **Key Management System**: Manages the full key lifecycle, including on-the-fly generation and revocation, including for [connected HSMs](./hsm_support/introduction/index.md).
@@ -73,12 +76,12 @@ Infrastructure:
 - **PKI**: Manages root and intermediate certificates, signs and verifies certificates, and uses public keys for encryption/decryption. Certificates can be exported in various formats (including _PKCS#12_) for applications like
   _S/MIME_ encrypted emails.
 
-The **Cosmian KMS** supports all standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms like [Covercrypt](https://github.com/Cosmian/cover_crypt).
+The **Eviden KMS** supports all standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms like [Covercrypt](https://github.com/Cosmian/cover_crypt).
 See the complete [supported algorithms list](./certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
 ## Deployment options
 
-The **Cosmian KMS** is available as:
+The **Eviden KMS** is available as:
 
 - Linux packages: [Debian](https://package.cosmian.com/kms/5.22.0/debian/) or [RPM](https://package.cosmian.com/kms/5.22.0/rpm/)
 - Windows installer: [Windows](https://package.cosmian.com/kms/5.22.0/windows/)
@@ -87,10 +90,10 @@ The **Cosmian KMS** is available as:
 
 ## User Interface
 
-The **Cosmian KMS** includes an intuitive graphical user interface (GUI) with support for client certificate and OIDC
+The **Eviden KMS** includes an intuitive graphical user interface (GUI) with support for client certificate and OIDC
 token authentication.
 
-![Cosmian KMS UI](./images/kms-ui.png)
+![Eviden KMS UI](./images/kms-ui.png)
 
 The UI can be [fully customized](./configuration/ui_branding.md) to match your organization's branding.
 

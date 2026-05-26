@@ -36,8 +36,8 @@ use crate::{
     result::KResult,
     tests::{
         hsm::{
-            EMPTY_TAGS, create_kek, create_sym_key, delete_key, export_object, hsm_clap_config,
-            locate_keys, revoke_key, send_message,
+            EMPTY_TAGS, create_kek, delete_key, export_object, hsm_clap_config, locate_keys,
+            revoke_key, send_message,
         },
         test_utils::get_tmp_sqlite_path,
     },
@@ -281,8 +281,24 @@ pub(super) async fn test_hsm_modify_attribute_sensitive_key() -> KResult<()> {
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
 
     // Create a sensitive (non-extractable) AES-256 key on the HSM.
-    // `create_sym_key` internally sets `sensitive = true`.
-    create_sym_key(&kek_uid, &admin, &kms).await?;
+    // We create it directly with `sensitive = true` to ensure the key is
+    // non-extractable, which is the specific scenario tested here (#933).
+    let create_request = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        Some(UniqueIdentifier::TextString(kek_uid.clone())),
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        true, // sensitive = true → non-extractable
+        None,
+    )?;
+    let response =
+        send_message(kms.clone(), &admin, vec![Operation::Create(create_request)]).await?;
+    let Operation::CreateResponse(_) = &response[0] else {
+        return Err(KmsError::ServerError(
+            "unexpected create response".to_owned(),
+        ));
+    };
 
     // Call ModifyAttribute(Name) — before the fix this would fail with:
     // "This key is sensitive and cannot be exported from the HSM."

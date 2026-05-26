@@ -41,11 +41,14 @@ CYAN=$'\e[36m\e[1m'
 YELLOW=$'\e[33m\e[1m'
 RED=$'\e[31m\e[1m'
 RESET=$'\e[0m'
-info()   { echo "${CYAN}[DOCS]${RESET} $*"; }
-ok()     { echo "${GREEN}[ OK ]${RESET} $*"; }
-warn()   { echo "${YELLOW}[WARN]${RESET} $*"; }
-fail()   { echo "${RED}[FAIL]${RESET} $*" >&2; }
-banner() { echo; echo "${GREEN}━━━ $* ━━━${RESET}"; }
+info() { echo "${CYAN}[DOCS]${RESET} $*"; }
+ok() { echo "${GREEN}[ OK ]${RESET} $*"; }
+warn() { echo "${YELLOW}[WARN]${RESET} $*"; }
+fail() { echo "${RED}[FAIL]${RESET} $*" >&2; }
+banner() {
+  echo
+  echo "${GREEN}━━━ $* ━━━${RESET}"
+}
 
 # ─── Parse options ────────────────────────────────────────────────────────────
 SKIP_SERVER=false
@@ -56,16 +59,40 @@ SKIP_CBOM=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-server)       SKIP_SERVER=true; shift ;;
-    --skip-ckms)         SKIP_CKMS=true; shift ;;
-    --skip-kmip-tables)  SKIP_KMIP=true; shift ;;
-    --skip-crypto)       SKIP_CRYPTO=true; shift ;;
-    --skip-cbom)         SKIP_CBOM=true; shift ;;
-    --quick)             SKIP_SERVER=true; SKIP_CKMS=true; SKIP_CBOM=true; shift ;;
-    --help|-h)
+    --skip-server)
+      SKIP_SERVER=true
+      shift
+      ;;
+    --skip-ckms)
+      SKIP_CKMS=true
+      shift
+      ;;
+    --skip-kmip-tables)
+      SKIP_KMIP=true
+      shift
+      ;;
+    --skip-crypto)
+      SKIP_CRYPTO=true
+      shift
+      ;;
+    --skip-cbom)
+      SKIP_CBOM=true
+      shift
+      ;;
+    --quick)
+      SKIP_SERVER=true
+      SKIP_CKMS=true
+      SKIP_CBOM=true
+      shift
+      ;;
+    --help | -h)
       sed -n '/^# Usage:/,/^# =\+/p' "$0" | head -n -1 | sed 's/^# \?//'
-      exit 0 ;;
-    *) fail "Unknown option: $1"; exit 1 ;;
+      exit 0
+      ;;
+    *)
+      fail "Unknown option: $1"
+      exit 1
+      ;;
   esac
 done
 
@@ -115,8 +142,8 @@ fi
 if [[ "$SKIP_CRYPTO" == false ]]; then
   banner "4/5 — Cryptographic inventory (crypto_inventory.md)"
   if bash "$REPO_ROOT/.github/scripts/audit/crypto_sensor.sh" \
-      --repo-root "$REPO_ROOT" \
-      --quick; then
+    --repo-root "$REPO_ROOT" \
+    --quick; then
     ok "Cryptographic inventory regenerated"
   else
     fail "crypto_sensor.sh failed"

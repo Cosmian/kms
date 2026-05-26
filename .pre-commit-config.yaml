@@ -70,6 +70,15 @@ repos:
     hooks:
       - id: shellcheck
 
+  - repo: local
+    hooks:
+      - id: shfmt
+        name: shfmt (shell formatter)
+        entry: shfmt
+        args: [-w, -i, "2", -ci]
+        language: system
+        types: [shell]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -155,7 +164,6 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [manual]
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
@@ -181,6 +189,7 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: cbom
         name: Release - generate CBOM

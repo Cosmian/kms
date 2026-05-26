@@ -256,7 +256,10 @@ impl From<tracing::dispatcher::SetGlobalDefaultError> for KmsError {
 
 impl From<InterfaceError> for KmsError {
     fn from(value: InterfaceError) -> Self {
-        Self::Default(value.to_string())
+        match value {
+            InterfaceError::NotSupported(msg) => Self::NotSupported(msg),
+            other => Self::Default(other.to_string()),
+        }
     }
 }
 
@@ -266,6 +269,8 @@ impl From<DbError> for KmsError {
             // Preserve KMIP error reasons from database layer
             DbError::Kmip21Error(reason, msg) => Self::Kmip21Error(reason, msg),
             DbError::Kmip14Error(reason, msg) => Self::Kmip14Error(reason, msg),
+            // Preserve unauthorized errors (e.g. HSM access control)
+            DbError::Unauthorized(s) => Self::Unauthorized(s),
             // Wrap all other database errors
             other => Self::Database(other),
         }

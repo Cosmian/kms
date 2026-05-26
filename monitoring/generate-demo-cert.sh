@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-
 # ─────────────────────────────────────────────────────────────
 # Generate a long-lived demo PKCS#12 certificate for Cosmian KMS
 # Output: ./certs/kms.p12 (used in docker-compose)
@@ -17,7 +16,7 @@ if [ -f .env ]; then
   # shellcheck disable=SC2046
   export $(grep -v '^#' .env | xargs)
 fi
-P12_PASSWORD="${KMS_P12_PASSWORD}"   # must match --tls-p12-password in docker-compose
+P12_PASSWORD="${KMS_P12_PASSWORD}" # must match --tls-p12-password in docker-compose
 
 # 1) Ensure target directory exists
 mkdir -p "${CERTS_DIR}"

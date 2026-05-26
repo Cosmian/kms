@@ -1,9 +1,9 @@
 import { WarningFilled } from "@ant-design/icons";
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { getObjectLabel, getTypeString, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import { useActionState } from "../../hooks/useActionState";
 
 interface DestroyFormData {
     objectId?: string;
@@ -21,42 +21,24 @@ type DestroyResponse = {
 
 const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
     const [form] = Form.useForm<DestroyFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const label = getObjectLabel(objectType);
     const isKeyLike = objectType === "rsa" || objectType === "ec" || objectType === "covercrypt" || objectType === "symmetric";
 
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
-
     const onFinish = async (values: DestroyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.objectId ? values.objectId : values.tags ? JSON.stringify(values.tags) : undefined;
-        if (id == undefined) {
-            setRes(`Missing ${label} identifier.`);
-            throw Error(`Missing ${label} identifier`);
-        }
-
-        try {
+        await execute(async () => {
+            if (id == undefined) {
+                throw new Error(`Missing ${label} identifier.`);
+            }
             const request = destroy_ttlv_request(id, values.remove);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: DestroyResponse = await parse_destroy_ttlv_response(result_str);
-                setRes(`${result.UniqueIdentifier} has been destroyed.`);
+                return `${result.UniqueIdentifier} has been destroyed.`;
             }
-        } catch (e) {
-            setRes(`Error destroying ${label}: ${e}`);
-            console.error(`Error destroying ${label}:`, e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

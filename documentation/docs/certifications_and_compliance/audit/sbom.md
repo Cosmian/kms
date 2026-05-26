@@ -2,7 +2,7 @@
 
 A **Software Bill of Materials (SBOM)** is a formal record of all components, libraries, and
 dependencies used to build a software artifact — analogous to an ingredient list for software.
-Cosmian KMS ships SBOMs for every release to support:
+Eviden KMS ships SBOMs for every release to support:
 
 - **Supply chain security**: identify exactly which packages and versions are included in each build.
 - **Vulnerability management**: cross-reference components against CVE databases to detect

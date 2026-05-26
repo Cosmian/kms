@@ -8,7 +8,11 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::{trace, warn};
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{
+    core::{KMS, uid_utils::has_prefix},
+    error::KmsError,
+    result::KResult,
+};
 
 // TODO This function should probably not be a free-standing function KMS side,
 // and should be refactored as part of the Database,
@@ -44,7 +48,16 @@ pub(crate) async fn retrieve_object_for_operation(
             State::Active | State::PreActive | State::Deactivated => true,
             State::Compromised => matches!(
                 operation_type,
-                KmipOperation::Get | KmipOperation::Export | KmipOperation::GetAttributes
+                KmipOperation::Get
+                    | KmipOperation::Export
+                    | KmipOperation::GetAttributes
+                    // Attribute operations do not expose key material; KMIP allows
+                    // adding/modifying/deleting attributes on compromised objects
+                    // (SKFF-M-9 test vectors exercise exactly this flow).
+                    | KmipOperation::AddAttribute
+                    | KmipOperation::ModifyAttribute
+                    | KmipOperation::SetAttribute
+                    | KmipOperation::DeleteAttribute
             ),
             State::Destroyed | State::Destroyed_Compromised => {
                 // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
@@ -135,13 +148,29 @@ pub(crate) async fn retrieve_object_for_operation(
 
             // Automatic object unwrapping (if object type is not filtered)
             // Skip unwrapping for destroyed objects as they have empty key material
-            if let Some(defaults) = &kms.params.default_unwrap_types {
-                if defaults.contains(&owm.object().object_type())
-                    && state != State::Destroyed
-                    && state != State::Destroyed_Compromised
-                {
-                    let unwrapped_object = kms.get_unwrapped(owm.id(), owm.object(), user).await?;
-                    owm.set_object(unwrapped_object);
+            // Skip unwrapping for attribute-only operations to prevent persisting the
+            // unwrapped key back to the database when the caller later calls update_object
+            // (e.g. ModifyAttribute, SetAttribute, AddAttribute, DeleteAttribute, Activate).
+            // Operations that need the key material (Get, Export) handle unwrapping
+            // themselves in export_get.rs.
+            let skip_unwrap = matches!(
+                operation_type,
+                KmipOperation::GetAttributes
+                    | KmipOperation::SetAttribute
+                    | KmipOperation::ModifyAttribute
+                    | KmipOperation::AddAttribute
+                    | KmipOperation::DeleteAttribute
+            );
+            if !skip_unwrap {
+                if let Some(defaults) = &kms.params.default_unwrap_types {
+                    if defaults.contains(&owm.object().object_type())
+                        && state != State::Destroyed
+                        && state != State::Destroyed_Compromised
+                    {
+                        let unwrapped_object =
+                            kms.get_unwrapped(owm.id(), owm.object(), user).await?;
+                        owm.set_object(unwrapped_object);
+                    }
                 }
             }
 
@@ -161,14 +190,13 @@ pub(crate) async fn retrieve_object_for_operation(
 
 /// Check if a user has permission to perform an operation on an object.
 ///  If the user is the owner of the object, it will always return true.
-///  If the user has the `Get` permission, it will always return true.
-///  Otherwise, it will check the permissions in the database.
+///  For non-HSM objects, having the `Get` permission implies all other operations.
+///  For HSM objects, each operation must be explicitly granted (no `Get` wildcard).
 ///  # Arguments
 ///  * `user` - The user to check the permission for.
 ///  * `owm` - The object to check the permission on.
 ///  * `operation_type` - The operation to check the permission for.
 ///  * `kms` - The KMS instance.
-///  * `params` - The extra store params.
 ///  # Returns
 ///  * `Ok(true)` if the user has permission to perform the operation on the object.
 ///  * `Ok(false)` if the user does not have permission to perform the operation on the object.
@@ -184,9 +212,44 @@ pub(crate) async fn user_has_permission(
         None => "*",
     };
 
+    // HSM keys: admins have full access to all keys in their HSM instance(s).
+    if has_prefix(id).is_some() {
+        let is_hsm_admin = kms
+            .params
+            .hsm_instances
+            .iter()
+            .any(|inst| inst.admin.iter().any(|a| a == "*" || a == user));
+        if is_hsm_admin {
+            return Ok(true);
+        }
+    }
+
     let permissions = kms
         .database
         .list_user_operations_on_object(id, user, false)
         .await?;
+
+    // GetAttributes is metadata-only (no key material exposed), so allow it if
+    // the user has ANY granted operation on the object. This avoids "Unknown" state
+    // in UIs when a user can Locate an object but was only granted e.g. Encrypt.
+    if *operation_type == KmipOperation::GetAttributes && !permissions.is_empty() {
+        return Ok(true);
+    }
+
+    // HSM keys: each operation must be explicitly granted — no generic Get wildcard.
+    // Exception: Get and Export are semantically equivalent (both read key material),
+    // so holding either permission grants access for both operations.
+    if has_prefix(id).is_some() {
+        if permissions.contains(operation_type) {
+            return Ok(true);
+        }
+        // Get ↔ Export equivalence for HSM keys
+        let get_export_equiv = (*operation_type == KmipOperation::Export
+            && permissions.contains(&KmipOperation::Get))
+            || (*operation_type == KmipOperation::Get
+                && permissions.contains(&KmipOperation::Export));
+        return Ok(get_export_equiv);
+    }
+
     Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
 }

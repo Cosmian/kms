@@ -32,9 +32,18 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-_pass() { echo -e "${GREEN}[PASS]${NC} $1"; PASS=$((PASS + 1)); }
-_fail() { echo -e "${RED}[FAIL]${NC} $1"; FAIL=$((FAIL + 1)); }
-_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; WARN=$((WARN + 1)); }
+_pass() {
+  echo -e "${GREEN}[PASS]${NC} $1"
+  PASS=$((PASS + 1))
+}
+_fail() {
+  echo -e "${RED}[FAIL]${NC} $1"
+  FAIL=$((FAIL + 1))
+}
+_warn() {
+  echo -e "${YELLOW}[WARN]${NC} $1"
+  WARN=$((WARN + 1))
+}
 
 cd "$REPO_ROOT"
 
@@ -57,14 +66,16 @@ find_dir() {
 
 # grep_crate PATTERN [extra args] — workspace-wide search across all *.rs files
 grep_crate() {
-  local pattern="$1"; shift
+  local pattern="$1"
+  shift
   grep -rn "$pattern" "$REPO_ROOT/crate/" --include="*.rs" "$@" 2>/dev/null || true
 }
 
 # grep_file FILE PATTERN [extra args] — search a specific file if it exists,
 # otherwise fall back to workspace-wide grep so checks survive refactors.
 grep_file() {
-  local file="$1" pattern="$2"; shift 2
+  local file="$1" pattern="$2"
+  shift 2
   if [[ -f "$file" ]]; then
     grep -n "$pattern" "$file" "$@" 2>/dev/null || true
   else
@@ -184,7 +195,7 @@ fi
 echo ""
 echo "── Check 10: OSSTMM Visibility — TLS P12 password masked in logs"
 if grep_file "${TLS_CONFIG_RS:-/nonexistent}" \
-    '\[.*\*\*\*\*.*\]\|password.*\*\*\*\*\|\*\*\*\*.*password' | grep -q .; then
+  '\[.*\*\*\*\*.*\]\|password.*\*\*\*\*\|\*\*\*\*.*password' | grep -q .; then
   _pass "TLS P12 password masking found"
 else
   _warn "TLS P12 password masking not detected — verify Debug impl"
@@ -223,7 +234,7 @@ echo "── Check 13: NIST SSDF PW.4.4 — Binary TTLV recursion depth limit"
 DEPTH_FOUND=false
 if [[ -n "$KMIP_SRC_DIR" ]]; then
   if grep -rq 'MAX_TTLV_DEPTH\|max_ttlv_depth\|MAX_XML_STACK_DEPTH\|MAX_DEPTH' \
-      "$KMIP_SRC_DIR" --include="*.rs" 2>/dev/null; then
+    "$KMIP_SRC_DIR" --include="*.rs" 2>/dev/null; then
     DEPTH_FOUND=true
   fi
 fi
@@ -272,9 +283,9 @@ fi
 echo ""
 echo "── Check 16: NIST SSDF PW.4.4 — No bare panic! in server binary src"
 # Count files outside test modules; panic! in #[cfg(test)] is expected
-PANIC_COUNT=$(grep_crate 'panic!(' \
-  | grep -v '_test\|test_\|tests/\|#\[cfg(test)\]' \
-  | cut -d: -f1 | sort -u | wc -l || echo "0")
+PANIC_COUNT=$(grep_crate 'panic!(' |
+  grep -v '_test\|test_\|tests/\|#\[cfg(test)\]' |
+  cut -d: -f1 | sort -u | wc -l || echo "0")
 if [ "$PANIC_COUNT" -lt 20 ]; then
   _pass "Files with panic!() (non-test): $PANIC_COUNT (< 20 threshold)"
 else
@@ -305,8 +316,8 @@ fi
 # ─── Check 19: OSSTMM — No unwrap() in server production paths ───────────────
 echo ""
 echo "── Check 19: OSSTMM / NIST SSDF — unwrap() count in codebase (non-test)"
-UNWRAP_COUNT=$(grep_crate '\.unwrap()' \
-  | grep -vc '#\[cfg(test)\]\|mod tests\|#\[test\]\|test_\|_test\.' || echo "0")
+UNWRAP_COUNT=$(grep_crate '\.unwrap()' |
+  grep -vc '#\[cfg(test)\]\|mod tests\|#\[test\]\|test_\|_test\.' || echo "0")
 if [ "$UNWRAP_COUNT" -lt 200 ]; then
   _pass "unwrap() count (non-test): $UNWRAP_COUNT (< 200 threshold)"
 else
@@ -332,7 +343,7 @@ if command -v semgrep &>/dev/null; then
     SEMGREP_CONFIGS+=("--config=$CUSTOM_RULES_DIR")
   fi
   if semgrep "${SEMGREP_CONFIGS[@]}" --quiet --error \
-      --include='*.rs' "$REPO_ROOT/crate/" 2>/dev/null; then
+    --include='*.rs' "$REPO_ROOT/crate/" 2>/dev/null; then
     _pass "semgrep: no findings"
   else
     _fail "semgrep: findings detected — review output above"

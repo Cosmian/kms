@@ -1,6 +1,6 @@
-# Migrating an AWS External Key Store to a New Cosmian KMS Instance
+# Migrating an AWS External Key Store to a New Eviden KMS Instance
 
-This guide describes how to migrate an AWS External Key Store (XKS) from one Cosmian KMS instance
+This guide describes how to migrate an AWS External Key Store (XKS) from one Eviden KMS instance
 (**Server A**, the source) to another (**Server B**, the target). This is typically required when
 moving to a new server, a new region, or upgrading infrastructure.
 
@@ -63,7 +63,7 @@ aws kms describe-custom-key-stores \
 
 Expected output:
 
-```
+```text
 "DISCONNECTED"
 ```
 
@@ -156,7 +156,7 @@ Repeat for every XKS key.
 
 ## Step 6 — Re-grant access rights on Server B
 
-The Cosmian KMS access control is per-instance: permissions granted on Server A are not transferred
+The Eviden KMS access control is per-instance: permissions granted on Server A are not transferred
 automatically. For each imported key, re-grant the operations required by AWS KMS
 (`get_attributes`, `encrypt`, `decrypt`).
 
@@ -191,7 +191,7 @@ aws kms describe-custom-key-stores \
 
 Expected output:
 
-```
+```text
 "CONNECTED"
 ```
 

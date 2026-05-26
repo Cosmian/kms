@@ -96,7 +96,7 @@ fn redact_connection_string(s: &str) -> String {
 
 impl fmt::Debug for MainDbParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", &self))
+        f.write_fmt(format_args!("{self}"))
     }
 }
 

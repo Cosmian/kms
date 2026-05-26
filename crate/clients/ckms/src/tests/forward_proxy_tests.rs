@@ -10,7 +10,7 @@
 //! and run:
 //!
 //! ```bash
-//! KMS_URL=http://<your-local-ip>:9998 \
+//! KMS_URL=http://<your-local-ip> \
 //!   cargo test --lib --features non-fips -- --nocapture --ignored test_server_version_using_forward_proxy
 //! ```
 
@@ -19,7 +19,7 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use test_kms_server::{AuthenticationOptions, MainDBConfig, start_test_server_with_options};
+use test_kms_server::{TestClientOptions, start_test_server, test_config_path};
 
 const PROXY_URL: &str = "http://localhost:8888";
 const PROXY_USER: &str = "myuser";
@@ -38,24 +38,32 @@ const PROXY_PASSWORD: &str = "mypwd";
 #[ignore = "requires a Squid proxy on localhost:8888 (myuser/mypwd) and KMS_URL set to a non-loopback address"]
 #[tokio::test]
 pub(crate) async fn test_server_version_using_forward_proxy() {
-    let ctx = start_test_server_with_options(
-        MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            clear_database: true,
-            ..MainDBConfig::default()
-        },
-        9998,
-        AuthenticationOptions::new(),
-        None,
-        None,
+    let ctx = start_test_server(
+        &test_config_path("auth_plain.toml"),
+        TestClientOptions::default(),
     )
     .await
     .expect("Failed to start test KMS server");
 
     // In CI, KMS_URL is set to the machine's non-loopback IP so that Squid
     // forwards the connection (Squid skips proxying 127.0.0.1).
-    let kms_url = std::env::var("KMS_URL")
-        .unwrap_or_else(|_| format!("http://127.0.0.1:{}", ctx.server_port));
+    // The test server allocates a random port, so we extract only the host from
+    // KMS_URL and combine it with ctx.server_port.
+    // KMS_URL may be "http://1.2.3.4" (no port) or "http://1.2.3.4:PORT" — both
+    // are handled: split(':') after stripping the scheme gives either ["1.2.3.4"]
+    // or ["1.2.3.4", "PORT"]; we always take the first element.
+    let kms_url = match std::env::var("KMS_URL") {
+        Ok(url) => {
+            let host = url
+                .trim_start_matches("http://")
+                .trim_start_matches("https://")
+                .split(':')
+                .next()
+                .unwrap_or("127.0.0.1");
+            format!("http://{}:{}", host, ctx.server_port)
+        }
+        Err(_) => format!("http://127.0.0.1:{}", ctx.server_port),
+    };
 
     Command::cargo_bin("ckms")
         .expect("ckms binary not found")

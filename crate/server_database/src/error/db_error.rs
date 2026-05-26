@@ -261,6 +261,7 @@ impl From<InterfaceError> for DbError {
     fn from(value: InterfaceError) -> Self {
         match value {
             InterfaceError::Db(s) => Self::Store(s),
+            InterfaceError::Unauthorized(s) => Self::Unauthorized(s),
             x => Self::Store(x.to_string()),
         }
     }

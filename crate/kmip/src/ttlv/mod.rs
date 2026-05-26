@@ -1,4 +1,5 @@
 mod deserialize;
+pub mod enum_lookup;
 mod error;
 mod kmip_big_int;
 mod kmip_ttlv_deserializer;

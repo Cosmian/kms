@@ -1,8 +1,9 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect } from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_secret_data_ttlv_request, parse_create_ttlv_response, parse_import_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface SecretDataCreateFormData {
     secretId?: string;
@@ -24,17 +25,8 @@ type ImportResponse = {
 
 const SecretDataCreateForm: React.FC = () => {
     const [form] = Form.useForm<SecretDataCreateFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const secretValue = Form.useWatch("secretValue", form);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         if (!secretValue) {
@@ -43,9 +35,7 @@ const SecretDataCreateForm: React.FC = () => {
     }, [secretValue, form]);
 
     const onFinish = async (values: SecretDataCreateFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = create_secret_data_ttlv_request(
                 values.secretType,
                 values.secretValue,
@@ -58,18 +48,13 @@ const SecretDataCreateForm: React.FC = () => {
             if (result_str) {
                 if (values.secretValue) {
                     const result: ImportResponse = await parse_import_ttlv_response(result_str);
-                    setRes(`${result.UniqueIdentifier} has been created.`);
+                    return `${result.UniqueIdentifier} has been created.`;
                 } else {
                     const result: CreateResponse = await parse_create_ttlv_response(result_str);
-                    setRes(`${result.UniqueIdentifier} has been created.`);
+                    return `${result.UniqueIdentifier} has been created.`;
                 }
             }
-        } catch (e) {
-            setRes(`Error creating secret data: ${e}`);
-            console.error("Error creating secret data:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -150,11 +135,7 @@ const SecretDataCreateForm: React.FC = () => {
                         </Button>
                     </Form.Item>
                 </Space>
-                {res && (
-                    <div ref={responseRef} data-testid="response-output">
-                        <Card title="Secret data creation response">{res}</Card>
-                    </div>
-                )}
+                <ActionResponse res={res} responseRef={responseRef} title="Secret data creation response" />
             </Form>
         </div>
     );

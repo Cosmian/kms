@@ -180,32 +180,32 @@ parse_global_options() {
   # Parse global options before the subcommand
   while [ $# -gt 0 ]; do
     case "$1" in
-    -v | --variant)
-      VARIANT="${2:-}"
-      VARIANT_EXPLICIT=1
-      shift 2 || true
-      ;;
-    -l | --link)
-      LINK="${2:-}"
-      LINK_EXPLICIT=1
-      shift 2 || true
-      ;;
-    docker | test | package | sbom | update-hashes)
-      COMMAND="$1"
-      shift
-      break
-      ;;
-    -h | --help)
-      usage
-      ;;
-    *)
-      # Stop at first non-option token if command already provided
-      if [ -n "${COMMAND:-}" ]; then
+      -v | --variant)
+        VARIANT="${2:-}"
+        VARIANT_EXPLICIT=1
+        shift 2 || true
+        ;;
+      -l | --link)
+        LINK="${2:-}"
+        LINK_EXPLICIT=1
+        shift 2 || true
+        ;;
+      docker | test | package | sbom | update-hashes)
+        COMMAND="$1"
+        shift
         break
-      fi
-      echo "Unknown option: $1" >&2
-      usage
-      ;;
+        ;;
+      -h | --help)
+        usage
+        ;;
+      *)
+        # Stop at first non-option token if command already provided
+        if [ -n "${COMMAND:-}" ]; then
+          break
+        fi
+        echo "Unknown option: $1" >&2
+        usage
+        ;;
     esac
   done
 
@@ -308,25 +308,25 @@ dispatch_command() {
   resolve_command_args ${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}
 
   case "$COMMAND" in
-  docker)
-    docker_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
-    ;;
-  test)
-    test_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
-    ;;
-  package)
-    package_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
-    ;;
-  sbom)
-    sbom_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
-    ;;
-  update-hashes)
-    update_hashes_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
-    ;;
-  *)
-    echo "Error: Unknown command '$COMMAND'" >&2
-    usage
-    ;;
+    docker)
+      docker_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
+      ;;
+    test)
+      test_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
+      ;;
+    package)
+      package_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
+      ;;
+    sbom)
+      sbom_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
+      ;;
+    update-hashes)
+      update_hashes_command ${COMMAND_ARGS[@]+"${COMMAND_ARGS[@]}"}
+      ;;
+    *)
+      echo "Error: Unknown command '$COMMAND'" >&2
+      usage
+      ;;
   esac
 }
 
@@ -349,40 +349,40 @@ docker_command() {
   DOCKER_FORCE=false
   while [ $# -gt 0 ]; do
     case "$1" in
-    -v | --variant)
-      DOCKER_VARIANT="${2:-}"
-      shift 2 || true
-      ;;
-    --force)
-      DOCKER_FORCE=true
-      shift
-      ;;
-    --load)
-      DOCKER_LOAD=true
-      shift
-      ;;
-    --test)
-      DOCKER_TEST=true
-      DOCKER_LOAD=true # Testing requires loading the image
-      shift
-      ;;
-    --)
-      shift
-      break
-      ;;
-    *)
-      # Unrecognized; stop parsing for docker
-      break
-      ;;
+      -v | --variant)
+        DOCKER_VARIANT="${2:-}"
+        shift 2 || true
+        ;;
+      --force)
+        DOCKER_FORCE=true
+        shift
+        ;;
+      --load)
+        DOCKER_LOAD=true
+        shift
+        ;;
+      --test)
+        DOCKER_TEST=true
+        DOCKER_LOAD=true # Testing requires loading the image
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        # Unrecognized; stop parsing for docker
+        break
+        ;;
     esac
   done
 
   case "$DOCKER_VARIANT" in
-  fips | non-fips) : ;;
-  *)
-    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
-    exit 1
-    ;;
+    fips | non-fips) : ;;
+    *)
+      echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+      exit 1
+      ;;
   esac
 
   # Map variant to attribute (docker is always static-linked)
@@ -424,9 +424,9 @@ docker_command() {
       # Extract the actual image name/tag from docker load output so it always
       # matches what was loaded, even when reusing a cached tarball from an
       # older build.
-      LOADED_IMAGE=$(printf '%s\n' "$LOAD_OUTPUT" \
-        | grep -oE 'Loaded image( ID)?: \S+' \
-        | awk '{print $NF}' | head -1)
+      LOADED_IMAGE=$(printf '%s\n' "$LOAD_OUTPUT" |
+        grep -oE 'Loaded image( ID)?: \S+' |
+        awk '{print $NF}' | head -1)
       export DOCKER_IMAGE_NAME="${LOADED_IMAGE:-cosmian-kms:${VERSION}-${DOCKER_VARIANT}}"
       echo "Docker image available as: $DOCKER_IMAGE_NAME"
 
@@ -447,106 +447,109 @@ docker_command() {
 
 test_command() {
   case "$TEST_TYPE" in
-  all)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_all.sh"
-    ;;
-  aws_xks)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_xks.sh"
-    ;;
-  wasm)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_wasm.sh"
-    ;;
-  sqlite)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_sqlite.sh"
-    ;;
-  mysql)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_mysql.sh"
-    ;;
-  percona)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_percona.sh"
-    ;;
-  otel_export)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_otel_export.sh"
-    ;;
-  mariadb)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_maria.sh"
-    ;;
-  psql)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_psql.sh"
-    ;;
-  redis)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_redis.sh"
-    ;;
-  azure_ekm)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_azure_ekm.sh"
-    ;;
-  gcp_cmek)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_gcp_cmek.sh"
-    ;;
-  google_cse)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_google_cse.sh"
-    # Validate required Google OAuth credentials before entering nix-shell
-    for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
-      TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY; do
-      if [ -z "${!var:-}" ]; then
-        echo "Error: Required environment variable $var is not set" >&2
-        echo "Google CSE tests require valid OAuth credentials." >&2
-        echo "Please set the following environment variables:" >&2
-        echo "  - TEST_GOOGLE_OAUTH_CLIENT_ID" >&2
-        echo "  - TEST_GOOGLE_OAUTH_CLIENT_SECRET" >&2
-        echo "  - TEST_GOOGLE_OAUTH_REFRESH_TOKEN" >&2
-        echo "  - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" >&2
-        exit 1
-      fi
-    done
-    ;;
-  pykmip)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_pykmip.sh"
-    ;;
-  openssh)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_openssh.sh"
-    ;;
-  luks)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
-    ;;
-  ui)
-    SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
-    ;;
-  hsm)
-    # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
-    HSM_BACKEND="${1:-all}"
-    case "$HSM_BACKEND" in
     all)
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm.sh"
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_all.sh"
       ;;
-    softhsm2)
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_softhsm2.sh"
-      shift
+    aws_xks)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_xks.sh"
       ;;
-    utimaco)
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_utimaco.sh"
-      shift
+    wasm)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_wasm.sh"
       ;;
-    proteccio)
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_proteccio.sh"
-      shift
+    sqlite)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_sqlite.sh"
       ;;
-    crypt2pay)
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_crypt2pay.sh"
-      shift
+    mysql)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_mysql.sh"
+      ;;
+    percona)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_percona.sh"
+      ;;
+    otel_export)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_otel_export.sh"
+      ;;
+    mariadb)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_maria.sh"
+      ;;
+    psql)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_psql.sh"
+      ;;
+    redis)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_redis.sh"
+      ;;
+    azure_ekm)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_azure_ekm.sh"
+      ;;
+    jose)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_jose.sh"
+      ;;
+    gcp_cmek)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_gcp_cmek.sh"
+      ;;
+    google_cse)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_google_cse.sh"
+      # Validate required Google OAuth credentials before entering nix-shell
+      for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
+        TEST_GOOGLE_OAUTH_REFRESH_TOKEN GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY; do
+        if [ -z "${!var:-}" ]; then
+          echo "Error: Required environment variable $var is not set" >&2
+          echo "Google CSE tests require valid OAuth credentials." >&2
+          echo "Please set the following environment variables:" >&2
+          echo "  - TEST_GOOGLE_OAUTH_CLIENT_ID" >&2
+          echo "  - TEST_GOOGLE_OAUTH_CLIENT_SECRET" >&2
+          echo "  - TEST_GOOGLE_OAUTH_REFRESH_TOKEN" >&2
+          echo "  - GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY" >&2
+          exit 1
+        fi
+      done
+      ;;
+    pykmip)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_pykmip.sh"
+      ;;
+    openssh)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_openssh.sh"
+      ;;
+    luks)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
+      ;;
+    ui)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
+      ;;
+    hsm)
+      # Optional backend argument: softhsm2 | utimaco | proteccio | all (default)
+      HSM_BACKEND="${1:-all}"
+      case "$HSM_BACKEND" in
+        all)
+          SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm.sh"
+          ;;
+        softhsm2)
+          SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_softhsm2.sh"
+          shift
+          ;;
+        utimaco)
+          SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_utimaco.sh"
+          shift
+          ;;
+        proteccio)
+          SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_proteccio.sh"
+          shift
+          ;;
+        crypt2pay)
+          SCRIPT="$REPO_ROOT/.github/scripts/test/test_hsm_crypt2pay.sh"
+          shift
+          ;;
+        *)
+          echo "Error: Unknown HSM backend '$HSM_BACKEND'" >&2
+          echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, all" >&2
+          usage
+          ;;
+      esac
       ;;
     *)
-      echo "Error: Unknown HSM backend '$HSM_BACKEND'" >&2
-      echo "Valid backends for 'hsm': softhsm2, utimaco, proteccio, all" >&2
+      echo "Error: Unknown test type '$TEST_TYPE'" >&2
+      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, jose, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
       usage
       ;;
-    esac
-    ;;
-  *)
-    echo "Error: Unknown test type '$TEST_TYPE'" >&2
-    echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
-    usage
-    ;;
   esac
 
   # Signal to shell.nix to include extra tools for tests (wget, softhsm2, psmisc)
@@ -557,8 +560,8 @@ test_command() {
   if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
-  # For PyKMIP and Synology DSM tests, ensure Python tooling is present inside the Nix shell
-  if [ "$TEST_TYPE" = "pykmip" ]; then
+  # For PyKMIP/Synology DSM tests and JOSE interop, ensure Python tooling is present inside the Nix shell
+  if [ "$TEST_TYPE" = "pykmip" ] || [ "$TEST_TYPE" = "jose" ]; then
     export WITH_PYTHON=1
   fi
   # For OpenSSH PKCS#11 tests, ensure openssh (ssh-keygen) is present on Linux CI
@@ -571,7 +574,7 @@ test_command() {
   fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ]; then
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ] || [ "$TEST_TYPE" = "jose" ]; then
     export WITH_CURL=1
   fi
 
@@ -711,37 +714,37 @@ sbom_command() {
   local -a unknown_args=()
   while [ $# -gt 0 ]; do
     case "$1" in
-    --target)
-      target="${2:-}"
-      args+=("$1" "$2")
-      shift 2
-      ;;
-    --variant)
-      variant="${2:-}"
-      args+=("$1" "$2")
-      shift 2
-      ;;
-    --link)
-      link="${2:-}"
-      args+=("$1" "$2")
-      shift 2
-      ;;
-    --retrieve)
-      retrieve=1
-      shift
-      ;;
-    --branch)
-      branch="${2:-}"
-      shift 2
-      ;;
-    -h | --help)
-      args+=("$1")
-      shift
-      ;;
-    *)
-      unknown_args+=("$1")
-      shift
-      ;;
+      --target)
+        target="${2:-}"
+        args+=("$1" "$2")
+        shift 2
+        ;;
+      --variant)
+        variant="${2:-}"
+        args+=("$1" "$2")
+        shift 2
+        ;;
+      --link)
+        link="${2:-}"
+        args+=("$1" "$2")
+        shift 2
+        ;;
+      --retrieve)
+        retrieve=1
+        shift
+        ;;
+      --branch)
+        branch="${2:-}"
+        shift 2
+        ;;
+      -h | --help)
+        args+=("$1")
+        shift
+        ;;
+      *)
+        unknown_args+=("$1")
+        shift
+        ;;
     esac
   done
 
@@ -888,21 +891,21 @@ update_hashes_command() {
 
 package_command() {
   case "$VARIANT" in
-  fips | non-fips) : ;;
-  *)
-    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
-    exit 1
-    ;;
+    fips | non-fips) : ;;
+    *)
+      echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+      exit 1
+      ;;
   esac
   case "$PACKAGE_TYPE" in
-  "" | deb | rpm | dmg | pkcs11-zip)
-    :
-    ;;
-  *)
-    echo "Error: Unknown package type '$PACKAGE_TYPE'" >&2
-    echo "Valid types: deb, rpm, dmg, pkcs11-zip or leave empty to build all" >&2
-    usage
-    ;;
+    "" | deb | rpm | dmg | pkcs11-zip)
+      :
+      ;;
+    *)
+      echo "Error: Unknown package type '$PACKAGE_TYPE'" >&2
+      echo "Valid types: deb, rpm, dmg, pkcs11-zip or leave empty to build all" >&2
+      usage
+      ;;
   esac
 
   # Special-case: On macOS, DMG packaging needs system tools (hdiutil, osascript).
@@ -965,190 +968,190 @@ package_command() {
 
       for TYPE in $TYPES; do
         case "$TYPE" in
-        deb)
-          if [ "$(uname)" = "Linux" ]; then
-            SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_deb.sh"
-            [ -f "$SCRIPT_LINUX" ] || {
-              echo "Missing $SCRIPT_LINUX" >&2
-              exit 1
-            }
-            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
-            REAL_OUT="$REPO_ROOT/result-deb-$BUILD_VARIANT-$BUILD_LINK"
-            echo "Built deb ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
-
-            echo "=========================================="
-            echo "Running smoke test on .deb package..."
-            echo "=========================================="
-            DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.deb' | head -n1 || true)
-            if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
-              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_deb.sh"
-              if [ -f "$SMOKE_TEST_SCRIPT" ]; then
-                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$SMOKE_TEST_SCRIPT' '$DEB_FILE'" || {
-                  echo "ERROR: Smoke test failed for $DEB_FILE" >&2
-                  exit 1
-                }
-              else
-                echo "Warning: Smoke test script not found at $SMOKE_TEST_SCRIPT" >&2
-              fi
-            else
-              echo "Warning: .deb file not found in $REAL_OUT" >&2
-            fi
-            echo "=========================================="
-            echo "Running smoke test on CLI .deb package..."
-            echo "=========================================="
-            CLI_DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.deb' | head -n1 || true)
-            if [ -n "$CLI_DEB_FILE" ] && [ -f "$CLI_DEB_FILE" ]; then
-              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_deb.sh"
-              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
-                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_DEB_FILE'" || {
-                  echo "ERROR: CLI smoke test failed for $CLI_DEB_FILE" >&2
-                  exit 1
-                }
-              else
-                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
-              fi
-            else
-              echo "Warning: CLI .deb file not found in $REAL_OUT" >&2
-            fi
-          else
-            echo "DEB packaging is only supported on Linux in this flow." >&2
-            exit 1
-          fi
-          ;;
-        rpm)
-          if [ "$(uname)" = "Linux" ]; then
-            SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_rpm.sh"
-            [ -f "$SCRIPT_LINUX" ] || {
-              echo "Missing $SCRIPT_LINUX" >&2
-              exit 1
-            }
-            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
-            REAL_OUT="$REPO_ROOT/result-rpm-$BUILD_VARIANT-$BUILD_LINK"
-            echo "Built rpm ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
-
-            echo "=========================================="
-            echo "Running smoke test on RPM package..."
-            echo "=========================================="
-            RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.rpm' | head -n1 || true)
-            if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
-              SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_rpm.sh"
-              if [ -f "$SMOKE_TEST_SCRIPT" ]; then
-                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$SMOKE_TEST_SCRIPT' '$RPM_FILE'" || {
-                  echo "ERROR: Smoke test failed for $RPM_FILE" >&2
-                  exit 1
-                }
-              else
-                echo "Warning: Smoke test script not found at $SMOKE_TEST_SCRIPT" >&2
-              fi
-            else
-              echo "Warning: RPM file not found in $REAL_OUT" >&2
-            fi
-            echo "=========================================="
-            echo "Running smoke test on CLI RPM package..."
-            echo "=========================================="
-            CLI_RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.rpm' | head -n1 || true)
-            if [ -n "$CLI_RPM_FILE" ] && [ -f "$CLI_RPM_FILE" ]; then
-              CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_rpm.sh"
-              if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
-                nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_RPM_FILE'" || {
-                  echo "ERROR: CLI smoke test failed for $CLI_RPM_FILE" >&2
-                  exit 1
-                }
-              else
-                echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
-              fi
-            else
-              echo "Warning: CLI .rpm file not found in $REAL_OUT" >&2
-            fi
-          else
-            echo "RPM packaging is only supported on Linux in this flow." >&2
-            exit 1
-          fi
-          ;;
-        dmg)
-          if [ "$BUILD_LINK" = "dynamic" ]; then
-            if nix-instantiate -A "kms-server-${BUILD_VARIANT}-dmg-dynamic" >/dev/null 2>&1; then
-              ATTR="kms-server-${BUILD_VARIANT}-dmg-dynamic"
-              OUT_LINK="$REPO_ROOT/result-dmg-$BUILD_VARIANT-$BUILD_LINK"
-            else
-              echo "Skipping dmg ($BUILD_VARIANT-dynamic): attribute not available" >&2
-              continue
-            fi
-          else
-            ATTR="kms-server-${BUILD_VARIANT}-dmg"
-            OUT_LINK="$REPO_ROOT/result-dmg-$BUILD_VARIANT-$BUILD_LINK"
-          fi
-          nix-build -I "nixpkgs=${NIXPKGS_ARG}" "$REPO_ROOT/default.nix" -A "$ATTR" -o "$OUT_LINK"
-          REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
-          echo "Built dmg ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
-
-          DMG_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
-          SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_dmg.sh"
-          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
-            if [ -f "$SMOKE_TEST_SCRIPT" ]; then
-              echo "Running DMG smoke test for $DMG_FILE..."
-              bash "$SMOKE_TEST_SCRIPT" "$DMG_FILE" || {
-                echo "ERROR: DMG smoke test failed for $DMG_FILE" >&2
+          deb)
+            if [ "$(uname)" = "Linux" ]; then
+              SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_deb.sh"
+              [ -f "$SCRIPT_LINUX" ] || {
+                echo "Missing $SCRIPT_LINUX" >&2
                 exit 1
               }
+              nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
+              REAL_OUT="$REPO_ROOT/result-deb-$BUILD_VARIANT-$BUILD_LINK"
+              echo "Built deb ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
+
+              echo "=========================================="
+              echo "Running smoke test on .deb package..."
+              echo "=========================================="
+              DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.deb' | head -n1 || true)
+              if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+                SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_deb.sh"
+                if [ -f "$SMOKE_TEST_SCRIPT" ]; then
+                  nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$SMOKE_TEST_SCRIPT' '$DEB_FILE'" || {
+                    echo "ERROR: Smoke test failed for $DEB_FILE" >&2
+                    exit 1
+                  }
+                else
+                  echo "Warning: Smoke test script not found at $SMOKE_TEST_SCRIPT" >&2
+                fi
+              else
+                echo "Warning: .deb file not found in $REAL_OUT" >&2
+              fi
+              echo "=========================================="
+              echo "Running smoke test on CLI .deb package..."
+              echo "=========================================="
+              CLI_DEB_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.deb' | head -n1 || true)
+              if [ -n "$CLI_DEB_FILE" ] && [ -f "$CLI_DEB_FILE" ]; then
+                CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_deb.sh"
+                if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                  nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_DEB_FILE'" || {
+                    echo "ERROR: CLI smoke test failed for $CLI_DEB_FILE" >&2
+                    exit 1
+                  }
+                else
+                  echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+                fi
+              else
+                echo "Warning: CLI .deb file not found in $REAL_OUT" >&2
+              fi
             else
-              echo "Warning: Smoke test script not found at $SMOKE_TEST_SCRIPT" >&2
-            fi
-          else
-            echo "Warning: DMG file not found in $REAL_OUT" >&2
-          fi
-          ;;
-        pkcs11-zip)
-          if [ "$(uname)" = "Linux" ]; then
-            PKCS11_ZIP_SCRIPT="$REPO_ROOT/.github/scripts/package/package_pkcs11_zip.sh"
-            [ -f "$PKCS11_ZIP_SCRIPT" ] || {
-              echo "Missing $PKCS11_ZIP_SCRIPT" >&2
+              echo "DEB packaging is only supported on Linux in this flow." >&2
               exit 1
-            }
-            nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl zip --run "bash '$PKCS11_ZIP_SCRIPT' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
-            REAL_OUT="$REPO_ROOT/result-pkcs11-zip-$BUILD_VARIANT-$BUILD_LINK"
-            echo "Built pkcs11-zip ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
-          else
-            echo "pkcs11-zip packaging is only supported on Linux in this flow." >&2
-            exit 1
-          fi
-          ;;
-        *)
-          echo "Skipping unsupported package type: $TYPE" >&2
-          continue
-          ;;
+            fi
+            ;;
+          rpm)
+            if [ "$(uname)" = "Linux" ]; then
+              SCRIPT_LINUX="$REPO_ROOT/.github/scripts/package/package_rpm.sh"
+              [ -f "$SCRIPT_LINUX" ] || {
+                echo "Missing $SCRIPT_LINUX" >&2
+                exit 1
+              }
+              nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl --run "bash '$SCRIPT_LINUX' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
+              REAL_OUT="$REPO_ROOT/result-rpm-$BUILD_VARIANT-$BUILD_LINK"
+              echo "Built rpm ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
+
+              echo "=========================================="
+              echo "Running smoke test on RPM package..."
+              echo "=========================================="
+              RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-server*.rpm' | head -n1 || true)
+              if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
+                SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_rpm.sh"
+                if [ -f "$SMOKE_TEST_SCRIPT" ]; then
+                  nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$SMOKE_TEST_SCRIPT' '$RPM_FILE'" || {
+                    echo "ERROR: Smoke test failed for $RPM_FILE" >&2
+                    exit 1
+                  }
+                else
+                  echo "Warning: Smoke test script not found at $SMOKE_TEST_SCRIPT" >&2
+                fi
+              else
+                echo "Warning: RPM file not found in $REAL_OUT" >&2
+              fi
+              echo "=========================================="
+              echo "Running smoke test on CLI RPM package..."
+              echo "=========================================="
+              CLI_RPM_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name 'cosmian-kms-cli*.rpm' | head -n1 || true)
+              if [ -n "$CLI_RPM_FILE" ] && [ -f "$CLI_RPM_FILE" ]; then
+                CLI_SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_cli_rpm.sh"
+                if [ -f "$CLI_SMOKE_TEST_SCRIPT" ]; then
+                  nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p binutils file coreutils rpm cpio --run "bash '$CLI_SMOKE_TEST_SCRIPT' '$CLI_RPM_FILE'" || {
+                    echo "ERROR: CLI smoke test failed for $CLI_RPM_FILE" >&2
+                    exit 1
+                  }
+                else
+                  echo "Warning: CLI smoke test script not found at $CLI_SMOKE_TEST_SCRIPT" >&2
+                fi
+              else
+                echo "Warning: CLI .rpm file not found in $REAL_OUT" >&2
+              fi
+            else
+              echo "RPM packaging is only supported on Linux in this flow." >&2
+              exit 1
+            fi
+            ;;
+          dmg)
+            if [ "$BUILD_LINK" = "dynamic" ]; then
+              if nix-instantiate -A "kms-server-${BUILD_VARIANT}-dmg-dynamic" >/dev/null 2>&1; then
+                ATTR="kms-server-${BUILD_VARIANT}-dmg-dynamic"
+                OUT_LINK="$REPO_ROOT/result-dmg-$BUILD_VARIANT-$BUILD_LINK"
+              else
+                echo "Skipping dmg ($BUILD_VARIANT-dynamic): attribute not available" >&2
+                continue
+              fi
+            else
+              ATTR="kms-server-${BUILD_VARIANT}-dmg"
+              OUT_LINK="$REPO_ROOT/result-dmg-$BUILD_VARIANT-$BUILD_LINK"
+            fi
+            nix-build -I "nixpkgs=${NIXPKGS_ARG}" "$REPO_ROOT/default.nix" -A "$ATTR" -o "$OUT_LINK"
+            REAL_OUT=$(readlink -f "$OUT_LINK" || echo "$OUT_LINK")
+            echo "Built dmg ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
+
+            DMG_FILE=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
+            SMOKE_TEST_SCRIPT="$REPO_ROOT/.github/scripts/package/smoke_test_dmg.sh"
+            if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+              if [ -f "$SMOKE_TEST_SCRIPT" ]; then
+                echo "Running DMG smoke test for $DMG_FILE..."
+                bash "$SMOKE_TEST_SCRIPT" "$DMG_FILE" || {
+                  echo "ERROR: DMG smoke test failed for $DMG_FILE" >&2
+                  exit 1
+                }
+              else
+                echo "Warning: Smoke test script not found at $SMOKE_TEST_SCRIPT" >&2
+              fi
+            else
+              echo "Warning: DMG file not found in $REAL_OUT" >&2
+            fi
+            ;;
+          pkcs11-zip)
+            if [ "$(uname)" = "Linux" ]; then
+              PKCS11_ZIP_SCRIPT="$REPO_ROOT/.github/scripts/package/package_pkcs11_zip.sh"
+              [ -f "$PKCS11_ZIP_SCRIPT" ] || {
+                echo "Missing $PKCS11_ZIP_SCRIPT" >&2
+                exit 1
+              }
+              nix-shell -I "nixpkgs=${NIXPKGS_ARG}" -p curl zip --run "bash '$PKCS11_ZIP_SCRIPT' --variant '$BUILD_VARIANT' --link '$BUILD_LINK'"
+              REAL_OUT="$REPO_ROOT/result-pkcs11-zip-$BUILD_VARIANT-$BUILD_LINK"
+              echo "Built pkcs11-zip ($BUILD_VARIANT-$BUILD_LINK): $REAL_OUT"
+            else
+              echo "pkcs11-zip packaging is only supported on Linux in this flow." >&2
+              exit 1
+            fi
+            ;;
+          *)
+            echo "Skipping unsupported package type: $TYPE" >&2
+            continue
+            ;;
         esac
 
         case "$TYPE" in
-        deb)
-          # Write checksums for all .deb files (server + cli)
-          while IFS= read -r deb_file; do
-            if [ -z "$deb_file" ] || [ ! -f "$deb_file" ]; then continue; fi
-            sum=$(compute_sha256 "$deb_file")
-            echo "$sum  $(basename "$deb_file")" >"$deb_file.sha256"
-            echo "Wrote checksum: $deb_file.sha256 ($sum)"
-          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' 2>/dev/null || true)
-          ;;
-        rpm)
-          # Write checksums for all .rpm files (server + cli)
-          while IFS= read -r rpm_file; do
-            if [ -z "$rpm_file" ] || [ ! -f "$rpm_file" ]; then continue; fi
-            sum=$(compute_sha256 "$rpm_file")
-            echo "$sum  $(basename "$rpm_file")" >"$rpm_file.sha256"
-            echo "Wrote checksum: $rpm_file.sha256 ($sum)"
-          done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' 2>/dev/null || true)
-          ;;
-        dmg)
-          dmg_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
-          if [ -n "${dmg_file:-}" ] && [ -f "$dmg_file" ]; then
-            sum=$(compute_sha256 "$dmg_file")
-            echo "$sum  $(basename "$dmg_file")" >"$dmg_file.sha256"
-            echo "Wrote checksum: $dmg_file.sha256 ($sum)"
-          fi
-          ;;
-        pkcs11-zip)
-          # Checksums are written by package_pkcs11_zip.sh itself; nothing to do here.
-          ;;
+          deb)
+            # Write checksums for all .deb files (server + cli)
+            while IFS= read -r deb_file; do
+              if [ -z "$deb_file" ] || [ ! -f "$deb_file" ]; then continue; fi
+              sum=$(compute_sha256 "$deb_file")
+              echo "$sum  $(basename "$deb_file")" >"$deb_file.sha256"
+              echo "Wrote checksum: $deb_file.sha256 ($sum)"
+            done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.deb' 2>/dev/null || true)
+            ;;
+          rpm)
+            # Write checksums for all .rpm files (server + cli)
+            while IFS= read -r rpm_file; do
+              if [ -z "$rpm_file" ] || [ ! -f "$rpm_file" ]; then continue; fi
+              sum=$(compute_sha256 "$rpm_file")
+              echo "$sum  $(basename "$rpm_file")" >"$rpm_file.sha256"
+              echo "Wrote checksum: $rpm_file.sha256 ($sum)"
+            done < <(find "$REAL_OUT" -maxdepth 1 -type f -name '*.rpm' 2>/dev/null || true)
+            ;;
+          dmg)
+            dmg_file=$(find "$REAL_OUT" -maxdepth 1 -type f -name '*.dmg' | head -n1 || true)
+            if [ -n "${dmg_file:-}" ] && [ -f "$dmg_file" ]; then
+              sum=$(compute_sha256 "$dmg_file")
+              echo "$sum  $(basename "$dmg_file")" >"$dmg_file.sha256"
+              echo "Wrote checksum: $dmg_file.sha256 ($sum)"
+            fi
+            ;;
+          pkcs11-zip)
+            # Checksums are written by package_pkcs11_zip.sh itself; nothing to do here.
+            ;;
         esac
       done
     done

@@ -42,9 +42,9 @@ SENSOR_ARGS=()
 
 for arg in "$@"; do
   case "$arg" in
-  --verbose) MF_ARGS+=("$arg") ;;
-  --quick | --server-url | --update-cbom) SENSOR_ARGS+=("$arg") ;;
-  *) OWASP_ARGS+=("$arg") ;;
+    --verbose) MF_ARGS+=("$arg") ;;
+    --quick | --server-url | --update-cbom) SENSOR_ARGS+=("$arg") ;;
+    *) OWASP_ARGS+=("$arg") ;;
   esac
 done
 
@@ -79,8 +79,8 @@ if [[ "$OWASP_EXIT" -eq 0 && "$MF_EXIT" -eq 0 && "$SENSOR_EXIT" -eq 0 ]]; then
   echo -e "${GREEN}${BOLD}ALL CHECKS PASSED${RESET}"
   exit 0
 else
-  [[ "$OWASP_EXIT" -ne 0 ]]  && echo -e "${RED}${BOLD}OWASP audit: FAILED (exit $OWASP_EXIT)${RESET}"
-  [[ "$MF_EXIT" -ne 0 ]]     && echo -e "${YELLOW}${BOLD}Multi-framework audit: FAILED (exit $MF_EXIT)${RESET}"
+  [[ "$OWASP_EXIT" -ne 0 ]] && echo -e "${RED}${BOLD}OWASP audit: FAILED (exit $OWASP_EXIT)${RESET}"
+  [[ "$MF_EXIT" -ne 0 ]] && echo -e "${YELLOW}${BOLD}Multi-framework audit: FAILED (exit $MF_EXIT)${RESET}"
   [[ "$SENSOR_EXIT" -ne 0 ]] && echo -e "${RED}${BOLD}Crypto sensor: FAILED (exit $SENSOR_EXIT)${RESET}"
   exit 1
 fi

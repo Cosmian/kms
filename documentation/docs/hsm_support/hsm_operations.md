@@ -1,4 +1,4 @@
-In addition to managing its keys, Cosmian KMS can act as a proxy to an HSM, storing and managing keys within the HSM.
+In addition to managing its keys, Eviden KMS can act as a proxy to an HSM, storing and managing keys within the HSM.
 
 [TOC]
 
@@ -16,16 +16,16 @@ is stored in the `LABEL` field of the key object in the HSM.
 
 !!! warning Labels must be unique within a slot
     The PKCS#11 standard does **not** enforce label uniqueness: multiple key objects can share the same `LABEL`
-    in the same slot. Cosmian KMS however uses the label as the sole key identifier within a slot, so it requires
+    in the same slot. Eviden KMS however uses the label as the sole key identifier within a slot, so it requires
     labels to be **unique per slot per key type**. If two objects of the same type share a label in the same slot,
-    Cosmian KMS will return an error when that label is referenced. Always verify that no existing object already
+    Eviden KMS will return an error when that label is referenced. Always verify that no existing object already
     uses a label before creating a new key with `pkcs11-tool --list-objects`.
 
-!!! info CKA_ID is automatically set by Cosmian KMS
-    Cosmian KMS sets both `CKA_LABEL` and `CKA_ID` (to the same bytes as the label) on every key it creates in
+!!! info CKA_ID is automatically set by Eviden KMS
+    Eviden KMS sets both `CKA_LABEL` and `CKA_ID` (to the same bytes as the label) on every key it creates in
     the HSM.  This conforms to PKCS#11 v2.40 and prevents spurious warnings from tools such as
     `pkcs11-tool --list-objects`.  Keys provisioned externally (via `pkcs11-tool` or the HSM vendor software)
-    should also have `CKA_ID` set to match the label bytes if they are intended to be used with Cosmian KMS.
+    should also have `CKA_ID` set to match the label bytes if they are intended to be used with Eviden KMS.
 
 Non-prefixed keys are considered KMS keys and are stored in the KMS database.
 
@@ -58,6 +58,60 @@ KMS_HSM_ADMIN=alice@example.com,bob@example.com cosmian_kms ...
     An HSM admin can therefore `grant` these operations to ordinary users, who can then use the
     HSM key without themselves being HSM admins.
     See [HSM keys and authorization](../configuration/authorization.md#hsm-keys-and-authorization) for details.
+
+## HSM key authorization model
+
+HSM keys follow a stricter permission model than regular KMS keys. The key principles are:
+
+- **HSM admins** are the only users who can **create** and **destroy** HSM keys.
+- **All HSM admins share ownership** of all HSM keys (any admin can grant, revoke, or destroy any HSM key).
+- **Non-admin users** can only use HSM keys they have been **explicitly granted** operations on.
+- The `Get` permission does **not** act as a wildcard for HSM keys — each operation must be granted individually.
+- **Locate** only returns HSM keys the user is authorized to see (all keys for admins, granted keys for non-admins).
+- The server **KEK** (Key Encryption Key) is a shared wrapping resource accessible to all users for wrapping/unwrapping, but direct cryptographic operations on the KEK itself require explicit grants.
+
+### Operations by role
+
+| Operation                                                         | HSM Admin            | Non-admin (granted)          | Non-admin (no grant) |
+|-------------------------------------------------------------------|----------------------|------------------------------|----------------------|
+| Create / CreateKeyPair                                            | ✅                   | ❌                            | ❌                   |
+| Destroy                                                           | ✅                   | ❌ (cannot be granted)        | ❌                   |
+| Locate                                                            | All HSM keys         | Granted keys only            | None                 |
+| Grant / Revoke (access rights)                                    | ✅ (any HSM key)     | ❌                            | ❌                   |
+| Encrypt                                                           | ✅                   | ✅                            | ❌                   |
+| Decrypt                                                           | ✅                   | ✅                            | ❌                   |
+| Sign                                                              | ✅                   | ✅                            | ❌                   |
+| SignatureVerify                                                    | ✅                   | ✅                            | ❌                   |
+| MAC                                                               | ✅                   | ✅                            | ❌                   |
+| Get / Export                                                      | ✅                   | ✅ (metadata if sensitive)    | ❌                   |
+| GetAttributes                                                     | ✅                   | ✅                            | ❌                   |
+| SetAttribute / ModifyAttribute / AddAttribute / DeleteAttribute   | ✅                   | ✅                            | ❌                   |
+| Revoke (lifecycle state)                                          | ❌ (not supported)   | ❌                            | ❌                   |
+
+### Grantable operations on HSM keys
+
+| Operation          | Can be granted? | Notes                                                          |
+|--------------------|-----------------|----------------------------------------------------------------|
+| `encrypt`          | ✅              | Symmetric (AES) and asymmetric (RSA)                           |
+| `decrypt`          | ✅              | Symmetric (AES) and asymmetric (RSA)                           |
+| `sign`             | ✅              | RSA private keys only                                          |
+| `signature_verify` | ✅              | RSA public keys only                                           |
+| `mac`              | ✅              | Compute a Message Authentication Code using the HSM key        |
+| `get`              | ✅              | Retrieve key material or metadata; also implies `export`       |
+| `export`           | ✅              | Export key; also implies `get`                                 |
+| `get_attributes`   | ✅              | Read KMS metadata                                              |
+| `locate`           | ✅              | Search visibility for this key                                 |
+| `set_attribute`    | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `modify_attribute` | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `add_attribute`    | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `delete_attribute` | ✅              | Modify KMS metadata — does not access HSM hardware             |
+| `destroy`          | ❌              | Admin-only — irreversible hardware operation                   |
+| `revoke`           | ❌              | HSM keys do not support KMIP lifecycle state changes           |
+| `create`           | ❌              | Admin-only — not a per-key grant                               |
+
+!!! warning Get is not a wildcard for HSM keys
+    Unlike regular KMS keys, granting `Get` on an HSM key does **not** implicitly grant all other operations.
+    Each operation (`Encrypt`, `Decrypt`, `Sign`, etc.) must be granted individually.
 
 ## Creating a KMS key wrapped by an HSM key
 
@@ -225,7 +279,7 @@ the public key of the `hsm::1::mykey` private key will be created with a unique 
 Create an RSA 4096-bit key on the HSM slot 4, with the KMS CLI:
 
 ```shell
-❯ ckms rsa keys create --size_in_bits 4096 --sensitive hsm::4::my_rsa_key
+❯ ckms rsa keys create --size_in_bits 4096 hsm::4::my_rsa_key
 The RSA key pair has been created.
       Public key unique identifier: hsm::4::my_rsa_key_pk
       Private key unique identifier: hsm::4::my_rsa_key
@@ -234,23 +288,23 @@ The RSA key pair has been created.
 Create an AES 256-bit key on HSM slot 4, with the KMS CLI:
 
 ```shell
-❯ ckms sym keys create --algorithm aes --number-of-bits 256 --sensitive hsm::4::my_aes_key
+❯ ckms sym keys create --algorithm aes --number-of-bits 256 hsm::4::my_aes_key
 The symmetric key was successfully generated.
    Unique identifier: hsm::4::my_aes_key
 ```
 
-Keys should be flagged as `sensitive` when created in the HSM, so that the private key or symmetric key cannot be
-exported (see below `Get` and `Export`).
+HSM keys are always created with `CKA_SENSITIVE=true` (private/symmetric key material cannot be
+exported). Pass `--sensitive false` explicitly only if you intentionally need an extractable key.
 
 Note: HSM keys do not support object tagging in this release.
 
 #### Using pkcs11-tool directly
 
-Keys can also be provisioned directly in the HSM with `pkcs11-tool` (part of OpenSC), bypassing the Cosmian KMS
+Keys can also be provisioned directly in the HSM with `pkcs11-tool` (part of OpenSC), bypassing the Eviden KMS
 entirely. This is useful for pre-provisioning a master KEK before the KMS server starts, or for HSM models where
-the Cosmian PKCS#11 integration does not yet support key generation.
+the Eviden PKCS#11 integration does not yet support key generation.
 
-The `LABEL` set with `--label` becomes the `<key_identifier>` part of the Cosmian KMS unique identifier
+The `LABEL` set with `--label` becomes the `<key_identifier>` part of the Eviden KMS unique identifier
 `hsm::<slot_number>::<label>`.
 
 ##### Step 1 — List available slots
@@ -302,12 +356,12 @@ pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
   --label my_rsa_key
 ```
 
-The private key label becomes `hsm::4::my_rsa_key` in Cosmian KMS. For RSA key pairs, Cosmian KMS
+The private key label becomes `hsm::4::my_rsa_key` in Eviden KMS. For RSA key pairs, Eviden KMS
 appends `_pk` to the label to build the public key identifier: `hsm::4::my_rsa_key_pk`.
 
 ##### Step 4 — Verify the objects are visible
 
-Always check for existing objects with the same label before creating a new key — Cosmian KMS requires
+Always check for existing objects with the same label before creating a new key — Eviden KMS requires
 labels to be unique within a slot and key type:
 
 ```shell
@@ -316,7 +370,7 @@ pkcs11-tool --module /tw/oemDist/libnethsmpkcs11.so \
   --list-objects
 ```
 
-The AES key created above will then be addressable in Cosmian KMS as `hsm::1::master_kek`
+The AES key created above will then be addressable in Eviden KMS as `hsm::1::master_kek`
 and can immediately be used as a KEK:
 
 ```toml
@@ -329,7 +383,7 @@ key_encryption_key = "hsm::1::master_kek"
 Unlike KMS keys, HSM keys must not be revoked before being destroyed. The `Destroy` operation will remove the
 key from the HSM.
 
-Only HSM admin users, or a user granted the `Destroy` operation by an HSM admin, can destroy keys in the HSM.
+Only HSM admin users can destroy keys in the HSM. The `Destroy` operation cannot be delegated to non-admin users.
 
 To destroy the key `hsm::4::my_rsa_key`, the following command can be used:
 

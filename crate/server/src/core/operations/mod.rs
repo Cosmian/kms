@@ -1,11 +1,10 @@
 mod activate;
-mod add_attribute;
+mod attributes;
 mod certify;
 mod check;
 mod create;
 mod create_key_pair;
 mod decrypt;
-mod delete_attribute;
 pub(crate) mod derive_key;
 mod destroy;
 mod digest;
@@ -15,14 +14,12 @@ mod encrypt;
 mod export;
 mod export_get;
 mod get;
-mod get_attribute_list;
-mod get_attributes;
 mod hash;
 mod import;
+mod key_ops;
 mod locate;
 mod mac;
 mod message;
-mod modify_attribute;
 mod pkcs11;
 mod query;
 mod register;
@@ -31,20 +28,19 @@ mod rekey_keypair;
 mod revoke;
 mod rng_retrieve;
 mod rng_seed;
-mod set_attribute;
 mod sign;
 mod signature_verify;
-mod state_utils;
 mod validate;
 
 pub(crate) use activate::activate;
-pub(crate) use add_attribute::add_attribute;
+pub(crate) use attributes::{
+    add_attribute, delete_attribute, get_attributes, modify_attribute, set_attribute,
+};
 pub(crate) use certify::certify;
 pub(crate) use check::check;
 pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
 pub(crate) use decrypt::decrypt;
-pub(crate) use delete_attribute::delete_attribute;
 pub(crate) use derive_key::derive_key;
 pub(crate) use destroy::destroy_operation;
 #[cfg(feature = "non-fips")]
@@ -55,17 +51,16 @@ pub(crate) use encrypt::encrypt;
 pub(crate) use export::export;
 pub(crate) use export_get::export_get;
 pub(crate) use get::get;
-pub(crate) use get_attributes::get_attributes;
 pub(crate) use hash::hash_operation;
 pub(crate) use import::import;
 pub(crate) use locate::locate;
-pub(crate) use mac::mac;
+pub(crate) use mac::{mac, mac_verify};
 pub(crate) use message::message;
-pub(crate) use modify_attribute::modify_attribute;
 pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;
 pub(crate) use register::register;
 pub(crate) mod algorithm_policy;
+pub(crate) use key_ops::{CryptoOpSpec, has_usage_mask, perform_crypto_operation};
 pub(crate) use rekey::rekey;
 pub(crate) use rekey_keypair::rekey_keypair;
 #[cfg(feature = "non-fips")]
@@ -73,10 +68,6 @@ pub(crate) use revoke::recursively_revoke_key;
 pub(crate) use revoke::revoke_operation;
 pub(crate) use rng_retrieve::rng_retrieve;
 pub(crate) use rng_seed::rng_seed;
-pub(crate) use set_attribute::set_attribute;
 pub(crate) use sign::sign;
 pub(crate) use signature_verify::signature_verify;
-pub(crate) use state_utils::{
-    get_effective_state, is_user_authorized_for_operation, select_unique_key_for_operation,
-};
 pub(crate) use validate::validate_operation;

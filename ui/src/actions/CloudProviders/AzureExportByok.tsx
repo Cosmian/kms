@@ -1,6 +1,5 @@
 import { Button, Card, Form, Input, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { buildAzureByokContent, getAzureByokFilename, getTags } from "../../utils/azureByok";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import {
@@ -9,6 +8,8 @@ import {
     parse_export_ttlv_response,
     parse_get_attributes_ttlv_response,
 } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface ExportAzureBYOKFormData {
     wrappedKeyId: string;
@@ -18,27 +19,16 @@ interface ExportAzureBYOKFormData {
 
 const ExportAzureBYOKForm: React.FC = () => {
     const [form] = Form.useForm<ExportAzureBYOKFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ExportAzureBYOKFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             // Step 1: Get the KEK attributes to retrieve the Azure kid
             const getAttrsRequest = get_attributes_ttlv_request_with_options(values.kekId, true);
             const attrsResultStr = await sendKmipRequest(getAttrsRequest, idToken, serverUrl);
 
             if (!attrsResultStr) {
-                setRes("Failed to retrieve KEK attributes");
+                return "Failed to retrieve KEK attributes";
                 return;
             }
 
@@ -60,13 +50,13 @@ const ExportAzureBYOKForm: React.FC = () => {
             const tags = getTags(attributes);
 
             if (!tags.includes("azure")) {
-                setRes("The KEK is not an Azure Key Encryption Key: missing 'azure' tag. Import it using the Import KEK command.");
+                return "The KEK is not an Azure Key Encryption Key: missing 'azure' tag. Import it using the Import KEK command.";
                 return;
             }
 
             const kidTag = tags.find((t: string) => t.startsWith("kid:"));
             if (!kidTag) {
-                setRes("The KEK is not an Azure Key Encryption Key: Azure kid not found. Import it using the Import KEK command.");
+                return "The KEK is not an Azure Key Encryption Key: Azure kid not found. Import it using the Import KEK command.";
                 return;
             }
 
@@ -87,7 +77,7 @@ const ExportAzureBYOKForm: React.FC = () => {
             const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
 
             if (!exportResultStr) {
-                setRes("Failed to export wrapped key");
+                return "Failed to export wrapped key";
                 return;
             }
 
@@ -105,7 +95,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                     wrappedKeyBytes[i] = binaryString.charCodeAt(i);
                 }
             } else {
-                setRes("Unexpected wrapped key format");
+                return "Unexpected wrapped key format";
                 return;
             }
 
@@ -118,13 +108,8 @@ const ExportAzureBYOKForm: React.FC = () => {
             // Download the .byok file
             downloadFile(byokContent, filename, "application/json");
 
-            setRes(`The BYOK file was successfully created and downloaded as ${filename} for key ${values.wrappedKeyId}.`);
-        } catch (e) {
-            setRes(`Error exporting BYOK: ${e}`);
-            console.error("Error exporting BYOK:", e);
-        } finally {
-            setIsLoading(false);
-        }
+            return `The BYOK file was successfully created and downloaded as ${filename} for key ${values.wrappedKeyId}.`;
+        });
     };
 
     return (
@@ -195,11 +180,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                 </Space>
             </Form>
 
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Export Response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Export Response" />
         </div>
     );
 };

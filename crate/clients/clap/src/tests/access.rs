@@ -862,6 +862,82 @@ pub(crate) async fn test_grant_with_without_object_uid() -> KmsCliResult<()> {
     Ok(())
 }
 
+/// Verify that every [`KmipOperation`] variant (except `Create`, which uses
+/// the wildcard object `*` and is tested separately) can be granted and shows
+/// up in [`ListAccessesGranted`].  This is a regression guard for the
+/// serialisation bug where `SetAttribute` was sent as `"set_attribute"` instead
+/// of `"setattribute"` and rejected with HTTP 400.
+#[tokio::test]
+#[serial]
+pub(crate) async fn test_grant_all_operation_types() -> KmsCliResult<()> {
+    let ctx = start_default_test_kms_server_with_cert_auth().await;
+    let key_id = gen_key(&ctx.get_owner_client()).await?;
+    let user = "user.client@acme.com".to_owned();
+
+    // All non-Create operations require an object UID.
+    let all_non_create_ops = vec![
+        KmipOperation::Certify,
+        KmipOperation::Decrypt,
+        KmipOperation::DeriveKey,
+        KmipOperation::Destroy,
+        KmipOperation::Encrypt,
+        KmipOperation::Export,
+        KmipOperation::Get,
+        KmipOperation::GetAttributes,
+        KmipOperation::Hash,
+        KmipOperation::Import,
+        KmipOperation::Locate,
+        KmipOperation::MAC,
+        KmipOperation::Revoke,
+        KmipOperation::Rekey,
+        KmipOperation::Sign,
+        KmipOperation::SignatureVerify,
+        KmipOperation::Validate,
+        KmipOperation::SetAttribute,
+        KmipOperation::ModifyAttribute,
+        KmipOperation::AddAttribute,
+        KmipOperation::DeleteAttribute,
+    ];
+
+    GrantAccess {
+        object_uid: Some(key_id.to_string()),
+        user: user.clone(),
+        operations: all_non_create_ops.clone(),
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    // Verify every operation appears in the granted-access list.
+    let owner_list = ListAccessesGranted {
+        object_uid: key_id.to_string(),
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    let granted = owner_list
+        .iter()
+        .find(|x| x.user_id == user)
+        .expect("user should appear in granted-access list");
+
+    for op in &all_non_create_ops {
+        assert!(
+            granted.operations.contains(op),
+            "operation {op:?} not found in granted-access list"
+        );
+    }
+
+    // Create uses the wildcard object (*) and must be granted separately.
+    GrantAccess {
+        object_uid: None,
+        user: user.clone(),
+        operations: vec![KmipOperation::Create],
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    Ok(())
+}
+
 #[cfg(not(feature = "non-fips"))]
 #[tokio::test]
 #[serial]

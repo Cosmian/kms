@@ -278,13 +278,39 @@ pub(crate) async fn wrap_key_handler(
     })
 }
 
+/// Pivot: encrypt `dek_bytes` with the key identified by `key_uid` using KMIP Encrypt.
+///
+/// Both `wrap_with_aes` and `wrap_with_rsa` share this pattern — they differ only in
+/// the `key_uid` (the AES key uses the name as-is; RSA appends `"_pk"`) and the
+/// `crypto_params` (AES uses `block_cipher_mode`; RSA uses algorithm/padding/hash).
+async fn kmip_encrypt_dek(
+    kms: &KMS,
+    key_uid: String,
+    user: &str,
+    dek_bytes: Zeroizing<Vec<u8>>,
+    crypto_params: CryptographicParameters,
+    correlation_id: String,
+) -> Result<Vec<u8>, AzureEkmErrorReply> {
+    let encrypt_request = Encrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
+        cryptographic_parameters: Some(crypto_params),
+        data: Some(dek_bytes),
+        correlation_value: Some(correlation_id.into_bytes()),
+        ..Default::default()
+    };
+    let response = kms.encrypt(encrypt_request, user).await?;
+    response
+        .data
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data."))
+}
+
 async fn wrap_with_aes(
     kms: &KMS,
     key_name: &str,
     user: &str,
     dek_bytes: Zeroizing<Vec<u8>>,
     alg: &WrapAlgorithm,
-    correlation_id: String, // for logging purposes
+    correlation_id: String,
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
@@ -295,25 +321,18 @@ async fn wrap_with_aes(
             ));
         }
     };
-
-    let encrypt_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
-        cryptographic_parameters: Some(CryptographicParameters {
+    kmip_encrypt_dek(
+        kms,
+        key_name.to_owned(),
+        user,
+        dek_bytes,
+        CryptographicParameters {
             block_cipher_mode: Some(block_cipher_mode),
             ..Default::default()
-        }),
-        data: Some(dek_bytes),
-        correlation_value: Some(correlation_id.into_bytes()),
-        ..Default::default()
-    };
-
-    let response = kms.encrypt(encrypt_request, user).await?;
-
-    let wrapped_data = response
-        .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data."))?;
-
-    Ok(wrapped_data)
+        },
+        correlation_id,
+    )
+    .await
 }
 
 /// Wrap DEK with RSA public key using KMIP Encrypt (OAEP padding)
@@ -322,28 +341,22 @@ async fn wrap_with_rsa(
     key_name: &str,
     user: &str,
     dek_bytes: Zeroizing<Vec<u8>>,
-    correlation_id: String, // for logging purposes
+    correlation_id: String,
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
-    let encrypt_request = Encrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(format!("{key_name}_pk"))),
-        cryptographic_parameters: Some(CryptographicParameters {
+    kmip_encrypt_dek(
+        kms,
+        format!("{key_name}_pk"),
+        user,
+        dek_bytes,
+        CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
-        }),
-        data: Some(dek_bytes),
-        correlation_value: Some(correlation_id.into_bytes()),
-        ..Default::default()
-    };
-
-    let response = kms.encrypt(encrypt_request, user).await?;
-
-    let wrapped_data = response
-        .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Encrypt response missing data."))?;
-
-    Ok(wrapped_data)
+        },
+        correlation_id,
+    )
+    .await
 }
 
 pub(crate) async fn unwrap_key_handler(
@@ -401,13 +414,38 @@ pub(crate) async fn unwrap_key_handler(
     })
 }
 
+/// Pivot: decrypt `data` with the key identified by `key_uid` using KMIP Decrypt.
+///
+/// Both `unwrap_with_aes` and `unwrap_with_rsa` share this pattern — they differ only in
+/// the `crypto_params` (AES uses `block_cipher_mode`; RSA uses algorithm/padding/hash).
+async fn kmip_decrypt_dek(
+    kms: &KMS,
+    key_uid: String,
+    user: &str,
+    data: Vec<u8>,
+    crypto_params: CryptographicParameters,
+    correlation_id: String,
+) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
+    let decrypt_request = Decrypt {
+        unique_identifier: Some(UniqueIdentifier::TextString(key_uid)),
+        cryptographic_parameters: Some(crypto_params),
+        data: Some(data),
+        correlation_value: Some(correlation_id.into_bytes()),
+        ..Default::default()
+    };
+    let response = kms.decrypt(decrypt_request, user).await?;
+    response
+        .data
+        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data."))
+}
+
 async fn unwrap_with_aes(
     kms: &KMS,
     key_name: &str,
     user: &str,
     wrapped_dek_bytes: Vec<u8>,
     alg: &WrapAlgorithm,
-    correlation_id: String, // for logging purposes
+    correlation_id: String,
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
@@ -418,25 +456,18 @@ async fn unwrap_with_aes(
             ));
         }
     };
-
-    let decrypt_request = Decrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
-        cryptographic_parameters: Some(CryptographicParameters {
+    kmip_decrypt_dek(
+        kms,
+        key_name.to_owned(),
+        user,
+        wrapped_dek_bytes,
+        CryptographicParameters {
             block_cipher_mode: Some(block_cipher_mode),
             ..Default::default()
-        }),
-        data: Some(wrapped_dek_bytes),
-        correlation_value: Some(correlation_id.into_bytes()),
-        ..Default::default()
-    };
-
-    let response = kms.decrypt(decrypt_request, user).await?;
-
-    let unwrapped_data = response
-        .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data."))?;
-
-    Ok(unwrapped_data)
+        },
+        correlation_id,
+    )
+    .await
 }
 
 /// Unwrap DEK with RSA private key using KMIP Decrypt (OAEP padding)
@@ -445,26 +476,20 @@ async fn unwrap_with_rsa(
     key_name: &str,
     user: &str,
     wrapped_dek_bytes: Vec<u8>,
-    correlation_id: String, // for logging purposes
+    correlation_id: String,
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
-    let decrypt_request = Decrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(key_name.to_owned())),
-        cryptographic_parameters: Some(CryptographicParameters {
+    kmip_decrypt_dek(
+        kms,
+        key_name.to_owned(),
+        user,
+        wrapped_dek_bytes,
+        CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..Default::default()
-        }),
-        data: Some(wrapped_dek_bytes),
-        correlation_value: Some(correlation_id.into_bytes()),
-        ..Default::default()
-    };
-
-    let response = kms.decrypt(decrypt_request, user).await?;
-
-    let unwrapped_data = response
-        .data
-        .ok_or_else(|| AzureEkmErrorReply::internal_error("Decrypt response missing data."))?;
-
-    Ok(unwrapped_data)
+        },
+        correlation_id,
+    )
+    .await
 }

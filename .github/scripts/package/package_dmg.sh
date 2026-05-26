@@ -14,30 +14,30 @@ VARIANT="fips"
 LINK="static"
 while [ $# -gt 0 ]; do
   case "$1" in
-  -v | --variant)
-    VARIANT="${2:-}"
-    shift 2 || true
-    ;;
-  -l | --link)
-    LINK="${2:-}"
-    shift 2 || true
-    ;;
-  *) shift ;;
+    -v | --variant)
+      VARIANT="${2:-}"
+      shift 2 || true
+      ;;
+    -l | --link)
+      LINK="${2:-}"
+      shift 2 || true
+      ;;
+    *) shift ;;
   esac
 done
 case "$VARIANT" in
-fips | non-fips) : ;;
-*)
-  echo "Error: --variant must be 'fips' or 'non-fips'" >&2
-  exit 1
-  ;;
+  fips | non-fips) : ;;
+  *)
+    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+    exit 1
+    ;;
 esac
 case "$LINK" in
-static | dynamic) : ;;
-*)
-  echo "Error: --link must be 'static' or 'dynamic'" >&2
-  exit 1
-  ;;
+  static | dynamic) : ;;
+  *)
+    echo "Error: --link must be 'static' or 'dynamic'" >&2
+    exit 1
+    ;;
 esac
 
 # Get version from Cargo.toml
@@ -215,9 +215,9 @@ else
 fi
 arch_raw="$(uname -m)"
 case "$arch_raw" in
-x86_64) DMG_ARCH="amd64" ;;
-aarch64 | arm64) DMG_ARCH="arm64" ;;
-*) DMG_ARCH="$arch_raw" ;;
+  x86_64) DMG_ARCH="amd64" ;;
+  aarch64 | arm64) DMG_ARCH="arm64" ;;
+  *) DMG_ARCH="$arch_raw" ;;
 esac
 link_n=$([ "$LINK" = "static" ] && echo static-openssl || echo dynamic-openssl)
 DMG_NAME="cosmian-kms-server-${VARIANT}-${link_n}-${VERSION_STR}_${DMG_ARCH}.dmg"

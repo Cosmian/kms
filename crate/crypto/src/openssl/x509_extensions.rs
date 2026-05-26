@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use cosmian_logger::warn;
 use ini::Ini;
 use openssl::{
+    asn1::{Asn1Object, Asn1OctetString},
     nid::Nid,
     x509::{
         X509Extension, X509v3Context,
@@ -251,24 +252,30 @@ pub fn parse_v3_ca(
                 })?;
                 extensions.push(aki.build(x509_context)?);
             }
-            // "authorityInfoAccess" => {
-            //     #[allow(deprecated)]
-            //     X509Extension::new_nid(
-            //         None,
-            //         Some(x509_context),
-            //         Nid::????,
-            //         value,
-            //     )?
-            // }
-            // "proxyCertificationInformation" => {
-            //     #[allow(deprecated)]
-            //     X509Extension::new_nid(
-            //         None,
-            //         Some(x509_context),
-            //         Nid::????,
-            //         value,
-            //     )?
-            // }
+            "authorityInfoAccess" => {
+                // OID 1.3.6.1.5.5.7.1.1 — Authority Information Access
+                // Value format: "OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt"
+                #[expect(deprecated)]
+                extensions.push(X509Extension::new_nid(
+                    None,
+                    Some(x509_context),
+                    Nid::INFO_ACCESS,
+                    value,
+                )?);
+            }
+            "noRevAvail" => {
+                // id-ce-noRevAvail (RFC 9608 §2), OID { id-ce 56 } = 2.5.29.56.
+                // OpenSSL does not register this OID in its extension table, so we build
+                // the extension directly using new_from_der().
+                // Criticality MUST be FALSE; DER encoding is '0500'H (NULL).
+                let oid = Asn1Object::from_str("2.5.29.56")?;
+                let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
+                extensions.push(X509Extension::new_from_der(
+                    oid.as_ref(),
+                    false,
+                    val.as_ref(),
+                )?);
+            }
             _ => {
                 return Err(CryptoError::Default(format!(
                     "`{key}` is not a valid X.509 extension key property"

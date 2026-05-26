@@ -30,34 +30,34 @@ VARIANT="fips"
 LINK="static"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-  --variant)
-    VARIANT="$2"
-    shift 2
-    ;;
-  --link)
-    LINK="$2"
-    shift 2
-    ;;
-  *)
-    echo "Unknown argument: $1" >&2
-    exit 1
-    ;;
+    --variant)
+      VARIANT="$2"
+      shift 2
+      ;;
+    --link)
+      LINK="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
   esac
 done
 
 case "$VARIANT" in
-fips | non-fips) ;;
-*)
-  echo "Error: --variant must be fips or non-fips" >&2
-  exit 1
-  ;;
+  fips | non-fips) ;;
+  *)
+    echo "Error: --variant must be fips or non-fips" >&2
+    exit 1
+    ;;
 esac
 case "$LINK" in
-static | dynamic) ;;
-*)
-  echo "Error: --link must be static or dynamic" >&2
-  exit 1
-  ;;
+  static | dynamic) ;;
+  *)
+    echo "Error: --link must be static or dynamic" >&2
+    exit 1
+    ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -115,9 +115,9 @@ VERSION_STR="$("$REPO_ROOT/.github/scripts/release/get_version.sh")"
 
 RAW_ARCH="$(uname -m)"
 case "$RAW_ARCH" in
-x86_64) ZIP_ARCH="amd64" ;;
-aarch64 | arm64) ZIP_ARCH="arm64" ;;
-*) ZIP_ARCH="$RAW_ARCH" ;;
+  x86_64) ZIP_ARCH="amd64" ;;
+  aarch64 | arm64) ZIP_ARCH="arm64" ;;
+  *) ZIP_ARCH="$RAW_ARCH" ;;
 esac
 
 if [ "$(uname)" = "Darwin" ]; then

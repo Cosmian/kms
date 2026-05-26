@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 type GlobalWithProcess = typeof globalThis & {
     process?: {
@@ -7,6 +12,10 @@ type GlobalWithProcess = typeof globalThis & {
 };
 
 const env = (globalThis as GlobalWithProcess).process?.env ?? {};
+
+// mTLS certificate paths (set by test_ui.sh via PLAYWRIGHT_CERT_DIR).
+const certDir = env.PLAYWRIGHT_CERT_DIR ?? path.resolve(__dirname, "../test_data/certificates/client_server");
+const kmsUrl = env.PLAYWRIGHT_KMS_URL ?? "https://127.0.0.1:9998";
 
 /**
  * Playwright configuration for KMS UI E2E tests.
@@ -43,6 +52,16 @@ export default defineConfig({
         // Capture screenshot on failure for debugging.
         screenshot: "only-on-failure",
         trace: "retain-on-failure",
+        // Accept self-signed server certificate for mTLS KMS.
+        ignoreHTTPSErrors: true,
+        // Present the owner client certificate for mTLS connections to KMS.
+        clientCertificates: [
+            {
+                origin: kmsUrl,
+                certPath: path.join(certDir, "owner/owner.client.acme.com.crt"),
+                keyPath: path.join(certDir, "owner/owner.client.acme.com.key"),
+            },
+        ],
     },
     projects: [
         {

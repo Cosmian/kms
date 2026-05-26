@@ -2,7 +2,7 @@
 
 Fortinet FortiGate appliances running FortiOS 7.4+ support delegating cryptographic
 key storage to an external KMIP-compliant Key Management Server.  Connecting
-FortiOS to Cosmian KMS lets network appliances retrieve their encryption keys from
+FortiOS to Eviden KMS lets network appliances retrieve their encryption keys from
 a centrally audited, optionally HSM-backed key store.
 
 ---
@@ -14,7 +14,7 @@ a centrally audited, optionally HSM-backed key store.
 | **Protocol** | KMIP 1.0–1.4 over TCP/TLS |
 | **Port** | 5696 (IANA-registered KMIP port) |
 | **FortiOS version** | FortiOS 7.4 and above (tested on FortiOS 7.6.0 / FortiGate 40F) |
-| **Cosmian KMS feature** | Works with both FIPS and non-FIPS builds |
+| **Eviden KMS feature** | Works with both FIPS and non-FIPS builds |
 
 ### KMIP operations used by FortiOS
 
@@ -26,9 +26,9 @@ a centrally audited, optionally HSM-backed key store.
 | `Activate` | Transition the key to *Active* state |
 | `Destroy` | Delete a key on removal or rotation |
 
-!!! note "KMIP 1.0/1.4 compatibility in Cosmian KMS"
+!!! note "KMIP 1.0/1.4 compatibility in Eviden KMS"
     FortiOS uses an older KMIP 1.x encoding that required specific server-side
-    fixes, included as of Cosmian KMS 5.22.0:
+    fixes, included as of Eviden KMS 5.22.0:
 
     - **`Authentication` wrapper (bug fix)**: FortiOS wraps its credentials using
       the full `Authentication { Credential { CredentialType, CredentialValue } }`

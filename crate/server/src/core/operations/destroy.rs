@@ -23,6 +23,7 @@ use crate::core::cover_crypt::destroy_user_decryption_keys;
 use crate::{
     core::{
         KMS,
+        operations::key_ops::{ObjectWithMetadataOps, record_cascading_metrics},
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -99,15 +100,11 @@ pub(crate) async fn recursively_destroy_object(
         // If the object has a prefix (external object store),
         // destroy all the objects with this prefix
         if let Some(_prefix) = has_prefix(&uid) {
-            // ensure user can destroy
+            // HSM keys: only HSM admins can destroy — Destroy cannot be delegated
             if !kms.database.is_object_owned_by(&uid, user).await? {
-                let ops = kms
-                    .database
-                    .list_user_operations_on_object(&uid, user, false)
-                    .await?;
-                if !ops.iter().any(|p| KmipOperation::Destroy == *p) {
-                    continue;
-                }
+                kms_bail!(KmsError::Unauthorized(format!(
+                    "Only HSM admins can destroy HSM key `{uid}`"
+                )));
             }
             kms.database.delete(&uid).await?;
             count += 1;
@@ -122,14 +119,11 @@ pub(crate) async fn recursively_destroy_object(
 
         // Check if the object is owned by the user
         // If the object is not owned by the user, check if the user has destroy permissions
-        if user != owm.owner() {
-            let permissions = kms
-                .database
-                .list_user_operations_on_object(owm.id(), user, false)
-                .await?;
-            if !permissions.contains(&KmipOperation::Destroy) {
-                continue;
-            }
+        if !owm
+            .user_can_perform_operation(user, &KmipOperation::Destroy, kms)
+            .await?
+        {
+            continue;
         }
 
         // Determine the effective current state. In some historical paths the DB "state" column
@@ -269,7 +263,7 @@ pub(crate) async fn recursively_destroy_object(
                                 ids_to_skip.clone(),
                             )
                             .await?;
-                            record_cascading_destroy_metrics(op_start, kms, user);
+                            record_cascading_metrics("Destroy", op_start, kms, user);
                         }
                     }
                 }
@@ -328,7 +322,7 @@ pub(crate) async fn recursively_destroy_object(
                                     private_key_id_clone, e
                                 );
                             }
-                            record_cascading_destroy_metrics(op_start, kms, user);
+                            record_cascading_metrics("Destroy", op_start, kms, user);
                         }
                     }
                 }
@@ -456,15 +450,6 @@ async fn update_as_destroyed(
     );
 
     Ok(())
-}
-
-// Record cascading destroy operations for linked objects
-fn record_cascading_destroy_metrics(op_start: std::time::Instant, kms: &KMS, user: &str) {
-    if let Some(metrics) = &kms.metrics {
-        metrics.record_kmip_operation("Destroy", user);
-        let duration = op_start.elapsed().as_secs_f64();
-        metrics.record_kmip_operation_duration("Destroy", duration);
-    }
 }
 
 /// Issue #763 — Guard an HSM destroy against a key-type mismatch.

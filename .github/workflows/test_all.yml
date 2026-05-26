@@ -33,6 +33,7 @@ jobs:
           - gcp_cmek
           - openssh
           - luks
+          - jose
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -52,6 +53,9 @@ jobs:
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
+            features: fips
+          # jose (REST crypto + jwcrypto interop) runs only with non-fips
+          - type: jose
             features: fips
 
     steps:
@@ -136,6 +140,7 @@ jobs:
     concurrency:
       group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
         github.run_id) }}
+      queue: max
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -149,6 +154,9 @@ jobs:
         exclude:
           # parallel connections on proteccio is not supported
           - hsm-type: proteccio
+            features: fips
+          # Not required - testing non-fips is sufficient
+          - hsm-type: crypt2pay
             features: fips
 
     steps:

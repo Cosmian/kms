@@ -1,7 +1,7 @@
 import { Button, Card, Form, Input, Select, Space, Tag } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useState } from "react";
 import { sendKmipRequest } from "../../utils/utils";
+import { useActionState } from "../../hooks/useActionState";
 
 interface MacVerifyFormData {
     keyId?: string;
@@ -40,27 +40,15 @@ const buildMacVerifyRequest = (keyId: string, algorithm: string, dataHex: string
 
 const MacVerifyForm: React.FC = () => {
     const [form] = Form.useForm<MacVerifyFormData>();
-    const [res, setRes] = useState<string | undefined>(undefined);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [isValid, setIsValid] = useState<boolean | undefined>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     const onFinish = async (values: MacVerifyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         setIsValid(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing key identifier.");
-                throw Error("Missing key identifier");
+                throw new Error("Missing key identifier.");
             }
             const request = buildMacVerifyRequest(id, values.algorithm, values.data, values.macData);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -70,17 +58,12 @@ const MacVerifyForm: React.FC = () => {
                 if (validityItem) {
                     const valid = validityItem.value === "Valid" || validityItem.value === true;
                     setIsValid(valid);
-                    setRes(valid ? "MAC is valid." : "MAC is invalid.");
+                    return valid ? "MAC is valid." : "MAC is invalid.";
                 } else {
-                    setRes(`Response: ${result_str}`);
+                    return `Response: ${result_str}`;
                 }
             }
-        } catch (e) {
-            setRes(`Error verifying MAC: ${e}`);
-            console.error("Error verifying MAC:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (

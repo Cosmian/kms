@@ -1,13 +1,13 @@
 import { Button, Card, DatePicker, Form, Input, Select, Space, Typography } from "antd";
 import moment from "moment";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect, useState } from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import {
     get_crypto_algorithms,
     modify_attribute_ttlv_request,
     parse_modify_attribute_ttlv_response,
 } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import { useActionState } from "../../hooks/useActionState";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -47,18 +47,9 @@ interface AttributeModifyFormData {
 
 const AttributeModifyForm: React.FC = () => {
     const [form] = Form.useForm<AttributeModifyFormData>();
-    const [res, setRes] = useState<string | undefined>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [selectedAttributeName, setSelectedAttributeName] = useState<string | undefined>(undefined);
     const [cryptoAlgorithms, setCryptoAlgorithms] = useState<AlgoOption[]>([]);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         try {
@@ -75,18 +66,14 @@ const AttributeModifyForm: React.FC = () => {
     };
 
     const onFinish = async (values: AttributeModifyFormData) => {
-        setIsLoading(true);
-
         const id = values.id ? values.id : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing object identifier.");
-                throw Error("Missing object identifier");
+                throw new Error("Missing object identifier.");
             }
 
             if (!values.attribute_name || !values.attribute_value) {
-                setRes("Missing attribute.");
-                throw Error("Missing attribute");
+                throw new Error("Missing attribute.");
             }
 
             let attributeValue = values.attribute_value;
@@ -101,14 +88,9 @@ const AttributeModifyForm: React.FC = () => {
 
             if (result_str) {
                 const response = parse_modify_attribute_ttlv_response(result_str);
-                setRes(`Attribute has been modified for ${response.UniqueIdentifier}`);
+                return `Attribute has been modified for ${response.UniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error modifying attribute: ${e}`);
-            console.error("Error modifying attribute:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     const renderAttributeValueInput = () => {

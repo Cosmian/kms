@@ -2,7 +2,9 @@ use std::fmt::{self, Display, Formatter};
 
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
+    kmip_2_1::{
+        kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
+    },
 };
 
 /// An object with its metadata such as owner, permissions and state
@@ -77,6 +79,19 @@ impl ObjectWithMetadata {
 
     pub const fn attributes_mut(&mut self) -> &mut Attributes {
         &mut self.attributes
+    }
+
+    /// Resolve the effective cryptographic algorithm for this managed object.
+    ///
+    /// Checks the key block's algorithm first, then falls back to the object's
+    /// external attributes. Returns `None` when neither source provides a value.
+    #[must_use]
+    pub fn resolve_key_algorithm(&self) -> Option<CryptographicAlgorithm> {
+        self.object
+            .key_block()
+            .ok()
+            .and_then(|kb| kb.cryptographic_algorithm().copied())
+            .or(self.attributes.cryptographic_algorithm)
     }
 }
 

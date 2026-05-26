@@ -1,4 +1,4 @@
-The authorization system in the Cosmian Key Management Service (KMS) operates based on two fundamental principles:
+The authorization system in the Eviden Key Management Service (KMS) operates based on two fundamental principles:
 
 1. **Ownership:** Every cryptographic object has an assigned owner. The ownership is established when an object is
    created using any of the following KMIP operations: `Create`, `CreateKeyPair`, or `Import`. As an owner, a user holds
@@ -12,26 +12,30 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
 
 Owners can delegate the following KMIP operations to other users via the `grant` and `revoke` endpoints (or the CLI commands `ckms access-rights grant` / `ckms access-rights revoke`):
 
-| Operation          | Description                                                     |
-| ------------------ | --------------------------------------------------------------- |
-| `create`           | Create new cryptographic objects (symmetric keys, key pairs, …) |
-| `certify`          | Issue or renew X.509 certificates                               |
-| `decrypt`          | Decrypt ciphertext using a managed key                          |
-| `derive_key`       | Derive a new key from an existing key                           |
-| `destroy`          | Permanently destroy an object                                   |
-| `encrypt`          | Encrypt plaintext using a managed key                           |
-| `export`           | Export an object (key material + metadata) from the KMS         |
-| `get`              | Retrieve an object — **this is a super-privilege** (see below)  |
-| `get_attributes`   | Read the KMIP attributes of an object                           |
-| `hash`             | Compute a cryptographic hash                                    |
-| `import`           | Import an external object into the KMS                          |
-| `locate`           | Search for objects matching given attributes                    |
-| `mac`              | Compute a Message Authentication Code                           |
-| `revoke`           | Revoke (deactivate) an object                                   |
-| `rekey`            | Re-key an existing symmetric key                                |
-| `sign`             | Generate a digital signature                                    |
-| `signature_verify` | Verify a digital signature                                      |
-| `validate`         | Validate a certificate chain                                    |
+| Operation           | Description                                                     |
+| ------------------- | --------------------------------------------------------------- |
+| `create`            | Create new cryptographic objects (symmetric keys, key pairs, …) |
+| `certify`           | Issue or renew X.509 certificates                               |
+| `decrypt`           | Decrypt ciphertext using a managed key                          |
+| `derive_key`        | Derive a new key from an existing key                           |
+| `destroy`           | Permanently destroy an object                                   |
+| `encrypt`           | Encrypt plaintext using a managed key                           |
+| `export`            | Export an object (key material + metadata) from the KMS         |
+| `get`               | Retrieve an object — **this is a super-privilege** (see below)  |
+| `get_attributes`    | Read the KMIP attributes of an object                           |
+| `hash`              | Compute a cryptographic hash                                    |
+| `import`            | Import an external object into the KMS                          |
+| `locate`            | Search for objects matching given attributes                    |
+| `mac`               | Compute a Message Authentication Code                           |
+| `revoke`            | Revoke (deactivate) an object                                   |
+| `rekey`             | Re-key an existing symmetric key                                |
+| `sign`              | Generate a digital signature                                    |
+| `signature_verify`  | Verify a digital signature                                      |
+| `validate`          | Validate a certificate chain                                    |
+| `set_attribute`     | Set (replace) an attribute on an object                         |
+| `modify_attribute`  | Modify an existing attribute on an object                       |
+| `add_attribute`     | Add a new attribute value to an object                          |
+| `delete_attribute`  | Remove an attribute from an object                              |
 
 Multiple operations can be granted or revoked in a single call. For example, using the CLI:
 
@@ -110,24 +114,62 @@ However, when the KMS server is configured with a list of privileged users, obje
 
 ## HSM keys and authorization
 
-Keys stored in an HSM are physically located in the HSM hardware, not in the KMS database.
-However, their **authorization model is identical to that of regular KMS keys**: ownership and
-access rights are still tracked by the KMS, and all the rules described on this page apply.
+Keys stored in an HSM follow a **stricter permission model** than regular KMS keys.
+Authorization metadata (owner, grants) is still managed by the KMS, but two
+important differences apply.
 
-| Aspect                        | KMS keys                 | HSM keys                          |
-| ----------------------------- | ------------------------ | --------------------------------- |
-| Key material stored in        | KMS database (encrypted) | HSM hardware                      |
-| Authorizations managed by     | KMS                      | KMS (same ownership + ACL model)  |
-| Owner                         | Creating user            | HSM admin at creation time        |
-| `grant` / `revoke` supported  | Yes                      | Yes — same REST API               |
-| `Get` super-privilege applies | Yes                      | Yes                               |
+### Comparison with regular KMS keys
 
-The one HSM-specific restriction is **creation and destruction**: only users listed in the server's
-`hsm_admin` configuration (or granted the `Create` / `Destroy` operation by an HSM admin) may create
-or destroy objects directly in the HSM. All other operations (`Encrypt`, `Decrypt`, `Get`, etc.) follow
-the standard KMS access rights model and can be delegated to any authenticated user via `grant`.
+| Aspect | KMS keys | HSM keys |
+|---|---|---|
+| Key material stored in | KMS database (encrypted) | HSM hardware |
+| `Get` is a super-privilege | Yes — implies all operations | **No** — each operation must be granted explicitly |
+| `Get` ↔ `Export` equivalence | No | **Yes** — holding either grants both |
+| `Destroy` / `Revoke` delegable | Yes | **No** — blocked; admin-only |
+| `Create` | Any user (or privileged users if configured) | HSM admin only |
+| `Locate` visibility | All owned / granted objects | Non-admins see only keys with ≥ 1 explicit grant |
 
-See the [HSM operations](../hsm_support/hsm_operations.md) page for details on HSM admin configuration.
+### Who is an HSM admin?
+
+Users listed in the server's `hsm_admin` configuration for a given HSM instance are
+its **admins**. Admins bypass all permission checks for that HSM — they can create,
+destroy, and perform any operation on its keys.
+
+### Permission evaluation for HSM keys
+
+```text
+Request arrives for operation OP on key hsm::<model>::<slot>::<id>
+│
+├─ Is the user an HSM admin for this instance?  ──▶  YES → Granted
+│
+├─ Does the user have OP explicitly granted?  ──────▶  YES → Granted
+│
+├─ Is OP = Export and user has Get?  ───────────────▶  YES → Granted
+├─ Is OP = Get   and user has Export?  ─────────────▶  YES → Granted
+│
+└─ Otherwise  ──────────────────────────────────────────────▶  Denied
+```
+
+### What can and cannot be delegated
+
+| Operation | Delegable via `grant`? | Notes |
+|---|:---:|---|
+| `encrypt`, `decrypt`, `sign`, `mac` | Yes | All standard cryptographic operations |
+| `get` | Yes | Also implies `export` (equivalence) |
+| `export` | Yes | Also implies `get` (equivalence) |
+| `get_attributes`, `locate` | Yes | |
+| `set_attribute`, `modify_attribute`, `add_attribute`, `delete_attribute` | Yes | Operate on KMS metadata only; do not access HSM hardware |
+| `create` | Yes (admin to another admin) | Non-admin cannot receive `create` on HSM |
+| `destroy` | **No** | Blocked — admin-only, cannot be delegated |
+| `revoke` | **No** | Blocked — HSM objects do not use KMIP lifecycle states |
+
+!!! warning
+    Unlike regular KMS keys, **granting `Get` on an HSM key does not imply `encrypt`,
+    `decrypt`, `sign`, or any other operation**. Each operation must be granted
+    individually.
+
+See the [HSM operations](../hsm_support/hsm_operations.md) page for HSM admin
+configuration details.
 
 ## Authentication vs. authorization
 

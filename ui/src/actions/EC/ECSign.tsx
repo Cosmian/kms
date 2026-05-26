@@ -1,9 +1,10 @@
 import { Button, Card, Form, Input, Select, Space, Switch } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import * as wasmClient from "../../wasm/pkg/cosmian_kms_client_wasm";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface ECSignFormData {
     inputFile: Uint8Array;
@@ -17,26 +18,14 @@ interface ECSignFormData {
 
 const ECSignForm: React.FC = () => {
     const [form] = Form.useForm<ECSignFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     // Signature algorithm is inferred by key type; no explicit options
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     const onFinish = async (values: ECSignFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing key identifier.");
-                throw Error("Missing key identifier");
+                throw new Error("Missing key identifier.");
             }
             // Use algorithm string like "ecdsa-with-sha256"
             const request = await wasmClient.sign_ttlv_request(id, values.inputFile, undefined, values.digested);
@@ -61,14 +50,9 @@ const ECSignForm: React.FC = () => {
                 const filename = `${values.fileName}.sig`;
                 console.debug("ECSign: signature length", signature.byteLength);
                 downloadFile(signature, filename, "application/octet-stream");
-                setRes(`Signature created and downloaded (${signature.byteLength} bytes).`);
+                return `Signature created and downloaded (${signature.byteLength} bytes).`;
             }
-        } catch (e) {
-            setRes(`Error signing: ${e}`);
-            console.error("Error signing:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -136,11 +120,7 @@ const ECSignForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="EC sign response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="EC sign response" />
         </div>
     );
 };

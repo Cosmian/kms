@@ -4,7 +4,7 @@ once (also known as bulk mode).
 This is the standard way to communicate with the KMIP server using the Binary protocol on port 5696 or the JSON protocol
 on port 9998 and endpoint `/kmip`.
 
-The `/kmip/2_1` endpoint is a Cosmian extension allowing the posting of Operations directly to the server without
+The `/kmip/2_1` endpoint is a Eviden extension allowing the posting of Operations directly to the server without
 the need for a `RequestMessage` wrapper.
 This is particularly useful for operations like `Encrypt` and `Decrypt`.
 

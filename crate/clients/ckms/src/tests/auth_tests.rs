@@ -1,4 +1,4 @@
-use std::{net::TcpListener, path::PathBuf, process::Command};
+use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use base64::Engine;
@@ -12,11 +12,9 @@ use cosmian_kms_cli_actions::{
 use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
 use test_kms_server::{
-    AuthenticationOptions, ClientAuthOptions, MainDBConfig, ServerJwtAuth as JwtAuth,
-    ServerTlsMode as TlsMode, build_server_params, start_default_test_kms_server_with_jwt_auth,
-    start_test_server_with_options,
+    TestClientOptions, start_default_test_kms_server_with_jwt_auth, start_test_server,
+    start_test_server_with_patch, test_config_path,
 };
-use tokio::fs;
 
 use super::utils::recover_cmd_logs;
 use crate::{
@@ -114,156 +112,65 @@ fn create_api_token(owner_client_conf_path: &str) -> CosmianResult<(String, Stri
     Ok((api_token_id, api_token))
 }
 
-// Pick a free local port to avoid collisions with other tests
-fn pick_free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("Failed to bind to an ephemeral port")
-        .local_addr()
-        .expect("Failed to read local_addr")
-        .port()
-}
-
 #[allow(clippy::large_stack_frames)]
 #[tokio::test]
 pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
     log_init(None);
 
-    // Determine a base port and clean up its associated workspace directory
-    let base_port = pick_free_port();
-    let _e = fs::remove_dir_all(PathBuf::from(format!(
-        "/tmp/kms_test_workspace_{base_port}"
-    )))
-    .await;
-
-    // plaintext no auth
+    // ── Plain HTTP, no auth ────────────────────────────────────────────────
     info!("==> Testing server with no auth");
-    let port = base_port;
-    let ctx = start_test_server_with_options(
-        MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-            clear_database: true,
-            ..MainDBConfig::default()
-        },
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions::default(),
-            server_params: Some(build_server_params(
-                MainDBConfig {
-                    database_type: Some("sqlite".to_owned()),
-                    sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-                    clear_database: false,
-                    ..MainDBConfig::default()
-                },
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_test_server(
+        &test_config_path("auth_plain.toml"),
+        TestClientOptions::default(),
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
-
     run_owned_cli_command(&owner_client_conf_path);
-    // Create an API auth token with admin rights for later
+    // Create an API auth token with admin rights for later scenarios
     let (api_token_id, api_token) = create_api_token(&owner_client_conf_path)?;
     ctx.stop_server().await?;
 
-    let default_db_config = MainDBConfig {
-        database_type: Some("sqlite".to_owned()),
-        sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-        clear_database: false,
-        ..MainDBConfig::default()
-    };
-
-    // plaintext JWT token auth
+    // ── Plain HTTP, JWT auth ─────────────────────────────────────────────
     info!("==> Testing server with JWT token over HTTP");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
+    let ctx = start_test_server(
+        &test_config_path("auth_plain_jwt.toml"),
+        TestClientOptions {
+            send_jwt: true,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // tls token auth
+    // ── HTTPS + Client CA + JWT ──────────────────────────────────────────
     info!("==> Testing server with JWT token auth over HTTPS");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
+    let ctx = start_test_server(
+        &test_config_path("auth_https_jwt.toml"),
+        TestClientOptions {
+            send_jwt: true,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // Client Certificate authentication (PKCS#12)
+    // ── Client Certificate auth (PKCS#12) ────────────────────────────────
     info!("==> Testing server with Client Certificate auth (PKCS#12)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions::default(),
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
-        },
-        None,
-        None,
+    let ctx = start_test_server(
+        &test_config_path("auth_https_client_ca.toml"),
+        TestClientOptions::default(),
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // Client Certificate authentication (PEM cert + key — FIPS-compatible format)
+    // ── Client Certificate auth (PEM cert + key — FIPS-compatible) ───────
     info!("==> Testing server with Client Certificate auth (PEM)");
-    let port = pick_free_port();
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pem_cert = manifest_dir
         .join("../../../test_data/certificates/client_server/owner/owner.client.acme.com.crt")
@@ -273,343 +180,203 @@ pub(crate) async fn test_kms_all_authentications() -> CosmianResult<()> {
         .join("../../../test_data/certificates/client_server/owner/owner.client.acme.com.key")
         .canonicalize()
         .expect("owner PEM key must exist in test_data");
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig {
-                    tls_client_pem_cert_path: Some(pem_cert.to_string_lossy().into_owned()),
-                    tls_client_pem_key_path: Some(pem_key.to_string_lossy().into_owned()),
-                    ..Default::default()
-                },
+    let ctx = start_test_server(
+        &test_config_path("auth_https_client_ca.toml"),
+        TestClientOptions {
+            http: HttpClientConfig {
+                tls_client_pem_cert_path: Some(pem_cert.to_string_lossy().into_owned()),
+                tls_client_pem_key_path: Some(pem_key.to_string_lossy().into_owned()),
                 ..Default::default()
             },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // SCENARIO 1: Both Client Certificates and JWT authentication enabled, user presents JWT token only
+    // ── SCENARIO 1: Cert+JWT enabled, client sends JWT only ──────────────
     info!(
         "==> Testing server with both Client Certificates and JWT auth - User sends JWT token only"
     );
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                // Suppress client certificate to ensure JWT-only auth path
-                client_cert: test_kms_server::ClientCertPolicy::Suppress,
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
+    let ctx = start_test_server(
+        &test_config_path("auth_https_jwt.toml"),
+        TestClientOptions {
+            send_client_cert: false,
+            send_jwt: true,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // SCENARIO 2: Both Client Certificates and API token authentication enabled, user presents API token only
+    // ── SCENARIO 2: Cert+API token enabled, client sends API token only ──
     info!(
-        "==> Testing server with both Client Certificates and API token auth -User sends API \
+        "==> Testing server with both Client Certificates and API token auth - User sends API \
          token only"
     );
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig {
-                    access_token: Some(api_token.clone()),
-                    ..Default::default()
-                },
+    let api_token_clone = api_token.clone();
+    let api_token_id_clone = api_token_id.clone();
+    let ctx = start_test_server_with_patch(
+        &test_config_path("auth_https_client_ca.toml"),
+        move |config| {
+            config.http.api_token_id = Some(api_token_id_clone);
+        },
+        TestClientOptions {
+            http: HttpClientConfig {
+                access_token: Some(api_token_clone),
                 ..Default::default()
             },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
+            send_jwt: false,
+            send_api_token: true,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // SCENARIO 3: Both JWT and API token authentication enabled, user presents API token only
+    // ── SCENARIO 3: JWT+API token enabled, client sends API token only ───
     info!("==> Testing server with both JWT and API token auth - User sends the API token only");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                // Suppress JWT to ensure API token only
-                jwt: test_kms_server::JwtPolicy::Suppress,
-                http: HttpClientConfig {
-                    access_token: Some(api_token.clone()),
-                    ..Default::default()
-                },
+    let api_token_clone = api_token.clone();
+    let api_token_id_clone = api_token_id.clone();
+    let ctx = start_test_server_with_patch(
+        &test_config_path("auth_https_jwt.toml"),
+        move |config| {
+            config.http.api_token_id = Some(api_token_id_clone);
+        },
+        TestClientOptions {
+            http: HttpClientConfig {
+                access_token: Some(api_token_clone),
                 ..Default::default()
             },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
+            send_jwt: false,
+            send_api_token: true,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // SCENARIO 4: JWT authentication enabled, no token provided (failure case)
+    // ── SCENARIO 4: JWT required, no token (failure) ─────────────────────
     info!("==> Testing server with JWT auth - User does not send the token (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
+    let ctx = start_test_server(
+        &test_config_path("auth_plain_jwt.toml"),
+        TestClientOptions {
+            send_jwt: false,
+            send_api_token: false,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // SCENARIO 5: Client Certificate authentication enabled, no certificate provided (failure case)
+    // ── SCENARIO 5: Client Cert required, no cert (failure) ──────────────
     info!("==> Testing server with Client Certificate auth - missing certificate (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                client_cert: test_kms_server::ClientCertPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                None,
-            )?),
+    let ctx = start_test_server(
+        &test_config_path("auth_https_client_ca.toml"),
+        TestClientOptions {
+            send_client_cert: false,
+            send_jwt: false,
+            send_api_token: false,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // SCENARIO 6: API token authentication enabled, no token provided (failure case)
+    // ── SCENARIO 6: API token required, no token (failure) ───────────────
     info!("==> Testing server with API token auth - missing token (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                http: HttpClientConfig {
-                    access_token: None, // missing token -> should fail
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsNoClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some(api_token_id.clone()),
-            )?),
+    let api_token_id_clone = api_token_id.clone();
+    let ctx = start_test_server_with_patch(
+        &test_config_path("auth_https.toml"),
+        move |config| {
+            config.http.api_token_id = Some(api_token_id_clone);
         },
-        None,
-        None,
+        TestClientOptions {
+            // No access_token → server demands API token but client doesn't have one
+            send_jwt: false,
+            send_api_token: false,
+            ..Default::default()
+        },
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // SCENARIO 7: JWT authentication enabled, but no JWT token presented (failure case)
+    // ── SCENARIO 7: JWT required, no JWT sent (failure) ──────────────────
     info!("===> Testing server with JWT auth - but no JWT token sent (should fail)");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::Suppress,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
+    let ctx = start_test_server(
+        &test_config_path("auth_plain_jwt.toml"),
+        TestClientOptions {
+            send_jwt: false,
+            send_api_token: false,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command_expect_failure(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // Bad API token auth but JWT auth used at first
+    // ── Bad API token but JWT auth succeeds ──────────────────────────────
     info!("==> Testing server with bad API token auth but JWT auth used at first");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::PlainHttp,
-                JwtAuth::Enabled,
-                None,
-                None,
-            )?),
+    let ctx = start_test_server(
+        &test_config_path("auth_plain_jwt.toml"),
+        TestClientOptions {
+            send_jwt: true,
+            ..Default::default()
         },
-        None,
-        None,
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // Bad API token auth, but cert auth used at first
+    // ── Bad API token but cert auth succeeds ─────────────────────────────
     info!("==> Testing server with bad API token auth but cert auth used at first");
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config.clone(),
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions::default(),
-            server_params: Some(build_server_params(
-                default_db_config.clone(),
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Disabled,
-                None,
-                Some("my_bad_token_id".to_owned()),
-            )?),
+    let ctx = start_test_server_with_patch(
+        &test_config_path("auth_https_client_ca.toml"),
+        |config| {
+            config.http.api_token_id = Some("my_bad_token_id".to_owned());
         },
-        None,
-        None,
+        TestClientOptions::default(),
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
 
-    // Bad API token and good JWT token auth but still cert auth used at first
+    // ── Bad API token + good JWT + cert auth ─────────────────────────────
     info!(
         "==> Testing server with bad API token and good JWT token auth but still cert auth used \
          at first"
     );
-    let port = pick_free_port();
-    let ctx = start_test_server_with_options(
-        default_db_config,
-        port,
-        AuthenticationOptions {
-            client: ClientAuthOptions {
-                jwt: test_kms_server::JwtPolicy::AutoDefault,
-                ..Default::default()
-            },
-            server_params: Some(build_server_params(
-                MainDBConfig {
-                    database_type: Some("sqlite".to_owned()),
-                    sqlite_path: PathBuf::from("./sqlite-data-auth-tests"),
-                    clear_database: false,
-                    ..MainDBConfig::default()
-                },
-                port,
-                TlsMode::HttpsWithClientCa,
-                JwtAuth::Enabled,
-                None,
-                Some("my_bad_token_id".to_owned()),
-            )?),
+    let ctx = start_test_server_with_patch(
+        &test_config_path("auth_https_jwt.toml"),
+        |config| {
+            config.http.api_token_id = Some("my_bad_token_id".to_owned());
         },
-        None,
-        None,
+        TestClientOptions {
+            send_jwt: true,
+            ..Default::default()
+        },
     )
     .await?;
     let (owner_client_conf_path, _) = force_save_kms_cli_config(&ctx);
     run_owned_cli_command(&owner_client_conf_path);
     ctx.stop_server().await?;
-
-    // delete the temp db dir
-    let _e = fs::remove_dir_all(PathBuf::from(format!(
-        "/tmp/kms_test_workspace_{base_port}"
-    )))
-    .await;
 
     Ok(())
 }

@@ -216,6 +216,34 @@ pub enum CryptographicAlgorithm {
     // are not supported: OpenSSL 3.6.0 cannot serialize/deserialize their private keys.
 }
 
+impl CryptographicAlgorithm {
+    /// Returns `true` when this is a PQC signature algorithm (ML-DSA or SLH-DSA).
+    ///
+    /// These algorithms are dispatched to dedicated PQC signing / verification
+    /// routines instead of the classic OpenSSL code-path.
+    #[must_use]
+    pub const fn is_pqc_signature(&self) -> bool {
+        matches!(
+            self,
+            Self::MLDSA_44
+                | Self::MLDSA_65
+                | Self::MLDSA_87
+                | Self::SLHDSA_SHA2_128s
+                | Self::SLHDSA_SHA2_128f
+                | Self::SLHDSA_SHA2_192s
+                | Self::SLHDSA_SHA2_192f
+                | Self::SLHDSA_SHA2_256s
+                | Self::SLHDSA_SHA2_256f
+                | Self::SLHDSA_SHAKE_128s
+                | Self::SLHDSA_SHAKE_128f
+                | Self::SLHDSA_SHAKE_192s
+                | Self::SLHDSA_SHAKE_192f
+                | Self::SLHDSA_SHAKE_256s
+                | Self::SLHDSA_SHAKE_256f
+        )
+    }
+}
+
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
 /// contains fields that MAY need to be specified in the Create Key Pair Request
 /// Payload. Specific fields MAY only pertain to certain types of Managed
@@ -1519,6 +1547,64 @@ impl Display for CryptographicParameters {
     }
 }
 
+impl CryptographicParameters {
+    /// Fill missing (`None`) fields in `self` from `source`.
+    ///
+    /// Every `Option` field that is `None` in `self` gets overwritten with
+    /// the corresponding value from `source`.
+    pub fn fill_missing_fields(&mut self, source: &Self) {
+        macro_rules! fill {
+            ($($field:ident),* $(,)?) => {
+                $(if self.$field.is_none() { self.$field = source.$field.clone(); })*
+            };
+        }
+        fill!(
+            block_cipher_mode,
+            padding_method,
+            hashing_algorithm,
+            key_role_type,
+            digital_signature_algorithm,
+            cryptographic_algorithm,
+            random_iv,
+            iv_length,
+            tag_length,
+            fixed_field_length,
+            invocation_field_length,
+            counter_length,
+            initial_counter_value,
+            salt_length,
+            mask_generator,
+            mask_generator_hashing_algorithm,
+            p_source,
+            trailer_field,
+        );
+    }
+
+    /// Merge request-supplied cryptographic parameters with stored object attributes.
+    ///
+    /// If `request_params` is `None`, the parameters stored on `object` are returned
+    /// as-is. If `request_params` partially specifies parameters, the stored values
+    /// fill in any `None` fields.
+    #[must_use]
+    pub fn merged_with_object(
+        request_params: Option<Self>,
+        object: &crate::kmip_2_1::kmip_objects::Object,
+    ) -> Self {
+        let stored_cp = object
+            .attributes()
+            .ok()
+            .and_then(|a| a.cryptographic_parameters.clone())
+            .unwrap_or_default();
+        match request_params {
+            None => stored_cp,
+            Some(mut req_cp) => {
+                req_cp.fill_missing_fields(&stored_cp);
+                req_cp
+            }
+        }
+    }
+}
+
 /// Contains the Unique Identifier value of the encryption key and
 /// associated cryptographic parameters.
 #[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Debug)]
@@ -1749,11 +1835,12 @@ pub enum OperationEnumeration {
 
 /// An Enumeration object indicating whether the certificate chain is valid,
 /// invalid, or unknown.
+/// KMIP 2.1 spec §11.61 Table 492: Valid=0x01, Invalid=0x02, Unknown=0x03.
 #[kmip_enum]
 pub enum ValidityIndicator {
-    Valid = 0x0000_0000,
-    Invalid = 0x0000_0001,
-    Unknown = 0x0000_0002,
+    Valid = 0x0000_0001,
+    Invalid = 0x0000_0002,
+    Unknown = 0x0000_0003,
 }
 
 impl ValidityIndicator {

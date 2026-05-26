@@ -125,7 +125,7 @@ impl<P: HsmProvider> BaseHsm<P> {
             .lock()
             .context("Failed to acquire lock on slots")?;
         let mut slot_list = Vec::with_capacity(slots.len());
-        for (k, _v) in slots.iter() {
+        for k in slots.keys() {
             slot_list.push(*k);
         }
         Ok(slot_list)

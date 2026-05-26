@@ -163,9 +163,9 @@ impl AddQualifiedAttributeAction {
         let stdout = format!(
             "New attribute {} was successfully added to the master secret key {} and master \
              public key {}.",
-            &self.attribute,
-            &rekey_response.private_key_unique_identifier,
-            &rekey_response.public_key_unique_identifier,
+            self.attribute,
+            rekey_response.private_key_unique_identifier,
+            rekey_response.public_key_unique_identifier,
         );
         console::Stdout::new(&stdout).write()
     }
@@ -222,7 +222,7 @@ impl RenameAttributeAction {
 
         let stdout = format!(
             "Attribute {} was successfully renamed to {}.",
-            &self.attribute, &self.new_name
+            self.attribute, self.new_name
         );
         console::Stdout::new(&stdout).write()?;
 
@@ -279,7 +279,7 @@ impl DisableAttributeAction {
 
         let stdout = format!(
             "Attribute {} was successfully disabled from the master public key {}.",
-            &self.attribute, &rekey_response.public_key_unique_identifier,
+            self.attribute, rekey_response.public_key_unique_identifier,
         );
         console::Stdout::new(&stdout).write()?;
 
@@ -338,9 +338,9 @@ impl RemoveAttributeAction {
         let stdout = format!(
             "Attribute {} was successfully removed from the master secret key {} and master \
              public key {}.",
-            &self.attribute,
-            &rekey_response.private_key_unique_identifier,
-            &rekey_response.public_key_unique_identifier,
+            self.attribute,
+            rekey_response.private_key_unique_identifier,
+            rekey_response.public_key_unique_identifier,
         );
         console::Stdout::new(&stdout).write()?;
 
