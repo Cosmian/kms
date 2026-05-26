@@ -3,6 +3,10 @@
 - **ReKey operation**: Fixed KMIP `ReKey` to create a new replacement key with a new UID instead of replacing key material in-place. Per KMIP 2.1 §6.1.46, the existing key is linked to the new key via `ReplacementObjectLink`/`ReplacedObjectLink` and the Name attribute is transferred; the existing key's **State is NOT changed** — the spec does not mandate deactivation. Callers wishing to retire the old key must issue an explicit `Revoke` afterwards.
 - **ReKey spec correction**: Removed hallucinated deactivation of the existing key. KMIP 2.1 §6.1.46 Table 304 lists State only for the *replacement* key ("Set based on attribute values, such as dates"); the existing key's State is unaffected by ReKey. This matches observed VAST Data production behaviour where VAST explicitly calls `Revoke` + `Destroy` on the old key after rotation.
 
+## Security
+
+- **CVE-2026-39373 / GHSA-fjrm-76x2-c4q4**: Upgrade `jwcrypto` from 1.5.6 to 1.5.7 in `.github/scripts/test/requirements-jose.txt`. Fixes JWE ZIP decompression bomb — 1.5.6 validated compressed input size (≤250 KB) but not the decompressed output size, allowing a crafted token to exhaust server memory.
+
 ## Testing
 
 - **VAST Data integration test vector**: Updated to 16 steps (was 15) — added explicit `Revoke` of old key before `Destroy` since old key remains Active after ReKey. Sequence: DiscoverVersions → Create → AddAttribute (Name, ObjectGroup) → Activate → Locate → Get → GetAttributes → ReKey → Locate → Get → GetAttributes → Revoke old → Destroy old → Revoke new → Destroy new.
