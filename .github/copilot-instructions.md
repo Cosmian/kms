@@ -377,6 +377,10 @@ If the prompt adds or changes a user-visible feature, flag, endpoint, or configu
 > These five steps are **not optional suggestions**. They are part of every response that
 > touches code. An incomplete response is one that skips any of them.
 
+### 6. Update SECURITY.md on security-related changes (when applicable)
+
+If the prompt adds a new security feature, hardens an existing one, or fixes a security bug, update `SECURITY.md` with a brief summary of the change and its impact on users. Link to the relevant CHANGELOG entry and test vector.
+
 ---
 
 ## Coding rules

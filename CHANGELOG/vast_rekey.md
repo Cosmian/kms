@@ -8,8 +8,8 @@
 ## Security
 
 - **DDOS mitigation on `/hsm/status`**: The `GET /hsm/status` endpoint now requires explicit authentication (JWT, client certificate, or API token). Requests that only have the fallback default username are rejected with 401.
-- **ReKey authorization** (COSMIAN-2026-017): Added ownership/permission check before modifying the existing key during ReKey. Previously, a caller who knew another user's key UID could create a replacement key and remove the original key's Name without authorization. Same fix applied to `ReKeyKeyPair`.
 - **Activate authorization** (COSMIAN-2026-018): The Activate operation now uses `KmipOperation::Activate` for permission checks instead of `GetAttributes`. Previously, any user with any permission on an object could activate it.
+- **ReKey authorization** (COSMIAN-2026-017): Added ownership/permission check before modifying the existing key during ReKey. Previously, a caller who knew another user's key UID could create a replacement key and remove the original key's Name without authorization. Same fix applied to `ReKeyKeyPair`.
 - **CVE-2026-39373 / GHSA-fjrm-76x2-c4q4**: Upgrade `jwcrypto` from 1.5.6 to 1.5.7 in `.github/scripts/test/requirements-jose.txt`. Fixes JWE ZIP decompression bomb — 1.5.6 validated compressed input size (≤250 KB) but not the decompressed output size, allowing a crafted token to exhaust server memory.
 
 ## Testing
