@@ -4,12 +4,12 @@
  * These tests cover three layers:
  *
  *   1. **HTTP contract** — raw request tests verifying status codes, content-types,
- *      and security headers for `/openapi.yaml` and `/swagger-ui`.
+ *      and security headers for `/openapi.yaml` and `/swagger`.
  *
  *   2. **Spec correctness** — parse the live YAML spec and assert that every
  *      documented path, tag, and schema key is present and correctly formed.
  *
- *   3. **Browser rendering** — navigate Playwright to `/swagger-ui` and assert
+ *   3. **Browser rendering** — navigate Playwright to `/swagger` and assert
  *      that Swagger UI boots, loads the spec from `/openapi.yaml`, and renders
  *      the tag tree and individual operations correctly.
  *
@@ -19,7 +19,7 @@
  *
  * Prerequisites:
  *   - KMS server running on port 9998 with `no_auth.toml` (or any auth config).
- *   - Internet access available for the CDN Swagger UI JS/CSS resources.
+ *   - Swagger UI assets served locally from the KMS server (no CDN dependency).
  */
 import { expect, test } from "@playwright/test";
 
@@ -88,7 +88,7 @@ test.describe("GET /openapi.yaml — spec structure", () => {
             "/health",
             "/version",
             "/openapi.yaml",
-            "/swagger-ui",
+            "/swagger",
             "/kmip/2_1",
             "/me",
             "/access/owned",
@@ -166,56 +166,56 @@ test.describe("GET /openapi.yaml — spec structure", () => {
     });
 });
 
-// ── /swagger-ui — HTTP contract ────────────────────────────────────────────────
+// ── /swagger — HTTP contract ───────────────────────────────────────────────────
 
-test.describe("GET /swagger-ui — HTTP contract", () => {
+test.describe("GET /swagger — HTTP contract", () => {
     test("returns 200 with text/html content-type", async ({ request }) => {
-        const response = await request.get(`${KMS_URL}/swagger-ui`);
+        const response = await request.get(`${KMS_URL}/swagger`);
         expect(response.status()).toBe(200);
         expect(response.headers()["content-type"]).toMatch(/text\/html/);
     });
 
     test("HTML references /openapi.yaml as the spec URL", async ({ request }) => {
-        const response = await request.get(`${KMS_URL}/swagger-ui`);
+        const response = await request.get(`${KMS_URL}/swagger`);
         const html = await response.text();
         expect(html).toContain("/openapi.yaml");
     });
 
-    test("HTML loads Swagger UI bundle from unpkg CDN with SRI hashes", async ({ request }) => {
-        const response = await request.get(`${KMS_URL}/swagger-ui`);
+    test("HTML loads Swagger UI bundle from local server assets", async ({ request }) => {
+        const response = await request.get(`${KMS_URL}/swagger`);
         const html = await response.text();
-        expect(html).toContain("unpkg.com/swagger-ui-dist");
-        // Both CSS and JS must declare integrity + crossorigin attributes
-        expect(html).toContain('integrity="sha384-');
-        expect(html).toContain('crossorigin="anonymous"');
+        // JS and CSS are served locally — no external CDN dependency
+        expect(html).toContain("/swagger-ui-bundle.js");
+        expect(html).toContain("/swagger-ui.css");
     });
 
-    test("returns strict Content-Security-Policy header", async ({ request }) => {
-        const response = await request.get(`${KMS_URL}/swagger-ui`);
+    test("returns strict Content-Security-Policy header with frame-ancestors", async ({ request }) => {
+        const response = await request.get(`${KMS_URL}/swagger`);
         const csp = response.headers()["content-security-policy"] ?? "";
         expect(csp).toContain("default-src 'none'");
-        expect(csp).toContain("script-src https://unpkg.com");
-        expect(csp).toContain("style-src https://unpkg.com");
+        expect(csp).toContain("script-src 'self'");
+        expect(csp).toContain("style-src 'self'");
         expect(csp).toContain("connect-src 'self'");
+        expect(csp).toContain("frame-ancestors 'none'");
     });
 
     test("returns X-Frame-Options: DENY header", async ({ request }) => {
-        const response = await request.get(`${KMS_URL}/swagger-ui`);
+        const response = await request.get(`${KMS_URL}/swagger`);
         expect(response.headers()["x-frame-options"]).toBe("DENY");
     });
 
     test("page title is set to Cosmian KMS — API", async ({ request }) => {
-        const response = await request.get(`${KMS_URL}/swagger-ui`);
+        const response = await request.get(`${KMS_URL}/swagger`);
         const html = await response.text();
         expect(html).toContain("Cosmian KMS");
     });
 });
 
-// ── /swagger-ui — browser rendering ──────────────────────────────────────────
+// ── /swagger — browser rendering ─────────────────────────────────────────────
 
-test.describe("GET /swagger-ui — browser rendering", () => {
+test.describe("GET /swagger — browser rendering", () => {
     test("Swagger UI container mounts and loads the spec title", async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
 
         // The swagger-ui <div> must be present immediately (it is part of the HTML).
         const container = page.locator("#swagger-ui");
@@ -227,7 +227,7 @@ test.describe("GET /swagger-ui — browser rendering", () => {
     });
 
     test("all expected API tag sections are rendered", async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
 
         // Wait for the first operation tag section to render
         await expect(page.locator(".swagger-ui .opblock-tag").first()).toBeVisible({
@@ -244,7 +244,7 @@ test.describe("GET /swagger-ui — browser rendering", () => {
     });
 
     test("clicking a tag section expands its operations", async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
 
         const firstTag = page.locator(".swagger-ui .opblock-tag").first();
         await firstTag.waitFor({ state: "visible", timeout: 30_000 });
@@ -259,7 +259,7 @@ test.describe("GET /swagger-ui — browser rendering", () => {
     });
 
     test("clicking an operation block expands its detail panel", async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
 
         // Expand first tag
         const firstTag = page.locator(".swagger-ui .opblock-tag").first();
@@ -383,8 +383,8 @@ test.describe("HTTP method semantics", () => {
         expect([404, 405]).toContain(response.status());
     });
 
-    test("DELETE /swagger-ui is rejected with 404 or 405", async ({ request }) => {
-        const response = await request.delete(`${KMS_URL}/swagger-ui`);
+    test("DELETE /swagger is rejected with 404 or 405", async ({ request }) => {
+        const response = await request.delete(`${KMS_URL}/swagger`);
         expect([404, 405]).toContain(response.status());
     });
 
@@ -595,9 +595,9 @@ test.describe("REST Crypto API — key lifecycle", () => {
 
 // ── Swagger UI — advanced browser interactions ────────────────────────────────
 
-test.describe("GET /swagger-ui — advanced browser interactions", () => {
+test.describe("GET /swagger — advanced browser interactions", () => {
     test("search filter input is rendered and accepts text input", async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
         // Wait for swagger to fully render
         await expect(page.locator(".swagger-ui .opblock-tag").first()).toBeVisible({ timeout: 30_000 });
 
@@ -616,7 +616,7 @@ test.describe("GET /swagger-ui — advanced browser interactions", () => {
     });
 
     test('"Try it out" button appears inside an expanded operation', async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
 
         // Expand first tag
         const firstTag = page.locator(".swagger-ui .opblock-tag").first();
@@ -634,7 +634,7 @@ test.describe("GET /swagger-ui — advanced browser interactions", () => {
     });
 
     test("spec info block renders description and version", async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
         await expect(page.locator(".swagger-ui .info .title")).toBeVisible({ timeout: 30_000 });
 
         // The info block should render a version badge
@@ -646,7 +646,7 @@ test.describe("GET /swagger-ui — advanced browser interactions", () => {
     });
 
     test("all tag sections are collapsed by default (first render)", async ({ page }) => {
-        await page.goto(`${KMS_URL}/swagger-ui`);
+        await page.goto(`${KMS_URL}/swagger`);
         await expect(page.locator(".swagger-ui .opblock-tag").first()).toBeVisible({ timeout: 30_000 });
 
         // Before clicking any tag, no operation blocks should be visible

@@ -34,16 +34,16 @@ specification and serves an interactive Swagger UI browser directly from the ser
 | Endpoint | Description |
 |---|---|
 | `GET /openapi.yaml` | Full OpenAPI 3.1 schema in YAML format |
-| `GET /swagger-ui` | Interactive Swagger UI (CDN-backed, no auth required) |
+| `GET /swagger` | Interactive Swagger UI (locally served, authentication required) |
 
 ### Using the Swagger UI
 
-Navigate to `<server_url>/swagger-ui` in a browser. The page loads the Swagger UI from
-`unpkg.com/swagger-ui-dist@5.18.2` with [Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity)
-hashes to prevent CDN tampering, and applies a strict `Content-Security-Policy` header.
+Navigate to `<server_url>/swagger` in a browser. The page serves Swagger UI assets
+directly from the KMS server binary (no external CDN dependency) and applies a strict
+`Content-Security-Policy` header with `frame-ancestors 'none'` for clickjacking protection.
 
 ```text
-https://<your-kms-host>:9998/swagger-ui
+https://<your-kms-host>:9998/swagger
 ```
 
 The UI displays all documented operations grouped by tag:

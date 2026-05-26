@@ -36,7 +36,7 @@ pub(crate) async fn get_swagger_ui_js() -> HttpResponse {
     const JS: &str = include_str!("../../documentation/swagger-ui/swagger-ui-bundle.js");
     HttpResponse::Ok()
         .content_type("application/javascript; charset=utf-8")
-        .insert_header(("Cache-Control", "public, max-age=31536000, immutable"))
+        .insert_header(("Cache-Control", "public, max-age=86400"))
         .body(JS)
 }
 
@@ -46,7 +46,7 @@ pub(crate) async fn get_swagger_ui_css() -> HttpResponse {
     const CSS: &str = include_str!("../../documentation/swagger-ui/swagger-ui.css");
     HttpResponse::Ok()
         .content_type("text/css; charset=utf-8")
-        .insert_header(("Cache-Control", "public, max-age=31536000, immutable"))
+        .insert_header(("Cache-Control", "public, max-age=86400"))
         .body(CSS)
 }
 
@@ -89,7 +89,8 @@ pub(crate) async fn get_swagger_ui() -> KResult<HttpResponse> {
              script-src 'self' 'unsafe-inline'; \
              style-src 'self' 'unsafe-inline'; \
              img-src 'self' data:; \
-             connect-src 'self'",
+             connect-src 'self'; \
+             frame-ancestors 'none'",
         ))
         .body(html))
 }

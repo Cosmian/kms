@@ -3,7 +3,7 @@
 ### Web UI
 
 - Add `/openapi.yaml` endpoint serving the OpenAPI 3.1 spec for the KMS server, embedded at compile time via `include_str!`
-- Add `/swagger-ui` endpoint serving a locally-vendored Swagger UI (swagger-ui-dist 5.18.2) with no external CDN dependency and a strict Content-Security-Policy header
+- Add `/swagger` endpoint serving a locally-vendored Swagger UI (swagger-ui-dist 5.18.2) with no external CDN dependency and a strict Content-Security-Policy header
 
 ### Google CSE
 
@@ -20,7 +20,7 @@
 - Add Playwright E2E test suite `ui/tests/e2e/swagger.spec.ts` covering:
     - HTTP contract for `/openapi.yaml` (status, content-type, security headers, size bounds)
     - OpenAPI spec structure (version declaration, all expected tags, all documented paths, component schemas)
-    - HTTP contract for `/swagger-ui` (status, content-type, CDN SRI hashes, CSP header)
+    - HTTP contract for `/swagger` (status, content-type, locally-served assets, CSP header with frame-ancestors)
     - Browser rendering via Playwright (Swagger UI mounts, title renders, tag sections visible, expand on click)
     - Cross-validation of live server responses against the documented spec for all public endpoints
 
