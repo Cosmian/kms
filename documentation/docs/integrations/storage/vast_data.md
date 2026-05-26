@@ -76,7 +76,7 @@ sequenceDiagram
     Note over V,K: Key Rotation (triggered externally)
     loop For each key to rotate
         V->>K: Locate (find current key by name)
-        V->>K: ReKey (returns new UID; old key stays Active)
+        V->>K: ReKey (new UID returned, old key stays Active)
         V->>K: Locate (verify new key by name)
         V->>K: Get (fetch new key material)
     end
