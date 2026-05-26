@@ -358,6 +358,8 @@ cargo fmt --all
 
 ### 4. Tests (always)
 
+Verify if non-regression vectors (test_data/vectors) are up-to-date and if relevant, add non-regression vectors to always improve the coverage.
+
 ```bash
 cargo test-non-fips   # test --lib --workspace --features non-fips
 ```

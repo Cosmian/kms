@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**271 vectors** across 8 categories:
+**273 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -178,6 +178,8 @@ replays the steps sequentially.
 | Access Control | `privilege_escalation_self_grant` | Create, GrantAccess (owner → self) → denied | 2 |
 | Access Control | `privilege_escalation_non_owner_grant` | Create, GrantAccess by user (not owner) → denied ×2 | 3 |
 | Access Control | `privilege_escalation_destroy_without_permission` | Create, GrantAccess (Get only), Get (ok), Destroy (denied — Get not wildcard for lifecycle ops), Get (still exists) | 5 |
+| Access Control | `privilege_escalation_rekey_without_permission` | Create, GrantAccess (Get only), Get (ok), ReKey (denied — Get not wildcard for ReKey), Get (still exists) | 5 |
+| Access Control | `privilege_escalation_activate_without_permission` | Create (PreActive), GrantAccess (Encrypt only), Activate (denied — Encrypt does not imply Activate), Activate (owner ok) | 4 |
 | **HSM (requires SoftHSM2 + `HSM_SLOT_ID`)** | | | |
 | HSM / KEK | `hsm/kek_encrypt_decrypt` | Create (HSM+KEK), Encrypt, Decrypt, Destroy | 4 |
 | HSM / KEK | `hsm/kek_sign_verify` | CreateKeyPair (HSM+KEK RSA), Sign, SignatureVerify, Destroy ×2 | 5 |

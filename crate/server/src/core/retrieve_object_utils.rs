@@ -160,6 +160,7 @@ pub(crate) async fn retrieve_object_for_operation(
                     | KmipOperation::ModifyAttribute
                     | KmipOperation::AddAttribute
                     | KmipOperation::DeleteAttribute
+                    | KmipOperation::Activate
             );
             if !skip_unwrap {
                 if let Some(defaults) = &kms.params.default_unwrap_types {

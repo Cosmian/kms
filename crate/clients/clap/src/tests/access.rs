@@ -897,6 +897,7 @@ pub(crate) async fn test_grant_all_operation_types() -> KmsCliResult<()> {
         KmipOperation::ModifyAttribute,
         KmipOperation::AddAttribute,
         KmipOperation::DeleteAttribute,
+        KmipOperation::Activate,
     ];
 
     GrantAccess {

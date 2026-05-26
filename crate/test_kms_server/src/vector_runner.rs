@@ -2979,6 +2979,24 @@ ObjectType = "SymmetricKey"
         .await
     }
 
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_rekey() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/access_control/privilege_escalation_rekey_without_permission",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_access_privilege_escalation_activate() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/access_control/privilege_escalation_activate_without_permission",
+        )
+        .await
+    }
+
     // ── HSM + KEK vectors ─────────────────────────────────────────────────
 
     #[tokio::test]

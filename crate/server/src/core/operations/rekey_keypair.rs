@@ -3,6 +3,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::C
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
     kmip_2_1::{
+        KmipOperation,
         kmip_objects::ObjectType,
         kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
         kmip_types::KeyFormatType,
@@ -18,7 +19,7 @@ use cosmian_logger::trace;
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::rekey_keypair_cover_crypt;
 use crate::{
-    core::KMS,
+    core::{KMS, operations::key_ops::ObjectWithMetadataOps},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -27,7 +28,7 @@ use crate::{
 pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
-    _user: &str,
+    user: &str,
 
     _privileged_users: Option<Vec<String>>,
 ) -> KResult<ReKeyKeyPairResponse> {
@@ -71,6 +72,14 @@ pub(crate) async fn rekey_keypair(
             }
         }
 
+        // Verify the caller is allowed to rekey this key pair
+        if !owm
+            .user_can_perform_operation(user, &KmipOperation::Rekey, kms)
+            .await?
+        {
+            continue;
+        }
+
         #[expect(clippy::used_underscore_binding)]
         #[cfg(feature = "non-fips")]
         if Some(CryptographicAlgorithm::CoverCrypt) == _attributes.cryptographic_algorithm {
@@ -79,7 +88,7 @@ pub(crate) async fn rekey_keypair(
                 kms,
                 Covercrypt::default(),
                 owm.id().to_owned(),
-                _user,
+                user,
                 action,
                 owm.attributes().sensitive.unwrap_or(false),
                 _privileged_users,
