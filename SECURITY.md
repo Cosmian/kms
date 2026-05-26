@@ -49,14 +49,14 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### COSMIAN-2026-018 — Activate operation uses overly permissive authorization check
 
-| Field      | Value                                             |
-| ---------- | ------------------------------------------------- |
-| Severity   | Moderate                                          |
-| Published  | 26 May 2026                                       |
-| Affected   | from 5.0.0 before 5.23.0                          |
-| Fixed in   | 5.23.0                                            |
-| Found by   | Copilot code review (GitHub PR #961)              |
-| References | [#961](https://github.com/Cosmian/kms/pull/961)   |
+| Field      | Value                                           |
+| ---------- | ----------------------------------------------- |
+| Severity   | Moderate                                        |
+| Published  | 26 May 2026                                     |
+| Affected   | from 5.0.0 before 5.23.0                        |
+| Fixed in   | 5.23.0                                          |
+| Found by   | Copilot code review (GitHub PR #961)            |
+| References | [#961](https://github.com/Cosmian/kms/pull/961) |
 
 **Summary:** The KMIP `Activate` operation passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. The permission check for `GetAttributes` grants access to any user holding *any* operation grant on the object. This meant a user with only `Encrypt` permission could activate a `PreActive` key, changing its lifecycle state — a security-relevant state transition that should require explicit authorization.
 
@@ -68,14 +68,14 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval
 
-| Field      | Value                                             |
-| ---------- | ------------------------------------------------- |
-| Severity   | Critical                                          |
-| Published  | 26 May 2026                                       |
-| Affected   | from 5.0.0 before 5.23.0                          |
-| Fixed in   | 5.23.0                                            |
-| Found by   | Copilot code review (GitHub PR #961)              |
-| References | [#961](https://github.com/Cosmian/kms/pull/961)   |
+| Field      | Value                                           |
+| ---------- | ----------------------------------------------- |
+| Severity   | Critical                                        |
+| Published  | 26 May 2026                                     |
+| Affected   | from 5.0.0 before 5.23.0                        |
+| Fixed in   | 5.23.0                                          |
+| Found by   | Copilot code review (GitHub PR #961)            |
+| References | [#961](https://github.com/Cosmian/kms/pull/961) |
 
 **Summary:** The KMIP `ReKey` operation for symmetric keys called `database.retrieve_objects()` without ownership or permission verification. Any authenticated user who knew (or guessed) another user's key UID could invoke `ReKey` to: (1) create a replacement key owned by the attacker, (2) strip the `Name` attribute from the victim's original key, and (3) set cross-links between the old and new key. The `ReKeyKeyPair` operation (Covercrypt) had the same raw retrieval pattern, though downstream `kms.get()` calls provided a secondary authorization barrier.
 
@@ -604,7 +604,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
-| COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check          |
+| COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check           |
 | COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                     |
 | COSMIAN-2026-016 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type |
 | COSMIAN-2026-015 | High     | 5.0.0 – 5.21.x          | 5.22.0   | KEK plaintext leak via UsageLimits persist in Decrypt/Sign    |

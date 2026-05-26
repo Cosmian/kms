@@ -58,15 +58,22 @@ pub(crate) async fn retrieve_object_for_operation(
                     | KmipOperation::ModifyAttribute
                     | KmipOperation::SetAttribute
                     | KmipOperation::DeleteAttribute
+                    // Activate on a compromised key must return Wrong_Key_Lifecycle_State
+                    // ("cannot be activated") rather than Object_Not_Found; allow retrieval
+                    // so activate.rs can emit the correct lifecycle error.
+                    | KmipOperation::Activate
             ),
             State::Destroyed | State::Destroyed_Compromised => {
                 // KMIP profiles expect Get on a destroyed object to return OperationFailed / ObjectDestroyed
                 // rather than ObjectNotFound. We therefore allow retrieval for Get so the operation layer
                 // can emit the correct Object_Destroyed error (BL-M-8-21 vector). Still restrict other
                 // operations besides GetAttributes and Get.
+                // Similarly, Activate on a destroyed object must return Wrong_Key_Lifecycle_State
+                // ("cannot be activated") rather than Object_Not_Found; allow retrieval so activate.rs
+                // can emit the correct lifecycle error.
                 matches!(
                     operation_type,
-                    KmipOperation::Get | KmipOperation::GetAttributes
+                    KmipOperation::Get | KmipOperation::GetAttributes | KmipOperation::Activate
                 )
             }
         };

@@ -4,6 +4,8 @@
 - **ReKey spec correction**: Removed hallucinated deactivation of the existing key. KMIP 2.1 §6.1.46 Table 304 lists State only for the *replacement* key ("Set based on attribute values, such as dates"); the existing key's State is unaffected by ReKey. This matches observed VAST Data production behaviour where VAST explicitly calls `Revoke` + `Destroy` on the old key after rotation.
 - **ReKey log/test wording**: Fixed log message and test comments that incorrectly stated "old key deactivated" — old key remains Active after ReKey per spec.
 - **ReKey test cleanup**: VAST ReKey test now properly cleans up both the original and replacement keys (revoke + destroy each).
+- **Activate lifecycle errors on destroyed/compromised objects**: `Activate` on a `Destroyed` or `Compromised` key now returns the correct KMIP `Wrong_Key_Lifecycle_State` error instead of `Object_Not_Found`. The object retrieval filter was extended to allow `Activate` through for these states so `activate.rs` can emit the proper lifecycle rejection.
+- **Test isolation: unique SQLite paths per process**: `load_test_config_from_toml` and the HSM bootstrap helpers now embed `std::process::id()` in their temp-directory names. Without this, two test binaries launched in parallel by `cargo test --workspace` could collide on the same path when their per-process atomic counters both start at 0 within the same clock tick, causing `database is locked` failures.
 
 ## Security
 
@@ -11,6 +13,8 @@
 - **Activate authorization** (COSMIAN-2026-018): The Activate operation now uses `KmipOperation::Activate` for permission checks instead of `GetAttributes`. Previously, any user with any permission on an object could activate it.
 - **ReKey authorization** (COSMIAN-2026-017): Added ownership/permission check before modifying the existing key during ReKey. Previously, a caller who knew another user's key UID could create a replacement key and remove the original key's Name without authorization. Same fix applied to `ReKeyKeyPair`.
 - **CVE-2026-39373 / GHSA-fjrm-76x2-c4q4**: Upgrade `jwcrypto` from 1.5.6 to 1.5.7 in `.github/scripts/test/requirements-jose.txt`. Fixes JWE ZIP decompression bomb — 1.5.6 validated compressed input size (≤250 KB) but not the decompressed output size, allowing a crafted token to exhaust server memory.
+- **DDOS mitigation on `/hsm/status`**: The `GET /hsm/status` endpoint now requires explicit authentication (JWT, client certificate, or API token). Requests that only have the fallback default username are rejected with 401.
+- **ReKey authorization** (COSMIAN-2026-017): Added ownership/permission check before modifying the existing key during ReKey. Previously, a caller who knew another user's key UID could create a replacement key and remove the original key's Name without authorization. Same fix applied to `ReKeyKeyPair`.
 
 ## Testing
 
@@ -20,6 +24,7 @@
 - **ReKey With Links**: Updated to 8 steps — adds Revoke(old) before Destroy(old) since old key remains Active after ReKey.
 - **Privilege escalation: ReKey without permission**: New access control test vector — non-owner with Get-only grant cannot ReKey another user's key.
 - **Privilege escalation: Activate without permission**: New access control test vector — non-owner with Encrypt-only grant cannot Activate another user's PreActive key.
+- **Negative: Activate on destroyed key**: New test vector (`deactivate_pre_active`) — Create → Activate → Revoke → Destroy → Activate expects `Wrong_Key_Lifecycle_State`.
 
 ## Documentation
 
