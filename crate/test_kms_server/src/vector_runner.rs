@@ -465,14 +465,27 @@ fn load_request_json(
 }
 
 /// Resolve `{{$ENV_VAR}}` and `{{captured}}` placeholders in an assertion value.
-fn resolve_assertion_value(template: &str, captures: &HashMap<String, String>) -> String {
+///
+/// Returns an error if a referenced environment variable is not set or a captured
+/// placeholder was never populated. This ensures test vectors never silently
+/// pass with empty/default values.
+fn resolve_assertion_value(
+    template: &str,
+    captures: &HashMap<String, String>,
+) -> Result<String, KmsClientError> {
     let mut result = template.to_owned();
     // Substitute environment variable placeholders {{$VAR_NAME}}
     while let Some(start) = result.find("{{$") {
         let rest = &result[start + 3..];
         if let Some(end) = rest.find("}}") {
             let var_name = &rest[..end];
-            let var_value = std::env::var(var_name).unwrap_or_default();
+            let var_value = std::env::var(var_name).map_err(|_err| {
+                KmsClientError::UnexpectedError(format!(
+                    "resolve_assertion_value: environment variable '{var_name}' \
+                     referenced in assertion template '{template}' is not set — \
+                     refusing to silently use an empty string"
+                ))
+            })?;
             result = format!("{}{}{}", &result[..start], var_value, &rest[end + 2..]);
         } else {
             break;
@@ -482,7 +495,17 @@ fn resolve_assertion_value(template: &str, captures: &HashMap<String, String>) -
     for (name, value) in captures {
         result = result.replace(&format!("{{{{{name}}}}}"), value);
     }
-    result
+    // Fail loudly if any unresolved placeholder remains (typo in capture name)
+    if let Some(pos) = result.find("{{") {
+        if result[pos..].contains("}}") {
+            return Err(KmsClientError::UnexpectedError(format!(
+                "resolve_assertion_value: unresolved placeholder in assertion \
+                 template '{template}' — result after substitution: '{result}'. \
+                 Check for typos in capture variable names."
+            )));
+        }
+    }
+    Ok(result)
 }
 
 /// Collect ALL leaf values for a given tag name in the TTLV JSON tree.
@@ -1134,17 +1157,28 @@ async fn execute_steps(
                 }
             }
 
+            // Require at least one error assertion when assert_success=false.
+            // Without this guard, any failure would silently pass the test.
+            if step.assert_error_reason.is_none() && step.assert_error_contains.is_none() {
+                return Err(KmsClientError::UnexpectedError(format!(
+                    "Step {i} '{}': assert_success=false but neither \
+                     'assert_error_reason' nor 'assert_error_contains' is set — \
+                     refusing to accept any arbitrary error as expected. \
+                     Add an error assertion to the manifest.",
+                    step.operation
+                )));
+            }
+
             // Expected failure — skip further assertions and captures
             continue;
         }
 
         // Assert specific fields (substitute env vars and captured variables in expected values)
         if !step.assert_fields.is_empty() {
-            let resolved: HashMap<String, String> = step
-                .assert_fields
-                .iter()
-                .map(|(k, v)| (k.clone(), resolve_assertion_value(v, &captures)))
-                .collect();
+            let mut resolved: HashMap<String, String> = HashMap::new();
+            for (k, v) in &step.assert_fields {
+                resolved.insert(k.clone(), resolve_assertion_value(v, &captures)?);
+            }
             assert_response_fields(&response_json, &resolved, &step.operation)?;
         }
 
@@ -1152,7 +1186,7 @@ async fn execute_steps(
         // (used for Locate responses that return multiple UniqueIdentifiers)
         if !step.assert_any_field.is_empty() {
             for (tag, expected_template) in &step.assert_any_field {
-                let expected = resolve_assertion_value(expected_template, &captures);
+                let expected = resolve_assertion_value(expected_template, &captures)?;
                 let all_values = find_all_fields_in_json(&response_json, tag);
                 if !all_values.contains(&expected) {
                     return Err(KmsClientError::UnexpectedError(format!(
@@ -1169,7 +1203,7 @@ async fn execute_steps(
         // (used to verify a specific object is not returned by Locate)
         if !step.assert_none_field.is_empty() {
             for (tag, forbidden_template) in &step.assert_none_field {
-                let forbidden = resolve_assertion_value(forbidden_template, &captures);
+                let forbidden = resolve_assertion_value(forbidden_template, &captures)?;
                 let all_values = find_all_fields_in_json(&response_json, tag);
                 if all_values.contains(&forbidden) {
                     return Err(KmsClientError::UnexpectedError(format!(
@@ -1524,6 +1558,27 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_locate_by_name() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_locate_by_name").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_deactivated_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_deactivated_fails").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_with_links() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_with_links").await
     }
 
     #[cfg(feature = "non-fips")]

@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**266 vectors** across 8 categories:
+**271 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -160,6 +160,9 @@ replays the steps sequentially.
 | KMIP Operations | `query` | Query | 1 |
 | KMIP Operations | `register_export` | Register, Get, Export, Destroy | 4 |
 | KMIP Operations | `rekey` | Create, ReKey, Encrypt | 3 |
+| KMIP Operations | `rekey_locate_by_name` | Create (named), Locate, ReKey, Locate (finds new key), GetAttributes (old=Active — ReKey does not deactivate the existing key) | 5 |
+| KMIP Operations | `rekey_deactivated_fails` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → fails) | 4 |
+| KMIP Operations | `rekey_with_links` | Create, ReKey, GetAttributes (old has ReplacementObjectLink), GetAttributes (new has ReplacedObjectLink) | 4 |
 | KMIP Operations | `rekey_keypair_ec` | CreateKeyPair (EC), ReKeyKeyPair → not supported | 3 |
 | KMIP Operations | `rekey_keypair_rsa` | CreateKeyPair (RSA), ReKeyKeyPair → not supported | 3 |
 | KMIP Operations | `rng_retrieve` | RNGRetrieve | 1 |
@@ -222,7 +225,7 @@ replays the steps sequentially.
 | Integrations | `fips/integrations/mysql` | Create, Activate, Get, Revoke, Destroy (binary TTLV / KMIP 1.1) | 5 |
 | Integrations | `fips/integrations/percona` | Register, Locate, Get, Revoke, Destroy (binary TTLV / KMIP 1.4) | 5 |
 | Integrations | `fips/integrations/fortigate` | Create, Locate, Get, Activate, Revoke, Destroy (binary TTLV / KMIP 1.0) | 6 |
-| Integrations | `fips/integrations/vast_data` | Create, Activate, Locate, Get, GetAttributes, Revoke, Destroy (binary TTLV / KMIP 1.2) | 7 |
+| Integrations | `fips/integrations/vast_data` | DiscoverVersions, Create, AddAttribute ×2, Activate, Locate, Get, GetAttributes, ReKey, Locate, Get, GetAttributes, Revoke, Destroy, Revoke, Destroy (JSON TTLV / KMIP 1.4) | 16 |
 | Integrations | `fips/integrations/kmip_1_3_symmetric` | Create, Activate, Get, Locate, Revoke, Destroy (binary TTLV / KMIP 1.3) | 6 |
 | Integrations | `fips/integrations/kmip_1_3_asymmetric` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.3) | 5 |
 | Integrations | `non-fips/integrations/mongodb` | Create, Locate, Get, Destroy (binary TTLV / KMIP 1.0) | 4 |

@@ -355,7 +355,7 @@ fn test_vast_rekey_aes_key() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::ReKey(ReKey {
-                    unique_identifier: original_uid,
+                    unique_identifier: original_uid.clone(),
                     offset: None,
                     template_attribute: None,
                 }),
@@ -389,12 +389,15 @@ fn test_vast_rekey_aes_key() {
         !rekey_response.unique_identifier.is_empty(),
         "ReKey: UniqueIdentifier must not be empty"
     );
-    // NOTE: the KMS ReKey operation replaces the key material in-place and
-    // returns the same UniqueIdentifier (replace_existing=true semantics).
-    // This is intentional — the same object is updated with a new key value.
+    // Per KMIP spec, ReKey creates a new replacement key with a new UID.
+    // The old key is deactivated and linked to the new key.
+    assert_ne!(
+        rekey_response.unique_identifier, original_uid,
+        "ReKey: new key must have a different UID than the original"
+    );
     info!(
-        "ReKey succeeded: key uid={} (same UID, new key material)",
-        rekey_response.unique_identifier
+        "ReKey succeeded: new key uid={}, old key uid={} (deactivated)",
+        rekey_response.unique_identifier, original_uid
     );
 
     // Cleanup
