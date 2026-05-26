@@ -285,7 +285,7 @@ test.describe("Live endpoint responses match OpenAPI spec", () => {
         const response = await request.get(`${KMS_URL}/health`);
         expect(response.status()).toBe(200);
         expect(response.headers()["content-type"]).toMatch(/application\/json/);
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         expect(body).toHaveProperty("status", "UP");
         expect(body).toHaveProperty("latency_ms");
         expect(body).toHaveProperty("dependencies");
@@ -294,7 +294,7 @@ test.describe("Live endpoint responses match OpenAPI spec", () => {
     test("GET /version → 200 JSON string matching semver", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/version`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as string;
+        const body = (await response.json()) as string;
         expect(typeof body).toBe("string");
         expect(body).toMatch(/\d+\.\d+\.\d+/);
     });
@@ -302,7 +302,7 @@ test.describe("Live endpoint responses match OpenAPI spec", () => {
     test("GET /me → 200 {user: string}", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/me`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         expect(body).toHaveProperty("user");
         expect(typeof body.user).toBe("string");
     });
@@ -310,7 +310,7 @@ test.describe("Live endpoint responses match OpenAPI spec", () => {
     test("GET /server-info → 200 with version, fips_mode, hsm_instances, default_username", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/server-info`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         expect(body).toHaveProperty("version");
         expect(body).toHaveProperty("fips_mode");
         expect(body).toHaveProperty("hsm_instances");
@@ -322,28 +322,28 @@ test.describe("Live endpoint responses match OpenAPI spec", () => {
     test("GET /hsm/status → 200 JSON array", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/hsm/status`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as unknown[];
+        const body = (await response.json()) as unknown[];
         expect(Array.isArray(body)).toBe(true);
     });
 
     test("GET /access/owned → 200 JSON array", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/access/owned`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as unknown[];
+        const body = (await response.json()) as unknown[];
         expect(Array.isArray(body)).toBe(true);
     });
 
     test("GET /access/obtained → 200 JSON array", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/access/obtained`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as unknown[];
+        const body = (await response.json()) as unknown[];
         expect(Array.isArray(body)).toBe(true);
     });
 
     test("GET /access/create → 200 {has_create_permission: boolean}", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/access/create`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         expect(body).toHaveProperty("has_create_permission");
         expect(typeof body.has_create_permission).toBe("boolean");
     });
@@ -351,7 +351,7 @@ test.describe("Live endpoint responses match OpenAPI spec", () => {
     test("GET /access/privileged → 200 {has_privileged_access: boolean}", async ({ request }) => {
         const response = await request.get(`${KMS_URL}/access/privileged`);
         expect(response.status()).toBe(200);
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         expect(body).toHaveProperty("has_privileged_access");
         expect(typeof body.has_privileged_access).toBe("boolean");
     });
@@ -389,10 +389,7 @@ test.describe("HTTP method semantics", () => {
     });
 
     test("GET /openapi.yaml is idempotent — two requests return identical body", async ({ request }) => {
-        const [r1, r2] = await Promise.all([
-            request.get(`${KMS_URL}/openapi.yaml`),
-            request.get(`${KMS_URL}/openapi.yaml`),
-        ]);
+        const [r1, r2] = await Promise.all([request.get(`${KMS_URL}/openapi.yaml`), request.get(`${KMS_URL}/openapi.yaml`)]);
         expect(await r1.text()).toBe(await r2.text());
     });
 });
@@ -548,7 +545,7 @@ test.describe("REST Crypto API — key lifecycle", () => {
             headers: JSON_HEADERS,
         });
         expect(response.status()).toBe(200);
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         expect(body).toHaveProperty("kid");
         expect(typeof body.kid).toBe("string");
         expect((body.kid as string).length).toBeGreaterThan(0);
@@ -563,7 +560,7 @@ test.describe("REST Crypto API — key lifecycle", () => {
             headers: JSON_HEADERS,
         });
         expect(response.status()).toBe(200);
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         expect(body).toHaveProperty("kid");
         expect(body).toHaveProperty("kid_public");
         expect(body).toHaveProperty("kty", "EC");
@@ -585,7 +582,7 @@ test.describe("REST Crypto API — key lifecycle", () => {
             headers: JSON_HEADERS,
         });
         expect(createResp.status()).toBe(200);
-        const { kid } = await createResp.json() as { kid: string };
+        const { kid } = (await createResp.json()) as { kid: string };
 
         // Then destroy it
         const deleteResp = await request.delete(`${KMS_URL}/v1/crypto/keys/${kid}`);
@@ -650,10 +647,8 @@ test.describe("GET /swagger — advanced browser interactions", () => {
         await expect(page.locator(".swagger-ui .opblock-tag").first()).toBeVisible({ timeout: 30_000 });
 
         // Before clicking any tag, no operation blocks should be visible
-        // (Swagger UI renders tags collapsed by default)
-        const openOperations = page.locator(".swagger-ui .opblock-tag-section.is-open");
-        // This may or may not be present depending on swagger-ui defaultModelsExpandDepth;
-        // just verify the tag header is rendered without crashing
+        // (Swagger UI renders tags collapsed by default).
+        // Just verify the tag header is rendered without crashing.
         const tagCount = await page.locator(".swagger-ui .opblock-tag").count();
         expect(tagCount).toBeGreaterThan(0);
     });

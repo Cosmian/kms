@@ -514,17 +514,17 @@ graph LR
 46 tests validating the `/openapi.yaml` and `/swagger` endpoints exposed by the
 KMS server (not the Vite UI server). Tests run directly against `PLAYWRIGHT_KMS_URL`.
 
-| Test group | Count | What it verifies |
-| --- | --- | --- |
-| `GET /openapi.yaml — HTTP contract` | 3 | HTTP 200, `application/yaml` content-type, security headers, size bounds |
-| `GET /openapi.yaml — spec structure` | 5 | OpenAPI 3.1.0 declaration, all required tag groups, all documented paths, component schemas, security schemes |
-| `GET /swagger — HTTP contract` | 6 | HTTP 200, `text/html` content-type, `/openapi.yaml` reference, locally-served assets, strict CSP with `frame-ancestors`, `X-Frame-Options: DENY`, page title |
-| `GET /swagger — browser rendering` | 4 | Container mounts, spec title visible, tag sections rendered, expand tag, expand operation |
-| `Live endpoint responses match OpenAPI spec` | 12 | `/health`, `/version`, `/me`, `/server-info`, `/hsm/status`, `/access/owned`, `/access/obtained`, `/access/create`, `/access/privileged`, POST `/kmip/2_1` empty→422, `/download-cli` not 5xx, `/access/list/{nonexistent}` not 5xx |
-| `HTTP method semantics` | 3 | POST `/openapi.yaml` → 404/405, DELETE `/swagger` → 404/405, idempotent GET |
-| `KMIP protocol — version acceptance` | 5 | KMIP 2.1/1.4/1.3/1.0 Query → 200 `ResultStatus:Success`; KMIP 2.1 Create AES-256 → `UniqueIdentifier` |
-| `REST Crypto API — key lifecycle` | 4 | POST `/v1/crypto/keys` AES-256-GCM → kid; EC P-256 → kid+kid\_public; missing field → 400; DELETE → 204 |
-| `GET /swagger — advanced browser interactions` | 4 | Filter input, "Try it out" button, info block, tag count |
+| Test group                                     | Count | What it verifies                                                                                                                                                                                                                    |
+| ---------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /openapi.yaml — HTTP contract`            | 3     | HTTP 200, `application/yaml` content-type, security headers, size bounds                                                                                                                                                            |
+| `GET /openapi.yaml — spec structure`           | 5     | OpenAPI 3.1.0 declaration, all required tag groups, all documented paths, component schemas, security schemes                                                                                                                       |
+| `GET /swagger — HTTP contract`                 | 6     | HTTP 200, `text/html` content-type, `/openapi.yaml` reference, locally-served assets, strict CSP with `frame-ancestors`, `X-Frame-Options: DENY`, page title                                                                        |
+| `GET /swagger — browser rendering`             | 4     | Container mounts, spec title visible, tag sections rendered, expand tag, expand operation                                                                                                                                           |
+| `Live endpoint responses match OpenAPI spec`   | 12    | `/health`, `/version`, `/me`, `/server-info`, `/hsm/status`, `/access/owned`, `/access/obtained`, `/access/create`, `/access/privileged`, POST `/kmip/2_1` empty→422, `/download-cli` not 5xx, `/access/list/{nonexistent}` not 5xx |
+| `HTTP method semantics`                        | 3     | POST `/openapi.yaml` → 404/405, DELETE `/swagger` → 404/405, idempotent GET                                                                                                                                                         |
+| `KMIP protocol — version acceptance`           | 5     | KMIP 2.1/1.4/1.3/1.0 Query → 200 `ResultStatus:Success`; KMIP 2.1 Create AES-256 → `UniqueIdentifier`                                                                                                                               |
+| `REST Crypto API — key lifecycle`              | 4     | POST `/v1/crypto/keys` AES-256-GCM → kid; EC P-256 → kid+kid_public; missing field → 400; DELETE → 204                                                                                                                              |
+| `GET /swagger — advanced browser interactions` | 4     | Filter input, "Try it out" button, info block, tag count                                                                                                                                                                            |
 
 Key facts verified by these tests:
 
