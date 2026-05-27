@@ -589,4 +589,54 @@ certificatePolicies=2.5.29.32
             }])
         );
     }
+
+    /// Non-regression: the "OK" CNF (without CPS qualifier) must parse successfully.
+    #[test]
+    fn test_certificate_policies_cnf_ok() {
+        log_init(option_env!("RUST_LOG"));
+
+        let cnf_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../.github/scripts/test/certificatePolicies/v3_ca_ok.cnf"
+        );
+        let cnf_content = std::fs::read_to_string(cnf_path).unwrap();
+
+        let builder = X509::builder().unwrap();
+        let ctx = builder.x509v3_context(None, None);
+        let result = parse_v3_ca_from_str(&cnf_content, &ctx);
+        assert!(
+            result.is_ok(),
+            "v3_ca_ok.cnf should parse successfully, got: {:?}",
+            result.err()
+        );
+        // Should produce 3 extensions: basicConstraints, subjectKeyIdentifier, keyUsage
+        assert_eq!(result.unwrap().len(), 3);
+    }
+
+    /// Non-regression: the "KO" CNF (with CPS.1:url qualifier) FAILS with the old code
+    /// because `X509Extension::new_nid(None, ctx, CERTIFICATE_POLICIES, ...)` requires a
+    /// non-NULL OpenSSL config database to resolve numbered CPS qualifiers.
+    ///
+    /// This test documents the BROKEN behavior. When the fix is applied, this test will
+    /// BREAK (the parse will succeed instead of failing), proving the fix works.
+    #[test]
+    fn test_certificate_policies_cnf_ko_fails_without_fix() {
+        log_init(option_env!("RUST_LOG"));
+
+        let cnf_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../.github/scripts/test/certificatePolicies/v3_ca_ko.cnf"
+        );
+        let cnf_content = std::fs::read_to_string(cnf_path).unwrap();
+
+        let builder = X509::builder().unwrap();
+        let ctx = builder.x509v3_context(None, None);
+        let result = parse_v3_ca_from_str(&cnf_content, &ctx);
+
+        // OLD BEHAVIOR: parsing fails with "no config database"
+        assert!(
+            result.is_err(),
+            "v3_ca_ko.cnf should FAIL with old code (no config database error)"
+        );
+    }
 }

@@ -1,0 +1,7 @@
+# OK case: X.509v3 extensions WITHOUT certificatePolicies CPS qualifier.
+# This file is successfully parsed by both the old and new code paths.
+
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+subjectKeyIdentifier=hash
+keyUsage=crlSign,keyCertSign
