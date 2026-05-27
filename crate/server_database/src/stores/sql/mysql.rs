@@ -625,6 +625,57 @@ impl ObjectsStore for MySqlPool {
         )
         .await?)
     }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // MySQL uses JSON_EXTRACT with unquoting via JSON_UNQUOTE or ->> operator (MySQL 8+).
+        let sql = "\
+            SELECT DISTINCT objects.id, objects.state, objects.attributes \
+            FROM objects \
+            LEFT JOIN read_access ON objects.id = read_access.id \
+                AND read_access.userid = ? \
+            WHERE (objects.owner = ? OR read_access.userid = ?) \
+              AND ( \
+                objects.object->>'$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
+                OR objects.object->>'$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
+                OR objects.object->>'$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
+                OR objects.object->>'$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
+                OR objects.object->>'$.PGPKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
+              )";
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
+        let rows: Vec<(String, String, Value)> = conn
+            .exec(
+                sql,
+                (
+                    user,
+                    user,
+                    user,
+                    wrapping_key_uid,
+                    wrapping_key_uid,
+                    wrapping_key_uid,
+                    wrapping_key_uid,
+                    wrapping_key_uid,
+                ),
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
+        let mut out = Vec::new();
+        for (uid, state_str, attrs_val) in rows {
+            let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::Db(format!("invalid state: {e}")))?;
+            let attrs: Attributes = serde_json::from_value(attrs_val)
+                .map_err(|e| InterfaceError::Db(format!("invalid attributes: {e}")))?;
+            out.push((uid, state, attrs));
+        }
+        Ok(out)
+    }
 }
 
 #[async_trait(?Send)]
