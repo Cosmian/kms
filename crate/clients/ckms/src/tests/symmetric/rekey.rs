@@ -80,13 +80,14 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
     // and refresh it
     let id_2 = rekey_symmetric_key(&owner_client_conf_path, &id)?;
 
-    assert_eq!(id, id_2);
+    // Per KMIP spec, ReKey creates a new key with a new UID
+    assert_ne!(id, id_2);
 
-    // Export as default (JsonTTLV with Raw Key Format Type)
+    // Export the new key using its new UID
     export_key(ExportKeyParams {
         cli_conf_path: owner_client_conf_path,
         sub_command: "sym".to_owned(),
-        key_id: id,
+        key_id: id_2,
         key_file: tmp_path.join("aes_sym_2").to_str().unwrap().to_owned(),
         ..Default::default()
     })?;
@@ -99,8 +100,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
         new_object.key_block()?.key_bytes()?
     );
 
-    // Compare the attributes
-    assert_eq!(old_object.attributes()?, new_object.attributes()?);
+    // The new key must have the same cryptographic length
     assert_eq!(
         new_object.attributes()?.cryptographic_length.unwrap(),
         i32::try_from(AES_KEY_SIZE).unwrap()

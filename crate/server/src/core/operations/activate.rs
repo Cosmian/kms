@@ -64,7 +64,7 @@ pub(crate) async fn activate(
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
-        KmipOperation::GetAttributes,
+        KmipOperation::Activate,
         kms,
         user,
     ))

@@ -24,6 +24,7 @@ mod pkcs11;
 mod query;
 mod register;
 mod rekey;
+mod rekey_common;
 mod rekey_keypair;
 mod revoke;
 mod rng_retrieve;

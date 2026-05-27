@@ -4,8 +4,7 @@ cryptography>=42.0.0,<45.0.0
 # Freeze policy:
 #   - Pin jwcrypto to a known-good minor series (<2.0) to prevent accidental
 #     breakage from upstream major changes.
-#   - jwcrypto 1.5.7 (released 2026-04-07) introduced a regression where
-#     certain JWE operations fail when the ciphertext starts with '-' in
-#     argparse. Pin to 1.5.6 until the root cause is fully resolved upstream.
+#   - jwcrypto 1.5.7 (released 2026-04-07) fixes CVE-2026-39373 / GHSA-fjrm-76x2-c4q4
+#     (JWE ZIP decompression bomb — decompressed output size was not bounded).
 #   - cryptography is pinned to the 44.x series; 45.x has not been validated.
-jwcrypto==1.5.6
+jwcrypto==1.5.7

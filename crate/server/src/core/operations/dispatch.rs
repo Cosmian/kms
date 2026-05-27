@@ -177,7 +177,7 @@ async fn dispatch_inner(
                 ModifyAttributeResponse
             )
         }
-        "ReKey" => op!(ttlv, kms, user, ReKey, rekey, ReKeyResponse),
+        "ReKey" => op!(priv ttlv, kms, user, ReKey, rekey, ReKeyResponse),
         "ReKeyKeyPair" => {
             op!(priv ttlv, kms, user, ReKeyKeyPair, rekey_keypair, ReKeyKeyPairResponse)
         }
