@@ -24,6 +24,7 @@
 
 ## Testing
 
+- **ReKeyKeyPair FIPS gate**: All `rekey_keypair_*` test vectors gated behind `#[cfg(feature = "non-fips")]` — they use PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) unavailable in FIPS mode and EC/RSA vectors that lack per-key-type CryptographicUsageMask attributes required by FIPS validation.
 - **VAST Data integration test vector**: Updated to 16 steps (was 15) — added explicit `Revoke` of old key before `Destroy` since old key remains Active after ReKey. Sequence: DiscoverVersions → Create → AddAttribute (Name, ObjectGroup) → Activate → Locate → Get → GetAttributes → ReKey → Locate → Get → GetAttributes → Revoke old → Destroy old → Revoke new → Destroy new.
 - **ReKey Locate By Name**: Updated to 9 steps — asserts old key State=Active (not Deactivated) after ReKey, adds explicit Revoke(old) before Destroy(old).
 - **ReKey Deactivated Fails**: Updated to 7 steps — adds explicit Revoke(old) to transition it to Deactivated before verifying that a second ReKey on a non-Active key fails.
