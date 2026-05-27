@@ -5,6 +5,12 @@
 - Add `/openapi.yaml` endpoint serving the OpenAPI 3.1 spec for the KMS server, embedded at compile time via `include_str!`
 - Add `/swagger` endpoint serving a locally-vendored Swagger UI (swagger-ui-dist 5.18.2) with no external CDN dependency and a strict Content-Security-Policy header
 
+### Documentation
+
+- Add `documentation/docs/kmip_support/openapi.md` — dedicated OpenAPI/Swagger documentation page covering endpoints, Swagger UI usage, tooling integration, security headers, and spec versioning
+- Register new page in `documentation/mkdocs.yml` under KMIP Support → OpenAPI Specification and Swagger UI
+- Update `README.md` to mention OpenAPI 3.1 spec and Swagger UI in features and Why KMS sections
+
 ### Google CSE
 
 - Register `POST /google_cse/wrapprivatekey` endpoint (stub) in the Google CSE scope — was defined but not reachable
