@@ -27,6 +27,7 @@ pub mod health;
 pub mod kmip;
 pub mod ms_dke;
 pub mod root_redirect;
+pub mod swagger;
 pub mod ui_auth;
 mod utils;
 

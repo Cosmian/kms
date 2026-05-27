@@ -3,7 +3,7 @@
 > **Canonical file**: `.github/copilot-instructions.md` — `CLAUDE.md` and `AGENTS.md` at the repo root are symlinks to this file. **Always edit this file directly.**
 
 Cosmian KMS is a high-performance, source available **FIPS 140-3** compliant Key
-Management System written in **Rust**. It implements **KMIP 2.1** over HTTP/TLS
+Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
 and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
 ---

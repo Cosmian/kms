@@ -63,7 +63,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, root_redirect, swagger,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -726,8 +726,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         format!(
             "http{}://{}:{}",
             if tls_config.is_some() { "s" } else { "" },
-            kms_server.params.http_hostname,
-            kms_server.params.http_port
+            &kms_server.params.http_hostname,
+            &kms_server.params.http_port
         )
     });
 
@@ -835,6 +835,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .service(google_cse::get_status)
                 .service(google_cse::unwrap)
                 .service(google_cse::wrap)
+                .service(google_cse::wrapprivatekey)
                 .service(google_cse::certs)
                 .service(google_cse::delegate);
             app = app.service(google_cse_scope);
@@ -994,9 +995,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             );
         }
 
-        // Public endpoints (no authentication) — only health/version for connectivity checks.
-        // server-info is served from the authenticated default scope to prevent
-        // information disclosure (HSM model, slots, FIPS mode).
+        // Public endpoints (no authentication) — health/version for connectivity checks.
+        // API documentation (Swagger UI, OpenAPI schema) is served from the authenticated
+        // default scope to prevent information disclosure.
         app = app
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
@@ -1082,7 +1083,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
-            );
+            )
+            .service(swagger::get_openapi_yaml)
+            .service(swagger::get_swagger_ui)
+            .service(swagger::get_swagger_ui_js)
+            .service(swagger::get_swagger_ui_css);
 
         app.service(default_scope)
     })

@@ -22,7 +22,7 @@ The **Cosmian KMS** presents some unique features, such as:
 - **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), and [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
-- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), and [OpenTelemetry integration](./documentation/docs/configuration/logging.md).
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), and [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md) for interactive API exploration.
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
@@ -88,7 +88,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - Performance: built in Rust for low-latency crypto and high throughput.
 - Trust by design: FIPS 140-3 mode by default; non-FIPS for broader algorithm access when needed.
-- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, and rich client tooling.
+- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, rich client tooling, and a built-in [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md).
 - HSM-first: optional HSM key-wrapping and vendor modules (Utimaco, SmartCard-HSM, Proteccio, Crypt2pay…).
 - Cloud-native: official Docker image, simple horizontal scaling, and OpenTelemetry observability.
 - End-to-end: server, CLI, and web UI for a complete developer and operator experience.
