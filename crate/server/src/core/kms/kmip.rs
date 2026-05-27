@@ -656,10 +656,15 @@ impl KMS {
     /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
     ///
     /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-    pub(crate) async fn rekey(&self, request: ReKey, user: &str) -> KResult<ReKeyResponse> {
+    pub(crate) async fn rekey(
+        &self,
+        request: ReKey,
+        user: &str,
+        privileged_users: Option<Vec<String>>,
+    ) -> KResult<ReKeyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey");
 
-        Box::pin(operations::rekey(self, request, user))
+        Box::pin(operations::rekey(self, request, user, privileged_users))
             .instrument(span)
             .await
     }

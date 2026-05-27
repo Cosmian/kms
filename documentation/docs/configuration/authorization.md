@@ -105,6 +105,26 @@ However, when the KMS server is configured with a list of privileged users, obje
 - Regular users cannot grant or revoke creation permissions for others.
 - Privileged users cannot revoke object creation permissions from other privileged users.
 
+### Operations gated by the privileged-user restriction
+
+Because the following operations all result in a **new cryptographic object** being created in the KMS, they are all
+subject to the same privileged-user check:
+
+| Operation        | Reason                                                             |
+| ---------------- | ------------------------------------------------------------------ |
+| `Create`         | Creates a new symmetric key or secret data object                  |
+| `CreateKeyPair`  | Creates a new asymmetric key pair                                  |
+| `Import`         | Imports an external object into the KMS                            |
+| `Register`       | Registers an externally-generated object                           |
+| `Certify`        | May create a new key pair when issuing a certificate               |
+| `ReKey`          | Creates a new replacement symmetric key                            |
+| `ReKeyKeyPair`   | Creates a new replacement asymmetric key pair                      |
+
+!!! note
+    `ReKey` and `ReKeyKeyPair` also require the caller to hold the `Rekey` permission on the existing key being
+    re-keyed. Both conditions must be satisfied: the user must be allowed to create new objects **and** be allowed
+    to rekey the specific existing key.
+
 ## The wildcard user `*`
 
 !!! important "The Wildcard User: *"

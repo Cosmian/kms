@@ -350,6 +350,36 @@ pub struct ReKeyKeyPairResponse {
     pub public_key_template_attribute: Option<TemplateAttribute>,
 }
 
+impl From<ReKeyKeyPair> for kmip_2_1::kmip_operations::ReKeyKeyPair {
+    fn from(rekey: ReKeyKeyPair) -> Self {
+        Self {
+            private_key_unique_identifier: Some(rekey.private_key_unique_identifier.into()),
+            offset: rekey.offset,
+            common_attributes: rekey.common_template_attribute.map(Into::into),
+            private_key_attributes: rekey.private_key_template_attribute.map(Into::into),
+            public_key_attributes: rekey.public_key_template_attribute.map(Into::into),
+            common_protection_storage_masks: None,
+            private_protection_storage_masks: None,
+            public_protection_storage_masks: None,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ReKeyKeyPairResponse> for ReKeyKeyPairResponse {
+    type Error = KmipError;
+
+    fn try_from(
+        value: kmip_2_1::kmip_operations::ReKeyKeyPairResponse,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            private_key_unique_identifier: value.private_key_unique_identifier.to_string(),
+            public_key_unique_identifier: value.public_key_unique_identifier.to_string(),
+            private_key_template_attribute: None,
+            public_key_template_attribute: None,
+        })
+    }
+}
+
 /// 4.6 Derive Key
 /// This operation requests the server to derive a symmetric key or secret data from a key or
 /// secret data that is already known to the key management system.
@@ -2625,9 +2655,9 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // }
             Operation::Register(register) => Self::Register(Box::new(register.into())),
             Operation::ReKey(rekey) => Self::ReKey(rekey.into()),
-            // Operation::ReKeyKeyPair(rekey_key_pair) => {
-            //     Self::ReKeyKeyPair(rekey_key_pair.into())
-            // }
+            Operation::ReKeyKeyPair(rekey_key_pair) => {
+                Self::ReKeyKeyPair(Box::new(rekey_key_pair.into()))
+            }
             Operation::Revoke(revoke) => Self::Revoke(revoke.into()),
             Operation::RNGRetrieve(rng_retrieve) => Self::RNGRetrieve(rng_retrieve.into()),
             Operation::RNGSeed(rng_seed) => Self::RNGSeed(rng_seed.into()),
@@ -2782,11 +2812,13 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
             kmip_2_1::kmip_operations::Operation::RegisterResponse(register_response) => {
                 Self::RegisterResponse(register_response.try_into()?)
             }
-            // Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
-            //     Self::ReKeyKeyPairResponse(
-            //         rekey_key_pair_response.into(),
-            //     )
-            // }
+            kmip_2_1::kmip_operations::Operation::ReKeyKeyPairResponse(rekey_key_pair_response) => {
+                Self::ReKeyKeyPairResponse(
+                    rekey_key_pair_response
+                        .try_into()
+                        .context("ReKeyKeyPairResponse")?,
+                )
+            }
             kmip_2_1::kmip_operations::Operation::ReKeyResponse(rekey_response) => {
                 Self::ReKeyResponse(rekey_response.try_into().context("ReKeyResponse")?)
             }
