@@ -28,6 +28,14 @@ All notable changes to this project will be documented in this file.
 - `id-ce-noRevAvail` (RFC 9608, OID 2.5.29.56) auto-added to self-signed certs with no CRL DP; `authorityInfoAccess` (AIA) extension support fixed
 - `Certify` split into dedicated RFC submodules (`rfc9881.rs`, `rfc9909.rs`, `rfc9935.rs`, `rfc9608.rs`)
 
+#### ReKeyKeyPair
+
+- `ReKeyKeyPair` (KMIP §6.1.47): implemented for RSA, EC, Ed25519, X25519, ML-KEM/ML-DSA/SLH-DSA; shared lifecycle logic in `rekey_common.rs`; KMIP 1.4 wire-format support added ([#845](https://github.com/Cosmian/kms/issues/845))
+
+#### OpenAPI / Swagger UI
+
+- New `/openapi.yaml` endpoint serving the OpenAPI 3.1 spec, embedded at compile time; new `/swagger` endpoint with locally-vendored Swagger UI (swagger-ui-dist 5.18.2), no CDN dependency, strict CSP header, and relative server URL for correct origin binding
+
 #### Rebranding (Cosmian → Eviden)
 
 - Web UI: increased Eviden logo height, orange logo in dark mode, new `E`-letter favicon (`eviden-favicon.svg`)
@@ -38,8 +46,9 @@ All notable changes to this project will be documented in this file.
 - **COSMIAN-2026-016** — KEK wrapping bypass: `ModifyAttribute`/`SetAttribute`/`AddAttribute`/`Activate` auto-unwrapped KEK-wrapped keys and persisted plaintext back to DB; fixed by skipping unwrap for attribute-only operations ([#960](https://github.com/Cosmian/kms/issues/960))
 - **COSMIAN-2026-015** — KEK plaintext leak via UsageLimits: `decrypt.rs`/`sign.rs` persisted unwrapped key material when UsageLimits were configured; fixed by cloning before unwrapping ([#959](https://github.com/Cosmian/kms/pull/959))
 - **Attribute-mutation authorization bypass**: attribute ops (`SetAttribute`, `ModifyAttribute`, `AddAttribute`, `DeleteAttribute`) used relaxed `GetAttributes` permission; now require the correct per-operation permission ([#959](https://github.com/Cosmian/kms/pull/959))
-- **JOSE security** (H1/H2): validate GCM IV length (12 bytes) and auth tag length (16 bytes) on decrypt; reject `alg: "none"` per RFC 8725 §2.1 (M1); sanitize 403/404/500 error responses (M2) ([#929](https://github.com/Cosmian/kms/pull/929))
 - **HSM key permissions hardening**: admin-only Destroy; block `Destroy`/`Revoke` grants; `Locate` and `/access/owned` visibility filtering for non-admin users ([#942](https://github.com/Cosmian/kms/pull/942))
+- **COSMIAN-2026-017 / COSMIAN-2026-018**: `ReKey` and `Activate` now check ownership / `KmipOperation::Activate` permission — previously any user with any grant could activate or rotate another user's key
+- **ReKey / ReKeyKeyPair privileged-user enforcement**: both operations now respect `privileged_users` Create-permission gating, consistent with `Create`, `Import`, and `Register`
 
 ### 🐛 Bug Fixes
 
@@ -48,12 +57,14 @@ All notable changes to this project will be documented in this file.
 - Fix `ReKey`, `DeriveKey`, `ReCertify`, `Check` returning `Invalid_Message` for KMIP 1.4 clients ([#845](https://github.com/Cosmian/kms/issues/845))
 - Fix RFC 3394 vs RFC 5649 wrapping mismatch — default to `NISTKeyWrap` (RFC 3394) for `Get` with `KeyWrappingSpecification` ([#845](https://github.com/Cosmian/kms/issues/845))
 - Fix `DerivationParameters` deserialization — `Salt`, `DerivationData`, `IterationCount` were silently ignored due to missing `#[serde(rename_all = "PascalCase")]` ([#845](https://github.com/Cosmian/kms/issues/845))
+- Fix `ReKey` creating replacement key material in-place — now creates a new UID and links old/new via `ReplacementObjectLink`/`ReplacedObjectLink`; existing key State is **not** changed per KMIP 2.1 §6.1.46 ([#845](https://github.com/Cosmian/kms/issues/845))
 
 #### Google CSE
 
 - Fix `InvalidAudience` rejecting all CSE authorization tokens with jsonwebtoken 10.x ([#947](https://github.com/Cosmian/kms/issues/947))
 - Fix KACLS migration `rewrap`/`privilegedunwrap` flow — set expected audience `"kacls-migration"` for whitelist configs ([#947](https://github.com/Cosmian/kms/issues/947))
 - Add JWKS refresh-retry on validation failure to prevent permanent auth failures after periodic refresh errors ([#947](https://github.com/Cosmian/kms/issues/947))
+- Register `POST /google_cse/wrapprivatekey` endpoint in the Google CSE scope — was defined but not reachable
 
 #### Multi-HSM
 
@@ -66,12 +77,16 @@ All notable changes to this project will be documented in this file.
 
 - Fix `id-ce-noRevAvail` OID (`2.5.29.56`) was incorrectly set to `1.3.6.1.5.5.7.1.56`; `noRevAvail` now excluded from CA certs per RFC 9608 §3
 - Fix WASM empty-string `Option<String>` passed as `Some("")` causing `422 Object_Not_Found` for cleared form fields
+- Fix `certificatePolicies` extension failing with "no config database" when a CPS qualifier (`CPS:url` or `CPS.N:url`) is in `--certificate-extensions` CNF; replaced OpenSSL conf-based `X509Extension::new_nid` path with a native Rust DER builder (also handles numbered `CPS.1:`, `CPS.2:` syntax)
 
 #### Misc
 
 - Fix ECDSA verify returning HTTP 500 on corrupted signature instead of `{"valid": false}`
 - Fix Web UI `AccessGrant`/`AccessRevoke` hardcoded 8-operation list — replaced with WASM-exported dynamic list of all 21 operations ([#959](https://github.com/Cosmian/kms/pull/959))
 - Fix `KmipOperation::to_string()` serialisation — grant/revoke for attribute operations returned HTTP 400 `unknown variant 'set_attribute'` ([#959](https://github.com/Cosmian/kms/pull/959))
+- Fix `Activate` on `Destroyed` or `Compromised` objects returning `Object_Not_Found` — now returns the correct `Wrong_Key_Lifecycle_State` KMIP error
+- Fix `operation_types` enum values in `openapi.yaml` (were PascalCase; server expects lowercase due to `#[serde(rename_all = "lowercase")]`); fix `/access/create` and `/access/privileged` response schemas; document `POST /v1/crypto/keys` 400 response
+- Fix test temp-directory collisions: embed `std::process::id()` in path names to prevent SQLite `database is locked` failures under parallel `cargo test --workspace`
 
 ### ♻️ Refactor
 
@@ -93,6 +108,9 @@ All notable changes to this project will be documented in this file.
 - JOSE integration tests (`encrypt_decrypt`, `sign_verify`, `mac`, `error_cases`, `rfc_vectors`) + Python `jwcrypto` interop ([#929](https://github.com/Cosmian/kms/pull/929))
 - Access control privilege escalation vectors: self-grant, non-owner grant, destroy without permission ([#959](https://github.com/Cosmian/kms/pull/959))
 - Total: 134→148+ vectors, 1 127→1 154+ tests
+- 24 new `ReKeyKeyPair` test vectors (RSA, EC, PQC, edge cases); 3 KMIP 1.4 protocol vectors; access-control vectors for ReKey/Activate privilege escalation ([#845](https://github.com/Cosmian/kms/issues/845))
+- `certificatePolicies` positive and negative unit tests (`test_certificate_policies_with_cps_qualifier`, `test_old_new_nid_fails_for_cps_syntax`); bash regression script `.github/scripts/test/test_certificate_policies.sh`
+- Playwright E2E suite `swagger.spec.ts`: OpenAPI spec structure, HTTP contracts, CSP headers, locally-served assets, live server cross-validation
 
 ### 📚 Documentation
 
@@ -102,6 +120,8 @@ All notable changes to this project will be documented in this file.
 - New `documentation/docs/integrations/storage/vast_data.md` — VAST Data setup, KEK/DEK workflow, troubleshooting ([#845](https://github.com/Cosmian/kms/issues/845))
 - JOSE security audit report: `documentation/docs/certifications_and_compliance/audit/jose_security_audit_2026_05.md` ([#929](https://github.com/Cosmian/kms/pull/929))
 - `authorization.md` updated with all 22 delegable operations including attribute ops; `TESTS.md` added with test architecture, mermaid diagrams, and vector format spec ([#959](https://github.com/Cosmian/kms/pull/959))
+- New `documentation/docs/kmip_support/openapi.md` — OpenAPI/Swagger UI usage, endpoints, tooling integration, security headers, and spec versioning; registered in `documentation/mkdocs.yml` under KMIP Support; `README.md` updated with OpenAPI 3.1 and Swagger UI mentions
+- VAST Data integration doc (`vast_data.md`) updated: workflow description and sequence diagram corrected — old key remains Active after `ReKey`; `Revoke` + `Destroy` must be called explicitly on both old and new keys
 
 ### ⚙️ CI
 
