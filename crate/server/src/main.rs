@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cosmian_kms_server::{
     config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
     core::KMS,
-    openssl_providers::safe_openssl_version_info,
+    openssl_providers::{cpu_features_info, safe_openssl_version_info},
     result::{KResult, KResultHelper},
 };
 use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
@@ -122,6 +122,7 @@ async fn run() -> KResult<()> {
         env!("CARGO_PKG_VERSION")
     );
     info!("OpenSSL version: {ossl_version}, in {ossl_dir}, number: {ossl_number:x}");
+    info!("{}", cpu_features_info());
 
     // For an explanation of OpenSSL providers,
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
