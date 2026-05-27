@@ -3,7 +3,7 @@ use std::{cell::RefCell, str::FromStr};
 use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_client_utils::{
     attributes_utils::{build_selected_attribute, parse_selected_attributes_flatten},
-    certificate_utils::{Algorithm, build_certify_request},
+    certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
@@ -41,8 +41,9 @@ use cosmian_kms_client_utils::{
                 DeriveKeyResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse,
                 GetAttributes, GetAttributesResponse, Hash, HashResponse, ImportResponse,
                 LocateResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
-                ReKey, ReKeyResponse, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
-                SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+                ReCertifyResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
+                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
+                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -2145,6 +2146,39 @@ pub fn certify_ttlv_request(
 
 wasm_response_parser!(parse_certify_ttlv_response, CertifyResponse);
 
+/// Build a KMIP `ReCertify` TTLV request.
+///
+/// Unlike `certify_ttlv_request` with an existing certificate UID (which
+/// replaces in-place), this sends the dedicated KMIP `ReCertify` operation
+/// that creates a **new certificate** with a fresh UID and links the old and
+/// new certificates via `ReplacedObjectLink` / `ReplacementObjectLink`.
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn re_certify_ttlv_request(
+    certificate_id_to_re_certify: String,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    number_of_days: usize,
+    tags: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let issuer_private_key_id = none_if_empty(issuer_private_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
+    let request = build_re_certify_request(
+        vendor_id,
+        &certificate_id_to_re_certify,
+        &issuer_private_key_id,
+        &issuer_certificate_id,
+        number_of_days,
+        &tags,
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_re_certify_ttlv_response, ReCertifyResponse);
+
 // Attributes request
 #[wasm_bindgen]
 pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
@@ -2464,6 +2498,24 @@ pub fn rekey_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue>
 }
 
 wasm_response_parser!(parse_rekey_ttlv_response, ReKeyResponse);
+
+// ── ReKey Key Pair (asymmetric key rotation) ─────────────────────────────────
+
+/// Build a KMIP `ReKeyKeyPair` TTLV request for an asymmetric key pair.
+#[wasm_bindgen]
+pub fn rekey_keypair_ttlv_request(
+    private_key_unique_identifier: String,
+) -> Result<JsValue, JsValue> {
+    let request = ReKeyKeyPair {
+        private_key_unique_identifier: Some(UniqueIdentifier::TextString(
+            private_key_unique_identifier,
+        )),
+        ..ReKeyKeyPair::default()
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_rekey_keypair_ttlv_response, ReKeyKeyPairResponse);
 
 // ── Rotation policy helpers ──────────────────────────────────────────────────
 

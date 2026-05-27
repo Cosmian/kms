@@ -5,7 +5,9 @@ use std::{
 };
 
 use actix_web::{
-    App, HttpResponse, HttpServer, get,
+    App, HttpResponse, HttpServer,
+    dev::ServerHandle,
+    get,
     web::{self, Data},
 };
 use oauth2::{
@@ -176,7 +178,11 @@ impl LoginState {
         // URL.  Use the port that was actually embedded in the redirect URL at
         // construction time (respects OAUTH2_REDIRECT_URL_PORT).
         let port = self.redirect_url.port_or_known_default().unwrap_or(17_899);
-        let auth_parameters = Self::receive_authorization_parameters(port)?;
+        let (auth_parameters, server_handle) = Self::receive_authorization_parameters(port)?;
+        // Gracefully stop the redirect listener so the port is freed immediately
+        // rather than lingering in TIME_WAIT.  This prevents port-binding
+        // failures when the test suite is run multiple times in quick succession.
+        server_handle.stop(true).await;
 
         // Once the user has been redirected to the redirect URL, you'll have access to
         // the authorization code. For security reasons, your code should verify
@@ -213,18 +219,21 @@ impl LoginState {
 
     /// This function starts the server on the given `port` and waits for the
     /// authorization code to be received from the browser window. Once the
-    /// code is received, the server is closed and the authorization code is
-    /// returned.
+    /// code is received, the server handle is returned alongside the parameters
+    /// so the caller can gracefully stop the server and free the port.
     ///
     /// The port must match the one embedded in the redirect URL that was sent
     /// to the Identity Provider during the authorization request.
     #[allow(clippy::unwrap_used)]
-    fn receive_authorization_parameters(port: u16) -> HttpClientResult<HashMap<String, String>> {
+    fn receive_authorization_parameters(
+        port: u16,
+    ) -> HttpClientResult<(HashMap<String, String>, ServerHandle)> {
         let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
+        let (server_handle_tx, server_handle_rx) = mpsc::sync_channel::<ServerHandle>(1);
         // Spawn the server into a runtime
         let tokio_handle = tokio::runtime::Handle::current();
         let _task = thread::spawn(move || {
-            tokio_handle.block_on({
+            tokio_handle.block_on(async move {
                 // server.await
                 #[get("/authorization")]
                 async fn authorization_handler(
@@ -238,18 +247,26 @@ impl LoginState {
                     HttpResponse::Ok().body("You can now close this window.")
                 }
 
-                HttpServer::new(move || {
+                let server = HttpServer::new(move || {
                     App::new()
                         .app_data(Data::new(auth_params_tx.clone()))
                         .service(authorization_handler)
                 })
                 .bind(("127.0.0.1", port))?
-                .run()
+                .run();
+                // Send the handle before awaiting so the outer thread can stop
+                // the server once the first callback has been received.
+                drop(server_handle_tx.send(server.handle()));
+                server.await
             })
         });
-        auth_params_rx.recv().map_err(|e| {
+        let params = auth_params_rx.recv().map_err(|e| {
             HttpClientError::Default(format!("authorization code not received: {e:?}"))
-        })
+        })?;
+        let handle = server_handle_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| HttpClientError::Default(format!("server handle not received: {e:?}")))?;
+        Ok((params, handle))
     }
 }
 

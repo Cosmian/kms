@@ -222,6 +222,18 @@ impl RekeyOperation for SymmetricRekey {
             .as_str()
             .context("Rekey: the symmetric key unique identifier must be a string")?;
 
+        // HSM-managed keys cannot be re-keyed via KMIP: they have no KMIP attribute
+        // storage and are often non-extractable (CKA_EXTRACTABLE = false).
+        // Use PKCS#11 vendor tools for HSM key lifecycle management.
+        if uid_or_tags.starts_with("hsm::") {
+            return Err(KmsError::NotSupported(
+                "Re-Key is not supported for HSM-managed keys. \
+                 Use PKCS#11 vendor tools or the HSM administration console \
+                 to manage HSM key lifecycle."
+                    .to_owned(),
+            ));
+        }
+
         for owm in retrieve_eligible_keys(kms, uid_or_tags, ObjectType::SymmetricKey).await? {
             if !owm
                 .user_can_perform_operation(user, &KmipOperation::Rekey, kms)

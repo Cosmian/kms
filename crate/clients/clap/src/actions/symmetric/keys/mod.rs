@@ -2,14 +2,14 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 
 use self::{
-    create_key::CreateKeyAction, destroy_key::DestroyKeyAction,
-    get_rotation_policy::GetRotationPolicyAction, rekey::ReKeyAction, revoke_key::RevokeKeyAction,
-    set_rotation_policy::SetRotationPolicyAction,
+    create_key::CreateKeyAction, destroy_key::DestroyKeyAction, rekey::ReKeyAction,
+    revoke_key::RevokeKeyAction,
 };
 use crate::{
     actions::shared::{
-        ActivateKeyAction, ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction,
-        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
+        ActivateKeyAction, ExportSecretDataOrKeyAction, GetRotationPolicyAction,
+        ImportSecretDataOrKeyAction, SetRotationPolicyAction, UnwrapSecretDataOrKeyAction,
+        WrapSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };

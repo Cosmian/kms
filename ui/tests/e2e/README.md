@@ -123,6 +123,46 @@ graph LR
 
 Covers ECIES encryption and ECDSA signing on NIST P-256.
 
+## Key Rotation Policy
+
+_PQC tests skipped in FIPS mode (`PLAYWRIGHT_FIPS_MODE=true`)._
+
+### rotation-policy
+
+Covers set-rotation-policy, get-rotation-policy and rekey for all four key types:
+symmetric (AES), RSA, EC (P-256), and PQC (ML-DSA-44).
+
+```mermaid
+graph LR
+    subgraph Symmetric
+        A1[Create AES key] --> A2[Set rotation policy\ninterval=86400, name=sym-keyset]
+        A2 --> A3[Get rotation policy\nassert card + interval value]
+        A1 --> A4[Re-key → new UID ≠ old]
+    end
+    subgraph RSA
+        B1[Create RSA pair] --> B2[Set rotation policy\ninterval=604800]
+        B2 --> B3[Get rotation policy]
+        B1 --> B4[Re-key → new priv + pub UIDs]
+    end
+    subgraph EC
+        C1[Create EC P-256 pair] --> C2[Set rotation policy\ninterval=2592000]
+        C2 --> C3[Get rotation policy]
+        C1 --> C4[Re-key → new priv + pub UIDs]
+    end
+    subgraph "PQC (non-FIPS)"
+        D1[Create ML-DSA-44 pair] --> D2[Set rotation policy]
+        D2 --> D3[Get rotation policy]
+        D1 --> D4[Re-key → new priv + pub UIDs]
+    end
+```
+
+Tests:
+
+- **set rotation policy** — configure interval, optional offset and keyset name; assert "Rotation policy set successfully"
+- **get rotation policy (with policy)** — assert details card is visible and contains the configured interval
+- **get rotation policy (no policy)** — assert "No rotation policy configured" message for a fresh key (symmetric only)
+- **re-key** — rotate key material and verify the returned UID is a valid UUID different from the original (keypair variants assert both private and public UIDs)
+
 ## Certificates
 
 ### certificates-flow

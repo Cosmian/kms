@@ -1,9 +1,3 @@
-## Bug Fixes
-
-- Fix MySQL test race: vector MySQL tests reuse the shared `ONCE` server when `KMS_TEST_DB=mysql`, preventing two servers with `clear_database=true` from wiping each other's data ([#968](https://github.com/Cosmian/kms/pull/968))
-- Fix `test_neg_recertify_nonexistent` vector: update `assert_error_contains` to match the actual "object not found" error now that `ReCertify` is fully implemented ([#968](https://github.com/Cosmian/kms/pull/968))
-- Fix `test_certify_a_csr_with_extensions` and `test_certify_a_public_key_test_with_extensions`: update `[v3_ca]` CRL URL in `test_data/certificates/openssl/ext.cnf` to match what the test expects (`https://package.cosmian.com/kms/crl_tests/intermediate.crl.pem`) ([#968](https://github.com/Cosmian/kms/pull/968))
-
 ## Features
 
 - Implement KMIP ReKey operation for symmetric keys with name transfer per §4.4 ([#968](https://github.com/Cosmian/kms/pull/968))
