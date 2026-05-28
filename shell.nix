@@ -61,7 +61,7 @@ let
       ;
     static = true;
   };
-  # Import non-FIPS OpenSSL 3.6.0 - will be used for non-FIPS builds
+  # Import non-FIPS OpenSSL 3.6.2 - will be used for non-FIPS builds
   openssl360NonFips = import ./nix/openssl.nix {
     inherit (pkgs)
       stdenv
@@ -71,10 +71,10 @@ let
       coreutils
       ;
     static = false;
-    version = "3.6.0";
+    version = "3.6.2";
     enableLegacy = true;
-    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.0.tar.gz";
-    sha256SRI = "sha256-tqX0S362nj+jXb8VUkQFtEg3pIHUPYHa3d4/8h/LuOk=";
+    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
+    sha256SRI = "sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=";
     expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
   };
   # Shared (dynamic) build for components that require .so (e.g., SoftHSM2)
@@ -98,7 +98,7 @@ let
   softhsmDrv = import ./nix/softhsm2.nix {
     inherit pkgs;
     # Use FIPS shared OpenSSL when running in FIPS variant so SoftHSM2 links to it
-    # For non-FIPS, use OpenSSL 3.6.0 instead of pkgs.openssl (3.3.2)
+    # For non-FIPS, use OpenSSL 3.6.2 instead of pkgs.openssl (3.3.2)
     openssl = if variant == "fips" then openssl312FipsShared else openssl360NonFips;
   };
 in
@@ -251,24 +251,24 @@ pkgs.mkShell {
         echo "LD_PRELOAD set to bootstrap OpenSSL FIPS providers"
       fi
     else
-      # Use OpenSSL 3.6.0 for non-FIPS builds (matches server build)
+      # Use OpenSSL 3.6.2 for non-FIPS builds (matches server build)
       OPENSSL_PKG_PATH="${openssl360NonFips}"
 
       export OPENSSL_DIR="$OPENSSL_PKG_PATH"
       export OPENSSL_LIB_DIR="$OPENSSL_PKG_PATH/lib"
       export OPENSSL_INCLUDE_DIR="$OPENSSL_PKG_PATH/include"
 
-      # Use the OpenSSL 3.6.0 config
+      # Use the OpenSSL 3.6.2 config
       export OPENSSL_CONF="$OPENSSL_PKG_PATH/ssl/openssl.cnf"
       export OPENSSL_MODULES="$OPENSSL_PKG_PATH/lib/ossl-modules"
 
-      echo "Using OpenSSL 3.6.0 (non-FIPS): $OPENSSL_PKG_PATH"
+      echo "Using OpenSSL 3.6.2 (non-FIPS): $OPENSSL_PKG_PATH"
       echo "  OPENSSL_CONF=$OPENSSL_CONF"
       echo "  OPENSSL_MODULES=$OPENSSL_MODULES"
 
       # Verify non-FIPS OpenSSL library presence
       if [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.so.3" ] || [ -f "$OPENSSL_PKG_PATH/lib/libcrypto.3.dylib" ]; then
-        echo "OpenSSL 3.6.0 libcrypto library found"
+        echo "OpenSSL 3.6.2 libcrypto library found"
       else
         echo "WARNING: OpenSSL libcrypto library NOT found at $OPENSSL_PKG_PATH/lib"
       fi

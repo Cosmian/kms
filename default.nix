@@ -74,7 +74,7 @@ let
     url = "https://package.cosmian.com/nixpkgs/8b27c1239e5c421a2bbc2c65d52e4a6fbf2ff296.tar.gz";
     sha256 = "sha256-CqCX4JG7UiHvkrBTpYC3wcEurvbtTADLbo3Ns2CEoL8=";
   };
-  # Bring a modern Rust toolchain (1.90.0) via oxalica/rust-overlay for Cargo edition2024 support
+  # Bring a modern Rust toolchain (1.91.0) via oxalica/rust-overlay for Cargo edition2024 support
   rustOverlay = import (
     builtins.fetchTarball {
       # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
@@ -87,7 +87,7 @@ let
     config.allowUnfree = true;
   };
   # Use minimal Rust profile (no docs) and add only needed components to save disk space
-  rustToolchain = pkgsWithRust.rust-bin.stable."1.90.0".minimal.override {
+  rustToolchain = pkgsWithRust.rust-bin.stable."1.91.0".minimal.override {
     extensions = [
       "rustfmt"
       "clippy"
@@ -96,7 +96,7 @@ let
   };
 
   # For Linux, pin nixpkgs 22.05 (glibc 2.34) to get its stdenv while using a modern
-  # Rust toolchain (1.90.0) from rust-overlay. Rocky Linux 9 compatibility requires GLIBC <= 2.34.
+  # Rust toolchain (1.91.0) from rust-overlay. Rocky Linux 9 compatibility requires GLIBC <= 2.34.
   # Hardcoded URL+hash for full determinism — override via `--arg pkgs234 ...` if needed.
   pkgs234 =
     if pkgs.stdenv.isLinux then
@@ -374,7 +374,7 @@ rec {
   # Export cargo-packager and cargo-generate-rpm tools for scripts and dev shell
   inherit cargoPackagerTool cargoGenerateRpmTool;
 
-  # Export the pinned Rust toolchain (1.90.0) so scripts can use a modern Cargo (edition2024)
+  # Export the pinned Rust toolchain (1.91.0) so scripts can use a modern Cargo (edition2024)
   inherit rustToolchain;
 
   # Default to FIPS variant

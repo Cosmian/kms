@@ -59,6 +59,15 @@ jobs:
             features: fips
 
     steps:
+      - name: Manual cleanup for extra space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
       - name: Nix installation
         uses: cachix/install-nix-action@v31
         with:
@@ -160,6 +169,15 @@ jobs:
             features: fips
 
     steps:
+      - name: Manual cleanup for extra space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
       - name: Nix installation
         uses: cachix/install-nix-action@v31
         with:

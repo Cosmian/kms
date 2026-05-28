@@ -213,7 +213,7 @@ pub enum CryptographicAlgorithm {
     X25519MLKEM768 = 0x8880_0006,
     X448MLKEM1024 = 0x8880_0007,
     // SecP256r1MLKEM768 (0x8880_0008) and SecP384r1MLKEM1024 (0x8880_0009)
-    // are not supported: OpenSSL 3.6.0 cannot serialize/deserialize their private keys.
+    // are not supported: OpenSSL 3.6.2 cannot serialize/deserialize their private keys.
 }
 
 impl CryptographicAlgorithm {

@@ -34,7 +34,7 @@ This document provides a comprehensive guide for integrating MySQL Enterprise wi
 | **MySQL Enterprise Server** | 8.4.7-commercial | Generic Linux x86_64 binary (glibc 2.28) |
 | **Eviden KMS** | 5.14+ | KMIP 1.1 server with socket support |
 | **Operating System** | Ubuntu 24.04 LTS (Noble) | Debian 10+, RHEL 8+, or any modern Linux (x86_64) |
-| **OpenSSL** | 3.6.0 (+ 3.1.2 FIPS provider) | For TLS/mTLS communication |
+| **OpenSSL** | 3.6.2 (+ 3.1.2 FIPS provider) | For TLS/mTLS communication |
 | **Network** | Dedicated subnet | Low-latency, isolated lab network |
 
 ### Network Architecture

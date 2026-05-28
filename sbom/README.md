@@ -9,7 +9,7 @@ An SBOM is a formal record containing the details and supply chain relationships
 Report locations:
 
 - `sbom/openssl_3_1_2/` — SBOM + vulnerability scan for the OpenSSL 3.1.2 (FIPS) derivation
-- `sbom/openssl_3_6_0/` — SBOM + vulnerability scan for the OpenSSL 3.6.0 (non-FIPS) derivation
+- `sbom/openssl_3_6_2/` — SBOM + vulnerability scan for the OpenSSL 3.6.2 (non-FIPS) derivation
 - `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the KMS server derivation
     - `<variant>`: `fips` | `non-fips`
     - `<link>`: `static` | `dynamic`
@@ -206,8 +206,8 @@ bash .github/scripts/nix.sh sbom
 # OpenSSL 3.1.2 derivation only (writes under sbom/openssl_3_1_2)
 bash .github/scripts/nix.sh sbom --target openssl_3_1_2
 
-# OpenSSL 3.6.0 derivation only (writes under sbom/openssl_3_6_0)
-bash .github/scripts/nix.sh sbom --target openssl_3_6_0
+# OpenSSL 3.6.2 derivation only (writes under sbom/openssl_3_6_2)
+bash .github/scripts/nix.sh sbom --target openssl_3_6_2
 
 # All server combinations (writes under sbom/server/<variant>/<link>)
 bash .github/scripts/nix.sh sbom --target server

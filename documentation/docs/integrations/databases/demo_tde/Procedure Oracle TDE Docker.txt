@@ -169,7 +169,7 @@ EXIT
 
 # ── STEP 1 — Prerequisites ────────────────────────────────────────────────────
 #
-# Download the CLI package for Linux amd64 (non-FIPS, static, OpenSSL 3.6.0)
+# Download the CLI package for Linux amd64 (non-FIPS, static, OpenSSL 3.6.2)
 # from https://package.cosmian.com/kms/5.18.0/deb/amd64/non-fips/static/cosmian-kms-cli-non-fips-static-openssl_5.18.0_amd64.deb:
 #
 #   https://github.com/Cosmian/kms/releases/tag/5.18.0

@@ -99,7 +99,7 @@ mod tests {
                 }
             }
 
-            // Fallback to cargo-built non-fips prefix under target/openssl-non-fips-3.6.0-<os>-<arch>
+            // Fallback to cargo-built non-fips prefix under target/openssl-non-fips-3.6.2-<os>-<arch>
             let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let workspace_root = crate_dir
                 .parent()
@@ -110,7 +110,7 @@ mod tests {
             let arch = std::env::consts::ARCH;
             let main_prefix = workspace_root
                 .join("target")
-                .join(format!("openssl-non-fips-3.6.0-{os}-{arch}"));
+                .join(format!("openssl-non-fips-3.6.2-{os}-{arch}"));
             let conf_path = main_prefix.join("ssl").join("openssl.cnf");
             let modules_dir = main_prefix.join("lib").join("ossl-modules");
             if conf_path.exists() && modules_dir.exists() {
@@ -156,12 +156,12 @@ mod tests {
                         }
                     }
                 } else {
-                    // Fall back to cargo-built FIPS main prefix under target/openssl-3.6.0-<os>-<arch>
+                    // Fall back to cargo-built FIPS main prefix under target/openssl-3.6.2-<os>-<arch>
                     let os = std::env::consts::OS;
                     let arch = std::env::consts::ARCH;
                     let main_prefix = workspace_root
                         .join("target")
-                        .join(format!("openssl-3.6.0-{os}-{arch}"));
+                        .join(format!("openssl-3.6.2-{os}-{arch}"));
                     let openssl_conf = main_prefix.join("ssl").join("openssl.cnf");
                     let modules_dir = main_prefix.join("lib").join("ossl-modules");
                     if !conf_is_set {
@@ -177,7 +177,7 @@ mod tests {
                 let arch = std::env::consts::ARCH;
                 let main_prefix = workspace_root
                     .join("target")
-                    .join(format!("openssl-3.6.0-{os}-{arch}"));
+                    .join(format!("openssl-3.6.2-{os}-{arch}"));
                 let openssl_conf = main_prefix.join("ssl").join("openssl.cnf");
                 let modules_dir = main_prefix.join("lib").join("ossl-modules");
                 if !conf_is_set {

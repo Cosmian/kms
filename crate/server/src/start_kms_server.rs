@@ -14,7 +14,6 @@ use std::{
 
 use actix_cors::Cors;
 use actix_files::Files;
-use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_identity::IdentityMiddleware;
 use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
@@ -758,41 +757,26 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
     // The test-server helper leaves that field at `None` so parallel unit tests are never
-    // throttled by the governor. Production configs set it to 100 (req/s, burst 300).
+    // throttled by the rate limiter. Production configs set it to 100 (req/s, burst 300).
     let rate_limit_enabled = kms_server.params.rate_limit_per_second.is_some();
-    let governor_conf = if let Some(rps) = kms_server.params.rate_limit_per_second {
-        GovernorConfigBuilder::default()
-            .requests_per_second(u64::from(rps))
-            .burst_size(rps.saturating_mul(3))
-            .finish()
-            .or_else(|| {
-                GovernorConfigBuilder::default()
-                    .requests_per_second(10)
-                    .burst_size(30)
-                    .finish()
-            })
-            .ok_or_else(|| {
-                KmsError::ServerError("Failed to build rate-limiter configuration".to_owned())
-            })?
-    } else {
-        // Placeholder config when rate limiting is disabled; permissive mode never
-        // blocks requests, and the Condition wrapper also ensures the middleware is
-        // never actually invoked.
-        GovernorConfigBuilder::default()
-            .permissive(true)
-            .finish()
-            .ok_or_else(|| {
-                KmsError::ServerError(
-                    "Failed to build placeholder rate-limiter configuration".to_owned(),
-                )
-            })?
-    };
+    // When rate limiting is disabled the Condition wrapper short-circuits, so we
+    // provide a permissive fallback config that is never actually invoked.
+    let rate_limiter_config = crate::middlewares::RateLimiterConfig::new(
+        u64::from(kms_server.params.rate_limit_per_second.unwrap_or(u32::MAX)),
+        kms_server
+            .params
+            .rate_limit_per_second
+            .map_or(u32::MAX, |rps| rps.saturating_mul(3)),
+    );
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
-            .wrap(Condition::new(rate_limit_enabled, Governor::new(&governor_conf)))
+            .wrap(Condition::new(
+                rate_limit_enabled,
+                crate::middlewares::RateLimiterMiddleware::new(&rate_limiter_config),
+            ))
             .wrap(
                 DefaultHeaders::new()
                     // Prevent the UI from being embedded in a foreign frame (clickjacking)
@@ -816,7 +800,20 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // 64 MB — realistic maximum for KMIP payloads including wrapped keys and certificates.
             // The previous 10 GB limit allowed unauthenticated clients to exhaust server RAM (DoS).
             .app_data(PayloadConfig::new(64 * 1024 * 1024))
-            .app_data(JsonConfig::default().limit(64 * 1024 * 1024));
+            .app_data(
+                JsonConfig::default()
+                    .limit(64 * 1024 * 1024)
+                    .error_handler(|err, _req| {
+                        let message = format!("{err}");
+                        actix_web::error::InternalError::from_response(
+                            err,
+                            HttpResponse::BadRequest()
+                                .content_type("text/plain")
+                                .body(message),
+                        )
+                        .into()
+                    }),
+            );
 
         if kms_server_for_http.params.kms_public_url.is_some()
             && kms_server_for_http.params.google_cse.google_cse_enable

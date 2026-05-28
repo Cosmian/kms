@@ -3,9 +3,9 @@
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SPDXRef-nix-store-6vbdsrm7rs8z2bsghixrdic0mmlx0f3r-openssl-3.6.0.drv",
-  "documentNamespace": "sbomnix://5590553d-a96d-4d8d-801c-b086d8545fdb",
+  "documentNamespace": "sbomnix://bb89ea3b-6596-49ec-b6d6-e0afedc7f4ac",
   "creationInfo": {
-    "created": "2026-03-25T20:39:41.099447+01:00",
+    "created": "2026-05-28T16:29:26.612443+02:00",
     "creators": [
       "Tool: sbomnix-1.7.3"
     ]

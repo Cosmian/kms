@@ -616,8 +616,8 @@ The following table shows the OpenSSL versions used by **Cosmian KMS** variants:
 
 | OpenSSL Linkage | FIPS                                                                   | Non‑FIPS                                                         |
 | --------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Static          | Linkage: OpenSSL 3.6.0; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.0; runtime uses default/legacy providers    |
-| Dynamic         | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2  | Linkage: OpenSSL 3.6.0; ships `libssl`/`libcrypto` and providers |
+| Static          | Linkage: OpenSSL 3.6.2; runtime loads FIPS provider from OpenSSL 3.1.2 | Linkage: OpenSSL 3.6.2; runtime uses default/legacy providers    |
+| Dynamic         | Linkage: OpenSSL 3.1.2; ships FIPS configs and provider OpenSSL 3.1.2  | Linkage: OpenSSL 3.6.2; ships `libssl`/`libcrypto` and providers |
 
 Notes:
 
@@ -631,7 +631,7 @@ The non-FIPS mode can be enabled by passing the `--features non-fips` flag to `c
 The `interop` feature enables KMIP interoperability test operations, which are disabled by default for security reasons.
 These operations should only be enabled during testing: `cargo build --features interop` or `cargo test --features interop`.
 
-All builds link against OpenSSL 3.6.0. FIPS variants ship the FIPS provider and `fipsmodule.cnf`; non‑FIPS variants use the default/legacy providers. For non‑Nix development, ensure OpenSSL 3.6.0+ is available.
+All builds link against OpenSSL 3.6.2. FIPS variants ship the FIPS provider and `fipsmodule.cnf`; non‑FIPS variants use the default/legacy providers. For non‑Nix development, ensure OpenSSL 3.6.2+ is available.
 
 #### 🖥️ Linux or macOS
 
@@ -660,7 +660,7 @@ Follow the prerequisites below, or use the provided PowerShell helpers.
 Prerequisites (manual):
 
 1. Install Visual Studio (C++ workload + clang), Strawberry Perl, and `vcpkg`.
-2. Install OpenSSL 3.6.0 with vcpkg:
+2. Install OpenSSL 3.6.2 with vcpkg:
 
 In this project root directory, run:
 
