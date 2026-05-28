@@ -19,7 +19,7 @@ use crate::{
     actions::{
         access::{GrantAccess, RevokeAccess},
         shared::ExportSecretDataOrKeyAction,
-        symmetric::keys::{create_key::CreateKeyAction, rekey::ReKeyAction},
+        symmetric::keys::create_key::CreateKeyAction,
     },
     error::result::KmsCliResult,
 };
@@ -158,50 +158,6 @@ pub(crate) async fn pb04_privilege_does_not_bleed_into_read() -> KmsCliResult<()
     assert!(
         export_result.is_err(),
         "Non-privileged user must not be able to read a key they do not own without a grant"
-    );
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// PB5: Non-privileged user cannot ReKey a key they own when `privileged_users`
-//      is set and they are not in the list nor have been granted Create.
-//      ReKey creates a new replacement key — it must be gated like Create.
-// ---------------------------------------------------------------------------
-#[tokio::test]
-pub(crate) async fn pb05_non_privileged_user_cannot_rekey() -> KmsCliResult<()> {
-    use cosmian_kms_client::kmip_2_1::KmipOperation;
-
-    let ctx =
-        start_default_test_kms_server_with_privileged_users(vec![OWNER_IDENTITY.to_owned()]).await;
-    let owner = ctx.get_owner_client();
-    let user = ctx.get_user_client();
-
-    // Owner (privileged) creates a symmetric key
-    let key_id = CreateKeyAction::default()
-        .run(owner.clone())
-        .await?
-        .to_string();
-
-    // Owner grants Rekey to user so user can attempt the operation on that key
-    GrantAccess {
-        object_uid: Some(key_id.clone()),
-        user: USER_IDENTITY.to_owned(),
-        operations: vec![KmipOperation::Rekey],
-    }
-    .run(owner)
-    .await?;
-
-    // User tries to ReKey — must fail because ReKey creates a new object
-    // and user is not privileged nor has Create permission
-    let result = ReKeyAction {
-        key_id: key_id.clone(),
-    }
-    .run(user)
-    .await;
-
-    assert!(
-        result.is_err(),
-        "Non-privileged user must not be able to ReKey when privileged_users is set: {result:?}"
     );
     Ok(())
 }

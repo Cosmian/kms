@@ -16,16 +16,15 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
-        save_kms_cli_config,
         shared::{ExportKeyParams, export_key},
-        utils::recover_cmd_logs,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
 #[tokio::test]
 async fn test_view_access_structure() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // generate a new master key pair
     let (_master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -202,7 +201,7 @@ pub(crate) async fn remove(
 #[tokio::test]
 async fn test_edit_access_structure() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

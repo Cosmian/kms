@@ -30,10 +30,9 @@ use crate::{
         PROG_NAME,
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        save_kms_cli_config,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_wrapping_key, recover_cmd_logs},
+        utils::{extract_uids::extract_wrapping_key, owner_config, recover_cmd_logs},
     },
 };
 
@@ -140,7 +139,7 @@ pub(crate) fn unwrap(
 pub(crate) async fn test_password_wrap_import() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(

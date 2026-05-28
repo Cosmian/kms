@@ -15,6 +15,7 @@ use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
 
+use crate::tests::utils::owner_config;
 #[cfg(feature = "non-fips")]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -129,10 +130,8 @@ pub(crate) fn import_key(params: ImportKeyParams) -> CosmianResult<String> {
 pub(crate) async fn test_import_cover_crypt() -> CosmianResult<()> {
     use tempfile::TempDir;
 
-    use crate::tests::save_kms_cli_config;
-
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // generate a new master key pair
     let (_master_secret_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -190,13 +189,11 @@ pub(crate) async fn test_generate_export_import() -> CosmianResult<()> {
         reexport::cosmian_kms_client::kmip_2_1::kmip_types::CryptographicAlgorithm,
     };
 
-    use crate::tests::save_kms_cli_config;
-
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info,cosmian_kms_server=debug"));
 
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Covercrypt import/export test
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(

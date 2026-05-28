@@ -13,8 +13,7 @@ use crate::{
     tests::{
         PROG_NAME,
         certificates::certify::import_root_and_intermediate,
-        save_kms_cli_config,
-        utils::{extract_uids::extract_certificate_id, recover_cmd_logs},
+        utils::{extract_uids::extract_certificate_id, owner_config, recover_cmd_logs},
     },
 };
 
@@ -97,7 +96,7 @@ fn create_keypairs(
 async fn cli_create_google_key_pair() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Create the Google CSE key
     let cse_key_id = CreateKeyAction::default()

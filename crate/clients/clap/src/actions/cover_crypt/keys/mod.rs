@@ -10,8 +10,8 @@ use self::{
 };
 use crate::{
     actions::shared::{
-        ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction, UnwrapSecretDataOrKeyAction,
-        WrapSecretDataOrKeyAction,
+        ActivateKeyAction, ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction,
+        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
@@ -25,6 +25,7 @@ pub(crate) mod revoke_key;
 /// Create, destroy, import, export, and rekey `Covercrypt` master and user keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
+    Activate(ActivateKeyAction),
     CreateMasterKeyPair(CreateMasterKeyPairAction),
     CreateUserKey(CreateUserKeyAction),
     Export(ExportSecretDataOrKeyAction),
@@ -40,6 +41,9 @@ pub enum KeysCommands {
 impl KeysCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
+            Self::Activate(action) => {
+                action.run(kms_rest_client).await?;
+            }
             Self::CreateMasterKeyPair(action) => {
                 Box::pin(action.run(kms_rest_client)).await?;
             }

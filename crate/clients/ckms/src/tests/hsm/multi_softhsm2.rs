@@ -28,9 +28,9 @@ use uuid::Uuid;
 use crate::{
     error::result::CosmianResult,
     tests::{
-        save_kms_cli_config,
         shared::{ExportKeyParams, destroy, export_key},
         symmetric::create_key::create_symmetric_key,
+        utils::owner_config,
     },
 };
 
@@ -111,7 +111,7 @@ fn create_and_destroy_aes_key(
 /// environment variables (set by `test_hsm_softhsm2.sh`).
 pub(crate) fn test_multi_hsm_key_creation(ctx: &TestsContext) -> CosmianResult<()> {
     log_init(None);
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     let slot1 = slot_from_env("HSM_SLOT_ID_1", 0);
     let slot2 = slot_from_env("HSM_SLOT_ID_2", 1);

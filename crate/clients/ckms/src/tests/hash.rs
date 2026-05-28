@@ -5,11 +5,11 @@ use cosmian_kms_cli_actions::actions::{hash::HashAction, mac::CHashingAlgorithm}
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 
-use super::utils::extract_uids::extract_uid;
+use super::utils::{extract_uids::extract_uid, owner_config, recover_cmd_logs};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{PROG_NAME, save_kms_cli_config, utils::recover_cmd_logs},
+    tests::PROG_NAME,
 };
 
 const SUB_COMMAND: &str = "hash";
@@ -56,7 +56,7 @@ pub(crate) fn create_hash(cli_conf_path: &str, action: HashAction) -> CosmianRes
 pub(crate) async fn test_hash() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     create_hash(
         &owner_client_conf_path,

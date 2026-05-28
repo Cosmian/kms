@@ -11,8 +11,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, elliptic_curve::create_key_pair::create_ec_key_pair, save_kms_cli_config,
-        utils::recover_cmd_logs,
+        PROG_NAME,
+        elliptic_curve::create_key_pair::create_ec_key_pair,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
@@ -71,7 +72,7 @@ pub(crate) fn decrypt(
 #[tokio::test]
 async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -113,7 +114,7 @@ async fn test_encrypt_decrypt_using_ids() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

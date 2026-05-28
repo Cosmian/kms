@@ -16,14 +16,13 @@ use test_kms_server::{
     start_test_server_with_patch, test_config_path,
 };
 
-use super::utils::recover_cmd_logs;
+use super::utils::{force_save_kms_cli_config, recover_cmd_logs};
 use crate::{
     config::{CKMS_CONF_ENV, ClientConfig},
     error::result::CosmianResult,
     tests::{
         PROG_NAME,
         access::SUB_COMMAND,
-        force_save_kms_cli_config,
         shared::{ExportKeyParams, export_key},
         symmetric::create_key::create_symmetric_key,
     },

@@ -8,8 +8,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config, symmetric::create_key::create_symmetric_key,
-        utils::recover_cmd_logs,
+        PROG_NAME,
+        symmetric::create_key::create_symmetric_key,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
@@ -50,7 +51,7 @@ async fn test_modify_attribute() -> CosmianResult<()> {
     use cosmian_kms_cli_actions::actions::symmetric::keys::create_key::CreateKeyAction;
 
     let ctx = start_default_test_kms_server().await;
-    let (owner_conf, _user_conf) = save_kms_cli_config(ctx);
+    let owner_conf = owner_config(ctx);
 
     // Create a symmetric key
     let key_id = create_symmetric_key(&owner_conf, CreateKeyAction::default())?;

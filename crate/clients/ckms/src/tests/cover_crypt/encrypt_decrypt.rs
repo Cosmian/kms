@@ -14,8 +14,7 @@ use crate::{
             SUB_COMMAND, master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
-        save_kms_cli_config,
-        utils::recover_cmd_logs,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
@@ -88,7 +87,7 @@ pub(crate) fn decrypt(
 #[tokio::test]
 async fn test_encrypt_decrypt_using_object_ids() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -166,7 +165,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_encrypt_decrypt_bulk_using_object_ids() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -302,7 +301,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -413,7 +412,7 @@ async fn test_encrypt_decrypt_using_tags() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_encrypt_decrypt_bulk_using_tags() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

@@ -13,10 +13,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config,
+        PROG_NAME,
         shared::{ExportKeyParams, export_key},
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_uid, recover_cmd_logs},
+        utils::{extract_uids::extract_uid, owner_config, recover_cmd_logs},
     },
 };
 
@@ -57,7 +57,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
     let tmp_path = tmp_dir.path();
 
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // AES 256 bit key
     let id = create_symmetric_key(
@@ -100,7 +100,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
         new_object.key_block()?.key_bytes()?
     );
 
-    // The new key must have the same cryptographic length
+    // Compare the attributes
     assert_eq!(
         new_object.attributes()?.cryptographic_length.unwrap(),
         i32::try_from(AES_KEY_SIZE).unwrap()

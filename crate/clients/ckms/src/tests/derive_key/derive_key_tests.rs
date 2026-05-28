@@ -23,14 +23,11 @@ use cosmian_kms_cli_actions::{
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 
-use super::super::utils::extract_uids::extract_uid;
+use super::super::utils::{extract_uids::extract_uid, owner_config};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME, save_kms_cli_config, secret_data::create_secret::create_secret_data,
-        utils::recover_cmd_logs,
-    },
+    tests::{PROG_NAME, secret_data::create_secret::create_secret_data, utils::recover_cmd_logs},
 };
 
 const SUB_COMMAND: &str = "derive-key";
@@ -142,7 +139,7 @@ pub(crate) async fn test_derive_symmetric_key_pbkdf2() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -181,7 +178,7 @@ pub(crate) async fn test_derive_symmetric_key_hkdf() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -219,7 +216,7 @@ pub(crate) async fn test_derive_symmetric_key_different_lengths() -> CosmianResu
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -262,7 +259,7 @@ pub(crate) async fn test_derive_from_secret_data() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let _kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Create a secret data for derivation
     let secret_data_id = create_secret_data(
@@ -302,7 +299,7 @@ pub(crate) async fn test_derive_key_different_algorithms() -> CosmianResult<()> 
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Create a base symmetric key for derivation
     let base_key_id = create_derivable_symmetric_key_with_client(
@@ -349,7 +346,7 @@ pub(crate) async fn test_derive_key_from_password() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let _kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Test deriving from a password (UTF-8 string)
     let derived_key_id = derive_key(
@@ -380,7 +377,7 @@ pub(crate) async fn test_derive_key_from_unicode_password() -> CosmianResult<()>
     log_init(None);
     let ctx = start_default_test_kms_server().await;
     let _kms_client = ctx.get_owner_client();
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Test deriving from a Unicode password (UTF-8 string with special characters)
     let derived_key_id = derive_key(

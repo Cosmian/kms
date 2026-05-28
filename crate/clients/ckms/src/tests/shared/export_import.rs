@@ -9,9 +9,9 @@ use test_kms_server::start_default_test_kms_server;
 use crate::{
     error::result::CosmianResult,
     tests::{
-        save_kms_cli_config,
         shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
         symmetric::create_key::create_symmetric_key,
+        utils::{owner_config, user_config},
     },
 };
 
@@ -21,7 +21,8 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> CosmianResult<()> 
     // log_init(Some("debug"));
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
+    let user_client_conf_path = user_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

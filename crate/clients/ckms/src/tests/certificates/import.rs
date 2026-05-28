@@ -7,14 +7,12 @@ use cosmian_kms_cli_actions::reexport::{
     },
 };
 
-#[cfg(feature = "non-fips")]
-use crate::tests::save_kms_cli_config;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
         PROG_NAME,
-        utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
+        utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
     },
 };
 #[cfg(feature = "non-fips")]
@@ -147,7 +145,7 @@ pub(crate) fn import_certificate(
 async fn test_certificate_import_different_format() -> CosmianResult<()> {
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // import as TTLV JSON
     import_certificate(ImportCertificateInput {

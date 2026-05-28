@@ -1,6 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason},
+        kmip_0::kmip_types::CryptographicUsageMask,
         kmip_2_1::{
             KmipOperation,
             kmip_objects::{Object, ObjectType},
@@ -57,20 +57,6 @@ impl CryptoOpSpec for SignatureVerifyOp {
             return has_usage_mask(owm, CryptographicUsageMask::Verify, true);
         }
         false
-    }
-
-    fn map_selection_error(
-        e: KmsError,
-        unique_identifier: &UniqueIdentifier,
-        _user: &str,
-    ) -> KmsError {
-        match e {
-            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                format!("SignatureVerify: no valid public key for id: {unique_identifier}"),
-            ),
-            other => other,
-        }
     }
 
     async fn execute_local(

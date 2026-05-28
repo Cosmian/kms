@@ -21,9 +21,8 @@ use crate::{
     tests::{
         PROG_NAME,
         certificates::import::{ImportCertificateInput, import_certificate},
-        save_kms_cli_config,
         shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
-        utils::recover_cmd_logs,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
@@ -107,10 +106,10 @@ async fn test_certificate_import_encrypt(
     tags: &[&str],
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 ) -> CosmianResult<()> {
-    use crate::tests::{save_kms_cli_config, shared::ImportKeyParams};
+    use crate::tests::shared::ImportKeyParams;
 
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -215,7 +214,7 @@ async fn import_encrypt_decrypt(
     encryption_algorithm: Option<RsaEncryptionAlgorithm>,
 ) -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

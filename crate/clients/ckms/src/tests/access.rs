@@ -23,9 +23,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config,
+        PROG_NAME,
         shared::{ExportKeyParams, destroy, export_key, revoke},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
+        utils::load_client_config,
     },
 };
 
@@ -177,7 +178,8 @@ fn list_accesses_rights_obtained(cli_conf_path: &str) -> CosmianResult<String> {
 pub(crate) async fn test_ownership_and_grant() -> CosmianResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -316,7 +318,7 @@ pub(crate) async fn test_ownership_and_grant() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_grant_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -361,7 +363,8 @@ pub(crate) async fn test_revoke_access() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -450,7 +453,8 @@ pub(crate) async fn test_revoke_access() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_list_access_rights() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -476,7 +480,7 @@ pub(crate) async fn test_list_access_rights() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_list_access_rights_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (_, user_client_conf_path) = save_kms_cli_config(ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     assert!(list_access(&user_client_conf_path, "BAD KEY").is_err());
     Ok(())
@@ -486,7 +490,8 @@ pub(crate) async fn test_list_access_rights_error() -> CosmianResult<()> {
 pub(crate) async fn test_list_owned_objects() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
     let key_id = gen_key(&owner_client_conf_path)?;
 
     // grant encrypt and decrypt access to user
@@ -525,7 +530,8 @@ pub(crate) async fn test_list_owned_objects() -> CosmianResult<()> {
 pub(crate) async fn test_access_right_obtained() -> CosmianResult<()> {
     log_init(option_env!("RUST_LOG"));
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -561,7 +567,8 @@ pub(crate) async fn test_access_right_obtained() -> CosmianResult<()> {
 pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CosmianResult<()> {
     // the client conf will use the owner cert
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -681,7 +688,8 @@ pub(crate) async fn test_ownership_and_grant_wildcard_user() -> CosmianResult<()
 #[tokio::test]
 pub(crate) async fn test_access_right_obtained_using_wildcard() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -721,7 +729,7 @@ pub(crate) async fn test_access_right_obtained_using_wildcard() -> CosmianResult
 #[tokio::test]
 pub(crate) async fn test_grant_multiple_operations() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
 
     let key_id = gen_key(&owner_client_conf_path)?;
 
@@ -764,7 +772,7 @@ pub(crate) async fn test_grant_multiple_operations() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_grant_with_without_object_uid() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
 
     // grant create access to user - without object id
     let result_grant_create = grant_access(
@@ -797,7 +805,8 @@ pub(crate) async fn test_privileged_users() -> CosmianResult<()> {
         "user.privileged@acme.com".to_owned(),
     ])
     .await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     // by default privileged users can create or import objects
     let key_id = gen_key(&owner_client_conf_path);

@@ -20,8 +20,8 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config,
-        utils::{extract_uids::extract_uid, recover_cmd_logs},
+        PROG_NAME,
+        utils::{extract_uids::extract_uid, owner_config, recover_cmd_logs},
     },
 };
 
@@ -88,7 +88,7 @@ pub(crate) fn create_symmetric_key(
 #[tokio::test]
 async fn test_create_symmetric_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0_u8; 32];
@@ -214,7 +214,7 @@ async fn test_create_symmetric_key() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_create_wrapped_symmetric_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     let wrapping_key_id =
         create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;

@@ -40,9 +40,8 @@ use crate::{
             export::export_certificate,
             import::{ImportCertificateInput, import_certificate},
         },
-        save_kms_cli_config,
         shared::{ImportKeyParams, import_key},
-        utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
+        utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
     },
 };
 
@@ -479,7 +478,7 @@ async fn test_certify_a_csr_without_extensions() -> CosmianResult<()> {
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
@@ -519,7 +518,7 @@ async fn test_certify_a_csr_with_extensions() -> CosmianResult<()> {
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
@@ -565,7 +564,7 @@ async fn test_certify_a_public_key_test_without_extensions() -> CosmianResult<()
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
@@ -614,7 +613,7 @@ async fn test_certify_a_public_key_test_with_extensions() -> CosmianResult<()> {
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
@@ -670,7 +669,7 @@ async fn test_certify_renew_a_certificate() -> CosmianResult<()> {
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
@@ -736,7 +735,7 @@ async fn test_certify_issue_with_subject_name() -> CosmianResult<()> {
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // import signers
     let (root_id, intermediate_id, issuer_private_key_id) =
@@ -792,7 +791,7 @@ async fn test_certify_a_public_key_test_self_signed() -> CosmianResult<()> {
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create an RSA key pair
     let (_private_key_id, public_key_id) =
@@ -853,7 +852,7 @@ async fn test_certify_issue_with_subject_name_self_signed_without_extensions() -
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a self signed certificate
     let certificate_id = create_self_signed_cert(&owner_client_conf_path)?;
@@ -878,7 +877,7 @@ async fn test_certify_issue_with_subject_name_self_signed_with_extensions() -> C
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Certify the CSR without issuer i.e. self signed
     let certificate_id = certify(
@@ -919,7 +918,7 @@ async fn test_certify_twice() -> CosmianResult<()> {
     log_init(None);
     // Create a test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Certify the CSR without issuer i.e. self signed
     let certificate_id = certify(

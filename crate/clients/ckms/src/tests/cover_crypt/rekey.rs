@@ -33,10 +33,9 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
-        save_kms_cli_config,
         shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
         symmetric::create_key::create_symmetric_key,
-        utils::recover_cmd_logs,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
@@ -93,7 +92,7 @@ pub(crate) fn prune(
 #[tokio::test]
 async fn test_rekey_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // generate a new master key pair
     let (master_secret_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -219,7 +218,7 @@ fn test_cc() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_enc_dec_rekey() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -288,7 +287,7 @@ async fn test_enc_dec_rekey() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_rekey_prune() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

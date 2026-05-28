@@ -846,6 +846,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "serial_test",
  "strum",
  "tempfile",
  "test_kms_server",

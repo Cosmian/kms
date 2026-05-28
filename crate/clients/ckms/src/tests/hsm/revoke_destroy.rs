@@ -6,15 +6,15 @@ use uuid::Uuid;
 use crate::{
     error::result::CosmianResult,
     tests::{
-        save_kms_cli_config,
         shared::{ExportKeyParams, destroy, export_key, revoke},
         symmetric::create_key::create_symmetric_key,
+        utils::owner_config,
     },
 };
 
 pub(crate) fn test_revoke_symmetric_key(ctx: &TestsContext) -> CosmianResult<()> {
     log_init(None);
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // sym
     let key_id = create_symmetric_key(

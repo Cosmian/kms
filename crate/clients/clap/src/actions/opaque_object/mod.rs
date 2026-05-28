@@ -6,7 +6,9 @@ use self::{
     revoke::RevokeOpaqueObjectAction,
 };
 use crate::{
-    actions::shared::{ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction},
+    actions::shared::{
+        ActivateKeyAction, ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction,
+    },
     error::result::KmsCliResult,
 };
 
@@ -17,6 +19,7 @@ pub mod revoke;
 /// Create, import, export, revoke and destroy Opaque Objects
 #[derive(Subcommand)]
 pub enum OpaqueObjectCommands {
+    Activate(ActivateKeyAction),
     Create(CreateOpaqueObjectAction),
     Export(ExportSecretDataOrKeyAction),
     Import(ImportSecretDataOrKeyAction),
@@ -27,6 +30,9 @@ pub enum OpaqueObjectCommands {
 impl OpaqueObjectCommands {
     pub(crate) async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
+            Self::Activate(action) => {
+                action.run(kms_rest_client).await?;
+            }
             Self::Create(action) => {
                 action.run(kms_rest_client).await?;
             }

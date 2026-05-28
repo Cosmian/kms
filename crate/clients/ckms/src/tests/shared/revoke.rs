@@ -18,10 +18,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config,
+        PROG_NAME,
         shared::{ExportKeyParams, export::export_key},
         symmetric::create_key::create_symmetric_key,
-        utils::recover_cmd_logs,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
@@ -84,7 +84,7 @@ pub(crate) fn assert_revoked(cli_conf_path: &str, key_id: &str) -> CosmianResult
 async fn test_revoke_symmetric_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // syn
     let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
@@ -101,7 +101,7 @@ async fn test_revoke_symmetric_key() -> CosmianResult<()> {
 async fn test_revoke_ec_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // revoke via private key
     {
@@ -149,7 +149,7 @@ async fn test_revoke_ec_key() -> CosmianResult<()> {
 async fn test_revoke_cover_crypt() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // check revocation of all keys when the private key is revoked
     {
@@ -319,7 +319,7 @@ async fn test_non_revocable_symmetric_key() -> CosmianResult<()> {
         Uuid::new_v4().to_string(),
     ]))
     .await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // sym
     let key_id = create_symmetric_key(

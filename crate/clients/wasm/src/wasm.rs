@@ -653,7 +653,6 @@ pub fn get_kmip_operations() -> Result<JsValue, JsValue> {
         KmipOperation::ModifyAttribute,
         KmipOperation::AddAttribute,
         KmipOperation::DeleteAttribute,
-        KmipOperation::Activate,
     ];
     let operations: Vec<AlgoOption> = all_ops
         .iter()

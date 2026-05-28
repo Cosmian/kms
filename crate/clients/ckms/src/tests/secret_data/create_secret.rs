@@ -15,9 +15,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config,
+        PROG_NAME,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
+        utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
     },
 };
 
@@ -70,7 +70,7 @@ pub(crate) fn create_secret_data(
 pub(crate) async fn test_secret_data() -> CosmianResult<()> {
     // from specs
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
     create_secret_data(
         &owner_client_conf_path,
         &CreateSecretDataAction {
@@ -94,7 +94,7 @@ pub(crate) async fn test_secret_data() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_secret_data_with_wrapping() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // First create a symmetric key for wrapping
     let wrapping_key_id = create_symmetric_key(

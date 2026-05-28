@@ -11,8 +11,7 @@ use crate::{
     tests::{
         PROG_NAME,
         rsa::create_key_pair::{RsaKeyPairOptions, create_rsa_key_pair},
-        save_kms_cli_config,
-        utils::recover_cmd_logs,
+        utils::{owner_config, recover_cmd_logs},
     },
 };
 
@@ -81,7 +80,7 @@ fn rsa_sign_verify(
 #[tokio::test]
 async fn rsa_digested_sign_verify_cli() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

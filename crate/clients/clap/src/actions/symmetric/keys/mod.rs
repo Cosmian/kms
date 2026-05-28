@@ -7,8 +7,8 @@ use self::{
 };
 use crate::{
     actions::shared::{
-        ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction, UnwrapSecretDataOrKeyAction,
-        WrapSecretDataOrKeyAction,
+        ActivateKeyAction, ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction,
+        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
@@ -21,6 +21,7 @@ pub mod revoke_key;
 /// Create, destroy, import, and export symmetric keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
+    Activate(ActivateKeyAction),
     Create(CreateKeyAction),
     ReKey(ReKeyAction),
     Export(ExportSecretDataOrKeyAction),
@@ -34,6 +35,9 @@ pub enum KeysCommands {
 impl KeysCommands {
     pub(crate) async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
+            Self::Activate(action) => {
+                action.run(kms_rest_client).await?;
+            }
             Self::Create(action) => {
                 action.run(kms_rest_client).await?;
             }

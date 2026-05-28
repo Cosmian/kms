@@ -870,32 +870,27 @@ fn check_basic_compatibility(
 fn is_rsa_keypair_creation(
     operations: &[AtomicOperation],
 ) -> Option<(String, Object, Attributes, HashSet<String>)> {
-    operations
-        .iter()
-        .filter_map(|op| match op {
-            AtomicOperation::Create((uid, object, attributes, tags)) => {
-                if object.object_type() != ObjectType::PrivateKey {
-                    return None;
-                }
-                if !attributes
-                    .cryptographic_algorithm
-                    .as_ref()
-                    .is_some_and(|algorithm| *algorithm == CryptographicAlgorithm::RSA)
-                {
-                    return None;
-                }
-                Some((
-                    uid.clone(),
-                    object.clone(),
-                    attributes.clone(),
-                    tags.clone(),
-                ))
+    operations.iter().find_map(|op| match op {
+        AtomicOperation::Create((uid, object, attributes, tags)) => {
+            if object.object_type() != ObjectType::PrivateKey {
+                return None;
             }
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .first()
-        .cloned()
+            if !attributes
+                .cryptographic_algorithm
+                .as_ref()
+                .is_some_and(|algorithm| *algorithm == CryptographicAlgorithm::RSA)
+            {
+                return None;
+            }
+            Some((
+                uid.clone(),
+                object.clone(),
+                attributes.clone(),
+                tags.clone(),
+            ))
+        }
+        _ => None,
+    })
 }
 
 /// Parse the `uid` into a `(slot_id, key_id)` pair, stripping the given prefix.
