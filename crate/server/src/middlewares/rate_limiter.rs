@@ -43,18 +43,14 @@ pub(crate) struct RateLimiterConfig {
 impl RateLimiterConfig {
     /// Build a rate limiter that allows `requests_per_second` with a burst of `burst_size`.
     ///
-    /// Both parameters must be non-zero; the caller is responsible for ensuring
-    /// this (the server config validation rejects 0 values).
+    /// Both parameters must be non-zero; passing zero for either value causes
+    /// this constructor to fall back to a minimal-throughput limiter (1 req/s,
+    /// burst 1) rather than silently disabling rate limiting.
     pub(crate) fn new(requests_per_second: u64, burst_size: u32) -> Self {
-        let period = Duration::from_nanos(
-            1_000_000_000_u64
-                .checked_div(requests_per_second)
-                .unwrap_or(1),
-        );
-        // SAFETY-equivalent: both values are guaranteed non-zero by callers
-        // (rate_limit_per_second defaults to u32::MAX when disabled, and the
-        // config parser rejects 0). We saturate to 1 as a defensive fallback.
+        // Reject zero values: fall back to 1 so the limiter is never bypassed.
+        let rps = requests_per_second.max(1);
         let burst = NonZeroU32::new(burst_size).unwrap_or(NonZeroU32::MIN);
+        let period = Duration::from_nanos(1_000_000_000_u64 / rps);
         let quota = Quota::with_period(period)
             .unwrap_or_else(|| Quota::per_second(NonZeroU32::MIN))
             .allow_burst(burst);
@@ -128,7 +124,8 @@ where
             Err(negative) => {
                 let wait_time = negative
                     .wait_time_from(DefaultClock::default().now())
-                    .as_secs();
+                    .as_secs()
+                    .max(1); // Ensure at least 1s to prevent immediate-retry loops
                 let response = HttpResponse::TooManyRequests()
                     .insert_header(("retry-after", wait_time.to_string()))
                     .insert_header(("x-ratelimit-after", wait_time.to_string()))

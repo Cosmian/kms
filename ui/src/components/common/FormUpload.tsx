@@ -13,8 +13,20 @@ type Props = UploadProps & {
 
 export const FormUpload: React.FC<Props> = (props) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { value, maxFileSize, ...rest } = props;
-    return <Upload {...rest} />;
+    const { value, maxFileSize = MAX_UPLOAD_SIZE_BYTES, beforeUpload, ...rest } = props;
+
+    const wrappedBeforeUpload: UploadProps["beforeUpload"] = (file, fileList) => {
+        if (file.size > maxFileSize) {
+            message.error(`File is too large (${formatFileSize(file.size)}). Maximum allowed size is ${formatFileSize(maxFileSize)}.`);
+            return Upload.LIST_IGNORE;
+        }
+        if (beforeUpload) {
+            return beforeUpload(file, fileList);
+        }
+        return false;
+    };
+
+    return <Upload {...rest} beforeUpload={wrappedBeforeUpload} />;
 };
 
 export const FormUploadDragger: React.FC<Props> = (props) => {
