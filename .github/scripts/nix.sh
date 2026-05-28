@@ -49,10 +49,10 @@ usage() {
       (no type)        Build all supported packages on this platform
     sbom [options]     Generate comprehensive SBOM (Software Bill of Materials)
                        with full dependency graphs (runtime and buildtime)
-                       Default: generates all combinations (openssl_3_1_2 + openssl_3_6_0 + server + ckms fips/non-fips × static/dynamic)
+                       Default: generates all combinations (openssl_3_1_2 + openssl_3_6_2 + server + ckms fips/non-fips × static/dynamic)
                        Note: global --variant/--link flags do not affect this subcommand; use the sbom options below.
                        Options:
-                         --target <openssl_3_1_2|openssl_3_6_0|server|ckms>  Choose SBOM target (default: all)
+                         --target <openssl_3_1_2|openssl_3_6_2|server|ckms>  Choose SBOM target (default: all)
                          --variant <fips|non-fips>    Variant filter (only with --target server|ckms)
                          --link <static|dynamic>      Link filter (only with --target server|ckms)
                          --retrieve                   Download SBOMs from package.cosmian.com instead of generating
@@ -103,7 +103,7 @@ usage() {
     $0 --variant non-fips package dmg       # non-FIPS variant
     $0 sbom                                 # Generate all SBOMs (OpenSSL 3.1.2 + 3.6.2 + all server + all ckms combinations)
     $0 sbom --target openssl_3_1_2            # SBOM for the OpenSSL 3.1.2 (FIPS) derivation
-    $0 sbom --target openssl_3_6_0            # SBOM for the OpenSSL 3.6.2 (non-FIPS) derivation
+    $0 sbom --target openssl_3_6_2            # SBOM for the OpenSSL 3.6.2 (non-FIPS) derivation
     $0 sbom --target server                 # SBOM for all server combinations (fips/non-fips × static/dynamic)
     $0 sbom --target ckms                   # SBOM for all ckms CLI combinations (fips/non-fips × static/dynamic)
     $0 sbom --target server --variant fips --link static  # SBOM for specific server variant
@@ -751,7 +751,7 @@ sbom_command() {
   # Do not silently ignore extra args for `sbom`.
   if [ ${#unknown_args[@]} -ne 0 ]; then
     echo "Error: Unknown sbom option(s): ${unknown_args[*]}" >&2
-    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_0|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>] [--retrieve] [--branch <branch>]" >&2
+    echo "Valid sbom options: --target <openssl_3_1_2|openssl_3_6_2|server|ckms> [--variant <fips|non-fips>] [--link <static|dynamic>] [--retrieve] [--branch <branch>]" >&2
     exit 1
   fi
 
@@ -794,7 +794,7 @@ sbom_command() {
 
     # Generate SBOM for OpenSSL 3.6.2
     echo ">>> Generating SBOM for OpenSSL 3.6.2..."
-    bash "$SCRIPT" --target openssl_3_6_0 || {
+    bash "$SCRIPT" --target openssl_3_6_2 || {
       echo "ERROR: OpenSSL 3.6.2 SBOM generation failed" >&2
       exit 1
     }

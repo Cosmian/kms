@@ -1,0 +1,38 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "SPDXRef-nix-store-ycnqjnr7b4gpcnrw81c5jjrziv9cxwki-openssl-3.6.0.drv",
+  "documentNamespace": "sbomnix://947fd0d3-bd96-4216-8687-a92045345fb5",
+  "creationInfo": {
+    "created": "2026-05-28T14:35:40.202763+02:00",
+    "creators": [
+      "Tool: sbomnix-1.7.4"
+    ]
+  },
+  "comment": "included dependencies: 'runtime_only'",
+  "packages": [
+    {
+      "name": "openssl",
+      "SPDXID": "SPDXRef-nix-store-ycnqjnr7b4gpcnrw81c5jjrziv9cxwki-openssl-3.6.0.drv",
+      "versionInfo": "3.6.0",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "copyrightText": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "cpe23Type",
+          "referenceLocator": "cpe:2.3:a:openssl:openssl:3.6.0:*:*:*:*:*:*:*"
+        },
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:nix/openssl@3.6.0"
+        }
+      ]
+    }
+  ],
+  "relationships": []
+}

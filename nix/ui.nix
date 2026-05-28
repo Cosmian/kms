@@ -5,7 +5,7 @@
   # KMS version (from Cargo.toml)
   version,
   features ? [ ], # [ "non-fips" ] or []
-  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
+  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.91.0 for edition2024 support)
 }:
 
 let

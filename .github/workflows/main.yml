@@ -19,4 +19,4 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/main_base.yml
     with:
-      toolchain: 1.90.0
+      toolchain: 1.91.0

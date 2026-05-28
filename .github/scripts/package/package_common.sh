@@ -561,7 +561,7 @@ resolve_openssl_path() {
       cp "$OSSL_PATH/lib/ossl-modules/fips.so" "$stage_dir/lib/ossl-modules/"
     fi
   else
-    # Prefer provider from server derivation; fallback to OpenSSL 3.6.0 store
+    # Prefer provider from server derivation; fallback to OpenSSL 3.6.2 store
     if [ -f "$OSSL_PATH/lib/ossl-modules/legacy.so" ]; then
       cp "$OSSL_PATH/lib/ossl-modules/legacy.so" "$stage_dir/lib/ossl-modules/"
     else
@@ -637,7 +637,7 @@ resolve_openssl_path() {
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
 ensure_modern_rust() {
-  local link="$REPO_ROOT/result-rust-1_90"
+  local link="$REPO_ROOT/result-rust-1_91"
   if [ -L "$link" ] && [ -x "$link/bin/cargo" ] && [ -x "$link/bin/rustc" ]; then
     :
   else

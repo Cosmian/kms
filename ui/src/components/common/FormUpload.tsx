@@ -7,7 +7,7 @@ type Props = UploadProps & {
     // Ant Design Form.Item injects `value` by default; Upload doesn't accept it.
     // We intentionally swallow it so it never reaches <Upload /> and triggers warnings.
     value?: unknown;
-    /** Maximum file size in bytes. Defaults to MAX_UPLOAD_SIZE_BYTES (48 MB). */
+    /** Maximum file size in bytes. Defaults to MAX_UPLOAD_SIZE_BYTES (30 MB). */
     maxFileSize?: number;
 };
 

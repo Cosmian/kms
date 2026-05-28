@@ -9,10 +9,11 @@ const stripHtml = (text: string): string =>
 
 /**
  * Maximum file size (in bytes) for server-side encryption.
- * The KMS server accepts up to 64 MB JSON payloads; with base64 encoding overhead (~33%)
- * and the surrounding KMIP JSON envelope, the effective cleartext limit is ~45 MB.
+ * The KMS server accepts up to 64 MB JSON payloads. The TTLV JSON format encodes
+ * binary data as uppercase hex strings (2× expansion), so the effective cleartext
+ * limit is 64 MB / 2 ≈ 32 MB (with margin for the JSON envelope).
  */
-export const MAX_UPLOAD_SIZE_BYTES = 45 * 1024 * 1024;
+export const MAX_UPLOAD_SIZE_BYTES = 30 * 1024 * 1024;
 
 /** Human-readable file size formatting. */
 export const formatFileSize = (bytes: number): string => {

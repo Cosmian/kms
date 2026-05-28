@@ -48,7 +48,7 @@ bash nix.sh docker --load
 
 Cosmian KMS uses **Nix** to achieve:
 
-- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.90.0, OpenSSL 3.6.2 + OpenSSL 3.1.2 FIPS provider)
+- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.91.0, OpenSSL 3.6.2 + OpenSSL 3.1.2 FIPS provider)
 - **Hermetic packaging**: Static linking, no runtime /nix/store paths
 - **Offline capability**: Pre-warming enables network-free builds
 - **Variant isolation**: FIPS and non-FIPS builds with controlled feature sets
@@ -427,7 +427,7 @@ Nix provides the foundation for deterministic, auditable builds:
 | Aspect                     | Implementation                                | Impact                                           |
 | -------------------------- | --------------------------------------------- | ------------------------------------------------ |
 | **Pinned Dependencies**    | nixpkgs 24.05 tarball locked by hash          | Identical build environment across machines/time |
-| **Reproducible Toolchain** | Rust 1.90.0 from Nix (no rustup)              | Eliminates "works on my machine" compiler issues |
+| **Reproducible Toolchain** | Rust 1.91.0 from Nix (no rustup)              | Eliminates "works on my machine" compiler issues |
 | **Static OpenSSL**         | Link against OpenSSL 3.6.2; vendored 3.1.2 tarball for the FIPS provider | No runtime SSL dependency; portable binaries     |
 | **Hash Enforcement**       | Binary SHA-256 checked in `installCheckPhase` | Detects drift/tampering (FIPS builds on Linux)   |
 | **Offline Capability**     | Pre-warmed store + Cargo offline cache        | Air-gapped builds after first online run         |
@@ -737,7 +737,7 @@ flowchart LR
     subgraph pure["PURE MODE (--pure flag)"]
         p_use["Use cases: database tests<br/>(sqlite, psql, mysql)"]
         p_char["✓ Hermetic/reproducible<br/>✓ No system PATH pollution<br/>✓ Only Nix-provided deps"]
-        p_env["Rust 1.90.0 (Nix)<br/>OpenSSL 3.6.2 + 3.1.2 (FIPS)<br/>Build tools · /nix/store paths ONLY"]
+        p_env["Rust 1.91.0 (Nix)<br/>OpenSSL 3.6.2 + 3.1.2 (FIPS)<br/>Build tools · /nix/store paths ONLY"]
     end
     subgraph nonpure["NON-PURE MODE"]
         np_use["Use cases: HSM tests<br/>macOS DMG packaging<br/>Vendor-specific system libs"]

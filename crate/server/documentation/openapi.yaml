@@ -56,7 +56,6 @@ components:
       description: Client certificate presented during TLS handshake
 
   schemas:
-
     # ── TTLV JSON ────────────────────────────────────────────────────────────
 
     TtlvNode:
@@ -1356,7 +1355,6 @@ components:
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
-
   # ── Public ──────────────────────────────────────────────────────────────────
 
   /health:
@@ -1414,7 +1412,7 @@ paths:
             application/json:
               schema:
                 type: string
-              example: '"5.x.y (OpenSSL 3.6.0 6 Apr 2025-FIPS)"'
+              example: '"5.x.y (OpenSSL 3.6.2 6 Apr 2025-FIPS)"'
 
   /openapi.yaml:
     get:

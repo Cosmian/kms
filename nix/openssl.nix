@@ -6,7 +6,7 @@
   coreutils,
   # Linkage mode: true for static libraries only, false for shared libraries
   static ? true,
-  # OpenSSL version to build (e.g. "3.6.0" or "3.1.2")
+  # OpenSSL version to build (e.g. "3.6.2" or "3.1.2")
   version ? "3.1.2",
   # Build the legacy provider module (needed for non-FIPS features)
   enableLegacy ? false,

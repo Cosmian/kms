@@ -38,7 +38,7 @@ let
         version = "3.1.2";
       };
 
-  # Always link against OpenSSL 3.6.0; the FIPS provider (3.1.2) is loaded at runtime.
+  # Always link against OpenSSL 3.6.2; the FIPS provider (3.1.2) is loaded at runtime.
   opensslLink = openssl36_;
 
   srcRoot = ../.;
