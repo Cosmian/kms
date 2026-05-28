@@ -181,10 +181,12 @@ let
   cargoGenerateRpmTool = rustPlatform190.buildRustPackage rec {
     pname = "cargo-generate-rpm";
     version = "0.16.0";
-    # Use static CDN directly — the crates.io API endpoint returns 403 in CI
-    src = builtins.fetchTarball {
+    # pkgs.fetchzip has the same unpack semantics as builtins.fetchTarball (strips top-level
+    # directory, hashes the unpacked NAR) but runs during the build phase, avoiding the
+    # libcurl "Invalid multi handle" crash that builtins.fetchTarball triggers on macOS CI.
+    src = pkgs.fetchzip {
       url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
-      sha256 = "sha256-esp3MJ24RQpMFn9zPgccp7NESoFAUPU7y+YRsJBVVr4=";
+      hash = "sha256-esp3MJ24RQpMFn9zPgccp7NESoFAUPU7y+YRsJBVVr4=";
     };
     # Pinned cargo vendor hash for reproducible builds
     cargoSha256 = "sha256-mUsoPBgv60Eir/uIK+Xe+GmXdSFKXoopB4PlvFvHZuA=";
@@ -203,10 +205,12 @@ let
     pname = "cargo-packager";
     # Align with version used in CI scripts to reduce surprises
     version = "0.11.7"; # Update if needed; hash will enforce correctness
-    # Use static CDN directly — the crates.io API endpoint returns 403 in CI
-    src = builtins.fetchTarball {
+    # pkgs.fetchzip has the same unpack semantics as builtins.fetchTarball (strips top-level
+    # directory, hashes the unpacked NAR) but runs during the build phase, avoiding the
+    # libcurl "Invalid multi handle" crash that builtins.fetchTarball triggers on macOS CI.
+    src = pkgs.fetchzip {
       url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
-      sha256 = "sha256-dSF2BzT+wun75qRBvDJpoOwNG4dHUeVnTx/Ygm5wtK0=";
+      hash = "sha256-dSF2BzT+wun75qRBvDJpoOwNG4dHUeVnTx/Ygm5wtK0=";
     };
     # Pinned cargo vendor hash differs by platform (target-specific deps)
     # Observed on current macOS build: got sha256-uhXPFBZ6sWQch+liz7F67PC6ns+P63eMJ6bYWr07L8U=
