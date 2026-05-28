@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use futures::executor::block_on;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
@@ -11,6 +10,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
+use futures::executor::block_on;
 
 use super::{DatabaseOps, ObjectWithMetadataOps};
 use crate::{
