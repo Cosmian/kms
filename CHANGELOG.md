@@ -49,6 +49,7 @@ All notable changes to this project will be documented in this file.
 - **HSM key permissions hardening**: admin-only Destroy; block `Destroy`/`Revoke` grants; `Locate` and `/access/owned` visibility filtering for non-admin users ([#942](https://github.com/Cosmian/kms/pull/942))
 - **COSMIAN-2026-017 / COSMIAN-2026-018**: `ReKey` and `Activate` now check ownership / `KmipOperation::Activate` permission — previously any user with any grant could activate or rotate another user's key
 - **ReKey / ReKeyKeyPair privileged-user enforcement**: both operations now respect `privileged_users` Create-permission gating, consistent with `Create`, `Import`, and `Register`
+- **GPL dependency removal**: replace `actix-governor` (GPL-3.0-or-later) with a direct `governor` (MIT/Apache-2.0) middleware; remove `GPL-3.0-or-later` from `deny.toml` allow list ([#967](https://github.com/Cosmian/kms/pull/967))
 
 ### 🐛 Bug Fixes
 
@@ -88,6 +89,12 @@ All notable changes to this project will be documented in this file.
 - Fix `operation_types` enum values in `openapi.yaml` (were PascalCase; server expects lowercase due to `#[serde(rename_all = "lowercase")]`); fix `/access/create` and `/access/privileged` response schemas; document `POST /v1/crypto/keys` 400 response
 - Fix test temp-directory collisions: embed `std::process::id()` in path names to prevent SQLite `database is locked` failures under parallel `cargo test --workspace`
 
+#### UI Encryption
+
+- Fix HTML error page displayed in UI when encrypt payload exceeds server limit — KMIP endpoint now returns plain text errors instead of HTML ([#966](https://github.com/Cosmian/kms/issues/966))
+- Fix WASM panic "capacity overflow" encrypting large files — TTLV serializer accumulates `Vec<u8>` byte-like tags directly into a `ByteString` instead of allocating one TTLV element per byte; prevents OOM on 32-bit WASM for payloads >~10 MB ([#967](https://github.com/Cosmian/kms/pull/967))
+- Fix client-side upload limit: corrected from 45 MB to 30 MB to account for TTLV hex encoding (2× expansion); a 35 MB file produces a ~70 MB JSON body, exceeding the server's 64 MB payload limit ([#967](https://github.com/Cosmian/kms/pull/967))
+
 ### ♻️ Refactor
 
 - KMIP `fmt::Display`/`fmt::Debug`: replaced with `impl_display!`/`debug_from_display!` macros (~330 lines saved)
@@ -108,6 +115,7 @@ All notable changes to this project will be documented in this file.
 - JOSE integration tests (`encrypt_decrypt`, `sign_verify`, `mac`, `error_cases`, `rfc_vectors`) + Python `jwcrypto` interop ([#929](https://github.com/Cosmian/kms/pull/929))
 - Access control privilege escalation vectors: self-grant, non-owner grant, destroy without permission ([#959](https://github.com/Cosmian/kms/pull/959))
 - Total: 134→148+ vectors, 1 127→1 154+ tests
+- TTLV serializer regression test: 1 MB `Vec<u8>` round-trip via `ByteString` (verifies no capacity overflow) ([#967](https://github.com/Cosmian/kms/pull/967))
 - 24 new `ReKeyKeyPair` test vectors (RSA, EC, PQC, edge cases); 3 KMIP 1.4 protocol vectors; access-control vectors for ReKey/Activate privilege escalation ([#845](https://github.com/Cosmian/kms/issues/845))
 - `certificatePolicies` positive and negative unit tests (`test_certificate_policies_with_cps_qualifier`, `test_old_new_nid_fails_for_cps_syntax`); bash regression script `.github/scripts/test/test_certificate_policies.sh`
 - Playwright E2E suite `swagger.spec.ts`: OpenAPI spec structure, HTTP contracts, CSP headers, locally-served assets, live server cross-validation
@@ -127,6 +135,7 @@ All notable changes to this project will be documented in this file.
 
 - Oracle TDE: refactored CI into standalone `upgrade-kms.sh` + `smoke-test-tde.sh` scripts; 6/6 TDE proofs validated on Oracle 23ai Free with Cosmian PKCS#11 provider ([#918](https://github.com/Cosmian/kms/pull/918))
 - New `jose` CI test type (non-FIPS): curl-based REST crypto tests + Python `jwcrypto` interoperability ([#929](https://github.com/Cosmian/kms/pull/929))
+- Add `cargo deny list -l crate > sbom/licenses.txt` pre-commit hook; automate SBOM license generation in `release.yml` `prepare` job ([#967](https://github.com/Cosmian/kms/pull/967))
 
 ## [5.22.0] - 2026-05-06
 
