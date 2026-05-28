@@ -220,8 +220,7 @@ fn decode_ia32cap(hex: &str) -> String {
 /// The value is a 32-bit bitmask (`OPENSSL_armcap_P`) populated by the kernel
 /// auxiliary vector (AT_HWCAP / AT_HWCAP2) during `OPENSSL_cpuid_setup`.
 fn decode_armcap(hex: &str) -> String {
-    let cap =
-        u32::from_str_radix(hex.trim_start_matches("0x"), 16).unwrap_or(0);
+    let cap = u32::from_str_radix(hex.trim_start_matches("0x"), 16).unwrap_or(0);
 
     #[rustfmt::skip]
     const FLAGS: &[(u32, &str)] = &[
@@ -259,8 +258,7 @@ fn decode_armcap(hex: &str) -> String {
 /// The value is a 32-bit bitmask (`OPENSSL_ppccap_P`) populated during
 /// `OPENSSL_cpuid_setup` from the Linux auxiliary vector.
 fn decode_ppccap(hex: &str) -> String {
-    let cap =
-        u32::from_str_radix(hex.trim_start_matches("0x"), 16).unwrap_or(0);
+    let cap = u32::from_str_radix(hex.trim_start_matches("0x"), 16).unwrap_or(0);
 
     #[rustfmt::skip]
     const FLAGS: &[(u32, &str)] = &[
