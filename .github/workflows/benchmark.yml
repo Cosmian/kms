@@ -62,7 +62,7 @@ jobs:
           BENCH_SPEED: ${{ inputs.bench_speed || 'quick' }}
           REGRESSION_THRESHOLD: ${{ inputs.regression_threshold || '10' }}
         run: |
-          bash .github/scripts/benchmarks/benchmark_regression.sh \
+          bash .github/scripts/benchmarks/bench_regression.sh \
             --variant "$VARIANT"
 
       - name: Upload benchmark results

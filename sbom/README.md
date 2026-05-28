@@ -10,7 +10,7 @@ Report locations:
 
 - `sbom/openssl_3_1_2/` — SBOM + vulnerability scan for the OpenSSL 3.1.2 (FIPS) derivation
 - `sbom/openssl_3_6_0/` — SBOM + vulnerability scan for the OpenSSL 3.6.0 (non-FIPS) derivation
-- `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the server derivation
+- `sbom/server/<variant>/<link>/` — SBOM + vulnerability scan for the KMS server derivation
     - `<variant>`: `fips` | `non-fips`
     - `<link>`: `static` | `dynamic`
 
@@ -18,16 +18,10 @@ Report locations:
 
 The SBOM generator produces several "base" reports.
 
-Important: folders are kept clean on purpose. Each SBOM output directory contains only **two CSV files**:
-
-- `sbom.csv` — component inventory
-- `vulns.csv` — vulnerability rows (CVE-like duplicates removed in-place)
-
 | Report | Where | Purpose |
-|------|------|---------|
+|------|------|------|
 | `bom.cdx.json` | `sbom/**/` | CycloneDX 1.5 SBOM for import into SBOM platforms (e.g., Dependency-Track) |
 | `bom.spdx.json` | `sbom/**/` | SPDX 2.3 SBOM for compliance workflows and SPDX tooling |
-| `sbom.csv` | `sbom/**/` | Tabular component inventory (package name/version/system metadata) |
 | `vulns.csv` | `sbom/**/` | Vulnerability rows from `vulnxscan`, then deduplicated by CVE YEAR-ID (see below) |
 | `graph.png` | `sbom/**/` | Visual dependency graph |
 | `meta.json` | `sbom/**/` | Build metadata (target/variant/link, counts, timestamps) |
@@ -36,7 +30,7 @@ Important: folders are kept clean on purpose. Each SBOM output directory contain
 
 During generation, `vulns.csv` is deduplicated in-place by an external script:
 
-- `nix/scripts/dedup_cves.py`
+- `.github/scripts/sbom/filter_vulns.py`
 
 It removes duplicate CVE-like rows based on the normalized **YEAR-ID** key, so e.g. `CVE-2026-0915`, `UBUNTU-CVE-2026-0915`, and `DEBIAN-CVE-2026-0915` collapse to a single row.
 
@@ -227,7 +221,7 @@ bash .github/scripts/nix.sh sbom --target server --variant fips --link static
 # - Generation is run from an isolated temporary work directory to avoid accidental `sbom.*` files being written to the repository root
 
 # Run the generator script directly (supports --target/--variant/--link/--output)
-nix/scripts/generate_sbom.sh --target server --variant non-fips --link dynamic --output /custom/path
+.github/scripts/sbom/generate_sbom.sh --target server --variant non-fips --link dynamic --output /custom/path
 ```
 
 ## 📚 Standards & Specifications

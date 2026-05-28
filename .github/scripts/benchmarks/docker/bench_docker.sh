@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# run_benchmarks_docker.sh — Run ckms benchmarks against Dockerized KMS versions.
+# bench_docker.sh — Run ckms benchmarks against Dockerized KMS versions.
 #
 # Usage:
-#   bash scripts/run_benchmarks_docker.sh 5.17              # single version, save baseline
-#   bash scripts/run_benchmarks_docker.sh 5.12..5.17        # range, one report per version
-#   bash scripts/run_benchmarks_docker.sh 5.14.0 5.17.0    # diff: baseline vs compare
-#   bash scripts/run_benchmarks_docker.sh                   # defaults to 5.17
+#   bash scripts/bench_docker.sh 5.17              # single version, save baseline
+#   bash scripts/bench_docker.sh 5.12..5.17        # range, one report per version
+#   bash scripts/bench_docker.sh 5.14.0 5.17.0    # diff: baseline vs compare
+#   bash scripts/bench_docker.sh                   # defaults to 5.17
 #
 # Two-version mode:
 #   ARG1 = baseline version (benchmarked first, saved as criterion baseline)
@@ -51,7 +51,7 @@ CKMS_CARGO_ARGS_STR="${CKMS_CARGO_ARGS:---release --features non-fips}"
 read -r -a CKMS_CARGO_ARGS <<<"${CKMS_CARGO_ARGS_STR}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 cd "${ROOT_DIR}"
 
 if ! command -v cargo >/dev/null 2>&1; then

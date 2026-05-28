@@ -579,7 +579,7 @@ All test scripts are called via `nix.sh test <type>` for reproducible environmen
 ### Utility Scripts
 
 - `common.sh`: Shared functions and utilities
-- `benchmarks.sh`: Performance benchmarking suite
+- `bench_ci.sh`: Performance benchmarking smoke-test (CI)
 - `reinitialize_demo_kms.sh`: Reset demo KMS instance
 - `renew_server_doc.sh`: Regenerate server documentation
 - `release.sh`: Release preparation and validation

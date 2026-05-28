@@ -526,12 +526,17 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 #### `benchmarks/` — Performance benchmarks
 
-| Script                            | Purpose                         |
-| --------------------------------- | ------------------------------- |
-| `benchmarks.sh`                   | CI benchmark smoke test         |
-| `run_benchmarks.sh`               | Start KMS + run ckms bench      |
-| `run_benchmarks_docker.sh`        | Docker-based benchmark runs     |
-| `run_benchmarks_load_tests.sh`    | Load test benchmarks            |
+See [`benchmarks/README.md`](benchmarks/README.md) for full documentation.
+
+| Script                                          | Purpose                                          |
+| ----------------------------------------------- | ------------------------------------------------ |
+| `benchmarks.sh`                                 | CI smoke-test (build + optional baseline)        |
+| `bench_regression.sh`                           | Regression gate vs `package.cosmian.com`         |
+| `bench_run.sh`                                  | Start local KMS + run `ckms bench`               |
+| `bench_run_load.sh`                             | Start local KMS + run `ckms bench --load`        |
+| `docker/bench_docker.sh`                        | Docker-based benchmark run / version comparison  |
+| `docker/bench_docker_load.sh`                   | Docker-based load-test run / version comparison  |
+| `docker/docker_helpers.sh`                      | Shared Docker helpers (sourced, not run directly)|
 
 #### `build/` — Nix build helpers
 

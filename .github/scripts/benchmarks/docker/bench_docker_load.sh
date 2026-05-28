@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# run_benchmarks_load_tests_docker.sh — Run ckms load-test benchmarks against Dockerized KMS versions.
+# bench_docker_load.sh — Run ckms load-test benchmarks against Dockerized KMS versions.
 #
 # Usage:
-#   bash scripts/run_benchmarks_load_tests_docker.sh 5.18              # single version report
-#   bash scripts/run_benchmarks_load_tests_docker.sh 5.17 5.18        # diff: baseline vs compare
+#   bash scripts/bench_docker_load.sh 5.18              # single version report
+#   bash scripts/bench_docker_load.sh 5.17 5.18        # diff: baseline vs compare
 #
 # Two-version mode:
 #   ARG1 = baseline version  (benchmarked first)
@@ -49,7 +49,7 @@ CKMS_CARGO_ARGS_STR="${CKMS_CARGO_ARGS:---release --features non-fips}"
 read -r -a CKMS_CARGO_ARGS <<<"${CKMS_CARGO_ARGS_STR}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 cd "${ROOT_DIR}"
 
 for cmd in cargo docker python3 curl; do
@@ -433,7 +433,7 @@ def generate_compare_md(
         "Source command:",
         "",
         "```bash",
-        f"bash scripts/run_benchmarks_load_tests_docker.sh {v1} {v2}",
+        f"bash scripts/bench_docker_load.sh {v1} {v2}",
         "```",
         "",
         "> **Throughput (Req/s)**: higher is better — ✅ = faster, ❌ = slower",

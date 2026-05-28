@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# benchmark_regression.sh — Retrieve baseline benchmarks from package.cosmian.com,
+# bench_regression.sh — Retrieve baseline benchmarks from package.cosmian.com,
 # run the current branch's benchmarks, and fail if the average regression exceeds
 # REGRESSION_THRESHOLD percent.
 #
@@ -28,7 +28,8 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
+# shellcheck source=.github/scripts/benchmarks/common.sh
+source "${SCRIPT_DIR}/common.sh"
 
 # ── Initialise build environment (VARIANT, FEATURES_FLAG) ──────────────────
 init_build_env "$@"
@@ -59,22 +60,10 @@ fi
 
 REFERENCE_URL="${REFERENCE_URL:-https://package.cosmian.com/kms/${KMS_VERSION}/benchmarks.json}"
 
-CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
-KMS_BIN="$CARGO_TARGET_DIR/release/cosmian_kms"
-CKMS_BIN="$CARGO_TARGET_DIR/release/ckms"
-
 # ── Temporary workspace ─────────────────────────────────────────────────────
 TMP_DIR=$(mktemp -d)
 KMS_PID=""
-
-_cleanup() {
-  if [ -n "${KMS_PID:-}" ]; then
-    kill "$KMS_PID" 2>/dev/null || true
-    wait "$KMS_PID" 2>/dev/null || true
-  fi
-  rm -rf "${TMP_DIR:-}"
-}
-trap _cleanup EXIT
+bench_register_cleanup
 
 REFERENCE_JSON="$TMP_DIR/reference.json"
 CURRENT_JSON="$TMP_DIR/current.json"
@@ -109,33 +98,12 @@ fi
 
 # ── (b) Build server + CLI (release) ────────────────────────────────────────
 echo ""
-echo "[b] Building cosmian_kms server and ckms CLI (release)..."
-cargo build --release \
-  -p cosmian_kms_server \
-  -p ckms \
-  "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
-echo "    Build complete."
+bench_build_binaries release
 
 # ── Start KMS server (SQLite, plain HTTP) ───────────────────────────────────
-SQLITE_PATH="$TMP_DIR/kms-data"
-KMS_CONF="$TMP_DIR/kms.toml"
-
-cat >"$KMS_CONF" <<KMS_CONF_EOF
-[db]
-database_type = "sqlite"
-sqlite_path = "${SQLITE_PATH}"
-
-[http]
-hostname = "0.0.0.0"
-port = ${BENCH_PORT}
-KMS_CONF_EOF
-
 echo ""
 echo "[b] Starting KMS server on port ${BENCH_PORT}..."
-"$KMS_BIN" --config "$KMS_CONF" >"$TMP_DIR/kms.log" 2>&1 &
-KMS_PID=$!
-
-kms_wait_ready "http://127.0.0.1:${BENCH_PORT}/kmip/2_1" "$KMS_PID" "$TMP_DIR/kms.log" 60
+bench_start_server "${BENCH_PORT}" "${TMP_DIR}"
 echo "    KMS server ready (PID ${KMS_PID})."
 
 # ── (c) Run current-branch benchmarks ───────────────────────────────────────

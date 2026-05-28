@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared Docker + KMS helpers for benchmark scripts.
 #
-# Usage (from benchmarks/run_benchmarks_docker.sh or run_benchmarks_load_tests_docker.sh):
+# Usage (from benchmarks/docker/bench_docker.sh or bench_docker_load.sh):
 #   source "$(cd "$(dirname "$0")" && pwd)/docker_helpers.sh"
 #
 # Requires these variables to be set by the caller before sourcing:
