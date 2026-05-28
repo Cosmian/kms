@@ -2,8 +2,9 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
 
 use self::{
-    create_key::CreateKeyAction, destroy_key::DestroyKeyAction, rekey::ReKeyAction,
-    revoke_key::RevokeKeyAction,
+    create_key::CreateKeyAction, destroy_key::DestroyKeyAction,
+    get_rotation_policy::GetRotationPolicyAction, rekey::ReKeyAction, revoke_key::RevokeKeyAction,
+    set_rotation_policy::SetRotationPolicyAction,
 };
 use crate::{
     actions::shared::{
@@ -15,8 +16,10 @@ use crate::{
 
 pub mod create_key;
 pub mod destroy_key;
+pub mod get_rotation_policy;
 pub mod rekey;
 pub mod revoke_key;
+pub mod set_rotation_policy;
 
 /// Create, destroy, import, and export symmetric keys
 #[derive(Subcommand)]
@@ -29,6 +32,8 @@ pub enum KeysCommands {
     Unwrap(UnwrapSecretDataOrKeyAction),
     Revoke(RevokeKeyAction),
     Destroy(DestroyKeyAction),
+    SetRotationPolicy(SetRotationPolicyAction),
+    GetRotationPolicy(GetRotationPolicyAction),
 }
 
 impl KeysCommands {
@@ -56,6 +61,12 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::Destroy(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::SetRotationPolicy(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::GetRotationPolicy(action) => {
                 action.run(kms_rest_client).await?;
             }
         }

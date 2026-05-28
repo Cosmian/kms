@@ -29,7 +29,7 @@ use cosmian_kms_client_utils::{
         kmip_2_1::{
             KmipOperation,
             extra::tagging::VENDOR_ID_COSMIAN,
-            kmip_attributes::Attributes,
+            kmip_attributes::{Attribute, Attributes},
             kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
             kmip_objects::{
                 Certificate as KmipCertificate, Object, ObjectType,
@@ -41,8 +41,8 @@ use cosmian_kms_client_utils::{
                 DeriveKeyResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse,
                 GetAttributes, GetAttributesResponse, Hash, HashResponse, ImportResponse,
                 LocateResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
-                RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
-                SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+                ReKey, ReKeyResponse, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
+                SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
             },
             kmip_types::{
                 AttributeReference, CryptographicAlgorithm, CryptographicParameters,
@@ -2372,3 +2372,91 @@ pub fn derive_key_ttlv_request(
 }
 
 wasm_response_parser!(parse_derive_key_ttlv_response, DeriveKeyResponse);
+
+// ── ReKey (symmetric key rotation) ───────────────────────────────────────────
+
+/// Build a KMIP `ReKey` TTLV request for a symmetric key.
+#[wasm_bindgen]
+pub fn rekey_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
+    let request = ReKey {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        ..ReKey::default()
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_rekey_ttlv_response, ReKeyResponse);
+
+// ── Rotation policy helpers ──────────────────────────────────────────────────
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateInterval` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_interval_ttlv_request(
+    unique_identifier: String,
+    interval_secs: i32,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateInterval(interval_secs),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateOffset` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_offset_ttlv_request(
+    unique_identifier: String,
+    offset_secs: i32,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateOffset(offset_secs),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateName` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_name_ttlv_request(
+    unique_identifier: String,
+    name: String,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateName(name),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Rotation-policy fields extracted from a `GetAttributes` response.
+#[derive(Serialize)]
+struct RotationPolicyDto {
+    interval: i32,
+    offset: i32,
+    name: Option<String>,
+    generation: i32,
+    date: Option<String>,
+}
+
+/// Parse a `GetAttributes` response and extract only the rotation-policy fields.
+///
+/// Returns a JS object with keys: `interval`, `offset`,
+/// `name`, `generation`, `date` (string or null).
+#[wasm_bindgen]
+pub fn parse_rotation_policy_response(response: &str) -> Result<JsValue, JsValue> {
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let GetAttributesResponse {
+        unique_identifier: _,
+        attributes,
+    } = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+
+    let policy = RotationPolicyDto {
+        interval: attributes.rotate_interval.unwrap_or(0),
+        offset: attributes.rotate_offset.unwrap_or(0),
+        name: attributes.rotate_name.clone(),
+        generation: attributes.rotate_generation.unwrap_or(0),
+        date: attributes.rotate_date.map(|d| d.to_string()),
+    };
+
+    Ok(serde_wasm_bindgen::to_value(&policy)?)
+}

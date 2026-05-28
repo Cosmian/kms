@@ -5,6 +5,7 @@ import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import Footer from "./Footer";
 import Header, { ServerInfo } from "./Header";
+import NotificationsBell from "./NotificationsBell";
 import Sidebar from "./Sidebar";
 import { AuthMethod, getNoTTLVRequest, getNoTTLVRequestWithTimeout } from "../../utils/utils";
 
@@ -121,6 +122,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                                 </Button>
                             </Link>
                         )}
+                        <NotificationsBell />
                         <Switch
                             className="w-20"
                             checked={isDarkMode}

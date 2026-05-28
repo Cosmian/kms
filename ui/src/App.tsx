@@ -23,6 +23,9 @@ import CCEncryptForm from "./actions/Covercrypt/CovercryptEncrypt";
 import CovercryptMasterKeyForm from "./actions/Covercrypt/CovercryptMasterKey";
 import CovercryptUserKeyForm from "./actions/Covercrypt/CovercryptUserKey";
 import CseInfo from "./actions/Keys/CseInfo";
+import GetRotationPolicyForm from "./actions/Keys/GetRotationPolicy";
+import KeysReKeyForm from "./actions/Keys/KeysReKey";
+import SetRotationPolicyForm from "./actions/Keys/SetRotationPolicy";
 import ECDecryptForm from "./actions/EC/ECDecrypt";
 import ECEncryptForm from "./actions/EC/ECEncrypt";
 import ECKeyCreateForm from "./actions/EC/ECKeysCreate";
@@ -250,6 +253,9 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
+                            <Route path="keys/rekey" element={<KeysReKeyForm />} />
+                            <Route path="keys/set-rotation-policy" element={<SetRotationPolicyForm />} />
+                            <Route path="keys/get-rotation-policy" element={<GetRotationPolicyForm />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
                             <Route path="encrypt" element={<SymmetricEncryptForm />} />

@@ -552,6 +552,16 @@ pub(crate) async fn get_attributes(
             },
         }
     }
+
+    // Rotation attributes do not have dedicated Tag variants; copy them unconditionally
+    // from the source attributes so they are always present in the response.
+    res.rotate_date = attributes.rotate_date;
+    res.rotate_generation = attributes.rotate_generation;
+    res.rotate_interval = attributes.rotate_interval;
+    res.rotate_latest = attributes.rotate_latest;
+    res.rotate_name.clone_from(&attributes.rotate_name);
+    res.rotate_offset = attributes.rotate_offset;
+
     debug!(
         "Retrieved Attributes for {} {}, tags {:?}",
         owm.object().object_type(),
