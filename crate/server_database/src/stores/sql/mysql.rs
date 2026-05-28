@@ -10,8 +10,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, Notification, NotificationsStore,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
 #[cfg(feature = "non-fips")]
@@ -249,6 +249,7 @@ impl MySqlPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-notifications",
         ] {
             let sql = MYSQL_QUERIES
                 .get(name)
@@ -262,6 +263,7 @@ impl MySqlPool {
                 "clean-table-objects",
                 "clean-table-read_access",
                 "clean-table-tags",
+                "clean-table-notifications",
             ] {
                 if let Some(sql) = MYSQL_QUERIES.get(name) {
                     conn.query_drop(sql).await.map_err(DbError::from)?;
@@ -1255,3 +1257,156 @@ pub(super) async fn atomic_(
 }
 
 // impl_sql_migrate!(MySqlPool, get_mysql_query);
+
+// ---------------------------------------------------------------------------
+// NotificationsStore for MySQL
+// ---------------------------------------------------------------------------
+
+#[async_trait(?Send)]
+impl NotificationsStore for MySqlPool {
+    async fn create_notification(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        message: &str,
+        object_id: Option<&str>,
+        created_at: time::OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let created_at_str = created_at.format(&fmt).unwrap_or_default();
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let sql = MYSQL_QUERIES.get("insert-notification").ok_or_else(|| {
+            InterfaceError::Db("insert-notification SQL query not found".to_owned())
+        })?;
+        conn.exec_drop(
+            sql,
+            (user_id, event_type, message, object_id, &created_at_str),
+        )
+        .await
+        .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let id_sql = MYSQL_QUERIES
+            .get("last-insert-id")
+            .ok_or_else(|| InterfaceError::Db("last-insert-id SQL query not found".to_owned()))?;
+        let id: Option<i64> = conn
+            .query_first(id_sql)
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(id.unwrap_or(0))
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let sql = MYSQL_QUERIES.get("list-notifications").ok_or_else(|| {
+            InterfaceError::Db("list-notifications SQL query not found".to_owned())
+        })?;
+        let rows: Vec<(
+            i64,
+            String,
+            String,
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+        )> = conn
+            .exec(sql, (user_id, limit, offset))
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+
+        let mut notifications = Vec::with_capacity(rows.len());
+        for (id, uid, etype, msg, oid, cat, rat) in rows {
+            let created_at =
+                time::OffsetDateTime::parse(&cat, &fmt).unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+            let read_at = rat.and_then(|s| time::OffsetDateTime::parse(&s, &fmt).ok());
+            notifications.push(Notification {
+                id,
+                user_id: uid,
+                event_type: etype,
+                message: msg,
+                object_id: oid,
+                created_at,
+                read_at,
+            });
+        }
+        Ok(notifications)
+    }
+
+    async fn count_unread(&self, user_id: &str) -> InterfaceResult<i64> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let sql = MYSQL_QUERIES
+            .get("count-unread-notifications")
+            .ok_or_else(|| {
+                InterfaceError::Db("count-unread-notifications SQL query not found".to_owned())
+            })?;
+        let count: Option<i64> = conn
+            .exec_first(sql, (user_id,))
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(count.unwrap_or(0))
+    }
+
+    async fn mark_read(
+        &self,
+        id: i64,
+        user_id: &str,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let sql = MYSQL_QUERIES.get("mark-notification-read").ok_or_else(|| {
+            InterfaceError::Db("mark-notification-read SQL query not found".to_owned())
+        })?;
+        conn.exec_drop(sql, (&now_str, id, user_id))
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let row_sql = MYSQL_QUERIES
+            .get("row-count")
+            .ok_or_else(|| InterfaceError::Db("row-count SQL query not found".to_owned()))?;
+        let affected: Option<i64> = conn
+            .query_first(row_sql)
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(affected.unwrap_or(0) > 0)
+    }
+
+    async fn mark_all_read(&self, user_id: &str, now: time::OffsetDateTime) -> InterfaceResult<()> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let sql = MYSQL_QUERIES
+            .get("mark-all-notifications-read")
+            .ok_or_else(|| {
+                InterfaceError::Db("mark-all-notifications-read SQL query not found".to_owned())
+            })?;
+        conn.exec_drop(sql, (&now_str, user_id))
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(())
+    }
+}

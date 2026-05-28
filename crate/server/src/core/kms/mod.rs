@@ -10,7 +10,7 @@ use cosmian_kms_server_database::{
     Database,
     reexport::cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
 };
-use cosmian_logger::trace;
+use cosmian_logger::{trace, warn};
 // Proprietary HSMs (Proteccio, Utimaco, Crypt2pay) ship Linux x86_64-only PKCS#11 libs.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use crypt2pay_pkcs11_loader::{CRYPT2PAY_PKCS11_LIB, Crypt2pay};
@@ -41,10 +41,11 @@ const OTHER_HSM_PKCS11_LIB: &str = "/usr/local/lib/libkmshsm.dylib";
 static GLOBAL_HSMS: OnceCell<Vec<Arc<dyn HSM + Send + Sync>>> = OnceCell::const_new();
 
 use crate::{
-    config::{OpenTelemetryConfig, ServerParams},
+    config::{OpenTelemetryConfig, RenewalNotificationStrategy, ServerParams},
     core::OtelMetrics,
     error::KmsError,
     kms_bail,
+    notifications::{EmailNotifier, SmtpParams},
     result::KResult,
 };
 
@@ -94,6 +95,12 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// Optional email notifier for rotation/renewal events.
+    pub(crate) email_notifier: Option<Arc<EmailNotifier>>,
+
+    /// Strategy governing when renewal-warning notifications are emitted.
+    pub(crate) renewal_strategy: RenewalNotificationStrategy,
 }
 
 impl KMS {
@@ -154,6 +161,17 @@ impl KMS {
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
             metrics: Self::create_otel_metrics(&server_params)?,
+            // Set up email notifier (disabled if SMTP host not configured or transport init fails)
+            email_notifier: SmtpParams::from_config(&server_params.notifications.smtp).and_then(
+                |p| match EmailNotifier::new(p) {
+                    Ok(n) => Some(Arc::new(n)),
+                    Err(e) => {
+                        warn!("Email notifier disabled — failed to initialise SMTP transport: {e}");
+                        None
+                    }
+                },
+            ),
+            renewal_strategy: server_params.notifications.renewal.clone(),
         })
     }
 

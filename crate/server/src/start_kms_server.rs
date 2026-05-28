@@ -62,7 +62,7 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect, swagger,
+        ms_dke, notifications, root_redirect, swagger,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -1087,6 +1087,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(notifications::list_notifications)
+            .service(notifications::count_unread_notifications)
+            .service(notifications::mark_notification_read)
+            .service(notifications::mark_all_notifications_read)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))

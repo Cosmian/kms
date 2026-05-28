@@ -176,3 +176,44 @@ FROM tags
 WHERE tag IN (@TAGS)
 GROUP BY id
 HAVING COUNT(DISTINCT tag) = ?;
+
+-- name: create-table-notifications
+CREATE TABLE IF NOT EXISTS notifications
+(
+    id         BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id    VARCHAR(255) NOT NULL,
+    event_type VARCHAR(64)  NOT NULL,
+    message    TEXT         NOT NULL,
+    object_id  VARCHAR(255),
+    created_at VARCHAR(64)  NOT NULL,
+    read_at    VARCHAR(64)
+);
+
+-- name: clean-table-notifications
+DELETE FROM notifications;
+
+-- name: insert-notification
+INSERT INTO notifications (user_id, event_type, message, object_id, created_at)
+VALUES (?, ?, ?, ?, ?);
+
+-- name: last-insert-id
+SELECT LAST_INSERT_ID();
+
+-- name: list-notifications
+SELECT id, user_id, event_type, message, object_id, created_at, read_at
+FROM notifications WHERE user_id = ?
+ORDER BY (read_at IS NULL) DESC, created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: count-unread-notifications
+SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL;
+
+-- name: mark-notification-read
+UPDATE notifications SET read_at = ?
+WHERE id = ? AND user_id = ? AND read_at IS NULL;
+
+-- name: row-count
+SELECT ROW_COUNT();
+
+-- name: mark-all-notifications-read
+UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL;

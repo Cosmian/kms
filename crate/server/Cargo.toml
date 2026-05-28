@@ -81,6 +81,12 @@ futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
+lettre = { workspace = true, features = [
+  "tokio1",
+  "smtp-transport",
+  "tokio1-native-tls",
+  "builder",
+] }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",

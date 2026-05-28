@@ -666,3 +666,113 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
         }
     }
 }
+
+/// Scan all objects approaching their scheduled renewal and emit warning notifications.
+///
+/// For each object whose next rotation date falls within the largest configured threshold
+/// window, the function checks whether a warning was already sent for the relevant threshold.
+/// If not, it creates an in-database notification record and (optionally) sends an email.
+pub(crate) async fn dispatch_renewal_warnings(kms: &KMS) {
+    if !kms.renewal_strategy.warnings_enabled() {
+        return;
+    }
+
+    let thresholds = kms.renewal_strategy.sorted_thresholds();
+    if thresholds.is_empty() {
+        return;
+    }
+
+    let now = OffsetDateTime::now_utc();
+    // Find all objects that would be due within the largest threshold window.
+    let max_days = *thresholds.first().unwrap_or(&30);
+    let future_now = now + time::Duration::seconds(i64::from(max_days) * 86_400);
+
+    let candidates = match kms.database.find_due_for_rotation(future_now).await {
+        Ok(uids) => uids,
+        Err(e) => {
+            warn!("renewal-warnings: failed to query candidates: {e}");
+            return;
+        }
+    };
+
+    for uid in &candidates {
+        let Ok(Some(owm)) = kms.database.retrieve_object(uid).await else {
+            continue;
+        };
+
+        let attrs = owm.attributes();
+
+        // Skip objects already due for rotation (the auto-rotation cron will handle them)
+        let Some(interval) = attrs.rotate_interval.filter(|&i| i > 0) else {
+            continue;
+        };
+
+        // Compute days_until_renewal
+        let next_rotation = {
+            if let Some(last_rotate) = attrs.rotate_date {
+                last_rotate + time::Duration::seconds(i64::from(interval))
+            } else if let Some(initial) = attrs.initial_date {
+                let offset = attrs.rotate_offset.map_or(0, i64::from);
+                initial + time::Duration::seconds(i64::from(interval) + offset)
+            } else {
+                continue;
+            }
+        };
+
+        if next_rotation <= now {
+            // Already due, auto-rotation will handle
+            continue;
+        }
+
+        let secs_until = (next_rotation - now).whole_seconds().max(0);
+        let days_until = u32::try_from(secs_until / 86_400).unwrap_or(u32::MAX);
+
+        // Find the matching threshold (largest threshold that days_until is still within)
+        let matching_threshold = thresholds.iter().find(|&&t| days_until <= t);
+        let Some(&threshold) = matching_threshold else {
+            continue;
+        };
+
+        // Check if we already sent a warning for this threshold in the current cycle
+        let last_warned = attrs.rotate_last_warning_days.unwrap_or(0);
+        if last_warned >= i32::try_from(threshold).unwrap_or(i32::MAX) {
+            continue;
+        }
+
+        let owner = owm.owner().to_owned();
+        let object_type_str = format!("{:?}", owm.object().object_type());
+        let interval_days = interval / 86_400;
+
+        let msg = format!(
+            "Object '{uid}' ({object_type_str}) is scheduled for renewal in \
+             approximately {days_until} day(s) (rotation interval: {interval_days} days)."
+        );
+
+        if let Err(e) = kms
+            .database
+            .create_notification(&owner, "renewal_warning", &msg, Some(uid), now)
+            .await
+        {
+            warn!("renewal-warnings: failed to create notification for {uid}: {e}");
+            continue;
+        }
+
+        if let Some(ref notifier) = kms.email_notifier {
+            notifier
+                .send_renewal_warning(uid, &object_type_str, &owner, days_until, interval_days)
+                .await;
+        }
+
+        // Record that we've sent a warning for this threshold so it's not re-sent.
+        let mut new_attrs = attrs.clone();
+        new_attrs.rotate_last_warning_days = Some(i32::try_from(threshold).unwrap_or(i32::MAX));
+        let tags = kms.database.retrieve_tags(uid).await.unwrap_or_default();
+        if let Err(e) = kms
+            .database
+            .update_object(uid, owm.object(), &new_attrs, Some(&tags))
+            .await
+        {
+            warn!("renewal-warnings: failed to update rotate_last_warning_days for {uid}: {e}");
+        }
+    }
+}

@@ -14,8 +14,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, Notification, NotificationsStore,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
 use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
@@ -112,9 +112,11 @@ impl SqlitePool {
         let create_objects = pool.get_query("create-table-objects")?.to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
+        let create_notifications = pool.get_query("create-table-notifications")?.to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
+        let clean_notifications = pool.get_query("clean-table-notifications")?.to_owned();
         pool.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
@@ -123,10 +125,12 @@ impl SqlitePool {
                     tx.execute(&create_objects, [])?;
                     tx.execute(&create_read_access, [])?;
                     tx.execute(&create_tags, [])?;
+                    tx.execute(&create_notifications, [])?;
                     if clear_database {
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
                         tx.execute(&clean_tags, [])?;
+                        tx.execute(&clean_notifications, [])?;
                     }
                     tx.commit()?;
                     Ok(())
@@ -1091,4 +1095,157 @@ fn apply_owned_ops(
         }
     }
     Ok(uids)
+}
+
+// ---------------------------------------------------------------------------
+// NotificationsStore for SQLite
+// ---------------------------------------------------------------------------
+
+#[async_trait(?Send)]
+impl NotificationsStore for SqlitePool {
+    async fn create_notification(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        message: &str,
+        object_id: Option<&str>,
+        created_at: time::OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let created_at_str = created_at.format(&fmt).unwrap_or_default();
+        let user_id = user_id.to_owned();
+        let event_type = event_type.to_owned();
+        let message = message.to_owned();
+        let object_id = object_id.map(str::to_owned);
+        self.writer
+            .call(move |c| -> Result<i64, rusqlite::Error> {
+                c.execute(
+                    "INSERT INTO notifications (user_id, event_type, message, object_id, created_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![user_id, event_type, message, object_id, created_at_str],
+                )?;
+                Ok(c.last_insert_rowid())
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let user_id = user_id.to_owned();
+        let rows = self
+            .reader()
+            .call(
+                move |c| -> Result<
+                    Vec<(
+                        i64,
+                        String,
+                        String,
+                        String,
+                        Option<String>,
+                        String,
+                        Option<String>,
+                    )>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(
+                        "SELECT id, user_id, event_type, message, object_id, created_at, read_at \
+                         FROM notifications WHERE user_id = ?1 \
+                         ORDER BY (read_at IS NULL) DESC, created_at DESC \
+                         LIMIT ?2 OFFSET ?3",
+                    )?;
+                    let rows = stmt
+                        .query_map(rusqlite::params![user_id, limit, offset], |row| {
+                            Ok((
+                                row.get::<_, i64>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, String>(3)?,
+                                row.get::<_, Option<String>>(4)?,
+                                row.get::<_, String>(5)?,
+                                row.get::<_, Option<String>>(6)?,
+                            ))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(rows)
+                },
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+
+        let mut notifications = Vec::with_capacity(rows.len());
+        for (id, uid, etype, msg, oid, cat, rat) in rows {
+            let created_at =
+                time::OffsetDateTime::parse(&cat, &fmt).unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+            let read_at = rat.and_then(|s| time::OffsetDateTime::parse(&s, &fmt).ok());
+            notifications.push(Notification {
+                id,
+                user_id: uid,
+                event_type: etype,
+                message: msg,
+                object_id: oid,
+                created_at,
+                read_at,
+            });
+        }
+        Ok(notifications)
+    }
+
+    async fn count_unread(&self, user_id: &str) -> InterfaceResult<i64> {
+        let user_id = user_id.to_owned();
+        self.reader()
+            .call(move |c| -> Result<i64, rusqlite::Error> {
+                c.query_row(
+                    "SELECT COUNT(*) FROM notifications WHERE user_id = ?1 AND read_at IS NULL",
+                    rusqlite::params![user_id],
+                    |row| row.get(0),
+                )
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))
+    }
+
+    async fn mark_read(
+        &self,
+        id: i64,
+        user_id: &str,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let user_id = user_id.to_owned();
+        let affected = self
+            .writer
+            .call(move |c| -> Result<usize, rusqlite::Error> {
+                c.execute(
+                    "UPDATE notifications SET read_at = ?1 \
+                     WHERE id = ?2 AND user_id = ?3 AND read_at IS NULL",
+                    rusqlite::params![now_str, id, user_id],
+                )
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(affected > 0)
+    }
+
+    async fn mark_all_read(&self, user_id: &str, now: time::OffsetDateTime) -> InterfaceResult<()> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let user_id = user_id.to_owned();
+        self.writer
+            .call(move |c| -> Result<(), rusqlite::Error> {
+                c.execute(
+                    "UPDATE notifications SET read_at = ?1 WHERE user_id = ?2 AND read_at IS NULL",
+                    rusqlite::params![now_str, user_id],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))
+    }
 }

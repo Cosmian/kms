@@ -167,8 +167,8 @@ mod tests {
     use cosmian_kms_server::{
         config::{
             AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
-            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
-            SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+            KmipPolicyConfig, LoggingConfig, MainDBConfig, NotificationsConfig, OidcConfig,
+            ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
@@ -297,6 +297,7 @@ mod tests {
             privileged_users: None,
             print_default_config: false,
             auto_rotation_check_interval_secs: 0,
+            notifications: NotificationsConfig::default(),
         };
 
         let toml_string = r#"

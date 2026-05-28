@@ -6,8 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, Notification, NotificationsStore,
+    ObjectWithMetadata, ObjectsStore, PermissionsStore,
 };
 use deadpool_postgres::{Config as PgConfig, ManagerConfig, Pool, RecyclingMethod};
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
@@ -326,6 +326,16 @@ impl PgPool {
             "create-table-objects",
             "create-table-read_access",
             "create-table-tags",
+            "create-table-notifications",
+        ] {
+            let sql = tmp_loader.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // Set up notifications sequence (PostgreSQL-specific)
+        for name in [
+            "create-notifications-sequence",
+            "alter-notifications-id-bigint",
+            "set-notifications-id-default",
         ] {
             let sql = tmp_loader.get_query(name)?;
             client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -345,6 +355,7 @@ impl PgPool {
                 "clean-table-read_access",
                 "clean-table-tags",
                 "clean-table-objects",
+                "clean-table-notifications",
             ] {
                 let sql = tmp_loader.get_query(name)?;
                 client.batch_execute(sql).await.map_err(DbError::from)?;
@@ -1089,6 +1100,136 @@ fn rebuild_url_without_ssl_params(url: &str, params: &HashMap<String, String>) -
         base.to_owned()
     } else {
         format!("{}?{}", base, non_ssl_params.join("&"))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NotificationsStore for PostgreSQL
+// ---------------------------------------------------------------------------
+
+#[async_trait(?Send)]
+impl NotificationsStore for PgPool {
+    async fn create_notification(
+        &self,
+        user_id: &str,
+        event_type: &str,
+        message: &str,
+        object_id: Option<&str>,
+        created_at: time::OffsetDateTime,
+    ) -> InterfaceResult<i64> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let created_at_str = created_at.format(&fmt).unwrap_or_default();
+        let params: Vec<&(dyn ToSql + Sync)> =
+            vec![&user_id, &event_type, &message, &object_id, &created_at_str];
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let row = client
+            .query_one(get_pgsql_query!("insert-notification"), &params)
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(row.get::<_, i64>(0))
+    }
+
+    async fn list_notifications(
+        &self,
+        user_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> InterfaceResult<Vec<Notification>> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let rows = client
+            .query(
+                get_pgsql_query!("list-notifications"),
+                &[&user_id, &limit, &offset],
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+
+        let mut notifications = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let id: i64 = row.get(0);
+            let uid: String = row.get(1);
+            let etype: String = row.get(2);
+            let msg: String = row.get(3);
+            let oid: Option<String> = row.get(4);
+            let cat: String = row.get(5);
+            let rat: Option<String> = row.get(6);
+            let created_at =
+                time::OffsetDateTime::parse(&cat, &fmt).unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+            let read_at = rat.and_then(|s| time::OffsetDateTime::parse(&s, &fmt).ok());
+            notifications.push(Notification {
+                id,
+                user_id: uid,
+                event_type: etype,
+                message: msg,
+                object_id: oid,
+                created_at,
+                read_at,
+            });
+        }
+        Ok(notifications)
+    }
+
+    async fn count_unread(&self, user_id: &str) -> InterfaceResult<i64> {
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let row = client
+            .query_one(get_pgsql_query!("count-unread-notifications"), &[&user_id])
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(row.get::<_, i64>(0))
+    }
+
+    async fn mark_read(
+        &self,
+        id: i64,
+        user_id: &str,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<bool> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        let affected = client
+            .execute(
+                get_pgsql_query!("mark-notification-read"),
+                &[&now_str, &id, &user_id],
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(affected > 0)
+    }
+
+    async fn mark_all_read(&self, user_id: &str, now: time::OffsetDateTime) -> InterfaceResult<()> {
+        let fmt = time::format_description::well_known::Rfc3339;
+        let now_str = now.format(&fmt).unwrap_or_default();
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        client
+            .execute(
+                get_pgsql_query!("mark-all-notifications-read"),
+                &[&now_str, &user_id],
+            )
+            .await
+            .map_err(|e| InterfaceError::Db(e.to_string()))?;
+        Ok(())
     }
 }
 

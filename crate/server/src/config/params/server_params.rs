@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, NotificationsConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -168,6 +168,9 @@ pub struct ServerParams {
     /// Interval in seconds between background auto-rotation checks.
     /// 0 means disabled.
     pub auto_rotation_check_interval_secs: u64,
+
+    /// Notification configuration (SMTP, renewal strategy).
+    pub notifications: NotificationsConfig,
 }
 
 /// Represents the server parameters.
@@ -419,6 +422,7 @@ impl ServerParams {
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_default(),
             max_locate_items: 1000,
             auto_rotation_check_interval_secs: conf.auto_rotation_check_interval_secs,
+            notifications: conf.notifications,
         };
 
         debug!("{res:#?}");
@@ -646,6 +650,7 @@ impl fmt::Debug for ServerParams {
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
         );
+        debug_struct.field("notifications", &self.notifications);
 
         debug_struct.finish()
     }

@@ -135,3 +135,47 @@ ON objects.id = matched_tags.id;
 
 -- name: select-uids-from-tags
 SELECT id FROM tags WHERE tag IN (@TAGS) GROUP BY id HAVING COUNT(DISTINCT tag) = @LEN;
+
+-- name: create-table-notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  event_type VARCHAR(64) NOT NULL,
+  message TEXT NOT NULL,
+  object_id VARCHAR(255),
+  created_at VARCHAR(64) NOT NULL,
+  read_at VARCHAR(64)
+);
+
+-- name: clean-table-notifications
+DELETE FROM notifications;
+
+-- name: create-notifications-sequence
+CREATE SEQUENCE IF NOT EXISTS notifications_id_seq AS BIGINT;
+
+-- name: alter-notifications-id-bigint
+DO $$ BEGIN ALTER TABLE notifications ALTER COLUMN id TYPE BIGINT USING id::BIGINT; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+-- name: set-notifications-id-default
+ALTER TABLE notifications ALTER COLUMN id SET DEFAULT nextval('notifications_id_seq'::regclass);
+
+-- name: insert-notification
+INSERT INTO notifications (user_id, event_type, message, object_id, created_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id;
+
+-- name: list-notifications
+SELECT id, user_id, event_type, message, object_id, created_at, read_at
+FROM notifications WHERE user_id = $1
+ORDER BY (read_at IS NULL) DESC, created_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: count-unread-notifications
+SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL;
+
+-- name: mark-notification-read
+UPDATE notifications SET read_at = $1
+WHERE id = $2 AND user_id = $3 AND read_at IS NULL;
+
+-- name: mark-all-notifications-read
+UPDATE notifications SET read_at = $1 WHERE user_id = $2 AND read_at IS NULL;
