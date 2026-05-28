@@ -48,6 +48,7 @@ jobs:
 
     steps:
       - name: Manual cleanup for extra space
+        if: runner.os == 'Linux'
         run: |
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
