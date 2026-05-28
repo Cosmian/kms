@@ -181,9 +181,9 @@ let
   cargoGenerateRpmTool = rustPlatform190.buildRustPackage rec {
     pname = "cargo-generate-rpm";
     version = "0.16.0";
-    src = pkgs.fetchCrate {
-      inherit pname version;
-      # Pinned crate tarball hash from crates.io fetch
+    # Use static CDN directly — the crates.io API endpoint returns 403 in CI
+    src = builtins.fetchTarball {
+      url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
       sha256 = "sha256-esp3MJ24RQpMFn9zPgccp7NESoFAUPU7y+YRsJBVVr4=";
     };
     # Pinned cargo vendor hash for reproducible builds
@@ -203,9 +203,9 @@ let
     pname = "cargo-packager";
     # Align with version used in CI scripts to reduce surprises
     version = "0.11.7"; # Update if needed; hash will enforce correctness
-    src = pkgs.fetchCrate {
-      inherit pname version;
-      # Initial placeholder; Nix will suggest the correct one on first build if mismatched
+    # Use static CDN directly — the crates.io API endpoint returns 403 in CI
+    src = builtins.fetchTarball {
+      url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
       sha256 = "sha256-dSF2BzT+wun75qRBvDJpoOwNG4dHUeVnTx/Ygm5wtK0=";
     };
     # Pinned cargo vendor hash differs by platform (target-specific deps)

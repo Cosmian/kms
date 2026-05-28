@@ -76,8 +76,9 @@ let
     pname = "wasm-bindgen-cli";
     version = "0.2.108";
 
-    src = pkgs.fetchCrate {
-      inherit pname version;
+    # Use static CDN directly — the crates.io API endpoint returns 403 in CI
+    src = builtins.fetchTarball {
+      url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
       sha256 = "sha256-UsuxILm1G6PkmVw0I/JF12CRltAfCJQFOaT4hFwvR8E=";
     };
 
