@@ -1,7 +1,6 @@
 actix-codec@0.5.2 (2): MIT, Apache-2.0
 actix-cors@0.6.5 (2): MIT, Apache-2.0
 actix-files@0.6.10 (2): MIT, Apache-2.0
-actix-governor@0.10.0 (1): GPL-3.0-or-later
 actix-http@3.12.1 (2): MIT, Apache-2.0
 actix-identity@0.6.0 (2): MIT, Apache-2.0
 actix-macros@0.2.4 (2): MIT, Apache-2.0

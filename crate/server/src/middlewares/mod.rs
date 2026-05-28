@@ -10,6 +10,9 @@ pub(crate) use ensure_auth::EnsureAuth;
 mod jwt;
 pub(crate) use jwt::{JwksManager, JwtAuth, JwtConfig, JwtTokenHeaders, UserClaim};
 
+mod rate_limiter;
+pub(crate) use rate_limiter::{RateLimiterConfig, RateLimiterMiddleware};
+
 /// Represents an authenticated user
 ///
 /// This struct is stored in the request extensions after successful

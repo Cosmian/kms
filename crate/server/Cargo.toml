@@ -52,7 +52,7 @@ interop = ["cosmian_kms_server_database/interop"]
 [dependencies]
 actix-cors = { workspace = true }
 actix-files = { workspace = true }
-actix-governor = { workspace = true }
+governor = { version = "0.10", features = ["std"] }
 actix-identity = { workspace = true }
 actix-rt = { workspace = true }
 actix-session = { workspace = true, features = ["cookie-session"] }

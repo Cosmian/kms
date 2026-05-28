@@ -1,5 +1,26 @@
 export type AuthMethod = "None" | "JWT" | "CERT" | undefined;
 
+/** Strip HTML tags from error responses (server may return HTML error pages). */
+const stripHtml = (text: string): string =>
+    text
+        .replace(/<[^>]*>/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+/**
+ * Maximum file size (in bytes) for server-side encryption.
+ * The KMS server accepts up to 64 MB JSON payloads; with base64 encoding overhead (~33%),
+ * the effective cleartext limit is ~48 MB.
+ */
+export const MAX_UPLOAD_SIZE_BYTES = 48 * 1024 * 1024;
+
+/** Human-readable file size formatting. */
+export const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 export const fetchIdToken = async (serverUrl: string): Promise<{ id_token: string; user_id: string } | null> => {
     try {
         const kmsUrl = serverUrl + "/ui/token";
@@ -51,7 +72,7 @@ export const sendKmipRequest = async (request: object, idToken: string | null, s
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`${response.status}: ${errorText}`);
+        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
     }
 
     return JSON.stringify(await response.json());
@@ -71,7 +92,7 @@ export const postNoTTLVRequest = async (path: string, request: object, idToken: 
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`${response.status}: ${errorText}`);
+        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
     }
 
     return await response.json();
@@ -97,7 +118,7 @@ export const getNoTTLVRequest = async (path: string, idToken: string | null, ser
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`${response.status}: ${errorText}`);
+        throw new Error(`${response.status}: ${stripHtml(errorText)}`);
     }
 
     return await response.json();
@@ -120,7 +141,7 @@ export const getNoTTLVRequestWithTimeout = async (path: string, idToken: string 
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`${response.status}: ${errorText}`);
+            throw new Error(`${response.status}: ${stripHtml(errorText)}`);
         }
 
         return await response.json();
