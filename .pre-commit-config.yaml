@@ -191,6 +191,14 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: cargo-deny-licenses
+        name: Release - generate SBOM licenses list
+        entry: bash -c 'cargo deny list -l crate > sbom/licenses.txt'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
+
       - id: cbom
         name: Release - generate CBOM
         entry: bash .github/scripts/release/generate_cbom.sh
