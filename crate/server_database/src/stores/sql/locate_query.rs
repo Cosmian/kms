@@ -7,6 +7,7 @@ use cosmian_kmip::{
         kmip_types::{LinkedObjectIdentifier::TextString, NameType, UniqueIdentifier},
     },
 };
+use time::OffsetDateTime;
 
 /// Handle different placeholders naming (bind parameter or
 /// function) in SQL databases.
@@ -513,4 +514,31 @@ ON objects.id = matched_tags.id"
     }
 
     qb.finish(query)
+}
+
+/// Determine whether an object is due for rotation at the given instant.
+///
+/// The computation uses:
+/// - `rotate_date + rotate_interval` if `rotate_date` is set (has been rotated before), or
+/// - `initial_date + rotate_interval + rotate_offset` for the first rotation.
+pub(crate) fn is_due_for_rotation(attrs: &Attributes, now: OffsetDateTime) -> bool {
+    let interval = match attrs.rotate_interval {
+        Some(i) if i > 0 => i64::from(i),
+        _ => return false,
+    };
+
+    if let Some(last_rotate) = attrs.rotate_date {
+        // Has been rotated before: next rotation = rotate_date + interval
+        let next = last_rotate + time::Duration::seconds(interval);
+        return next <= now;
+    }
+
+    // Never been rotated: use initial_date + rotate_offset as the first rotation instant
+    if let Some(initial) = attrs.initial_date {
+        let offset = attrs.rotate_offset.map_or(0, i64::from);
+        let first_rotation = initial + time::Duration::seconds(interval + offset);
+        return first_rotation <= now;
+    }
+
+    false
 }

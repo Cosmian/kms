@@ -360,6 +360,13 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background auto-rotation cron thread and retain shutdown signal
+    let auto_rotation_shutdown_tx = if kms_server.params.auto_rotation_check_interval_secs > 0 {
+        Some(cron::spawn_auto_rotation_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -382,6 +389,10 @@ pub async fn start_kms_server(
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the auto-rotation cron thread to stop
+    if let Some(tx) = auto_rotation_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {

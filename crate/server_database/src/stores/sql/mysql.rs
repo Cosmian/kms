@@ -676,6 +676,35 @@ impl ObjectsStore for MySqlPool {
         }
         Ok(out)
     }
+
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<String>> {
+        let sql = "\
+            SELECT objects.id, objects.attributes \
+            FROM objects \
+            WHERE objects.state = 'Active' \
+              AND JSON_UNQUOTE(JSON_EXTRACT(objects.attributes, '$.RotateInterval')) IS NOT NULL \
+              AND CAST(JSON_UNQUOTE(JSON_EXTRACT(objects.attributes, '$.RotateInterval')) AS SIGNED) > 0";
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
+        let rows: Vec<(String, serde_json::Value)> = conn
+            .exec(sql, ())
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
+        let mut due = Vec::new();
+        for (uid, attrs_val) in rows {
+            let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                due.push(uid);
+            }
+        }
+        Ok(due)
+    }
 }
 
 #[async_trait(?Send)]

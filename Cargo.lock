@@ -1270,6 +1270,7 @@ dependencies = [
  "num-bigint-dig",
  "serde_json",
  "thiserror 2.0.17",
+ "time",
  "zeroize",
 ]
 
@@ -1359,6 +1360,7 @@ dependencies = [
  "strum",
  "tempfile",
  "thiserror 2.0.17",
+ "time",
  "tokio",
  "tokio-postgres",
  "tokio-rusqlite",

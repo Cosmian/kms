@@ -820,6 +820,34 @@ impl ObjectsStore for PgPool {
             Ok(out)
         })
     }
+
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<String>> {
+        pg_retry!(self.pool, |client| {
+            let sql = "\
+                SELECT objects.id, objects.attributes \
+                FROM objects \
+                WHERE objects.state = 'Active' \
+                  AND (objects.attributes::jsonb ->> 'RotateInterval') IS NOT NULL \
+                  AND CAST((objects.attributes::jsonb ->> 'RotateInterval') AS BIGINT) > 0";
+            let rows = client
+                .query(sql, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut due = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+                if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                    due.push(uid);
+                }
+            }
+            Ok(due)
+        })
+    }
 }
 
 #[async_trait(?Send)]

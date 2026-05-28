@@ -588,6 +588,50 @@ impl ObjectsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(rows)
     }
+
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<String>> {
+        // Find all Active objects with rotate_interval > 0.
+        // The actual due-date check is done in Rust after fetching.
+        let sql = replace_dollars_with_qn(
+            "SELECT objects.id, objects.attributes \
+             FROM objects \
+             WHERE objects.state = 'Active' \
+               AND json_extract(objects.attributes, '$.RotateInterval') IS NOT NULL \
+               AND CAST(json_extract(objects.attributes, '$.RotateInterval') AS INTEGER) > 0",
+        );
+        let rows = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Vec<(String, String)>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut q = stmt.query([])?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        let id: String = r.get(0)?;
+                        let attrs_json: String = r.get(1)?;
+                        out.push((id, attrs_json));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+
+        let mut due = Vec::new();
+        for (uid, attrs_json) in rows {
+            let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
+            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                due.push(uid);
+            }
+        }
+        Ok(due)
+    }
 }
 
 #[async_trait(?Send)]
