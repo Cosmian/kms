@@ -170,13 +170,22 @@ pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
             enforce_usage_limits(&owm, data_len)?;
 
             // All execute_local implementations are pure CPU-bound work (no async I/O).
-            // Use block_in_place so Tokio migrates other async tasks off this worker thread
-            // while OpenSSL crypto executes, keeping the runtime responsive under concurrency.
-            // block_in_place is preferred over spawn_blocking here because execute_local
-            // takes &references that are not 'static.
-            let res = tokio::task::block_in_place(|| {
-                block_on(Op::execute_local(kms, &unwrapped_owm, &request, user))
-            })?;
+            // On Tokio multi-thread runtimes we offload with block_in_place so other tasks can
+            // be migrated while OpenSSL crypto executes.
+            // On current-thread runtimes (used by some tests), block_in_place panics, so
+            // execute directly instead.
+            let res =
+                if tokio::runtime::Handle::current().runtime_flavor()
+                    == tokio::runtime::RuntimeFlavor::MultiThread
+                {
+                    // block_in_place is preferred over spawn_blocking here because execute_local
+                    // takes &references that are not 'static.
+                    tokio::task::block_in_place(|| {
+                        block_on(Op::execute_local(kms, &unwrapped_owm, &request, user))
+                    })?
+                } else {
+                    Op::execute_local(kms, &unwrapped_owm, &request, user).await?
+                };
 
             decrement_usage_limits(kms, &mut owm, Op::OP_NAME, data_len).await?;
             Ok(res)
