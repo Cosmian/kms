@@ -405,6 +405,10 @@ azure_ekm_enable = false
 aws_xks_enable = false
 
 [kmip.allowlists]
+
+[notifications.smtp]
+# The KMS HTTP server port
+port = 0
 ```
 
 ---
