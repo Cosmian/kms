@@ -220,7 +220,7 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
           target_file="$EXPECTED_DIR/ui.vendor.non-fips.sha256"
         # Cargo vendor derivations for CLI and server.
         # CLI vendor hash varies by linkage mode (static/dynamic) AND OS (linux/darwin).
-        # Server vendor hash varies by linkage mode (static/dynamic) but is platform-stable.
+        # Server vendor hash varies by linkage mode (static/dynamic), platform-stable.
         elif [[ "$last_drv_name" =~ (cosmian-kms-cli|ckms|kms-server|server).*vendor|cli.*vendor|(^|-)vendor($|-) ]]; then
           # Distinguish CLI vs server vendor derivation by name
           if [[ "$last_drv_name" =~ (cosmian-kms-cli|ckms).*vendor|cli.*vendor ]]; then
@@ -235,12 +235,10 @@ while IFS=$'\t' read -r JOB_ID JOB_NAME; do
               target_file="$EXPECTED_DIR/cli.vendor.${cli_link}.${cli_os}.sha256"
             fi
           else
-            # Server vendor: keyed by linkage mode (same on Linux and macOS)
-            if [[ "$JOB_NAME" == *"dynamic"* ]]; then
-              target_file="$EXPECTED_DIR/server.vendor.dynamic.sha256"
-            else
-              target_file="$EXPECTED_DIR/server.vendor.static.sha256"
-            fi
+            # Server vendor: keyed by linkage mode only (platform-stable)
+            srv_link="static"
+            [[ "$JOB_NAME" == *"dynamic"* ]] && srv_link="dynamic"
+            target_file="$EXPECTED_DIR/server.vendor.${srv_link}.sha256"
           fi
         fi
 

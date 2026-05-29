@@ -247,6 +247,7 @@ jobs:
             connect-timeout = 15
             stalled-download-timeout = 15
             narinfo-cache-negative-ttl = 0
+            http-connections = 8
 
       - uses: actions/checkout@v6
         with:

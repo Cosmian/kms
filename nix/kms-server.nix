@@ -262,8 +262,7 @@ rustPlatform.buildRustPackage rec {
   # Provide the whole workspace but filtered; build only the server crate.
   src = filteredSrc;
 
-  # Vendor hash is per linkage mode (static/dynamic); the same value is used on Linux and macOS
-  # (confirmed: macOS server builds pass with the Linux-captured hash).
+  # Vendor hash is per linkage mode (static/dynamic), platform-stable.
   cargoHash =
     let
       linkSuffix = if static then "static" else "dynamic";

@@ -26,11 +26,12 @@ OS="$(uname -s)"
 #             Linux-only and building them on macOS always fails at the
 #             vendor hash step.  The ui.pnpm.darwin.sha256 is not updated
 #             by this workflow and must be refreshed manually when needed.
-#             server derivations are Linux-only and must NOT run on macOS.
 if [[ "$OS" == "Darwin" ]]; then
   ALL_ATTRS=(
     kms-cli-fips-static-openssl
     kms-cli-non-fips-dynamic-openssl
+    kms-server-fips-static-openssl
+    kms-server-non-fips-dynamic-openssl
   )
 else
   ALL_ATTRS=(
@@ -76,8 +77,6 @@ drv_to_hash_file() {
     return
   fi
   if [[ "$drv_name" =~ (kms-server|server).*vendor ]]; then
-    # server.vendor.*.sha256 are Linux-only; skip on macOS.
-    [[ "$OS" != "Linux" ]] && echo "" && return
     local link="static"
     [[ "$drv_name" == *dynamic* || "$attr" == *dynamic* ]] && link="dynamic"
     echo "$EXPECTED_DIR/server.vendor.${link}.sha256"

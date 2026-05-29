@@ -76,16 +76,12 @@ let
     pname = "wasm-bindgen-cli";
     version = "0.2.108";
 
-    # Use pkgs.fetchzip (a proper build-phase derivation) instead of builtins.fetchTarball.
-    # builtins.fetchTarball runs during Nix EVALUATION using libcurl directly, which triggers
-    # "Invalid multi handle" on macOS CI runners.  pkgs.fetchzip has identical semantics
-    # (strips the top-level directory, stores the unpacked NAR), so the sha256 hash value
-    # is the same as the one originally computed for builtins.fetchTarball.
-    # NOTE: do NOT use pkgs.fetchCrate here — it calls fetchurl whose hash is the raw FILE
-    # hash, not the unpacked NAR hash, so the sha256 value below would not match.
-    src = pkgs.fetchzip {
+    # Use fetchurl with .tar.gz name so Nix's unpackPhase recognizes the archive format
+    # (.crate files are gzip'd tarballs but Nix doesn't recognize the .crate extension)
+    src = pkgs.fetchurl {
       url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
-      hash = "sha256-UsuxILm1G6PkmVw0I/JF12CRltAfCJQFOaT4hFwvR8E=";
+      name = "${pname}-${version}.tar.gz";
+      hash = "sha256-ROxo4izYh4w04BtV/FFOr3W9OxwtCV3usCL6b4hW0XQ=";
     };
 
     cargoHash = "sha256-IZ/BxfY4UljVVeXl4AeRLmJzZGuzP10/0WOgWyvqjrs=";
