@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-lgkh5b3s49y1q62syfwmfl0izvwy9fns-cosmian-kms-cli-dynamic-5.22.0.drv",
-  "documentNamespace": "sbomnix://8dc53ef9-8702-489c-896b-0a2586307892",
+  "name": "SPDXRef-nix-store-dz82jylfxdpnb4jxizd1sm894vrr83zb-cosmian-kms-cli-dynamic-5.23.0.drv",
+  "documentNamespace": "sbomnix://6fa5bebd-9df2-4598-9a16-a14908b1c125",
   "creationInfo": {
-    "created": "2026-05-06T15:04:03.149678+00:00",
+    "created": "2026-05-29T11:55:13.493826+00:00",
     "creators": [
       "Tool: sbomnix-1.7.4"
     ]
@@ -14,8 +14,8 @@
   "packages": [
     {
       "name": "cosmian-kms-cli-dynamic",
-      "SPDXID": "SPDXRef-nix-store-lgkh5b3s49y1q62syfwmfl0izvwy9fns-cosmian-kms-cli-dynamic-5.22.0.drv",
-      "versionInfo": "5.22.0",
+      "SPDXID": "SPDXRef-nix-store-dz82jylfxdpnb4jxizd1sm894vrr83zb-cosmian-kms-cli-dynamic-5.23.0.drv",
+      "versionInfo": "5.23.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -24,12 +24,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.22.0:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-cli-dynamic:cosmian-kms-cli-dynamic:5.23.0:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/cosmian-kms-cli-dynamic@5.22.0"
+          "referenceLocator": "pkg:nix/cosmian-kms-cli-dynamic@5.23.0"
         }
       ]
     }

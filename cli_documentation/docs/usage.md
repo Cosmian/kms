@@ -1,7 +1,7 @@
 # Usage
 
 ```sh
-Command Line Interface used to manage the Eviden KMS server.
+Command Line Interface used to manage the Cosmian KMS server.
 
 If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
 or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz

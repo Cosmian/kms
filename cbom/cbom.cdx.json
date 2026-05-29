@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:30661660-9214-4eae-b599-2f9b653930c5",
+  "serialNumber": "urn:uuid:89261a95-bebe-40df-8d7b-767c60edac73",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-05-06T13:02:09Z",
+    "timestamp": "2026-05-29T09:41:42Z",
     "tools": [
       {
         "type": "application",
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "kms-server",
       "name": "cosmian-kms",
-      "version": "5.22.0",
+      "version": "5.23.0",
       "description": "Cosmian Key Management System — FIPS 140-3 compliant KMS server",
       "externalReferences": [
         {
@@ -95,8 +95,8 @@
       "type": "library",
       "bom-ref": "lib-openssl",
       "name": "openssl (Rust bindings to OpenSSL FIPS provider)",
-      "version": "0.10.79",
-      "purl": "pkg:cargo/openssl@0.10.79"
+      "version": "0.10.80",
+      "purl": "pkg:cargo/openssl@0.10.80"
     },
     {
       "type": "library",
