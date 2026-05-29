@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_in_result)]
 
-use std::sync::Arc;
-
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::{
         kmip_messages::{
@@ -27,18 +25,14 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::{debug, log_init};
 
-use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
-};
+use crate::{result::KResult, tests::test_utils::test_kms};
 
 #[tokio::test]
 async fn test_kmip_mac_messages() -> KResult<()> {
     // Disable most logging
     log_init(Some("warn"));
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let symmetric_key_request = symmetric_key_create_request(
@@ -117,8 +111,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
 async fn test_encrypt_kmip_messages() -> KResult<()> {
     // Disable most logging
     log_init(Some("warn"));
-    let clap_config = https_clap_config();
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = "eyJhbGciOiJSUzI1Ni";
     // Create a symmetric key first
 
@@ -201,9 +194,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
 async fn test_kmip_messages() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let clap_config = https_clap_config();
-
-    let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
+    let kms = test_kms().await?;
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation

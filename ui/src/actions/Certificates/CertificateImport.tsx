@@ -1,10 +1,11 @@
 import { UploadOutlined } from "@ant-design/icons";
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useState } from "react";
 import { FormUpload } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import { import_certificate_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 type CertificateInputFormat = "JsonTtlv" | "Pem" | "Der" | "Pkcs12";
 
@@ -29,22 +30,11 @@ type CertificateImportResponse = {
 
 const CertificateImportForm: React.FC = () => {
     const [form] = Form.useForm<ImportCertificateFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [selectedFormat, setSelectedFormat] = useState<CertificateInputFormat>("JsonTtlv");
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     const onFinish = async (values: ImportCertificateFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             if (values.certificateFile) {
                 const request = import_certificate_ttlv_request(
                     values.certificateId,
@@ -61,18 +51,12 @@ const CertificateImportForm: React.FC = () => {
                 const result_str = await sendKmipRequest(request, idToken, serverUrl);
                 if (result_str) {
                     const result: CertificateImportResponse = await parse_import_ttlv_response(result_str);
-                    setRes(`Certificate has been imported - imported object id: ${result.UniqueIdentifier}`);
+                    return `Certificate has been imported - imported object id: ${result.UniqueIdentifier}`;
                 }
             } else {
-                setRes("Certificate file is required for the selected format");
-                throw Error("Certificate file is required");
+                throw new Error("Certificate file is required for the selected format");
             }
-        } catch (e) {
-            setRes(`Error importing certificate: ${e}`);
-            console.error("Error importing certificate:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     const formatOptions = [
@@ -224,11 +208,7 @@ const CertificateImportForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Certificate import response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Certificate import response" />
         </div>
     );
 };

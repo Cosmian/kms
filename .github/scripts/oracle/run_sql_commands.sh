@@ -102,7 +102,7 @@ echo "==================================================================="
 #   /opt/oracle/extapi/64/hsm/Cosmian/libcosmian_pkcs11.so
 #
 run_sql "ALTER SYSTEM SET WALLET_ROOT='/etc/ORACLE/KEYSTORES/FREE' SCOPE=SPFILE;" \
-        "SHUTDOWN IMMEDIATE;" "STARTUP;"
+  "SHUTDOWN IMMEDIATE;" "STARTUP;"
 
 # ── step 2/6: create a new empty software keystore ───────────────────────────
 #
@@ -116,7 +116,7 @@ run_sql "ADMINISTER KEY MANAGEMENT CREATE KEYSTORE IDENTIFIED BY sw_keystore_pas
 # Oracle auto-discovers the PKCS#11 library via the extapi path set in step 1.
 #
 run_sql "ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=FILE|HSM' SCOPE=BOTH SID='*';" \
-        "SHUTDOWN IMMEDIATE;" "STARTUP;"
+  "SHUTDOWN IMMEDIATE;" "STARTUP;"
 
 # ── step 4/6: open both keystores ────────────────────────────────────────────
 open_keystore "ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY sw_keystore_pass;"
@@ -132,7 +132,7 @@ display_wallet
 
 # ── step 6/6: switch to file-only mode and open ──────────────────────────────
 run_sql "ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=FILE' SCOPE=BOTH SID='*';" \
-        "SHUTDOWN IMMEDIATE;" "STARTUP;"
+  "SHUTDOWN IMMEDIATE;" "STARTUP;"
 open_keystore "ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY sw_keystore_pass;"
 display_wallet
 
@@ -151,7 +151,7 @@ echo "==================================================================="
 # Oracle auto-discovers libcosmian_pkcs11.so from the extapi path.
 #
 run_sql "ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=HSM|FILE' SCOPE=BOTH SID='*';" \
-        "SHUTDOWN IMMEDIATE;" "STARTUP;"
+  "SHUTDOWN IMMEDIATE;" "STARTUP;"
 
 # ── step 2/4: open both keystores ────────────────────────────────────────────
 open_keystore "ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass;"
@@ -169,7 +169,7 @@ display_wallet
 
 # ── step 4/4: switch to HSM-only mode and open ───────────────────────────────
 run_sql "ALTER SYSTEM SET TDE_CONFIGURATION='KEYSTORE_CONFIGURATION=HSM' SCOPE=BOTH SID='*';" \
-        "SHUTDOWN IMMEDIATE;" "STARTUP;"
+  "SHUTDOWN IMMEDIATE;" "STARTUP;"
 open_keystore "ADMINISTER KEY MANAGEMENT SET KEYSTORE OPEN IDENTIFIED BY hsm_identity_pass;"
 display_wallet
 

@@ -16,6 +16,8 @@ use cosmian_kms_client::{
 use cosmian_logger::{debug, info, log_init};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
+#[cfg(feature = "non-fips")]
+use test_kms_server::start_test_kms_server_with_pqc_tls;
 use test_kms_server::{TestsContext, start_default_test_kms_server};
 use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
@@ -145,6 +147,97 @@ async fn fetch_certificate(
     let ttlv: TTLV = read_from_json_file(&tmp_path.join("new_cert.attributes.json")).unwrap();
     let cert_attributes: Attributes = from_ttlv(ttlv).unwrap();
     (cert, cert_attributes, cert_x509_der)
+}
+
+/// Fetch a PQC certificate and return its Object, attributes and DER bytes.
+///
+/// Unlike `fetch_certificate`, this helper uses `x509_parser` (pure Rust) instead
+/// of the OpenSSL Rust bindings so that ML-DSA and SLH-DSA certificates — whose
+/// OIDs are only supported by OpenSSL 3.3+ — are parsed correctly in all build
+/// environments.  The function asserts that the certificate subject contains the
+/// expected Common Name.
+#[cfg(feature = "non-fips")]
+async fn fetch_pqc_certificate(
+    ctx: &TestsContext,
+    certificate_id: &str,
+    expected_cn: &str,
+) -> (Object, Attributes, Vec<u8>) {
+    let tmp_dir = TempDir::new().unwrap();
+    let tmp_path = tmp_dir.path();
+    let exported_cert_file = tmp_path.join("pqc_cert.json");
+    ExportCertificateAction {
+        certificate_file: exported_cert_file.clone(),
+        certificate_id: Some(certificate_id.to_owned()),
+        output_format: CertificateExportFormat::JsonTtlv,
+        allow_revoked: true,
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap();
+
+    let cert = read_object_from_json_ttlv_file(&exported_cert_file).unwrap();
+    let cert_x509_der = match &cert {
+        Object::Certificate(Certificate {
+            certificate_value, ..
+        }) => certificate_value,
+        _ => panic!("wrong object type"),
+    }
+    .clone();
+
+    // Use x509_parser (pure Rust) — works for any algorithm including PQC.
+    let (_, parsed) =
+        X509Certificate::from_der(&cert_x509_der).expect("failed to parse PQC certificate DER");
+    let cn = parsed
+        .subject()
+        .iter_common_name()
+        .next()
+        .expect("certificate has no Common Name")
+        .as_str()
+        .expect("CN is not valid UTF-8");
+    assert_eq!(cn, expected_cn);
+
+    let ttlv: TTLV = read_from_json_file(&tmp_path.join("pqc_cert.attributes.json")).unwrap();
+    let cert_attributes: Attributes = from_ttlv(ttlv).unwrap();
+    (cert, cert_attributes, cert_x509_der)
+}
+
+/// Shared helper: create a self-signed PQC certificate and verify its KMS
+/// attributes.  Extracted to avoid repetition across the per-algorithm tests.
+#[cfg(feature = "non-fips")]
+async fn certify_pqc_self_signed(
+    ctx: &TestsContext,
+    algorithm: Algorithm,
+    alg_label: &str,
+) -> KmsCliResult<()> {
+    let cn = format!("Test PQC {alg_label}");
+    let subject_name = format!("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = {cn}");
+
+    let certificate_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm,
+        subject_name: Some(subject_name),
+        tags: vec![format!(
+            "pqc_{}_cert",
+            alg_label.to_lowercase().replace(['-', ' '], "_")
+        )],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, attributes, _) = fetch_pqc_certificate(ctx, &certificate_id, &cn).await;
+
+    // Self-signed: the certificate link must point back to the same certificate.
+    let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(certificate_link.to_string(), certificate_id);
+
+    // Must be linked to a generated public key.
+    let public_key_id = attributes.get_link(LinkType::PublicKeyLink).unwrap();
+    assert!(!public_key_id.to_string().is_empty());
+
+    Ok(())
 }
 
 /// Check a generated certificate chain
@@ -755,6 +848,1219 @@ async fn test_certify_twice() -> KmsCliResult<()> {
     assert_eq!(certificate_id, certificate_id2);
     assert_ne!(private_key_id, private_key_id2);
     assert_ne!(public_key_id, public_key_id2);
+
+    Ok(())
+}
+
+/// Test self-signed ML-DSA-44 X.509 certificate creation (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_ml_dsa_44_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    // Generate a self-signed certificate with an ML-DSA-44 key pair
+    let certificate_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test PQC ML-DSA-44".to_owned(),
+        ),
+        tags: vec!["pqc_ml_dsa_44_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, attributes, _) =
+        fetch_pqc_certificate(ctx, &certificate_id, "Test PQC ML-DSA-44").await;
+    // Self-signed: the certificate link should point back to itself
+    let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(certificate_link.to_string(), certificate_id);
+    // Certificate must be linked to a public key
+    let public_key_id = attributes.get_link(LinkType::PublicKeyLink).unwrap();
+    assert!(!public_key_id.to_string().is_empty());
+
+    let validation = ValidateCertificatesAction {
+        certificate_id: vec![certificate_id.clone()],
+        validity_time: None,
+    }
+    .run(ctx.get_owner_client())
+    .await?;
+
+    assert_eq!(validation, ValidityIndicator::Valid);
+    Ok(())
+}
+
+/// Test ML-DSA-65 certificate signed by an ML-DSA-44 CA (PQC issuer, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_ml_dsa_signed_by_pqc_ca() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    // Step 1: Create self-signed ML-DSA-44 root CA certificate
+    let ca_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = PQC Test CA".to_owned(),
+        ),
+        tags: vec!["pqc_ca_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, ca_attributes, _) = fetch_pqc_certificate(ctx, &ca_cert_id, "PQC Test CA").await;
+    let ca_private_key_id = ca_attributes.get_link(LinkType::PrivateKeyLink).unwrap();
+
+    // Step 2: Create ML-DSA-65 leaf certificate signed by the ML-DSA-44 CA
+    let leaf_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa65,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = PQC Test Leaf".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_private_key_id.to_string()),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        tags: vec!["pqc_leaf_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, leaf_attributes, _) = fetch_pqc_certificate(ctx, &leaf_cert_id, "PQC Test Leaf").await;
+    // Leaf certificate must link back to the CA certificate
+    let cert_link = leaf_attributes.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(cert_link.to_string(), ca_cert_id);
+    // Leaf certificate must be linked to a public key
+    let _leaf_pub_key_id = leaf_attributes.get_link(LinkType::PublicKeyLink).unwrap();
+    Ok(())
+}
+
+// ── ML-KEM and hybrid KEM certificate tests ───────────────────────────────
+//
+// ML-KEM / X25519MLKEM768 / X448MLKEM1024 / ConfigurableKEM are KEM-only
+// algorithms; they cannot self-sign.  MLKEM_* (PKCS8 format) can appear as the
+// subject key in a CA-issued X.509 certificate because the public key is stored
+// as SubjectPublicKeyInfo DER which OpenSSL 3.4+ understands.
+//
+// X25519MLKEM768, X448MLKEM1024, and the ConfigurableKEM variants (P-256 /
+// Curve25519 hybrids) are stored in Raw or ConfigurableKEMPublicKey format;
+// OpenSSL 3.6 cannot yet encode these as SPKI, so certifying them returns an
+// unsupported-format error.
+
+/// Helper: spin up a fresh ML-DSA-44 self-signed CA and return its cert id and
+/// private key id.
+#[cfg(feature = "non-fips")]
+async fn create_ml_dsa_ca(ctx: &TestsContext) -> KmsCliResult<(String, String)> {
+    let ca_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-KEM Test CA".to_owned(),
+        ),
+        tags: vec!["mlkem_ca_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+    let (_, ca_attrs, _) = fetch_pqc_certificate(ctx, &ca_cert_id, "ML-KEM Test CA").await;
+    let ca_sk_id = ca_attrs.get_link(LinkType::PrivateKeyLink).unwrap();
+    Ok((ca_cert_id, ca_sk_id.to_string()))
+}
+
+/// ML-KEM-512 subject key issued by an ML-DSA-44 CA (non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_512_ca_issued() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await?;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-KEM-512 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        tags: vec!["ml_kem_512_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, attrs, _) = fetch_pqc_certificate(ctx, &cert_id, "ML-KEM-512 Subject").await;
+    let issuer_link = attrs.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(issuer_link.to_string(), ca_cert_id);
+    assert!(
+        !attrs
+            .get_link(LinkType::PublicKeyLink)
+            .unwrap()
+            .to_string()
+            .is_empty()
+    );
+    Ok(())
+}
+
+/// ML-KEM-768 subject key issued by an ML-DSA-44 CA (non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_768_ca_issued() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await?;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem768,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-KEM-768 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        tags: vec!["ml_kem_768_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, attrs, _) = fetch_pqc_certificate(ctx, &cert_id, "ML-KEM-768 Subject").await;
+    let issuer_link = attrs.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(issuer_link.to_string(), ca_cert_id);
+    Ok(())
+}
+
+/// ML-KEM-1024 subject key issued by an ML-DSA-44 CA (non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_1024_ca_issued() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await?;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem1024,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-KEM-1024 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        tags: vec!["ml_kem_1024_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, attrs, _) = fetch_pqc_certificate(ctx, &cert_id, "ML-KEM-1024 Subject").await;
+    let issuer_link = attrs.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(issuer_link.to_string(), ca_cert_id);
+    Ok(())
+}
+
+/// Self-signed ML-KEM-512 must fail with a clear KEM-cannot-sign error (non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_self_signed_is_rejected() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let err = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Self-Signed KEM".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await
+    .unwrap_err();
+
+    let msg = err.to_string().to_lowercase();
+    assert!(
+        msg.contains("kem") || msg.contains("sign"),
+        "expected a KEM/signing error, got: {err}"
+    );
+    Ok(())
+}
+
+/// X25519MLKEM768 subject key — Raw format, not yet encodable as SPKI in OpenSSL 3.6
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_x25519_ml_kem_768_format_unsupported() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await.expect("CA creation");
+
+    let result = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::X25519MlKem768,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = X25519MLKEM768 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await;
+
+    assert!(
+        result.is_err(),
+        "X25519MLKEM768 subject key should not be encodable as X.509 SPKI in OpenSSL 3.6"
+    );
+}
+
+/// X448MLKEM1024 subject key — Raw format, not yet encodable as SPKI in OpenSSL 3.6
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_x448_ml_kem_1024_format_unsupported() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await.expect("CA creation");
+
+    let result = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::X448MlKem1024,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = X448MLKEM1024 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await;
+
+    assert!(
+        result.is_err(),
+        "X448MLKEM1024 subject key should not be encodable as X.509 SPKI in OpenSSL 3.6"
+    );
+}
+
+/// ML-KEM-512/P-256 (`ConfigurableKEM`) — custom format, not encodable as X.509 SPKI
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_512_p256_format_unsupported() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await.expect("CA creation");
+
+    let result = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512P256,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = MlKem512P256 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await;
+
+    assert!(
+        result.is_err(),
+        "ConfigurableKEM subject key (ML-KEM-512/P-256) should not be encodable as X.509 SPKI"
+    );
+}
+
+/// ML-KEM-768/P-256 (`ConfigurableKEM`) — custom format, not encodable as X.509 SPKI
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_768_p256_format_unsupported() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await.expect("CA creation");
+
+    let result = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem768P256,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = MlKem768P256 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await;
+
+    assert!(
+        result.is_err(),
+        "ConfigurableKEM subject key (ML-KEM-768/P-256) should not be encodable as X.509 SPKI"
+    );
+}
+
+/// ML-KEM-512/Curve25519 (`ConfigurableKEM`) — custom format, not encodable as X.509 SPKI
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_512_curve25519_format_unsupported() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await.expect("CA creation");
+
+    let result = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512Curve25519,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = MlKem512Curve25519 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await;
+
+    assert!(
+        result.is_err(),
+        "ConfigurableKEM subject key (ML-KEM-512/Curve25519) should not be encodable as X.509 SPKI"
+    );
+}
+
+/// ML-KEM-768/Curve25519 (`ConfigurableKEM`) — custom format, not encodable as X.509 SPKI
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_ml_kem_768_curve25519_format_unsupported() {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await.expect("CA creation");
+
+    let result = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem768Curve25519,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = MlKem768Curve25519 Subject".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await;
+
+    assert!(
+        result.is_err(),
+        "ConfigurableKEM subject key (ML-KEM-768/Curve25519) should not be encodable as X.509 SPKI"
+    );
+}
+
+/// ML-DSA-65 self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_ml_dsa_65_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::MlDsa65, "ML-DSA-65").await
+}
+
+/// ML-DSA-87 self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_ml_dsa_87_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::MlDsa87, "ML-DSA-87").await
+}
+
+/// SLH-DSA-SHA2-128s self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_sha2_128s_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaSha2128s, "SLH-DSA-SHA2-128s").await
+}
+
+/// SLH-DSA-SHA2-128f self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_sha2_128f_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaSha2128f, "SLH-DSA-SHA2-128f").await
+}
+
+/// SLH-DSA-SHA2-192s self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_sha2_192s_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaSha2192s, "SLH-DSA-SHA2-192s").await
+}
+
+/// SLH-DSA-SHA2-192f self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_sha2_192f_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaSha2192f, "SLH-DSA-SHA2-192f").await
+}
+
+/// SLH-DSA-SHA2-256s self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_sha2_256s_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaSha2256s, "SLH-DSA-SHA2-256s").await
+}
+
+/// SLH-DSA-SHA2-256f self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_sha2_256f_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaSha2256f, "SLH-DSA-SHA2-256f").await
+}
+
+/// SLH-DSA-SHAKE-128s self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_shake_128s_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaShake128s, "SLH-DSA-SHAKE-128s").await
+}
+
+/// SLH-DSA-SHAKE-128f self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_shake_128f_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaShake128f, "SLH-DSA-SHAKE-128f").await
+}
+
+/// SLH-DSA-SHAKE-192s self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_shake_192s_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaShake192s, "SLH-DSA-SHAKE-192s").await
+}
+
+/// SLH-DSA-SHAKE-192f self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_shake_192f_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaShake192f, "SLH-DSA-SHAKE-192f").await
+}
+
+/// SLH-DSA-SHAKE-256s self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_shake_256s_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaShake256s, "SLH-DSA-SHAKE-256s").await
+}
+
+/// SLH-DSA-SHAKE-256f self-signed certificate (PQC, non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_shake_256f_self_signed() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    certify_pqc_self_signed(ctx, Algorithm::SlhDsaShake256f, "SLH-DSA-SHAKE-256f").await
+}
+
+/// Cross-algorithm: SLH-DSA-SHA2-128s CA signs an ML-DSA-44 leaf (non-FIPS only)
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_slh_dsa_ca_signs_ml_dsa_leaf() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    // Create a self-signed SLH-DSA-SHA2-128s root CA
+    let ca_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::SlhDsaSha2128s,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = SLH-DSA Test CA".to_owned(),
+        ),
+        tags: vec!["slh_dsa_ca_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, ca_attributes, _) = fetch_pqc_certificate(ctx, &ca_cert_id, "SLH-DSA Test CA").await;
+    let ca_private_key_id = ca_attributes.get_link(LinkType::PrivateKeyLink).unwrap();
+
+    // Issue an ML-DSA-44 leaf certificate signed by the SLH-DSA CA
+    let leaf_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-DSA Leaf".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_private_key_id.to_string()),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        tags: vec!["ml_dsa_leaf_cert".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, leaf_attributes, _) = fetch_pqc_certificate(ctx, &leaf_cert_id, "ML-DSA Leaf").await;
+    let cert_link = leaf_attributes.get_link(LinkType::CertificateLink).unwrap();
+    assert_eq!(cert_link.to_string(), ca_cert_id);
+    let leaf_pub_key_id = leaf_attributes.get_link(LinkType::PublicKeyLink).unwrap();
+    assert!(!leaf_pub_key_id.to_string().is_empty());
+
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PQC TLS + PKI compliance tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Verify that the KMS server can be configured with a PQC (ML-DSA-44) X.509 certificate
+/// as its TLS server certificate, and that KMIP operations succeed over that HTTPS connection.
+///
+/// Requires a TLS client that supports the ML-DSA-44 TLS signature scheme
+/// (draft-ietf-tls-mldsa). The `reqwest` crate with `native-tls` on macOS uses Apple's
+/// Security.framework which does not yet implement PQC TLS signature algorithms. The test is
+/// therefore `#[ignore]`d by default; run it explicitly with `-- --ignored` on a system where
+/// the TLS client supports ML-DSA-44 (e.g. Linux with system OpenSSL ≥ 3.5).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+#[ignore = "requires a TLS client that supports ML-DSA-44 (not available via native-tls on macOS)"]
+async fn test_server_with_pqc_tls_cert() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_test_kms_server_with_pqc_tls().await;
+
+    // Perform a KMIP Certify operation over the PQC TLS connection.
+    // If the TLS handshake fails (unsupported PQC signature scheme), this will error.
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = PQC TLS Test Cert".to_owned(),
+        ),
+        tags: vec!["pqc_tls_test".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    assert!(!cert_id.is_empty(), "certificate ID must not be empty");
+    Ok(())
+}
+
+/// Verify that a KMS-generated PQC (ML-DSA-44) certificate is fully X.509 v3 compliant:
+///   - X.509 version 3
+///   - Both outer and TBS `signatureAlgorithm` carry the `id-ml-dsa-44` OID
+///     (2.16.840.1.101.3.4.3.17 per FIPS 204 / draft-ietf-lamps-dilithium-certificates)
+///   - `subjectPublicKeyInfo.algorithm` carries the same OID
+///   - Subject and Issuer are correctly encoded (self-signed ⇒ equal)
+///   - Validity period is non-degenerate
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_pqc_x509_structural_compliance() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = PQC X509 Compliance Test".to_owned(),
+        ),
+        tags: vec!["pqc_x509_compliance".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "PQC X509 Compliance Test").await;
+
+    // --- x509_parser structural checks ---
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER as X.509");
+
+    // Must be X.509 v3 (encoded as integer value 2 per RFC 5280)
+    assert_eq!(
+        cert.tbs_certificate.version,
+        X509Version::V3,
+        "certificate must be X.509 v3"
+    );
+
+    // id-ml-dsa-44 OID per FIPS 204 / draft-ietf-lamps-dilithium-certificates
+    let ml_dsa_44 = oid!(2.16.840.1.101.3.4.3.17);
+
+    // Outer signatureAlgorithm must use id-ml-dsa-44
+    assert_eq!(
+        cert.signature_algorithm.algorithm, ml_dsa_44,
+        "outer signatureAlgorithm OID must be id-ml-dsa-44 (2.16.840.1.101.3.4.3.17)"
+    );
+
+    // TBS signatureAlgorithm must match outer (RFC 5280 §4.1.1.2)
+    assert_eq!(
+        cert.tbs_certificate.signature.algorithm, ml_dsa_44,
+        "TBS signatureAlgorithm OID must be id-ml-dsa-44 and match outer signatureAlgorithm"
+    );
+
+    // SubjectPublicKeyInfo algorithm must use id-ml-dsa-44
+    assert_eq!(
+        cert.tbs_certificate.subject_pki.algorithm.algorithm, ml_dsa_44,
+        "SubjectPublicKeyInfo algorithm OID must be id-ml-dsa-44"
+    );
+
+    // Common Name must match what we requested
+    let cn = cert
+        .subject()
+        .iter_common_name()
+        .next()
+        .expect("certificate has no Common Name")
+        .as_str()
+        .expect("CN is not valid UTF-8");
+    assert_eq!(cn, "PQC X509 Compliance Test", "Subject CN mismatch");
+
+    // Self-signed: Issuer DN must equal Subject DN
+    assert_eq!(
+        cert.tbs_certificate.issuer.to_string(),
+        cert.tbs_certificate.subject.to_string(),
+        "self-signed certificate: Issuer DN must equal Subject DN"
+    );
+
+    // Validity period must be non-degenerate (notBefore < notAfter)
+    assert!(
+        cert.tbs_certificate.validity.not_before < cert.tbs_certificate.validity.not_after,
+        "notBefore must be earlier than notAfter"
+    );
+
+    Ok(())
+}
+
+/// Verify that a CA PQC certificate can issue a leaf certificate and that the
+/// resulting signature is cryptographically valid.
+///
+/// Steps:
+///   1. Generate a self-signed ML-DSA-44 CA certificate via the KMS.
+///   2. Issue an ML-DSA-65 leaf certificate signed by the CA.
+///   3. Check KMIP link consistency (issuer link, public key link).
+///   4. Verify that `leaf.issuer == ca.subject` (DN match).
+///   5. Use OpenSSL's `X509::verify()` (backed by OpenSSL 3.x EVP, which supports
+///      PQC algorithms) to cryptographically verify the leaf's signature against the
+///      CA's public key.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_pqc_ca_signature_verification() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    // Create a self-signed ML-DSA-44 CA certificate
+    let ca_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-DSA-44 PQC Root CA".to_owned(),
+        ),
+        tags: vec!["pqc_sig_verify_ca".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, ca_attrs, ca_der) =
+        fetch_pqc_certificate(ctx, &ca_cert_id, "ML-DSA-44 PQC Root CA").await;
+    let ca_private_key_id = ca_attrs
+        .get_link(LinkType::PrivateKeyLink)
+        .expect("CA certificate must have a private key link");
+
+    // Issue an ML-DSA-65 leaf certificate signed by the ML-DSA-44 CA
+    let leaf_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa65,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = ML-DSA-65 PQC Leaf".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_private_key_id.to_string()),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        tags: vec!["pqc_sig_verify_leaf".to_owned()],
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, leaf_attrs, leaf_der) =
+        fetch_pqc_certificate(ctx, &leaf_cert_id, "ML-DSA-65 PQC Leaf").await;
+
+    // KMIP link: the leaf's certificate link must point to the CA
+    let issuer_link = leaf_attrs
+        .get_link(LinkType::CertificateLink)
+        .expect("leaf must have a CertificateLink pointing to its issuer");
+    assert_eq!(
+        issuer_link.to_string(),
+        ca_cert_id,
+        "leaf CertificateLink must point to the CA certificate"
+    );
+
+    // x509_parser: leaf Issuer DN must equal CA Subject DN
+    let (_, ca_x509p) = X509Certificate::from_der(&ca_der).expect("failed to parse CA DER");
+    let (_, leaf_x509p) = X509Certificate::from_der(&leaf_der).expect("failed to parse leaf DER");
+    assert_eq!(
+        leaf_x509p.tbs_certificate.issuer.to_string(),
+        ca_x509p.tbs_certificate.subject.to_string(),
+        "leaf Issuer DN must equal CA Subject DN"
+    );
+
+    // OpenSSL: cryptographic signature verification.
+    // X509::verify() calls OpenSSL's X509_verify() which uses the EVP layer and
+    // supports PQC algorithms (ML-DSA) via the OpenSSL 3.x non-FIPS provider.
+    let ca_x509 = X509::from_der(&ca_der).expect("failed to load CA cert into OpenSSL");
+    let leaf_x509 = X509::from_der(&leaf_der).expect("failed to load leaf cert into OpenSSL");
+    let ca_pub_key = ca_x509
+        .public_key()
+        .expect("failed to extract CA public key");
+    let signature_valid = leaf_x509
+        .verify(&ca_pub_key)
+        .expect("OpenSSL signature verification must not error for a well-formed PQC certificate");
+    assert!(
+        signature_valid,
+        "leaf certificate signature must be cryptographically valid under the CA public key"
+    );
+
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RFC 9881 (ML-DSA) and RFC 9935 (ML-KEM) key usage extension compliance tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// RFC 9881 §5: ML-DSA certificates MUST include a critical keyUsage extension
+/// containing `digitalSignature`.
+///
+/// OID reference: id-ml-dsa-44 = 2.16.840.1.101.3.4.3.17
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9881_ml_dsa_key_usage_critical_digital_signature() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9881 KU Test".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9881 KU Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // Find the keyUsage extension (OID 2.5.29.15)
+    let ku_ext = cert
+        .tbs_certificate
+        .extensions()
+        .iter()
+        .find(|e| e.oid == oid!(2.5.29.15))
+        .expect("RFC 9881: keyUsage extension must be present in ML-DSA certificates");
+
+    // RFC 9881 §5: the keyUsage extension MUST be critical
+    assert!(
+        ku_ext.critical,
+        "RFC 9881: keyUsage extension must be critical for ML-DSA certificates"
+    );
+
+    // digitalSignature must be set (x509_parser flags bit 0 = value 1)
+    if let ParsedExtension::KeyUsage(ku) = ku_ext.parsed_extension() {
+        assert!(
+            ku.flags & 1 != 0,
+            "RFC 9881: keyUsage must include digitalSignature (bit 0) for ML-DSA certificates, \
+             got flags={}",
+            ku.flags
+        );
+    } else {
+        panic!(
+            "Expected ParsedExtension::KeyUsage, got {:?}",
+            ku_ext.parsed_extension()
+        );
+    }
+
+    Ok(())
+}
+
+/// RFC 9935 §5: ML-KEM certificates MUST have a critical keyUsage extension
+/// containing `keyEncipherment` ONLY — no other key usage bits may be set.
+///
+/// OID reference: id-alg-ml-kem-512 = 2.16.840.1.101.3.4.4.1
+/// The certificate must be CA-issued (ML-KEM cannot self-sign).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9935_ml_kem_key_usage_critical_key_encipherment_only() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await?;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9935 KU Test".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9935 KU Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // Find the keyUsage extension (OID 2.5.29.15)
+    let ku_ext = cert
+        .tbs_certificate
+        .extensions()
+        .iter()
+        .find(|e| e.oid == oid!(2.5.29.15))
+        .expect("RFC 9935: keyUsage extension must be present in ML-KEM certificates");
+
+    // RFC 9935 §5: the keyUsage extension MUST be critical
+    assert!(
+        ku_ext.critical,
+        "RFC 9935: keyUsage extension must be critical for ML-KEM certificates"
+    );
+
+    if let ParsedExtension::KeyUsage(ku) = ku_ext.parsed_extension() {
+        // keyEncipherment must be set (x509_parser flags bit 2 = value 4)
+        assert!(
+            ku.flags & 4 != 0,
+            "RFC 9935: keyUsage must include keyEncipherment (bit 2) for ML-KEM certificates, \
+             got flags={}",
+            ku.flags
+        );
+        // RFC 9935 §5: keyEncipherment MUST be the ONLY bit set
+        assert_eq!(
+            ku.flags, 4,
+            "RFC 9935: keyUsage must contain ONLY keyEncipherment (flags=4) for ML-KEM \
+             certificates, got flags={}",
+            ku.flags
+        );
+    } else {
+        panic!(
+            "Expected ParsedExtension::KeyUsage, got {:?}",
+            ku_ext.parsed_extension()
+        );
+    }
+
+    Ok(())
+}
+
+/// RFC 9935 §3: verify that a CA-issued ML-KEM-512 certificate carries the correct
+/// `SubjectPublicKeyInfo` OID: `id-alg-ml-kem-512` (`2.16.840.1.101.3.4.4.1`).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9935_ml_kem_spki_oid() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let (ca_cert_id, ca_sk_id) = create_ml_dsa_ca(ctx).await?;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlKem512,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9935 SPKI OID Test".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id),
+        issuer_certificate_id: Some(ca_cert_id),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9935 SPKI OID Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // id-alg-ml-kem-512 per RFC 9935 / NIST FIPS 203
+    let ml_kem_512_oid = oid!(2.16.840.1.101.3.4.4.1);
+    assert_eq!(
+        cert.tbs_certificate.subject_pki.algorithm.algorithm, ml_kem_512_oid,
+        "SubjectPublicKeyInfo algorithm OID must be id-alg-ml-kem-512 \
+         (2.16.840.1.101.3.4.4.1) per RFC 9935 §3"
+    );
+
+    Ok(())
+}
+
+/// Non-regression: ML-DSA-87 self-signed certificate must carry a critical keyUsage
+/// extension with digitalSignature, consistent with RFC 9881.
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_rfc9881_ml_dsa_87_key_usage() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa87,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = RFC9881 ML-DSA-87 KU".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "RFC9881 ML-DSA-87 KU").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    let ku_ext = cert
+        .tbs_certificate
+        .extensions()
+        .iter()
+        .find(|e| e.oid == oid!(2.5.29.15))
+        .expect("RFC 9881: keyUsage extension must be present in ML-DSA-87 certificates");
+
+    assert!(
+        ku_ext.critical,
+        "RFC 9881: keyUsage must be critical for ML-DSA-87 certificates"
+    );
+    if let ParsedExtension::KeyUsage(ku) = ku_ext.parsed_extension() {
+        assert!(
+            ku.flags & 1 != 0,
+            "RFC 9881: keyUsage must include digitalSignature for ML-DSA-87, got flags={}",
+            ku.flags
+        );
+    } else {
+        panic!(
+            "Expected ParsedExtension::KeyUsage, got {:?}",
+            ku_ext.parsed_extension()
+        );
+    }
+
+    Ok(())
+}
+
+/// RFC 9608: A self-signed ML-DSA-44 certificate without crlDistributionPoints
+/// must automatically carry the id-ce-noRevAvail extension (OID 2.5.29.56).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_pqc_self_signed_no_rev_avail() -> KmsCliResult<()> {
+    // OID 2.5.29.56 — id-ce-noRevAvail (RFC 9608 §2), { id-ce 56 }
+    // DER value bytes (without tag/length): 55 1D 38
+    const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = noRevAvail Test".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "noRevAvail Test").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    let has_no_rev_avail = cert
+        .extensions()
+        .iter()
+        .any(|ext| ext.oid.as_bytes() == NO_REV_AVAIL);
+    assert!(
+        has_no_rev_avail,
+        "RFC 9608: id-ce-noRevAvail (OID 2.5.29.56) must be auto-added to \
+         self-signed certs with no crlDistributionPoints"
+    );
+
+    Ok(())
+}
+
+/// RFC 9608 OpenSSL compatibility test: verify that `openssl x509 -text`
+/// recognises the `noRevAvail` extension by its proper name rather than
+/// printing an unknown OID.
+///
+/// OpenSSL 3.x knows OID 2.5.29.56 as "No Revocation Information Available".
+/// If the wrong OID were embedded (e.g. the `id-pe` arc `1.3.6.1.5.5.7.1.56`),
+/// OpenSSL would not recognise it and would print the raw numeric OID instead.
+/// This test acts as an external validator that the correct OID is present in
+/// certificates produced by the KMS.
+#[cfg(not(windows))]
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_no_rev_avail_openssl_compat() -> KmsCliResult<()> {
+    log_init(None);
+
+    // Check that the openssl binary is available and is version 3.x.
+    let ver_out = tokio::process::Command::new("openssl")
+        .arg("version")
+        .output()
+        .await;
+    let Ok(ver_out) = ver_out else {
+        info!("test_certify_no_rev_avail_openssl_compat: openssl CLI not found, skipping");
+        return Ok(());
+    };
+    if !ver_out.status.success() {
+        info!("test_certify_no_rev_avail_openssl_compat: openssl version failed, skipping");
+        return Ok(());
+    }
+    let ver_str = String::from_utf8_lossy(&ver_out.stdout);
+    if !ver_str.to_lowercase().contains("openssl 3") {
+        info!("test_certify_no_rev_avail_openssl_compat: not OpenSSL 3 ({ver_str}), skipping");
+        return Ok(());
+    }
+
+    let ctx = start_default_test_kms_server().await;
+
+    let cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some("C = FR, CN = noRevAvail OpenSSL compat test".to_owned()),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &cert_id, "noRevAvail OpenSSL compat test").await;
+
+    // Write DER bytes to a temp file then let openssl decode the certificate.
+    let tmp_dir = TempDir::new()?;
+    let cert_file = tmp_dir.path().join("cert.der");
+    std::fs::write(&cert_file, &der)?;
+
+    let output = tokio::process::Command::new("openssl")
+        .arg("x509")
+        .arg("-noout")
+        .arg("-text")
+        .arg("-inform")
+        .arg("DER")
+        .arg("-in")
+        .arg(&cert_file)
+        .output()
+        .await?;
+
+    assert!(
+        output.status.success(),
+        "openssl x509 -text failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    // OpenSSL 3.x displays OID 2.5.29.56 by its registered name.
+    // Either "No Revocation" (named display) or the dotted OID "2.5.29.56"
+    // (numeric fallback) confirms the correct OID is embedded in the cert.
+    assert!(
+        text.contains("No Revocation") || text.contains("2.5.29.56"),
+        "Expected 'No Revocation' or '2.5.29.56' in openssl output — \
+         OID 2.5.29.56 (id-ce-noRevAvail) should be present.\n\
+         If the wrong id-pe OID 1.3.6.1.5.5.7.1.56 were embedded, openssl \
+         would print that raw OID instead.\nopenssl output:\n{text}"
+    );
+
+    // The wrong id-pe OID must not appear in the output at all.
+    assert!(
+        !text.contains("1.3.6.1.5.5.7.1.56"),
+        "openssl output contains the wrong OID 1.3.6.1.5.5.7.1.56 (id-pe arc); \
+         expected OID 2.5.29.56 (id-ce arc).\nopenssl output:\n{text}"
+    );
+
+    Ok(())
+}
+
+/// AIA extension fix: a certificate issued with an authorityInfoAccess entry in
+/// the extension config must carry the AIA extension (OID 1.3.6.1.5.5.7.1.1).
+#[cfg(feature = "non-fips")]
+#[tokio::test]
+async fn test_certify_with_aia_extension() -> KmsCliResult<()> {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+
+    // Create an ML-DSA-44 CA to be able to issue a leaf cert (AIA requires issuer context).
+    let ca_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa44,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = AIA Test CA".to_owned(),
+        ),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+    let (_, ca_attrs, _) = fetch_pqc_certificate(ctx, &ca_cert_id, "AIA Test CA").await;
+    let ca_sk_id = ca_attrs.get_link(LinkType::PrivateKeyLink).unwrap();
+
+    // Write extension config with authorityInfoAccess to a temp file.
+    let tmp_dir = TempDir::new().unwrap();
+    let ext_file = tmp_dir.path().join("aia_ext.cnf");
+    std::fs::write(
+        &ext_file,
+        b"[v3_ca]\nauthorityInfoAccess=OCSP;URI:http://ocsp.example.com/\n",
+    )
+    .unwrap();
+
+    // Issue a leaf cert with the AIA extension config.
+    let leaf_cert_id = CertifyAction {
+        generate_key_pair: true,
+        algorithm: Algorithm::MlDsa65,
+        subject_name: Some(
+            "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = AIA Test Leaf".to_owned(),
+        ),
+        issuer_private_key_id: Some(ca_sk_id.to_string()),
+        issuer_certificate_id: Some(ca_cert_id.clone()),
+        certificate_extensions: Some(ext_file),
+        ..Default::default()
+    }
+    .run(ctx.get_owner_client())
+    .await?
+    .to_string();
+
+    let (_, _, der) = fetch_pqc_certificate(ctx, &leaf_cert_id, "AIA Test Leaf").await;
+    let (_, cert) = X509Certificate::from_der(&der).expect("failed to parse DER");
+
+    // OID 1.3.6.1.5.5.7.1.1 — authorityInfoAccess
+    let has_aia = cert
+        .extensions()
+        .iter()
+        .any(|ext| ext.oid == oid!(1.3.6.1.5.5.7.1.1));
+    assert!(
+        has_aia,
+        "authorityInfoAccess extension (OID 1.3.6.1.5.5.7.1.1) must be present when \
+         specified in certificate_extensions config"
+    );
 
     Ok(())
 }

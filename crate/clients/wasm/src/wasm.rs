@@ -27,6 +27,7 @@ use cosmian_kms_client_utils::{
             kmip_types::{CertificateType, RevocationReason, RevocationReasonCode, SecretDataType},
         },
         kmip_2_1::{
+            KmipOperation,
             extra::tagging::VENDOR_ID_COSMIAN,
             kmip_attributes::Attributes,
             kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
@@ -63,13 +64,15 @@ use cosmian_kms_client_utils::{
     symmetric_utils::{DataEncryptionAlgorithm, parse_decrypt_elements},
 };
 use js_sys::Uint8Array;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use x509_cert::{
     Certificate,
     der::{Decode, DecodePem, Encode},
 };
 use zeroize::Zeroizing;
+
+use crate::macros::{to_wasm_ttlv, wasm_response_parser};
 
 // ── Vendor-id module-level state ──────────────────────────────────────────────
 // Stores the vendor identification string that the connected KMS server uses for
@@ -82,6 +85,14 @@ thread_local! {
 /// Returns the currently configured vendor identification string.
 fn get_vendor_id() -> String {
     VENDOR_ID.with(|v| v.borrow().clone())
+}
+
+/// Converts an `Option<String>` containing an empty or whitespace-only value to `None`.
+///
+/// This guards against UI form fields that produce `""` when cleared by the user,
+/// which wasm-bindgen passes as `Some("")` rather than `None`.
+fn none_if_empty(s: Option<String>) -> Option<String> {
+    s.filter(|v| !v.trim().is_empty())
 }
 
 /// Set the vendor identification used for all KMIP `VendorAttribute` operations.
@@ -102,8 +113,7 @@ pub fn query_server_information_ttlv_request() -> Result<JsValue, JsValue> {
     let request = Query {
         query_function: Some(vec![QueryFunction::QueryServerInformation]),
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 /// Parse a KMIP `QueryResponse` TTLV string and return the `vendor_identification`
@@ -388,6 +398,106 @@ pub fn get_certificate_algorithms() -> Result<JsValue, JsValue> {
             value: "rsa4096".into(),
             label: "RSA 4096".into(),
         },
+        // PQC signing algorithms (ML-DSA)
+        AlgoOption {
+            value: "ml-dsa-44".into(),
+            label: "ML-DSA-44 (PQC)".into(),
+        },
+        AlgoOption {
+            value: "ml-dsa-65".into(),
+            label: "ML-DSA-65 (PQC)".into(),
+        },
+        AlgoOption {
+            value: "ml-dsa-87".into(),
+            label: "ML-DSA-87 (PQC)".into(),
+        },
+        // PQC signing algorithms (SLH-DSA SHA2)
+        AlgoOption {
+            value: "slh-dsa-sha2-128s".into(),
+            label: "SLH-DSA-SHA2-128s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-128f".into(),
+            label: "SLH-DSA-SHA2-128f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192s".into(),
+            label: "SLH-DSA-SHA2-192s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-192f".into(),
+            label: "SLH-DSA-SHA2-192f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256s".into(),
+            label: "SLH-DSA-SHA2-256s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-sha2-256f".into(),
+            label: "SLH-DSA-SHA2-256f (PQC)".into(),
+        },
+        // PQC signing algorithms (SLH-DSA SHAKE)
+        AlgoOption {
+            value: "slh-dsa-shake-128s".into(),
+            label: "SLH-DSA-SHAKE-128s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-128f".into(),
+            label: "SLH-DSA-SHAKE-128f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192s".into(),
+            label: "SLH-DSA-SHAKE-192s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-192f".into(),
+            label: "SLH-DSA-SHAKE-192f (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256s".into(),
+            label: "SLH-DSA-SHAKE-256s (PQC)".into(),
+        },
+        AlgoOption {
+            value: "slh-dsa-shake-256f".into(),
+            label: "SLH-DSA-SHAKE-256f (PQC)".into(),
+        },
+        // ML-KEM and hybrid KEM algorithms (subject key for CA-issued certificates)
+        AlgoOption {
+            value: "ml-kem-512".into(),
+            label: "ML-KEM-512 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768".into(),
+            label: "ML-KEM-768 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-1024".into(),
+            label: "ML-KEM-1024 (KEM)".into(),
+        },
+        AlgoOption {
+            value: "x25519-ml-kem-768".into(),
+            label: "X25519/ML-KEM-768 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "x448-ml-kem-1024".into(),
+            label: "X448/ML-KEM-1024 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-p256".into(),
+            label: "ML-KEM-512/P-256 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-p256".into(),
+            label: "ML-KEM-768/P-256 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-512-curve25519".into(),
+            label: "ML-KEM-512/Curve25519 (Hybrid KEM)".into(),
+        },
+        AlgoOption {
+            value: "ml-kem-768-curve25519".into(),
+            label: "ML-KEM-768/Curve25519 (Hybrid KEM)".into(),
+        },
     ];
     #[cfg(not(feature = "non-fips"))]
     let opts: Vec<AlgoOption> = vec![
@@ -516,6 +626,69 @@ pub fn get_object_states() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&states).map_err(|e| JsValue::from(e.to_string()))
 }
 
+/// Returns the list of delegable KMIP operations for the access-rights UI.
+/// The `create` operation is excluded because it is handled separately
+/// (it applies to the wildcard object `*`, not to a specific object).
+#[wasm_bindgen]
+pub fn get_kmip_operations() -> Result<JsValue, JsValue> {
+    let all_ops = [
+        KmipOperation::Certify,
+        KmipOperation::Decrypt,
+        KmipOperation::DeriveKey,
+        KmipOperation::Destroy,
+        KmipOperation::Encrypt,
+        KmipOperation::Export,
+        KmipOperation::Get,
+        KmipOperation::GetAttributes,
+        KmipOperation::Hash,
+        KmipOperation::Import,
+        KmipOperation::Locate,
+        KmipOperation::MAC,
+        KmipOperation::Revoke,
+        KmipOperation::Rekey,
+        KmipOperation::Sign,
+        KmipOperation::SignatureVerify,
+        KmipOperation::Validate,
+        KmipOperation::SetAttribute,
+        KmipOperation::ModifyAttribute,
+        KmipOperation::AddAttribute,
+        KmipOperation::DeleteAttribute,
+        KmipOperation::Activate,
+    ];
+    let operations: Vec<AlgoOption> = all_ops
+        .iter()
+        .map(|op| {
+            // Use serde_json to get the canonical serialised name (matches
+            // `#[serde(rename_all = "lowercase")]` on KmipOperation), e.g.
+            // "setattribute" instead of the Display value "set_attribute".
+            let value = serde_json::to_string(op)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_owned();
+            let label = match op {
+                KmipOperation::DeriveKey => "Derive Key".to_owned(),
+                KmipOperation::GetAttributes => "Get Attributes".to_owned(),
+                KmipOperation::SignatureVerify => "Signature Verify".to_owned(),
+                KmipOperation::SetAttribute => "Set Attribute".to_owned(),
+                KmipOperation::ModifyAttribute => "Modify Attribute".to_owned(),
+                KmipOperation::AddAttribute => "Add Attribute".to_owned(),
+                KmipOperation::DeleteAttribute => "Delete Attribute".to_owned(),
+                KmipOperation::MAC => "MAC".to_owned(),
+                _ => {
+                    // Capitalize first letter
+                    let s = op.to_string();
+                    let mut chars = s.chars();
+                    chars.next().map_or_else(String::new, |c| {
+                        c.to_uppercase().collect::<String>() + chars.as_str()
+                    })
+                }
+            };
+            AlgoOption { value, label }
+        })
+        .collect();
+    serde_wasm_bindgen::to_value(&operations).map_err(|e| JsValue::from(e.to_string()))
+}
+
 #[wasm_bindgen(start)]
 #[allow(clippy::missing_const_for_fn)]
 pub fn init_panic_hook() {
@@ -531,14 +704,6 @@ pub fn init_panic_hook() {
 pub fn is_fips_mode() -> bool {
     // `non-fips` feature disables FIPS mode
     !cfg!(feature = "non-fips")
-}
-
-fn parse_ttlv_response<T: DeserializeOwned + Serialize>(
-    response: &str,
-) -> Result<JsValue, JsValue> {
-    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
-    let parsed: T = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&parsed).map_err(|e| JsValue::from(e.to_string()))
 }
 
 // Locate request
@@ -557,6 +722,12 @@ pub fn locate_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let cryptographic_algorithm = none_if_empty(cryptographic_algorithm);
+    let key_format_type = none_if_empty(key_format_type);
+    let object_type = none_if_empty(object_type);
+    let public_key_id = none_if_empty(public_key_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let certificate_id = none_if_empty(certificate_id);
     let cryptographic_algorithm: Option<CryptographicAlgorithm> = cryptographic_algorithm
         .as_deref()
         .map(|s| CryptographicAlgorithm::from_str(s).map_err(|e| JsValue::from(e.to_string())))
@@ -588,14 +759,10 @@ pub fn locate_ttlv_request(
         certificate_id.as_deref(),
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_locate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<LocateResponse>(response)
-}
+wasm_response_parser!(parse_locate_ttlv_response, LocateResponse);
 
 // Create keys Requests
 #[wasm_bindgen]
@@ -610,9 +777,8 @@ pub fn create_rsa_key_pair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
-    let private_key_id = private_key_id
-        .filter(|s| !s.is_empty())
-        .map(UniqueIdentifier::TextString);
+    let private_key_id = none_if_empty(private_key_id).map(UniqueIdentifier::TextString);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let request: CreateKeyPair = create_rsa_key_pair_request(
         vendor_id,
         private_key_id,
@@ -622,8 +788,7 @@ pub fn create_rsa_key_pair_ttlv_request(
         wrapping_key_id.as_ref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -638,9 +803,8 @@ pub fn create_ec_key_pair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
-    let private_key_id = private_key_id
-        .filter(|s| !s.is_empty())
-        .map(UniqueIdentifier::TextString);
+    let private_key_id = none_if_empty(private_key_id).map(UniqueIdentifier::TextString);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let recommended_curve: RecommendedCurve = Curve::from_str(recommended_curve)
         .map_err(|e| JsValue::from_str(&format!("Invalid recommended curve: {e}")))?
         .into();
@@ -653,14 +817,10 @@ pub fn create_ec_key_pair_ttlv_request(
         wrapping_key_id.as_ref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Key pair creation failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_create_keypair_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<CreateKeyPairResponse>(response)
-}
+wasm_response_parser!(parse_create_keypair_ttlv_response, CreateKeyPairResponse);
 
 /// Create a PQC (ML-KEM or ML-DSA) key pair TTLV request.
 ///
@@ -715,9 +875,7 @@ pub fn create_pqc_key_pair_ttlv_request(
                 None,
             )
             .map_err(|e| JsValue::from_str(&format!("Hybrid KEM key pair creation failed: {e}")))?;
-            let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-            return serde_wasm_bindgen::to_value(&objects)
-                .map_err(|e| JsValue::from_str(&e.to_string()));
+            return to_wasm_ttlv(&request);
         }
         _ => {
             return Err(JsValue::from_str(&format!(
@@ -734,8 +892,7 @@ pub fn create_pqc_key_pair_ttlv_request(
     let request: CreateKeyPair =
         create_pqc_key_pair_request(&vendor_id, &tags, crypto_algorithm, sensitive)
             .map_err(|e| JsValue::from_str(&format!("PQC key pair creation failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 /// Returns the list of PQC algorithms available.
@@ -855,6 +1012,9 @@ pub fn create_sym_key_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let key_id = none_if_empty(key_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let wrap_key_b64 = none_if_empty(wrap_key_b64);
     let algorithm = SymmetricAlgorithm::from_str(symmetric_algorithm)
         .map_err(|e| JsValue::from_str(&format!("Invalid cryptographic algorithm: {e}")))?;
     let (number_of_bits, key_bytes, algorithm) =
@@ -881,12 +1041,9 @@ pub fn create_sym_key_ttlv_request(
         let request =
             import_object_request(vendor_id, key_id, object, None, false, false, &tags)
                 .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
-        let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-        serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        to_wasm_ttlv(&request)
     } else {
-        let key_id = key_id
-            .filter(|s| !s.is_empty())
-            .map(UniqueIdentifier::TextString);
+        let key_id = key_id.map(UniqueIdentifier::TextString);
         let request = symmetric_key_create_request(
             vendor_id,
             key_id,
@@ -897,8 +1054,7 @@ pub fn create_sym_key_ttlv_request(
             wrap_key_id.as_ref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Sym key request creation failed: {e}")))?;
-        let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-        serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        to_wasm_ttlv(&request)
     }
 }
 
@@ -914,6 +1070,9 @@ pub fn create_secret_data_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let secret_value = none_if_empty(secret_value);
+    let secret_id = none_if_empty(secret_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
     let secret_data_type = SecretDataType::from_str(secret_type)
         .map_err(|e| JsValue::from_str(&format!("Invalid secret data type: {e}")))?;
 
@@ -935,12 +1094,9 @@ pub fn create_secret_data_ttlv_request(
             import_object_request(vendor_id, secret_id, object, None, false, false, &tags)
                 .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
 
-        let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-        serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        to_wasm_ttlv(&request)
     } else {
-        let secret_id = secret_id
-            .filter(|s| !s.is_empty())
-            .map(UniqueIdentifier::TextString);
+        let secret_id = secret_id.map(UniqueIdentifier::TextString);
         let request = secret_data_create_request(
             vendor_id,
             secret_id,
@@ -949,15 +1105,11 @@ pub fn create_secret_data_ttlv_request(
             wrap_key_id.as_ref(),
         )
         .map_err(|e| JsValue::from_str(&format!("Secret Data request creation failed: {e}")))?;
-        let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-        serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+        to_wasm_ttlv(&request)
     }
 }
 
-#[wasm_bindgen]
-pub fn parse_create_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<CreateResponse>(response)
-}
+wasm_response_parser!(parse_create_ttlv_response, CreateResponse);
 
 /// Create an Opaque Object (via Import) TTLV request.
 /// If `object_value` is provided, builds an `OpaqueObject` and forges an `Import` request.
@@ -973,6 +1125,8 @@ pub fn create_opaque_object_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let object_id = none_if_empty(object_id);
+    let wrap_key_id = none_if_empty(wrap_key_id);
     // Allow empty opaque object when value not provided
     #[allow(clippy::redundant_closure_for_method_calls)]
     let data = object_value.map(|v| v.into_bytes()).unwrap_or_default();
@@ -991,8 +1145,7 @@ pub fn create_opaque_object_ttlv_request(
 
     let request = import_object_request(vendor_id, object_id, object, None, false, false, &tags)
         .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 // Decrypt requests
@@ -1016,8 +1169,7 @@ pub fn decrypt_sym_ttlv_request(
         authentication_data,
         Some(cryptographic_parameters),
     );
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1038,8 +1190,7 @@ pub fn decrypt_rsa_ttlv_request(
         None,
         Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
     );
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1048,14 +1199,10 @@ pub fn decrypt_ec_ttlv_request(
     ciphertext: Vec<u8>,
 ) -> Result<JsValue, JsValue> {
     let request = decrypt_request(key_unique_identifier, None, ciphertext, None, None, None);
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_decrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<DecryptResponse>(response)
-}
+wasm_response_parser!(parse_decrypt_ttlv_response, DecryptResponse);
 
 // Destroy request
 #[wasm_bindgen]
@@ -1067,14 +1214,10 @@ pub fn destroy_ttlv_request(unique_identifier: String, remove: bool) -> Result<J
         cascade: false,
         expected_object_type: None,
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_destroy_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<DestroyResponse>(response)
-}
+wasm_response_parser!(parse_destroy_ttlv_response, DestroyResponse);
 
 // Encrypt requests
 #[wasm_bindgen]
@@ -1086,6 +1229,7 @@ pub fn encrypt_sym_ttlv_request(
     authentication_data: Option<Vec<u8>>,
     data_encryption_algorithm: JsValue,
 ) -> Result<JsValue, JsValue> {
+    let encryption_policy = none_if_empty(encryption_policy);
     let cryptographic_parameters: Option<CryptographicParameters> = if data_encryption_algorithm
         .is_null()
         || data_encryption_algorithm.is_undefined()
@@ -1106,8 +1250,7 @@ pub fn encrypt_sym_ttlv_request(
         cryptographic_parameters,
     )
     .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1129,8 +1272,7 @@ pub fn encrypt_rsa_ttlv_request(
         Some(encryption_algorithm.to_cryptographic_parameters(hash_fn)),
     )
     .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1140,14 +1282,10 @@ pub fn encrypt_ec_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let request = encrypt_request(key_unique_identifier, None, plaintext, None, None, None)
         .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_encrypt_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<EncryptResponse>(response)
-}
+wasm_response_parser!(parse_encrypt_ttlv_response, EncryptResponse);
 
 // Sign requests
 fn js_to_cryptographic_parameters(
@@ -1245,23 +1383,10 @@ pub fn sign_ttlv_request(
             final_indicator: None,
         }
     };
-    let objects = to_ttlv(&request).map_err(|e| {
-        JsValue::from_str(&format!(
-            "sign_ttlv_request: failed to serialize TTLV for key '{key_unique_identifier}', digested={digested}, payload_len={}: {e}",
-            if digested { request.digested_data.as_ref().map_or(0, std::vec::Vec::len) } else { request.data.as_ref().map_or(0, |v| v.len()) }
-        ))
-    })?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_sign_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<SignResponse>(response).map_err(|e| {
-        JsValue::from_str(&format!(
-            "parse_sign_ttlv_response: invalid response: {e:?}"
-        ))
-    })
-}
+wasm_response_parser!(parse_sign_ttlv_response, SignResponse);
 
 #[wasm_bindgen]
 pub fn signature_verify_ttlv_request(
@@ -1303,28 +1428,13 @@ pub fn signature_verify_ttlv_request(
             final_indicator: None,
         }
     };
-    let objects = to_ttlv(&request).map_err(|e| {
-        let payload_len = if digested {
-            request.digested_data.as_ref().map_or(0, std::vec::Vec::len)
-        } else {
-            request.data.as_ref().map_or(0, std::vec::Vec::len)
-        };
-        let sig_len = request.signature_data.as_ref().map_or(0, std::vec::Vec::len);
-        JsValue::from_str(&format!(
-            "signature_verify_ttlv_request: failed to serialize TTLV for key '{key_unique_identifier}', digested={digested}, payload_len={payload_len}, signature_len={sig_len}: {e}"
-        ))
-    })?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_signature_verify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<SignatureVerifyResponse>(response).map_err(|e| {
-        JsValue::from_str(&format!(
-            "parse_signature_verify_ttlv_response: invalid response: {e:?}"
-        ))
-    })
-}
+wasm_response_parser!(
+    parse_signature_verify_ttlv_response,
+    SignatureVerifyResponse
+);
 
 // Export request
 #[allow(clippy::needless_pass_by_value)]
@@ -1337,6 +1447,9 @@ pub fn export_ttlv_request(
     wrapping_algorithm: Option<String>,
     authentication_data: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let wrap_key_id = none_if_empty(wrap_key_id);
+    let wrapping_algorithm = none_if_empty(wrapping_algorithm);
+    let authentication_data = none_if_empty(authentication_data);
     let key_format = ExportKeyFormat::from_str(key_format)
         .map_err(|e| JsValue::from_str(&format!("Invalid key format: {e}")))?;
     let wrapping_algorithm = wrapping_algorithm.and_then(|s| {
@@ -1356,8 +1469,7 @@ pub fn export_ttlv_request(
         wrapping_cryptographic_parameters,
         authentication_data,
     );
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1440,29 +1552,25 @@ fn get_object_bytes(object: &Object) -> Result<Vec<u8>, JsValue> {
 #[wasm_bindgen]
 pub fn get_rsa_private_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
     let request = get_rsa_private_key_request(key_unique_identifier);
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
 pub fn get_rsa_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
     let request = get_rsa_public_key_request(key_unique_identifier);
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
 pub fn get_ec_private_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
     let request = get_ec_private_key_request(key_unique_identifier);
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
 pub fn get_ec_public_key_ttlv_request(key_unique_identifier: &str) -> Result<JsValue, JsValue> {
     let request = get_ec_public_key_request(key_unique_identifier);
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 // Import request
@@ -1484,6 +1592,11 @@ pub fn import_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let unique_identifier = none_if_empty(unique_identifier);
+    let public_key_id = none_if_empty(public_key_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let certificate_id = none_if_empty(certificate_id);
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let key_usage = key_usage.map(|vec| {
         vec.into_iter()
             .filter_map(|s| s.parse::<KeyUsage>().ok())
@@ -1514,14 +1627,10 @@ pub fn import_ttlv_request(
     )
     .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
 
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_import_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<ImportResponse>(response)
-}
+wasm_response_parser!(parse_import_ttlv_response, ImportResponse);
 
 // Revoke request
 #[wasm_bindgen]
@@ -1535,14 +1644,10 @@ pub fn revoke_ttlv_request(
     };
     let request = build_revoke_key_request(unique_identifier, revocation_reason)
         .map_err(|e| JsValue::from_str(&format!("Revocation request creation failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_revoke_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<RevokeResponse>(response)
-}
+wasm_response_parser!(parse_revoke_ttlv_response, RevokeResponse);
 
 // Covercrypt requests
 #[wasm_bindgen]
@@ -1555,6 +1660,7 @@ pub fn create_cc_master_keypair_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let request = build_create_covercrypt_master_keypair_request(
         vendor_id,
         access_structure,
@@ -1563,8 +1669,7 @@ pub fn create_cc_master_keypair_ttlv_request(
         wrapping_key_id.as_ref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Covercrypt master keypair creation failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1578,6 +1683,7 @@ pub fn create_cc_user_key_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let wrapping_key_id = none_if_empty(wrapping_key_id);
     let request = build_create_covercrypt_usk_request(
         vendor_id,
         access_policy,
@@ -1587,8 +1693,7 @@ pub fn create_cc_user_key_ttlv_request(
         wrapping_key_id.as_ref(),
     )
     .map_err(|e| JsValue::from_str(&format!("Covercrypt user key creation failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1610,8 +1715,7 @@ pub fn encrypt_cc_ttlv_request(
         }),
     )
     .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1631,8 +1735,7 @@ pub fn decrypt_cc_ttlv_request(
             ..Default::default()
         }),
     );
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 // Certificate requests
@@ -1653,6 +1756,11 @@ pub fn import_certificate_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let certificate_id = none_if_empty(certificate_id);
+    let private_key_id = none_if_empty(private_key_id);
+    let public_key_id = none_if_empty(public_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
+    let pkcs12_password = none_if_empty(pkcs12_password);
     let input_format =
         CertificateInputFormat::from_str(input_format).map_err(|e| JsValue::from(e.to_string()))?;
     let key_usage: Option<Vec<KeyUsage>> = key_usage.map(|vec| {
@@ -1748,8 +1856,7 @@ pub fn import_certificate_ttlv_request(
         .map_err(|e| JsValue::from(e.to_string()))?,
     }
     .map_err(|e| JsValue::from_str(&format!("Error forging import request: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -1759,6 +1866,7 @@ pub fn export_certificate_ttlv_request(
     output_format: &str,
     pkcs12_password: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let pkcs12_password = none_if_empty(pkcs12_password);
     let output_format = CertificateExportFormat::from_str(output_format)
         .map_err(|e| JsValue::from(e.to_string()))?;
     let (key_format_type, wrapping_key_id) =
@@ -1772,8 +1880,7 @@ pub fn export_certificate_ttlv_request(
         None,
         None,
     );
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1849,20 +1956,18 @@ pub fn validate_certificate_ttlv_request(
     unique_identifier: Option<String>,
     validity_time: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let unique_identifier = none_if_empty(unique_identifier);
+    let validity_time = none_if_empty(validity_time);
     let unique_identifier = unique_identifier.map(|id| vec![UniqueIdentifier::TextString(id)]);
     let request = Validate {
         certificate: None,
         unique_identifier,
         validity_time,
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_validate_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<ValidateResponse>(response)
-}
+wasm_response_parser!(parse_validate_ttlv_response, ValidateResponse);
 
 #[wasm_bindgen]
 pub fn encrypt_certificate_ttlv_request(
@@ -1884,8 +1989,7 @@ pub fn encrypt_certificate_ttlv_request(
         Some(cryptographic_parameters),
     )
     .map_err(|e| JsValue::from_str(&format!("Encryption failed: {e}")))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[wasm_bindgen]
@@ -1907,8 +2011,7 @@ pub fn decrypt_certificate_ttlv_request(
         authentication_data,
         Some(cryptographic_parameters),
     );
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 // Certify request
@@ -1932,6 +2035,14 @@ pub fn certify_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     let vendor_id = get_vendor_id();
     let vendor_id = vendor_id.as_str();
+    let certificate_id = none_if_empty(certificate_id);
+    let certificate_signing_request_format = none_if_empty(certificate_signing_request_format);
+    let public_key_id_to_certify = none_if_empty(public_key_id_to_certify);
+    let certificate_id_to_re_certify = none_if_empty(certificate_id_to_re_certify);
+    let subject_name = none_if_empty(subject_name);
+    let algorithm = none_if_empty(algorithm);
+    let issuer_private_key_id = none_if_empty(issuer_private_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
     let algorithm = Algorithm::from_str(&algorithm.unwrap_or_else(|| "rsa4096".to_owned()))
         .map_err(|e| JsValue::from(e.to_string()))?;
     let request = build_certify_request(
@@ -1951,14 +2062,10 @@ pub fn certify_ttlv_request(
         &tags,
     )
     .map_err(|e| JsValue::from(e.to_string()))?;
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_certify_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<CertifyResponse>(response)
-}
+wasm_response_parser!(parse_certify_ttlv_response, CertifyResponse);
 
 // Attributes request
 #[wasm_bindgen]
@@ -1968,8 +2075,7 @@ pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue,
         unique_identifier: Some(unique_identifier),
         attribute_reference: None,
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 /// Same as `get_attributes_ttlv_request`, but can force requesting tags.
@@ -1994,8 +2100,7 @@ pub fn get_attributes_ttlv_request_with_options(
         attribute_reference,
     };
 
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -2028,14 +2133,10 @@ pub fn set_attribute_ttlv_request(
         unique_identifier: Some(unique_identifier),
         new_attribute: attribute,
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_set_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<SetAttributeResponse>(response)
-}
+wasm_response_parser!(parse_set_attribute_ttlv_response, SetAttributeResponse);
 
 #[wasm_bindgen]
 pub fn modify_attribute_ttlv_request(
@@ -2050,14 +2151,13 @@ pub fn modify_attribute_ttlv_request(
         unique_identifier: Some(unique_identifier),
         new_attribute: attribute,
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_modify_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<ModifyAttributeResponse>(response)
-}
+wasm_response_parser!(
+    parse_modify_attribute_ttlv_response,
+    ModifyAttributeResponse
+);
 
 #[wasm_bindgen]
 pub fn delete_attribute_ttlv_request(
@@ -2093,14 +2193,13 @@ pub fn delete_attribute_ttlv_request(
             }
         }
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-#[wasm_bindgen]
-pub fn parse_delete_attribute_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<DeleteAttributeResponse>(response)
-}
+wasm_response_parser!(
+    parse_delete_attribute_ttlv_response,
+    DeleteAttributeResponse
+);
 
 /// Returns the list of hash algorithms supported by the server.
 #[wasm_bindgen]
@@ -2170,15 +2269,10 @@ pub fn hash_ttlv_request(data: &[u8], hashing_algorithm: &str) -> Result<JsValue
         init_indicator: None,
         final_indicator: None,
     };
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-/// Parse a KMIP Hash response and return the hash bytes.
-#[wasm_bindgen]
-pub fn parse_hash_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<HashResponse>(response)
-}
+wasm_response_parser!(parse_hash_ttlv_response, HashResponse);
 
 /// Build a KMIP `DeriveKey` TTLV request.
 ///
@@ -2208,6 +2302,7 @@ pub fn derive_key_ttlv_request(
 ) -> Result<JsValue, JsValue> {
     use kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm};
 
+    let derived_key_id = none_if_empty(derived_key_id);
     let method = match derivation_method.to_uppercase().as_str() {
         "PBKDF2" => DerivationMethod::PBKDF2,
         "HKDF" => DerivationMethod::HKDF,
@@ -2273,12 +2368,7 @@ pub fn derive_key_ttlv_request(
         attributes,
     };
 
-    let objects = to_ttlv(&request).map_err(|e| JsValue::from(e.to_string()))?;
-    serde_wasm_bindgen::to_value(&objects).map_err(|e| JsValue::from(e.to_string()))
+    to_wasm_ttlv(&request)
 }
 
-/// Parse a KMIP `DeriveKey` response and return the derived key's unique identifier.
-#[wasm_bindgen]
-pub fn parse_derive_key_ttlv_response(response: &str) -> Result<JsValue, JsValue> {
-    parse_ttlv_response::<DeriveKeyResponse>(response)
-}
+wasm_response_parser!(parse_derive_key_ttlv_response, DeriveKeyResponse);

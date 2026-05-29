@@ -150,14 +150,24 @@ flowchart TB
 
 Builds and packages KMS for multiple platforms using Nix.
 
+### Triggers
+
+- **`workflow_call`**: called by `pr.yml` or other reusable callers (passes `toolchain` input)
+- **`workflow_dispatch`**: manual dispatch from the GitHub UI
+    - Input: `toolchain` — Rust toolchain version (default: `1.91.0`)
+
+> **`packages` job**: runs only on git tags (`refs/tags/*`) or manual dispatch (`workflow_dispatch`).
+> The `docker`, `publish-release`, `publish-sbom`, and `build-monitoring-archive` jobs still
+> also run for internal PRs (fork + dependabot filters apply).
+
 ### Execution Flow
 
 ```mermaid
 flowchart TB
-    pkg["packaging.yml"]
+    pkg["packaging.yml<br/>Triggers: workflow_call · workflow_dispatch"]
     winpkg["windows-package<br/>Calls: build_windows.yml"]
-    docker["docker<br/>Calls: packaging-docker.yml"]
-    subgraph packages_matrix["packages (Matrix)"]
+    docker["docker<br/>Calls: packaging-docker.yml<br/>(PR · tag · manual)"]
+    subgraph packages_matrix["packages (Matrix)<br/>⚠ tags + manual dispatch only"]
         pkg_feat["Features: fips · non-fips"]
         pkg_link["Link: static · dynamic"]
         pkg_run["Runners: ubuntu-24.04 · ubuntu-24.04-arm · macos-15"]
@@ -384,7 +394,7 @@ flowchart TB
 | pr.yml (PR CI)           |   -     |   ✓   |    ✓    |  ✓ (daily)  |   ✓    |
 | release.yml (Release)    |   -     |   -   |    -    |      -      |   ✓    |
 | main_base.yml            |   -     |   -   |    -    |      -      | via WC |
-| packaging.yml            |   -     |   -   |    -    |      -      | ✓, WC  |
+| packaging.yml            |   -     |   ¹   |    ✓    |      -      | ✓, WC  |
 | packaging-docker.yml     |   -     |   -   |    -    |      -      | ✓, WC  |
 | packaging-tests.yml      |   -     |   -   |    -    |      -      | ✓, WC  |
 | test_all.yml             |   -     |   -   |    -    |      -      | ✓, WC  |
@@ -396,6 +406,9 @@ flowchart TB
 | github_cache_cleanup.yml |   -     |   -   |    -    |      -      |   ✓    |
 
 **Legend**: WC = Workflow Call (reusable workflow)
+
+> ¹ `packaging.yml` runs for PRs when called via `pr.yml` (`workflow_call`), but the inner
+> `packages` job is gated to **tags and manual dispatch only** — it does not build packages on PRs.
 
 ---
 
@@ -439,11 +452,92 @@ All scripts are located in `.github/scripts/`. See the [scripts README](.github/
 
 ### Nix Build System
 
-- **`nix.sh`**: Main orchestrator for Nix-based builds, tests, and Docker
-    - Commands: `build`, `test`, `package`, `docker`, `sbom`, `update-hashes`
-    - Variants: `fips`, `non-fips`
-    - Link types: `static`, `dynamic`
-    - Example: `bash nix.sh --variant fips --link static package`
+**`nix.sh`** is the single entrypoint for all Nix-based builds, tests, packaging, and Docker operations.
+All CI jobs invoke it as `bash .github/scripts/nix.sh [global options] <command> [args]`.
+
+#### Global options
+
+| Option | Values | Default | Description |
+|---|---|---|---|
+| `-v`, `--variant` | `fips` \| `non-fips` | `fips` | Cryptographic variant |
+| `-l`, `--link` | `static` \| `dynamic` | `static` | OpenSSL linkage (`static` = 3.6.2 bundled, `dynamic` = system) |
+
+#### Commands
+
+**`docker`** — Build a Docker image tarball (always static OpenSSL):
+
+```bash
+nix.sh [--variant fips|non-fips] docker [--force] [--load] [--test]
+```
+
+| Flag | Effect |
+|---|---|
+| `--force` | Rebuild image tarball, skip cache |
+| `--load` | Load image into the local Docker daemon |
+| `--test` | Run `test_docker_image.sh` after loading |
+
+---
+
+**`test [type]`** — Run a test suite inside nix-shell:
+
+| Type | FIPS | non-FIPS | Notes |
+|---|:---:|:---:|---|
+| `all` (default) | ✓ | ✓ | Run all available tests |
+| `wasm` | ✓ | ✓ | WASM package build + tests |
+| `sqlite` | ✓ | ✓ | SQLite backend |
+| `mysql` | ✓ | ✓ | Requires MySQL server |
+| `percona` | ✓ | ✓ | Requires Percona XtraDB server |
+| `mariadb` | ✓ | ✓ | Requires MariaDB server |
+| `psql` | ✓ | ✓ | Requires PostgreSQL server |
+| `redis` | ✗ | ✓ | Redis-findex (non-FIPS only) |
+| `google_cse` | ✓ | ✓ | Requires OAuth credentials |
+| `gcp_cmek` | ✓ | ✓ | GCP CMEK wrapping key tests |
+| `pykmip` | ✗ | ✓ | PyKMIP + Synology DSM simulation |
+| `openssh` | ✗ | ✓ | OpenSSH PKCS#11 integration |
+| `luks` | ✓ | ✓ | LUKS disk-encryption PKCS#11 |
+| `otel_export` (alias: `otel`) | ✓ | ✓ | OpenTelemetry export (requires Docker) |
+| `hsm [backend]` | ✓ | ✓ | HSM tests — backend: `softhsm2` \| `utimaco` \| `proteccio` \| `all` |
+| `ui` | ✗ | ✓ | Playwright E2E tests (non-FIPS only) |
+
+Environment variables accepted for test configuration:
+`REDIS_HOST/PORT`, `MYSQL_HOST/PORT`, `PERCONA_HOST/PORT`, `MARIADB_HOST/PORT`,
+`POSTGRES_HOST/PORT`, `TEST_GOOGLE_OAUTH_CLIENT_ID`, `TEST_GOOGLE_OAUTH_CLIENT_SECRET`,
+`TEST_GOOGLE_OAUTH_REFRESH_TOKEN`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
+
+---
+
+**`package [type]`** — Build installer packages via Nix:
+
+| Type | Output | Platforms |
+|---|---|---|
+| `deb` | Debian `.deb` package | Linux (amd64, arm64) |
+| `rpm` | RPM `.rpm` package | Linux (amd64, arm64) |
+| `dmg` | macOS `.dmg` package | macOS (arm64) |
+| *(none)* | All supported packages for the current OS | All |
+
+---
+
+**`sbom`** — Generate a Software Bill of Materials:
+
+```bash
+nix.sh sbom [--target <openssl_3_1_2|openssl_3_6_2|server|ckms>]
+            [--variant fips|non-fips] [--link static|dynamic]
+            [--retrieve [--branch <branch|tag>]]
+```
+
+| Option | Description |
+|---|---|
+| `--target` | `openssl_3_1_2`, `openssl_3_6_2`, `server`, or `ckms` (default: all) |
+| `--variant` / `--link` | Filter to a specific variant/link (only with `--target server\|ckms`) |
+| `--retrieve` | Download SBOMs from `package.cosmian.com` instead of generating locally |
+| `--branch` | Remote branch or tag to retrieve from (e.g. `5.16.2` or `last_build/develop`) |
+
+> Note: global `--variant`/`--link` flags do **not** affect the `sbom` command; use the sbom-specific options above.
+
+---
+
+**`update-hashes`** — Recompute and update all expected Nix vendor hashes for the current platform
+(requires a release build). Use after any `Cargo.lock` or `ui/pnpm-lock.yaml` change.
 
 ### Core Test Scripts
 
@@ -485,7 +579,7 @@ All test scripts are called via `nix.sh test <type>` for reproducible environmen
 ### Utility Scripts
 
 - `common.sh`: Shared functions and utilities
-- `benchmarks.sh`: Performance benchmarking suite
+- `bench_ci.sh`: Performance benchmarking smoke-test (CI)
 - `reinitialize_demo_kms.sh`: Reset demo KMS instance
 - `renew_server_doc.sh`: Regenerate server documentation
 - `release.sh`: Release preparation and validation

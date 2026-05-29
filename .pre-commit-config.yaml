@@ -8,7 +8,7 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 fail_fast: true
-exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|crate/kmip/src/kmip_2_1/specifications/|crate/kmip/src/kmip_1_4/specifications/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/kmip/src/oasis|crate/kmip/src/kmip_1_0/specifications
+exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|crate/kmip/src/kmip_2_1/specifications/|crate/kmip/src/kmip_1_4/specifications/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/kmip/src/oasis|crate/kmip/src/kmip_1_0/specifications|crate/server/documentation/swagger-ui/swagger-ui-bundle.js|crate/server/documentation/swagger-ui/swagger-ui.css
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.0.0
@@ -69,6 +69,15 @@ repos:
     rev: 3.0.0
     hooks:
       - id: shellcheck
+
+  - repo: local
+    hooks:
+      - id: shfmt
+        name: shfmt (shell formatter)
+        entry: shfmt
+        args: [-w, -i, "2", -ci]
+        language: system
+        types: [shell]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -155,7 +164,6 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [manual]
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.42
@@ -181,6 +189,15 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
+
+      - id: cargo-deny-licenses
+        name: Release - generate SBOM licenses list
+        entry: bash -c 'cargo deny list -l crate > sbom/licenses.txt'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
 
       - id: cbom
         name: Release - generate CBOM
@@ -264,7 +281,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        stages: [manual]
 
       - id: nix-build-all
         name: Nix build all derivations (ui → cli → server)

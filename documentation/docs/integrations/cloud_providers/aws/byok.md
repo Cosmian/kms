@@ -1,8 +1,8 @@
 # AWS KMS - Bring Your Own Key (BYOK)
 
-Cosmian KMS provides an `aws byok` command in its CLI (also available in the ui) to facilitate the import of an AWS wrapping key (KEK) in Cosmian KMS, and the export of the wrapped keys for direct import in AWS KMS. To use the AWS KMS terminology, the key that will be created in the [Cosmian KMS](https://cosmian.com/data-protection-suite/cosmian-kms/) will be called the _external key material_ as stated in the [AWS KMS docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-conceptual.html).
+Eviden KMS provides an `aws byok` command in its CLI (also available in the ui) to facilitate the import of an AWS wrapping key (KEK) in Eviden KMS, and the export of the wrapped keys for direct import in AWS KMS. To use the AWS KMS terminology, the key that will be created in the [Eviden KMS](https://cosmian.com/data-protection-suite/cosmian-kms/) will be called the _external key material_ as stated in the [AWS KMS docs](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-conceptual.html).
 
-The **key material** refers to the actual cryptographic key bytes that form the basis of a KMS key. While AWS KMS keys include additional metadata, policies, and access controls, the BYOK process allows Cosmian KMS users to maintain full control over key generation while leveraging AWS KMS's infrastructure for other usages.
+The **key material** refers to the actual cryptographic key bytes that form the basis of a KMS key. While AWS KMS keys include additional metadata, policies, and access controls, the BYOK process allows Eviden KMS users to maintain full control over key generation while leveraging AWS KMS's infrastructure for other usages.
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@ Since AWS KMS is a managed service where private key material never leaves AWS H
 
 1. Creating a KMS key with `EXTERNAL` origin (no key material)
 2. Download the wrapping public key and import token from AWS
-3. Wrap your key material using Cosmian KMS
+3. Wrap your key material using Eviden KMS
 4. Import the wrapped key material into AWS KMS
 
 Supported wrapping algorithms:
@@ -36,11 +36,11 @@ Supported wrapping algorithms:
 
 - An active AWS account
 - Either: AWS CLI installed and configured on your machine (**recommended**) or an access to AWS Management Console and open the AWS Key Management Service (AWS KMS) console at [https://console.aws.amazon.com/kms](https://console.aws.amazon.com/kms).
-- A running [Cosmian KMS](https://docs.cosmian.com/key_management_system/quick_start/) instance.
-- Either: [Cosmian KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Cosmian KMS UI](../../../configuration/ui.md) of your deployed KMS instance.
+- A running [Eviden KMS](https://docs.cosmian.com/key_management_system/quick_start/) instance.
+- Either: [Eviden KMS CLI](https://docs.cosmian.com/cosmian_cli/installation/) installed and configured on your machine or an access to the [Eviden KMS UI](../../../configuration/ui.md) of your deployed KMS instance.
 - Any tool to convert base64 values to their binary counterparts (e.g. [openssl](https://openssl.org/), python, etc).
 
-## Creating an AES key and importing it using the AWS CLI and the Cosmian CLI
+## Creating an AES key and importing it using the AWS CLI and the Eviden CLI
 
 ### 1. Create a KMS key with `EXTERNAL` origin
 
@@ -86,7 +86,7 @@ If successful, the output should look like :
         --description "External NIST-P384 key for signing"
 ```
 
-### 2. Create a symmetric key in Cosmian KMS
+### 2. Create a symmetric key in Eviden KMS
 
 ```bash
 ckms sym keys create symmetric_key_test1
@@ -137,7 +137,7 @@ In a similar manner, you can use the command if you want to keep your public key
 echo -n "<YourBase64EncodedPublicKey>" | openssl enc -d -base64 -A -out kek.bin
 ```
 
-### 4. Import the AWS KEK into Cosmian KMS
+### 4. Import the AWS KEK into Eviden KMS
 
 ```bash
 ckms aws byok import \
@@ -170,7 +170,7 @@ The PublicKey in file /tmp/ca9f45ad-8596-45a6-bc57-5591e662cb61 was successfully
                 - key_arn:arn:aws:kms:eu-west-3:447182645454:key/350e35ef-ac51-4dbb-82a4-9bc50b0ea42b
 ```
 
-### 5. Export the wrapped key material from Cosmian KMS
+### 5. Export the wrapped key material from Eviden KMS
 
 ```bash
 # Provide token file simply to display the correct AWS CLI command for import
@@ -197,7 +197,7 @@ aws kms import-key-material \
 
 ### 6. Import the wrapped key material into AWS KMS
 
-If you have filled all the fields on the previous step, you can directly use the command that the Cosmian CLI automatically generated for you:
+If you have filled all the fields on the previous step, you can directly use the command that the Eviden CLI automatically generated for you:
 
 ```bash
 aws kms import-key-material \
@@ -218,7 +218,7 @@ aws kms import-key-material \
 
 Receiving this response means that the key material has been successfully imported into AWS KMS.
 
-## Creating an RSA key and importing it using the AWS CLI and the Cosmian CLI
+## Creating an RSA key and importing it using the AWS CLI and the Eviden CLI
 
 For this example, we will create an 2048 bits RSA key material, wrapped using a 4096 kek with RSAES_OAEP_SHA_256.
 
@@ -228,15 +228,15 @@ The next step is to [download the wrapping public key and import token](https://
 
 Once this is done, create your key on the cosmian KMS like follow, we call it `rsa_key_material` :
 
-![Create an RSA key in Cosmian KMS](create_rsa.png)
+![Create an RSA key in Eviden KMS](create_rsa.png)
 
 Then, navigate to the **AWS** - **Import Kek** section and fill with the adequate data. In this example, we paste the kek in the base64 format for convenience, and call it `aws_kek_2`.
 
-![Import the AWS KEK into Cosmian KMS](import_kek.png)
+![Import the AWS KEK into Eviden KMS](import_kek.png)
 
-Finally, export the wrapped key material from Cosmian KMS to import it into AWS KMS.
+Finally, export the wrapped key material from Eviden KMS to import it into AWS KMS.
 
-![Export the wrapped key material from Cosmian KMS](export_key_material.png)
+![Export the wrapped key material from Eviden KMS](export_key_material.png)
 
 We named the file to export `EncryptedKeyMaterial.bin`. You can import the wrapped key material using the AWS CLI or the AWS Management Console.
 
@@ -244,7 +244,7 @@ An in depth explanation of the import process can be found in the [AWS documenta
 
 ## Automated BYOK Scripts
 
-To facilitate testing and automating the BYOK flow, we provide ready-to-use Bash scripts that demonstrate the end-to-end process of creating an AWS KMS key, generating the corresponding key material using the Cosmian CLI, and performing the import/export procedures.
+To facilitate testing and automating the BYOK flow, we provide ready-to-use Bash scripts that demonstrate the end-to-end process of creating an AWS KMS key, generating the corresponding key material using the Eviden CLI, and performing the import/export procedures.
 
 The following scripts are available for download:
 

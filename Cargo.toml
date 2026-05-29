@@ -94,7 +94,7 @@ map_err_ignore = "deny"
 redundant_clone = "deny"
 
 [workspace.package]
-version = "5.22.0"
+version = "5.23.0"
 edition = "2024"
 rust-version = "1.87.0"
 authors = [
@@ -137,7 +137,6 @@ opt-level = 0
 [workspace.dependencies]
 actix-cors = "0.6"
 actix-files = "0.6"
-actix-governor = "0.10"
 actix-http = "3.12"
 actix-identity = "0.6"
 actix-rt = "2.10"
@@ -155,11 +154,11 @@ criterion = { version = "0.6", default-features = false, features = [
   "html_reports",
   "async_tokio",
 ] }
-cosmian_config_utils = "0.3.1"
+cosmian_config_utils = "0.7"
 cosmian_crypto_core = { version = "11.0", default-features = false, features = [
   "ser",
 ] }
-cosmian_logger = "0.5"
+cosmian_logger = "0.7"
 der = { version = "0.7", default-features = false }
 dialoguer = { version = "0.11", default-features = false, features = [
   "editor",

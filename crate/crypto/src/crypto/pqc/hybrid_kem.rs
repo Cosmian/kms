@@ -19,7 +19,7 @@ use crate::{crypto::KeyPair, error::CryptoError};
 /// Supports `X25519MLKEM768` and `X448MLKEM1024` via OpenSSL 3.6+.
 ///
 /// Note: `SecP256r1MLKEM768` and `SecP384r1MLKEM1024` are NOT supported
-/// because OpenSSL 3.6.0 cannot serialize/deserialize their private keys.
+/// because OpenSSL 3.6.2 cannot serialize/deserialize their private keys.
 ///
 /// Hybrid KEM keys don't support DER serialization in OpenSSL 3.6,
 /// so raw key bytes are stored with `KeyFormatType::Raw`.

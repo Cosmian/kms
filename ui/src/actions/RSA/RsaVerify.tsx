@@ -1,9 +1,10 @@
 import { Button, Card, Form, Input, Select, Space, Switch } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useState } from "react";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import { parse_signature_verify_ttlv_response, signature_verify_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface RsaVerifyFormData {
     dataFile: Uint8Array;
@@ -17,27 +18,15 @@ interface RsaVerifyFormData {
 
 const RsaVerifyForm: React.FC = () => {
     const [form] = Form.useForm<RsaVerifyFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [dataBytes, setDataBytes] = useState<Uint8Array | undefined>(undefined);
     const [sigBytes, setSigBytes] = useState<Uint8Array | undefined>(undefined);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     const onFinish = async (values: RsaVerifyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing key identifier.");
-                throw Error("Missing key identifier");
+                throw new Error("Missing key identifier.");
             }
             const dataBuf = dataBytes ?? (values.dataFile ? new Uint8Array(values.dataFile) : undefined);
             let sigBuf = sigBytes ?? (values.signatureFile ? new Uint8Array(values.signatureFile) : undefined);
@@ -75,8 +64,7 @@ const RsaVerifyForm: React.FC = () => {
             }
             console.debug("RsaVerify: dataBuf len", dataBuf?.byteLength ?? 0, "sigBuf len", sigBuf?.byteLength ?? 0);
             if (!sigBuf || sigBuf.byteLength === 0) {
-                setRes("Error: signature file is empty or unreadable. Please re-upload the signature.");
-                throw Error("Empty signature file");
+                throw new Error("Error: signature file is empty or unreadable. Please re-upload the signature.");
             }
             const request = await signature_verify_ttlv_request(id, dataBuf!, sigBuf, undefined, values.digested);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
@@ -85,14 +73,9 @@ const RsaVerifyForm: React.FC = () => {
                 const respObj = response as unknown as Record<string, unknown>;
                 const validityRaw = respObj.ValidityIndicator ?? respObj.validity_indicator ?? respObj.validityIndicator;
                 const validity = typeof validityRaw === "string" ? validityRaw : String(validityRaw ?? "Unknown");
-                setRes(`Signature validity: ${validity}`);
+                return `Signature validity: ${validity}`;
             }
-        } catch (e) {
-            setRes(`Error verifying: ${e}`);
-            console.error("Error verifying:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -187,11 +170,7 @@ const RsaVerifyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="RSA verify response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="RSA verify response" />
         </div>
     );
 };

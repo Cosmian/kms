@@ -1,6 +1,6 @@
 # Telemetry & Observability
 
-By default, the Cosmian KMS server outputs logs to the console with a log level of `INFO`.
+By default, the Eviden KMS server outputs logs to the console with a log level of `INFO`.
 Beyond console logging, the server supports OpenTelemetry (OTLP) export, which unlocks a full
 observability stack: distributed traces, RED metrics, and long-term dashboards via Grafana.
 

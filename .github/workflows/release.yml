@@ -171,7 +171,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.90.0
+          toolchain: 1.91.0
 
       - name: Update Cargo.lock
         run: cargo build --workspace
@@ -186,6 +186,12 @@ jobs:
           #   5. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
           pip install cyclonedx-bom --quiet
           bash .github/scripts/docs/generate_docs.sh
+
+      - name: Install cargo-deny
+        run: cargo install --version 0.19.0 cargo-deny --locked
+
+      - name: Generate SBOM licenses list
+        run: cargo deny list -l crate > sbom/licenses.txt
 
       - name: Commit version bump and push release branch
         run: |
@@ -241,6 +247,7 @@ jobs:
             connect-timeout = 15
             stalled-download-timeout = 15
             narinfo-cache-negative-ttl = 0
+            http-connections = 8
 
       - uses: actions/checkout@v6
         with:

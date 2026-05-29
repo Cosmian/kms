@@ -408,7 +408,7 @@ async fn process_operation(
         }
         Operation::InteropResponse(r) => Operation::InteropResponse(r),
         Operation::GetAttributeList(kmip_request) => Operation::GetAttributeListResponse(
-            crate::core::operations::get_attribute_list::get_attribute_list_with_protocol_version(
+            crate::core::operations::attributes::get_attribute_list_with_protocol_version(
                 kms,
                 kmip_request,
                 user,
@@ -495,7 +495,7 @@ async fn process_operation(
                     .await?,
             ),
             Operation::ReKey(kmip_request) => {
-                Operation::ReKeyResponse(kms.rekey(kmip_request, user).await?)
+                Operation::ReKeyResponse(kms.rekey(kmip_request, user, privileged_users).await?)
             }
             Operation::ReKeyKeyPair(kmip_request) => Operation::ReKeyKeyPairResponse(
                 kms.rekey_keypair(*kmip_request, user, privileged_users)

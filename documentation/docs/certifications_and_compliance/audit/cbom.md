@@ -16,7 +16,7 @@ designed to support:
 
 ## CBOM artifact
 
-The Cosmian KMS CBOM is generated from the actual source code and `Cargo.lock`, ensuring it
+The Eviden KMS CBOM is generated from the actual source code and `Cargo.lock`, ensuring it
 reflects the running codebase rather than a manual registry.
 
 | File | Format | Description |
@@ -30,7 +30,7 @@ The CBOM covers:
 - Key derivation functions (PBKDF2, HKDF, Argon2)
 - Hash functions (SHA-2, SHA-3)
 - Key encapsulation and wrapping schemes
-- The implementing Rust crates (RustCrypto, OpenSSL, Cosmian) with versions from `Cargo.lock`
+- The implementing Rust crates (RustCrypto, OpenSSL, Eviden) with versions from `Cargo.lock`
 - FIPS compliance status per algorithm
 
 ## Regenerating the CBOM

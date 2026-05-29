@@ -9,11 +9,12 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         DeleteAttribute, DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy,
         DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
         GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-        LocateResponse, MAC, MACResponse, ModifyAttribute, ModifyAttributeResponse, PKCS11,
-        PKCS11Response, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed,
-        RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register,
-        RegisterResponse, Revoke, RevokeResponse, SetAttribute, SetAttributeResponse, Sign,
-        SignResponse, SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
+        LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
+        ModifyAttributeResponse, PKCS11, PKCS11Response, Query, QueryResponse, RNGRetrieve,
+        RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
+        ReKeyResponse, Register, RegisterResponse, Revoke, RevokeResponse, SetAttribute,
+        SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
+        Validate, ValidateResponse,
     },
 };
 use tracing::Instrument;
@@ -565,6 +566,17 @@ impl KMS {
             .await
     }
 
+    pub(crate) async fn mac_verify(
+        &self,
+        request: MACVerify,
+        user: &str,
+    ) -> KResult<MACVerifyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "mac_verify");
+        let _enter = span.enter();
+
+        Box::pin(operations::mac_verify(self, request, user)).await
+    }
+
     pub(crate) async fn message(
         &self,
         request: RequestMessage,
@@ -644,10 +656,15 @@ impl KMS {
     /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
     ///
     /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-    pub(crate) async fn rekey(&self, request: ReKey, user: &str) -> KResult<ReKeyResponse> {
+    pub(crate) async fn rekey(
+        &self,
+        request: ReKey,
+        user: &str,
+        privileged_users: Option<Vec<String>>,
+    ) -> KResult<ReKeyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey");
 
-        Box::pin(operations::rekey(self, request, user))
+        Box::pin(operations::rekey(self, request, user, privileged_users))
             .instrument(span)
             .await
     }

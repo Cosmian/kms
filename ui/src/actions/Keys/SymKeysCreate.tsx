@@ -1,8 +1,9 @@
 import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect, useState } from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface SymKeyCreateFormData {
     keyId?: string;
@@ -21,17 +22,8 @@ type CreateResponse = {
 
 const SymKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<SymKeyCreateFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [algoOptions, setAlgoOptions] = useState<{ value: string; label: string }[]>([]);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         try {
@@ -44,9 +36,7 @@ const SymKeyCreateForm: React.FC = () => {
     }, []);
 
     const onFinish = async (values: SymKeyCreateFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = wasm.create_sym_key_ttlv_request(
                 values.keyId,
                 values.tags,
@@ -59,14 +49,9 @@ const SymKeyCreateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateResponse = await wasm.parse_create_ttlv_response(result_str);
-                setRes(`${result.UniqueIdentifier} has been created.`);
+                return `${result.UniqueIdentifier} has been created.`;
             }
-        } catch (e) {
-            setRes(`Error creating key: ${e}`);
-            console.error("Error creating key:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -140,11 +125,7 @@ const SymKeyCreateForm: React.FC = () => {
                         </Button>
                     </Form.Item>
                 </Space>
-                {res && (
-                    <div ref={responseRef} data-testid="response-output">
-                        <Card title="Symmetric keys creation response">{res}</Card>
-                    </div>
-                )}
+                <ActionResponse res={res} responseRef={responseRef} title="Symmetric keys creation response" />
             </Form>
         </div>
     );

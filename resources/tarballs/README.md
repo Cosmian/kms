@@ -6,7 +6,7 @@ This directory contains OpenSSL source tarballs for offline Nix builds.
 
 - `openssl-3.1.2.tar.gz`: OpenSSL 3.1.2 source tarball (SHA256: a0ce69b8b97ea6a35b96875235aa453b966ba3cba8af2de23657d8b6767d6539)
 
-This tarball exists to support the **OpenSSL 3.1.2 FIPS provider**; KMS links against **OpenSSL 3.6.0** for the main runtime/library, but 3.1.2 must still be used because it is the official FIPS provider version available today (no more recent FIPS provider version).
+This tarball exists to support the **OpenSSL 3.1.2 FIPS provider**; KMS links against **OpenSSL 3.6.2** for the main runtime/library, but 3.1.2 must still be used because it is the official FIPS provider version available today (no more recent FIPS provider version).
 
 ## Usage
 

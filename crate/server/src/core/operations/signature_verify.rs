@@ -1,15 +1,12 @@
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::ErrorReason,
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason},
         kmip_2_1::{
             KmipOperation,
             kmip_objects::{Object, ObjectType},
             kmip_operations::{SignatureVerify, SignatureVerifyResponse},
             kmip_types::{CryptographicParameters, UniqueIdentifier, ValidityIndicator},
         },
-        time_normalize,
     },
     cosmian_kms_crypto::{
         crypto::{
@@ -18,42 +15,208 @@ use cosmian_kms_server_database::reexport::{
         },
         openssl::kmip_public_key_to_openssl,
     },
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
-use cosmian_logger::debug;
+use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Public};
 
 use crate::{
     core::{
-        KMS, operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key,
-        retrieve_object_utils::retrieve_object_for_operation,
+        KMS,
+        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
-/// * `kms` - A reference to the KMS (Key Management Service) instance.
-/// * `request` - The `SignatureVerify` request containing the verification parameters.
-/// * `user` - A string slice representing the user requesting the verification.
-/// * `params` - An optional reference to additional database parameters.
-///
-/// # Returns
-///
-/// A `KResult` containing a `SignatureVerifyResponse` which indicates the validity of the signature.
-///
-/// # Errors
-///
-/// This function will return a `KmsError` if:
-/// - The unique identifier is not found or invalid.
-/// - The managed object is not a valid key for signature verification.
-/// - The cryptographic parameters are missing or invalid.
-/// - The signature verification fails due to cryptographic errors.
-/// - Both data and `digested_data` are provided or both are missing.
+
+/// Marker type for the `SignatureVerify` operation's key selection requirements.
+pub(crate) struct SignatureVerifyOp;
+
+impl CryptoOpSpec for SignatureVerifyOp {
+    type Request = SignatureVerify;
+    type Response = SignatureVerifyResponse;
+
+    const KMIP_OP: KmipOperation = KmipOperation::SignatureVerify;
+    const OP_NAME: &'static str = "SignatureVerify";
+
+    fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
+        request.unique_identifier.as_ref()
+    }
+
+    fn usage_data_len(request: &Self::Request) -> usize {
+        request
+            .data
+            .as_ref()
+            .map_or(0, Vec::len)
+            .max(request.digested_data.as_ref().map_or(0, Vec::len))
+    }
+
+    fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
+        if let Object::PublicKey { .. } = owm.object() {
+            return has_usage_mask(owm, CryptographicUsageMask::Verify, true);
+        }
+        false
+    }
+
+    fn map_selection_error(
+        e: KmsError,
+        unique_identifier: &UniqueIdentifier,
+        _user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!("SignatureVerify: no valid public key for id: {unique_identifier}"),
+            ),
+            other => other,
+        }
+    }
+
+    async fn execute_local(
+        _kms: &KMS,
+        owm: &ObjectWithMetadata,
+        request: &Self::Request,
+        _user: &str,
+    ) -> KResult<Self::Response> {
+        let verification_key = extract_verification_key(owm.object())?;
+
+        // Resolve cryptographic parameters: prefer request values, but fall back to
+        // the stored key Attributes when the request omits them.
+        let effective_crypto_params = CryptographicParameters::merged_with_object(
+            request.cryptographic_parameters.clone(),
+            owm.object(),
+        );
+
+        // Handle streaming verification
+        if request.init_indicator == Some(true) || request.correlation_value.is_some() {
+            return handle_streaming_verification(request, owm.id().to_owned(), &verification_key);
+        }
+
+        // For final verification, signature_data is required
+        let signature_data = request
+            .signature_data
+            .as_ref()
+            .ok_or_else(|| KmsError::InvalidRequest("Missing signature_data".to_owned()))?;
+
+        // Validate input data
+        let data_to_verify = match (&request.data, &request.digested_data) {
+            (Some(data), None) => data.clone(),
+            (None, Some(digested_data)) => digested_data.clone(),
+            (Some(_), Some(_)) => {
+                return Err(KmsError::InvalidRequest(
+                    "Cannot provide both data and digested_data".to_owned(),
+                ));
+            }
+            (None, None) => {
+                return Err(KmsError::InvalidRequest(
+                    "Must provide either data or digested_data".to_owned(),
+                ));
+            }
+        };
+
+        let crypto_params = effective_crypto_params;
+        debug!(
+            "signature_verify: effective CP => alg={:?} pad={:?} hash={:?} dsa={:?} mgf1_hash={:?}",
+            crypto_params.cryptographic_algorithm,
+            crypto_params.padding_method,
+            crypto_params.hashing_algorithm,
+            crypto_params.digital_signature_algorithm,
+            crypto_params.mask_generator_hashing_algorithm
+        );
+
+        // ML-DSA: check the key's algorithm; if PQC, use ml_dsa_verify directly
+        #[cfg(feature = "non-fips")]
+        {
+            if owm
+                .resolve_key_algorithm()
+                .is_some_and(|a| a.is_pqc_signature())
+            {
+                use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_verify;
+                let valid = ml_dsa_verify(&verification_key, &data_to_verify, signature_data)?;
+                let vi = if valid {
+                    ValidityIndicator::Valid
+                } else {
+                    ValidityIndicator::Invalid
+                };
+                return Ok(SignatureVerifyResponse {
+                    unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+                    validity_indicator: Some(vi),
+                    data: None,
+                    correlation_value: request.correlation_value.clone(),
+                });
+            }
+        }
+
+        let validity_indicator = verify_signature(
+            &verification_key,
+            &data_to_verify,
+            signature_data,
+            &crypto_params,
+            request.digested_data.is_some(),
+        )?;
+
+        debug!("Signature verification result: {validity_indicator:?}");
+
+        Ok(SignatureVerifyResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            validity_indicator: Some(validity_indicator),
+            data: None,
+            correlation_value: request.correlation_value.clone(),
+        })
+    }
+
+    async fn execute_oracle(
+        kms: &KMS,
+        request: &Self::Request,
+        uid: &str,
+        prefix: &str,
+    ) -> KResult<Self::Response> {
+        let data: &[u8] = request
+            .data
+            .as_deref()
+            .or(request.digested_data.as_deref())
+            .ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "SignatureVerify: must provide data or digested_data".to_owned(),
+                )
+            })?;
+        let signature = request.signature_data.as_deref().ok_or_else(|| {
+            KmsError::InvalidRequest("SignatureVerify: missing signature_data".to_owned())
+        })?;
+        let lock = kms.crypto_oracles.read().await;
+        let crypto_oracle = lock.get(prefix).ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "SignatureVerify: unknown crypto oracle prefix: {prefix}"
+            ))
+        })?;
+        let valid = crypto_oracle
+            .signature_verify(
+                uid,
+                data,
+                signature,
+                request.cryptographic_parameters.as_ref(),
+            )
+            .await?;
+        Ok(SignatureVerifyResponse {
+            unique_identifier: UniqueIdentifier::TextString(uid.to_owned()),
+            validity_indicator: Some(if valid {
+                ValidityIndicator::Valid
+            } else {
+                ValidityIndicator::Invalid
+            }),
+            data: None,
+            correlation_value: request.correlation_value.clone(),
+        })
+    }
+}
+
 pub(crate) async fn signature_verify(
     kms: &KMS,
     request: SignatureVerify,
     user: &str,
 ) -> KResult<SignatureVerifyResponse> {
-    debug!("{request}");
+    trace!("{request}");
 
     // Validate streaming indicators
     if request.init_indicator == Some(true) && request.final_indicator == Some(true) {
@@ -62,195 +225,10 @@ pub(crate) async fn signature_verify(
         ));
     }
 
-    // Determine the unique identifier to use
-    let unique_identifier = request
-        .unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("signature_verify: unique_identifier must be a string")?
-        .to_owned();
-
-    debug!("Retrieving verification key with UID: {unique_identifier}");
-
-    // Retrieve the managed object for verification
-    let uid_owm = Box::pin(retrieve_object_for_operation(
-        &unique_identifier,
-        KmipOperation::SignatureVerify,
-        kms,
-        user,
+    Box::pin(perform_crypto_operation::<SignatureVerifyOp>(
+        kms, request, user,
     ))
-    .await?;
-
-    // Second-stage enforcement: validate the retrieved key's stored attributes.
-    enforce_kmip_algorithm_policy_for_retrieved_key(
-        &kms.params,
-        "SignatureVerify",
-        &unique_identifier,
-        &uid_owm,
-    )?;
-
-    // Lifecycle gating (mirror Sign operation behavior): deny verification if outside allowed
-    // usage window. Mandatory profile CS-AC-M-8-21 expects Wrong_Key_Lifecycle_State for
-    // SignatureVerify prior to revocation when ProcessStartDate is in the future or
-    // ProtectStopDate has passed.
-    if let Ok(attrs) = uid_owm.object().attributes() {
-        let now = time_normalize()?;
-        let activation_ok = attrs.activation_date.is_none_or(|ad| ad <= now);
-        let process_window_ok = attrs.process_start_date.is_none_or(|psd| psd <= now)
-            && attrs.protect_stop_date.is_none_or(|psd| psd > now);
-        if !(activation_ok && process_window_ok) {
-            return Err(KmsError::Kmip21Error(
-                ErrorReason::Wrong_Key_Lifecycle_State,
-                "DENIED".to_owned(),
-            ));
-        }
-    }
-
-    let verification_key = extract_verification_key(uid_owm.object())?;
-
-    // Resolve cryptographic parameters: prefer request values, but fall back to
-    // the stored key Attributes when the request omits them. This mirrors how
-    // other operations (e.g., Encrypt/Decrypt) respect registered parameters.
-    let effective_crypto_params: CryptographicParameters = {
-        let stored_cp = uid_owm
-            .object()
-            .attributes()
-            .ok()
-            .and_then(|a| a.cryptographic_parameters.clone())
-            .unwrap_or_default();
-        match request.cryptographic_parameters.clone() {
-            None => stored_cp,
-            Some(mut req_cp) => {
-                if req_cp.cryptographic_algorithm.is_none() {
-                    req_cp.cryptographic_algorithm = stored_cp.cryptographic_algorithm;
-                }
-                if req_cp.padding_method.is_none() {
-                    req_cp.padding_method = stored_cp.padding_method;
-                }
-                if req_cp.hashing_algorithm.is_none() {
-                    req_cp.hashing_algorithm = stored_cp.hashing_algorithm;
-                }
-                if req_cp.digital_signature_algorithm.is_none() {
-                    req_cp.digital_signature_algorithm = stored_cp.digital_signature_algorithm;
-                }
-                // Carry through ancillary parameters if present in stored attributes and omitted in request
-                if req_cp.mask_generator.is_none() {
-                    req_cp.mask_generator = stored_cp.mask_generator;
-                }
-                if req_cp.mask_generator_hashing_algorithm.is_none() {
-                    req_cp.mask_generator_hashing_algorithm =
-                        stored_cp.mask_generator_hashing_algorithm;
-                }
-                if req_cp.p_source.is_none() {
-                    req_cp.p_source = stored_cp.p_source;
-                }
-                req_cp
-            }
-        }
-    };
-
-    // Handle streaming verification
-    if request.init_indicator == Some(true) || request.correlation_value.is_some() {
-        return handle_streaming_verification(request, unique_identifier, &verification_key);
-    }
-
-    // For final verification, signature_data is required
-    let signature_data = request
-        .signature_data
-        .as_ref()
-        .ok_or_else(|| KmsError::InvalidRequest("Missing signature_data".to_owned()))?;
-
-    // Validate input data
-    let data_to_verify = match (&request.data, &request.digested_data) {
-        (Some(data), None) => data.clone(),
-        (None, Some(digested_data)) => digested_data.clone(),
-        (Some(_), Some(_)) => {
-            return Err(KmsError::InvalidRequest(
-                "Cannot provide both data and digested_data".to_owned(),
-            ));
-        }
-        (None, None) => {
-            return Err(KmsError::InvalidRequest(
-                "Must provide either data or digested_data".to_owned(),
-            ));
-        }
-    };
-
-    // Use the resolved cryptographic parameters
-    let crypto_params = effective_crypto_params;
-    debug!(
-        "signature_verify: effective CP => alg={:?} pad={:?} hash={:?} dsa={:?} mgf1_hash={:?}",
-        crypto_params.cryptographic_algorithm,
-        crypto_params.padding_method,
-        crypto_params.hashing_algorithm,
-        crypto_params.digital_signature_algorithm,
-        crypto_params.mask_generator_hashing_algorithm
-    );
-
-    // Perform signature verification
-    // ML-DSA: check the key's algorithm; if PQC, use ml_dsa_verify directly
-    #[cfg(feature = "non-fips")]
-    {
-        let key_algo = uid_owm
-            .object()
-            .key_block()
-            .ok()
-            .and_then(|kb| kb.cryptographic_algorithm().copied())
-            .or_else(|| uid_owm.attributes().cryptographic_algorithm);
-        if matches!(
-            key_algo,
-            Some(
-                CryptographicAlgorithm::MLDSA_44
-                    | CryptographicAlgorithm::MLDSA_65
-                    | CryptographicAlgorithm::MLDSA_87
-                    | CryptographicAlgorithm::SLHDSA_SHA2_128s
-                    | CryptographicAlgorithm::SLHDSA_SHA2_128f
-                    | CryptographicAlgorithm::SLHDSA_SHA2_192s
-                    | CryptographicAlgorithm::SLHDSA_SHA2_192f
-                    | CryptographicAlgorithm::SLHDSA_SHA2_256s
-                    | CryptographicAlgorithm::SLHDSA_SHA2_256f
-                    | CryptographicAlgorithm::SLHDSA_SHAKE_128s
-                    | CryptographicAlgorithm::SLHDSA_SHAKE_128f
-                    | CryptographicAlgorithm::SLHDSA_SHAKE_192s
-                    | CryptographicAlgorithm::SLHDSA_SHAKE_192f
-                    | CryptographicAlgorithm::SLHDSA_SHAKE_256s
-                    | CryptographicAlgorithm::SLHDSA_SHAKE_256f
-            )
-        ) {
-            use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::pqc::ml_dsa::ml_dsa_verify;
-            let valid = ml_dsa_verify(&verification_key, &data_to_verify, signature_data)?;
-            let vi = if valid {
-                ValidityIndicator::Valid
-            } else {
-                ValidityIndicator::Invalid
-            };
-            return Ok(SignatureVerifyResponse {
-                unique_identifier: UniqueIdentifier::TextString(unique_identifier),
-                validity_indicator: Some(vi),
-                data: None,
-                correlation_value: request.correlation_value,
-            });
-        }
-    }
-
-    let validity_indicator = verify_signature(
-        &verification_key,
-        &data_to_verify,
-        signature_data,
-        &crypto_params,
-        request.digested_data.is_some(),
-    )
-    .context("signature_verify: verification operation failed")?;
-
-    debug!("Signature verification result: {validity_indicator:?}");
-
-    Ok(SignatureVerifyResponse {
-        unique_identifier: UniqueIdentifier::TextString(unique_identifier),
-        validity_indicator: Some(validity_indicator),
-        data: None, // Data recovery not implemented yet
-        correlation_value: request.correlation_value,
-    })
+    .await
 }
 
 /// Extract the verification key from a managed object.
@@ -336,14 +314,14 @@ fn verify_signature(
 ///
 /// A `KResult` containing a `SignatureVerifyResponse` for streaming operations.
 fn handle_streaming_verification(
-    request: SignatureVerify,
+    request: &SignatureVerify,
     unique_identifier: String,
     verification_key: &PKey<Public>,
 ) -> KResult<SignatureVerifyResponse> {
     // Extract cryptographic parameters (no key Attributes available in this helper),
     // defaulting when omitted. For multi-part flows, callers should ensure consistency
     // across calls if parameters are required.
-    let crypto_params = request.cryptographic_parameters.unwrap_or_default();
+    let crypto_params = request.cryptographic_parameters.clone().unwrap_or_default();
     let (_, _, _, _signature_algorithm) = default_cryptographic_parameters(Some(&crypto_params));
 
     // For streaming, we need to maintain state in correlation_value

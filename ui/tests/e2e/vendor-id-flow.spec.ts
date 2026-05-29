@@ -23,7 +23,8 @@ import { expect, test } from "@playwright/test";
 import { gotoAndWait, submitAndWaitForResponse } from "./helpers";
 
 /** KMS REST endpoint used for direct KMIP calls (bypasses the UI). */
-const KMS_URL = "http://127.0.0.1:9998";
+const KMS_URL =
+    (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.PLAYWRIGHT_KMS_URL ?? "http://127.0.0.1:9998";
 
 // ── TTLV helpers ─────────────────────────────────────────────────────────────
 

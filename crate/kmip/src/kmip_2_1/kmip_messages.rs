@@ -341,6 +341,19 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::DeleteAttribute => {
                                     Operation::DeleteAttribute(map.next_value()?)
                                 }
+                                OperationEnumeration::DeriveKey => {
+                                    Operation::DeriveKey(map.next_value()?)
+                                }
+                                OperationEnumeration::SetAttribute => {
+                                    Operation::SetAttribute(map.next_value()?)
+                                }
+                                OperationEnumeration::Validate => {
+                                    Operation::Validate(map.next_value()?)
+                                }
+                                OperationEnumeration::ReKey => Operation::ReKey(map.next_value()?),
+                                OperationEnumeration::ReKeyKeyPair => {
+                                    Operation::ReKeyKeyPair(map.next_value()?)
+                                }
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "Request Message Batch Item: unsupported operation: {x:?}"
@@ -763,6 +776,21 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 }
                                 OperationEnumeration::RNGSeed => {
                                     Operation::RNGSeedResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::DeriveKey => {
+                                    Operation::DeriveKeyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::SetAttribute => {
+                                    Operation::SetAttributeResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::Validate => {
+                                    Operation::ValidateResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::ReKey => {
+                                    Operation::ReKeyResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::ReKeyKeyPair => {
+                                    Operation::ReKeyKeyPairResponse(map.next_value()?)
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(

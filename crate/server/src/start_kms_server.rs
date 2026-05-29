@@ -14,7 +14,6 @@ use std::{
 
 use actix_cors::Cors;
 use actix_files::Files;
-use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_identity::IdentityMiddleware;
 use actix_session::{SessionMiddleware, config::PersistentSession, storage::CookieSessionStore};
 use actix_web::{
@@ -58,11 +57,12 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, crypto, get_hsm_status,
+        get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
         health,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect,
+        ms_dke, root_redirect, swagger,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -757,41 +757,26 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
     // The test-server helper leaves that field at `None` so parallel unit tests are never
-    // throttled by the governor. Production configs set it to 100 (req/s, burst 300).
+    // throttled by the rate limiter. Production configs set it to 100 (req/s, burst 300).
     let rate_limit_enabled = kms_server.params.rate_limit_per_second.is_some();
-    let governor_conf = if let Some(rps) = kms_server.params.rate_limit_per_second {
-        GovernorConfigBuilder::default()
-            .requests_per_second(u64::from(rps))
-            .burst_size(rps.saturating_mul(3))
-            .finish()
-            .or_else(|| {
-                GovernorConfigBuilder::default()
-                    .requests_per_second(10)
-                    .burst_size(30)
-                    .finish()
-            })
-            .ok_or_else(|| {
-                KmsError::ServerError("Failed to build rate-limiter configuration".to_owned())
-            })?
-    } else {
-        // Placeholder config when rate limiting is disabled; permissive mode never
-        // blocks requests, and the Condition wrapper also ensures the middleware is
-        // never actually invoked.
-        GovernorConfigBuilder::default()
-            .permissive(true)
-            .finish()
-            .ok_or_else(|| {
-                KmsError::ServerError(
-                    "Failed to build placeholder rate-limiter configuration".to_owned(),
-                )
-            })?
-    };
+    // When rate limiting is disabled the Condition wrapper short-circuits, so we
+    // provide a permissive fallback config that is never actually invoked.
+    let rate_limiter_config = crate::middlewares::RateLimiterConfig::new(
+        u64::from(kms_server.params.rate_limit_per_second.unwrap_or(u32::MAX)),
+        kms_server
+            .params
+            .rate_limit_per_second
+            .map_or(u32::MAX, |rps| rps.saturating_mul(3)),
+    );
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
-            .wrap(Condition::new(rate_limit_enabled, Governor::new(&governor_conf)))
+            .wrap(Condition::new(
+                rate_limit_enabled,
+                crate::middlewares::RateLimiterMiddleware::new(&rate_limiter_config),
+            ))
             .wrap(
                 DefaultHeaders::new()
                     // Prevent the UI from being embedded in a foreign frame (clickjacking)
@@ -815,7 +800,20 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // 64 MB — realistic maximum for KMIP payloads including wrapped keys and certificates.
             // The previous 10 GB limit allowed unauthenticated clients to exhaust server RAM (DoS).
             .app_data(PayloadConfig::new(64 * 1024 * 1024))
-            .app_data(JsonConfig::default().limit(64 * 1024 * 1024));
+            .app_data(
+                JsonConfig::default()
+                    .limit(64 * 1024 * 1024)
+                    .error_handler(|err, _req| {
+                        let message = format!("{err}");
+                        actix_web::error::InternalError::from_response(
+                            err,
+                            HttpResponse::BadRequest()
+                                .content_type("text/plain")
+                                .body(message),
+                        )
+                        .into()
+                    }),
+            );
 
         if kms_server_for_http.params.kms_public_url.is_some()
             && kms_server_for_http.params.google_cse.google_cse_enable
@@ -834,6 +832,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .service(google_cse::get_status)
                 .service(google_cse::unwrap)
                 .service(google_cse::wrap)
+                .service(google_cse::wrapprivatekey)
                 .service(google_cse::certs)
                 .service(google_cse::delegate);
             app = app.service(google_cse_scope);
@@ -993,13 +992,42 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             );
         }
 
-        // Public endpoints (no authentication) — only health/version for connectivity checks.
-        // server-info is served from the authenticated default scope to prevent
-        // information disclosure (HSM model, slots, FIPS mode).
+        // Public endpoints (no authentication) — health/version for connectivity checks.
+        // API documentation (Swagger UI, OpenAPI schema) is served from the authenticated
+        // default scope to prevent information disclosure.
         app = app
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
             .service(get_version);
+
+        // REST Native Crypto API — /v1/crypto/*
+        let crypto_scope = web::scope("/v1/crypto")
+            .app_data(
+                web::JsonConfig::default()
+                    .error_handler(crypto::crypto_json_error_handler),
+            )
+            .wrap(EnsureAuth::new(
+                kms_server_for_http.clone(),
+                use_jwt_auth || use_cert_auth || use_api_token_auth,
+            ))
+            .wrap(Condition::new(
+                use_api_token_auth,
+                ApiTokenAuth::new(kms_server_for_http.clone()),
+            ))
+            .wrap(Condition::new(
+                use_jwt_auth,
+                JwtAuth::new(jwt_configurations.clone()),
+            ))
+            .wrap(Condition::new(use_cert_auth, TlsAuth))
+            .wrap(Cors::permissive())
+            .service(crypto::encrypt_handler)
+            .service(crypto::decrypt_handler)
+            .service(crypto::sign_handler)
+            .service(crypto::verify_handler)
+            .service(crypto::mac_handler)
+            .service(crypto::create_key_handler)
+            .service(crypto::delete_key_handler);
+        app = app.service(crypto_scope);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
@@ -1039,6 +1067,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(kmip::kmip_2_1_json)
             .service(kmip::kmip)
             .service(get_server_info)
+            .service(get_hsm_status)
+            .service(access::get_current_user)
             .service(access::list_owned_objects)
             .service(access::list_access_rights_obtained)
             .service(access::list_accesses)
@@ -1050,7 +1080,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
-            );
+            )
+            .service(swagger::get_openapi_yaml)
+            .service(swagger::get_swagger_ui)
+            .service(swagger::get_swagger_ui_js)
+            .service(swagger::get_swagger_ui_css);
 
         app.service(default_scope)
     })

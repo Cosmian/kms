@@ -2,7 +2,7 @@
 
 Image: `ghcr.io/cosmian/kms:5.18`
 
-Server version: "5.18.0 (OpenSSL 3.6.0 1 Oct 2025-non-FIPS)"
+Server version: "5.18.0 (OpenSSL 3.6.2 1 Oct 2025-non-FIPS)"
 
 Source command:
 

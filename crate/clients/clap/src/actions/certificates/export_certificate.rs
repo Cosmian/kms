@@ -159,7 +159,7 @@ impl ExportCertificateAction {
 
         let mut stdout = format!(
             "The certificate {} was exported to {}",
-            &id,
+            id,
             self.certificate_file.display()
         );
 
@@ -169,7 +169,7 @@ impl ExportCertificateAction {
             write_json_object_to_file(&to_ttlv(&export_attributes)?, &attributes_file)?;
             let stdout_attributes = format!(
                 "The attributes of the certificate {} were exported to {}",
-                &id,
+                id,
                 attributes_file.display()
             );
             stdout = format!("{stdout} - {stdout_attributes}");

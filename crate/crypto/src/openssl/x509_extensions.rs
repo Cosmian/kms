@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use cosmian_logger::warn;
 use ini::Ini;
 use openssl::{
+    asn1::{Asn1Object, Asn1OctetString},
     nid::Nid,
     x509::{
         X509Extension, X509v3Context,
@@ -196,13 +197,7 @@ pub fn parse_v3_ca(
                 )?);
             }
             "certificatePolicies" => {
-                #[expect(deprecated)]
-                extensions.push(X509Extension::new_nid(
-                    None,
-                    Some(x509_context),
-                    Nid::CERTIFICATE_POLICIES,
-                    value,
-                )?);
+                extensions.push(build_certificate_policies_extension(value)?);
             }
             "extendedKeyUsage" => {
                 let mut eku = ExtendedKeyUsage::new();
@@ -251,24 +246,30 @@ pub fn parse_v3_ca(
                 })?;
                 extensions.push(aki.build(x509_context)?);
             }
-            // "authorityInfoAccess" => {
-            //     #[allow(deprecated)]
-            //     X509Extension::new_nid(
-            //         None,
-            //         Some(x509_context),
-            //         Nid::????,
-            //         value,
-            //     )?
-            // }
-            // "proxyCertificationInformation" => {
-            //     #[allow(deprecated)]
-            //     X509Extension::new_nid(
-            //         None,
-            //         Some(x509_context),
-            //         Nid::????,
-            //         value,
-            //     )?
-            // }
+            "authorityInfoAccess" => {
+                // OID 1.3.6.1.5.5.7.1.1 — Authority Information Access
+                // Value format: "OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt"
+                #[expect(deprecated)]
+                extensions.push(X509Extension::new_nid(
+                    None,
+                    Some(x509_context),
+                    Nid::INFO_ACCESS,
+                    value,
+                )?);
+            }
+            "noRevAvail" => {
+                // id-ce-noRevAvail (RFC 9608 §2), OID { id-ce 56 } = 2.5.29.56.
+                // OpenSSL does not register this OID in its extension table, so we build
+                // the extension directly using new_from_der().
+                // Criticality MUST be FALSE; DER encoding is '0500'H (NULL).
+                let oid = Asn1Object::from_str("2.5.29.56")?;
+                let val = Asn1OctetString::new_from_bytes(&[0x05, 0x00])?;
+                extensions.push(X509Extension::new_from_der(
+                    oid.as_ref(),
+                    false,
+                    val.as_ref(),
+                )?);
+            }
             _ => {
                 return Err(CryptoError::Default(format!(
                     "`{key}` is not a valid X.509 extension key property"
@@ -278,6 +279,211 @@ pub fn parse_v3_ca(
     }
 
     Ok(extensions)
+}
+
+/// Build a `certificatePolicies` X.509v3 extension (OID 2.5.29.32) from an OpenSSL
+/// `x509v3_config`-style value string, **without** requiring an OpenSSL config database.
+///
+/// OpenSSL's built-in `certificatePolicies` parser (`r2i_certpol`) requires `ctx->db` to be
+/// non-NULL even for bare OIDs, because it calls `policy_section()` internally. The x509v3
+/// context created by `X509Builder::x509v3_context` is always constructed without a config
+/// database in our call-site, so delegating to `X509Extension::new_nid` with `None` always
+/// triggers "no config database". This function parses the value natively and emits the
+/// correct DER without any OpenSSL conf dependency.
+///
+/// # Supported syntax
+///
+/// ```text
+/// certificatePolicies = [critical,] OID [, CPS:url | CPS.N:url] [, OID ...]
+/// ```
+///
+/// * `critical` – marks the extension as critical (may appear anywhere before the first OID).
+/// * `OID` – a dotted-decimal policy OID, e.g. `1.3.6.1.4.1.16376.9.1.1.1.0`.
+/// * `CPS:url` – inline CPS (Certification Practice Statement) qualifier.
+/// * `CPS.N:url` – same with a numeric suffix (section-style numbering accepted by OpenSSL
+///   config files); the `.N` part is ignored and treated like plain `CPS:`.
+///
+/// # Errors
+///
+/// Returns an error for unknown qualifier tokens or malformed OID notation.
+fn build_certificate_policies_extension(value: &str) -> Result<X509Extension, CryptoError> {
+    let mut critical = false;
+    // Each entry: (policy_oid_dotted, cps_urls)
+    let mut policies: Vec<(String, Vec<String>)> = Vec::new();
+
+    for token in value.split(',') {
+        let token = token.trim();
+        if token.eq_ignore_ascii_case("critical") {
+            critical = true;
+        } else if is_dotted_oid(token) {
+            policies.push((token.to_owned(), Vec::new()));
+        } else if let Some(url) = strip_cps_qualifier(token) {
+            let last = policies.last_mut().ok_or_else(|| {
+                CryptoError::NotSupported(
+                    "certificatePolicies: CPS qualifier appears before any policy OID".to_owned(),
+                )
+            })?;
+            last.1.push(url.to_owned());
+        } else {
+            return Err(CryptoError::NotSupported(format!(
+                "certificatePolicies: unsupported token `{token}`. \
+                 Accepted: `critical`, a dotted OID, `CPS:url`, or `CPS.N:url`"
+            )));
+        }
+    }
+
+    if policies.is_empty() {
+        return Err(CryptoError::NotSupported(
+            "certificatePolicies: at least one policy OID is required".to_owned(),
+        ));
+    }
+
+    // Encode SEQUENCE OF PolicyInformation
+    let mut policies_content = Vec::new();
+    // id-qt-cps OID bytes (1.3.6.1.5.5.7.2.1) – pre-encoded for efficiency
+    let cps_oid_der = der_encode_oid("1.3.6.1.5.5.7.2.1")?;
+
+    for (oid_str, cps_urls) in &policies {
+        let oid_der = der_encode_oid(oid_str)?;
+
+        let policy_info_inner = if cps_urls.is_empty() {
+            oid_der
+        } else {
+            let mut qualifiers_content = Vec::new();
+            for url in cps_urls {
+                // PolicyQualifierInfo ::= SEQUENCE { policyQualifierId OID, qualifier IA5String }
+                let ia5_der = der_encode_ia5string(url);
+                let pqi_inner: Vec<u8> = [cps_oid_der.as_slice(), ia5_der.as_slice()].concat();
+                qualifiers_content.extend_from_slice(&der_encode_sequence(&pqi_inner));
+            }
+            // PolicyInformation ::= SEQUENCE { policyIdentifier OID, policyQualifiers SEQUENCE }
+            [
+                oid_der.as_slice(),
+                der_encode_sequence(&qualifiers_content).as_slice(),
+            ]
+            .concat()
+        };
+        policies_content.extend_from_slice(&der_encode_sequence(&policy_info_inner));
+    }
+
+    // extnValue OCTET STRING wraps the DER of SEQUENCE OF PolicyInformation
+    let ext_value_der = der_encode_sequence(&policies_content);
+    let ext_oid = Asn1Object::from_str("2.5.29.32")?;
+    let octet_string = Asn1OctetString::new_from_bytes(&ext_value_der)?;
+    X509Extension::new_from_der(ext_oid.as_ref(), critical, octet_string.as_ref())
+        .map_err(CryptoError::from)
+}
+
+/// Returns `true` when `s` looks like a dotted-decimal OID
+/// (starts with a digit, contains only ASCII digits and `.`).
+fn is_dotted_oid(s: &str) -> bool {
+    !s.is_empty()
+        && s.starts_with(|c: char| c.is_ascii_digit())
+        && s.chars().all(|c| c.is_ascii_digit() || c == '.')
+}
+
+/// If `token` is `CPS:url` or `CPS.N:url` (section-style numbering), returns the URL part.
+fn strip_cps_qualifier(token: &str) -> Option<&str> {
+    let rest = token.strip_prefix("CPS")?;
+    // "CPS:url" — direct
+    if let Some(url) = rest.strip_prefix(':') {
+        return Some(url);
+    }
+    // "CPS.N:url" — skip the numeric ".N" suffix
+    let after_dot = rest.strip_prefix('.')?;
+    let colon = after_dot.find(':')?;
+    // Verify the part before ':' is all digits (the index N)
+    if after_dot[..colon].chars().all(|c| c.is_ascii_digit()) {
+        return after_dot.get(colon + 1..);
+    }
+    None
+}
+
+// ── Minimal DER encoding helpers ─────────────────────────────────────────────
+
+/// Encode a DER length field (short-form or two-octet long-form).
+///
+/// Certificate-extension values are always < 64 KiB. The `if` branches
+/// guarantee the casts are always in range; the allows suppress the
+/// false-positive truncation and silent-conversion lints.
+#[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+fn der_encode_length(len: usize) -> Vec<u8> {
+    if len < 128 {
+        vec![len as u8]
+    } else if len < 256 {
+        vec![0x81, len as u8]
+    } else {
+        vec![0x82, (len >> 8) as u8, (len & 0xFF) as u8]
+    }
+}
+
+/// Wrap `content` in a DER SEQUENCE (tag `0x30`).
+fn der_encode_sequence(content: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x30];
+    out.extend_from_slice(&der_encode_length(content.len()));
+    out.extend_from_slice(content);
+    out
+}
+
+/// Encode a dotted-decimal OID string as a DER OID TLV (tag `0x06`).
+fn der_encode_oid(oid_str: &str) -> Result<Vec<u8>, CryptoError> {
+    let components: Vec<u64> = oid_str
+        .split('.')
+        .map(str::parse::<u64>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| CryptoError::NotSupported(format!("invalid OID `{oid_str}`: {e}")))?;
+
+    // Split off the first two arcs — both are required by the OID grammar.
+    let (first, remainder) = components.split_first().ok_or_else(|| {
+        CryptoError::NotSupported(format!("OID `{oid_str}` must have at least two components"))
+    })?;
+    let (second, rest) = remainder.split_first().ok_or_else(|| {
+        CryptoError::NotSupported(format!("OID `{oid_str}` must have at least two components"))
+    })?;
+
+    let mut content = Vec::new();
+    // First two arcs are merged: value = 40 * first + second
+    content.extend_from_slice(&der_encode_base128(first * 40 + second));
+    for &arc in rest {
+        content.extend_from_slice(&der_encode_base128(arc));
+    }
+
+    let mut out = vec![0x06]; // OID tag
+    out.extend_from_slice(&der_encode_length(content.len()));
+    out.extend_from_slice(&content);
+    Ok(out)
+}
+
+/// Encode `n` in base-128 big-endian (DER OID arc encoding).
+/// `n & 0x7F` is always ≤ 127 and fits in `u8`; the allow suppresses the
+/// false-positive silent-conversion lint.
+#[allow(clippy::cast_possible_truncation, clippy::as_conversions)]
+fn der_encode_base128(mut n: u64) -> Vec<u8> {
+    if n == 0 {
+        return vec![0x00];
+    }
+    let mut bytes = Vec::new();
+    while n > 0 {
+        bytes.push((n & 0x7F) as u8);
+        n >>= 7;
+    }
+    bytes.reverse();
+    // Set the high bit on every byte except the last
+    if let Some((_, all_but_last)) = bytes.split_last_mut() {
+        for b in all_but_last {
+            *b |= 0x80;
+        }
+    }
+    bytes
+}
+
+/// Encode a string as a DER `IA5String` (tag `0x16`).
+fn der_encode_ia5string(s: &str) -> Vec<u8> {
+    let bytes = s.as_bytes();
+    let mut out = vec![0x16]; // IA5String tag
+    out.extend_from_slice(&der_encode_length(bytes.len()));
+    out.extend_from_slice(bytes);
+    out
 }
 
 /// Within a value, there can be properties (ie: `email:test@example.com`).
@@ -297,6 +503,7 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, Crypt
 #[cfg(test)]
 mod tests {
     use cosmian_logger::{info, log_init};
+    use ini::Ini;
     use openssl::{
         conf::{Conf, ConfMethod},
         x509::X509,
@@ -308,7 +515,7 @@ mod tests {
         prelude::*,
     };
 
-    use super::{colon_split, parse_v3_ca_from_str};
+    use super::{colon_split, is_dotted_oid, parse_v3_ca_from_str, strip_cps_qualifier};
 
     #[test]
     fn test_split() {
@@ -580,6 +787,216 @@ certificatePolicies=2.5.29.32
                 policy_id: oid!(2.5.29.32),
                 policy_qualifiers: None
             }])
+        );
+    }
+
+    /// Non-regression: the "OK" CNF (without CPS qualifier) must parse successfully.
+    #[test]
+    fn test_certificate_policies_cnf_ok() {
+        log_init(option_env!("RUST_LOG"));
+
+        let cnf_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../.github/scripts/test/certificatePolicies/v3_ca_ok.cnf"
+        );
+        let cnf_content = std::fs::read_to_string(cnf_path).unwrap();
+
+        let builder = X509::builder().unwrap();
+        let ctx = builder.x509v3_context(None, None);
+        let result = parse_v3_ca_from_str(&cnf_content, &ctx);
+        assert!(
+            result.is_ok(),
+            "v3_ca_ok.cnf should parse successfully, got: {:?}",
+            result.err()
+        );
+        // Should produce 3 extensions: basicConstraints, subjectKeyIdentifier, keyUsage
+        assert_eq!(result.unwrap().len(), 3);
+    }
+
+    /// Non-regression: the "KO" CNF (with CPS.1:url qualifier) now SUCCEEDS after the fix.
+    ///
+    /// Before the fix this test asserted `result.is_err()` (the old code used
+    /// `X509Extension::new_nid` which requires an OpenSSL config database).
+    /// After the fix (`build_certificate_policies_extension` native DER encoder),
+    /// parsing succeeds — proving the fix works.
+    #[test]
+    fn test_certificate_policies_cnf_ko_now_succeeds_with_fix() {
+        log_init(option_env!("RUST_LOG"));
+
+        let cnf_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../.github/scripts/test/certificatePolicies/v3_ca_ko.cnf"
+        );
+        let cnf_content = std::fs::read_to_string(cnf_path).unwrap();
+
+        let builder = X509::builder().unwrap();
+        let ctx = builder.x509v3_context(None, None);
+        let result = parse_v3_ca_from_str(&cnf_content, &ctx);
+
+        // NEW BEHAVIOR (after fix): parsing succeeds
+        assert!(
+            result.is_ok(),
+            "v3_ca_ko.cnf should now SUCCEED with the fix, got: {:?}",
+            result.err()
+        );
+        // Should produce 4 extensions: basicConstraints, subjectKeyIdentifier, keyUsage, certificatePolicies
+        assert_eq!(result.unwrap().len(), 4);
+    }
+
+    /// Verify that `certificatePolicies` with a CPS qualifier (both `CPS:url` and the
+    /// section-numbering variant `CPS.N:url`) is correctly parsed and encoded **without**
+    /// an OpenSSL config database — which is the real-world scenario in the KMS server.
+    ///
+    /// Regression test for the customer bug where
+    /// `certificatePolicies=1.3.6.1.4.1.16376.9.1.1.1.0,CPS.1:http://...` triggered
+    /// `error:11000088:X509 V3 routines:do_ext_nconf:no config database`.
+    #[test]
+    #[allow(
+        clippy::items_after_statements,
+        clippy::panic,
+        clippy::indexing_slicing
+    )]
+    fn test_certificate_policies_with_cps_qualifier() {
+        const CPS_URL: &str = "http://pkipubpc.cnp.recouv/pc_acoss_reseau_des_urssaf_v4.pdf";
+        const POLICY_OID: &str = "1.3.6.1.4.1.16376.9.1.1.1.0";
+        const ID_QT_CPS: &str = "1.3.6.1.5.5.7.2.1";
+
+        log_init(option_env!("RUST_LOG"));
+
+        // — Test 1: bare OID, no conf database (the context has no conf).
+        let ext_bare = format!("[ v3_ca ]\ncertificatePolicies={POLICY_OID}\n");
+        let builder = X509::builder().unwrap();
+        // Deliberately no Conf — mirrors the production path in apply_user_extensions.
+        let ctx = builder.x509v3_context(None, None);
+        let exts = parse_v3_ca_from_str(&ext_bare, &ctx).unwrap();
+        assert_eq!(exts.len(), 1);
+        let der = exts[0].to_der().unwrap();
+        let (_, parsed) = X509ExtensionParser::new().parse(&der).unwrap();
+        assert!(!parsed.critical);
+        assert!(
+            matches!(
+                parsed.parsed_extension(),
+                ParsedExtension::CertificatePolicies(_)
+            ),
+            "expected CertificatePolicies, got {:?}",
+            parsed.parsed_extension()
+        );
+
+        // — Test 2: CPS.N:url (section-numbering variant used by the customer PKI).
+        let ext_cps_numbered =
+            format!("[ v3_ca ]\ncertificatePolicies={POLICY_OID},CPS.1:{CPS_URL}\n");
+        let ctx2 = builder.x509v3_context(None, None);
+        let exts2 = parse_v3_ca_from_str(&ext_cps_numbered, &ctx2).unwrap();
+        assert_eq!(exts2.len(), 1);
+        let der2 = exts2[0].to_der().unwrap();
+        let (_, parsed2) = X509ExtensionParser::new().parse(&der2).unwrap();
+        assert!(!parsed2.critical);
+        let policies2 = match parsed2.parsed_extension() {
+            ParsedExtension::CertificatePolicies(p) => p,
+            other => panic!("expected CertificatePolicies, got {other:?}"),
+        };
+        assert_eq!(policies2.len(), 1);
+        assert_eq!(policies2[0].policy_id.to_id_string(), POLICY_OID);
+        let qualifiers2 = policies2[0].policy_qualifiers.as_ref().unwrap();
+        assert_eq!(qualifiers2.len(), 1);
+        // OID 1.3.6.1.5.5.7.2.1 = id-qt-cps
+        assert_eq!(qualifiers2[0].policy_qualifier_id.to_id_string(), ID_QT_CPS);
+        // qualifier bytes are DER IA5String (0x16 len bytes): verify URL is embedded
+        let q2 = qualifiers2[0].qualifier;
+        assert!(q2.len() >= 2 && q2[0] == 0x16, "expected IA5String tag");
+        let url2 = std::str::from_utf8(&q2[2..]).unwrap();
+        assert_eq!(url2, CPS_URL);
+
+        // — Test 3: plain CPS:url (without numbered suffix).
+        let ext_cps_plain = format!("[ v3_ca ]\ncertificatePolicies={POLICY_OID},CPS:{CPS_URL}\n");
+        let ctx3 = builder.x509v3_context(None, None);
+        let exts3 = parse_v3_ca_from_str(&ext_cps_plain, &ctx3).unwrap();
+        assert_eq!(exts3.len(), 1);
+        let der3 = exts3[0].to_der().unwrap();
+        let (_, parsed3) = X509ExtensionParser::new().parse(&der3).unwrap();
+        let policies3 = match parsed3.parsed_extension() {
+            ParsedExtension::CertificatePolicies(p) => p,
+            other => panic!("expected CertificatePolicies, got {other:?}"),
+        };
+        let qualifiers3 = policies3[0].policy_qualifiers.as_ref().unwrap();
+        let q3 = qualifiers3[0].qualifier;
+        assert!(q3.len() >= 2 && q3[0] == 0x16, "expected IA5String tag");
+        let url3 = std::str::from_utf8(&q3[2..]).unwrap();
+        assert_eq!(url3, CPS_URL, "CPS URL mismatch in plain CPS: form");
+
+        // — Test 4: critical flag.
+        let ext_critical =
+            format!("[ v3_ca ]\ncertificatePolicies=critical,{POLICY_OID},CPS:{CPS_URL}\n");
+        let ctx4 = builder.x509v3_context(None, None);
+        let exts4 = parse_v3_ca_from_str(&ext_critical, &ctx4).unwrap();
+        let der4 = exts4[0].to_der().unwrap();
+        let (_, parsed4) = X509ExtensionParser::new().parse(&der4).unwrap();
+        assert!(parsed4.critical, "expected critical extension");
+    }
+
+    #[test]
+    fn test_is_dotted_oid() {
+        assert!(is_dotted_oid("1.3.6.1.4.1.16376.9.1.1.1.0"));
+        assert!(is_dotted_oid("2.5.29.32"));
+        assert!(!is_dotted_oid("critical"));
+        assert!(!is_dotted_oid("CPS:url"));
+        assert!(!is_dotted_oid(""));
+    }
+
+    #[test]
+    fn test_strip_cps_qualifier() {
+        assert_eq!(
+            strip_cps_qualifier("CPS:http://example.com"),
+            Some("http://example.com")
+        );
+        assert_eq!(
+            strip_cps_qualifier("CPS.1:http://example.com"),
+            Some("http://example.com")
+        );
+        assert_eq!(
+            strip_cps_qualifier("CPS.42:http://example.com"),
+            Some("http://example.com")
+        );
+        assert_eq!(strip_cps_qualifier("critical"), None);
+        assert_eq!(strip_cps_qualifier("1.2.3.4"), None);
+    }
+
+    /// Demonstrates that the **old** code path — `X509Extension::new_nid` with `None` as
+    /// config — fails for `certificatePolicies` values that contain a `CPS.N:url` qualifier.
+    ///
+    /// This mirrors the customer error:
+    ///   `error:11000088:X509 V3 routines:do_ext_nconf:no config database`
+    ///
+    /// The new implementation (`build_certificate_policies_extension`) replaces this
+    /// error-prone call with a hand-crafted DER encoder that requires no OpenSSL config.
+    #[test]
+    #[allow(deprecated, clippy::expect_used)]
+    fn test_old_new_nid_fails_for_cps_syntax() {
+        use openssl::{nid::Nid, x509::X509Extension as OpenSslX509Extension};
+
+        // Read the customer's CNF fixture that triggered the production bug.
+        let cnf_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../.github/scripts/test/certificatePolicies/v3_ca_ko.cnf"
+        );
+        let cnf_content =
+            std::fs::read_to_string(cnf_path).expect("v3_ca_ko.cnf should be readable");
+        let ini = Ini::load_from_str(&cnf_content).expect("v3_ca_ko.cnf should be valid INI");
+        let cps_value = ini
+            .section(Some("v3_ca"))
+            .and_then(|s| s.get("certificatePolicies"))
+            .expect("certificatePolicies key missing from [v3_ca]");
+
+        let builder = X509::builder().unwrap();
+        // Deliberately no Conf — mirrors the production path in apply_user_extensions.
+        let ctx = builder.x509v3_context(None, None);
+
+        // The old API cannot resolve CPS.1:url without a config database; it must return an error.
+        let result =
+            OpenSslX509Extension::new_nid(None, Some(&ctx), Nid::CERTIFICATE_POLICIES, cps_value);
+        assert!(
+            result.is_err(),
+            "Expected X509Extension::new_nid to fail for CPS.1:url syntax without conf, but it succeeded"
         );
     }
 }

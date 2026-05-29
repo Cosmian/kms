@@ -1,8 +1,8 @@
-# Cosmian KMS — OWASP Security Audit Plan & Report
+# Eviden KMS — OWASP Security Audit Plan & Report
 
 **Document type**: Security Audit Plan & Report Template
 **Standard**: OWASP Top 10 (2021) + OWASP ASVS v4.0 (selective)
-**Repository**: `Cosmian/kms` — branch `develop`
+**Repository**: `Eviden/kms` — branch `develop`
 **Workspace root**: `crate/` (Rust workspace) + `ui/` (React/TypeScript)
 **Audit date**: 2026-04-18 (re-run with remediation verification: 2026-04-14)
 **Auditor(s)**: GitHub Copilot (automated static analysis)
@@ -485,7 +485,7 @@ Status: ⚠️ Review needed
 | ID | File:Line | Severity | Description |
 |----|-----------|----------|-------------|
 | A05-1 | `start_kms_server.rs:776,795,806,901,962` | Medium | `Cors::permissive()` applied on every scope: main KMIP, UI, Google CSE, MS DKE, AWS XKS. Sets `Access-Control-Allow-Origin: *`, allowing any browser origin to reach the KMIP endpoint cross-origin. |
-| A05-2 | `config/command_line/tls_config.rs` | Low | TLS minimum version is not explicitly configured in code. Relies on OpenSSL 3.6.0 default (TLS 1.2+). Should be made explicit. |
+| A05-2 | `config/command_line/tls_config.rs` | Low | TLS minimum version is not explicitly configured in code. Relies on OpenSSL 3.6.2 default (TLS 1.2+). Should be made explicit. |
 | A05-3 | `middlewares/jwt/jwt_config.rs:10,155` | Medium | The `insecure` feature completely disables all JWT validation (signature, expiry, audience). No compile-time guard prevents this feature from reaching production. If accidentally included in a production build, any token is accepted. |
 | A05-4 | `deny.toml` | Low | `RUSTSEC-2026-0097` is allow-listed in the cargo deny policy. Should be resolved by upgrading `rand` instead of permanently suppressing the advisory. |
 | A05-5 | All routes | ✅ | Error responses use KMIP error codes; no stack traces or file paths exposed in HTTP responses. |
@@ -565,7 +565,7 @@ crate:   rand  version: 0.9.2  advisory: RUSTSEC-2026-0097 (allow-listed)
 |----|-----------|----------|-------------|
 | A06-1 | `Cargo.toml` (workspace) | Medium | **RUSTSEC-2026-0097** affects `rand 0.8.5` and `rand 0.9.2` — two separate version trees coexisting in the dependency graph. Advisory covers unseeded PRNG panic under unusual usage. Suppressed rather than resolved. |
 | A06-2 | `Cargo.toml` (workspace) | Low | 20+ duplicate crate versions: `base64` (×3: 0.13, 0.21, 0.22), `hashbrown` (×4: 0.12–0.15), `rand` (×2), `opentelemetry` (×2), `time` (×3), etc. Increases supply-chain surface and binary size. |
-| A06-3 | `crate/crypto/build.rs:234,274` | ✅ | OpenSSL 3.6.0 tarball is SHA-256-verified (`verify_hash()`) before extraction. Version pinned by constant. Supply-chain integrity protected. |
+| A06-3 | `crate/crypto/build.rs:234,274` | ✅ | OpenSSL 3.6.2 tarball is SHA-256-verified (`verify_hash()`) before extraction. Version pinned by constant. Supply-chain integrity protected. |
 | A06-4 | All `Cargo.toml` files | ✅ | No `git =` sourced Rust dependencies. All deps come from crates.io. |
 | A06-5 | `ui/pnpm-lock.yaml` | Info | UI npm/pnpm audit was not run during this automated pass. Manual `pnpm audit --audit-level moderate` recommended. |
 | A06-6 | Workspace (`crate/clients/wasm/Cargo.toml`) | Low | **`cargo outdated`** shows `cosmian_kms_client_wasm` requires `getrandom` with the `js` feature, but the installed version (0.4.2) no longer exposes that feature. This causes `cargo outdated` to fail for the WASM crate. The WASM build may silently use a mismatched `getrandom` version in non-browser target builds. |

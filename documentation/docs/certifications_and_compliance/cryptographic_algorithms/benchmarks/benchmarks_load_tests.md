@@ -2,7 +2,7 @@
 
 > Generated on 2026-03-26 13:45:24 UTC
 >
-> KMS server version: "5.17.0 (OpenSSL 3.6.0 1 Oct 2025-non-FIPS)"
+> KMS server version: "5.17.0 (OpenSSL 3.6.2 1 Oct 2025-non-FIPS)"
 
 ## Machine Info
 

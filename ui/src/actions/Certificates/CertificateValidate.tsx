@@ -1,8 +1,9 @@
 import { Button, Card, DatePicker, Form, Input, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import { parse_validate_ttlv_response, validate_certificate_ttlv_request } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface ValidateCertificateFormData {
     uniqueIdentifier?: string;
@@ -11,34 +12,18 @@ interface ValidateCertificateFormData {
 
 const CertificateValidateForm: React.FC = () => {
     const [form] = Form.useForm<ValidateCertificateFormData>();
-    const [isLoading, setIsLoading] = useState(false);
-    const [res, setRes] = useState<string | undefined>(undefined);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ValidateCertificateFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const validityTime = values.validityTime ? values.validityTime.toISOString() : undefined;
             const request = validate_certificate_ttlv_request(values.uniqueIdentifier, validityTime);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await parse_validate_ttlv_response(result_str);
-                setRes(`Validation Status: ${response.ValidityIndicator}`);
+                return `Validation Status: ${response.ValidityIndicator}`;
             }
-        } catch (e) {
-            setRes(`Error validating certificate: ${e}`);
-            console.error("Error validating certificate:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -90,11 +75,7 @@ const CertificateValidateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Validation Results">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Validation Results" />
         </div>
     );
 };

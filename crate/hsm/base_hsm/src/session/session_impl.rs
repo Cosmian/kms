@@ -237,6 +237,14 @@ impl Session {
         self.object_handles_cache.clone()
     }
 
+    /// Pre-populate the object handle cache with a known object_id-to-handle mapping.
+    ///
+    /// Called during `find()` to ensure that subsequent `get_object_handle()` calls
+    /// get a cache hit instead of re-searching via `find_by_id_or_label()`.
+    pub fn cache_object_handle(&self, object_id: &[u8], handle: CK_OBJECT_HANDLE) -> HResult<()> {
+        self.object_handles_cache.insert(object_id.to_vec(), handle)
+    }
+
     /// Close the session and log out if necessary
     pub fn close(&self) -> HResult<()> {
         if self.logging_in {

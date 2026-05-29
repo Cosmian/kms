@@ -29,7 +29,7 @@ Then click `Download wrapping key`
 
 The key will be downloaded as a PKCS#8 PEM named `ImportWith4096RsaAesKeyWrapSha256.pem`
 
-## Create a symmetric key in Cosmian KMS
+## Create a symmetric key in Eviden KMS
 
 This is the symmetric key that will be wrapped by the Google wrapping key and imported in the Google KMS.
 
@@ -40,7 +40,7 @@ The symmetric key was successfully generated.
           Unique identifier: CMEK_Sym_Key
 ```
 
-## Import the wrapping key in Cosmian KMS
+## Import the wrapping key in Eviden KMS
 
 ```shell
 ckms rsa keys import --key-format pem --key-usage encrypt --key-usage wrap-key \
@@ -50,7 +50,7 @@ The PublicKey in file ImportWith4096RsaAesKeyWrapSha256.pem was imported with id
           Unique identifier: CMEK_Wrapping_Key
 ```
 
-## Export the symmetric key wrapped by the wrapping key from Cosmian KMS
+## Export the symmetric key wrapped by the wrapping key from Eviden KMS
 
 ```shell
 ckms sym keys export --key-id CMEK_Sym_Key --wrap-key-id CMEK_Wrapping_Key \
@@ -78,7 +78,7 @@ The key should now be available in the Google Cloud KMS.
 
 ## Automated testing
 
-The entire Cosmian KMS side of this workflow (steps 2–4) is covered by the
+The entire Eviden KMS side of this workflow (steps 2–4) is covered by the
 script `.github/scripts/test_gcp_cmek.sh`. It uses the test wrapping key at
 `test_data/google_cmek/Import_RSA_AES_WRAP.pem` and can be executed via:
 

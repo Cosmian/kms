@@ -1894,7 +1894,7 @@ pub struct AuthenticatedEncryptionAdditionalData(pub Vec<u8>);
 pub struct AuthenticatedEncryptionTag(pub Vec<u8>);
 
 /// Derivation Parameters defines the parameters for a key derivation process
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DerivationParameters {
     /// The type of derivation method to be used
@@ -1912,6 +1912,37 @@ pub struct DerivationParameters {
     /// Optional iteration count used by the derivation method
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iteration_count: Option<i32>,
+}
+
+impl From<DerivationParameters> for kmip_2_1::kmip_data_structures::DerivationParameters {
+    fn from(params: DerivationParameters) -> Self {
+        Self {
+            cryptographic_parameters: params.cryptographic_parameters.map(Into::into),
+            initialization_vector: params.initialization_vector,
+            derivation_data: params.derivation_data.map(Zeroizing::new),
+            salt: params.salt,
+            iteration_count: params.iteration_count,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_data_structures::DerivationParameters> for DerivationParameters {
+    type Error = KmipError;
+
+    fn try_from(
+        params: kmip_2_1::kmip_data_structures::DerivationParameters,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            cryptographic_parameters: params
+                .cryptographic_parameters
+                .map(TryInto::try_into)
+                .transpose()?,
+            initialization_vector: params.initialization_vector,
+            derivation_data: params.derivation_data.map(|z| z.to_vec()),
+            salt: params.salt,
+            iteration_count: params.iteration_count,
+        })
+    }
 }
 
 /// The RNG Parameters base object is a structure that contains a mandatory RNG Algorithm

@@ -10,7 +10,7 @@
   "overrides": [
     {
       "name": "openssl",
-      "version": "3.6.0"
+      "version": "3.6.2"
     }
   ],
   "builtin-baseline": "567f94498acc65eea24c7a25dc0c8f4cd011e05c"

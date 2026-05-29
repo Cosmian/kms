@@ -1,8 +1,9 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_cc_user_key_ttlv_request, parse_create_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface CovercryptUserKeyFormData {
     masterPrivateKeyId: string;
@@ -19,21 +20,10 @@ More examples:
 
 const CovercryptUserKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptUserKeyFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CovercryptUserKeyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = create_cc_user_key_ttlv_request(
                 values.masterPrivateKeyId,
                 values.accessPolicy,
@@ -44,14 +34,9 @@ const CovercryptUserKeyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result = await parse_create_ttlv_response(result_str);
-                setRes(`${result.UniqueIdentifier} has been created.`);
+                return `${result.UniqueIdentifier} has been created.`;
             }
-        } catch (e) {
-            setRes(`${e}`);
-            console.error(e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -143,11 +128,7 @@ const CovercryptUserKeyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Covercrypt User key creation response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Covercrypt User key creation response" />
         </div>
     );
 };

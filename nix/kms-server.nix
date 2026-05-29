@@ -5,7 +5,7 @@
   # Optional external overrides; if null, will be constructed from nix/openssl.nix
   openssl36 ? null,
   openssl312 ? null,
-  # Provide a rustPlatform that uses the desired Rust (e.g., 1.90.0) but
+  # Provide a rustPlatform that uses the desired Rust (e.g., 1.91.0) but
   # links against pkgs234 (glibc 2.34) on Linux for Rocky Linux 9 compatibility.
   rustPlatform ? pkgs.rustPlatform,
   # KMS version (from Cargo.toml)
@@ -262,8 +262,7 @@ rustPlatform.buildRustPackage rec {
   # Provide the whole workspace but filtered; build only the server crate.
   src = filteredSrc;
 
-  # Vendor hash is per linkage mode (static/dynamic); the same value is used on Linux and macOS
-  # (confirmed: macOS server builds pass with the Linux-captured hash).
+  # Vendor hash is per linkage mode (static/dynamic), platform-stable.
   cargoHash =
     let
       linkSuffix = if static then "static" else "dynamic";

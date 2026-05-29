@@ -33,6 +33,7 @@ jobs:
           - gcp_cmek
           - openssh
           - luks
+          - jose
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -53,8 +54,20 @@ jobs:
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
             features: fips
+          # jose (REST crypto + jwcrypto interop) runs only with non-fips
+          - type: jose
+            features: fips
 
     steps:
+      - name: Manual cleanup for extra space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
       - name: Nix installation
         uses: cachix/install-nix-action@v31
         with:
@@ -136,6 +149,7 @@ jobs:
     concurrency:
       group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
         github.run_id) }}
+      queue: max
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -150,8 +164,20 @@ jobs:
           # parallel connections on proteccio is not supported
           - hsm-type: proteccio
             features: fips
+          # Not required - testing non-fips is sufficient
+          - hsm-type: crypt2pay
+            features: fips
 
     steps:
+      - name: Manual cleanup for extra space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
       - name: Nix installation
         uses: cachix/install-nix-action@v31
         with:

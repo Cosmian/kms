@@ -29,45 +29,45 @@ usage() {
 # Parse args
 while [ $# -gt 0 ]; do
   case "$1" in
-  -f | --format)
-    FORMAT="${2:-}"
-    shift 2 || true
-    ;;
-  -v | --variant)
-    VARIANT="${2:-}"
-    shift 2 || true
-    ;;
-  -l | --link)
-    LINK="${2:-}"
-    shift 2 || true
-    ;;
-  -h | --help) usage ;;
-  *) shift ;;
+    -f | --format)
+      FORMAT="${2:-}"
+      shift 2 || true
+      ;;
+    -v | --variant)
+      VARIANT="${2:-}"
+      shift 2 || true
+      ;;
+    -l | --link)
+      LINK="${2:-}"
+      shift 2 || true
+      ;;
+    -h | --help) usage ;;
+    *) shift ;;
   esac
 done
 
 case "$FORMAT" in
-deb | rpm) : ;;
-*)
-  echo "Error: --format must be 'deb' or 'rpm'" >&2
-  usage
-  ;;
+  deb | rpm) : ;;
+  *)
+    echo "Error: --format must be 'deb' or 'rpm'" >&2
+    usage
+    ;;
 
 esac
 case "$VARIANT" in
-fips | non-fips) : ;;
-*)
-  echo "Error: --variant must be 'fips' or 'non-fips'" >&2
-  exit 1
-  ;;
+  fips | non-fips) : ;;
+  *)
+    echo "Error: --variant must be 'fips' or 'non-fips'" >&2
+    exit 1
+    ;;
 
 esac
 case "$LINK" in
-static | dynamic) : ;;
-*)
-  echo "Error: --link must be 'static' or 'dynamic'" >&2
-  exit 1
-  ;;
+  static | dynamic) : ;;
+  *)
+    echo "Error: --link must be 'static' or 'dynamic'" >&2
+    exit 1
+    ;;
 
 esac
 
@@ -79,9 +79,9 @@ ensure_expected_hashes() {
   local link_suffix os missing=0
   link_suffix=$([ "$LINK" = "dynamic" ] && echo dynamic || echo static)
   case "$(uname -s)" in
-  Linux) os="linux" ;;
-  Darwin) os="darwin" ;;
-  *) os="$(uname -s | tr '[:upper:]' '[:lower:]')" ;;
+    Linux) os="linux" ;;
+    Darwin) os="darwin" ;;
+    *) os="$(uname -s | tr '[:upper:]' '[:lower:]')" ;;
   esac
 
   # Server vendor cargo hash (per linkage; same on Linux and macOS)
@@ -228,11 +228,11 @@ sync_server_expected_hash_file() {
     :
   else
     case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) sys="x86_64-linux" ;;
-    Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
-    Darwin-x86_64) sys="x86_64-darwin" ;;
-    Darwin-arm64) sys="aarch64-darwin" ;;
-    *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
+      Linux-x86_64) sys="x86_64-linux" ;;
+      Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
+      Darwin-x86_64) sys="x86_64-darwin" ;;
+      Darwin-arm64) sys="aarch64-darwin" ;;
+      *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
     esac
   fi
 
@@ -376,11 +376,11 @@ resolve_expected_hash_file() {
     :
   else
     case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) sys="x86_64-linux" ;;
-    Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
-    Darwin-x86_64) sys="x86_64-darwin" ;;
-    Darwin-arm64) sys="aarch64-darwin" ;;
-    *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
+      Linux-x86_64) sys="x86_64-linux" ;;
+      Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
+      Darwin-x86_64) sys="x86_64-darwin" ;;
+      Darwin-arm64) sys="aarch64-darwin" ;;
+      *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
     esac
   fi
 
@@ -425,14 +425,14 @@ enforce_binary_hash() {
     # Build the Nix attribute that produces the expected-hash file
     local attr
     case "$VARIANT-$LINK" in
-    fips-static) attr="expected-hash-server-fips-static" ;;
-    fips-dynamic) attr="expected-hash-server-fips-dynamic" ;;
-    non-fips-static) attr="expected-hash-server-non-fips-static" ;;
-    non-fips-dynamic) attr="expected-hash-server-non-fips-dynamic" ;;
-    *)
-      echo "ERROR: Unknown variant/link: $VARIANT-$LINK" >&2
-      exit 1
-      ;;
+      fips-static) attr="expected-hash-server-fips-static" ;;
+      fips-dynamic) attr="expected-hash-server-fips-dynamic" ;;
+      non-fips-static) attr="expected-hash-server-non-fips-static" ;;
+      non-fips-dynamic) attr="expected-hash-server-non-fips-dynamic" ;;
+      *)
+        echo "ERROR: Unknown variant/link: $VARIANT-$LINK" >&2
+        exit 1
+        ;;
     esac
     local store_out
     store_out=$(nix-build -I "nixpkgs=${PIN_URL}" -A "$attr" --no-out-link)
@@ -472,11 +472,11 @@ write_binary_hash_file() {
   local sys arch os impl out_dir out_file actual_hash
   if sys=$(nix eval --raw --expr 'builtins.currentSystem' 2>/dev/null); then :; else
     case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) sys="x86_64-linux" ;;
-    Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
-    Darwin-x86_64) sys="x86_64-darwin" ;;
-    Darwin-arm64) sys="aarch64-darwin" ;;
-    *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
+      Linux-x86_64) sys="x86_64-linux" ;;
+      Linux-aarch64 | Linux-arm64) sys="aarch64-linux" ;;
+      Darwin-x86_64) sys="x86_64-darwin" ;;
+      Darwin-arm64) sys="aarch64-darwin" ;;
+      *) sys="$(uname -m)-$(uname | tr '[:upper:]' '[:lower:]')" ;;
     esac
   fi
   arch="${sys%%-*}"
@@ -520,9 +520,9 @@ resolve_openssl_path() {
   local os_name arch_name stage_basename stage_dir
   os_name=$(uname -s | tr '[:upper:]' '[:lower:]')
   case "$os_name" in
-  linux) os_name="linux" ;;
-  darwin) os_name="darwin" ;;
-  *) : ;;
+    linux) os_name="linux" ;;
+    darwin) os_name="darwin" ;;
+    *) : ;;
   esac
   arch_name=$(uname -m)
   if [ "$VARIANT" = "non-fips" ]; then
@@ -561,7 +561,7 @@ resolve_openssl_path() {
       cp "$OSSL_PATH/lib/ossl-modules/fips.so" "$stage_dir/lib/ossl-modules/"
     fi
   else
-    # Prefer provider from server derivation; fallback to OpenSSL 3.6.0 store
+    # Prefer provider from server derivation; fallback to OpenSSL 3.6.2 store
     if [ -f "$OSSL_PATH/lib/ossl-modules/legacy.so" ]; then
       cp "$OSSL_PATH/lib/ossl-modules/legacy.so" "$stage_dir/lib/ossl-modules/"
     else
@@ -637,7 +637,7 @@ resolve_openssl_path() {
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
 ensure_modern_rust() {
-  local link="$REPO_ROOT/result-rust-1_90"
+  local link="$REPO_ROOT/result-rust-1_91"
   if [ -L "$link" ] && [ -x "$link/bin/cargo" ] && [ -x "$link/bin/rustc" ]; then
     :
   else
@@ -794,51 +794,51 @@ detect_arches() {
   local mach
   mach=$(uname -m)
   case "$HOST_TRIPLE" in
-  x86_64-*-linux*)
-    DEB_ARCH="amd64"
-    RPM_ARCH="x86_64"
-    ;;
-  aarch64-*-linux*)
-    DEB_ARCH="arm64"
-    RPM_ARCH="aarch64"
-    ;;
-  i686-*-linux* | i386-*-linux*)
-    DEB_ARCH="i386"
-    RPM_ARCH="i686"
-    ;;
-  armv7*-linux-gnueabihf | arm-*-linux-gnueabihf)
-    DEB_ARCH="armhf"
-    RPM_ARCH="armv7hl"
-    ;;
-  *)
-    case "$mach" in
-    x86_64)
+    x86_64-*-linux*)
       DEB_ARCH="amd64"
       RPM_ARCH="x86_64"
       ;;
-    aarch64 | arm64)
+    aarch64-*-linux*)
       DEB_ARCH="arm64"
       RPM_ARCH="aarch64"
       ;;
-    i686 | i386)
+    i686-*-linux* | i386-*-linux*)
       DEB_ARCH="i386"
       RPM_ARCH="i686"
       ;;
-    *)
-      # Last-resort: try dpkg/rpm if available
-      if command -v dpkg >/dev/null 2>&1; then
-        DEB_ARCH=$(dpkg --print-architecture || echo "$mach")
-      else
-        DEB_ARCH="$mach"
-      fi
-      if command -v rpm >/dev/null 2>&1; then
-        RPM_ARCH=$(rpm --eval '%{_arch}' 2>/dev/null || echo "$mach")
-      else
-        RPM_ARCH="$mach"
-      fi
+    armv7*-linux-gnueabihf | arm-*-linux-gnueabihf)
+      DEB_ARCH="armhf"
+      RPM_ARCH="armv7hl"
       ;;
-    esac
-    ;;
+    *)
+      case "$mach" in
+        x86_64)
+          DEB_ARCH="amd64"
+          RPM_ARCH="x86_64"
+          ;;
+        aarch64 | arm64)
+          DEB_ARCH="arm64"
+          RPM_ARCH="aarch64"
+          ;;
+        i686 | i386)
+          DEB_ARCH="i386"
+          RPM_ARCH="i686"
+          ;;
+        *)
+          # Last-resort: try dpkg/rpm if available
+          if command -v dpkg >/dev/null 2>&1; then
+            DEB_ARCH=$(dpkg --print-architecture || echo "$mach")
+          else
+            DEB_ARCH="$mach"
+          fi
+          if command -v rpm >/dev/null 2>&1; then
+            RPM_ARCH=$(rpm --eval '%{_arch}' 2>/dev/null || echo "$mach")
+          else
+            RPM_ARCH="$mach"
+          fi
+          ;;
+      esac
+      ;;
   esac
   export DEB_ARCH RPM_ARCH
 }
@@ -1348,15 +1348,15 @@ prepare_workspace
 detect_arches
 
 case "$FORMAT" in
-deb)
-  ensure_modern_rust
-  build_deb
-  collect_deb
-  ;;
-rpm)
-  ensure_modern_rust
-  ensure_cargo_generate_rpm
-  build_rpm
-  collect_rpm
-  ;;
+  deb)
+    ensure_modern_rust
+    build_deb
+    collect_deb
+    ;;
+  rpm)
+    ensure_modern_rust
+    ensure_cargo_generate_rpm
+    build_rpm
+    collect_rpm
+    ;;
 esac

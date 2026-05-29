@@ -16,21 +16,21 @@ EMAIL="${COSMIAN_SIGNING_EMAIL:-tech@cosmian.com}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-  --name)
-    NAME="$2"
-    shift 2
-    ;;
-  --email)
-    EMAIL="$2"
-    shift 2
-    ;;
-  -h | --help)
-    echo "Usage: $0 [--name 'NAME'] [--email 'EMAIL']"
-    echo "Generates a GPG key for package signing."
-    echo "Set GPG_SIGNING_KEY_PASSPHRASE env var for key encryption."
-    exit 0
-    ;;
-  *) shift ;;
+    --name)
+      NAME="$2"
+      shift 2
+      ;;
+    --email)
+      EMAIL="$2"
+      shift 2
+      ;;
+    -h | --help)
+      echo "Usage: $0 [--name 'NAME'] [--email 'EMAIL']"
+      echo "Generates a GPG key for package signing."
+      echo "Set GPG_SIGNING_KEY_PASSPHRASE env var for key encryption."
+      exit 0
+      ;;
+    *) shift ;;
   esac
 done
 

@@ -1,5 +1,5 @@
 The easiest way to call the KMIP API is to use the `cosmian` [Command Line Interface](../../kms_clients/index.md)
-or one of the Cosmian [cloudproof libraries](https://github.com/Cosmian) which provide wrapper calls
+or one of the Eviden [cloudproof libraries](https://github.com/Cosmian) which provide wrapper calls
 in the corresponding language.
 
 Without the use of a library, the client must build the JSON TTLV messages from

@@ -52,9 +52,7 @@ impl ReKeyAction {
 
         let stdout = format!(
             "The MSK {} and MPK {} were rekeyed for the access policy {:?}",
-            &res.private_key_unique_identifier,
-            &res.public_key_unique_identifier,
-            &self.access_policy
+            res.private_key_unique_identifier, res.public_key_unique_identifier, self.access_policy
         );
 
         let mut stdout = console::Stdout::new(&stdout);
@@ -112,9 +110,7 @@ impl PruneAction {
 
         let stdout = format!(
             "The MSK {} and MPK {} were pruned for the access policy {:?}",
-            &res.private_key_unique_identifier,
-            &res.public_key_unique_identifier,
-            &self.access_policy
+            res.private_key_unique_identifier, res.public_key_unique_identifier, self.access_policy
         );
 
         let mut stdout = console::Stdout::new(&stdout);

@@ -38,6 +38,11 @@ pub enum KmipOperation {
     Sign = 15,
     SignatureVerify = 16,
     Validate = 17,
+    SetAttribute = 18,
+    ModifyAttribute = 19,
+    AddAttribute = 20,
+    DeleteAttribute = 21,
+    Activate = 22,
     // This enum gets serialized, so new variants must be added at the end
     // If it's imperative to change their order, consider a migration for Redis's DB
 }
@@ -76,6 +81,11 @@ impl fmt::Display for KmipOperation {
             Self::Sign => "sign",
             Self::SignatureVerify => "signature_verify",
             Self::Validate => "validate",
+            Self::SetAttribute => "set_attribute",
+            Self::ModifyAttribute => "modify_attribute",
+            Self::AddAttribute => "add_attribute",
+            Self::DeleteAttribute => "delete_attribute",
+            Self::Activate => "activate",
         };
         write!(f, "{str}")
     }
@@ -107,6 +117,11 @@ impl FromStr for KmipOperation {
             "sign" => Ok(Self::Sign),
             "signature_verify" => Ok(Self::SignatureVerify),
             "validate" => Ok(Self::Validate),
+            "set_attribute" => Ok(Self::SetAttribute),
+            "modify_attribute" => Ok(Self::ModifyAttribute),
+            "add_attribute" => Ok(Self::AddAttribute),
+            "delete_attribute" => Ok(Self::DeleteAttribute),
+            "activate" => Ok(Self::Activate),
             _ => Err("Could not parse an operation"),
         }
     }

@@ -1,15 +1,15 @@
 ---
 site_name: Key Management System
 site_url: https://docs.cosmian.com/
-copyright: © Copyright 2018-2026 Cosmian. All rights reserved
+copyright: © Copyright 2018-2026 Eviden. All rights reserved
 dev_addr: localhost:8003
 theme:
   name: material
   language: en
   font:
     text: Open Sans
-  favicon: favicon.png
-  logo: images/docslogo-2x.png
+  favicon: eviden-favicon.svg
+  logo: eviden-logo-orange.svg
   custom_dir: theme_overrides
   features:
     - content.tabs.link
@@ -58,14 +58,16 @@ plugins:
   - kroki
   - meta-descriptions
 nav:
-  - Why use the Cosmian KMS: index.md
+  - Why use the Eviden KMS: index.md
   - Quick start: quick_start.md
   - Use cases:
       - Encrypting and decrypting at scale: use_cases/encrypting_and_decrypting_at_scale.md
       - Client-side and application-level encryption: use_cases/client_side_and_application_level_encryption.md
+      - Public Key Infrastructure (PKI): use_cases/pki.md
   - HSM support:
       - Introduction: hsm_support/introduction/index.md
       - HSM keys & operations: hsm_support/hsm_operations.md
+      - Multi-HSM support: hsm_support/multi_hsm.md
       - Trustway Crypt2pay: hsm_support/crypt2pay.md
       - Trustway Proteccio: hsm_support/proteccio.md
       - Utimaco General Purpose: hsm_support/utimaco.md
@@ -77,7 +79,9 @@ nav:
       - Cloud providers:
           - Amazon Web Services (AWS):
               - ECS Fargate: integrations/cloud_providers/aws/fargate.md
-              - External Key Store (XKS): integrations/cloud_providers/aws/xks.md
+              - External Key Store (XKS):
+                  - XKS integration: integrations/cloud_providers/aws/xks.md
+                  - XKS migration: integrations/cloud_providers/aws/xks_migration.md
               - BYOK (Bring Your Own Key): integrations/cloud_providers/aws/byok.md
           - Microsoft Azure:
               - BYOK (Bring Your Own Key): integrations/cloud_providers/azure/byok.md
@@ -105,9 +109,11 @@ nav:
       - Storage:
           - VMware vCenter: integrations/storage/vcenter.md
           - Synology DSM (NAS volume encryption): integrations/storage/synology_dsm.md
+          - VAST Data (Storage encryption EKM): integrations/storage/vast_data.md
           - Veeam Backup & Replication: integrations/storage/veeam.md
-          - Snowflake Native App: integrations/databases/snowflake_native_app/index.md
-          - User Defined Function for PySpark, Databricks,... in Python: integrations/storage/user_defined_function_for_pyspark_databricks_in_python/index.md
+      - Big Data:
+          - Snowflake Native App: integrations/big_data/snowflake_native_app/index.md
+          - User Defined Function for PySpark, Databricks,... in Python: integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md
       - Other:
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md
@@ -156,6 +162,7 @@ nav:
       - Objects Tagging: kmip_support/tagging.md
       - Attributes Extensions: kmip_support/attributes.md
       - The JSON TTLV KMIP API: kmip_support/json_ttlv_api.md
+      - OpenAPI Specification and Swagger UI: kmip_support/openapi.md
       - Bulk mode with Messages: kmip_support/messages.md
       - Operations: kmip_support/operations.md
       - Attributes:

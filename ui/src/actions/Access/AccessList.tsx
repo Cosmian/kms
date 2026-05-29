@@ -1,7 +1,8 @@
 import { Button, Card, Form, Input, Space, Table } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useState } from "react";
 import { getNoTTLVRequest } from "../../utils/utils";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface AccessListFormData {
     unique_identifier: string;
@@ -14,35 +15,19 @@ interface AccessRight {
 
 const AccessListForm: React.FC = () => {
     const [form] = Form.useForm<AccessListFormData>();
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [accessRights, setAccessRights] = useState<AccessRight[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [res, setRes] = useState<string | undefined>(undefined);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     const onFinish = async (values: AccessListFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         setAccessRights([]);
-        try {
+        await execute(async () => {
             const response = await getNoTTLVRequest(`/access/list/${values.unique_identifier}`, idToken, serverUrl);
             if (response.length) {
                 setAccessRights(response);
             } else {
-                setRes("Empty result - no access granted.");
+                return "Empty result - no access granted.";
             }
-        } catch (e) {
-            setRes(`Error listing access right: ${e}`);
-            console.error("Error listing access right:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     const columns = [
@@ -93,11 +78,7 @@ const AccessListForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="List access response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="List access response" />
 
             {accessRights.length > 0 && (
                 <div className="mt-8" ref={responseRef} data-testid="response-output">

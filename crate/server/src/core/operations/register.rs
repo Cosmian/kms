@@ -66,8 +66,6 @@ pub(crate) async fn register(
     // - If ActivationDate is absent or in the future → PreActive state
     // - If ActivationDate is present and <= now → Active state
     let now = time_normalize()?;
-
-    // Determine the desired initial state based on ActivationDate
     let activation_allows_active = request.attributes.activation_date.is_some_and(|d| d <= now);
     let desired_state = if activation_allows_active {
         debug!(
@@ -84,11 +82,9 @@ pub(crate) async fn register(
     request.attributes.state = Some(desired_state);
 
     // Also set it in the object's attributes for consistency
-    // Zero milliseconds for KMIP serialization compatibility
     let now_stored = time_normalize()?;
     if let Ok(object_attributes) = request.object.attributes_mut() {
         object_attributes.state = Some(desired_state);
-        // update the last change date
         object_attributes.last_change_date = Some(now_stored);
     }
 

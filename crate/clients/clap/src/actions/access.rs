@@ -228,7 +228,7 @@ impl ListAccessesGranted {
 
         let stdout = format!(
             "The access rights granted on object {} are:",
-            &self.object_uid
+            self.object_uid
         );
         let mut stdout = console::Stdout::new(&stdout);
         stdout.set_accesses(&accesses);

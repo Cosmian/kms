@@ -5,7 +5,7 @@
   # KMS version (from Cargo.toml)
   version,
   features ? [ ], # [ "non-fips" ] or []
-  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.90.0 for edition2024 support)
+  rustToolchain ? null, # Optional custom Rust toolchain (e.g., 1.91.0 for edition2024 support)
 }:
 
 let
@@ -76,9 +76,12 @@ let
     pname = "wasm-bindgen-cli";
     version = "0.2.108";
 
-    src = pkgs.fetchCrate {
-      inherit pname version;
-      sha256 = "sha256-UsuxILm1G6PkmVw0I/JF12CRltAfCJQFOaT4hFwvR8E=";
+    # Use fetchurl with .tar.gz name so Nix's unpackPhase recognizes the archive format
+    # (.crate files are gzip'd tarballs but Nix doesn't recognize the .crate extension)
+    src = pkgs.fetchurl {
+      url = "https://static.crates.io/crates/${pname}/${pname}-${version}.crate";
+      name = "${pname}-${version}.tar.gz";
+      hash = "sha256-ROxo4izYh4w04BtV/FFOr3W9OxwtCV3usCL6b4hW0XQ=";
     };
 
     cargoHash = "sha256-IZ/BxfY4UljVVeXl4AeRLmJzZGuzP10/0WOgWyvqjrs=";

@@ -281,11 +281,11 @@ fn test_aes_key_block() {
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
     let kb: KeyBlock = serde_json::from_value(json).unwrap();
-    assert!(aes_key_block(key_bytes) == kb);
+    assert_eq!(aes_key_block(key_bytes), kb);
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
     let rec: KeyBlock = from_ttlv(ttlv).unwrap();
-    assert!(aes_key_block(key_bytes) == rec);
+    assert_eq!(aes_key_block(key_bytes), rec);
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn test_des_aes_key() {
 
     // Deserializer
     let rec: Object = from_ttlv(ttlv).unwrap();
-    assert!(aes_key(key_bytes) == rec);
+    assert_eq!(aes_key(key_bytes), rec);
 }
 
 #[test]
@@ -459,7 +459,7 @@ fn test_import_symmetric_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Import = from_ttlv(ttlv).unwrap();
-    assert!(import == rec);
+    assert_eq!(import, rec);
 }
 
 #[test]
@@ -550,7 +550,7 @@ fn test_import_public_key() {
     assert_eq!(ttlv, ttlv_from_json);
     // Deserializer
     let rec: Import = from_ttlv(ttlv).unwrap();
-    assert!(import == rec);
+    assert_eq!(import, rec);
 }
 
 #[test]
@@ -723,9 +723,9 @@ pub(super) fn test_create() {
         CryptographicAlgorithm::AES,
         create_.attributes.cryptographic_algorithm.unwrap()
     );
-    assert!(
-        LinkedObjectIdentifier::TextString("SK".to_owned())
-            == create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
+    assert_eq!(
+        LinkedObjectIdentifier::TextString("SK".to_owned()),
+        create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
 }
 
@@ -1720,12 +1720,10 @@ fn test_key_value_ttlv() {
             ..Default::default()
         }),
     };
-    assert!(
-        kv == KeyValue::from_ttlv_bytes(
-            &kv.to_ttlv_bytes(key_format_type).unwrap(),
-            key_format_type
-        )
-        .unwrap()
+    assert_eq!(
+        kv,
+        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
+            .unwrap()
     );
     let key_format_type = KeyFormatType::TransparentRSAPublicKey;
 
@@ -1747,12 +1745,10 @@ fn test_key_value_ttlv() {
             ..Default::default()
         }),
     };
-    assert!(
-        kv == KeyValue::from_ttlv_bytes(
-            &kv.to_ttlv_bytes(key_format_type).unwrap(),
-            key_format_type
-        )
-        .unwrap()
+    assert_eq!(
+        kv,
+        KeyValue::from_ttlv_bytes(&kv.to_ttlv_bytes(key_format_type).unwrap(), key_format_type)
+            .unwrap()
     );
 }
 

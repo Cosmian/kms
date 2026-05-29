@@ -28,7 +28,7 @@ pub(crate) async fn revoke(
     let revoke_response = kms_rest_client
         .revoke(revoke_query)
         .await
-        .with_context(|| format!("revocation of key {} failed", &key_id))?;
+        .with_context(|| format!("revocation of key {key_id} failed"))?;
 
     if key_id
         == revoke_response

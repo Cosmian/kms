@@ -1,9 +1,10 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React from "react";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/utils";
 import { decrypt_cc_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface CCDecryptFormData {
     inputFile: Uint8Array;
@@ -15,26 +16,13 @@ interface CCDecryptFormData {
 
 const CCDecryptForm: React.FC = () => {
     const [form] = Form.useForm<CCDecryptFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CCDecryptFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
-
-        try {
+        await execute(async () => {
             if (id == undefined) {
-                setRes("Missing key identifier.");
-                throw Error("Missing key identifier");
+                throw new Error("Missing key identifier.");
             }
 
             const request = decrypt_cc_ttlv_request(id, values.inputFile, values.authenticationData);
@@ -48,14 +36,9 @@ const CCDecryptForm: React.FC = () => {
                 const fileName = lastDotIndex !== -1 ? name : `${name}.plain`;
                 const mimeType = getMimeType(fileName);
                 saveDecryptedFile(data, fileName, mimeType);
-                setRes("File has been decrypted");
+                return "File has been decrypted";
             }
-        } catch (e) {
-            setRes(`Error decrypting: ${e}`);
-            console.error("Error decrypting:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -134,11 +117,7 @@ const CCDecryptForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Covercrypt decrypt response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Covercrypt decrypt response" />
         </div>
     );
 };

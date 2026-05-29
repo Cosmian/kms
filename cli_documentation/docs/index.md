@@ -5,7 +5,7 @@ KMS CLI is the Command Line Interface to drive [KMS](https://github.com/Cosmian/
 KMS CLI provides a powerful interface to manage and secure your cryptographic keys and secrets using the [Cosmian Key Management System KMS](https://github.com/Cosmian/kms).
 The KMS offers a high-performance, scalable solution with unique features such as confidential execution in zero-trust environments, compliance with KMIP 2.1, and support for various cryptographic algorithms and protocols.
 
-Beyond the CLI interface, Cosmian also provides a **PKCS#11 library** (`libcosmian_pkcs11.so`) that enables seamless integration with existing cryptographic infrastructure. This library acts as a bridge between applications requiring PKCS#11 interfaces and the Cosmian KMS, providing:
+Beyond the CLI interface, Cosmian also provides a **PKCS#11 library** (`libcosmian_pkcs11.so`) that enables seamless integration with existing cryptographic infrastructure. This library acts as a bridge between applications requiring PKCS#11 interfaces and the Eviden KMS, providing:
 
 - **Database Encryption Support**: Integration with Oracle Database Transparent Data Encryption ([TDE](https://docs.cosmian.com/integrations/databases/oracle_tde/)) for automatic encryption of data at rest, either through Oracle Key Vault or direct HSM communication
 - **Disk Encryption Support**: Compatible with popular disk encryption solutions including [VeraCrypt](https://docs.cosmian.com/integrations/disk_encryption/veracrypt/), [LUKS](https://docs.cosmian.com/integrations/disk_encryption/luks/), and [Cryhod](https://docs.cosmian.com/integrations/disk_encryption/cryhod/) for protecting data on storage devices
@@ -19,7 +19,7 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
 !!! info Download cosmian
 
     Please download the latest versions for your Operating System from
-    the [Cosmian public packages repository](https://package.cosmian.com/kms/5.22.0/)
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/5.23.0/)
     See below for installation instructions.
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->

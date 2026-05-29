@@ -1,8 +1,9 @@
 import { Button, Card, Checkbox, Form, Input, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect } from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import { create_opaque_object_ttlv_request, parse_import_ttlv_response } from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface OpaqueObjectFormData {
     objectId?: string;
@@ -19,17 +20,8 @@ type ImportResponse = {
 
 const OpaqueObjectForm: React.FC = () => {
     const [form] = Form.useForm<OpaqueObjectFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const objectValue = Form.useWatch("objectValue", form);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         if (!objectValue) {
@@ -38,9 +30,7 @@ const OpaqueObjectForm: React.FC = () => {
     }, [objectValue, form]);
 
     const onFinish = async (values: OpaqueObjectFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = create_opaque_object_ttlv_request(
                 values.objectValue,
                 values.objectId,
@@ -51,14 +41,9 @@ const OpaqueObjectForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: ImportResponse = await parse_import_ttlv_response(result_str);
-                setRes(`${result.UniqueIdentifier} has been created.`);
+                return `${result.UniqueIdentifier} has been created.`;
             }
-        } catch (e) {
-            setRes(`Error creating opaque object: ${e}`);
-            console.error("Error creating opaque object:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -138,11 +123,7 @@ const OpaqueObjectForm: React.FC = () => {
                         </Button>
                     </Form.Item>
                 </Space>
-                {res && (
-                    <div ref={responseRef} data-testid="response-output">
-                        <Card title="Opaque object creation response">{res}</Card>
-                    </div>
-                )}
+                <ActionResponse res={res} responseRef={responseRef} title="Opaque object creation response" />
             </Form>
         </div>
     );

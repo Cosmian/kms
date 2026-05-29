@@ -14,7 +14,7 @@ use cosmian_logger::info;
 /// # Returns
 ///
 /// Returns a tuple of `(version_string, dir_string, version_number)` where:
-/// - `version_string` is the OpenSSL version text (e.g., "OpenSSL 3.6.0")
+/// - `version_string` is the OpenSSL version text (e.g., "OpenSSL 3.6.2")
 /// - `dir_string` is the OpenSSL installation directory
 /// - `version_number` is the numeric version (e.g., 0x30600000 for version 3.6.0)
 ///

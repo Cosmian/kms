@@ -1,9 +1,10 @@
 import { Button, Card, Checkbox, Form, Input, Radio, RadioChangeEvent, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect, useState } from "react";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface CertificateCertifyFormData {
     certificateId?: string;
@@ -25,18 +26,9 @@ type AlgoOption = { label: string; value: string };
 
 const CertificateCertifyForm: React.FC = () => {
     const [form] = Form.useForm<CertificateCertifyFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const [certifyMethod, setCertifyMethod] = useState<string>("csr");
-    const { idToken, serverUrl } = useAuth();
-    const responseRef = useRef<HTMLDivElement>(null);
     const [algorithmOptions, setAlgorithmOptions] = useState<AlgoOption[]>([]);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         try {
@@ -67,20 +59,21 @@ const CertificateCertifyForm: React.FC = () => {
     };
 
     const onFinish = async (values: CertificateCertifyFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        // Normalize empty/whitespace-only strings to undefined so the WASM layer
+        // does not attempt to look up a blank identifier on the server.
+        const normalize = (v?: string) => (v?.trim() ? v.trim() : undefined);
+        await execute(async () => {
             const request = wasm.certify_ttlv_request(
-                values.certificateId,
+                normalize(values.certificateId),
                 values.csrFormat,
                 values.certificateSigningRequest,
-                values.publicKeyIdToCertify,
-                values.certificateIdToReCertify,
+                normalize(values.publicKeyIdToCertify),
+                normalize(values.certificateIdToReCertify),
                 values.generateKeyPair,
-                values.subjectName,
-                values.algorithm,
-                values.issuerPrivateKeyId,
-                values.issuerCertificateId,
+                normalize(values.subjectName),
+                normalize(values.algorithm),
+                normalize(values.issuerPrivateKeyId),
+                normalize(values.issuerCertificateId),
                 values.numberOfDays,
                 values.certificateExtensions,
                 values.tags,
@@ -88,14 +81,9 @@ const CertificateCertifyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_certify_ttlv_response(result_str);
-                setRes(`Certificate successfully created with ID: ${response.UniqueIdentifier}`);
+                return `Certificate successfully created with ID: ${response.UniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error certifying certificate: ${e}`);
-            console.error("Error certifying certificate:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -234,7 +222,7 @@ const CertificateCertifyForm: React.FC = () => {
                                     label="Key Algorithm"
                                     rules={[{ required: true, message: "Please select an algorithm" }]}
                                 >
-                                    <Select options={algorithmOptions} />
+                                    <Select options={algorithmOptions} data-testid="cert-algorithm-select" virtual={false} />
                                 </Form.Item>
                             </div>
                         )}
@@ -314,11 +302,7 @@ const CertificateCertifyForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="Certificate Response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="Certificate Response" />
         </div>
     );
 };

@@ -562,6 +562,49 @@ fn test_byte_string() {
     assert_eq!(test, rec);
 }
 
+/// Regression test for WASM capacity overflow on large byte payloads.
+/// Without the `byte_accumulator` optimization, serializing a 1 MB Vec<u8> in a
+/// "Data" field (a byte-like tag) would allocate 1M TTLV elements.
+#[test]
+fn test_large_byte_string_data_tag() {
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+    #[serde(rename_all = "PascalCase")]
+    struct EncryptLike {
+        data: Vec<u8>,
+    }
+    log_init(option_env!("RUST_LOG"));
+
+    // 1 MB of data (simulates a file upload)
+    let payload: Vec<u8> = (0..1_000_000_u32).map(|i| (i % 256) as u8).collect();
+    let test = EncryptLike {
+        data: payload.clone(),
+    };
+
+    // Serializer: should produce ByteString, not a Structure of 1M Integers
+    let ttlv = to_ttlv(&test).unwrap();
+    // The inner TTLV should be a direct ByteString
+    match &ttlv.value {
+        TTLValue::Structure(children) => {
+            assert_eq!(children.len(), 1);
+            assert_eq!(children[0].tag, "Data");
+            match &children[0].value {
+                TTLValue::ByteString(bytes) => {
+                    assert_eq!(bytes.len(), 1_000_000);
+                    assert_eq!(bytes, &payload);
+                }
+                other => panic!("Expected ByteString, got {other:?}"),
+            }
+        }
+        other => panic!("Expected Structure, got {other:?}"),
+    }
+
+    // Full round-trip: serialize → JSON → deserialize → struct
+    let json = serde_json::to_value(&ttlv).unwrap();
+    let re_ttlv = serde_json::from_value::<TTLV>(json).unwrap();
+    let rec: EncryptLike = from_ttlv(re_ttlv).unwrap();
+    assert_eq!(test, rec);
+}
+
 #[test]
 fn test_long_integer() {
     #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]

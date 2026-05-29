@@ -137,9 +137,9 @@ FROM read_access
 WHERE id = ?;
 
 -- name: select-objects-access-obtained
-SELECT objects.id, owner, state, permissions
-FROM objects
-         INNER JOIN read_access
+SELECT read_access.id, COALESCE(objects.owner, ''), COALESCE(objects.state, 'Active'), read_access.permissions
+FROM read_access
+         LEFT JOIN objects
                     ON objects.id = read_access.id
 WHERE read_access.userid = ?;
 

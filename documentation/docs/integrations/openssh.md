@@ -1,6 +1,6 @@
 # OpenSSH Integration
 
-The Cosmian KMS PKCS#11 provider enables OpenSSH to use SSH keys stored in the KMS for
+The Eviden KMS PKCS#11 provider enables OpenSSH to use SSH keys stored in the KMS for
 authentication. The **private key never leaves the KMS**: every signing operation is performed
 server-side and only the signature is returned to the SSH client.
 
@@ -11,7 +11,7 @@ server-side and only the signature is returned to the SSH client.
 1. You create an asymmetric key pair in the KMS and tag it with `ssh-auth`.
 2. You export the corresponding public key and add it to `~/.ssh/authorized_keys` on every server
    you want to reach.
-3. You tell OpenSSH to use the Cosmian PKCS#11 library (`libcosmian_pkcs11.so`) as its hardware
+3. You tell OpenSSH to use the Eviden PKCS#11 library (`libcosmian_pkcs11.so`) as its hardware
    security token provider.
 4. When you `ssh` to a server, OpenSSH calls `C_Sign` through the library, which forwards the
    signing request to the KMS. Only the signature comes back.
@@ -32,11 +32,11 @@ server-side and only the signature is returned to the SSH client.
 
 ## Prerequisites
 
-- A running Cosmian KMS instance (see the [Quick-start guide](../quick_start.md)).
+- A running Eviden KMS instance (see the [Quick-start guide](../quick_start.md)).
 - The `ckms` CLI configured and authenticated against it.
 - OpenSSH client ≥ 7.3 (ships with every modern Linux / macOS).
 - The `libcosmian_pkcs11.so` (Linux) or `libcosmian_pkcs11.dylib` (macOS) shared library. If you
-  installed the Cosmian KMS CLI package this is already at `/usr/local/lib/libcosmian_pkcs11.so`.
+  installed the Eviden KMS CLI package this is already at `/usr/local/lib/libcosmian_pkcs11.so`.
 
 ---
 
@@ -160,7 +160,7 @@ debug1: have 1 keys from provider /usr/local/lib/libcosmian_pkcs11.so
 
 ### `provider ... not supported` or `unsupported algorithm`
 
-- The Ed25519 / EdDSA mechanism (`CKM_EDDSA`) requires a non-FIPS build of the Cosmian KMS and
+- The Ed25519 / EdDSA mechanism (`CKM_EDDSA`) requires a non-FIPS build of the Eviden KMS and
   library. In FIPS mode, use ECDSA P-256 or RSA instead.
 
 ### `COSMIAN_KMS_CLI_CONF not set` or connection refused

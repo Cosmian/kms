@@ -48,7 +48,7 @@ bash nix.sh docker --load
 
 Cosmian KMS uses **Nix** to achieve:
 
-- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.90.0, OpenSSL 3.6.2 + OpenSSL 3.1.2 FIPS provider)
+- **Reproducible builds**: Pinned dependencies (nixpkgs 24.05, Rust 1.91.0, OpenSSL 3.6.2 + OpenSSL 3.1.2 FIPS provider)
 - **Hermetic packaging**: Static linking, no runtime /nix/store paths
 - **Offline capability**: Pre-warming enables network-free builds
 - **Variant isolation**: FIPS and non-FIPS builds with controlled feature sets
@@ -427,7 +427,7 @@ Nix provides the foundation for deterministic, auditable builds:
 | Aspect                     | Implementation                                | Impact                                           |
 | -------------------------- | --------------------------------------------- | ------------------------------------------------ |
 | **Pinned Dependencies**    | nixpkgs 24.05 tarball locked by hash          | Identical build environment across machines/time |
-| **Reproducible Toolchain** | Rust 1.90.0 from Nix (no rustup)              | Eliminates "works on my machine" compiler issues |
+| **Reproducible Toolchain** | Rust 1.91.0 from Nix (no rustup)              | Eliminates "works on my machine" compiler issues |
 | **Static OpenSSL**         | Link against OpenSSL 3.6.2; vendored 3.1.2 tarball for the FIPS provider | No runtime SSL dependency; portable binaries     |
 | **Hash Enforcement**       | Binary SHA-256 checked in `installCheckPhase` | Detects drift/tampering (FIPS builds on Linux)   |
 | **Offline Capability**     | Pre-warmed store + Cargo offline cache        | Air-gapped builds after first online run         |
@@ -526,12 +526,17 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 #### `benchmarks/` — Performance benchmarks
 
-| Script                            | Purpose                         |
-| --------------------------------- | ------------------------------- |
-| `benchmarks.sh`                   | CI benchmark smoke test         |
-| `run_benchmarks.sh`               | Start KMS + run ckms bench      |
-| `run_benchmarks_docker.sh`        | Docker-based benchmark runs     |
-| `run_benchmarks_load_tests.sh`    | Load test benchmarks            |
+See [`benchmarks/README.md`](benchmarks/README.md) for full documentation.
+
+| Script                                          | Purpose                                          |
+| ----------------------------------------------- | ------------------------------------------------ |
+| `benchmarks.sh`                                 | CI smoke-test (build + optional baseline)        |
+| `bench_regression.sh`                           | Regression gate vs `package.cosmian.com`         |
+| `bench_run.sh`                                  | Start local KMS + run `ckms bench`               |
+| `bench_run_load.sh`                             | Start local KMS + run `ckms bench --load`        |
+| `docker/bench_docker.sh`                        | Docker-based benchmark run / version comparison  |
+| `docker/bench_docker_load.sh`                   | Docker-based load-test run / version comparison  |
+| `docker/docker_helpers.sh`                      | Shared Docker helpers (sourced, not run directly)|
 
 #### `build/` — Nix build helpers
 
@@ -732,7 +737,7 @@ flowchart LR
     subgraph pure["PURE MODE (--pure flag)"]
         p_use["Use cases: database tests<br/>(sqlite, psql, mysql)"]
         p_char["✓ Hermetic/reproducible<br/>✓ No system PATH pollution<br/>✓ Only Nix-provided deps"]
-        p_env["Rust 1.90.0 (Nix)<br/>OpenSSL 3.6.2 + 3.1.2 (FIPS)<br/>Build tools · /nix/store paths ONLY"]
+        p_env["Rust 1.91.0 (Nix)<br/>OpenSSL 3.6.2 + 3.1.2 (FIPS)<br/>Build tools · /nix/store paths ONLY"]
     end
     subgraph nonpure["NON-PURE MODE"]
         np_use["Use cases: HSM tests<br/>macOS DMG packaging<br/>Vendor-specific system libs"]

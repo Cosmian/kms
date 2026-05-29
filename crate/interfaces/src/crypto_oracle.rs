@@ -237,4 +237,53 @@ pub trait CryptoOracle: Send + Sync {
         data: &[u8],
         cryptographic_parameters: Option<&CryptographicParameters>,
     ) -> InterfaceResult<Vec<u8>>;
+
+    /// Verify a signature using the key identified by `uid`.
+    ///
+    /// # Arguments
+    /// * `uid` - the ID of the public key to use for verification
+    /// * `data` - the data that was signed
+    /// * `signature` - the signature to verify
+    /// * `cryptographic_parameters` - optional cryptographic parameters (algorithm, padding, …)
+    /// # Returns
+    /// * `InterfaceResult<bool>` - `true` if the signature is valid
+    async fn signature_verify(
+        &self,
+        uid: &str,
+        data: &[u8],
+        signature: &[u8],
+        cryptographic_parameters: Option<&CryptographicParameters>,
+    ) -> InterfaceResult<bool>;
+
+    /// Compute a MAC (Message Authentication Code) using the key identified by `uid`.
+    ///
+    /// # Arguments
+    /// * `uid` - the ID of the key to use for MAC computation
+    /// * `data` - the data to authenticate
+    /// * `cryptographic_parameters` - optional cryptographic parameters (algorithm, …)
+    /// # Returns
+    /// * `InterfaceResult<Vec<u8>>` - the MAC bytes
+    async fn mac(
+        &self,
+        uid: &str,
+        data: &[u8],
+        cryptographic_parameters: Option<&CryptographicParameters>,
+    ) -> InterfaceResult<Vec<u8>>;
+
+    /// Verify a MAC using the key identified by `uid`.
+    ///
+    /// # Arguments
+    /// * `uid` - the ID of the key to use for MAC verification
+    /// * `data` - the data that was authenticated
+    /// * `mac_data` - the MAC to verify
+    /// * `cryptographic_parameters` - optional cryptographic parameters (algorithm, …)
+    /// # Returns
+    /// * `InterfaceResult<bool>` - `true` if the MAC is valid
+    async fn mac_verify(
+        &self,
+        uid: &str,
+        data: &[u8],
+        mac_data: &[u8],
+        cryptographic_parameters: Option<&CryptographicParameters>,
+    ) -> InterfaceResult<bool>;
 }

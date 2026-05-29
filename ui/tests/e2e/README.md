@@ -145,6 +145,39 @@ graph LR
     E --> F{Compare}
 ```
 
+### certificates-certify
+
+_PQC tests skipped in FIPS mode._
+
+Full coverage of all four certification methods and all supported algorithms:
+
+```mermaid
+graph LR
+    subgraph "Method 4 — Generate New Keypair"
+        A1[RSA-2048 / RSA-4096] --> SS1[Self-signed cert]
+        A2[P-256 / P-384 / P-521 / Ed25519] --> SS2[Self-signed cert]
+        A3[ML-DSA-44/65/87] --> SS3[Self-signed cert]
+        A4[SLH-DSA-SHA2-128s/f 192s 256s SHAKE-128s/256s] --> SS4[Self-signed cert]
+        A5[ML-KEM-512] --> ERR[Server rejects KEM self-sign]
+    end
+    subgraph "Method 2 — Certify existing public key"
+        B1[Create EC P-256 pair] --> B2[Certify pubKey]
+        B3[Create ML-DSA-44 pair] --> B4[Certify pubKey]
+    end
+    subgraph "Method 3 — Re-certify"
+        C1[Create P-256 self-signed] --> C2[Re-certify → new cert ID]
+    end
+    subgraph "CA-issued"
+        D1[Create ML-DSA-44 CA] --> D2[Issue ML-KEM-512 leaf]
+        D1 --> D3[Issue ML-KEM-768 leaf]
+        D1 --> D4[Issue ML-KEM-1024 leaf]
+        D1 --> D5[Issue RSA-4096 leaf cross-algo]
+    end
+    subgraph "Optional cert ID"
+        E1[Provide custom UUID] --> E2[Returned ID matches]
+    end
+```
+
 ## Locate & Filters
 
 ### locate-flow
@@ -159,11 +192,50 @@ graph LR
 
 ```mermaid
 graph LR
-    A[Create sym key + RSA pair] --> B[Filter by SymmetricKey type]
-    B --> C[Filter by Active state]
-    C --> D[Filter by tag]
-    D --> E[Verify result counts]
+    A[Create sym key + RSA pair + EC pair] --> B[Filter by ObjectType]
+    B --> C[Filter by algorithm]
+    C --> D[Filter by cryptographic length]
+    D --> E[Filter by key format type]
+    E --> F[Filter by linked object ID]
+    F --> G[Combined filters]
+    G --> H[Verify table rendering]
 ```
+
+Covers six groups of locate filters:
+
+- **Basic**: filter by ObjectType (SymmetricKey), by State (Active), by tag
+- **Algorithm**: locate by AES, RSA, or ECDH (EC keys stored as ECDH by `build_algorithm_from_curve`)
+- **Cryptographic length**: locate by exact bit-length (256, 2048)
+- **Key format type**: locate by Raw, PKCS8, etc.
+- **Linked object IDs**: locate by private→public key link
+- **Combined**: ObjectType + algorithm + length simultaneously
+- **Table rendering**: columns (UID, Type, Key Format Type, State, Algorithm, Length) render correctly; UID links navigate to detail pages
+
+### locate-attributes
+
+```mermaid
+graph LR
+    A[Pre-created HSM keys] --> B[Locate SymmetricKey]
+    B --> C{Type = SymmetricKey?}
+    C -->|Yes| D[Pass]
+    B --> E{Key Format Type = Raw?}
+    E -->|Yes| F[Pass]
+    G[Create software keys] --> H[Locate each type]
+    H --> I{No N/A in Type column?}
+    I -->|Yes| J[Pass]
+```
+
+Validates that the Locate results table displays correct attribute values for both
+HSM and software keys. Specifically:
+
+- HSM keys show `SymmetricKey` type (not `N/A`)
+- HSM keys show `Raw` key format type (not `N/A`)
+- Software symmetric keys show correct type and format
+- RSA private keys show `PrivateKey` type and `PKCS1`/`PKCS8` format
+- EC private keys show `PrivateKey` type (format is not `N/A`)
+- All located objects have a valid Type value (no `N/A`)
+
+The HSM tests require `PLAYWRIGHT_HSM_KEY_COUNT > 0` (set by `test_ui.sh`).
 
 ### locate-hsm
 
@@ -174,6 +246,12 @@ graph LR
     C --> D{Both appear?}
     D -->|Yes| E[Pass]
     D -->|No| F[Fail]
+    G[3 slots × 3 prefixes] --> H[Locate all]
+    H --> I{All 3 found?}
+    I -->|Yes| J[Pass]
+    K[mTLS user cert] --> L[Locate HSM keys]
+    L --> M{0 HSM keys visible?}
+    M -->|Yes| N[Pass]
 ```
 
 Validates that HSM keys (created with the `hsm::` prefix) appear alongside
@@ -183,7 +261,36 @@ pre-created by `test_ui.sh` are discovered through table pagination.
 The inner `Locate – HSM keys (real SoftHSM2)` suite is skipped automatically
 when `PLAYWRIGHT_HSM_KEY_COUNT` is 0 (SoftHSM2 not available).
 
-## MAC
+Additional test groups:
+
+- **Multi-HSM prefix routing**: verifies that pre-created keys from all three
+  SoftHSM2 slots appear in Locate results using the three prefix styles:
+  `hsm::<slot>::`, `hsm::softhsm2::<slot>::`, and `hsm::softhsm2_1::<slot>::`.
+  Skipped when `PLAYWRIGHT_HSM_SLOT_ID_1/2/3` are unset.
+- **HSM access control (mTLS)**: connects as a non-admin user (via the user
+  mTLS certificate) and asserts that no HSM keys (`hsm::` prefix) are visible —
+  only the HSM admin (owner cert) can see them.
+
+### hsm-multi-keys
+
+```mermaid
+graph LR
+    A[Slot 1: hsm::slot1::name] --> B[Create key]
+    B --> C[Destroy key]
+    D[Slot 2: hsm::softhsm2::slot2::name] --> E[Create key]
+    E --> F[Destroy key]
+    G[Slot 3: hsm::softhsm2_1::slot3::name] --> H[Create key]
+    H --> I[Destroy key]
+    J[All 3 slots] --> K[Create 3 keys]
+    K --> L[Destroy 3 keys]
+```
+
+Tests end-to-end key creation and destruction for three independent SoftHSM2
+instances using both the legacy UID prefix (`hsm::<slot>::<name>`) and the new
+model-qualified prefixes (`hsm::softhsm2::<slot>::<name>` and
+`hsm::softhsm2_1::<slot>::<name>`). Slot IDs are passed via
+`PLAYWRIGHT_HSM_SLOT_ID_1/2/3` environment variables set by `test_ui.sh`.
+The suite is skipped automatically when any of the three slot IDs is unset.
 
 ### mac-flow
 
@@ -399,3 +506,29 @@ graph LR
     A[For each route] --> B[Navigate]
     B --> C[Verify page loads]
 ```
+
+## OpenAPI / Swagger
+
+### swagger
+
+46 tests validating the `/openapi.yaml` and `/swagger` endpoints exposed by the
+KMS server (not the Vite UI server). Tests run directly against `PLAYWRIGHT_KMS_URL`.
+
+| Test group                                     | Count | What it verifies                                                                                                                                                                                                                    |
+| ---------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /openapi.yaml — HTTP contract`            | 3     | HTTP 200, `application/yaml` content-type, security headers, size bounds                                                                                                                                                            |
+| `GET /openapi.yaml — spec structure`           | 5     | OpenAPI 3.1.0 declaration, all required tag groups, all documented paths, component schemas, security schemes                                                                                                                       |
+| `GET /swagger — HTTP contract`                 | 6     | HTTP 200, `text/html` content-type, `/openapi.yaml` reference, locally-served assets, strict CSP with `frame-ancestors`, `X-Frame-Options: DENY`, page title                                                                        |
+| `GET /swagger — browser rendering`             | 4     | Container mounts, spec title visible, tag sections rendered, expand tag, expand operation                                                                                                                                           |
+| `Live endpoint responses match OpenAPI spec`   | 12    | `/health`, `/version`, `/me`, `/server-info`, `/hsm/status`, `/access/owned`, `/access/obtained`, `/access/create`, `/access/privileged`, POST `/kmip/2_1` empty→422, `/download-cli` not 5xx, `/access/list/{nonexistent}` not 5xx |
+| `HTTP method semantics`                        | 3     | POST `/openapi.yaml` → 404/405, DELETE `/swagger` → 404/405, idempotent GET                                                                                                                                                         |
+| `KMIP protocol — version acceptance`           | 5     | KMIP 2.1/1.4/1.3/1.0 Query → 200 `ResultStatus:Success`; KMIP 2.1 Create AES-256 → `UniqueIdentifier`                                                                                                                               |
+| `REST Crypto API — key lifecycle`              | 4     | POST `/v1/crypto/keys` AES-256-GCM → kid; EC P-256 → kid+kid_public; missing field → 400; DELETE → 204                                                                                                                              |
+| `GET /swagger — advanced browser interactions` | 4     | Filter input, "Try it out" button, info block, tag count                                                                                                                                                                            |
+
+Key facts verified by these tests:
+
+- The KMIP TTLV-as-JSON response format uses `"ResultStatus"` with `"value":"Success"` (not `"OperationSuccess"`).
+- The server accepts **all** KMIP protocol versions (1.0, 1.3, 1.4, 2.1) for backward compatibility.
+- The Swagger UI JS/CSS are served locally from the KMS server (no external CDN dependency).
+- The CSP enforces `default-src 'none'` with `'self'` allowed and `frame-ancestors 'none'` for clickjacking protection.

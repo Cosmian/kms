@@ -1,9 +1,10 @@
 import { Button, Card, Checkbox, Form, Select, Space } from "antd";
-import React, { useEffect, useRef, useState } from "react";
-import { useAuth } from "../../contexts/AuthContext";
+import React, { useEffect, useState } from "react";
 import { useBranding } from "../../contexts/useBranding";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import { useActionState } from "../../hooks/useActionState";
+import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface PqcKeyCreateFormData {
     algorithm: string;
@@ -18,18 +19,9 @@ type CreateKeyPairResponse = {
 
 const PqcKeysCreateForm: React.FC = () => {
     const [form] = Form.useForm<PqcKeyCreateFormData>();
-    const [res, setRes] = useState<undefined | string>(undefined);
-    const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
     const branding = useBranding();
-    const responseRef = useRef<HTMLDivElement>(null);
     const [algorithmOptions, setAlgorithmOptions] = useState<{ value: string; label: string }[]>([]);
-
-    useEffect(() => {
-        if (res && responseRef.current) {
-            responseRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [res]);
 
     useEffect(() => {
         try {
@@ -52,23 +44,14 @@ const PqcKeysCreateForm: React.FC = () => {
     }, [algorithmOptions, form]);
 
     const onFinish = async (values: PqcKeyCreateFormData) => {
-        setIsLoading(true);
-        setRes(undefined);
-        try {
+        await execute(async () => {
             const request = wasm.create_pqc_key_pair_ttlv_request(values.tags, values.algorithm, values.sensitive);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
-                setRes(
-                    `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`,
-                );
+                return `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
             }
-        } catch (e) {
-            setRes(`Error creating PQC keypair: ${e}`);
-            console.error("Error creating PQC keypair:", e);
-        } finally {
-            setIsLoading(false);
-        }
+        });
     };
 
     return (
@@ -139,11 +122,7 @@ const PqcKeysCreateForm: React.FC = () => {
                     </Form.Item>
                 </Space>
             </Form>
-            {res && (
-                <div ref={responseRef} data-testid="response-output">
-                    <Card title="PQC key pair creation response">{res}</Card>
-                </div>
-            )}
+            <ActionResponse res={res} responseRef={responseRef} title="PQC key pair creation response" />
         </div>
     );
 };

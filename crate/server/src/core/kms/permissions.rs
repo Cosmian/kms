@@ -10,7 +10,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use cosmian_logger::debug;
 
 use crate::{
-    core::KMS,
+    core::{KMS, uid_utils::has_prefix},
     error::KmsError,
     kms_bail,
     middlewares::AuthenticatedUser,
@@ -77,6 +77,20 @@ impl KMS {
                     "You can't grant yourself, you have already all rights on your own objects"
                         .to_owned()
                 ))
+            }
+
+            // HSM keys: block granting Destroy and Revoke — these are admin-only operations
+            if has_prefix(uid).is_some() {
+                let forbidden: Vec<&KmipOperation> = updated_operations_types
+                    .iter()
+                    .filter(|op| matches!(op, KmipOperation::Destroy | KmipOperation::Revoke))
+                    .collect();
+                if !forbidden.is_empty() {
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "Cannot grant {forbidden:?} on HSM key `{uid}`: these operations are \
+                         reserved for HSM admins only"
+                    )))
+                }
             }
 
             self.database
@@ -217,9 +231,20 @@ impl KMS {
         user: &str,
     ) -> KResult<Vec<AccessRightsObtainedResponse>> {
         let list = self.database.list_user_operations_granted(user).await?;
-        let ids = list
+        let ids: Vec<AccessRightsObtainedResponse> = list
             .into_iter()
-            .map(AccessRightsObtainedResponse::from)
+            .map(|entry| {
+                let mut resp = AccessRightsObtainedResponse::from(entry);
+                // For HSM keys (not in the objects table), use the HSM
+                // routing prefix as owner — avoids leaking admin identities.
+                if resp.owner_id.is_empty() {
+                    let uid_str = resp.object_id.as_str().unwrap_or_default();
+                    if let Some(prefix) = has_prefix(uid_str) {
+                        resp.owner_id = prefix.to_owned();
+                    }
+                }
+                resp
+            })
             .collect();
         Ok(ids)
     }

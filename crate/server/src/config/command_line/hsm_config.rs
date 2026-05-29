@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use clap::Args;
 use serde::{Deserialize, Serialize};
@@ -98,4 +98,23 @@ pub struct HsmConfig {
         requires = "hsm_slot"
     )]
     pub hsm_password: Vec<String>,
+}
+
+impl HsmConfig {
+    /// Build the `slot_passwords` map expected by `BaseHsm::instantiate`.
+    #[must_use]
+    pub fn slot_passwords(&self) -> HashMap<usize, Option<String>> {
+        self.hsm_slot
+            .iter()
+            .zip(&self.hsm_password)
+            .map(|(s, p)| {
+                let pw = if p == "<NO_LOGIN>" {
+                    None
+                } else {
+                    Some(p.clone())
+                };
+                (*s, pw)
+            })
+            .collect()
+    }
 }
