@@ -102,4 +102,19 @@ pub trait ObjectsStore {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Return (uid, state, attributes) for every object whose
+    /// `key_wrapping_data.encryption_key_information.unique_identifier` equals
+    /// `wrapping_key_uid`. Used by key rotation to re-wrap all objects protected by
+    /// the rotated key.
+    ///
+    /// The default implementation returns an empty list; backends that support
+    /// JSON-based object storage should override this with an efficient query.
+    async fn find_wrapped_by(
+        &self,
+        _wrapping_key_uid: &str,
+        _user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        Ok(vec![])
+    }
 }

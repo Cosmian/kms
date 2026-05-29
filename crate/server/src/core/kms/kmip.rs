@@ -11,10 +11,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
         LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
         ModifyAttributeResponse, PKCS11, PKCS11Response, Query, QueryResponse, RNGRetrieve,
-        RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
-        ReKeyResponse, Register, RegisterResponse, Revoke, RevokeResponse, SetAttribute,
-        SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
-        Validate, ValidateResponse,
+        RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReCertify, ReCertifyResponse, ReKey,
+        ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
+        RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+        SignatureVerifyResponse, Validate, ValidateResponse,
     },
 };
 use tracing::Instrument;
@@ -665,6 +665,24 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "rekey");
 
         Box::pin(operations::rekey(self, request, user, privileged_users))
+            .instrument(span)
+            .await
+    }
+
+    /// `ReCertify` — certificate rotation with a new UID.
+    ///
+    /// Creates a fresh certificate for the same subject/issuer and links old → new
+    /// via `ReplacementObjectLink`. Keys referencing the old certificate are updated
+    /// to point to the new one.
+    pub(crate) async fn recertify(
+        &self,
+        request: ReCertify,
+        user: &str,
+        privileged_users: Option<Vec<String>>,
+    ) -> KResult<ReCertifyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "recertify");
+
+        Box::pin(operations::recertify(self, request, user, privileged_users))
             .instrument(span)
             .await
     }

@@ -8,7 +8,7 @@ use openssl::{
 /// A certificate Issuer is constructed from a unique identifier and
 ///  - either a private key and a certificate.
 ///  - or a private key, a subject name and a certificate.
-pub(super) enum Issuer<'a> {
+pub(crate) enum Issuer<'a> {
     PrivateKeyAndCertificate(
         UniqueIdentifier,
         /// Private key

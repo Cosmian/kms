@@ -3,8 +3,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::kmip_operations::{
         Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt, DeleteAttribute,
         DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList, GetAttributes, Hash, Import,
-        Locate, MAC, MACVerify, ModifyAttribute, Operation, Query, RNGRetrieve, RNGSeed, ReKey,
-        ReKeyKeyPair, Register, Revoke, SetAttribute, Sign, SignatureVerify, Validate,
+        Locate, MAC, MACVerify, ModifyAttribute, Operation, Query, RNGRetrieve, RNGSeed, ReCertify,
+        ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute, Sign, SignatureVerify, Validate,
     },
     ttlv::{TTLV, from_ttlv},
 };
@@ -180,6 +180,9 @@ async fn dispatch_inner(
         "ReKey" => op!(priv ttlv, kms, user, ReKey, rekey, ReKeyResponse),
         "ReKeyKeyPair" => {
             op!(priv ttlv, kms, user, ReKeyKeyPair, rekey_keypair, ReKeyKeyPairResponse)
+        }
+        "ReCertify" => {
+            op!(priv ttlv, kms, user, ReCertify, recertify, ReCertifyResponse)
         }
         "Register" => op!(priv ttlv, kms, user, Register, register, RegisterResponse),
         "Revoke" => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
