@@ -325,6 +325,24 @@ impl Database {
         Ok(results)
     }
 
+    /// Return (uid, state, attributes) for every object wrapped by the given wrapping key.
+    pub async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, State, Attributes)> = Vec::new();
+        for db in map.values() {
+            results.extend(
+                db.find_wrapped_by(wrapping_key_uid, user)
+                    .await
+                    .unwrap_or_default(),
+            );
+        }
+        Ok(results)
+    }
+
     /// Perform an atomic set of operations on the database.
     ///
     /// This function executes a series of operations (typically in a transaction) atomically.

@@ -27,7 +27,7 @@ use crate::{
 
 /// Determine the issuer of the issued certificate.
 /// The issuer can be recovered from different sources or be self-signed.
-pub(super) async fn get_issuer<'a>(
+pub(crate) async fn get_issuer<'a>(
     subject: &'a Subject,
     kms: &KMS,
     request: &Certify,

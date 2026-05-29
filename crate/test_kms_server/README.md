@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**319 vectors** across 8 categories:
+**344 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -133,6 +133,10 @@ replays the steps sequentially.
 | KMIP Operations | `certify_validate` | CreateKeyPair, Certify, Validate, Destroy ×3 | 6 |
 | KMIP Operations | `certify_revoke_validate` | CreateKeyPair, Certify, Validate, Revoke, Validate (invalid) | 8 |
 | KMIP Operations | `certify_chain` | CreateKeyPair, Certify (root→intermediate→leaf), Validate chain | 17 |
+| KMIP Operations | `recertify_self_signed` | CreateKeyPair, Certify (self-signed), ReCertify, GetAttributes (state), Revoke ×2, Destroy ×4 | 10 |
+| KMIP Operations | `recertify_chain` | CreateKeyPair ×2, Certify (CA + leaf), ReCertify (leaf), GetAttributes (links), Revoke ×3, Destroy ×7 | 16 |
+| KMIP Operations | `recertify_with_links` | CreateKeyPair, Certify, ReCertify, GetAttributes (old→ReplacementObjectLink, new→ReplacedObjectLink), Revoke ×2, Destroy ×4 | 11 |
+| KMIP Operations | `recertify_with_offset` | CreateKeyPair, Certify, ReCertify (Offset=0 → Active), CreateKeyPair, Certify, ReCertify (Offset=86400 → PreActive), Revoke ×3, Destroy ×8 | 19 |
 | KMIP Operations | `check` | Create, Check, Activate, Check | 4 |
 | KMIP Operations | `derive_key_pbkdf2` | Create, DeriveKey (PBKDF2-SHA256), Get | 3 |
 | KMIP Operations | `derive_key_pbkdf2_sha512` | Create, DeriveKey (PBKDF2-SHA512), Get | 3 |
@@ -164,6 +168,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_deactivated_fails` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → fails) | 4 |
 | KMIP Operations | `rekey_with_links` | Create, ReKey, GetAttributes (old has ReplacementObjectLink), GetAttributes (new has ReplacedObjectLink) | 4 |
 | KMIP Operations | `rekey_with_offset` | Create, ReKey (Offset=3600s), GetAttributes (ActivationDate = now+3600) | 4 |
+| KMIP Operations | `rekey_with_offset_state` | Create, ReKey (Offset=0 → Active), Create, ReKey (Offset=86400 → PreActive), cleanup | 13 |
 | KMIP Operations | `rekey_name_removed_from_old` | Create (named), ReKey, GetAttributes (old has no Name) | 4 |
 | KMIP Operations | `rekey_double_chain` | Create, ReKey, ReKey, GetAttributes (chain of ReplacementObjectLinks) | 5 |
 | KMIP Operations | `rekey_old_key_still_decrypts` | Create, ReKey, Encrypt (old key still works) | 3 |
@@ -185,6 +190,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_keypair_old_key_still_active` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (old SK State=Active) | 5 |
 | KMIP Operations | `rekey_keypair_no_public_link_fails` | CreateKeyPair (EC), Delete PublicKeyLink, ReKeyKeyPair → fails | 4 |
 | KMIP Operations | `rekey_keypair_with_offset` | CreateKeyPair (EC), ReKeyKeyPair (Offset=3600s), verify ActivationDate | 5 |
+| KMIP Operations | `rekey_keypair_with_offset_state` | CreateKeyPair (EC), ReKeyKeyPair (Offset=0 → Active), CreateKeyPair, ReKeyKeyPair (Offset=86400 → PreActive), cleanup | 20 |
 | KMIP Operations | `rekey_keypair_ec_with_links` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (verify links) | 5 |
 | KMIP Operations | `rekey_keypair_rsa_with_links` | CreateKeyPair (RSA), ReKeyKeyPair, GetAttributes (verify links) | 5 |
 | KMIP Operations | `rekey_keypair_rsa_encrypt_decrypt` | CreateKeyPair (RSA), ReKeyKeyPair, Encrypt+Decrypt with new key | 7 |
@@ -315,6 +321,9 @@ replays the steps sequentially.
 | Negative / TypeMismatch | `negative/type_mismatch/import_malformed_key` | Import TransparentSymmetricKey with raw bytes → error | 1 |
 | Negative / TypeMismatch | `negative/type_mismatch/encrypt_with_secret_data` | Encrypt using SecretData object → error | 2 |
 | Negative / TypeMismatch | `negative/type_mismatch/revoke_already_destroyed` | Revoke a destroyed key → success | 3 |
+| Negative / ReCertify | `negative/recertify_missing_uid` | ReCertify without UniqueIdentifier → error | 1 |
+| Negative / ReCertify | `negative/recertify_nonexistent` | ReCertify non-existent certificate → error | 1 |
+| Negative / ReCertify | `negative/recertify_not_a_certificate` | ReCertify a symmetric key → error | 2 |
 | **non-FIPS CryptographicParameters** | | | |
 | non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_explicit_nonce` | Create (AES-128), Encrypt (client 12-B nonce), Decrypt | 3 |
 | non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_explicit_nonce` | Create (AES-256), Encrypt (client 12-B nonce), Decrypt | 3 |
