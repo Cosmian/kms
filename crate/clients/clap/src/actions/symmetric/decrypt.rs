@@ -21,14 +21,22 @@ use cosmian_kms_client::{
     },
 };
 use cosmian_kms_crypto::crypto::{
-    symmetric::symmetric_ciphers::{Mode, SymCipher, decrypt},
+    symmetric::symmetric_ciphers::{Mode, decrypt},
     wrap::unwrap_key_block,
 };
 use cosmian_logger::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::{console, labels::KEY_ID, shared::get_key_uid, symmetric::KeyEncryptionAlgorithm},
+    actions::{
+        console,
+        labels::KEY_ID,
+        shared::get_key_uid,
+        symmetric::{
+            KeyEncryptionAlgorithm,
+            cipher_io::{build_cipher, resolve_aad},
+        },
+    },
     cli_bail,
     error::{
         KmsCliError,
@@ -221,17 +229,7 @@ impl DecryptAction {
         aad: Option<Vec<u8>>,
     ) -> KmsCliResult<()> {
         // Additional authenticated data (AAD) for AEAD ciphers
-        // (empty for XTS)
-        let aad = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesXts => vec![],
-            DataEncryptionAlgorithm::AesCbc | DataEncryptionAlgorithm::AesGcm => {
-                aad.unwrap_or_default()
-            }
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
-                aad.unwrap_or_default()
-            }
-        };
+        let aad = resolve_aad(data_encryption_algorithm, aad);
         // Open the input file
         let mut input_file = File::open(input_file_name)?;
         // read the encapsulation length as a LEB128 encoded u64
@@ -254,16 +252,8 @@ impl DecryptAction {
             )
             .await?;
         // determine the DEM parameters
-        let dem_cryptographic_parameters: CryptographicParameters =
-            data_encryption_algorithm.into();
         trace!("dek length {}", dek.len());
-        let cipher = SymCipher::from_algorithm_and_key_size(
-            dem_cryptographic_parameters
-                .cryptographic_algorithm
-                .unwrap_or(CryptographicAlgorithm::AES),
-            dem_cryptographic_parameters.block_cipher_mode,
-            dek.len(),
-        )?;
+        let cipher = build_cipher(data_encryption_algorithm, dek.len())?;
         // read the nonce
         let mut nonce = vec![0; cipher.nonce_size()];
         input_file.read_exact(&mut nonce)?;
@@ -344,15 +334,7 @@ impl DecryptAction {
         // Then read the encapsulated data
         let mut ct = ciphertext;
         // Additional authenticated data (AAD) for AEAD ciphers
-        // (empty for XTS)
-        let aad = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
-            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::AesGcmSiv | DataEncryptionAlgorithm::Chacha20Poly1305 => {
-                aad.unwrap_or_default()
-            }
-        };
+        let aad = resolve_aad(data_encryption_algorithm, aad);
         // Open the input file
         // read the encapsulation length as a LEB128 encoded u64
         let encaps_length = leb128::read::unsigned(&mut ct).map_err(|e| {
@@ -387,16 +369,8 @@ impl DecryptAction {
         let dek = dek_object.key_block()?.key_bytes()?;
 
         // determine the DEM parameters
-        let dem_cryptographic_parameters: CryptographicParameters =
-            data_encryption_algorithm.into();
         trace!("dek length {}", dek.len());
-        let sym_cipher = SymCipher::from_algorithm_and_key_size(
-            dem_cryptographic_parameters
-                .cryptographic_algorithm
-                .unwrap_or(CryptographicAlgorithm::AES),
-            dem_cryptographic_parameters.block_cipher_mode,
-            dek.len(),
-        )?;
+        let sym_cipher = build_cipher(data_encryption_algorithm, dek.len())?;
         // read the nonce
         let mut nonce = vec![0; sym_cipher.nonce_size()];
 

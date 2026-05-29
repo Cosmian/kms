@@ -13,6 +13,15 @@
 - Add `load_client_config` utility in `ckms/src/tests/utils/config.rs` for template-based test config loading with dynamic port patching
 - Add convenience helpers `owner_config()` and `user_config()` for default test configs
 - Delete ported tests from `cosmian_kms_cli_actions` (clap): `discover_versions`, `query`, `rng`, `mac_verify`, `opaque_object/`, `elliptic_curve/`, `rsa/`, `secret_data/`, `security/{access_control,lifecycle,privilege_bypass,uid_injection}`, `error_messages/activate`
+- Add `push_link!` macro in `attributes/set.rs` to eliminate repetitive link-attribute construction
+- Add `print_query_list`/`print_query_count`/`print_query_value` helpers in `kms_actions.rs` for Query display
+- Extract `parse_x509_to_object()` helper for certificate import (PEM/DER deduplication)
+- Extract `resolve_key_from_options()` shared helper for wrap/unwrap key source resolution
+- Split `derive_key/mod.rs` into `resolve_base_key_id()`, `build_derivation_params()`, `parse_derivation_method()`
+- Extract `resolve_kek_wrapping_params()` for AWS BYOK export key material
+- Split `google/key_pairs/create.rs` into `resolve_key_pair()`, `resolve_certificate()`, `push_to_gmail()`
+- Add `symmetric/cipher_io.rs` with shared helpers: `resolve_aad()`, `build_cipher()`, `generate_dek()`
+- Add `prompt_optional!`, `prompt_password!`, `prompt_required!` macros to ckms configure wizard
 
 ## Testing
 

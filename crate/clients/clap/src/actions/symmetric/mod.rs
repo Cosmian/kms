@@ -9,6 +9,7 @@ use strum::{Display, EnumIter};
 pub use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::result::KmsCliResult;
 
+pub(crate) mod cipher_io;
 pub mod decrypt;
 pub mod encrypt;
 pub mod keys;
