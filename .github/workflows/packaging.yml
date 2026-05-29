@@ -64,6 +64,7 @@ jobs:
             connect-timeout = 15
             stalled-download-timeout = 15
             narinfo-cache-negative-ttl = 0
+            http-connections = 8
 
       - uses: actions/checkout@v6
         with:
@@ -71,6 +72,7 @@ jobs:
 
       - name: Warm Nix store
         run: |
+          # Pre-fetch nixpkgs tarballs (*.tar.gz from default.nix)
           sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
             dest="/tmp/$(basename "$url")"
             # Build GitHub fallback URL from mirror URL
