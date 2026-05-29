@@ -36,9 +36,15 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
             let mut uptime_interval = tokio::time::interval(std::time::Duration::from_secs(1));
             let mut shutdown_rx = shutdown_rx;
             loop {
+                // TODO: this should better be deleted/updated because we are changing the approach
                 tokio::select! {
                     _ = interval.tick() => {
-                        // Refresh Active Keys via KMIP Locate filtered on Active state
+                        // ── Active-keys refresh (via KMIP Locate) ─────────────────────────
+                        // NOTE: this uses a KMIP Locate filtered to Active state, which is
+                        // subject to the caller's ACL.  In multi-admin deployments this may
+                        // undercount if the cron user does not own all keys.  A future task
+                        // should replace this with a privileged SQL count, similar to the
+                        // objects.total path below.
                         let request = Locate {
                             attributes: Attributes {
                                 state: Some(State::Active),
@@ -59,6 +65,32 @@ pub fn spawn_metrics_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                             }
                             Err(e) => {
                                 debug!("[metrics-cron] Failed to refresh active keys count: {}", e);
+                            }
+                        }
+
+                        // ── Objects-total absolute sync ────────────────────────────────────
+                        // The fast-path delta tracking (+1/-1 per operation) can accumulate
+                        // drift over time because of the TOCTOU race in the Upsert pre-read
+                        // and because the Redis backend always emits 0 from the fast path.
+                        // Every 30 s we re-read the authoritative SQL count and correct the
+                        // UpDownCounter via the mirror pattern (see OtelMetrics::update_objects_total).
+                        if let Some(ref metrics) = kms.metrics {
+                            match kms.database.count_all_non_destroyed_objects().await {
+                                Ok(count) => {
+                                    debug!(
+                                        "[metrics-cron] kms.objects.total synced to {}",
+                                        count
+                                    );
+                                    metrics.update_objects_total(
+                                        i64::try_from(count).unwrap_or(i64::MAX),
+                                    );
+                                }
+                                Err(e) => {
+                                    debug!(
+                                        "[metrics-cron] Failed to sync kms.objects.total: {}",
+                                        e
+                                    );
+                                }
                             }
                         }
                     }

@@ -102,4 +102,27 @@ pub trait ObjectsStore {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Count all objects that are **not** in a terminal (destroyed) state.
+    ///
+    /// # Purpose — metrics only
+    ///
+    /// This method is called exclusively by the OTEL metrics layer to feed the
+    /// `kms.objects.total` gauge. It deliberately skips all user/permission
+    /// filters so the result reflects the true server-wide object inventory,
+    /// not just the subset visible to a particular caller.
+    ///
+    /// **Never expose the result to client requests** — it bypasses access control.
+    ///
+    /// # Why a default of `Ok(0)`?
+    ///
+    /// Adding a required method to this trait would force every backend
+    /// (SQL, Redis, HSM stubs) to implement it in the same commit. The default
+    /// lets backends compile immediately; each one should replace it with a
+    /// real implementation when ready. A `TODO` comment is added at each
+    /// call site that still uses the default.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        // TODO: implement for this backend — currently returns 0 (safe fallback)
+        Ok(0)
+    }
 }

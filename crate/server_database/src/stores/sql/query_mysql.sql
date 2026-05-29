@@ -68,6 +68,16 @@ DELETE
 FROM tags;
 
 
+-- name: count-non-destroyed-objects
+-- Privileged metrics-only query: counts ALL objects regardless of owner.
+-- Called exclusively by the OTEL metrics layer for kms.objects.total.
+-- State strings correspond to Rust enum variant names via strum::Display:
+--   Destroyed           = the object was explicitly destroyed
+--   Destroyed_Compromised = the object was destroyed after being compromised
+-- All other states (PreActive, Active, Deactivated, Compromised) are live objects.
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
+
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner)
 VALUES (?, ?, ?, ?, ?);

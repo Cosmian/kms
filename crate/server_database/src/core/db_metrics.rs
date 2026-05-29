@@ -36,4 +36,20 @@ pub trait DbMetricsRecorder: Send + Sync {
         outcome: &str,
         duration_seconds: f64,
     );
+
+    /// Record a signed delta for the `kms.objects.total` gauge.
+    ///
+    /// # Why a delta rather than an absolute value?
+    ///
+    /// The underlying OTLP instrument is an `UpDownCounter<i64>`, which only
+    /// accepts incremental `add(delta)` calls.  There is no "set" operation.
+    /// The delta path is a low-overhead fast path: +1 on `create`, -1 on
+    /// `delete`.  For `atomic` operations the delta is pre-computed before the
+    /// transaction runs (see `database_objects.rs` for the rationale around
+    /// TOCTOU and Upsert pre-reads).
+    ///
+    /// A periodic absolute sync via `count_all_non_destroyed_objects` corrects
+    /// any drift that accumulates from the TOCTOU race window or from backends
+    /// (e.g. Redis) that always emit `0` from the fast path.
+    fn record_object_delta(&self, delta: i64);
 }

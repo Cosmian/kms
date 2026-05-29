@@ -13,6 +13,9 @@ pub(crate) use jwt::{JwksManager, JwtAuth, JwtConfig, JwtTokenHeaders, UserClaim
 mod rate_limiter;
 pub(crate) use rate_limiter::{RateLimiterConfig, RateLimiterMiddleware};
 
+mod otel_http_middleware;
+pub(crate) use otel_http_middleware::OtelHttpMetrics;
+
 /// Represents an authenticated user
 ///
 /// This struct is stored in the request extensions after successful

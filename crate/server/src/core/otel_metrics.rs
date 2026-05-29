@@ -87,6 +87,15 @@ pub struct OtelMetrics {
     /// Mirror of `active_keys_count` for tracking the last set value
     active_keys_count_value: Arc<RwLock<i64>>,
 
+    /// Mirror of `kms_objects_total` for tracking the last emitted absolute count.
+    ///
+    /// Because `kms_objects_total` is an `UpDownCounter` (delta-based), we cannot
+    /// "set" it to an absolute value.  When a periodic sync delivers a fresh
+    /// absolute count, we compute `delta = new_count - last_known` and add that
+    /// delta.  `objects_total_mirror` holds the last known value so subsequent
+    /// sync calls produce the correct incremental delta.
+    objects_total_mirror: Arc<RwLock<i64>>,
+
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
 
@@ -277,6 +286,7 @@ impl OtelMetrics {
             kms_objects_total,
             active_keys_count,
             active_keys_count_value: Arc::new(RwLock::new(0)),
+            objects_total_mirror: Arc::new(RwLock::new(0)),
             cache_operations_total,
             hsm_operations_total,
         })
@@ -456,6 +466,28 @@ impl OtelMetrics {
         }
     }
 
+    /// Set the current `kms.objects.total` gauge from an absolute object count.
+    ///
+    /// `kms_objects_total` is an `UpDownCounter`, which only accepts incremental
+    /// `add(delta)` calls. To simulate a gauge "set", we keep a mirror of the
+    /// last emitted absolute value in `objects_total_mirror` and emit only the
+    /// delta between the new count and that mirror on each call.
+    ///
+    /// This method is called:
+    ///   - Once at server startup with the result of `count_all_non_destroyed_objects`
+    ///     to seed the gauge from the real DB state.
+    ///   - Every 30 s by the metrics cron task to correct drift that may have
+    ///     accumulated from the fast-path delta tracking.
+    pub fn update_objects_total(&self, absolute_count: i64) {
+        if let Ok(mut last) = self.objects_total_mirror.write() {
+            let delta = absolute_count - *last;
+            if delta != 0 {
+                self.kms_objects_total.add(delta, &[]);
+                *last = absolute_count;
+            }
+        }
+    }
+
     /// Record cache operation
     pub fn record_cache_operation(&self, operation: &str, result: &str) {
         self.cache_operations_total.add(
@@ -499,6 +531,23 @@ impl DbMetricsRecorder for OtelMetrics {
         duration_seconds: f64,
     ) {
         self.record_database_operation(operation, backend, outcome, duration_seconds);
+    }
+
+    /// Add a signed delta to `kms.objects.total`.
+    ///
+    /// This is the fast path called synchronously after each mutating DB
+    /// operation (+1 for create, -1 for delete, pre-computed delta for
+    /// atomic).  Calls with `delta == 0` are silently ignored to avoid
+    /// emitting no-op measurements to the OTLP backend.
+    ///
+    /// Note: this does **not** update `objects_total_mirror`.  The mirror is
+    /// only updated by the absolute-sync path (`update_objects_total`) so that
+    /// the periodic cron can always correct accumulated drift from this fast
+    /// path without the two paths interfering with each other.
+    fn record_object_delta(&self, delta: i64) {
+        if delta != 0 {
+            self.kms_objects_total.add(delta, &[]);
+        }
     }
 }
 

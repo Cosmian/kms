@@ -622,6 +622,18 @@ impl ObjectsStore for RedisWithFindex {
             })
             .collect())
     }
+
+    // TODO(redis): implement count_all_non_destroyed properly.
+    //
+    // Redis-findex stores objects as individual keys with prefix `do::<uid>`.
+    // A correct implementation would use `SCAN do::*` and then retrieve and
+    // filter each object's state field. This is deferred due to the high cost
+    // of a full Redis key scan on large datasets and because Redis-findex is
+    // a non-FIPS backend with lower CI priority.
+    //
+    // For now, the default `Ok(0)` from the trait is used, which means
+    // `kms.objects.total` will read `0` for Redis-backed deployments.
+    // async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> { ... }
 }
 
 #[async_trait(?Send)]
