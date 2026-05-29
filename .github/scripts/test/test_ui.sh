@@ -166,7 +166,7 @@ ckms_bin="${CARGO_TARGET_DIR}/debug/ckms"
 # Allocate TCP ports dynamically so that concurrent test sessions on the same
 # machine (e.g. tests from different branches) do not collide on well-known ports.
 _get_free_port() {
-  python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); p=s.getsockname()[1]; s.close(); print(p)"
+  node -e "const net=require('node:net'); const server=net.createServer(); server.listen(0,'127.0.0.1',()=>{console.log(server.address().port); server.close();});"
 }
 KMS_PORT=$(_get_free_port)
 VITE_PORT=$(_get_free_port)
