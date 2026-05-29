@@ -509,6 +509,7 @@ impl From<ReCertify> for kmip_2_1::kmip_operations::ReCertify {
             unique_identifier: Some(recertify.unique_identifier.into()),
             certificate_request_type: Some(cert_req_type),
             certificate_request_value: Some(recertify.certificate_request_value),
+            offset: None,
             attributes: recertify.template_attribute.map(Into::into),
             protection_storage_masks: None,
         }
@@ -546,6 +547,7 @@ impl From<kmip_2_1::kmip_operations::ReCertify> for ReCertify {
             certificate_request_type: cert_req_type,
             certificate_request_value: recertify.certificate_request_value.unwrap_or_default(),
             template_attribute: None,
+            // KMIP 1.4 does not support offset; it is dropped during downgrade.
         }
     }
 }

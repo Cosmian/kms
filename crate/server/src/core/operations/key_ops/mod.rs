@@ -54,6 +54,9 @@ pub(crate) fn setup_object_lifecycle(
     attributes.last_change_date = Some(now);
     if state == State::Active {
         attributes.activation_date = Some(now);
+    } else if let Some(future_date) = requested_activation_date {
+        // PreActive: store the future activation date so auto-transition works
+        attributes.activation_date = Some(future_date);
     }
 
     Ok(attributes.clone())

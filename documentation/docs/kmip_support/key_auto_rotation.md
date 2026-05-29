@@ -258,7 +258,111 @@ ckms sym keys set-rotation-policy \
 
 ---
 
-### 6. Server-wide key-encryption key (KEK)
+### 6. Certificate renewal (`ReCertify`)
+
+Certificate renewal creates a **new certificate for the same key pair** — no
+new key material is generated.  The KMIP `ReCertify` operation (§6.1.45)
+assigns a fresh UID to the renewed certificate and links old → new via the
+standard `ReplacementObjectLink` / `ReplacedObjectLink` pair.
+
+#### Standards and RFCs
+
+| Standard | Title | Relevance |
+|----------|-------|-----------|
+| [KMIP 2.1 §6.1.45](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html) | Re-certify operation | Normative definition: request/response payload, attribute handling, link semantics |
+| [RFC 4210](https://www.rfc-editor.org/rfc/rfc4210.html) | Internet X.509 PKI — Certificate Management Protocol (CMP) | Defines `kur` (Key Update Request, §5.3.5) / `kup` (Key Update Response, §5.3.6) for certificate renewal over the wire. KMIP `ReCertify` is the KMS-internal equivalent. |
+| [RFC 4211](https://www.rfc-editor.org/rfc/rfc4211.html) | Internet X.509 CRMF (Certificate Request Message Format) | §6.5 "OldCert ID Control" — identifies the certificate being renewed in a CMP request |
+| [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280.html) | Internet X.509 PKI — Certificate and CRL Profile | Defines X.509v3 certificate structure, extensions, validity periods |
+| [RFC 2986](https://www.rfc-editor.org/rfc/rfc2986.html) | PKCS#10: Certification Request Syntax | CSR format supported by KMIP `CertificateRequestType` |
+| [RFC 5272](https://www.rfc-editor.org/rfc/rfc5272.html) | Certificate Management over CMS (CMC) | Alternative certificate lifecycle protocol |
+
+#### Relationship between CMP and KMIP ReCertify
+
+In the CMP protocol (RFC 4210), a client sends a **Key Update Request** (`kur`,
+body tag [7]) to a CA to obtain a renewed certificate for an existing key pair.
+The CA responds with a **Key Update Response** (`kup`, body tag [8]) containing
+the new certificate.
+
+In Cosmian KMS, the server acts as both the CA and the key/certificate store.
+The `ReCertify` KMIP operation performs the equivalent of a CMP `kur`/`kup`
+exchange locally: it re-signs the certificate for the same subject and key pair,
+assigns a fresh UID, and manages replacement links — all in a single atomic
+database transaction.
+
+#### Rotation flow
+
+1. The existing certificate is retrieved and its issuer/subject are resolved.
+2. A new certificate is built and signed (same key pair, same issuer).
+3. The new certificate is assigned a fresh UID.
+4. `ReplacedObjectLink` on the new certificate → old certificate.
+5. `ReplacementObjectLink` on the old certificate → new certificate.
+6. Keys linked to the old certificate have their `CertificateLink` updated
+   to point to the new certificate.
+7. Rotation metadata (`x-rotate-generation`, `x-rotate-date`) is set.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant KMS
+    participant DB
+
+    Client->>KMS: ReCertify(old_cert_uid)
+    KMS->>DB: retrieve old certificate
+    KMS->>KMS: resolve issuer + subject from old cert
+    KMS->>KMS: build & sign new certificate (same key pair)
+    KMS->>DB: Phase 1 — store new cert (fresh UID)
+    KMS->>DB: Phase 2 — update old cert (ReplacementObjectLink)
+    KMS->>DB: Phase 2 — relink keys (CertificateLink → new cert)
+    KMS-->>Client: ReCertifyResponse(new_cert_uid)
+```
+
+#### Attribute handling (KMIP 2.1 §6.1.45 Table 299)
+
+| Attribute | New certificate | Old certificate |
+|-----------|-----------------|-----------------|
+| `Unique Identifier` | Fresh UUID | Unchanged |
+| `Initial Date` | Set to current time | Unchanged |
+| `Link[ReplacedObjectLink]` | → old cert UID | — |
+| `Link[ReplacementObjectLink]` | — | → new cert UID |
+| `Link[PublicKeyLink]` | Preserved from old cert | Unchanged |
+| `Link[PrivateKeyLink]` | Preserved from old cert | Unchanged |
+| `Name` | Inherited from old cert | Removed (per KMIP spec) |
+| `State` | Active | Active |
+| `x-rotate-generation` | old value + 1 | Unchanged |
+| `x-rotate-date` | Current timestamp | Unchanged |
+| `Destroy Date` | Not set | Unchanged |
+| `Revocation Reason` | Not set | Unchanged |
+
+#### Key differences from key rotation
+
+| Aspect | Key rotation (`ReKey` / `ReKeyKeyPair`) | Certificate renewal (`ReCertify`) |
+|--------|------------------------------------------|-----------------------------------|
+| New material generated? | Yes (new key bytes) | No (same key pair) |
+| Wrapping involved? | Yes (if key was wrapped) | Never |
+| Dependants re-wrapped? | Yes (for wrapping keys) | No — keys are *relinked* instead |
+| KMIP operation | `Re-Key` (0x0A) / `Re-Key Key Pair` (0x0B) | `Re-Certify` (0x07) |
+
+#### CLI usage
+
+Certificate renewal is invoked via the `ckms certificates certify` command with
+the `--certificate-id-to-re-certify` flag:
+
+```bash
+# Renew an existing certificate (same key pair, new validity period)
+ckms certificates certify \
+    --certificate-id-to-re-certify <OLD_CERT_UID> \
+    --issuer-private-key-id <ISSUER_SK_UID> \
+    --days 365
+
+# Self-signed certificate renewal (issuer = subject)
+ckms certificates certify \
+    --certificate-id-to-re-certify <OLD_CERT_UID> \
+    --days 3650
+```
+
+---
+
+### 7. Server-wide key-encryption key (KEK)
 
 The KMS server can be configured with a **key-encryption key** (`--key-encryption-key`
 CLI flag or `key_encryption_key` in `kms.toml`).  When this option is set,
@@ -310,10 +414,12 @@ flowchart TD
         DISPATCH -->|SymmetricKey + has dependants| WRAP_K["Wrapping-key rotation<br/>(Phase 1 → Phase 2 re-wrap)"]
         DISPATCH -->|SymmetricKey + wrapped| WRAP_D["Wrapped-key rotation<br/>(unwrap → new material → re-wrap)"]
         DISPATCH -->|PrivateKey| ASYM["ReKeyKeyPair"]
+        DISPATCH -->|Certificate| CERT["ReCertify<br/>(same key pair, new cert UID)"]
         PLAIN --> META["Update metadata<br/>(generation++, date, links)"]
         WRAP_K --> META
         WRAP_D --> META
         ASYM --> META
+        CERT --> META
         META --> OTEL["Increment<br/>kms.key.auto_rotation<br/>OTel counter"]
     end
 ```

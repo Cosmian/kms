@@ -1054,6 +1054,11 @@ pub struct ReCertify {
     /// A Byte String object with the certificate request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_request_value: Option<Vec<u8>>,
+    /// An Offset MAY be used to indicate the difference between the Initial Date
+    /// and the Activation Date of the new certificate.  Per KMIP 2.1 §6.1.45,
+    /// the new certificate's Activation Date = Initial Date + Offset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<i32>,
     /// Specifies desired attributes to be associated with the new certificate.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Attributes>,
@@ -1067,6 +1072,7 @@ impl_display!(ReCertify, "ReCertify", {
     opt unique_identifier,
     opt certificate_request_type,
     opt_b64 certificate_request_value,
+    opt offset,
     opt attributes,
     opt protection_storage_masks,
 });
