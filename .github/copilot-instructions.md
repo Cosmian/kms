@@ -564,6 +564,31 @@ When upgrading OpenSSL:
 - **Commit scope**: make minimal, focused changes. Don't refactor surrounding code alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`.
 
+### Test vectors
+
+For every feature added or bug fixed, a test vector **must** be added to `test_data/vectors/` **unless** one the following conditions is met:
+- The behavior being tested is not observable in a KMIP HTTP response (e.g., metric emission, in-process state changes).
+- The new vector would exercise the same KMIP operations already covered by existing vectors,
+  just with a new name to "document" a feature, without catching a regression that no
+  other vector would catch.
+- The vector will always pass regardless of weather the new feature works.
+
+If none of these apply, the vector **must** be added as follows :
+1. Model the vector on existing examples in `test_data/vectors/`.
+2. Register the corresponding test function in `crate/test_kms_server/src/vector_runner.rs`.
+3. Run the test and confirm it passes: `cargo test -p test_kms_server <fn_name>`.
+4. Update `crate/test_kms_server/README.md` to keep the table in sync with the directory tree.
+
+### Server configuration & wizard synchronization
+
+Every field of `ClapConfig` in `crate/server/src/config/command_line/clap_config.rs` (and its sub-structs) **must** have a corresponding configuration step in the server wizard at `crate/server/src/config/wizard/`.
+
+When modifying `ClapConfig` or any of its nested config structs:
+
+1. Add or update the corresponding wizard step in the appropriate `*_wizard.rs` file under `crate/server/src/config/wizard/`.
+2. If a new config sub-struct is added, create a new `*_wizard.rs` file and register it in `crate/server/src/config/wizard/mod.rs`.
+3. Update `resources/kms.toml` and `crate/server/kms_template.toml` if the field should appear in the reference config.
+
 ---
 
 ## Updating CHANGELOG.md

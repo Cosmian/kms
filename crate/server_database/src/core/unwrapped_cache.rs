@@ -301,7 +301,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_lru_cache() -> DbResult<()> {
-        // log_init(Some("debug"));
         log_init(option_env!("RUST_LOG"));
 
         let dir = TempDir::new()?;
@@ -312,6 +311,7 @@ mod tests {
             true,
             HashMap::new(),
             Duration::from_millis(100),
+            None,
         )
         .await?;
 

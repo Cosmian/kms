@@ -7,7 +7,7 @@ mod permissions;
 use std::{collections::HashMap, sync::Arc};
 
 use cosmian_kms_server_database::{
-    Database,
+    Database, DbMetricsRecorder,
     reexport::cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
 };
 use cosmian_logger::trace;
@@ -139,11 +139,19 @@ impl KMS {
         let main_db_params = server_params.main_db_params.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("The main database parameters are not specified".to_owned())
         })?;
+
+        let metrics = Self::create_otel_metrics(&server_params)?;
+        let db_otel_recorder: Option<Arc<dyn DbMetricsRecorder>> =
+            metrics.as_ref().map(|m| -> Arc<dyn DbMetricsRecorder> {
+                m.clone() // Arc clones are cheap
+            });
+
         let database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
             server_params.unwrapped_cache_max_age,
+            db_otel_recorder,
         )
         .await?;
 
@@ -153,7 +161,7 @@ impl KMS {
             crypto_oracles: RwLock::new(crypto_oracles),
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
-            metrics: Self::create_otel_metrics(&server_params)?,
+            metrics,
         })
     }
 
