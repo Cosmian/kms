@@ -81,7 +81,7 @@ fn cryptographic_usage_mask_public_key(
 /// - a certificate
 /// - a key pair and a subject name
 /// - a CSR
-pub(super) async fn get_subject(
+pub(crate) async fn get_subject(
     kms: &KMS,
     request: &cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Certify,
     user: &str,

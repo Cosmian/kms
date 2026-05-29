@@ -790,6 +790,46 @@ impl ObjectsStore for PgPool {
             Ok(out)
         })
     }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        pg_retry!(self.pool, |client| {
+            // PostgreSQL uses ->> for JSON text extraction.
+            // We check the 5 object variants that can hold a KeyBlock with wrapping data.
+            let sql = "\
+                SELECT DISTINCT objects.id, objects.state, objects.attributes \
+                FROM objects \
+                LEFT JOIN read_access ON objects.id = read_access.id \
+                    AND read_access.userid = $2 \
+                WHERE (objects.owner = $2 OR read_access.userid = $2) \
+                  AND ( \
+                    objects.object->'SymmetricKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
+                    OR objects.object->'PrivateKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
+                    OR objects.object->'SecretData'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
+                    OR objects.object->'SplitKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
+                    OR objects.object->'PGPKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
+                  )";
+            let rows = client
+                .query(sql, &[&wrapping_key_uid, &user])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut out = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let state_str: String = row.get(1);
+                let state = State::try_from(state_str.as_str())
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                let attrs_val: Value = row.get(2);
+                let attrs: Attributes = serde_json::from_value(attrs_val)
+                    .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+                out.push((uid, state, attrs));
+            }
+            Ok(out)
+        })
+    }
 }
 
 #[async_trait(?Send)]

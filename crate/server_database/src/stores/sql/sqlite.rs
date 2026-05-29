@@ -534,6 +534,63 @@ impl ObjectsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(rows)
     }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // Search in the stored `object` JSON column for objects whose KeyWrappingData
+        // EncryptionKeyInformation UniqueIdentifier matches the given wrapping key UID.
+        // We check all the object variant prefixes that can hold a KeyBlock.
+        let sql = replace_dollars_with_qn(
+            "SELECT DISTINCT objects.id, objects.state, objects.attributes \
+             FROM objects \
+             LEFT JOIN read_access ON objects.id = read_access.id \
+                 AND read_access.userid = $2 \
+             WHERE (objects.owner = $2 OR read_access.userid = $2) \
+               AND ( \
+                 json_extract(objects.object, '$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
+                 OR json_extract(objects.object, '$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
+                 OR json_extract(objects.object, '$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
+                 OR json_extract(objects.object, '$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
+                 OR json_extract(objects.object, '$.PGPKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
+               )",
+        );
+        let uid_s = wrapping_key_uid.to_owned();
+        let user_s = user.to_owned();
+        let rows = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Vec<(String, State, Attributes)>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut q =
+                        stmt.query(params_from_iter([uid_s.as_str(), user_s.as_str()]))?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        let id: String = r.get(0)?;
+                        let state_str: String = r.get(1)?;
+                        let state = State::try_from(state_str.as_str())
+                            .map_err(|_e| rusqlite::Error::InvalidQuery)?;
+                        let raw: String = r.get(2)?;
+                        let attrs = if raw.is_empty() {
+                            Attributes::default()
+                        } else {
+                            serde_json::from_str::<Attributes>(&raw)
+                                .map_err(|_e| rusqlite::Error::InvalidQuery)?
+                        };
+                        out.push((id, state, attrs));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(rows)
+    }
 }
 
 #[async_trait(?Send)]
