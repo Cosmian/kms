@@ -193,6 +193,8 @@ pub enum Operation {
     PKCS11Response(PKCS11Response),
     Query(Query),
     QueryResponse(Box<QueryResponse>),
+    ReCertify(Box<ReCertify>),
+    ReCertifyResponse(ReCertifyResponse),
     ReKey(ReKey),
     ReKeyKeyPair(Box<ReKeyKeyPair>),
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
@@ -277,6 +279,8 @@ impl Display for Operation {
             Self::PKCS11Response(op) => write!(f, "{op}")?,
             Self::Query(op) => write!(f, "{op}")?,
             Self::QueryResponse(op) => write!(f, "{op}")?,
+            Self::ReCertify(op) => write!(f, "{op}")?,
+            Self::ReCertifyResponse(op) => write!(f, "{op}")?,
             Self::ReKey(op) => write!(f, "{op}")?,
             Self::ReKeyKeyPair(op) => write!(f, "{op}")?,
             Self::ReKeyKeyPairResponse(op) => write!(f, "{op}")?,
@@ -333,6 +337,7 @@ impl Operation {
             | Self::ModifyAttributeResponse(_)
             | Self::PKCS11Response(_)
             | Self::QueryResponse(_)
+            | Self::ReCertifyResponse(_)
             | Self::ReKeyKeyPairResponse(_)
             | Self::ReKeyResponse(_)
             | Self::RegisterResponse(_)
@@ -393,6 +398,7 @@ impl Operation {
             }
             Self::PKCS11(_) | Self::PKCS11Response(_) => OperationEnumeration::PKCS11,
             Self::Query(_) | Self::QueryResponse(_) => OperationEnumeration::Query,
+            Self::ReCertify(_) | Self::ReCertifyResponse(_) => OperationEnumeration::ReCertify,
             Self::Register(_) | Self::RegisterResponse(_) => OperationEnumeration::Register,
             Self::ReKey(_) | Self::ReKeyResponse(_) => OperationEnumeration::ReKey,
             Self::ReKeyKeyPair(_) | Self::ReKeyKeyPairResponse(_) => {
@@ -1020,6 +1026,60 @@ pub struct CertifyResponse {
 }
 
 impl_display!(CertifyResponse, "CertifyResponse", { req unique_identifier });
+
+/// `ReCertify`
+///
+/// This operation requests the server to generate a new certificate for an
+/// existing public key whose certificate has expired or is about to expire.
+/// The request contains the Unique Identifier of the existing certificate to be
+/// renewed, an optional certificate request, and optional attributes for the new
+/// certificate.
+///
+/// The server creates a new Certificate object with a fresh Unique Identifier,
+/// sets a `ReplacedObjectLink` on the new certificate pointing to the old one,
+/// and sets a `ReplacementObjectLink` on the old certificate pointing to the new one.
+///
+/// KMIP 2.1 §6.1.8 / KMIP 1.4 §4.8
+#[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ReCertify {
+    /// The Unique Identifier of the existing Certificate to be re-certified.
+    /// If omitted, the ID Placeholder value is used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// An Enumeration object specifying the type of certificate request.
+    /// Required if Certificate Request Value is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_type: Option<CertificateRequestType>,
+    /// A Byte String object with the certificate request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_value: Option<Vec<u8>>,
+    /// Specifies desired attributes to be associated with the new certificate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
+    /// Specifies all permissible Protection Storage Mask selections for the new
+    /// object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
+}
+
+impl_display!(ReCertify, "ReCertify", {
+    opt unique_identifier,
+    opt certificate_request_type,
+    opt_b64 certificate_request_value,
+    opt attributes,
+    opt protection_storage_masks,
+});
+
+/// Response to a `ReCertify` request.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct ReCertifyResponse {
+    /// The Unique Identifier of the newly created replacement certificate.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl_display!(ReCertifyResponse, "ReCertifyResponse", { req unique_identifier });
 
 /// Create
 ///

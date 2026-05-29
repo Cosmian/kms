@@ -338,6 +338,7 @@ fn get_operation_name(operation: &Operation) -> &'static str {
         Operation::MAC(_) => "MAC",
         Operation::Query(_) => "Query",
         Operation::Register(_) => "Register",
+        Operation::ReCertify(_) => "ReCertify",
         Operation::ReKey(_) => "ReKey",
         Operation::ReKeyKeyPair(_) => "ReKeyKeyPair",
         Operation::Revoke(_) => "Revoke",
@@ -494,6 +495,10 @@ async fn process_operation(
                 kms.register(*kmip_request, user, privileged_users)
                     .await?,
             ),
+            Operation::ReCertify(kmip_request) => Operation::ReCertifyResponse(
+                kms.recertify(*kmip_request, user, privileged_users)
+                    .await?,
+            ),
             Operation::ReKey(kmip_request) => {
                 Operation::ReKeyResponse(kms.rekey(kmip_request, user, privileged_users).await?)
             }
@@ -537,6 +542,7 @@ async fn process_operation(
             | Operation::MACResponse(_)
         | Operation::MACVerifyResponse(_)
             | Operation::QueryResponse(_)
+            | Operation::ReCertifyResponse(_)
             | Operation::RegisterResponse(_)
             | Operation::ReKeyKeyPairResponse(_)
             | Operation::ReKeyResponse(_)

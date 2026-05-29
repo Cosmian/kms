@@ -498,6 +498,58 @@ pub struct ReCertifyResponse {
     pub template_attribute: Option<TemplateAttribute>,
 }
 
+impl From<ReCertify> for kmip_2_1::kmip_operations::ReCertify {
+    fn from(recertify: ReCertify) -> Self {
+        let cert_req_type = match recertify.certificate_request_type {
+            CertificateRequestType::CRMF => kmip_2_1::kmip_types::CertificateRequestType::CRMF,
+            CertificateRequestType::PKCS10 => kmip_2_1::kmip_types::CertificateRequestType::PKCS10,
+            CertificateRequestType::PEM => kmip_2_1::kmip_types::CertificateRequestType::PEM,
+        };
+        Self {
+            unique_identifier: Some(recertify.unique_identifier.into()),
+            certificate_request_type: Some(cert_req_type),
+            certificate_request_value: Some(recertify.certificate_request_value),
+            attributes: recertify.template_attribute.map(Into::into),
+            protection_storage_masks: None,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ReCertifyResponse> for ReCertifyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::ReCertifyResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            template_attribute: None,
+        })
+    }
+}
+
+impl From<kmip_2_1::kmip_operations::ReCertify> for ReCertify {
+    fn from(recertify: kmip_2_1::kmip_operations::ReCertify) -> Self {
+        let cert_req_type = match recertify.certificate_request_type {
+            Some(kmip_2_1::kmip_types::CertificateRequestType::CRMF) => {
+                CertificateRequestType::CRMF
+            }
+            Some(kmip_2_1::kmip_types::CertificateRequestType::PKCS10) => {
+                CertificateRequestType::PKCS10
+            }
+            Some(kmip_2_1::kmip_types::CertificateRequestType::PEM) | None => {
+                CertificateRequestType::PEM
+            }
+        };
+        Self {
+            unique_identifier: recertify
+                .unique_identifier
+                .map_or_else(String::new, |u| u.to_string()),
+            certificate_request_type: cert_req_type,
+            certificate_request_value: recertify.certificate_request_value.unwrap_or_default(),
+            template_attribute: None,
+        }
+    }
+}
+
 /// 4.9 Locate
 /// This operation requests that the server search for one or more Managed Objects.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -2647,9 +2699,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // }
             // Operation::Poll(poll) => Self::Poll(poll.into()),
             Operation::Query(query) => Self::Query(query.into()),
-            // Operation::ReCertify(recertify) => {
-            //     Self::ReCertify(recertify.into())
-            // }
+            Operation::ReCertify(recertify) => Self::ReCertify(Box::new(recertify.into())),
             // Operation::Recover(recover) => {
             //     Self::Recover(recover.into())
             // }
@@ -2803,9 +2853,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                     (*query_response).try_into().context("QueryResponse")?,
                 ))
             }
-            // Operation::ReCertifyResponse(recertify_response) => {
-            //     Self::ReCertifyResponse(recertify_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::ReCertifyResponse(recertify_response) => {
+                Self::ReCertifyResponse(recertify_response.try_into().context("ReCertifyResponse")?)
+            }
             // Operation::RecoverResponse(recover_response) => {
             //     Self::RecoverResponse(recover_response.into())
             // }

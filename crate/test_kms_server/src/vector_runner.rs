@@ -3099,6 +3099,13 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/non-fips/rekey_keypair_secp256k1").await
     }
 
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_covercrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/rekey_keypair_covercrypt").await
+    }
+
     // ── KMIP operations: certificate chain and revoke ───────────────────
 
     #[cfg(feature = "non-fips")]
