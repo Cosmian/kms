@@ -16,6 +16,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use cosmian_kms_server_database::{DbMetricsRecorder, MainDbKind};
 use opentelemetry::{
     KeyValue,
     metrics::{Counter, Histogram, Meter, MeterProvider, UpDownCounter},
@@ -352,17 +353,37 @@ impl OtelMetrics {
         }
     }
 
-    /// Record a database operation
-    pub fn record_database_operation(&self, operation: &str) {
-        self.database_operations_total
-            .add(1, &[KeyValue::new("operation", operation.to_owned())]);
-    }
-
-    /// Record database operation duration
-    pub fn record_database_operation_duration(&self, operation: &str, duration_seconds: f64) {
+    /// Record a database operation (count + duration in one call).
+    ///
+    /// # Arguments
+    /// * `operation` – low-cardinality label (`"create"`, `"retrieve"`, …)
+    /// * `backend`   – typed database backend; `as_str()` is called here so
+    ///   no free-form string can sneak in through this method.
+    /// * `outcome`   – `"success"` or `"error"`
+    /// * `duration_seconds` – wall-clock duration of the operation
+    pub fn record_database_operation(
+        &self,
+        operation: &str,
+        backend: MainDbKind,
+        outcome: &str,
+        duration_seconds: f64,
+    ) {
+        let backend_str = backend.as_str();
+        self.database_operations_total.add(
+            1,
+            &[
+                KeyValue::new("operation", operation.to_owned()),
+                KeyValue::new("backend", backend_str),
+                KeyValue::new("outcome", outcome.to_owned()),
+            ],
+        );
         self.database_operation_duration.record(
             duration_seconds,
-            &[KeyValue::new("operation", operation.to_owned())],
+            &[
+                KeyValue::new("operation", operation.to_owned()),
+                KeyValue::new("backend", backend_str),
+                KeyValue::new("outcome", outcome.to_owned()),
+            ],
         );
     }
 
@@ -469,6 +490,18 @@ impl OtelMetrics {
     }
 }
 
+impl DbMetricsRecorder for OtelMetrics {
+    fn record_operation(
+        &self,
+        operation: &str,
+        backend: MainDbKind,
+        outcome: &str,
+        duration_seconds: f64,
+    ) {
+        self.record_database_operation(operation, backend, outcome, duration_seconds);
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::expect_used,
@@ -538,6 +571,6 @@ mod tests {
         let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
 
         metrics.record_kmip_operation_duration("Create", 0.123);
-        metrics.record_database_operation_duration("insert", 0.045);
+        metrics.record_database_operation("insert", MainDbKind::Sqlite, "success", 0.045);
     }
 }

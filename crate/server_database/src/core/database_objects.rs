@@ -1,6 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
+    future::Future,
     sync::Arc,
+    time::Instant,
 };
 
 use cosmian_kmip::{
@@ -124,7 +126,34 @@ impl Database {
             .ok_or_else(|| DbError::InvalidRequest("No default object store available".to_owned()))
             .map(Arc::clone)
     }
-
+    /// Centralises metrics instrumentation boilerplate so that public methods
+    /// stay focused on their core logic.
+    ///
+    /// Accepts a future representing the database operation (not yet polled),
+    /// awaits it, then records the operation name, backend, outcome, and elapsed
+    /// duration to the injected [`DbMetricsRecorder`] (if any).
+    ///
+    /// # Important
+    ///
+    /// Every new operation added to the `Database` facade must be wrapped with
+    /// this method to be accounted for by the metrics recorder.
+    async fn record<T>(
+        &self,
+        operation: &str,
+        fut: impl Future<Output = DbResult<T>>,
+    ) -> DbResult<T> {
+        let start = Instant::now();
+        let result = fut.await;
+        if let Some(ref rec) = self.recorder {
+            rec.record_operation(
+                operation,
+                self.kind,
+                if result.is_ok() { "success" } else { "error" },
+                start.elapsed().as_secs_f64(),
+            );
+        }
+        result
+    }
     /// Create the given Object in the database.
     /// A new UUID will be created if none is supplier.
     /// This method will fail if an ` uid ` is supplied
@@ -153,12 +182,14 @@ impl Database {
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> DbResult<String> {
-        let db = self
-            .get_object_store(uid.as_deref().unwrap_or_default())
-            .await?;
-        let uid = db.create(uid, owner, object, attributes, tags).await?;
-        // New objects never have a cache entry; nothing to invalidate.
-        Ok(uid)
+        self.record("create", async move {
+            let db = self
+                .get_object_store(uid.as_deref().unwrap_or_default())
+                .await?;
+            // New objects never have a cache entry; nothing to invalidate.
+            Ok(db.create(uid, owner, object, attributes, tags).await?)
+        })
+        .await
     }
 
     /// Retrieve objects from the database.
@@ -188,21 +219,24 @@ impl Database {
         &self,
         uid_or_tags: &str,
     ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
-        let uids = if uid_or_tags.starts_with('[') {
-            // tags
-            let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
-            self.list_uids_for_tags(&tags).await?
-        } else {
-            HashSet::from([uid_or_tags.to_owned()])
-        };
-        let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
-        for uid in &uids {
-            let owm = self.retrieve_object(uid).await?;
-            if let Some(owm) = owm {
-                results.insert(uid.to_owned(), owm);
+        self.record("retrieve_objects", async move {
+            let uids = if uid_or_tags.starts_with('[') {
+                // tags
+                let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
+                self.list_uids_for_tags(&tags).await?
+            } else {
+                HashSet::from([uid_or_tags.to_owned()])
+            };
+            let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
+            for uid in &uids {
+                let owm = self.retrieve_object(uid).await?;
+                if let Some(owm) = owm {
+                    results.insert(uid.to_owned(), owm);
+                }
             }
-        }
-        Ok(results)
+            Ok(results)
+        })
+        .await
     }
 
     /// Retrieve a single object from the database.
@@ -224,15 +258,20 @@ impl Database {
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
     pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
-        // retrieve the object
-        let db = self.get_object_store(uid).await?;
-        Ok(db.retrieve(uid).await?)
+        self.record("retrieve", async move {
+            let db = self.get_object_store(uid).await?;
+            Ok(db.retrieve(uid).await?)
+        })
+        .await
     }
 
     /// Retrieve the tags of the object with the given `uid`
     pub async fn retrieve_tags(&self, uid: &str) -> DbResult<HashSet<String>> {
-        let db = self.get_object_store(uid).await?;
-        Ok(db.retrieve_tags(uid).await?)
+        self.record("retrieve_tags", async move {
+            let db = self.get_object_store(uid).await?;
+            Ok(db.retrieve_tags(uid).await?)
+        })
+        .await
     }
 
     /// This method updates the specified object identified by its `uid` in the database.
@@ -261,40 +300,55 @@ impl Database {
         attributes: &Attributes,
         tags: Option<&HashSet<String>>,
     ) -> DbResult<()> {
-        let db = self.get_object_store(uid).await?;
-        db.update_object(uid, object, attributes, tags).await?;
-        // Key material is immutable; only attributes change via update_object.
-        // The GC clears stale unwrap-cache entries; no eager invalidation needed here.
-        Ok(())
+        self.record("update_object", async move {
+            let db = self.get_object_store(uid).await?;
+            db.update_object(uid, object, attributes, tags).await?;
+            // Key material is immutable; only attributes change via update_object.
+            // The GC clears stale unwrap-cache entries; no eager invalidation needed here.
+            Ok(())
+        })
+        .await
     }
 
     /// Update the state of an object in the database.
     pub async fn update_state(&self, uid: &str, state: State) -> DbResult<()> {
-        let db = self.get_object_store(uid).await?;
-        Ok(db.update_state(uid, state).await?)
+        self.record("update_state", async move {
+            let db = self.get_object_store(uid).await?;
+            Ok(db.update_state(uid, state).await?)
+        })
+        .await
     }
 
     /// Delete an object from the database.
     pub async fn delete(&self, uid: &str) -> DbResult<()> {
-        let db = self.get_object_store(uid).await?;
-        db.delete(uid).await?;
-        self.unwrapped_cache.clear_cache(uid).await;
-        Ok(())
+        self.record("delete", async move {
+            let db = self.get_object_store(uid).await?;
+            db.delete(uid).await?;
+            self.unwrapped_cache.clear_cache(uid).await;
+            Ok(())
+        })
+        .await
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
     pub async fn is_object_owned_by(&self, uid: &str, owner: &str) -> DbResult<bool> {
-        let db = self.get_object_store(uid).await?;
-        Ok(db.is_object_owned_by(uid, owner).await?)
+        self.record("is_object_owned_by", async move {
+            let db = self.get_object_store(uid).await?;
+            Ok(db.is_object_owned_by(uid, owner).await?)
+        })
+        .await
     }
 
     pub async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> DbResult<HashSet<String>> {
-        let db_map = self.objects.read().await;
-        let mut results = HashSet::new();
-        for db in db_map.values() {
-            results.extend(db.list_uids_for_tags(tags).await?);
-        }
-        Ok(results)
+        self.record("list_uids_for_tags", async move {
+            let db_map = self.objects.read().await;
+            let mut results = HashSet::new();
+            for db in db_map.values() {
+                results.extend(db.list_uids_for_tags(tags).await?);
+            }
+            Ok(results)
+        })
+        .await
     }
 
     /// Return uid, state and attributes of the object identified by its owner,
@@ -307,22 +361,25 @@ impl Database {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
-        let map = self.objects.read().await;
-        let mut results: Vec<(String, State, Attributes)> = Vec::new();
-        for db in map.values() {
-            results.extend(
-                db.find(
-                    researched_attributes,
-                    state,
-                    user,
-                    user_must_be_owner,
-                    vendor_id,
-                )
-                .await
-                .unwrap_or(vec![]),
-            );
-        }
-        Ok(results)
+        self.record("find", async move {
+            let map = self.objects.read().await;
+            let mut results: Vec<(String, State, Attributes)> = Vec::new();
+            for db in map.values() {
+                results.extend(
+                    db.find(
+                        researched_attributes,
+                        state,
+                        user,
+                        user_must_be_owner,
+                        vendor_id,
+                    )
+                    .await
+                    .unwrap_or(vec![]),
+                );
+            }
+            Ok(results)
+        })
+        .await
     }
 
     /// Perform an atomic set of operations on the database.
@@ -352,38 +409,45 @@ impl Database {
         if operations.is_empty() {
             return Ok(vec![]);
         }
-        #[expect(clippy::indexing_slicing)]
-        let first_op = &operations[0];
-        let first_uid = first_op.get_object_uid();
-        let db = self.get_object_store(first_uid).await?;
-        let ids = db.atomic(user, operations).await?;
-        // invalidate of clear cache for all operations
-        for op in operations {
-            match op {
-                AtomicOperation::Create((uid, object, ..))
-                | AtomicOperation::UpdateObject((uid, object, ..))
-                | AtomicOperation::Upsert((uid, object, ..)) => {
-                    self.unwrapped_cache.validate_cache(uid, object).await?;
+        self.record("atomic", async move {
+            #[expect(clippy::indexing_slicing)]
+            let first_op = &operations[0];
+            let first_uid = first_op.get_object_uid();
+            let db = self.get_object_store(first_uid).await?;
+            let ids = db.atomic(user, operations).await?;
+            // invalidate or clear cache for all operations
+            for op in operations {
+                match op {
+                    AtomicOperation::Create((uid, object, ..))
+                    | AtomicOperation::UpdateObject((uid, object, ..))
+                    | AtomicOperation::Upsert((uid, object, ..)) => {
+                        self.unwrapped_cache.validate_cache(uid, object).await?;
+                    }
+                    AtomicOperation::Delete(uid) => {
+                        self.unwrapped_cache.clear_cache(uid).await;
+                    }
+                    AtomicOperation::UpdateState(_) => {}
                 }
-                AtomicOperation::Delete(uid) => {
-                    self.unwrapped_cache.clear_cache(uid).await;
-                }
-                AtomicOperation::UpdateState(_) => {}
             }
-        }
-        Ok(ids)
+            Ok(ids)
+        })
+        .await
     }
 }
 
 #[cfg(test)]
 #[expect(clippy::expect_used, clippy::panic)]
 mod tests {
-    use std::{collections::HashMap, time::Duration};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
 
     use tempfile::TempDir;
 
     use super::Database;
-    use crate::core::MainDbParams;
+    use crate::core::{DbMetricsRecorder, MainDbKind, MainDbParams};
 
     /// Verify that a UID with an HSM prefix is rejected when no HSM store is registered.
     #[tokio::test]
@@ -394,6 +458,7 @@ mod tests {
             false,
             HashMap::new(), // no HSM stores registered
             Duration::from_secs(1),
+            None,
         )
         .await
         .expect("Failed to instantiate in-memory database");
@@ -408,6 +473,66 @@ mod tests {
                     "Expected 'No HSM is configured' in error, got: {msg}"
                 );
             }
+        }
+    }
+
+    /// Verify that the `DbMetricsRecorder` injected into `Database` is called when
+    /// DB facade methods are invoked.
+    ///
+    /// Uses a thread-safe mock recorder that collects every `(operation, backend, outcome)`
+    /// triple so the test can assert that the instrumentation fires as expected.
+    #[tokio::test]
+    async fn test_db_recorder_called_on_operations() {
+        /// Minimal mock that records every call in a shared Vec.
+        #[derive(Clone, Default)]
+        struct MockRecorder {
+            calls: Arc<Mutex<Vec<(String, String, String)>>>,
+        }
+        impl DbMetricsRecorder for MockRecorder {
+            fn record_operation(
+                &self,
+                operation: &str,
+                backend: MainDbKind,
+                outcome: &str,
+                _duration_seconds: f64,
+            ) {
+                self.calls.lock().expect("mutex poisoned").push((
+                    operation.to_owned(),
+                    backend.as_str().to_owned(),
+                    outcome.to_owned(),
+                ));
+            }
+        }
+
+        let tmp = TempDir::new().expect("Failed to create temp dir");
+        let recorder = MockRecorder::default();
+        let calls = Arc::clone(&recorder.calls);
+        let recorder_arc: Arc<dyn DbMetricsRecorder> = Arc::new(recorder);
+
+        let db = Database::instantiate(
+            &MainDbParams::Sqlite(tmp.path().to_path_buf(), None),
+            false,
+            HashMap::new(),
+            Duration::from_secs(1),
+            Some(recorder_arc),
+        )
+        .await
+        .expect("Failed to instantiate database with mock recorder");
+
+        // list_user_operations_granted: exercises the permissions facade path.
+        drop(db.list_user_operations_granted("test_user").await);
+
+        let recorded = calls.lock().expect("mutex poisoned").clone();
+        assert!(
+            !recorded.is_empty(),
+            "Expected the mock recorder to be called but got zero calls"
+        );
+        // Every recorded call must use "sqlite" as the backend.
+        for (op, backend, _outcome) in &recorded {
+            assert_eq!(
+                backend, "sqlite",
+                "Expected backend 'sqlite' for operation '{op}', got '{backend}'"
+            );
         }
     }
 }
