@@ -934,7 +934,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     use_jwt_auth || use_cert_auth || use_api_token_auth,
                     EnsureAuth::new(
                         kms_server_for_http.clone(),
-                        use_cert_auth,
+                        use_jwt_auth || use_cert_auth || use_api_token_auth,
                     ),
                 ))
                 .wrap(Condition::new(
