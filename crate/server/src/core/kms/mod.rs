@@ -155,6 +155,28 @@ impl KMS {
         )
         .await?;
 
+        // Seed the kms.objects.total gauge from the real DB count on startup.
+        //
+        // This ensures the metric starts at the correct absolute value rather
+        // than 0.  Without this seed, the gauge would only reach the right count
+        // after the first periodic cron sync (up to 30 s later), giving a
+        // misleading reading immediately after server restart.
+        if let Some(ref m) = metrics {
+            match database.count_all_non_destroyed_objects().await {
+                Ok(count) => {
+                    m.update_objects_total(
+                        i64::try_from(count).unwrap_or(i64::MAX),
+                    );
+                }
+                Err(e) => {
+                    // Non-fatal: the cron will correct the value within 30 s.
+                    cosmian_logger::debug!(
+                        "[kms-init] Failed to seed kms.objects.total: {e}"
+                    );
+                }
+            }
+        }
+
         Ok(Self {
             params: server_params.clone(),
             database,

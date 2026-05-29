@@ -182,14 +182,22 @@ impl Database {
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> DbResult<String> {
-        self.record("create", async move {
-            let db = self
-                .get_object_store(uid.as_deref().unwrap_or_default())
-                .await?;
-            // New objects never have a cache entry; nothing to invalidate.
-            Ok(db.create(uid, owner, object, attributes, tags).await?)
-        })
-        .await
+        let result = self
+            .record("create", async move {
+                let db = self
+                    .get_object_store(uid.as_deref().unwrap_or_default())
+                    .await?;
+                // New objects never have a cache entry; nothing to invalidate.
+                Ok(db.create(uid, owner, object, attributes, tags).await?)
+            })
+            .await;
+        // Emit +1 on success: a net-new object was just added.
+        if result.is_ok() {
+            if let Some(ref rec) = self.recorder {
+                rec.record_object_delta(1);
+            }
+        }
+        result
     }
 
     /// Retrieve objects from the database.
@@ -321,13 +329,21 @@ impl Database {
 
     /// Delete an object from the database.
     pub async fn delete(&self, uid: &str) -> DbResult<()> {
-        self.record("delete", async move {
-            let db = self.get_object_store(uid).await?;
-            db.delete(uid).await?;
-            self.unwrapped_cache.clear_cache(uid).await;
-            Ok(())
-        })
-        .await
+        let result = self
+            .record("delete", async move {
+                let db = self.get_object_store(uid).await?;
+                db.delete(uid).await?;
+                self.unwrapped_cache.clear_cache(uid).await;
+                Ok(())
+            })
+            .await;
+        // Emit -1 on success: the object has been permanently removed.
+        if result.is_ok() {
+            if let Some(ref rec) = self.recorder {
+                rec.record_object_delta(-1);
+            }
+        }
+        result
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -409,29 +425,102 @@ impl Database {
         if operations.is_empty() {
             return Ok(vec![]);
         }
-        self.record("atomic", async move {
-            #[expect(clippy::indexing_slicing)]
-            let first_op = &operations[0];
-            let first_uid = first_op.get_object_uid();
-            let db = self.get_object_store(first_uid).await?;
-            let ids = db.atomic(user, operations).await?;
-            // invalidate or clear cache for all operations
-            for op in operations {
-                match op {
-                    AtomicOperation::Create((uid, object, ..))
-                    | AtomicOperation::UpdateObject((uid, object, ..))
-                    | AtomicOperation::Upsert((uid, object, ..)) => {
-                        self.unwrapped_cache.validate_cache(uid, object).await?;
+
+        // Pre-compute the net object-count delta for the `kms.objects.total` metric.
+        //
+        // We walk the operation list BEFORE executing the transaction to determine
+        // how many net-new objects will be created vs destroyed:
+        //
+        //  - `Create`  always adds one object        → delta += 1
+        //  - `Delete`  always removes one object      → delta -= 1
+        //  - `Upsert`  is ambiguous: it is an INSERT…ON CONFLICT UPDATE, so it adds
+        //    an object only if the UID did not previously exist.  We do a lightweight
+        //    `retrieve` pre-read to decide:  if the object is absent → delta += 1,
+        //    if it already exists → delta += 0 (it will be overwritten in-place).
+        //  - `UpdateObject` / `UpdateState` leave the count unchanged → delta += 0
+        //
+        // **TOCTOU note**: there is a narrow race window between the pre-read and the
+        // transaction commit.  A concurrent create or delete could change the real
+        // count by ±1 before our transaction lands.  We accept this because:
+        //   a) the periodic 30-second cron sync will correct any accumulated drift, and
+        //   b) the alternative (reading inside the transaction) is impractical across
+        //      the heterogeneous backend abstraction.
+        let mut delta: i64 = 0;
+        for op in operations {
+            match op {
+                AtomicOperation::Create(_) => delta += 1,
+                AtomicOperation::Delete(_) => delta -= 1,
+                AtomicOperation::Upsert((uid, _, _, _, _)) => {
+                    // Upsert is net +1 only when the object does not yet exist.
+                    // `retrieve_object` goes through the recorder ("retrieve" label),
+                    // which is fine — a pre-read is a legitimate DB operation.
+                    let exists = self.retrieve_object(uid).await?.is_some();
+                    if !exists {
+                        delta += 1;
                     }
-                    AtomicOperation::Delete(uid) => {
-                        self.unwrapped_cache.clear_cache(uid).await;
-                    }
-                    AtomicOperation::UpdateState(_) => {}
                 }
+                AtomicOperation::UpdateObject(_) | AtomicOperation::UpdateState(_) => {}
             }
-            Ok(ids)
-        })
-        .await
+        }
+
+        let result = self
+            .record("atomic", async move {
+                #[expect(clippy::indexing_slicing)]
+                let first_op = &operations[0];
+                let first_uid = first_op.get_object_uid();
+                let db = self.get_object_store(first_uid).await?;
+                let ids = db.atomic(user, operations).await?;
+                // invalidate or clear cache for all operations
+                for op in operations {
+                    match op {
+                        AtomicOperation::Create((uid, object, ..))
+                        | AtomicOperation::UpdateObject((uid, object, ..))
+                        | AtomicOperation::Upsert((uid, object, ..)) => {
+                            self.unwrapped_cache.validate_cache(uid, object).await?;
+                        }
+                        AtomicOperation::Delete(uid) => {
+                            self.unwrapped_cache.clear_cache(uid).await;
+                        }
+                        AtomicOperation::UpdateState(_) => {}
+                    }
+                }
+                Ok(ids)
+            })
+            .await;
+
+        // Emit the pre-computed delta only on success and only when non-zero.
+        // On failure the transaction was rolled back, so no objects changed.
+        if result.is_ok() && delta != 0 {
+            if let Some(ref rec) = self.recorder {
+                rec.record_object_delta(delta);
+            }
+        }
+        result
+    }
+
+    /// Count all live (non-destroyed) objects across every registered object store.
+    ///
+    /// This is a **metrics-only** operation that bypasses user/permission filters.
+    /// It is called:
+    ///   1. Once at server startup to seed the `kms.objects.total` gauge.
+    ///   2. Every 30 s by the metrics cron task to correct any drift from the
+    ///      delta-based fast path (see `record_object_delta` in `database_objects.rs`).
+    ///
+    /// Because several stores may be registered simultaneously (e.g. one SQL store
+    /// plus one or more HSM stores), the results are summed. Backends that have not
+    /// yet implemented `count_all_non_destroyed` return `0` via the trait default,
+    /// which is acceptable — the sum will still be a valid lower bound.
+    pub async fn count_all_non_destroyed_objects(&self) -> DbResult<u64> {
+        let map = self.objects.read().await;
+        let mut total: u64 = 0;
+        for store in map.values() {
+            let n = store
+                .count_all_non_destroyed()
+                .await
+                .unwrap_or(0); // A single backend failure must not block the aggregate
+            total = total.saturating_add(n);
+        }
+        Ok(total)
     }
 }
 
@@ -501,6 +590,10 @@ mod tests {
                     backend.as_str().to_owned(),
                     outcome.to_owned(),
                 ));
+            }
+
+            fn record_object_delta(&self, _delta: i64) {
+                // no-op in tests; delta tracking is covered by unit tests in otel_metrics
             }
         }
 

@@ -534,6 +534,28 @@ impl ObjectsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(rows)
     }
+
+    /// Returns the total count of live (non-destroyed) objects in this `SQLite` store.
+    ///
+    /// This is a **metrics-only** privileged query: it scans the full `objects` table
+    /// without any user or permission filter, so the result always reflects the true
+    /// server-wide inventory. It must never be used to answer client requests.
+    ///
+    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
+    /// enum variant names as serialised to the DB by `strum::Display`.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        // No $N placeholders — no need for replace_dollars_with_qn.
+        let sql = get_sqlite_query!("count-non-destroyed-objects").to_string();
+        let count: i64 = self
+            .reader()
+            .call(move |c: &mut rusqlite::Connection| {
+                let mut stmt = c.prepare(&sql)?;
+                stmt.query_row([], |r| r.get(0))
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
 }
 
 #[async_trait(?Send)]

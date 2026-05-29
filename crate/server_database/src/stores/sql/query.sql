@@ -78,6 +78,16 @@ INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $
         DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5
         WHERE objects.owner=$5;
 
+-- name: count-non-destroyed-objects
+-- Privileged metrics-only query: counts ALL objects regardless of owner.
+-- Called exclusively by the OTEL metrics layer for kms.objects.total.
+-- State strings correspond to Rust enum variant names via strum::Display:
+--   Destroyed           = the object was explicitly destroyed
+--   Destroyed_Compromised = the object was destroyed after being compromised
+-- All other states (PreActive, Active, Deactivated, Compromised) are live objects.
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
+
 -- name: select-user-accesses-for-object
 SELECT permissions
         FROM read_access
