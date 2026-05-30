@@ -283,7 +283,7 @@ cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 
 ### UI actions structure
 
-`ui/src/actions/` contains 14 feature modules, each mapping to a group of KMIP operations.
+`ui/src/actions/` contains 16 feature modules, each mapping to a group of KMIP operations or REST endpoints.
 When adding a new UI feature, add it under the matching module (or create a new one):
 
 ```text
@@ -294,12 +294,14 @@ ui/src/actions/
   CloudProviders/ — AWS / Azure key export and import (KEK/BYOK)
   Covercrypt/     — Covercrypt encrypt, decrypt, master key, user key
   EC/             — Elliptic Curve key creation, encrypt/decrypt, sign/verify
+  FPE/            — Format Preserving Encryption key creation, encrypt/decrypt (non-FIPS)
   Keys/           — CSE info, derive key, export, import, symmetric key creation
   MAC/            — Compute and Verify message authentication codes
   Objects/        — Destroy, list owned, revoke, opaque objects, secret data
   PQC/            — Post-quantum encapsulate/decapsulate, sign/verify
   RSA/            — RSA key creation, encrypt/decrypt, sign/verify
   Symmetric/      — Symmetric encrypt, decrypt, hash
+  Tokenize/       — Anonymization: hash, noise, word mask/tokenize, aggregation, scaling (non-FIPS)
 ```
 
 Update `ui/tests/e2e/README.md` according to `ui/tests/e2e/` tests.
@@ -322,6 +324,8 @@ GH_PAGER=cat gh run view <run-id> --repo Cosmian/kms --log-failed
 ## Mandatory per-prompt checklist
 
 After **every** code-changing prompt, execute the following steps **in order** before declaring done. Do not skip any step, and do not ask the user whether to run them — run them unconditionally.
+
+### 0. Follow Coding rules
 
 ### 1. CHANGELOG update (always)
 
@@ -374,12 +378,168 @@ If the prompt adds or changes a user-visible feature, flag, endpoint, or configu
 - Register the page in `documentation/mkdocs.yml`.
 - Update `README.md` with a brief summary and link (no full duplication).
 
-> These five steps are **not optional suggestions**. They are part of every response that
-> touches code. An incomplete response is one that skips any of them.
-
 ### 6. Update SECURITY.md on security-related changes (when applicable)
 
 If the prompt adds a new security feature, hardens an existing one, or fixes a security bug, update `SECURITY.md` with a brief summary of the change and its impact on users. Link to the relevant CHANGELOG entry and test vector.
+
+### 7. List of synchronization rules (when applicable)
+
+#### 7.1 Server SPA routes ↔ React Router ↔ Menu items
+
+When adding or renaming a UI feature path:
+
+1. **`crate/server/src/start_kms_server.rs`** — add the top-level path pattern to the `spa_routes` array (e.g. `"/fpe{_:.*}"`). Without this, browser refreshes on deep links return 404.
+2. **`ui/src/App.tsx`** — add nested `<Route path="..." element={<Component />} />` declarations.
+3. **`ui/src/menuItems.tsx`** — add or update the `baseMenu` entry; the `key` field must match the route path prefix (e.g. `"fpe"`).
+
+#### 7.2 Server REST endpoints ↔ OpenAPI ↔ Route registration
+
+When adding or modifying a REST endpoint:
+
+1. **`crate/server/src/routes/<module>/`** — implement the handler(s).
+2. **`crate/server/src/routes/mod.rs`** — declare `pub mod <module>;`.
+3. **`crate/server/src/start_kms_server.rs`** — import the module, create a `web::scope(...)` or `.service(...)`, and register with the Actix `App`. Apply the correct middleware stack (Cors → auth extractors → EnsureAuth; remember LIFO order).
+4. **`crate/server/documentation/openapi.yaml`** — add or update the path, request/response schemas, and tags.
+5. Use crate/test_kms_server/src/openapi_validation.rs tests to validate changes on Swagger/OpenAPI side.
+
+#### 7.3 KMIP operations: types → dispatch → implementation
+
+When adding a new KMIP operation:
+
+1. **`crate/kmip/src/kmip_2_1/kmip_operations.rs`** — define request/response types and add the variant to the `Operation` enum.
+2. **`crate/server/src/core/operations/dispatch.rs`** — add the match arm routing the tag to the handler function.
+3. **`crate/server/src/core/operations/<operation>.rs`** — implement the handler (create the file and register it in `mod.rs`).
+
+#### 7.4 CLI ↔ Web UI feature parity
+
+The `ckms` CLI and the Web UI must mirror each other:
+
+1. **`crate/clients/clap/src/actions/<module>/`** — CLI action implementation.
+2. **`crate/clients/ckms/src/commands.rs`** — register the new subcommand in `CliCommands` enum.
+3. **`ui/src/actions/<Module>/`** — create corresponding React component(s).
+4. **`ui/src/App.tsx`** — import the component and add `<Route>` entry.
+5. **`ui/src/menuItems.tsx`** — add menu item.
+6. **`crate/server/src/start_kms_server.rs`** — add SPA route if new top-level path.
+
+In addition, for each ckms subcommands changes, add corresponding tests on ckms in crate/clients/ckms/src/tests.
+
+#### 7.5 WASM bindings ↔ Web UI
+
+When the UI needs a new KMIP request builder or response parser:
+
+1. **`crate/clients/wasm/src/wasm.rs`** — add `#[wasm_bindgen]` exported function (e.g. `create_fpe_key_ttlv_request`).
+2. **`ui/src/wasm/pkg/`** — rebuild with `wasm-pack build --target web` (auto-generates TS types).
+3. **UI component** — import and call the new WASM function.
+
+#### 7.6 Server configuration ↔ Wizard ↔ TOML templates
+
+When modifying `ClapConfig` or its sub-structs:
+
+1. **`crate/server/src/config/command_line/clap_config.rs`** — struct field with `#[clap(...)]`.
+2. **`crate/server/src/config/wizard/<*>_wizard.rs`** — add/update the corresponding interactive step. If a new sub-struct is added, create a new wizard file and register in `wizard/mod.rs`.
+3. **`resources/kms.toml`** — update the reference config.
+4. **`crate/server/kms_template.toml`** — update the template included in tarballs.
+5. **`pkg/kms.toml`** — update the service deployment config.
+
+#### 7.7 Server wizard ↔ Client wizard
+
+When the server wizard (`crate/server/src/config/wizard/`) changes:
+
+- Keep `crate/clients/client/src/config.rs` (client config struct) consistent so the client can serialize/deserialize settings the server now expects.
+
+#### 7.8 Feature flags: non-FIPS gating across the stack
+
+When implementing a non-FIPS-only feature:
+
+1. **Server implementation** — `#[cfg(feature = "non-fips")]` at function/module level.
+2. **`crate/server/src/start_kms_server.rs`** — scope registration wrapped in `#[cfg(feature = "non-fips")] { ... }`.
+3. **`crate/server/src/core/operations/dispatch.rs`** — dispatch arm gated if needed.
+4. **CLI actions** — `#[cfg(feature = "non-fips")]` on module or function.
+5. **WASM bindings** — `#[cfg(feature = "non-fips")]` on exported function.
+6. **UI** — hide menu items/routes when FIPS mode is active (check `branding` or `FIPS_MODE` env var).
+7. **E2E tests** — `test.skip(FIPS_MODE, "...")` in Playwright specs.
+8. **Test vectors** — place in `test_data/vectors/non-fips/` or gate runner with `#[cfg(feature = "non-fips")]`.
+
+#### 7.9 Authentication middleware consistency
+
+When adding or modifying an auth method:
+
+1. **Config struct** — `crate/server/src/config/` (e.g. `IdpAuthConfig`).
+2. **Wizard step** — `crate/server/src/config/wizard/auth_wizard.rs`.
+3. **Middleware** — `crate/server/src/middlewares/` (e.g. `JwtAuth`, `TlsAuth`, `ApiTokenAuth`).
+4. **All scopes** — every authenticated scope in `start_kms_server.rs` must wrap the new middleware with `Condition::new(use_<auth>, <Middleware>)`.
+5. **`EnsureAuth::new`** — the `auth_is_configured` boolean must be `use_jwt_auth || use_cert_auth || use_api_token_auth` for every scope (except mTLS-only scopes like Azure EKM).
+
+#### 7.10 Test vectors: directory → runner → README
+
+For every feature or bug fix:
+
+1. **`test_data/vectors/<category>/<vector_name>/`** — create directory with `manifest.toml` and TTLV-JSON step files.
+2. **`crate/test_kms_server/src/vector_runner.rs`** — add `#[tokio::test]` function.
+3. **`crate/test_kms_server/README.md`** — add row to the table and update the total count.
+
+#### 7.11 Nix vendor hashes ↔ lock files
+
+When `Cargo.lock` or `ui/pnpm-lock.yaml` change:
+
+- Update the corresponding files in `nix/expected-hashes/` with the correct `sha256-...` hash from CI output.
+- Hash files: `server.vendor.{static,dynamic}.sha256`, `cli.vendor.{static,dynamic}.{darwin,linux}.sha256`, `ui.vendor.{fips,non-fips}.sha256`, `ui.pnpm.{darwin,linux}.sha256`.
+
+#### 7.12 Cloud provider integrations
+
+When adding AWS XKS / Azure EKM / Google CSE / MS DKE support:
+
+1. **Config** — struct in `crate/server/src/config/`.
+2. **Wizard** — step in `crate/server/src/config/wizard/advanced_wizard.rs`.
+3. **Routes** — module in `crate/server/src/routes/<provider>/`, declared in `routes/mod.rs`.
+4. **Scope registration** — `start_kms_server.rs` with correct auth middleware.
+5. **OpenAPI** — `crate/server/documentation/openapi.yaml`.
+6. **CLI actions** — `crate/clients/clap/src/actions/<provider>/`.
+7. **UI actions** — `ui/src/actions/CloudProviders/`.
+
+#### 7.13 HSM backend support
+
+When adding a new HSM model:
+
+1. **PKCS#11 loader crate** — `crate/hsm/<model>/`.
+2. **HSM model enum** — `crate/server/src/config/` (or `crate/hsm/base_hsm/`).
+3. **Wizard** — `crate/server/src/config/wizard/hsm_wizard.rs`.
+4. **Test vectors** — `test_data/vectors/hsm/<model>/`.
+5. **CI** — add matrix entry in `.github/workflows/test_all.yml`.
+
+#### 7.14 Documentation ↔ mkdocs ↔ README
+
+When behaviour or user interface changes:
+
+1. **`documentation/docs/`** — add or update the relevant `.md` page.
+2. **`documentation/mkdocs.yml`** — add the nav entry under the correct section.
+3. **`README.md`** — add a brief summary with a link (no full duplication).
+4. **`cli_documentation/docs/`** — if CLI-visible, run `ckms markdown` to regenerate.
+
+#### 7.15 CLI documentation auto-generation
+
+When CLI commands or flags change:
+
+- Run `cargo run --bin ckms -- markdown cli_documentation/docs/main_commands.md` to regenerate.
+- Commit the regenerated file — manual edits will be overwritten.
+
+#### 7.16 E2E test documentation
+
+When Playwright E2E tests are added or removed:
+
+- Update `ui/tests/e2e/README.md` to reflect the current spec files, FIPS-skip table, and test coverage.
+
+#### 7.17 OpenSSL version updates
+
+When upgrading OpenSSL:
+
+1. **`crate/crypto/build.rs`** — update version, download URL, and SHA-256 hash.
+2. **`crate/server/src/openssl_providers.rs`** — verify provider init is compatible.
+3. **`cbom/cbom.cdx.json`** — update the Cryptographic Bill of Materials.
+4. **`sbom/`** — update the Software Bill of Materials.
+
+> These previous steps are **not optional suggestions**. They are part of every response that
+> touches code. An incomplete response is one that skips any of them.
 
 ---
 
@@ -401,26 +561,6 @@ If the prompt adds a new security feature, hardens an existing one, or fixes a s
 - **CHANGELOG**: update `CHANGELOG/<branch_name_without_slashes>.md` for every user-visible change (see "Updating CHANGELOG.md").
 - **Commit scope**: make minimal, focused changes. Don't refactor surrounding code alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`.
-
-### Test vectors
-
-For every feature added or bug fixed, a test vector **must** be added to `test_data/vectors/`.
-This is not optional — it is enforced by the mandatory checklist above.
-
-1. Model the vector on existing examples in `test_data/vectors/`.
-2. Register the corresponding test function in `crate/test_kms_server/src/vector_runner.rs`.
-3. Run the test and confirm it passes: `cargo test -p test_kms_server <fn_name>`.
-4. Update `crate/test_kms_server/README.md` to keep the table in sync with the directory tree.
-
-### Server configuration & wizard synchronization
-
-Every field of `ClapConfig` in `crate/server/src/config/command_line/clap_config.rs` (and its sub-structs) **must** have a corresponding configuration step in the server wizard at `crate/server/src/config/wizard/`.
-
-When modifying `ClapConfig` or any of its nested config structs:
-
-1. Add or update the corresponding wizard step in the appropriate `*_wizard.rs` file under `crate/server/src/config/wizard/`.
-2. If a new config sub-struct is added, create a new `*_wizard.rs` file and register it in `crate/server/src/config/wizard/mod.rs`.
-3. Update `resources/kms.toml` and `crate/server/kms_template.toml` if the field should appear in the reference config.
 
 ---
 
@@ -449,32 +589,3 @@ Deb and RPM packages are built via Nix. Vendor hash files live in `nix/expected-
 > that `Cargo.lock` or `ui/pnpm-lock.yaml` actually changed intentionally in this PR.
 > If not, revert the lock file. If the dependency change is intentional, retrieve the
 > correct hash from the CI log (`got: sha256-...`) and update `nix/expected-hashes/`.
-
----
-
-## Documentation synchronization rules
-
-When making user-visible changes, keep documentation synchronized:
-
-- `documentation/docs/` contains the detailed, canonical documentation.
-- `documentation/mkdocs.yml` is the navigation and structure source of truth.
-- `README.md` is a concise summary and entry point only.
-
-Required behavior:
-
-1. If a feature is added or behavior is changed, add or update detailed docs under `documentation/docs/`.
-2. Update `documentation/mkdocs.yml` so the new/updated page appears in the correct section.
-3. Update `README.md` with a brief summary and links to the detailed docs.
-4. Keep `README.md` TOC and section naming aligned with `documentation/mkdocs.yml` top-level structure.
-5. Avoid duplicating full documentation in `README.md`.
-
-### Integration documentation alignment
-
-**Source of truth for navigation structure**: `documentation/mkdocs.yml`
-
-When adding a new integration:
-
-1. Add the doc file under the correct `documentation/docs/integrations/` subdirectory.
-2. Add the nav entry in `documentation/mkdocs.yml` under the correct group.
-3. Add a row to the matching README table with a correct relative link starting with `./documentation/docs/integrations/...`.
-4. Never put an integration in a different category in README than it appears in mkdocs.yml.

@@ -1,8 +1,10 @@
+import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import { expect, test } from "vitest";
 
-import { AuthProvider, useAuth } from "../../../src/contexts/AuthContext";
+import { AuthProvider } from "../../../src/contexts/AuthContext";
+import { useAuth } from "../../../src/contexts/useAuth";
 
 test("useAuth throws outside provider", () => {
     const Consumer = () => {
@@ -19,6 +21,6 @@ test("AuthProvider provides default values", () => {
         return React.createElement("div", {}, `${serverUrl}|${idToken}|${userId}`);
     };
 
-    render(React.createElement(AuthProvider, {}, React.createElement(Consumer)));
+    render(React.createElement(AuthProvider, { children: React.createElement(Consumer) }));
     expect(screen.getByText(/^\|null\|null$/)).toBeInTheDocument();
 });
