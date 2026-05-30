@@ -27,6 +27,7 @@
 ## Bug Fixes
 
 - Skip `tests::access::*` and `tests::shared::locate::*` on Windows: `native-tls`/SChannel cannot process PEM client certificates for mTLS, causing `SEC_E_DECRYPT_FAILURE`/`WSAECONNRESET` on all cert-auth tests; gate both modules with `#[cfg(not(target_os = "windows"))]`
+- Skip `tests::security::privilege_bypass::pb03_revoke_grant_denies_subsequent_access` on Windows: combined cert+JWT config in `privileged_users_owner.toml` causes `SEC_E_DECRYPT_FAILURE` on the `/access/grant` REST endpoint
 - Remove stale `x509-parser` dev-dependency from `cosmian_kms_cli_actions` (unused, bloated lockfile)
 - Fix `test_issue_746_name_attribute_on_secret_data` assertion: use `NameValue` (PascalCase) to match actual KMIP JSON serialization
 
