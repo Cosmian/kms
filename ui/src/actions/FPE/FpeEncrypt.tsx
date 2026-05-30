@@ -57,10 +57,10 @@ const HEX_RE = /^[0-9a-fA-F]*$/;
  */
 function hexToBytes(hex: string): Uint8Array {
     if (hex.length % 2 !== 0) {
-        throw new Error("Tweak hex string must have an even number of characters.");
+        throw new Error("Tweak must contain an even number of hex digits.");
     }
     if (!HEX_RE.test(hex)) {
-        throw new Error("Tweak contains invalid hex characters (only 0-9 a-f A-F are allowed).");
+        throw new Error("Tweak must contain only hex characters (0-9 a-f A-F).");
     }
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
@@ -94,20 +94,12 @@ const FpeEncryptForm: React.FC = () => {
     const onFinish = async (values: FpeEncryptFormData) => {
         setIsLoading(true);
         setRes(undefined);
-        const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
         try {
-            // Validate tweak format before anything else so the error is always visible.
-            if (values.tweak) {
-                if (values.tweak.length % 2 !== 0) {
-                    setRes("Error: Tweak must have an even number of hex digits.");
-                    return;
-                }
-                if (!/^[0-9a-fA-F]+$/.test(values.tweak)) {
-                    setRes("Error: Tweak must contain only hex characters (0-9 a-f A-F).");
-                    return;
-                }
-            }
-            if (id == undefined) {
+            // Validate tweak early so we get a clear error even if key ID is missing
+            const tweak = values.tweak ? hexToBytes(values.tweak) : undefined;
+
+            const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
+            if (id === undefined) {
                 setRes("Error: Missing key identifier.");
                 return;
             }
@@ -125,7 +117,6 @@ const FpeEncryptForm: React.FC = () => {
             }
 
             const plaintext = new TextEncoder().encode(values.plaintext);
-            const tweak = values.tweak ? hexToBytes(values.tweak) : undefined;
             const authenticatedData = buildAuthenticatedData(values.dataType, values.alphabet);
 
             const request = w.encrypt_fpe_ttlv_request(id, plaintext, tweak, authenticatedData);

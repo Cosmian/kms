@@ -428,50 +428,39 @@ fn decrypt_single_with_symmetric_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<Result<DecryptResponse, KmsError>, KmsError> {
+    let key_block = owm.object().key_block()?;
+    let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+    let req_cp = request.cryptographic_parameters.as_ref();
+    let cryptographic_algorithm = req_cp
+        .and_then(|cp| cp.cryptographic_algorithm)
+        .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
+        .or_else(|| key_block.cryptographic_algorithm().copied())
+        .unwrap_or(CryptographicAlgorithm::AES);
+
     #[cfg(not(feature = "non-fips"))]
-    {
-        let key_block = owm.object().key_block()?;
-        let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
-        let req_cp = request.cryptographic_parameters.as_ref();
-        let cryptographic_algorithm = req_cp
-            .and_then(|cp| cp.cryptographic_algorithm)
-            .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
-            .or_else(|| key_block.cryptographic_algorithm().copied())
-            .unwrap_or(CryptographicAlgorithm::AES);
-        if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
-            return Ok(Err(KmsError::NotSupported(
-                "FPE_FF1 decryption is not supported in FIPS mode".to_owned(),
-            )));
-        }
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        return Ok(Err(KmsError::NotSupported(
+            "FPE_FF1 decryption is not supported in FIPS mode".to_owned(),
+        )));
     }
 
     #[cfg(feature = "non-fips")]
-    {
-        let key_block = owm.object().key_block()?;
-        let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
-        let req_cp = request.cryptographic_parameters.as_ref();
-        let cryptographic_algorithm = req_cp
-            .and_then(|cp| cp.cryptographic_algorithm)
-            .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
-            .or_else(|| key_block.cryptographic_algorithm().copied())
-            .unwrap_or(CryptographicAlgorithm::AES);
-        if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
-            let ciphertext = request.data.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
-            })?;
-            let plaintext = decrypt_fpe(
-                &key_block.key_bytes()?,
-                ciphertext,
-                request.authenticated_encryption_additional_data.as_deref(),
-                request.i_v_counter_nonce.as_deref(),
-            )
-            .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
-            return Ok(Ok(DecryptResponse {
-                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                data: Some(Zeroizing::from(plaintext)),
-                correlation_value: request.correlation_value.clone(),
-            }));
-        }
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        let ciphertext = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+        })?;
+        let plaintext = decrypt_fpe(
+            &key_block.key_bytes()?,
+            ciphertext,
+            request.authenticated_encryption_additional_data.as_deref(),
+            request.i_v_counter_nonce.as_deref(),
+        )
+        .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
+        return Ok(Ok(DecryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            data: Some(Zeroizing::from(plaintext)),
+            correlation_value: request.correlation_value.clone(),
+        }));
     }
 
     let ciphertext = request.data.as_ref().ok_or_else(|| {

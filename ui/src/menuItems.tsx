@@ -1,13 +1,17 @@
 import {
     AmazonOutlined,
+    ApartmentOutlined,
     AuditOutlined,
     CloudOutlined,
+    ExperimentOutlined,
     EyeInvisibleOutlined,
     ForkOutlined,
     GoogleOutlined,
     InboxOutlined,
+    KeyOutlined,
     LockOutlined,
     SafetyCertificateOutlined,
+    SafetyOutlined,
     SearchOutlined,
     SolutionOutlined,
     TeamOutlined,
@@ -38,7 +42,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "sym",
         label: "Symmetric",
-        icon: <SafetyCertificateOutlined />,
+        icon: <KeyOutlined />,
         collapsedlabel: "SYM",
         children: [
             {
@@ -60,7 +64,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "rsa",
         label: "RSA",
-        icon: <SafetyCertificateOutlined />,
+        icon: <SafetyOutlined />,
         collapsedlabel: "RSA",
         children: [
             {
@@ -83,7 +87,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "ec",
         label: "Elliptic Curve",
-        icon: <SafetyCertificateOutlined />,
+        icon: <ApartmentOutlined />,
         collapsedlabel: "EC",
         children: [
             {
@@ -107,7 +111,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "pqc",
         label: "__PQC_LABEL__",
-        icon: <SafetyCertificateOutlined />,
+        icon: <ExperimentOutlined />,
         collapsedlabel: "PQC",
         children: [
             {

@@ -45,9 +45,19 @@ impl HashAction {
                     })
             })
             .transpose()?;
+        let canonical_method = match self.method.to_lowercase().as_str() {
+            "sha2" => "SHA2",
+            "sha3" => "SHA3",
+            "argon2" => "Argon2",
+            other => {
+                return Err(crate::error::KmsCliError::Default(format!(
+                    "unsupported hash method '{other}'; expected sha2, sha3, or argon2"
+                )));
+            }
+        };
         let req = HashRequest {
             data: &self.data,
-            method: &self.method.to_uppercase(),
+            method: canonical_method,
             salt,
         };
         let resp: TokenizeResponse = kms_rest_client.tokenize("hash", &req).await?;

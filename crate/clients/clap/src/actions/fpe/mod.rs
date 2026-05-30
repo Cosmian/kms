@@ -118,7 +118,21 @@ pub(crate) fn build_authenticated_data(
 }
 
 pub(crate) fn decode_tweak_hex(tweak: Option<&str>) -> KmsCliResult<Option<Vec<u8>>> {
-    tweak.map(hex::decode).transpose().map_err(Into::into)
+    tweak
+        .map(|t| {
+            if t.len() % 2 != 0 {
+                return Err(crate::error::KmsCliError::Default(
+                    "tweak hex string must have an even number of characters".to_owned(),
+                ));
+            }
+            if !t.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(crate::error::KmsCliError::Default(
+                    "tweak must contain only hex characters (0-9, a-f, A-F)".to_owned(),
+                ));
+            }
+            hex::decode(t).map_err(Into::into)
+        })
+        .transpose()
 }
 
 pub(crate) fn read_input_bytes(input_file: Option<&PathBuf>) -> KmsCliResult<Vec<u8>> {

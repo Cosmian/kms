@@ -299,53 +299,42 @@ fn encrypt_with_symmetric_key(
     owm: &ObjectWithMetadata,
 ) -> KResult<EncryptResponse> {
     trace!("entering. owm: {}", owm.attributes());
-    #[cfg(not(feature = "non-fips"))]
-    {
-        let key_block = owm.object().key_block()?;
-        let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
-        let req_cp = request.cryptographic_parameters.as_ref();
-        let cryptographic_algorithm = req_cp
-            .and_then(|cp| cp.cryptographic_algorithm)
-            .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
-            .or_else(|| key_block.cryptographic_algorithm().copied())
-            .unwrap_or(CryptographicAlgorithm::AES);
 
-        if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
-            return Err(KmsError::NotSupported(
-                "FPE_FF1 encryption is not supported in FIPS mode".to_owned(),
-            ));
-        }
+    let key_block = owm.object().key_block()?;
+    let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+    let req_cp = request.cryptographic_parameters.as_ref();
+    let cryptographic_algorithm = req_cp
+        .and_then(|cp| cp.cryptographic_algorithm)
+        .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
+        .or_else(|| key_block.cryptographic_algorithm().copied())
+        .unwrap_or(CryptographicAlgorithm::AES);
+
+    #[cfg(not(feature = "non-fips"))]
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        return Err(KmsError::NotSupported(
+            "FPE_FF1 encryption is not supported in FIPS mode".to_owned(),
+        ));
     }
 
     #[cfg(feature = "non-fips")]
-    {
-        let key_block = owm.object().key_block()?;
-        let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
-        let req_cp = request.cryptographic_parameters.as_ref();
-        let cryptographic_algorithm = req_cp
-            .and_then(|cp| cp.cryptographic_algorithm)
-            .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
-            .or_else(|| key_block.cryptographic_algorithm().copied())
-            .unwrap_or(CryptographicAlgorithm::AES);
-        if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
-            let plaintext = request.data.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
-            })?;
-            let ciphertext = encrypt_fpe(
-                &key_block.key_bytes()?,
-                plaintext,
-                request.authenticated_encryption_additional_data.as_deref(),
-                request.i_v_counter_nonce.as_deref(),
-            )
-            .map_err(|e| KmsError::CryptographicError(format!("FPE encrypt failed: {e}")))?;
-            return Ok(EncryptResponse {
-                unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
-                data: Some(ciphertext),
-                i_v_counter_nonce: None,
-                correlation_value: request.correlation_value.clone(),
-                authenticated_encryption_tag: None,
-            });
-        }
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        let plaintext = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
+        })?;
+        let ciphertext = encrypt_fpe(
+            &key_block.key_bytes()?,
+            plaintext,
+            request.authenticated_encryption_additional_data.as_deref(),
+            request.i_v_counter_nonce.as_deref(),
+        )
+        .map_err(|e| KmsError::CryptographicError(format!("FPE encrypt failed: {e}")))?;
+        return Ok(EncryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            data: Some(ciphertext),
+            i_v_counter_nonce: None,
+            correlation_value: request.correlation_value.clone(),
+            authenticated_encryption_tag: None,
+        });
     }
     let (key_bytes, aead) = get_key_and_cipher(request, owm)?;
     let plaintext = request.data.as_ref().ok_or_else(|| {
