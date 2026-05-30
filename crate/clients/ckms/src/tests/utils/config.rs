@@ -129,6 +129,7 @@ fn resolve_path(opt: &mut Option<String>, root: &Path) {
 /// Unlike `load_client_config` which loads a static template, this serializes
 /// the actual `TestsContext` configs — essential for auth tests where each
 /// server has unique auth settings (JWT, certs, API tokens, etc.).
+#[cfg(not(target_os = "windows"))]
 pub(crate) fn force_save_kms_cli_config(ctx: &TestsContext) -> (String, String) {
     let pid = std::process::id();
 
