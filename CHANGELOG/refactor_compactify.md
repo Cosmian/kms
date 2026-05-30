@@ -34,3 +34,10 @@
 - Port `discover_versions`, `query`, `rng` tests to ckms CLI-level
 - Port MAC verify test to ckms CLI-level (`mac.rs`)
 - Port opaque object CRUD test to ckms CLI-level (`opaque_object/opaque_crud.rs`)
+- Enable `test_set_attribute` module in ckms tests (was missing from `mod.rs`): covers `attributes get`, `attributes set`, `attributes delete` CLI commands
+- Remove dead test files `aws_xks_tests.rs` and `digested.rs` (broken imports, never compiled)
+
+## Bug Fixes
+
+- Remove stale `x509-parser` dev-dependency from `cosmian_kms_cli_actions` (unused, bloated lockfile)
+- Fix `test_issue_746_name_attribute_on_secret_data` assertion: use `NameValue` (PascalCase) to match actual KMIP JSON serialization

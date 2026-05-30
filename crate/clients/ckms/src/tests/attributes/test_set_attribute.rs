@@ -1,14 +1,23 @@
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::indexing_slicing)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+
 use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
 use clap::ValueEnum;
 use cosmian_kms_cli_actions::{
     actions::{
-        attributes::CCryptographicAlgorithm, secret_data::create_secret::CreateSecretDataAction},
+        attributes::CCryptographicAlgorithm, secret_data::create_secret::CreateSecretDataAction,
+    },
     reexport::cosmian_kms_client::{
         cosmian_kmip::kmip_2_1::kmip_types::Tag,
         reexport::cosmian_kms_client_utils::{
-            certificate_utils::Algorithm, create_utils::SecretDataType, import_utils::KeyUsage}}};
+            certificate_utils::Algorithm, create_utils::SecretDataType, import_utils::KeyUsage,
+        },
+    },
+};
 use serde_json::Value;
 use strum::IntoEnumIterator;
 use tempfile::NamedTempFile;
@@ -23,8 +32,9 @@ use crate::{
         certificates::certify::{CertifyOp, certify},
         secret_data::create_secret::create_secret_data,
         symmetric::create_key::create_symmetric_key,
-        utils::recover_cmd_logs}};
-use crate::tests::utils::{owner_config};
+        utils::{owner_config, recover_cmd_logs},
+    },
+};
 
 /// Get attributes of a KMS object and return the parsed JSON output.
 fn get_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResult<Value> {
@@ -148,7 +158,7 @@ fn verify_attributes_present(
         let names = json[&Tag::Name.to_string()].as_array().unwrap();
         assert!(
             names.iter().any(|n| {
-                n.get("name_value")
+                n.get("NameValue")
                     .and_then(|v| v.as_str())
                     .is_some_and(|s| s == name_value)
             }),
@@ -301,13 +311,13 @@ fn check_set_delete_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResu
 
     // Test delete all attributes by tag reference
     for tag in Tag::iter() {
-        let tag_str = tag
-            .to_possible_value()
-            .expect("valid tag")
-            .get_name()
-            .to_string();
+        let tag_str = tag.to_string();
         // Ignore errors — some tags may not exist on the object
-        let _ = delete_attributes(cli_conf_path, key_id, &["--attribute", &tag_str]);
+        drop(delete_attributes(
+            cli_conf_path,
+            key_id,
+            &["--attribute", &tag_str],
+        ));
     }
 
     Ok(())
@@ -389,7 +399,7 @@ async fn test_issue_746_name_attribute_on_secret_data() -> CosmianResult<()> {
     let names = json[&name_key].as_array().unwrap();
     assert!(
         names.iter().any(|n| {
-            n.get("name_value")
+            n.get("NameValue")
                 .and_then(|v| v.as_str())
                 .is_some_and(|s| s == name_value)
         }),
