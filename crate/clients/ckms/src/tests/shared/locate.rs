@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::extra::tagging::{
     SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY,
     SYSTEM_TAG_SYMMETRIC_KEY,
@@ -23,9 +20,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_locate_uids, load_client_config, recover_cmd_logs},
+        utils::{
+            ckms_bin, extract_uids::extract_locate_uids, load_client_config, recover_cmd_logs,
+        },
     },
 };
 
@@ -56,7 +54,7 @@ pub(crate) fn locate(
         args.push(key_format_type.to_string());
     }
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     cmd.arg("locate").args(args);

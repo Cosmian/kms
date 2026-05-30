@@ -1,18 +1,15 @@
-use std::{collections::HashSet, process::Command};
+use std::collections::HashSet;
 
-use assert_cmd::prelude::*;
 use test_kms_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        utils::{
-            extract_uids::{extract_private_key, extract_public_key},
-            owner_config, recover_cmd_logs,
-        },
+    tests::utils::{
+        ckms_bin,
+        extract_uids::{extract_private_key, extract_public_key},
+        owner_config, recover_cmd_logs,
     },
 };
 
@@ -28,7 +25,7 @@ pub(crate) fn create_rsa_key_pair(
     cli_conf_path: &str,
     options: &RsaKeyPairOptions,
 ) -> CosmianResult<(String, String)> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["keys", "create"];

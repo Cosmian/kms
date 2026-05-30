@@ -1,8 +1,6 @@
 #[cfg(feature = "non-fips")]
 use std::path::PathBuf;
-use std::process::Command;
 
-use assert_cmd::prelude::*;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     kmip_2_1::kmip_types::CryptographicAlgorithm, read_object_from_json_ttlv_file,
@@ -15,7 +13,7 @@ use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
 
-use crate::tests::utils::owner_config;
+use crate::tests::utils::{ckms_bin, owner_config};
 #[cfg(feature = "non-fips")]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -26,10 +24,7 @@ use crate::tests::{
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
-    },
+    tests::utils::{extract_uids::extract_unique_identifier, recover_cmd_logs},
 };
 
 #[derive(Default, Debug)]
@@ -51,7 +46,7 @@ pub(crate) struct ImportKeyParams {
 }
 
 pub(crate) fn import_key(params: ImportKeyParams) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, params.cli_conf_path);
 
     let mut args: Vec<String> = vec![

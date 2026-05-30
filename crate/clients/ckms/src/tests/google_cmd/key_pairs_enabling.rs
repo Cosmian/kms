@@ -1,6 +1,5 @@
-use std::process::Command;
+use crate::tests::utils::ckms_bin;
 
-use assert_cmd::prelude::*;
 use test_kms_server::start_default_test_kms_server;
 use serde::Deserialize;
 
@@ -9,7 +8,7 @@ use crate::{
     error::CosmianError,
     tests::{
         PROG_NAME,
-        google_cmd::identities::create_gmail_api_conf, utils::recover_cmd_logs},
+        google_cmd::identities::create_gmail_api_conf, utils::{recover_cmd_logs}},
     },
 };
 
@@ -53,7 +52,7 @@ fn list_keypairs(cli_conf_path: &str, user_id: &str) -> Result<ListKeyPairsRespo
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd
         .arg("google")
@@ -80,7 +79,7 @@ fn get_keypairs(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd
         .arg("google")
@@ -107,7 +106,7 @@ fn disable_keypairs(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd
         .arg("google")
@@ -132,7 +131,7 @@ fn enable_keypairs(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd
         .arg("google")

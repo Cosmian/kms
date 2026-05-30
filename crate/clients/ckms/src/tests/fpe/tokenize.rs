@@ -1,15 +1,9 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        utils::{owner_config, recover_cmd_logs},
-    },
+    tests::utils::{ckms_bin, owner_config, recover_cmd_logs},
 };
 
 const TOKENIZE_CMD: &str = "tokenize";
@@ -19,7 +13,7 @@ fn run_tokenize(
     subcommand: &str,
     extra_args: &[&str],
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg(TOKENIZE_CMD).arg(subcommand);
     cmd.args(extra_args);

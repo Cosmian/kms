@@ -10,17 +10,12 @@
 //! 4. Custom headers specified in `custom_headers` inside `ckms.toml` are also
 //!    forwarded correctly.
 
-use std::process::Command;
-
 use assert_cmd::prelude::*;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     config::CKMS_CONF_ENV,
-    tests::{
-        PROG_NAME,
-        utils::{owner_config, recover_cmd_logs},
-    },
+    tests::utils::{ckms_bin, owner_config, recover_cmd_logs},
 };
 
 /// A benign header that the KMS server will silently ignores — we just need the
@@ -34,7 +29,7 @@ pub(crate) async fn test_server_version_with_custom_header() {
     let ctx = start_default_test_kms_server().await;
     let owner_conf_path = owner_config(ctx);
 
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect("ckms binary not found");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, &owner_conf_path)
         .arg("--header")
         .arg(CUSTOM_HEADER)
@@ -51,7 +46,7 @@ pub(crate) async fn test_server_version_with_short_header_flag() {
     let ctx = start_default_test_kms_server().await;
     let owner_conf_path = owner_config(ctx);
 
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect("ckms binary not found");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, &owner_conf_path)
         .arg("-H")
         .arg(CUSTOM_HEADER)
@@ -68,7 +63,7 @@ pub(crate) async fn test_server_version_with_multiple_custom_headers() {
     let ctx = start_default_test_kms_server().await;
     let owner_conf_path = owner_config(ctx);
 
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect("ckms binary not found");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, &owner_conf_path)
         .arg("--header")
         .arg("X-First-Header: first-value")
@@ -88,8 +83,7 @@ pub(crate) async fn test_invalid_header_format_fails() {
     let ctx = start_default_test_kms_server().await;
     let owner_conf_path = owner_config(ctx);
 
-    let output = Command::cargo_bin(PROG_NAME)
-        .expect("ckms binary not found")
+    let output = ckms_bin()
         .env(CKMS_CONF_ENV, &owner_conf_path)
         .arg("--header")
         .arg("InvalidHeaderWithoutColon")

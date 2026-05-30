@@ -1,6 +1,4 @@
-use std::process::Command;
 
-use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::{
     actions::secret_data::create_secret::CreateSecretDataAction,
     reexport::cosmian_kms_client::{
@@ -12,7 +10,7 @@ use cosmian_kms_cli_actions::{
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
-use crate::tests::utils::owner_config;
+use crate::tests::utils::{ckms_bin, owner_config};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
@@ -28,7 +26,7 @@ fn destroy_secret_data(cli_conf_path: &str, secret_id: &str, remove: bool) -> Co
     if remove {
         args.push("--remove".to_owned());
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg("secret-data").args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -47,7 +45,7 @@ fn revoke_secret_data(cli_conf_path: &str, secret_id: &str, reason: &str) -> Cos
         "--secret-data-id".to_owned(),
         secret_id.to_owned(),
     ];
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg("secret-data").args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -86,7 +84,7 @@ fn export_secret_data(
         };
         args.push(arg_value.to_owned());
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg("secret-data").args(args);
     let output = recover_cmd_logs(&mut cmd);

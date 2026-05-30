@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
@@ -9,7 +9,6 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         cover_crypt::{
             SUB_COMMAND,
             encrypt_decrypt::{decrypt, encrypt},
@@ -17,7 +16,7 @@ use crate::{
             user_decryption_keys::create_user_decryption_key,
         },
         shared::{ExportKeyParams, export_key},
-        utils::{owner_config, recover_cmd_logs},
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
     },
 };
 
@@ -51,7 +50,7 @@ async fn test_view_access_structure() -> CosmianResult<()> {
     // read the bytes from the exported file
     // let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, &owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec![
@@ -67,7 +66,7 @@ async fn test_view_access_structure() -> CosmianResult<()> {
         .stdout(predicate::str::contains("Top Secret"))
         .stdout(predicate::str::contains("RnD"));
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, &owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec![
@@ -96,7 +95,7 @@ pub(crate) async fn rename(
 ) -> CosmianResult<()> {
     start_default_test_kms_server().await;
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -124,7 +123,7 @@ pub(crate) async fn add(
 ) -> CosmianResult<()> {
     start_default_test_kms_server().await;
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -151,7 +150,7 @@ pub(crate) async fn disable(
 ) -> CosmianResult<()> {
     start_default_test_kms_server().await;
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -178,7 +177,7 @@ pub(crate) async fn remove(
 ) -> CosmianResult<()> {
     start_default_test_kms_server().await;
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![

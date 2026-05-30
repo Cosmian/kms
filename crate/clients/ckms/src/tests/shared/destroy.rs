@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     kmip_2_1::kmip_data_structures::{KeyMaterial, KeyValue},
     read_object_from_json_ttlv_file,
@@ -21,10 +18,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         shared::{ExportKeyParams, export::export_key, revoke::revoke},
         symmetric::create_key::create_symmetric_key,
-        utils::{owner_config, recover_cmd_logs},
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
     },
 };
 
@@ -41,7 +37,7 @@ pub(crate) fn destroy(
     if remove {
         args.push("--remove".to_owned());
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     cmd.arg(sub_command).args(args);

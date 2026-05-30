@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 #[cfg(feature = "non-fips")]
 use crate::tests::rsa::create_key_pair::{RsaKeyPairOptions, create_rsa_key_pair};
-use crate::tests::utils::owner_config;
+use crate::tests::utils::{ckms_bin, owner_config};
 use crate::{
     error::result::CosmianResult,
     tests::{
@@ -174,15 +174,9 @@ pub(crate) fn test_unwrap_on_export(ctx: &TestsContext) -> CosmianResult<()> {
 /// prefix and routes through a server-side `Import(key_wrap_type=NotWrapped)` round-trip that
 /// lets the KMS crypto-oracle perform the unwrapping without ever exposing the KEK material.
 pub(crate) fn test_unwrap_with_hsm_key(ctx: &TestsContext) -> CosmianResult<()> {
-    use std::process::Command;
-
-    use assert_cmd::prelude::CommandCargoExt;
     use cosmian_kms_cli_actions::reexport::cosmian_kms_client::read_object_from_json_ttlv_file;
 
-    use crate::{
-        config::CKMS_CONF_ENV,
-        tests::{PROG_NAME, utils::recover_cmd_logs},
-    };
+    use crate::{config::CKMS_CONF_ENV, tests::utils::recover_cmd_logs};
 
     log_init(option_env!("RUST_LOG"));
     let owner_client_conf_path = owner_config(ctx);
@@ -232,7 +226,7 @@ pub(crate) fn test_unwrap_with_hsm_key(ctx: &TestsContext) -> CosmianResult<()> 
     })?;
 
     // Unwrap using the server-side HSM crypto oracle (issue #762 fix).
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, &owner_client_conf_path);
     cmd.arg("sym").args([
         "keys",

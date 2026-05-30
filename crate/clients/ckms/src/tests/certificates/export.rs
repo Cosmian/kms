@@ -1,6 +1,5 @@
-use std::process::Command;
+use crate::tests::utils::ckms_bin;
 
-use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::CertificateExportFormat;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
@@ -47,7 +46,7 @@ use crate::tests::{
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{PROG_NAME, utils::recover_cmd_logs},
+    tests::utils::recover_cmd_logs,
 };
 
 #[cfg(feature = "non-fips")]
@@ -424,7 +423,7 @@ pub(crate) fn export_certificate(
     if allow_revoked {
         args.push("--allow-revoked".to_owned());
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     cmd.arg("certificates").args(args);

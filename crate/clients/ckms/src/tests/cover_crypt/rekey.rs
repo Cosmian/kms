@@ -1,6 +1,5 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::reexport::{
     cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
     cosmian_kms_crypto::{
@@ -21,7 +20,6 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         cover_crypt::{
             SUB_COMMAND,
             encrypt_decrypt::{decrypt, encrypt},
@@ -30,7 +28,7 @@ use crate::{
         },
         shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
         symmetric::create_key::create_symmetric_key,
-        utils::{owner_config, recover_cmd_logs},
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
     },
 };
 
@@ -39,7 +37,7 @@ pub(crate) fn rekey(
     master_secret_key_id: &str,
     access_policy: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -64,7 +62,7 @@ pub(crate) fn prune(
     master_secret_key_id: &str,
     access_policy: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![

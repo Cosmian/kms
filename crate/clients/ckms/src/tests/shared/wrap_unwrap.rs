@@ -1,9 +1,5 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::path::{Path, PathBuf};
 
-use assert_cmd::prelude::CommandCargoExt;
 use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_cli_actions::reexport::{
     cosmian_kms_client::{
@@ -24,12 +20,11 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_wrapping_key, owner_config, recover_cmd_logs},
+        utils::{ckms_bin, extract_uids::extract_wrapping_key, owner_config, recover_cmd_logs},
     },
 };
 
@@ -44,7 +39,7 @@ pub(crate) fn wrap(
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec![
@@ -96,7 +91,7 @@ pub(crate) fn unwrap(
     unwrap_key_id: Option<String>,
     unwrap_key_file: Option<PathBuf>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec![

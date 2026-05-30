@@ -1,6 +1,5 @@
-use std::process::Command;
+use crate::tests::utils::ckms_bin;
 
-use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::reexport::{
     cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::{
         CertificateInputFormat, KeyUsage,
@@ -10,10 +9,7 @@ use cosmian_kms_cli_actions::reexport::{
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
-    },
+    tests::utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
 };
 #[cfg(feature = "non-fips")]
 use test_kms_server::start_default_test_kms_server;
@@ -73,7 +69,7 @@ pub(crate) fn import_certificate(
         unwrap,
         replace_existing,
     } = import_certificate_input;
-    let mut cmd = Command::cargo_bin(PROG_NAME).unwrap();
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec!["import".to_owned(), key_file.to_owned()];

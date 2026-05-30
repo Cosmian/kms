@@ -3,9 +3,6 @@
 #![allow(clippy::indexing_slicing)]
 #![allow(clippy::redundant_closure_for_method_calls)]
 
-use std::process::Command;
-
-use assert_cmd::prelude::CommandCargoExt;
 use clap::ValueEnum;
 use cosmian_kms_cli_actions::{
     actions::{
@@ -28,11 +25,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         certificates::certify::{CertifyOp, certify},
         secret_data::create_secret::create_secret_data,
         symmetric::create_key::create_symmetric_key,
-        utils::{owner_config, recover_cmd_logs},
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
     },
 };
 
@@ -41,7 +37,7 @@ fn get_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResult<Value> {
     let output_file = NamedTempFile::new()?;
     let output_path = output_file.path().to_string_lossy().to_string();
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg(SUB_COMMAND)
         .args(["get", "--id", key_id, "--output-file", &output_path]);
@@ -59,7 +55,7 @@ fn get_attributes(cli_conf_path: &str, key_id: &str) -> CosmianResult<Value> {
 
 /// Delete attributes of a KMS object by specifying each attribute to delete.
 fn delete_attributes(cli_conf_path: &str, key_id: &str, extra_args: &[&str]) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     let mut args = vec!["delete", "--id", key_id];
     args.extend(extra_args);
@@ -116,7 +112,7 @@ fn build_set_args(
 
 /// Use `set_attribute` from test_modify_attribute (reuse existing helper).
 fn set_attribute(cli_conf_path: &str, key_id: &str, extra_args: &[&str]) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     let mut args = vec!["set", "--id", key_id];
     args.extend(extra_args);

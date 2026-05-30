@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use assert_cmd::prelude::*;
 use base64::Engine;
@@ -18,10 +18,10 @@ use crate::{
     config::{CKMS_CONF_ENV, ClientConfig},
     error::result::CosmianResult,
     tests::{
-        PROG_NAME,
         access::SUB_COMMAND,
         shared::{ExportKeyParams, export_key},
         symmetric::create_key::create_symmetric_key,
+        utils::ckms_bin,
     },
 };
 
@@ -45,7 +45,7 @@ fn run_owned_cli_command(owner_client_conf_path: &str) {
             }
         );
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
@@ -74,7 +74,7 @@ fn run_owned_cli_command_expect_failure(owner_client_conf_path: &str) {
             }
         );
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);

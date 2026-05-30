@@ -1,6 +1,5 @@
-use std::{fs, process::Command};
+use std::fs;
 
-use assert_cmd::prelude::*;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -8,10 +7,7 @@ use super::{SUB_COMMAND, create_key::create_fpe_key};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{
-        PROG_NAME,
-        utils::{owner_config, recover_cmd_logs},
-    },
+    tests::utils::{ckms_bin, owner_config, recover_cmd_logs},
 };
 
 fn fpe_encrypt(
@@ -23,7 +19,7 @@ fn fpe_encrypt(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -65,7 +61,7 @@ fn fpe_decrypt(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -107,7 +103,7 @@ fn fpe_encrypt_by_tag(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -149,7 +145,7 @@ fn fpe_decrypt_by_tag(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![

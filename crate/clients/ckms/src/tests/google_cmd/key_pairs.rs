@@ -1,6 +1,5 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::actions::google::key_pairs::create::CreateKeyPairsAction;
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
@@ -9,10 +8,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         certificates::certify::import_root_and_intermediate,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_certificate_id, owner_config, recover_cmd_logs},
+        utils::{ckms_bin, extract_uids::extract_certificate_id, owner_config, recover_cmd_logs},
     },
 };
 
@@ -70,7 +68,7 @@ fn create_keypairs(
     // Finish with user id
     args.push(action.user_id);
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg("google").arg("key-pairs").args(args);
     let output = recover_cmd_logs(&mut cmd);

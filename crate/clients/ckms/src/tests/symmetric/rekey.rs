@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::read_object_from_json_ttlv_file;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -10,10 +7,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         shared::{ExportKeyParams, export_key},
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_uid, owner_config, recover_cmd_logs},
+        utils::{ckms_bin, extract_uids::extract_uid, owner_config, recover_cmd_logs},
     },
 };
 
@@ -22,7 +18,7 @@ pub(crate) fn rekey_symmetric_key(
     cli_conf_path: &str,
     unique_identifier: &str,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     // Ensure sufficient stack for the child process on Windows
     cmd.env("RUST_MIN_STACK", "16777216");

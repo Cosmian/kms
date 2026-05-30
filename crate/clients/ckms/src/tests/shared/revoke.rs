@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::CommandCargoExt;
 use tempfile::TempDir;
 use test_kms_server::{
     start_default_test_kms_server, start_default_test_kms_server_with_non_revocable_key_ids,
@@ -17,10 +14,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         shared::{ExportKeyParams, export::export_key},
         symmetric::create_key::create_symmetric_key,
-        utils::{owner_config, recover_cmd_logs},
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
     },
 };
 
@@ -34,7 +30,7 @@ pub(crate) fn revoke(
         .iter()
         .map(std::string::ToString::to_string)
         .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     cmd.arg(sub_command).args(args);

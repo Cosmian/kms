@@ -1,6 +1,5 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::cargo::CommandCargoExt;
 use clap::ValueEnum;
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     cosmian_kmip::{
@@ -35,13 +34,14 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         certificates::{
             export::export_certificate,
             import::{ImportCertificateInput, import_certificate},
         },
         shared::{ImportKeyParams, import_key},
-        utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
+        utils::{
+            ckms_bin, extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs,
+        },
     },
 };
 
@@ -62,7 +62,7 @@ pub(crate) struct CertifyOp {
 }
 
 pub(crate) fn certify(cli_conf_path: &str, certify_op: CertifyOp) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec!["certify".to_owned()];
@@ -204,7 +204,7 @@ pub(crate) fn import_root_and_intermediate(
     // Some flows (e.g. certify without explicit issuer certificate id) resolve the issuer certificate
     // through the key links. Ensure the keypair also links back to the issuer certificate.
     {
-        let mut cmd = Command::cargo_bin(PROG_NAME)?;
+        let mut cmd = ckms_bin();
         cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
         cmd.arg("attributes")
             .arg("set")
@@ -221,7 +221,7 @@ pub(crate) fn import_root_and_intermediate(
     }
 
     {
-        let mut cmd = Command::cargo_bin(PROG_NAME)?;
+        let mut cmd = ckms_bin();
         cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
         cmd.arg("attributes")
             .arg("set")

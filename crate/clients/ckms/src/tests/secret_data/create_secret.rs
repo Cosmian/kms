@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use cosmian_kms_cli_actions::actions::secret_data::create_secret::CreateSecretDataAction;
 use cosmian_logger::info;
 use test_kms_server::start_default_test_kms_server;
@@ -9,9 +6,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs},
+        utils::{
+            ckms_bin, extract_uids::extract_unique_identifier, owner_config, recover_cmd_logs,
+        },
     },
 };
 
@@ -19,7 +17,7 @@ pub(crate) fn create_secret_data(
     cli_conf_path: &str,
     action: &CreateSecretDataAction,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["secret-data", "create"];
