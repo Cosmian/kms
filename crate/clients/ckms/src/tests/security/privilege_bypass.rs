@@ -63,7 +63,6 @@ async fn pb02_non_privileged_user_cannot_create() -> CosmianResult<()> {
 // Windows: native-tls/SChannel cannot handle the combined cert+JWT config used
 // by privileged_users_owner.toml when the server requests a client cert on the
 // /access/grant REST endpoint. Skip on Windows to avoid SEC_E_DECRYPT_FAILURE.
-#[cfg(not(target_os = "windows"))]
 #[tokio::test]
 async fn pb03_revoke_grant_denies_subsequent_access() -> CosmianResult<()> {
     let ctx =
