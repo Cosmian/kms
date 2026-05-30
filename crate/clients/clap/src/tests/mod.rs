@@ -2,8 +2,6 @@ mod aws;
 mod azure;
 #[cfg(feature = "non-fips")]
 mod certificates;
-#[cfg(feature = "non-fips")]
-mod fpe;
 mod google_cmd;
 mod metrics;
 mod oom;
