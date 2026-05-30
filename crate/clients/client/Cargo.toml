@@ -31,7 +31,7 @@ oauth2 = { version = "5.0", features = ["reqwest"], default-features = false }
 pem = { workspace = true }
 reqwest = { workspace = true, features = [
   "json",
-  "rustls-tls",
+  "native-tls",
   "socks",
   "http2",
 ] }
