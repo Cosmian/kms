@@ -184,10 +184,7 @@ pub(crate) async fn test_import_cover_crypt() -> CosmianResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_generate_export_import() -> CosmianResult<()> {
-    use cosmian_kms_cli_actions::{
-        actions::symmetric::keys::create_key::CreateKeyAction,
-        reexport::cosmian_kms_client::kmip_2_1::kmip_types::CryptographicAlgorithm,
-    };
+    use cosmian_kms_cli_actions::reexport::cosmian_kms_client::kmip_2_1::kmip_types::CryptographicAlgorithm;
 
     log_init(option_env!("RUST_LOG"));
     // log_init(Some("info,cosmian_kms_server=debug"));
@@ -221,7 +218,7 @@ pub(crate) async fn test_generate_export_import() -> CosmianResult<()> {
     )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     export_import_test(
         &owner_client_conf_path,
         "sym",

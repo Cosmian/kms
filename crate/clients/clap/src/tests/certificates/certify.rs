@@ -5,11 +5,7 @@ use test_kms_server::TestsContext;
 use uuid::Uuid;
 
 use crate::{
-    actions::{
-        certificates::{certify::CertifyAction, import_certificate::ImportCertificateAction},
-        rsa::keys::create_key_pair::CreateKeyPairAction,
-    },
-    error::result::KmsCliResult,
+    actions::certificates::import_certificate::ImportCertificateAction, error::result::KmsCliResult,
 };
 
 pub(crate) async fn import_root_and_intermediate(
@@ -69,23 +65,4 @@ pub(crate) async fn import_root_and_intermediate(
         intermediate_ca_id,
         intermediate_ca_private_key_id,
     ))
-}
-
-pub(crate) async fn create_self_signed_cert(ctx: &TestsContext) -> KmsCliResult<String> {
-    // create an RSA key pair
-    let (_private_key_id, public_key_id) = CreateKeyPairAction::default()
-        .run(ctx.get_owner_client())
-        .await?;
-
-    // Certify the public key with the intermediate CA
-    let certificate_id = CertifyAction {
-        public_key_id_to_certify: Some(public_key_id.to_string()),
-        subject_name: Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = Test Leaf".to_owned()),
-        ..Default::default()
-    }
-    .run(ctx.get_owner_client())
-    .await?
-    .to_string();
-
-    Ok(certificate_id)
 }

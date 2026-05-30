@@ -5,17 +5,14 @@ use std::{
 
 use assert_cmd::prelude::CommandCargoExt;
 use base64::{Engine as _, engine::general_purpose};
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::{
-        cosmian_kms_client::{
-            cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
-            read_object_from_json_ttlv_file,
-        },
-        cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-            CsRng,
-            reexport::rand_core::{RngCore, SeedableRng},
-        },
+use cosmian_kms_cli_actions::reexport::{
+    cosmian_kms_client::{
+        cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
+        read_object_from_json_ttlv_file,
+    },
+    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+        CsRng,
+        reexport::rand_core::{RngCore, SeedableRng},
     },
 };
 use cosmian_logger::log_init;
@@ -157,7 +154,7 @@ pub(crate) async fn test_password_wrap_import() -> CosmianResult<()> {
     password_wrap_import_test(&owner_client_conf_path, "ec", &private_key_id)?;
 
     // sym
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     password_wrap_import_test(&owner_client_conf_path, "sym", &key_id)?;
 
     Ok(())

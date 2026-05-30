@@ -4,8 +4,7 @@ use assert_cmd::prelude::CommandCargoExt;
 use clap::ValueEnum;
 use cosmian_kms_cli_actions::{
     actions::{
-        attributes::CCryptographicAlgorithm, secret_data::create_secret::CreateSecretDataAction,
-        symmetric::keys::create_key::CreateKeyAction},
+        attributes::CCryptographicAlgorithm, secret_data::create_secret::CreateSecretDataAction},
     reexport::cosmian_kms_client::{
         cosmian_kmip::kmip_2_1::kmip_types::Tag,
         reexport::cosmian_kms_client_utils::{
@@ -325,7 +324,7 @@ async fn test_set_attribute() -> CosmianResult<()> {
     let owner_conf = owner_config(ctx);
 
     // AES 256 bit key
-    let key_id = create_symmetric_key(&owner_conf, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_conf, &[])?;
     check_set_delete_attributes(&owner_conf, &key_id)?;
 
     // Self-signed certificate

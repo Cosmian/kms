@@ -1,7 +1,5 @@
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
-#[cfg(all(test, feature = "non-fips"))]
-pub(crate) use cosmian_kms_client::reexport::cosmian_kms_client_utils::certificate_utils::Algorithm;
 
 use self::{
     certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,

@@ -1,7 +1,4 @@
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::WrappingAlgorithm,
-};
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::WrappingAlgorithm;
 use cosmian_logger::{debug, log_init};
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -29,12 +26,12 @@ pub(crate) async fn test_wrap_on_export_unwrap_on_import() -> CosmianResult<()> 
     let tmp_path = tmp_dir.path();
 
     // Generate a symmetric wrapping key
-    let kek_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let kek_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // Generate a symmetric key to wrap
     let dek_path = tmp_path.join("dek.key");
     let dek_file = dek_path.to_str().unwrap().to_string();
-    let dek_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let dek_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // Export and import the key with different block cipher modes
     for wrapping_algorithm in [WrappingAlgorithm::AesGCM, WrappingAlgorithm::NistKeyWrap] {

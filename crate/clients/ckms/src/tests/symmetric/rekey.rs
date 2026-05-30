@@ -1,10 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::read_object_from_json_ttlv_file,
-};
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::read_object_from_json_ttlv_file;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -60,13 +57,7 @@ pub(crate) async fn test_rekey_symmetric_key() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // AES 256 bit key
-    let id = create_symmetric_key(
-        &owner_client_conf_path,
-        CreateKeyAction {
-            number_of_bits: Some(AES_KEY_SIZE),
-            ..Default::default()
-        },
-    )?;
+    let id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     export_key(ExportKeyParams {

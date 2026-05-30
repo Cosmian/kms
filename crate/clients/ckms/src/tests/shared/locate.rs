@@ -1,12 +1,9 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kmip::kmip_2_1::extra::tagging::{
-        SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY,
-        SYSTEM_TAG_SYMMETRIC_KEY,
-    },
+use cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::extra::tagging::{
+    SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY,
+    SYSTEM_TAG_SYMMETRIC_KEY,
 };
 #[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
@@ -318,13 +315,7 @@ pub(crate) async fn test_locate_symmetric_key() -> CosmianResult<()> {
     let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
 
     // generate a new key
-    let key_id = create_symmetric_key(
-        &owner_client_conf_path,
-        CreateKeyAction {
-            tags: vec!["test_sym".to_string()],
-            ..Default::default()
-        },
-    )?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &["--tag", "test_sym"])?;
 
     // Locate with Tags
     let ids = locate(

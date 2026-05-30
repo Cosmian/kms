@@ -1,32 +1,27 @@
 #[cfg(feature = "non-fips")]
 use cosmian_kms_cli_actions::reexport::cosmian_kms_crypto::crypto::elliptic_curves::operation::create_x25519_key_pair;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::{
-        cosmian_kms_client::{
-            cosmian_kmip::{
-                kmip_0::kmip_types::BlockCipherMode,
-                kmip_2_1::{
-                    kmip_objects::Object,
-                    kmip_types::{
-                        CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod,
-                    },
-                },
-            },
+use cosmian_kms_cli_actions::reexport::{
+    cosmian_kms_client::{
+        cosmian_kmip::{
+            kmip_0::kmip_types::BlockCipherMode,
             kmip_2_1::{
-                extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
-                kmip_data_structures::KeyValue, requests::create_symmetric_key_kmip_object,
+                kmip_objects::Object,
+                kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
             },
-            read_object_from_json_ttlv_file,
-            reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
-            write_kmip_object_to_file,
         },
-        cosmian_kms_crypto::{
-            crypto::wrap::unwrap_key_block,
-            reexport::cosmian_crypto_core::{
-                CsRng,
-                reexport::rand_core::{RngCore, SeedableRng},
-            },
+        kmip_2_1::{
+            extra::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_data_structures::KeyValue,
+            requests::create_symmetric_key_kmip_object,
+        },
+        read_object_from_json_ttlv_file,
+        reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
+        write_kmip_object_to_file,
+    },
+    cosmian_kms_crypto::{
+        crypto::wrap::unwrap_key_block,
+        reexport::cosmian_crypto_core::{
+            CsRng,
+            reexport::rand_core::{RngCore, SeedableRng},
         },
     },
 };
@@ -112,7 +107,7 @@ pub(crate) async fn test_import_export_wrap_rfc_5649() -> CosmianResult<()> {
     )?;
 
     // test sym
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     test_import_export_wrap_private_key(
         &owner_client_conf_path,
         "sym",
@@ -217,7 +212,7 @@ pub(crate) async fn test_import_export_wrap_ecies() -> CosmianResult<()> {
     )?;
 
     debug!("testing symmetric keys");
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     test_import_export_wrap_private_key(
         &owner_client_conf_path,
         "sym",

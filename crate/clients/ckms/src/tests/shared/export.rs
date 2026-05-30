@@ -13,13 +13,10 @@ use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     },
     pad_be_bytes,
 };
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::{
-        kmip_2_1::kmip_types::KeyFormatType,
-        read_bytes_from_file, read_object_from_json_ttlv_file,
-        reexport::cosmian_kms_client_utils::export_utils::{ExportKeyFormat, WrappingAlgorithm},
-    },
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
+    kmip_2_1::kmip_types::KeyFormatType,
+    read_bytes_from_file, read_object_from_json_ttlv_file,
+    reexport::cosmian_kms_client_utils::export_utils::{ExportKeyFormat, WrappingAlgorithm},
 };
 #[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
@@ -134,7 +131,7 @@ pub(crate) async fn test_export_sym() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     export_key(ExportKeyParams {
@@ -197,7 +194,7 @@ pub(crate) async fn test_export_sym_allow_revoked() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     // Export
     export_key(ExportKeyParams {
         cli_conf_path: owner_client_conf_path,
@@ -228,7 +225,7 @@ pub(crate) async fn test_export_wrapped() -> CosmianResult<()> {
         create_rsa_key_pair(&owner_client_conf_path, &RsaKeyPairOptions::default())?;
 
     // generate a symmetric key
-    let sym_key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let sym_key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // Export wrapped key with a symmetric key as default (JsonTTLV with Raw Key Format Type)
     export_key(ExportKeyParams {
@@ -620,13 +617,7 @@ pub(crate) async fn test_sensitive_sym() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(
-        &owner_client_conf_path,
-        CreateKeyAction {
-            sensitive: true,
-            ..Default::default()
-        },
-    )?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &["--sensitive"])?;
 
     // the key should not be exportable
     assert!(

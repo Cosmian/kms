@@ -1,21 +1,16 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::{
-        cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
-        cosmian_kms_crypto::{
-            crypto::cover_crypt::access_structure::access_structure_from_json_file,
-            reexport::{
-                cosmian_cover_crypt::{
-                    AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt,
-                    encrypted_header::EncryptedHeader,
-                },
-                cosmian_crypto_core::bytes_ser_de::{
-                    Deserializer, Serializable, test_serialization,
-                },
+use cosmian_kms_cli_actions::reexport::{
+    cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
+    cosmian_kms_crypto::{
+        crypto::cover_crypt::access_structure::access_structure_from_json_file,
+        reexport::{
+            cosmian_cover_crypt::{
+                AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt,
+                encrypted_header::EncryptedHeader,
             },
+            cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization},
         },
     },
 };
@@ -136,8 +131,7 @@ async fn test_rekey_error() -> CosmianResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // create a symmetric key
-    let symmetric_key_id =
-        create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let symmetric_key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     export_key(ExportKeyParams {

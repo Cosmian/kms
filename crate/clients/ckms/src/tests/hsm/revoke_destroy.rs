@@ -1,4 +1,3 @@
-use cosmian_kms_cli_actions::actions::symmetric::keys::create_key::CreateKeyAction;
 use cosmian_logger::{debug, log_init};
 use test_kms_server::TestsContext;
 use uuid::Uuid;
@@ -19,10 +18,7 @@ pub(crate) fn test_revoke_symmetric_key(ctx: &TestsContext) -> CosmianResult<()>
     // sym
     let key_id = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
-            ..Default::default()
-        },
+        &[&("hsm::0::".to_string() + &Uuid::new_v4().to_string())],
     )?;
 
     // revoke

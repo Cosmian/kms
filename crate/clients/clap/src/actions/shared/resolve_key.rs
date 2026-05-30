@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use base64::{Engine as _, engine::general_purpose};
-use cosmian_kms_client::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
-use cosmian_kms_client::export_object;
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
+    cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm,
+    export_object,
     kmip_2_1::{
         kmip_attributes::Attributes, kmip_objects::Object,
         requests::create_symmetric_key_kmip_object,

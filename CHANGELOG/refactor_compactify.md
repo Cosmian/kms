@@ -18,6 +18,7 @@
 - Extract `parse_x509_to_object()` helper for certificate import (PEM/DER deduplication)
 - Extract `resolve_key_from_options()` shared helper for wrap/unwrap key source resolution
 - Split `derive_key/mod.rs` into `resolve_base_key_id()`, `build_derivation_params()`, `parse_derivation_method()`
+- Convert all `ckms` tests from `CreateKeyAction` struct instantiation to pure CLI string args (`&[&str]`), removing direct dependency on clap action structs in binary-level tests
 - Extract `resolve_kek_wrapping_params()` for AWS BYOK export key material
 - Split `google/key_pairs/create.rs` into `resolve_key_pair()`, `resolve_certificate()`, `push_to_gmail()`
 - Add `symmetric/cipher_io.rs` with shared helpers: `resolve_aad()`, `build_cipher()`, `generate_dek()`

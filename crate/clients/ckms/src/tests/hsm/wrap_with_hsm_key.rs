@@ -1,8 +1,7 @@
 #[cfg(feature = "non-fips")]
 use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::export_utils::ExportKeyFormat;
-use cosmian_kms_cli_actions::{actions::symmetric::{keys::create_key::CreateKeyAction, KeyEncryptionAlgorithm}, reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::{
-    create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
-}};
+use cosmian_kms_cli_actions::actions::symmetric::KeyEncryptionAlgorithm;
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm;
 use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
 use tempfile::TempDir;
@@ -27,26 +26,31 @@ pub(crate) fn test_wrap_with_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     // log_init(Some("info,cosmian_kms_server=debug"));
     let owner_client_conf_path = owner_config(ctx);
 
+    let hsm_key_id = "hsm::0::".to_string() + &Uuid::new_v4().to_string();
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            sensitive: true,
-            ..Default::default()
-        },
+        &[
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+            "--sensitive",
+            &hsm_key_id,
+        ],
     )?;
     // println!("Wrapping key id: {wrapping_key_id}" );
+    let dek_key_id = Uuid::new_v4().to_string();
     let dek = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some(Uuid::new_v4().to_string()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            wrapping_key_id: Some(wrapping_key_id),
-            ..Default::default()
-        },
+        &[
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+            "--wrapping-key-id",
+            &wrapping_key_id,
+            &dek_key_id,
+        ],
     )?;
     run_encrypt_decrypt_test(
         &owner_client_conf_path,
@@ -85,15 +89,18 @@ pub(crate) fn test_wrap_with_rsa_oaep(ctx: &TestsContext) -> CosmianResult<()> {
         },
     )?;
     println!("Wrapping key id: {public_key_id}");
+    let dek_key_id = Uuid::new_v4().to_string();
     let dek = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some(Uuid::new_v4().to_string()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            wrapping_key_id: Some(public_key_id),
-            ..Default::default()
-        },
+        &[
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+            "--wrapping-key-id",
+            &public_key_id,
+            &dek_key_id,
+        ],
     )?;
     run_encrypt_decrypt_test(
         &owner_client_conf_path,
@@ -132,15 +139,18 @@ pub(crate) fn test_unwrap_on_export(ctx: &TestsContext) -> CosmianResult<()> {
         },
     )?;
     info!("===> Wrapping key id: {public_key_id}");
+    let dek_key_id = Uuid::new_v4().to_string();
     let dek = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some(Uuid::new_v4().to_string()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            wrapping_key_id: Some(public_key_id),
-            ..Default::default()
-        },
+        &[
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+            "--wrapping-key-id",
+            &public_key_id,
+            &dek_key_id,
+        ],
     )?;
     info!("===> DEK id: {dek}");
     let tmp_dir = TempDir::new()?;
@@ -178,27 +188,32 @@ pub(crate) fn test_unwrap_with_hsm_key(ctx: &TestsContext) -> CosmianResult<()> 
     let owner_client_conf_path = owner_config(ctx);
 
     // Create a sensitive AES key on the HSM (non-extractable, identified by hsm:: prefix).
+    let hsm_key_id = "hsm::0::".to_string() + &Uuid::new_v4().to_string();
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            sensitive: true,
-            ..Default::default()
-        },
+        &[
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+            "--sensitive",
+            &hsm_key_id,
+        ],
     )?;
 
     // Create a DEK wrapped with the HSM key.
+    let dek_uid = Uuid::new_v4().to_string();
     let dek_id = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some(Uuid::new_v4().to_string()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            wrapping_key_id: Some(wrapping_key_id.clone()),
-            ..Default::default()
-        },
+        &[
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+            "--wrapping-key-id",
+            &wrapping_key_id,
+            &dek_uid,
+        ],
     )?;
 
     let tmp_dir = TempDir::new()?;

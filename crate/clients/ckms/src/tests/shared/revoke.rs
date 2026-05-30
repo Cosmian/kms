@@ -1,7 +1,6 @@
 use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
-use cosmian_kms_cli_actions::actions::symmetric::keys::create_key::CreateKeyAction;
 use tempfile::TempDir;
 use test_kms_server::{
     start_default_test_kms_server, start_default_test_kms_server_with_non_revocable_key_ids,
@@ -87,7 +86,7 @@ async fn test_revoke_symmetric_key() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // syn
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // revoke
     revoke(&owner_client_conf_path, "sym", &key_id, "revocation test")?;
@@ -322,13 +321,7 @@ async fn test_non_revocable_symmetric_key() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // sym
-    let key_id = create_symmetric_key(
-        &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some(non_revocable_key.clone()),
-            ..Default::default()
-        },
-    )?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[&non_revocable_key])?;
 
     assert_eq!(key_id, non_revocable_key);
 

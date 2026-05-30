@@ -17,10 +17,6 @@
 //! The test is invoked from `.github/scripts/test/test_hsm_softhsm2.sh` with
 //! the three slot IDs set as environment variables.
 
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
-};
 use cosmian_logger::log_init;
 use test_kms_server::{TestsContext, start_default_test_kms_server_with_three_softhsm2};
 use uuid::Uuid;
@@ -62,12 +58,7 @@ fn create_and_destroy_aes_key(
 
     let returned_id = create_symmetric_key(
         cli_conf_path,
-        CreateKeyAction {
-            key_id: Some(key_id.clone()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            ..Default::default()
-        },
+        &["--algorithm", "aes", "--number-of-bits", "256", &key_id],
     )?;
 
     // The server should echo back the requested UID.

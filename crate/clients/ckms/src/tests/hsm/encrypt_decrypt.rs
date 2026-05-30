@@ -7,10 +7,8 @@ use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::rsa_utils::{HashFn, RsaEncryptionAlgorithm},
 };
 use cosmian_kms_cli_actions::{
-    actions::symmetric::{KeyEncryptionAlgorithm, keys::create_key::CreateKeyAction},
-    reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::{
-        create_utils::SymmetricAlgorithm, symmetric_utils::DataEncryptionAlgorithm,
-    },
+    actions::symmetric::KeyEncryptionAlgorithm,
+    reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_logger::log_init;
 #[cfg(feature = "non-fips")]
@@ -37,14 +35,10 @@ pub(crate) fn test_aes_gcm(ctx: &TestsContext) -> CosmianResult<()> {
     log_init(None);
     let owner_client_conf_path = owner_config(ctx);
 
+    let hsm_key_id = "hsm::0::".to_string() + &Uuid::new_v4().to_string();
     let dek = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            key_id: Some("hsm::0::".to_string() + &Uuid::new_v4().to_string()),
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            ..Default::default()
-        },
+        &["--algorithm", "aes", "--number-of-bits", "256", &hsm_key_id],
     )?;
     run_encrypt_decrypt_test(
         &owner_client_conf_path,

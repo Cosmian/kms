@@ -1,5 +1,7 @@
-use cosmian_kms_client::kmip_2_1::kmip_types::CryptographicParameters;
-use cosmian_kms_client::reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm;
+use cosmian_kms_client::{
+    kmip_2_1::kmip_types::CryptographicParameters,
+    reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
+};
 use cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::{SymCipher, random_key};
 use zeroize::Zeroizing;
 

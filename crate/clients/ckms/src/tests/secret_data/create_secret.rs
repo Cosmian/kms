@@ -1,13 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::{
-    actions::{
-        secret_data::create_secret::CreateSecretDataAction,
-        symmetric::keys::create_key::CreateKeyAction,
-    },
-    reexport::cosmian_kms_client::reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
-};
+use cosmian_kms_cli_actions::actions::secret_data::create_secret::CreateSecretDataAction;
 use cosmian_logger::info;
 use test_kms_server::start_default_test_kms_server;
 
@@ -99,12 +93,14 @@ pub(crate) async fn test_secret_data_with_wrapping() -> CosmianResult<()> {
     // First create a symmetric key for wrapping
     let wrapping_key_id = create_symmetric_key(
         &owner_client_conf_path,
-        CreateKeyAction {
-            number_of_bits: Some(256),
-            algorithm: SymmetricAlgorithm::Aes,
-            tags: vec!["wrapping_key_tag".to_owned()],
-            ..Default::default()
-        },
+        &[
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+            "--tag",
+            "wrapping_key_tag",
+        ],
     )?;
 
     // Now create a SecretData object with the wrapping key

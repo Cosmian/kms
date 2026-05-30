@@ -1,12 +1,9 @@
 use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::{
-        kmip_2_1::kmip_data_structures::{KeyMaterial, KeyValue},
-        read_object_from_json_ttlv_file,
-    },
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
+    kmip_2_1::kmip_data_structures::{KeyMaterial, KeyValue},
+    read_object_from_json_ttlv_file,
 };
 #[cfg(feature = "non-fips")]
 use cosmian_logger::trace;
@@ -108,7 +105,7 @@ async fn test_destroy_symmetric_key() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // syn
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // destroy should not work when not revoked
     assert!(destroy(&owner_client_conf_path, "sym", &key_id, false).is_err());
@@ -128,7 +125,7 @@ async fn test_destroy_and_remove_symmetric_key() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // syn
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // destroy should not work when not revoked
     assert!(destroy(&owner_client_conf_path, "sym", &key_id, true).is_err());

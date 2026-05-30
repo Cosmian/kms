@@ -3,11 +3,8 @@ use std::{path::PathBuf, process::Command};
 use assert_cmd::prelude::*;
 use base64::Engine;
 use cosmian_config_utils::ConfigUtils;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::{
-        read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
-    },
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
+    read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
 };
 use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
@@ -87,7 +84,7 @@ fn run_owned_cli_command_expect_failure(owner_client_conf_path: &str) {
 
 fn create_api_token(owner_client_conf_path: &str) -> CosmianResult<(String, String)> {
     // Create and export an API token
-    let api_token_id = create_symmetric_key(owner_client_conf_path, CreateKeyAction::default())?;
+    let api_token_id = create_symmetric_key(owner_client_conf_path, &[])?;
     trace!("Symmetric key created of unique identifier: {api_token_id:?}");
 
     // Export as default (JsonTTLV with Raw Key Format Type)

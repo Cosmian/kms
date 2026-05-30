@@ -48,13 +48,11 @@ fn modify_attribute(cli_conf_path: &str, key_id: &str, extra_args: &[&str]) -> C
 
 #[tokio::test]
 async fn test_modify_attribute() -> CosmianResult<()> {
-    use cosmian_kms_cli_actions::actions::symmetric::keys::create_key::CreateKeyAction;
-
     let ctx = start_default_test_kms_server().await;
     let owner_conf = owner_config(ctx);
 
     // Create a symmetric key
-    let key_id = create_symmetric_key(&owner_conf, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_conf, &[])?;
 
     // Set cryptographic length (state-independent attribute)
     set_attribute(&owner_conf, &key_id, &["--cryptographic-length", "128"])?;

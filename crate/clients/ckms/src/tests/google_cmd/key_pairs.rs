@@ -1,9 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::actions::{
-    google::key_pairs::create::CreateKeyPairsAction, symmetric::keys::create_key::CreateKeyAction,
-};
+use cosmian_kms_cli_actions::actions::google::key_pairs::create::CreateKeyPairsAction;
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 
@@ -13,6 +11,7 @@ use crate::{
     tests::{
         PROG_NAME,
         certificates::certify::import_root_and_intermediate,
+        symmetric::create_key::create_symmetric_key,
         utils::{extract_uids::extract_certificate_id, owner_config, recover_cmd_logs},
     },
 };
@@ -99,9 +98,7 @@ async fn cli_create_google_key_pair() -> CosmianResult<()> {
     let owner_client_conf_path = owner_config(ctx);
 
     // Create the Google CSE key
-    let cse_key_id = CreateKeyAction::default()
-        .run(ctx.get_owner_client())
-        .await?;
+    let cse_key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // import signers
     let (_root_id, _intermediate_id, issuer_private_key_id) =
@@ -110,7 +107,7 @@ async fn cli_create_google_key_pair() -> CosmianResult<()> {
     // Create key pair without certificate extensions (must fail)
     let action = CreateKeyPairsAction {
         user_id: "john.doe@acme.com".to_string(),
-        cse_key_id: cse_key_id.to_string(),
+        cse_key_id,
         issuer_private_key_id: None,
         subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_string(),
         rsa_private_key_id: None,
