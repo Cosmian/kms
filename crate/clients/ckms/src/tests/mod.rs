@@ -9,7 +9,7 @@
 
 mod ensure_binary;
 
-#[cfg(feature = "non-fips")]
+#[cfg(all(feature = "non-fips", not(target_os = "windows")))]
 mod access;
 mod attributes;
 #[cfg(not(target_os = "windows"))]

@@ -24,6 +24,12 @@
 - Add `symmetric/cipher_io.rs` with shared helpers: `resolve_aad()`, `build_cipher()`, `generate_dek()`
 - Add `prompt_optional!`, `prompt_password!`, `prompt_required!` macros to ckms configure wizard
 
+## Bug Fixes
+
+- Skip `tests::access::*` and `tests::shared::locate::*` on Windows: `native-tls`/SChannel cannot process PEM client certificates for mTLS, causing `SEC_E_DECRYPT_FAILURE`/`WSAECONNRESET` on all cert-auth tests; gate both modules with `#[cfg(not(target_os = "windows"))]`
+- Remove stale `x509-parser` dev-dependency from `cosmian_kms_cli_actions` (unused, bloated lockfile)
+- Fix `test_issue_746_name_attribute_on_secret_data` assertion: use `NameValue` (PascalCase) to match actual KMIP JSON serialization
+
 ## Testing
 
 - Port KMIP activate lifecycle tests to ckms CLI-level (`error_messages/activate.rs`): success, object-not-found, already-active, deactivated, destroyed, compromised, EC keys, RSA keys
@@ -36,8 +42,3 @@
 - Port opaque object CRUD test to ckms CLI-level (`opaque_object/opaque_crud.rs`)
 - Enable `test_set_attribute` module in ckms tests (was missing from `mod.rs`): covers `attributes get`, `attributes set`, `attributes delete` CLI commands
 - Remove dead test files `aws_xks_tests.rs` and `digested.rs` (broken imports, never compiled)
-
-## Bug Fixes
-
-- Remove stale `x509-parser` dev-dependency from `cosmian_kms_cli_actions` (unused, bloated lockfile)
-- Fix `test_issue_746_name_attribute_on_secret_data` assertion: use `NameValue` (PascalCase) to match actual KMIP JSON serialization
