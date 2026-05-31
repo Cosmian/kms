@@ -97,3 +97,16 @@ impl Default for HttpConfig {
         }
     }
 }
+
+/// Build the default CORS allowed-origins list for the given scheme and port.
+///
+/// Includes `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, and `[::]` so that
+/// the bundled Web UI works out-of-the-box from any loopback address.
+#[must_use]
+pub fn default_cors_origins(scheme: &str, port: u16) -> Vec<String> {
+    let hosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "[::]"];
+    hosts
+        .iter()
+        .map(|h| format!("{scheme}://{h}:{port}"))
+        .collect()
+}

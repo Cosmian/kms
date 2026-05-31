@@ -7,10 +7,17 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_os = "linux")]
 const LINUX_UI_DIST_PATH: &str = "/usr/local/cosmian/ui/dist/";
 
-// On Windows, we need to resolve %LOCALAPPDATA% at runtime
 #[cfg(target_os = "windows")]
 #[must_use]
 pub fn get_default_ui_dist_path() -> String {
+    if let Some(path) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join("ui")))
+    {
+        if path.join("index.html").exists() {
+            return path.to_string_lossy().into_owned();
+        }
+    }
     std::env::var("LOCALAPPDATA").map_or_else(
         |_| String::from("C:\\ProgramData\\cosmian\\ui"),
         |localappdata| format!("{localappdata}\\Cosmian KMS Server\\ui"),

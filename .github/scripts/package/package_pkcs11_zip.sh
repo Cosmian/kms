@@ -4,10 +4,9 @@
 #
 # Artifacts included in the ZIP (flat layout):
 #   libcosmian_pkcs11.so   (Linux) or libcosmian_pkcs11.dylib (macOS)
-#   cosmian_pkcs11_verify  (binary, any platform)
 #   cosmian-kms-public.asc (signing public key)
 #
-# Both artifacts are taken from the Nix CLI derivation
+# The PKCS#11 library is taken from the Nix CLI derivation
 # (kms-cli-<variant>-<link>-openssl).
 #
 # Output directory: result-pkcs11-zip-<variant>-<link>/
@@ -90,12 +89,6 @@ REAL_CLI=$(readlink -f "$CLI_OUT_LINK")
 # ---------------------------------------------------------------------------
 # Locate artifacts
 # ---------------------------------------------------------------------------
-PKCS11_VERIFY_BIN="$REAL_CLI/bin/cosmian_pkcs11_verify"
-[ -x "$PKCS11_VERIFY_BIN" ] || {
-  echo "ERROR: cosmian_pkcs11_verify not found in $REAL_CLI/bin/" >&2
-  exit 1
-}
-
 if [ "$(uname)" = "Darwin" ]; then
   PKCS11_LIB="$REAL_CLI/lib/libcosmian_pkcs11.dylib"
   LIB_FILENAME="libcosmian_pkcs11.dylib"
@@ -140,15 +133,14 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 cp "$PKCS11_LIB" "$WORK_DIR/$LIB_FILENAME"
-cp "$PKCS11_VERIFY_BIN" "$WORK_DIR/cosmian_pkcs11_verify"
 
 PUBLIC_KEY="$REPO_ROOT/nix/signing-keys/cosmian-kms-public.asc"
 [ -f "$PUBLIC_KEY" ] && cp "$PUBLIC_KEY" "$WORK_DIR/cosmian-kms-public.asc"
 
 echo "Assembling $ZIP_NAME …"
-(cd "$WORK_DIR" && zip -j "$RESULT_DIR/$ZIP_NAME" ./*.so ./*.dylib ./cosmian_pkcs11_verify ./cosmian-kms-public.asc 2>/dev/null ||
-  zip -j "$RESULT_DIR/$ZIP_NAME" "$LIB_FILENAME" cosmian_pkcs11_verify cosmian-kms-public.asc 2>/dev/null ||
-  zip -j "$RESULT_DIR/$ZIP_NAME" "$LIB_FILENAME" cosmian_pkcs11_verify)
+(cd "$WORK_DIR" && zip -j "$RESULT_DIR/$ZIP_NAME" ./*.so ./*.dylib ./cosmian-kms-public.asc 2>/dev/null ||
+  zip -j "$RESULT_DIR/$ZIP_NAME" "$LIB_FILENAME" cosmian-kms-public.asc 2>/dev/null ||
+  zip -j "$RESULT_DIR/$ZIP_NAME" "$LIB_FILENAME")
 
 [ -f "$RESULT_DIR/$ZIP_NAME" ] || {
   echo "ERROR: zip assembly failed — $ZIP_NAME not created" >&2

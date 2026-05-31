@@ -3,6 +3,29 @@ use std::path::PathBuf;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "linux")]
+#[must_use]
+pub fn get_default_rolling_log_dir() -> PathBuf {
+    PathBuf::from("/var/log/cosmian")
+}
+
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn get_default_rolling_log_dir() -> PathBuf {
+    PathBuf::from(r"C:\ProgramData\Cosmian KMS Server\logs")
+}
+
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn get_default_rolling_log_dir() -> PathBuf {
+    // Use ~/Library/Logs which is writable without root.
+    // /Library/Logs/ requires elevated privileges and is reserved for system daemons.
+    std::env::var_os("HOME").map_or_else(
+        || PathBuf::from("/tmp/cosmian_kms_logs"),
+        |home| PathBuf::from(home).join("Library/Logs/Cosmian KMS Server"),
+    )
+}
+
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
 #[serde(default)]
@@ -36,20 +59,17 @@ pub struct LoggingConfig {
     /// Log to syslog
     pub log_to_syslog: bool,
 
-    /// If set, daily rolling logs will be written to the specified directory
-    /// using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
+    /// The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.
+    /// Defaults to a platform-specific path when not set:
+    ///   Linux: /var/log/cosmian
+    ///   Windows: C:\ProgramData\Cosmian KMS Server\logs
+    ///   macOS: ~/Library/Logs/Cosmian KMS Server
     #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]
     pub rolling_log_dir: Option<PathBuf>,
 
-    /// If `rolling_log_dir` is set, this is the name of the rolling log file:
-    ///  <rolling_log_name>.YYYY-MM-DD.
-    /// Defaults to "kms" if not set.
-    #[clap(
-        long,
-        env("KMS_ROLLING_LOG_NAME"),
-        requires = "rolling_log_dir",
-        verbatim_doc_comment
-    )]
+    /// The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
+    /// Defaults to `cosmian_kms` if not set.
+    #[clap(long, env("KMS_ROLLING_LOG_NAME"), verbatim_doc_comment)]
     pub rolling_log_name: Option<String>,
 
     /// Enable metering in addition to tracing when telemetry is enabled

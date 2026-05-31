@@ -62,7 +62,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Build static OpenSSL
         shell: pwsh
@@ -90,3 +90,36 @@ jobs:
             ${{ runner.temp }}\kms-stderr.log
             ui\test-results\
             ui\playwright-report\
+
+  test-cng-ksp:
+    name: ${{ inputs.archive-name }} - CNG KSP integration tests
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+
+      - name: Build static OpenSSL
+        shell: pwsh
+        run: |
+          vcpkg install --triplet x64-windows-static
+          vcpkg integrate install
+
+      - name: Run CNG KSP integration tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\.github\scripts\windows\test_cng_ksp.ps1
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cng-ksp-test-logs
+          path: |
+            ${{ runner.temp }}\kms-cng-test-server.log
+            ${{ runner.temp }}\kms-cng-test-server.log.err

@@ -298,6 +298,12 @@ impl ServerParams {
             conf.kmip_policy.allowlists
         };
 
+        let cors_scheme = if conf.tls.is_tls_enabled() {
+            "https"
+        } else {
+            "http"
+        };
+
         let res = Self {
             identity_provider_configurations: {
                 // Try the new IdpAuthConfig first, then fall back to the deprecated JwtAuthConfig
@@ -412,7 +418,9 @@ impl ServerParams {
             // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
             // to enable rate limiting in production deployments.
             rate_limit_per_second: conf.http.rate_limit_per_second,
-            cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_default(),
+            cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_else(|| {
+                crate::config::default_cors_origins(cors_scheme, conf.http.port)
+            }),
             max_locate_items: 1000,
         };
 

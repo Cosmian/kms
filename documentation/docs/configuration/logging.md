@@ -59,13 +59,29 @@ On Linux, logs can be redirected to syslog instead of stdout by setting:
 
 ## Rolling log files
 
-Daily rolling log files can be enabled by specifying the target directory via:
+The server writes daily rolling log files by default. Log files are named
+`<name>.YYYY-MM-DD`, where `<name>` defaults to `cosmian_kms`.
 
-- the `rolling_log_dir` entry of the TOML configuration file,
-- the `--rolling-log-dir` command line argument.
+When the log directory is not explicitly configured, the server uses a
+platform-specific default:
 
-Files are named `<name>.YYYY-MM-DD`, where `<name>` defaults to `kms`.
-The name can be changed using the `rolling_log_name` TOML entry or `--rolling-log-name` argument.
+| Platform | Default directory                              |
+|----------|------------------------------------------------|
+| Linux    | `/var/log/cosmian`                             |
+| Windows  | `C:\ProgramData\Cosmian KMS Server\logs`       |
+| macOS    | `~/Library/Logs/Cosmian KMS Server`            |
+
+> **Note (macOS):** The previous default `/Library/Logs/Cosmian KMS Server` requires root
+> privileges. The server now defaults to `~/Library/Logs/Cosmian KMS Server` which is
+> writable by the current user. If you run the server as a LaunchDaemon (root), you may
+> override this with `--rolling-log-dir /Library/Logs/Cosmian KMS Server`.
+
+The directory and file name can be overridden via:
+
+- the `rolling_log_dir` / `rolling_log_name` entries in the TOML configuration
+  file (`[logging]` section),
+- the `--rolling-log-dir` / `--rolling-log-name` command line arguments,
+- the `KMS_ROLLING_LOG_DIR` / `KMS_ROLLING_LOG_NAME` environment variables.
 
 ---
 

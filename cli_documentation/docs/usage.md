@@ -1,7 +1,7 @@
 # Usage
 
 ```sh
-Command Line Interface used to manage the Cosmian KMS server.
+Command Line Interface used to manage the Eviden KMS server.
 
 If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
 or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
@@ -20,6 +20,7 @@ Commands:
   pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
   tokenize       Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
   certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+  cng            Manage the Windows CNG Key Storage Provider (KSP)
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
   google         Manage google elements. Handle key pairs and identities from Gmail API

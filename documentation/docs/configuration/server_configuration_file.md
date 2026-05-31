@@ -274,6 +274,8 @@ hostname = "0.0.0.0"
 # are not equivalent to a DNS hostname. The Docker image pre-populates loopback
 # addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
 # cors_allowed_origins = ["<origin-1>", "<origin-2>"]
+# When not set, the binary defaults to loopback origins for the configured
+# scheme and port (e.g. http://localhost:9998, http://127.0.0.1:9998, etc.).
 
 # If using a forward proxy for outbound JWKS requests,
 # set the proxy parameters here.
@@ -345,14 +347,16 @@ quiet = false
 # Log to syslog
 log_to_syslog = false
 
-# If set, daily rolling logs will be written to the specified directory
-# using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
-# rolling_log_dir = "path_to_logging_directory"
+# Daily rolling logs: <rolling_log_name>.YYYY-MM-DD
+# When not set, the binary uses a platform-specific default:
+#   Linux:   /var/log/cosmian
+#   Windows: C:\ProgramData\Cosmian KMS Server\logs
+#   macOS:   ~/Library/Logs/Cosmian KMS Server
+# rolling_log_dir = "/var/log/cosmian"
 
-# If `rolling_log_dir` is set, this is the name of the rolling log file:
-#  <rolling_log_name>.YYYY-MM-DD.
-# Defaults to "kms" if not set.
-# rolling_log_name = "kms"
+# The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
+# Defaults to "cosmian_kms" if not set.
+# rolling_log_name = "cosmian_kms"
 
 # Enable metering in addition to tracing when telemetry is enabled
 # enable_metering = false
@@ -418,7 +422,14 @@ port = 0
 Cross-Origin Resource Sharing (CORS) controls which browser origins are allowed
 to make requests to the KMS HTTP API.
 
-**You must configure `cors_allowed_origins` for any Web UI deployment.**
+**You must configure `cors_allowed_origins` for any Web UI deployment
+that uses a hostname other than localhost.**
+
+When `cors_allowed_origins` is not set in the configuration file, CLI, or
+environment, the binary defaults to loopback origins matching the configured
+scheme (HTTP or HTTPS) and port. This covers `localhost`, `127.0.0.1`,
+`0.0.0.0`, `[::1]`, and `[::]` so the bundled Web UI works out-of-the-box
+without any explicit configuration.
 
 Although the KMS serves its own Web UI from the same host and port, the
 browser's Fetch API sends an `Origin` header on every non-GET/HEAD request
@@ -433,8 +444,8 @@ Configuring `0.0.0.0` (the bind address) or the server's IP address does **not**
 match a hostname-based origin such as `http://kms.example.com:9998`, and vice
 versa.
 
-The Docker image pre-populates the list with common loopback addresses
-(`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `[::]` on port 9998) so that
+The binary automatically provides loopback addresses
+(`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, `[::]` on the configured port) so that
 browser access from the same machine works out-of-the-box.  Any other hostname,
 IP address, or port must be added explicitly.
 
