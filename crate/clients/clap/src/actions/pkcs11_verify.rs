@@ -12,7 +12,34 @@ use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_FLAGS, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR, CK_OBJECT_CLASS,
     CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_TRUE, CK_ULONG, CKA_CLASS,
     CKF_RW_SESSION, CKF_SERIAL_SESSION, CKO_CERTIFICATE, CKO_DATA, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
-    CKO_SECRET_KEY, CKR_OK, CKU_USER,
+    CKO_SECRET_KEY, CKR_ACTION_PROHIBITED, CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_READ_ONLY,
+    CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID, CKR_ATTRIBUTE_VALUE_INVALID,
+    CKR_BUFFER_TOO_SMALL, CKR_CANCEL, CKR_CANT_LOCK, CKR_CRYPTOKI_ALREADY_INITIALIZED,
+    CKR_CRYPTOKI_NOT_INITIALIZED, CKR_CURVE_NOT_SUPPORTED, CKR_DATA_INVALID, CKR_DATA_LEN_RANGE,
+    CKR_DEVICE_ERROR, CKR_DEVICE_MEMORY, CKR_DEVICE_REMOVED, CKR_DOMAIN_PARAMS_INVALID,
+    CKR_ENCRYPTED_DATA_INVALID, CKR_ENCRYPTED_DATA_LEN_RANGE, CKR_EXCEEDED_MAX_ITERATIONS,
+    CKR_FIPS_SELF_TEST_FAILED, CKR_FUNCTION_CANCELED, CKR_FUNCTION_FAILED,
+    CKR_FUNCTION_NOT_PARALLEL, CKR_FUNCTION_NOT_SUPPORTED, CKR_FUNCTION_REJECTED,
+    CKR_GENERAL_ERROR, CKR_HOST_MEMORY, CKR_INFORMATION_SENSITIVE, CKR_KEY_CHANGED,
+    CKR_KEY_EXHAUSTED, CKR_KEY_FUNCTION_NOT_PERMITTED, CKR_KEY_HANDLE_INVALID,
+    CKR_KEY_INDIGESTIBLE, CKR_KEY_NEEDED, CKR_KEY_NOT_NEEDED, CKR_KEY_NOT_WRAPPABLE,
+    CKR_KEY_SIZE_RANGE, CKR_KEY_TYPE_INCONSISTENT, CKR_KEY_UNEXTRACTABLE, CKR_LIBRARY_LOAD_FAILED,
+    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_MUTEX_BAD, CKR_MUTEX_NOT_LOCKED,
+    CKR_NEED_TO_CREATE_THREADS, CKR_NO_EVENT, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED, CKR_PIN_EXPIRED, CKR_PIN_INCORRECT,
+    CKR_PIN_INVALID, CKR_PIN_LEN_RANGE, CKR_PIN_LOCKED, CKR_PIN_TOO_WEAK, CKR_PUBLIC_KEY_INVALID,
+    CKR_RANDOM_NO_RNG, CKR_RANDOM_SEED_NOT_SUPPORTED, CKR_SAVED_STATE_INVALID, CKR_SESSION_CLOSED,
+    CKR_SESSION_COUNT, CKR_SESSION_EXISTS, CKR_SESSION_HANDLE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SESSION_READ_ONLY, CKR_SESSION_READ_ONLY_EXISTS,
+    CKR_SESSION_READ_WRITE_SO_EXISTS, CKR_SIGNATURE_INVALID, CKR_SIGNATURE_LEN_RANGE,
+    CKR_SLOT_ID_INVALID, CKR_STATE_UNSAVEABLE, CKR_TEMPLATE_INCOMPLETE, CKR_TEMPLATE_INCONSISTENT,
+    CKR_TOKEN_NOT_PRESENT, CKR_TOKEN_NOT_RECOGNIZED, CKR_TOKEN_RESOURCE_EXCEEDED,
+    CKR_TOKEN_WRITE_PROTECTED, CKR_UNWRAPPING_KEY_HANDLE_INVALID, CKR_UNWRAPPING_KEY_SIZE_RANGE,
+    CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT, CKR_USER_ALREADY_LOGGED_IN,
+    CKR_USER_ANOTHER_ALREADY_LOGGED_IN, CKR_USER_NOT_LOGGED_IN, CKR_USER_PIN_NOT_INITIALIZED,
+    CKR_USER_TOO_MANY_TYPES, CKR_USER_TYPE_INVALID, CKR_VENDOR_DEFINED, CKR_WRAPPED_KEY_INVALID,
+    CKR_WRAPPED_KEY_LEN_RANGE, CKR_WRAPPING_KEY_HANDLE_INVALID, CKR_WRAPPING_KEY_SIZE_RANGE,
+    CKR_WRAPPING_KEY_TYPE_INCONSISTENT, CKU_USER,
 };
 
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -92,7 +119,13 @@ pub(crate) fn run_verify(
     }
 
     // ── Steps G–I: Enumerate objects by class ───────────────────────────────
-    let found_count = call_find_objects(func_list, session);
+    let (found_count, error_count) = call_find_objects(func_list, session);
+    if error_count > 0 {
+        println!(
+            "[C_FindObjects] WARN: {error_count} class(es) returned errors — \
+             the KMS server may be unreachable or misconfigured"
+        );
+    }
     println!("[C_FindObjects] OK: {found_count} PKCS#11 object(s) visible on KMS");
     println!();
 
@@ -111,6 +144,14 @@ pub(crate) fn run_verify(
     let rv = unsafe { c_finalize(ptr::null_mut::<c_void>()) };
     check_rv(rv, "C_Finalize")?;
     println!("[C_Finalize] OK");
+
+    if error_count > 0 {
+        println!();
+        return Err(KmsCliError::Default(format!(
+            "FAIL: {error_count} object class(es) could not be enumerated. \
+             The KMS server may be unreachable or misconfigured."
+        )));
+    }
 
     println!();
     println!("All checks passed.");
@@ -258,9 +299,10 @@ const OBJECT_CLASSES: &[(CK_OBJECT_CLASS, &str)] = &[
 
 const MAX_OBJECTS: usize = 64;
 
-fn call_find_objects(func_list: &CK_FUNCTION_LIST, session: CK_SESSION_HANDLE) -> usize {
+fn call_find_objects(func_list: &CK_FUNCTION_LIST, session: CK_SESSION_HANDLE) -> (usize, usize) {
     println!("[C_FindObjects] Enumerating objects by class:");
     let mut grand_total: usize = 0;
+    let mut error_count: usize = 0;
 
     for &(class, class_name) in OBJECT_CLASSES {
         match count_objects_by_class(func_list, session, class, class_name) {
@@ -270,11 +312,12 @@ fn call_find_objects(func_list: &CK_FUNCTION_LIST, session: CK_SESSION_HANDLE) -
             }
             Err(e) => {
                 println!("  {class_name}: unavailable — {e}");
+                error_count += 1;
             }
         }
     }
 
-    grand_total
+    (grand_total, error_count)
 }
 
 fn count_objects_by_class(
@@ -355,66 +398,116 @@ fn check_rv_raw(rv: CK_RV, step: &str) -> Result<(), String> {
     }
 }
 
+/// Map a PKCS#11 return value to its symbolic name using imported constants.
+///
+/// Uses a macro to avoid repeating each constant name as both pattern and string.
+macro_rules! ckr_match {
+    ($rv:expr; $($name:ident),+ $(,)?) => {
+        match $rv {
+            $( $name => stringify!($name), )+
+            _ => "CKR_UNKNOWN",
+        }
+    };
+}
+
 const fn ckr_name(rv: CK_RV) -> &'static str {
-    match rv {
-        0 => "CKR_OK",
-        1 => "CKR_CANCEL",
-        2 => "CKR_HOST_MEMORY",
-        3 => "CKR_SLOT_ID_INVALID",
-        5 => "CKR_GENERAL_ERROR",
-        6 => "CKR_FUNCTION_FAILED",
-        7 => "CKR_ARGUMENTS_BAD",
-        10 => "CKR_NO_EVENT",
-        11 => "CKR_NEED_TO_CREATE_THREADS",
-        12 => "CKR_CANT_LOCK",
-        16 => "CKR_ATTRIBUTE_READ_ONLY",
-        17 => "CKR_ATTRIBUTE_SENSITIVE",
-        18 => "CKR_ATTRIBUTE_TYPE_INVALID",
-        19 => "CKR_ATTRIBUTE_VALUE_INVALID",
-        32 => "CKR_DATA_INVALID",
-        33 => "CKR_DATA_LEN_RANGE",
-        48 => "CKR_DEVICE_ERROR",
-        49 => "CKR_DEVICE_MEMORY",
-        50 => "CKR_DEVICE_REMOVED",
-        64 => "CKR_ENCRYPTED_DATA_INVALID",
-        65 => "CKR_ENCRYPTED_DATA_LEN_RANGE",
-        80 => "CKR_FUNCTION_CANCELED",
-        81 => "CKR_FUNCTION_NOT_PARALLEL",
-        84 => "CKR_FUNCTION_NOT_SUPPORTED",
-        96 => "CKR_KEY_HANDLE_INVALID",
-        98 => "CKR_KEY_SIZE_RANGE",
-        99 => "CKR_KEY_TYPE_INCONSISTENT",
-        160 => "CKR_PIN_INCORRECT",
-        161 => "CKR_PIN_LOCKED",
-        176 => "CKR_OBJECT_HANDLE_INVALID",
-        208 => "CKR_SESSION_CLOSED",
-        209 => "CKR_SESSION_COUNT",
-        211 => "CKR_SESSION_HANDLE_INVALID",
-        213 => "CKR_SESSION_PARALLEL_NOT_SUPPORTED",
-        214 => "CKR_SESSION_READ_ONLY",
-        215 => "CKR_SESSION_EXISTS",
-        224 => "CKR_TOKEN_NOT_PRESENT",
-        225 => "CKR_TOKEN_NOT_RECOGNIZED",
-        226 => "CKR_TOKEN_WRITE_PROTECTED",
-        240 => "CKR_UNWRAPPING_KEY_HANDLE_INVALID",
-        241 => "CKR_UNWRAPPING_KEY_SIZE_RANGE",
-        242 => "CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT",
-        256 => "CKR_USER_ALREADY_LOGGED_IN",
-        257 => "CKR_USER_NOT_LOGGED_IN",
-        258 => "CKR_USER_PIN_NOT_INITIALIZED",
-        259 => "CKR_USER_TYPE_INVALID",
-        272 => "CKR_WRAPPED_KEY_INVALID",
-        274 => "CKR_WRAPPED_KEY_LEN_RANGE",
-        288 => "CKR_WRAPPING_KEY_HANDLE_INVALID",
-        289 => "CKR_WRAPPING_KEY_SIZE_RANGE",
-        290 => "CKR_WRAPPING_KEY_TYPE_INCONSISTENT",
-        304 => "CKR_RANDOM_SEED_NOT_SUPPORTED",
-        305 => "CKR_RANDOM_NO_RNG",
-        320 => "CKR_DOMAIN_PARAMS_INVALID",
-        400 => "CKR_CRYPTOKI_NOT_INITIALIZED",
-        401 => "CKR_CRYPTOKI_ALREADY_INITIALIZED",
-        _ => "CKR_UNKNOWN",
-    }
+    ckr_match!(rv;
+        CKR_OK,
+        CKR_CANCEL,
+        CKR_HOST_MEMORY,
+        CKR_SLOT_ID_INVALID,
+        CKR_GENERAL_ERROR,
+        CKR_FUNCTION_FAILED,
+        CKR_ARGUMENTS_BAD,
+        CKR_NO_EVENT,
+        CKR_NEED_TO_CREATE_THREADS,
+        CKR_CANT_LOCK,
+        CKR_ATTRIBUTE_READ_ONLY,
+        CKR_ATTRIBUTE_SENSITIVE,
+        CKR_ATTRIBUTE_TYPE_INVALID,
+        CKR_ATTRIBUTE_VALUE_INVALID,
+        CKR_ACTION_PROHIBITED,
+        CKR_DATA_INVALID,
+        CKR_DATA_LEN_RANGE,
+        CKR_DEVICE_ERROR,
+        CKR_DEVICE_MEMORY,
+        CKR_DEVICE_REMOVED,
+        CKR_ENCRYPTED_DATA_INVALID,
+        CKR_ENCRYPTED_DATA_LEN_RANGE,
+        CKR_FUNCTION_CANCELED,
+        CKR_FUNCTION_NOT_PARALLEL,
+        CKR_FUNCTION_NOT_SUPPORTED,
+        CKR_KEY_HANDLE_INVALID,
+        CKR_KEY_SIZE_RANGE,
+        CKR_KEY_TYPE_INCONSISTENT,
+        CKR_KEY_NOT_NEEDED,
+        CKR_KEY_CHANGED,
+        CKR_KEY_NEEDED,
+        CKR_KEY_INDIGESTIBLE,
+        CKR_KEY_FUNCTION_NOT_PERMITTED,
+        CKR_KEY_NOT_WRAPPABLE,
+        CKR_KEY_UNEXTRACTABLE,
+        CKR_MECHANISM_INVALID,
+        CKR_MECHANISM_PARAM_INVALID,
+        CKR_OBJECT_HANDLE_INVALID,
+        CKR_OPERATION_ACTIVE,
+        CKR_OPERATION_NOT_INITIALIZED,
+        CKR_PIN_INCORRECT,
+        CKR_PIN_INVALID,
+        CKR_PIN_LEN_RANGE,
+        CKR_PIN_EXPIRED,
+        CKR_PIN_LOCKED,
+        CKR_SESSION_CLOSED,
+        CKR_SESSION_COUNT,
+        CKR_SESSION_HANDLE_INVALID,
+        CKR_SESSION_PARALLEL_NOT_SUPPORTED,
+        CKR_SESSION_READ_ONLY,
+        CKR_SESSION_EXISTS,
+        CKR_SESSION_READ_ONLY_EXISTS,
+        CKR_SESSION_READ_WRITE_SO_EXISTS,
+        CKR_SIGNATURE_INVALID,
+        CKR_SIGNATURE_LEN_RANGE,
+        CKR_TEMPLATE_INCOMPLETE,
+        CKR_TEMPLATE_INCONSISTENT,
+        CKR_TOKEN_NOT_PRESENT,
+        CKR_TOKEN_NOT_RECOGNIZED,
+        CKR_TOKEN_WRITE_PROTECTED,
+        CKR_UNWRAPPING_KEY_HANDLE_INVALID,
+        CKR_UNWRAPPING_KEY_SIZE_RANGE,
+        CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT,
+        CKR_USER_ALREADY_LOGGED_IN,
+        CKR_USER_NOT_LOGGED_IN,
+        CKR_USER_PIN_NOT_INITIALIZED,
+        CKR_USER_TYPE_INVALID,
+        CKR_USER_ANOTHER_ALREADY_LOGGED_IN,
+        CKR_USER_TOO_MANY_TYPES,
+        CKR_WRAPPED_KEY_INVALID,
+        CKR_WRAPPED_KEY_LEN_RANGE,
+        CKR_WRAPPING_KEY_HANDLE_INVALID,
+        CKR_WRAPPING_KEY_SIZE_RANGE,
+        CKR_WRAPPING_KEY_TYPE_INCONSISTENT,
+        CKR_RANDOM_SEED_NOT_SUPPORTED,
+        CKR_RANDOM_NO_RNG,
+        CKR_DOMAIN_PARAMS_INVALID,
+        CKR_CURVE_NOT_SUPPORTED,
+        CKR_BUFFER_TOO_SMALL,
+        CKR_SAVED_STATE_INVALID,
+        CKR_INFORMATION_SENSITIVE,
+        CKR_STATE_UNSAVEABLE,
+        CKR_CRYPTOKI_NOT_INITIALIZED,
+        CKR_CRYPTOKI_ALREADY_INITIALIZED,
+        CKR_MUTEX_BAD,
+        CKR_MUTEX_NOT_LOCKED,
+        CKR_EXCEEDED_MAX_ITERATIONS,
+        CKR_FIPS_SELF_TEST_FAILED,
+        CKR_LIBRARY_LOAD_FAILED,
+        CKR_PIN_TOO_WEAK,
+        CKR_PUBLIC_KEY_INVALID,
+        CKR_FUNCTION_REJECTED,
+        CKR_TOKEN_RESOURCE_EXCEEDED,
+        CKR_KEY_EXHAUSTED,
+        CKR_VENDOR_DEFINED,
+    )
 }
 
 // ---------------------------------------------------------------------------

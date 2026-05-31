@@ -18,7 +18,12 @@ pub fn get_default_rolling_log_dir() -> PathBuf {
 #[cfg(target_os = "macos")]
 #[must_use]
 pub fn get_default_rolling_log_dir() -> PathBuf {
-    PathBuf::from("/Library/Logs/Cosmian KMS Server")
+    // Use ~/Library/Logs which is writable without root.
+    // /Library/Logs/ requires elevated privileges and is reserved for system daemons.
+    std::env::var_os("HOME").map_or_else(
+        || PathBuf::from("/tmp/cosmian_kms_logs"),
+        |home| PathBuf::from(home).join("Library/Logs/Cosmian KMS Server"),
+    )
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -58,7 +63,7 @@ pub struct LoggingConfig {
     /// Defaults to a platform-specific path when not set:
     ///   Linux: /var/log/cosmian
     ///   Windows: C:\ProgramData\Cosmian KMS Server\logs
-    ///   macOS: /Library/Logs/Cosmian KMS Server
+    ///   macOS: ~/Library/Logs/Cosmian KMS Server
     #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]
     pub rolling_log_dir: Option<PathBuf>,
 

@@ -9,14 +9,14 @@ managed, audited, and never stored unprotected on the storage appliance.
 
 ## Overview
 
-| Item | Details |
-|------|---------|
-| **Protocol** | KMIP 1.4 binary TTLV over HTTP/TLS with mutual certificate authentication |
-| **Endpoint** | `POST /kmip` on the KMS HTTP port (default 9998) |
-| **Key types** | AES-256 symmetric keys |
-| **Key creation** | In batches of 2–3 keys per encryption group |
-| **VAST version** | VAST Data Platform 5.x and above |
-| **Eviden KMS mode** | FIPS and non-FIPS builds supported |
+| Item                | Details                                                                   |
+| ------------------- | ------------------------------------------------------------------------- |
+| **Protocol**        | KMIP 1.4 binary TTLV over HTTP/TLS with mutual certificate authentication |
+| **Endpoint**        | `POST /kmip` on the KMS HTTP port (default 9998)                          |
+| **Key types**       | AES-256 symmetric keys                                                    |
+| **Key creation**    | In batches of 2–3 keys per encryption group                               |
+| **VAST version**    | VAST Data Platform 5.x and above                                          |
+| **Eviden KMS mode** | FIPS and non-FIPS builds supported                                        |
 
 ### What VAST Data does
 
@@ -24,18 +24,18 @@ When you configure an external KMS in the VAST Data management console, the
 storage cluster performs the following KMIP operations for encryption key
 lifecycle management:
 
-| Step | KMIP Operation | Purpose |
-|------|---------------|---------|
-| 1 | `DiscoverVersions` | Session initialization handshake (once per connection) |
-| 2 | `Create` | Create an AES-256 symmetric key (CryptographicUsageMask = Encrypt\|Decrypt) |
-| 3 | `AddAttribute` ×3 | Set Name, ObjectGroup, and OperationPolicyName (3 calls per key) |
-| 4 | `Activate` | Transition the key from *Pre-Active* to *Active* state |
-| 5 | `Locate` | Find a key by its VAST-assigned name (`VAST_EKM_KEY_2_<uuid>_<index>`) |
-| 6 | `Get` | Retrieve plaintext key material |
-| 7 | `GetAttributes` | Verify key State (`Active`) and ActivationDate (polled every ~61 seconds) |
-| 8 | `ReKey` | Rotate an active key — generates new key material with a **new** Unique Identifier |
-| 9 | `Revoke` | Revoke a key during decommissioning |
-| 10 | `Destroy` | Permanently delete the key from the KMS |
+| Step | KMIP Operation     | Purpose                                                                            |
+| ---- | ------------------ | ---------------------------------------------------------------------------------- |
+| 1    | `DiscoverVersions` | Session initialization handshake (once per connection)                             |
+| 2    | `Create`           | Create an AES-256 symmetric key (CryptographicUsageMask = Encrypt\|Decrypt)        |
+| 3    | `AddAttribute` ×3  | Set Name, ObjectGroup, and OperationPolicyName (3 calls per key)                   |
+| 4    | `Activate`         | Transition the key from *Pre-Active* to *Active* state                             |
+| 5    | `Locate`           | Find a key by its VAST-assigned name (`VAST_EKM_KEY_2_<uuid>_<index>`)             |
+| 6    | `Get`              | Retrieve plaintext key material                                                    |
+| 7    | `GetAttributes`    | Verify key State (`Active`) and ActivationDate (polled every ~61 seconds)          |
+| 8    | `ReKey`            | Rotate an active key — generates new key material with a **new** Unique Identifier |
+| 9    | `Revoke`           | Revoke a key during decommissioning                                                |
+| 10   | `Destroy`          | Permanently delete the key from the KMS                                            |
 
 ### Key lifecycle workflow
 
@@ -165,13 +165,13 @@ In the VAST Data management console:
 
 ### 2. Enter KMS connection details
 
-| Field | Value |
-|-------|-------|
-| **KMS Address** | `<kms-server-hostname>` |
-| **KMS Port** | `9998` (default KMS HTTP port) |
-| **Client Certificate** | Upload `vast-client.crt` |
-| **Client Key** | Upload `vast-client.key` |
-| **CA Certificate** | Upload the CA that signed the KMS server certificate |
+| Field                  | Value                                                |
+| ---------------------- | ---------------------------------------------------- |
+| **KMS Address**        | `<kms-server-hostname>`                              |
+| **KMS Port**           | `9998` (default KMS HTTP port)                       |
+| **Client Certificate** | Upload `vast-client.crt`                             |
+| **Client Key**         | Upload `vast-client.key`                             |
+| **CA Certificate**     | Upload the CA that signed the KMS server certificate |
 
 ### 3. Test connection
 
@@ -223,13 +223,13 @@ normal health-check behavior and produces high-volume but lightweight traffic.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `unsupported KMIP 1 operation: ReKey` | KMS version < 5.22.0 missing ReKey support | Upgrade Eviden KMS to 5.22.0+ |
-| `OperationPolicyName` warnings in KMS logs | Normal — VAST sends this deprecated KMIP 1.x attribute | No action required; informational warning only |
-| TLS handshake failure | Certificate mismatch or missing CA | Verify `clients_ca_cert_file` matches the CA that signed VAST's client cert |
-| `tlsv1 alert decrypt error` (SSL alert 51) in KMS logs | VAST background reconnection attempt with stale connection state | Transient; no action required — the KMIP workflow itself is unaffected |
-| Connection reset by peer (os error 104) | Network instability | Transient; VAST will reconnect automatically |
+| Symptom                                                | Cause                                                            | Fix                                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `unsupported KMIP 1 operation: ReKey`                  | KMS version < 5.22.0 missing ReKey support                       | Upgrade Eviden KMS to 5.22.0+                                               |
+| `OperationPolicyName` warnings in KMS logs             | Normal — VAST sends this deprecated KMIP 1.x attribute           | No action required; informational warning only                              |
+| TLS handshake failure                                  | Certificate mismatch or missing CA                               | Verify `clients_ca_cert_file` matches the CA that signed VAST's client cert |
+| `tlsv1 alert decrypt error` (SSL alert 51) in KMS logs | VAST background reconnection attempt with stale connection state | Transient; no action required — the KMIP workflow itself is unaffected      |
+| Connection reset by peer (os error 104)                | Network instability                                              | Transient; VAST will reconnect automatically                                |
 
 ---
 
@@ -238,15 +238,15 @@ normal health-check behavior and produces high-volume but lightweight traffic.
 The following KMIP operations have been validated with VAST Data production
 environments (logs from May 2026):
 
-| Operation | Status | Notes |
-|-----------|--------|-------|
-| `DiscoverVersions` | ✅ | Session initialization; confirms KMIP 1.4 support |
-| `Create` | ✅ | AES-256 SymmetricKey; 76 keys created across 5 days |
-| `AddAttribute` | ✅ | Called 3× per key: Name, ObjectGroup, OperationPolicyName |
-| `Activate` | ✅ | Transitions key to Active state |
-| `Locate` | ✅ | By Name (UninterpretedTextString); ~11,800 calls over 5 days |
-| `Get` | ✅ | Plaintext key material retrieval; 182 calls |
-| `GetAttributes` | ✅ | State + ActivationDate; ~11,500 calls (monitoring) |
-| `ReKey` | ✅ | Key rotation with new UUID; 16 rotations observed |
-| `Revoke` | ✅ | Key revocation before destruction; 69 calls |
-| `Destroy` | ✅ | Permanent key deletion; 69 calls |
+| Operation          | Status | Notes                                                        |
+| ------------------ | ------ | ------------------------------------------------------------ |
+| `DiscoverVersions` | ✅      | Session initialization; confirms KMIP 1.4 support            |
+| `Create`           | ✅      | AES-256 SymmetricKey; 76 keys created across 5 days          |
+| `AddAttribute`     | ✅      | Called 3× per key: Name, ObjectGroup, OperationPolicyName    |
+| `Activate`         | ✅      | Transitions key to Active state                              |
+| `Locate`           | ✅      | By Name (UninterpretedTextString); ~11,800 calls over 5 days |
+| `Get`              | ✅      | Plaintext key material retrieval; 182 calls                  |
+| `GetAttributes`    | ✅      | State + ActivationDate; ~11,500 calls (monitoring)           |
+| `ReKey`            | ✅      | Key rotation with new UUID; 16 rotations observed            |
+| `Revoke`           | ✅      | Key revocation before destruction; 69 calls                  |
+| `Destroy`          | ✅      | Permanent key deletion; 69 calls                             |

@@ -89,3 +89,18 @@
 
 - Fix flaky `test_privileged_users` (and other tests using `start_default_test_kms_server_with_privileged_users`) in CI: increase the channel `recv_timeout` from 25 s to 60 s in `start_test_kms_server`, `socket_server`, and `ttlv_tests` to prevent spurious "timed out waiting on channel" failures under CI load. ([#924](https://github.com/Cosmian/kms/pull/924))
 - fix(rebase): resolve post-rebase compile errors and test failures by restoring `Activate = 22` in `KmipOperation`, adding `Activate` handling back to `retrieve_object_utils.rs`, preserving `Activate` dispatch and permission checks, removing the duplicate `is_pqc_signature` impl, fixing the `wasm.rs` merge artifact, switching `rekey` dispatch to the `priv` macro variant, and aligning rekey tests with KMIP-compliant new-UID semantics.
+
+### PKCS#11
+
+- refactor(pkcs11): replace hardcoded numeric CKR values in `ckr_name` with a macro referencing
+  `pkcs11_sys` constants; covers all 99 standard return codes ([#924](https://github.com/Cosmian/kms/pull/924))
+
+### Logging
+
+- fix(macos): change default rolling log directory from `/Library/Logs/Cosmian KMS Server` (requires root)
+  to `~/Library/Logs/Cosmian KMS Server` (user-writable) ([#924](https://github.com/Cosmian/kms/pull/924))
+
+## Testing
+
+- Add `ckms pkcs11 verify` integration tests: build `libcosmian_pkcs11` cdylib before test,
+  run against a JWT-authenticated server, and assert failure when no server is running ([#924](https://github.com/Cosmian/kms/pull/924))

@@ -69,7 +69,12 @@ platform-specific default:
 |----------|------------------------------------------------|
 | Linux    | `/var/log/cosmian`                             |
 | Windows  | `C:\ProgramData\Cosmian KMS Server\logs`       |
-| macOS    | `/Library/Logs/Cosmian KMS Server`             |
+| macOS    | `~/Library/Logs/Cosmian KMS Server`            |
+
+> **Note (macOS):** The previous default `/Library/Logs/Cosmian KMS Server` requires root
+> privileges. The server now defaults to `~/Library/Logs/Cosmian KMS Server` which is
+> writable by the current user. If you run the server as a LaunchDaemon (root), you may
+> override this with `--rolling-log-dir /Library/Logs/Cosmian KMS Server`.
 
 The directory and file name can be overridden via:
 

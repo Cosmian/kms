@@ -32,6 +32,8 @@ mod hsm;
 mod login_tests;
 mod mac;
 mod opaque_object;
+#[cfg(not(target_os = "windows"))]
+mod pkcs11;
 #[cfg(feature = "non-fips")]
 mod pqc;
 mod query;
