@@ -1,26 +1,14 @@
+$ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
-# Use "Continue" because native commands (cargo, rustup) write progress/info
-# to stderr.  With "Stop", PowerShell treats those as terminating errors.
-# All failures are caught via explicit $LASTEXITCODE checks after each command.
-$ErrorActionPreference = "Continue"
+$PSNativeCommandUseErrorActionPreference = $true # might be true by default
 
 function TestProject
 {
     $env:RUST_LOG = "cosmian_kms_cli=error,cosmian_kms_server=error,cosmian_kmip=error,test_kms_server=error"
     # Add target
     rustup target add x86_64-pc-windows-msvc
-    if ($LASTEXITCODE -ne 0)
-    {
-        Write-Error "rustup target add failed with exit code $LASTEXITCODE"
-        exit $LASTEXITCODE
-    }
 
-    # Set OPENSSL_DIR from VCPKG_INSTALLATION_ROOT (CI) or VCPKG_ROOT (local).
-    $vcpkgRoot = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { $env:VCPKG_ROOT }
-    if ($vcpkgRoot)
-    {
-        $env:OPENSSL_DIR = "$vcpkgRoot\packages\openssl_x64-windows-static"
-    }
+    $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
 
     # Tests are always run in debug mode (no --release flag)
 
