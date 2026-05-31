@@ -154,7 +154,7 @@ Builds and packages KMS for multiple platforms using Nix.
 
 - **`workflow_call`**: called by `pr.yml` or other reusable callers (passes `toolchain` input)
 - **`workflow_dispatch`**: manual dispatch from the GitHub UI
-    - Input: `toolchain` — Rust toolchain version (default: `1.90.0`)
+    - Input: `toolchain` — Rust toolchain version (default: `1.91.0`)
 
 > **`packages` job**: runs only on git tags (`refs/tags/*`) or manual dispatch (`workflow_dispatch`).
 > The `docker`, `publish-release`, `publish-sbom`, and `build-monitoring-archive` jobs still
@@ -520,14 +520,14 @@ Environment variables accepted for test configuration:
 **`sbom`** — Generate a Software Bill of Materials:
 
 ```bash
-nix.sh sbom [--target <openssl_3_1_2|openssl_3_6_0|server|ckms>]
+nix.sh sbom [--target <openssl_3_1_2|openssl_3_6_2|server|ckms>]
             [--variant fips|non-fips] [--link static|dynamic]
             [--retrieve [--branch <branch|tag>]]
 ```
 
 | Option | Description |
 |---|---|
-| `--target` | `openssl_3_1_2`, `openssl_3_6_0`, `server`, or `ckms` (default: all) |
+| `--target` | `openssl_3_1_2`, `openssl_3_6_2`, `server`, or `ckms` (default: all) |
 | `--variant` / `--link` | Filter to a specific variant/link (only with `--target server\|ckms`) |
 | `--retrieve` | Download SBOMs from `package.cosmian.com` instead of generating locally |
 | `--branch` | Remote branch or tag to retrieve from (e.g. `5.16.2` or `last_build/develop`) |
@@ -579,7 +579,7 @@ All test scripts are called via `nix.sh test <type>` for reproducible environmen
 ### Utility Scripts
 
 - `common.sh`: Shared functions and utilities
-- `benchmarks.sh`: Performance benchmarking suite
+- `bench_ci.sh`: Performance benchmarking smoke-test (CI)
 - `reinitialize_demo_kms.sh`: Reset demo KMS instance
 - `renew_server_doc.sh`: Regenerate server documentation
 - `release.sh`: Release preparation and validation

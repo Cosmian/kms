@@ -306,7 +306,7 @@ build_test_deps() {
   # right features (e.g. non-fips algorithms, CoverCrypt, x25519, ChaCha20).
   cargo build -p ckms "${FEATURES_FLAG[@]}"
 
-  # Build the PKCS#11 cdylib so that cosmian_pkcs11_verify integration tests
+  # Build the PKCS#11 cdylib so that ckms integration tests
   # can dynamically load it at runtime (non-fips only).
   if [ "${VARIANT:-fips}" = "non-fips" ]; then
     cargo build -p cosmian_pkcs11 "${FEATURES_FLAG[@]}"

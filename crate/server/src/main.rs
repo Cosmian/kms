@@ -105,7 +105,7 @@ async fn run() -> KResult<()> {
                 .logging
                 .rolling_log_name
                 .clone()
-                .unwrap_or_else(|| "cosmian_kms".to_owned());
+                .unwrap_or_else(|| "kms".to_owned());
             Some((dir, name))
         },
         with_ansi_colors: clap_config.logging.ansi_colors,

@@ -3,7 +3,7 @@
 > **Canonical file**: `.github/copilot-instructions.md` — `CLAUDE.md` and `AGENTS.md` at the repo root are symlinks to this file. **Always edit this file directly.**
 
 Cosmian KMS is a high-performance, source available **FIPS 140-3** compliant Key
-Management System written in **Rust**. It implements **KMIP 2.1** over HTTP/TLS
+Management System written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS
 and supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
 ---
@@ -98,7 +98,7 @@ crate/
       module/       cosmian_pkcs11_module      — PKCS#11 module implementation
       provider/     cosmian_pkcs11             — PKCS#11 provider binary
     wasm/           cosmian_kms_client_wasm    — WASM client for the web UI
-  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.0
+  crypto/           cosmian_kms_crypto         — crypto primitives; build.rs builds OpenSSL 3.6.2
   hsm/
     base_hsm/       cosmian_kms_base_hsm       — base HSM traits and common code
     softhsm2/       softhsm2_pkcs11_loader     — SoftHSM2
@@ -203,7 +203,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 
 ## OpenSSL handling
 
-**No external OpenSSL needed.** OpenSSL 3.6.0 is downloaded, SHA-256-verified,
+**No external OpenSSL needed.** OpenSSL 3.6.2 is downloaded, SHA-256-verified,
 and built from source by `crate/crypto/build.rs` into `target/` on first build.
 
 At runtime, `crate/server/src/openssl_providers.rs` initialises the correct provider:
@@ -361,6 +361,8 @@ cargo fmt --all
 ```
 
 ### 4. Tests (always)
+
+Verify if non-regression vectors (test_data/vectors) are up-to-date and if relevant, add non-regression vectors to always improve the coverage.
 
 ```bash
 cargo test-non-fips   # test --lib --workspace --features non-fips
