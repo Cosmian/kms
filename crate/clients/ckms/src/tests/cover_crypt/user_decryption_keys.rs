@@ -1,6 +1,3 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use test_kms_server::start_default_test_kms_server;
 
 use super::SUB_COMMAND;
@@ -8,10 +5,8 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         cover_crypt::master_key_pair::create_cc_master_key_pair,
-        save_kms_cli_config,
-        utils::{extract_uids::extract_user_key, recover_cmd_logs},
+        utils::{ckms_bin, extract_uids::extract_user_key, owner_config, recover_cmd_logs},
     },
 };
 
@@ -22,7 +17,7 @@ pub(crate) fn create_user_decryption_key(
     tags: &[&str],
     sensitive: bool,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -57,7 +52,7 @@ pub(crate) fn create_user_decryption_key(
 #[tokio::test]
 pub(crate) async fn test_user_decryption_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // generate a new master key pair
     let (master_secret_key_id, _) = create_cc_master_key_pair(
@@ -84,7 +79,7 @@ pub(crate) async fn test_user_decryption_key() -> CosmianResult<()> {
 #[tokio::test]
 pub(crate) async fn test_user_decryption_key_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // generate a new master key pair
     let (master_secret_key_id, _) = create_cc_master_key_pair(

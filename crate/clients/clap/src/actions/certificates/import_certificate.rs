@@ -109,6 +109,27 @@ pub struct ImportCertificateAction {
     pub(crate) key_usage: Option<Vec<KeyUsage>>,
 }
 
+/// Parse raw bytes (PEM or DER) into a KMIP certificate Object.
+fn parse_x509_to_object(bytes: &[u8], format: &CertificateInputFormat) -> KmsCliResult<Object> {
+    let certificate = match format {
+        CertificateInputFormat::Pem => Certificate::from_pem(bytes).map_err(|e| {
+            KmsCliError::Conversion(format!("Cannot read PEM content to X509. Error: {e:?}"))
+        })?,
+        CertificateInputFormat::Der => Certificate::from_der(bytes).map_err(|e| {
+            KmsCliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
+        })?,
+        _ => {
+            return Err(KmsCliError::InvalidRequest(format!(
+                "parse_x509_to_object does not support format {format:?}"
+            )));
+        }
+    };
+    Ok(Object::Certificate(kmip_2_1::kmip_objects::Certificate {
+        certificate_type: CertificateType::X509,
+        certificate_value: certificate.to_der()?,
+    }))
+}
+
 impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<Option<String>> {
         trace!("{self:?}");
@@ -147,7 +168,6 @@ impl ImportCertificateAction {
         let (stdout_message, returned_unique_identifier) = match self.input_format {
             CertificateInputFormat::JsonTtlv => {
                 trace!("import certificate as TTLV JSON file");
-                // read the certificate file
                 let object = read_object_from_json_ttlv_file(self.get_certificate_file()?)?;
                 let certificate_id = Box::pin(self.import_chain(
                     kms_rest_client,
@@ -161,19 +181,15 @@ impl ImportCertificateAction {
                     Some(certificate_id),
                 )
             }
-            CertificateInputFormat::Pem => {
-                trace!("import certificate as PEM file");
-                let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
-                // convert the PEM to X509 to make sure it is correct
-                let certificate = Certificate::from_pem(&pem_value).map_err(|e| {
-                    KmsCliError::Conversion(format!(
-                        "Cannot read PEM content to X509. Error: {e:?}"
-                    ))
-                })?;
-                let object = Object::Certificate(kmip_2_1::kmip_objects::Certificate {
-                    certificate_type: CertificateType::X509,
-                    certificate_value: certificate.to_der()?,
-                });
+            CertificateInputFormat::Pem | CertificateInputFormat::Der => {
+                let format_label = if matches!(self.input_format, CertificateInputFormat::Pem) {
+                    "PEM"
+                } else {
+                    "DER"
+                };
+                debug!("import certificate as {format_label} file");
+                let bytes = read_bytes_from_file(&self.get_certificate_file()?)?;
+                let object = parse_x509_to_object(&bytes, &self.input_format)?;
                 let certificate_id = Box::pin(self.import_chain(
                     kms_rest_client,
                     vec![object],
@@ -182,32 +198,9 @@ impl ImportCertificateAction {
                 ))
                 .await?;
                 (
-                    "The certificate in the PEM file was successfully imported!".to_owned(),
-                    Some(certificate_id),
-                )
-            }
-            CertificateInputFormat::Der => {
-                debug!("import certificate as a DER file");
-                let der_value = read_bytes_from_file(&self.get_certificate_file()?)?;
-                // convert DER to X509 to make sure it is correct
-                let certificate = Certificate::from_der(&der_value).map_err(|e| {
-                    KmsCliError::Conversion(format!(
-                        "Cannot read DER content to X509. Error: {e:?}"
-                    ))
-                })?;
-                let object = Object::Certificate(kmip_2_1::kmip_objects::Certificate {
-                    certificate_type: CertificateType::X509,
-                    certificate_value: certificate.to_der()?,
-                });
-                let certificate_id = Box::pin(self.import_chain(
-                    kms_rest_client,
-                    vec![object],
-                    self.replace_existing,
-                    leaf_certificate_attributes,
-                ))
-                .await?;
-                (
-                    "The certificate in the DER file was successfully imported!".to_owned(),
+                    format!(
+                        "The certificate in the {format_label} file was successfully imported!"
+                    ),
                     Some(certificate_id),
                 )
             }
@@ -225,7 +218,6 @@ impl ImportCertificateAction {
                 debug!("import certificate chain as PEM file");
                 let pem_stack = read_bytes_from_file(&self.get_certificate_file()?)?;
                 let objects = build_chain_from_stack(&pem_stack)?;
-                // import the full chain
                 let leaf_certificate_id = Box::pin(self.import_chain(
                     kms_rest_client,
                     objects,
@@ -253,7 +245,6 @@ impl ImportCertificateAction {
                             "Cannot convert Mozilla CCADB content to bytes. Error: {e:?}"
                         ))
                     })?;
-                // import the certificates
                 let objects = build_chain_from_stack(&ccadb_bytes)?;
                 Box::pin(self.import_chain(kms_rest_client, objects, self.replace_existing, None))
                     .await?;

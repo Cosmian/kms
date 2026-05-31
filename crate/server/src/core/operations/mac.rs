@@ -1,6 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, HashingAlgorithm},
+        kmip_0::kmip_types::HashingAlgorithm,
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
@@ -46,20 +46,6 @@ impl CryptoOpSpec for MacOp {
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         // MAC does NOT enforce CryptographicUsageMask::MACGenerate for backward compat.
         matches!(owm.object(), Object::SymmetricKey { .. })
-    }
-
-    fn map_selection_error(
-        e: KmsError,
-        unique_identifier: &UniqueIdentifier,
-        _user: &str,
-    ) -> KmsError {
-        match e {
-            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                format!("MAC: no valid key for id: {unique_identifier}"),
-            ),
-            other => other,
-        }
     }
 
     async fn execute_local(
@@ -143,20 +129,6 @@ impl CryptoOpSpec for MacVerifyOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         matches!(owm.object(), Object::SymmetricKey { .. })
-    }
-
-    fn map_selection_error(
-        e: KmsError,
-        unique_identifier: &UniqueIdentifier,
-        _user: &str,
-    ) -> KmsError {
-        match e {
-            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                format!("MACVerify: no valid key for id: {unique_identifier}"),
-            ),
-            other => other,
-        }
     }
 
     async fn execute_local(

@@ -49,70 +49,8 @@ pub struct ExportByokAction {
 impl ExportByokAction {
     #[allow(clippy::print_stdout, clippy::or_fun_call)] // the kms console wrapper forces a println but this function does not want a line return for proper display
     pub async fn run(&self, kms_client: KmsClient) -> KmsCliResult<String> {
-        // Recover the attributes of the KEK key
-        let (_kek_id, kek_attributes) =
-            get_attributes(&kms_client, &self.kek_id, &[Tag::Tag], &[]).await?;
-        let kek_tag_error = |msg: &str| -> String {
-            format!(
-                "The KEK is not an AWS Key Encryption Key: {msg}. Import it using the \
-                 `cosmian kms aws byok import` command."
-            )
-        };
-
-        let tags: Vec<String> = serde_json::from_value(
-            kek_attributes
-                .get("Tag")
-                .context(&kek_tag_error("no tags"))?
-                .clone(),
-        )?;
-
-        if !tags.contains(&"aws".to_owned()) {
-            return Err(KmsCliError::InconsistentOperation(kek_tag_error(
-                "missing `aws` tag",
-            )));
-        }
-
-        let key_arn = tags.iter().find_map(|t| t.strip_prefix("key_arn:"));
-
-        let wrapping_algorithm_str = tags
-            .iter()
-            .find(|t| t.starts_with("wrapping_algorithm:"))
-            .context(&kek_tag_error("wrapping algorithm not found"))?
-            .strip_prefix("wrapping_algorithm:")
-            .ok_or(KmsCliError::Default(kek_tag_error(
-                "invalid wrapping algorithm tag",
-            )))?
-            .parse::<AwsKmsWrappingAlgorithm>()
-            .context(&kek_tag_error("invalid wrapping algorithm tag"))?;
-
-        let wrapping_cryptographic_parameters = Some(match wrapping_algorithm_str {
-            AwsKmsWrappingAlgorithm::RsaesOaepSha1 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                padding_method: Some(PaddingMethod::OAEP),
-                hashing_algorithm: Some(HashingAlgorithm::SHA1),
-                ..CryptographicParameters::default()
-            },
-            AwsKmsWrappingAlgorithm::RsaesOaepSha256 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                padding_method: Some(PaddingMethod::OAEP),
-                hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                ..CryptographicParameters::default()
-            },
-            AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha1 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                // Note: We use "None" padding to route toward RSA AES Key Wrap, this is not a mistake
-                // see: crate/crypto/src/crypto/wrap/unwrap_key.rs line 365
-                padding_method: Some(PaddingMethod::None),
-                hashing_algorithm: Some(HashingAlgorithm::SHA1),
-                ..CryptographicParameters::default()
-            },
-            AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha256 => CryptographicParameters {
-                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                padding_method: Some(PaddingMethod::None),
-                hashing_algorithm: Some(HashingAlgorithm::SHA256),
-                ..CryptographicParameters::default()
-            },
-        });
+        let (wrapping_cryptographic_parameters, key_arn) =
+            self.resolve_kek_wrapping_params(&kms_client).await?;
 
         // Export the key wrapped with the KEK
         let export_params = ExportObjectParams {
@@ -150,7 +88,7 @@ impl ExportByokAction {
              --expiration-model KEY_MATERIAL_DOES_NOT_EXPIRE",
                 wrapped_key.len(),
                 self.key_id,
-                key_arn.unwrap_or("<AWS_KEY_ARN>"),
+                key_arn.as_deref().unwrap_or("<AWS_KEY_ARN>"),
                 file_path.display(),
                 self.token_file_path.as_ref().map_or_else(
                     || "<IMPORT_TOKEN_FILE>".to_owned(),
@@ -165,5 +103,77 @@ impl ExportByokAction {
             stdout.write()?;
         }
         Ok(b64_key)
+    }
+
+    /// Resolve the KEK wrapping parameters by reading the KEK's tags from the KMS.
+    /// Returns the cryptographic parameters for wrapping and the optional AWS key ARN.
+    async fn resolve_kek_wrapping_params(
+        &self,
+        kms_client: &KmsClient,
+    ) -> KmsCliResult<(Option<CryptographicParameters>, Option<String>)> {
+        let (_kek_id, kek_attributes) =
+            get_attributes(kms_client, &self.kek_id, &[Tag::Tag], &[]).await?;
+        let kek_tag_error = |msg: &str| -> String {
+            format!(
+                "The KEK is not an AWS Key Encryption Key: {msg}. Import it using the \
+                 `cosmian kms aws byok import` command."
+            )
+        };
+
+        let tags: Vec<String> = serde_json::from_value(
+            kek_attributes
+                .get("Tag")
+                .context(&kek_tag_error("no tags"))?
+                .clone(),
+        )?;
+
+        if !tags.contains(&"aws".to_owned()) {
+            return Err(KmsCliError::InconsistentOperation(kek_tag_error(
+                "missing `aws` tag",
+            )));
+        }
+
+        let key_arn = tags
+            .iter()
+            .find_map(|t| t.strip_prefix("key_arn:"))
+            .map(String::from);
+
+        let wrapping_algorithm = tags
+            .iter()
+            .find(|t| t.starts_with("wrapping_algorithm:"))
+            .context(&kek_tag_error("wrapping algorithm not found"))?
+            .strip_prefix("wrapping_algorithm:")
+            .ok_or_else(|| KmsCliError::Default(kek_tag_error("invalid wrapping algorithm tag")))?
+            .parse::<AwsKmsWrappingAlgorithm>()
+            .context(&kek_tag_error("invalid wrapping algorithm tag"))?;
+
+        let params = match wrapping_algorithm {
+            AwsKmsWrappingAlgorithm::RsaesOaepSha1 => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::OAEP),
+                hashing_algorithm: Some(HashingAlgorithm::SHA1),
+                ..CryptographicParameters::default()
+            },
+            AwsKmsWrappingAlgorithm::RsaesOaepSha256 => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::OAEP),
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            },
+            AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha1 => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::None),
+                hashing_algorithm: Some(HashingAlgorithm::SHA1),
+                ..CryptographicParameters::default()
+            },
+            AwsKmsWrappingAlgorithm::RsaAesKeyWrapSha256 => CryptographicParameters {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                padding_method: Some(PaddingMethod::None),
+                hashing_algorithm: Some(HashingAlgorithm::SHA256),
+                ..CryptographicParameters::default()
+            },
+        };
+
+        Ok((Some(params), key_arn))
     }
 }

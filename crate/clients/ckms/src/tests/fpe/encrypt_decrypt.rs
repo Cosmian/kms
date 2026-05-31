@@ -1,6 +1,5 @@
-use std::{fs, process::Command};
+use std::fs;
 
-use assert_cmd::prelude::*;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
 
@@ -8,7 +7,7 @@ use super::{SUB_COMMAND, create_key::create_fpe_key};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{PROG_NAME, save_kms_cli_config, utils::recover_cmd_logs},
+    tests::utils::{ckms_bin, owner_config, recover_cmd_logs},
 };
 
 fn fpe_encrypt(
@@ -20,7 +19,7 @@ fn fpe_encrypt(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -62,7 +61,7 @@ fn fpe_decrypt(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -104,7 +103,7 @@ fn fpe_encrypt_by_tag(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -146,7 +145,7 @@ fn fpe_decrypt_by_tag(
     tweak: Option<&str>,
     output_file: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec![
@@ -182,7 +181,7 @@ fn fpe_decrypt_by_tag(
 #[tokio::test]
 async fn test_fpe_text_roundtrip() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
     let key_id = create_fpe_key(&owner_client_conf_path, &[])?;
 
     let tmp = TempDir::new()?;
@@ -230,7 +229,7 @@ async fn test_fpe_text_roundtrip() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_fpe_integer_roundtrip() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
     let key_id = create_fpe_key(&owner_client_conf_path, &[])?;
 
     let tmp = TempDir::new()?;
@@ -278,7 +277,7 @@ async fn test_fpe_integer_roundtrip() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_fpe_float_roundtrip() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
     let key_id = create_fpe_key(&owner_client_conf_path, &[])?;
 
     let tmp = TempDir::new()?;
@@ -321,7 +320,7 @@ async fn test_fpe_float_roundtrip() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_fpe_by_tag() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
     let tag = "my-fpe-tag";
     create_fpe_key(&owner_client_conf_path, &[tag])?;
 

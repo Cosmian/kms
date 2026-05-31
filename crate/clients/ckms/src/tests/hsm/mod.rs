@@ -11,7 +11,7 @@ use revoke_destroy::test_revoke_symmetric_key;
 use test_kms_server::start_default_test_kms_server_with_utimaco_hsm;
 use wrap_with_hsm_key::test_wrap_with_aes_gcm;
 #[cfg(feature = "non-fips")]
-use wrap_with_hsm_key::{test_unwrap_on_export, test_wrap_with_rsa_oaep};
+use wrap_with_hsm_key::{test_unwrap_on_export, test_unwrap_with_hsm_key, test_wrap_with_rsa_oaep};
 
 use crate::error::result::CosmianResult;
 #[cfg(feature = "non-fips")]
@@ -37,5 +37,7 @@ async fn test_all_hsm_cli() -> CosmianResult<()> {
     test_unwrap_on_export(ctx)?;
     #[cfg(feature = "non-fips")]
     test_wrap_with_rsa_oaep(ctx)?;
+    #[cfg(feature = "non-fips")]
+    test_unwrap_with_hsm_key(ctx)?;
     Ok(())
 }

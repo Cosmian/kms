@@ -207,34 +207,39 @@ pub struct SetOrDeleteAttributes {
     pub vendor_attributes: Option<VendorAttributeCli>,
 }
 
+/// Push a `Link` attribute into the result vector if the field is `Some`.
+macro_rules! push_link {
+    ($self:expr, $result:expr, $field:ident, $link_type:expr) => {
+        if let Some(id) = &$self.$field {
+            $result.push(Attribute::Link(Link {
+                link_type: $link_type,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(id.clone()),
+            }));
+        }
+    };
+}
+
 impl SetOrDeleteAttributes {
     pub(crate) fn get_attributes_from_args(&self) -> KmsCliResult<Vec<Attribute>> {
         let mut result = Vec::new();
 
         if let Some(timestamp) = self.activation_date {
-            match OffsetDateTime::from_unix_timestamp(timestamp) {
-                Ok(activation_date) => {
-                    let attribute = Attribute::ActivationDate(activation_date);
-                    result.push(attribute);
-                }
-                Err(e) => {
-                    return Err(crate::error::KmsCliError::Conversion(format!(
-                        "Could not convert {timestamp:?} to OffsetDateTime: {e:?}"
-                    )));
-                }
-            }
+            let activation_date = OffsetDateTime::from_unix_timestamp(timestamp).map_err(|e| {
+                crate::error::KmsCliError::Conversion(format!(
+                    "Could not convert {timestamp:?} to OffsetDateTime: {e:?}"
+                ))
+            })?;
+            result.push(Attribute::ActivationDate(activation_date));
         }
 
         if let Some(cryptographic_algorithm) = &self.cryptographic_algorithm {
-            let attribute = Attribute::CryptographicAlgorithm(CryptographicAlgorithm::from(
-                cryptographic_algorithm.to_owned(),
+            result.push(Attribute::CryptographicAlgorithm(
+                CryptographicAlgorithm::from(cryptographic_algorithm.to_owned()),
             ));
-            result.push(attribute);
         }
 
         if let Some(cryptographic_length) = &self.cryptographic_length {
-            let attribute = Attribute::CryptographicLength(*cryptographic_length);
-            result.push(attribute);
+            result.push(Attribute::CryptographicLength(*cryptographic_length));
         }
 
         if let Some(key_usage) = &self.key_usage {
@@ -244,85 +249,36 @@ impl SetOrDeleteAttributes {
                         "Could not convert {key_usage:?} to cryptographic usage mask"
                     ))
                 })?;
-            let attribute = Attribute::CryptographicUsageMask(cryptographic_usage_mask);
-            result.push(attribute);
+            result.push(Attribute::CryptographicUsageMask(cryptographic_usage_mask));
         }
 
-        if let Some(public_key_id) = &self.public_key_id {
-            let attribute = Attribute::Link(Link {
-                link_type: LinkType::PublicKeyLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(public_key_id.clone()),
-            });
-            result.push(attribute);
-        }
-
-        if let Some(private_key_id) = &self.private_key_id {
-            let attribute = Attribute::Link(Link {
-                link_type: LinkType::PrivateKeyLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    private_key_id.clone(),
-                ),
-            });
-            result.push(attribute);
-        }
-
-        if let Some(certificate_id) = &self.certificate_id {
-            let attribute = Attribute::Link(Link {
-                link_type: LinkType::CertificateLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    certificate_id.clone(),
-                ),
-            });
-            result.push(attribute);
-        }
-
-        if let Some(pkcs12_certificate_id) = &self.pkcs12_certificate_id {
-            let attribute = Attribute::Link(Link {
-                link_type: LinkType::PKCS12CertificateLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    pkcs12_certificate_id.clone(),
-                ),
-            });
-            result.push(attribute);
-        }
-
-        if let Some(pkcs12_password_certificate) = &self.pkcs12_password_certificate {
-            let attribute = Attribute::Link(Link {
-                link_type: LinkType::PKCS12PasswordLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    pkcs12_password_certificate.clone(),
-                ),
-            });
-            result.push(attribute);
-        }
-
-        if let Some(parent_id) = &self.parent_id {
-            let attribute = Attribute::Link(Link {
-                link_type: LinkType::ParentLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(parent_id.clone()),
-            });
-            result.push(attribute);
-        }
-
-        if let Some(child_id) = &self.child_id {
-            let attribute = Attribute::Link(Link {
-                link_type: LinkType::ChildLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(child_id.clone()),
-            });
-            result.push(attribute);
-        }
+        push_link!(self, result, public_key_id, LinkType::PublicKeyLink);
+        push_link!(self, result, private_key_id, LinkType::PrivateKeyLink);
+        push_link!(self, result, certificate_id, LinkType::CertificateLink);
+        push_link!(
+            self,
+            result,
+            pkcs12_certificate_id,
+            LinkType::PKCS12CertificateLink
+        );
+        push_link!(
+            self,
+            result,
+            pkcs12_password_certificate,
+            LinkType::PKCS12PasswordLink
+        );
+        push_link!(self, result, parent_id, LinkType::ParentLink);
+        push_link!(self, result, child_id, LinkType::ChildLink);
 
         if let Some(name_value) = &self.name {
-            let attribute = Attribute::Name(Name {
+            result.push(Attribute::Name(Name {
                 name_value: name_value.clone(),
                 name_type: NameType::UninterpretedTextString,
-            });
-            result.push(attribute);
+            }));
         }
 
         if let Some(vendor_attributes) = &self.vendor_attributes {
-            let attribute = Attribute::try_from(vendor_attributes)?;
-            result.push(attribute);
+            result.push(Attribute::try_from(vendor_attributes)?);
         }
 
         Ok(result)

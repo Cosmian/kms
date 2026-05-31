@@ -59,20 +59,6 @@ impl CryptoOpSpec for SignOp {
         false
     }
 
-    fn map_selection_error(
-        e: KmsError,
-        unique_identifier: &UniqueIdentifier,
-        _user: &str,
-    ) -> KmsError {
-        match e {
-            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                format!("sign: no valid private key for id: {unique_identifier}"),
-            ),
-            other => other,
-        }
-    }
-
     async fn execute_local(
         _kms: &KMS,
         owm: &ObjectWithMetadata,

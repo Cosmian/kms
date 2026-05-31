@@ -107,11 +107,26 @@ pub(crate) trait CryptoOpSpec {
     fn is_key_eligible(owm: &ObjectWithMetadata, vendor_id: &str) -> bool;
 
     /// Map key-selection errors to operation-specific KMIP error messages.
+    ///
+    /// Default implementation collapses `ItemNotFound` and `Unauthorized` into a
+    /// single `Kmip21Error(Item_Not_Found, ...)`. Operations that need distinct
+    /// error variants (e.g. Encrypt, Decrypt) override this.
     fn map_selection_error(
         e: KmsError,
         unique_identifier: &UniqueIdentifier,
-        user: &str,
-    ) -> KmsError;
+        _user: &str,
+    ) -> KmsError {
+        match e {
+            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
+                ErrorReason::Item_Not_Found,
+                format!(
+                    "{}: no valid key for id: {unique_identifier}",
+                    Self::OP_NAME
+                ),
+            ),
+            other => other,
+        }
+    }
 
     /// Execute the operation locally using unwrapped key material.
     fn execute_local(

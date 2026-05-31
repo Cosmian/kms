@@ -54,7 +54,7 @@ pub(crate) async fn message(
     );
     trace!("Entering message KMIP operation: {request}");
 
-    let mut response_items = Vec::new();
+    let mut response_items = Vec::with_capacity(request.batch_item.len());
     // Track the KMIP ID Placeholder within this RequestMessage. Multiple operations set
     // or clear it (e.g., Create, Register, CreateKeyPair, DeriveKey, Export set it; Locate
     // sets it iff exactly one UID is returned, otherwise clears it). Subsequent operations
@@ -71,7 +71,7 @@ pub(crate) async fn message(
     // Capture batch error continuation option (same location in 1.4 / 2.1 header structures after normalization)
     let batch_error_mode = request.request_header.batch_error_continuation_option;
     // Stash original successful indices so we can undo them if needed
-    let mut success_indices: Vec<usize> = Vec::new();
+    let mut success_indices: Vec<usize> = Vec::with_capacity(request.batch_item.len());
     // When in Undo mode, once a failure occurs we mark all prior successes as OperationUndone
     let mut undo_triggered: Option<(ErrorReason, String)> = None;
 

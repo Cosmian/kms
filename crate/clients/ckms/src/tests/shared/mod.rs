@@ -10,6 +10,7 @@ mod import;
 mod import_export_encodings;
 #[cfg(feature = "non-fips")]
 mod import_export_wrapping;
+#[cfg(not(target_os = "windows"))]
 mod locate;
 mod revoke;
 #[cfg(feature = "non-fips")]

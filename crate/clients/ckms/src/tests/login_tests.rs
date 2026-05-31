@@ -4,13 +4,13 @@
 //! user interaction or a running Identity Provider.  They do not open a
 //! browser window and do not require a KMS server.
 
-use std::{env, fs, process::Command};
+use std::{env, fs};
 
 use assert_cmd::prelude::*;
 
 use crate::{
     config::CKMS_CONF_ENV,
-    tests::{PROG_NAME, utils::recover_cmd_logs},
+    tests::utils::{ckms_bin, recover_cmd_logs},
 };
 
 /// `ckms login` must fail immediately with a clear error when the configuration
@@ -37,7 +37,7 @@ server_url = "http://127.0.0.1:9998"
     )
     .expect("failed to write test config");
 
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect("ckms binary not found");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, &conf_path).arg("login");
 
     let output = recover_cmd_logs(&mut cmd);
@@ -56,7 +56,7 @@ server_url = "http://127.0.0.1:9998"
 /// starting any server or opening a browser.
 #[test]
 pub(crate) fn test_ckms_login_help() {
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect("ckms binary not found");
+    let mut cmd = ckms_bin();
     cmd.arg("login").arg("--help");
     cmd.assert().success();
 }

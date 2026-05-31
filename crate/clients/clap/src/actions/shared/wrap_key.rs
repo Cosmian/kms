@@ -3,11 +3,10 @@ use std::path::PathBuf;
 use base64::{Engine as _, engine::general_purpose};
 use clap::Parser;
 use cosmian_kms_client::{
-    ExportObjectParams, KmsClient,
+    KmsClient,
     cosmian_kmip::kmip_2_1::{
         kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm,
     },
-    export_object,
     kmip_2_1::{kmip_attributes::Attributes, requests::create_symmetric_key_kmip_object},
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
@@ -15,10 +14,11 @@ use cosmian_kms_crypto::crypto::{
     password_derivation::derive_key_from_password, wrap::wrap_object_with_key,
 };
 
+use super::resolve_key::resolve_key_from_options;
 use crate::{
     actions::{console, shared::SYMMETRIC_WRAPPING_KEY_SIZE},
     cli_bail,
-    error::result::{KmsCliResult, KmsCliResultHelper},
+    error::result::KmsCliResult,
 };
 
 /// Locally wrap a secret data or key in KMIP JSON TTLV format.
@@ -93,25 +93,12 @@ impl WrapSecretDataOrKeyAction {
         let object_type = object.object_type();
 
         let vendor_id = kms_rest_client.config.vendor_id.as_str();
-        // if the key must be wrapped, prepare the wrapping key
-        let wrapping_key = if let Some(b64) = &self.wrap_key_b64 {
-            let key_bytes = general_purpose::STANDARD
-                .decode(b64)
-                .with_context(|| "failed decoding the wrap key")?;
-            create_symmetric_key_kmip_object(
-                vendor_id,
-                &key_bytes,
-                &Attributes {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    ..Default::default()
-                },
-            )?
-        } else if let Some(password) = &self.wrap_password {
+        // Resolve the wrapping key: password-derived key has priority (unique to wrap)
+        let wrapping_key = if let Some(password) = &self.wrap_password {
             let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
                 &[0_u8; 16],
                 password.as_bytes(),
             )?;
-
             let symmetric_key_object = create_symmetric_key_kmip_object(
                 vendor_id,
                 key_bytes.as_ref(),
@@ -120,21 +107,24 @@ impl WrapSecretDataOrKeyAction {
                     ..Default::default()
                 },
             )?;
-
-            // Print the wrapping key for user.
             println!(
                 "Wrapping key: {}. This is the only time that this wrapping key will be printed.",
                 general_purpose::STANDARD.encode(&*key_bytes)
             );
             symmetric_key_object
-        } else if let Some(key_id) = &self.wrap_key_id {
-            export_object(&kms_rest_client, key_id, ExportObjectParams::default())
-                .await?
-                .1
-        } else if let Some(key_file) = &self.wrap_key_file {
-            read_object_from_json_ttlv_file(key_file)?
         } else {
-            cli_bail!("one of the wrapping options must be specified");
+            resolve_key_from_options(
+                &kms_rest_client,
+                self.wrap_key_b64.as_deref(),
+                self.wrap_key_id.as_deref(),
+                self.wrap_key_file.as_ref(),
+            )
+            .await?
+            .ok_or_else(|| {
+                crate::error::KmsCliError::Default(
+                    "one of the wrapping options must be specified".to_owned(),
+                )
+            })?
         };
 
         wrap_object_with_key(

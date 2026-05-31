@@ -1,12 +1,9 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
-    tests::{PROG_NAME, save_kms_cli_config, utils::recover_cmd_logs},
+    tests::utils::{ckms_bin, owner_config, recover_cmd_logs},
 };
 
 const TOKENIZE_CMD: &str = "tokenize";
@@ -16,7 +13,7 @@ fn run_tokenize(
     subcommand: &str,
     extra_args: &[&str],
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg(TOKENIZE_CMD).arg(subcommand);
     cmd.args(extra_args);
@@ -32,7 +29,7 @@ fn run_tokenize(
 #[tokio::test]
 async fn test_tokenize_hash_sha2() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     let out = run_tokenize(
         &conf,
         "hash",
@@ -45,7 +42,7 @@ async fn test_tokenize_hash_sha2() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_hash_sha3() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     let out = run_tokenize(
         &conf,
         "hash",
@@ -58,7 +55,7 @@ async fn test_tokenize_hash_sha3() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_noise_gaussian_float() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     run_tokenize(
         &conf,
         "noise",
@@ -81,7 +78,7 @@ async fn test_tokenize_noise_gaussian_float() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_noise_uniform_integer() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     run_tokenize(
         &conf,
         "noise",
@@ -102,7 +99,7 @@ async fn test_tokenize_noise_uniform_integer() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_word_mask() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     let out = run_tokenize(
         &conf,
         "word-mask",
@@ -123,7 +120,7 @@ async fn test_tokenize_word_mask() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_word_tokenize() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     let out = run_tokenize(
         &conf,
         "word-tokenize",
@@ -143,7 +140,7 @@ async fn test_tokenize_word_tokenize() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_word_pattern_mask() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     let out = run_tokenize(
         &conf,
         "word-pattern-mask",
@@ -163,7 +160,7 @@ async fn test_tokenize_word_pattern_mask() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_aggregate_number_integer() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     run_tokenize(
         &conf,
         "aggregate-number",
@@ -182,7 +179,7 @@ async fn test_tokenize_aggregate_number_integer() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_aggregate_date() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     run_tokenize(
         &conf,
         "aggregate-date",
@@ -194,7 +191,7 @@ async fn test_tokenize_aggregate_date() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_tokenize_scale_number_float() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (conf, _) = save_kms_cli_config(ctx);
+    let conf = owner_config(ctx);
     run_tokenize(
         &conf,
         "scale-number",

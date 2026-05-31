@@ -1,7 +1,5 @@
 use clap::Subcommand;
 use cosmian_kms_client::KmsClient;
-#[cfg(all(test, feature = "non-fips"))]
-pub(crate) use cosmian_kms_client::reexport::cosmian_kms_client_utils::certificate_utils::Algorithm;
 
 use self::{
     certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,
@@ -9,7 +7,7 @@ use self::{
     export_certificate::ExportCertificateAction, import_certificate::ImportCertificateAction,
     revoke_certificate::RevokeCertificateAction, validate_certificate::ValidateCertificatesAction,
 };
-use crate::error::result::KmsCliResult;
+use crate::{actions::shared::ActivateKeyAction, error::result::KmsCliResult};
 
 pub(crate) mod certify;
 pub(crate) mod decrypt_certificate;
@@ -23,6 +21,7 @@ pub(crate) mod validate_certificate;
 /// Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 #[derive(Subcommand)]
 pub enum CertificatesCommands {
+    Activate(ActivateKeyAction),
     Certify(CertifyAction),
     Decrypt(DecryptCertificateAction),
     Encrypt(EncryptCertificateAction),
@@ -45,6 +44,10 @@ impl CertificatesCommands {
     /// Returns an error if the query execution on the KMS server fails.
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
+            Self::Activate(action) => {
+                action.run(kms_rest_client).await?;
+                Ok(())
+            }
             Self::Certify(action) => {
                 action.run(kms_rest_client).await?;
                 Ok(())

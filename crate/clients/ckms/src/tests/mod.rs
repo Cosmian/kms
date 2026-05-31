@@ -7,20 +7,9 @@
 #![allow(clippy::assertions_on_result_states)]
 #![allow(clippy::panic_in_result_fn)]
 
-use std::{env, path::Path, sync::Mutex};
-
-use cosmian_config_utils::ConfigUtils;
-use test_kms_server::TestsContext;
-
-use crate::config::ClientConfig;
-
-/// Protects the check-then-write sequence in `save_kms_cli_config` from TOCTOU
-/// races when multiple test threads call it concurrently for the same server port.
-static SAVE_CONFIG_LOCK: Mutex<()> = Mutex::new(());
-
 mod ensure_binary;
 
-#[cfg(feature = "non-fips")]
+#[cfg(all(feature = "non-fips", not(target_os = "windows")))]
 mod access;
 mod attributes;
 #[cfg(not(target_os = "windows"))]
@@ -31,7 +20,9 @@ mod certificates;
 mod cover_crypt;
 mod custom_headers_tests;
 mod derive_key;
+mod discover_versions;
 mod elliptic_curve;
+mod error_messages;
 mod forward_proxy_tests;
 #[cfg(feature = "non-fips")]
 mod fpe;
@@ -40,10 +31,14 @@ mod hash;
 mod hsm;
 mod login_tests;
 mod mac;
+mod opaque_object;
 #[cfg(feature = "non-fips")]
 mod pqc;
+mod query;
+mod rng;
 mod rsa;
 mod secret_data;
+mod security;
 mod shared;
 mod symmetric;
 pub(crate) mod utils;
@@ -79,72 +74,4 @@ pub(crate) fn ckms_command() -> std::process::Command {
     *ENSURE_BINARY_ON_LOAD;
 
     std::process::Command::cargo_bin(PROG_NAME).expect("Failed to find ckms binary")
-}
-
-pub(crate) fn save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
-    // Ensure binary is built before any test that uses it
-    ensure_ckms_binary();
-
-    // Serialize writes within this process to prevent TOCTOU races when
-    // multiple test threads concurrently call this function for the same port.
-    // The process ID is embedded in the filename to prevent cross-process
-    // conflicts when `cargo test --workspace --lib` runs multiple test binaries
-    // concurrently (e.g., ckms + cosmian_kms_cli_actions both using port 9999).
-    let _guard = SAVE_CONFIG_LOCK.lock().expect("SAVE_CONFIG_LOCK poisoned");
-    let pid = std::process::id();
-
-    let owner_file_path = env::temp_dir()
-        .join(format!("owner_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    if !Path::new(&owner_file_path).exists() {
-        let conf = ClientConfig {
-            kms_config: kms_ctx.owner_client_config.clone(),
-        };
-        conf.to_toml(&owner_file_path)
-            .expect("Failed to save owner test config");
-    }
-
-    let user_file_path = env::temp_dir()
-        .join(format!("user_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    if !Path::new(&user_file_path).exists() {
-        let conf = ClientConfig {
-            kms_config: kms_ctx.user_client_config.clone(),
-        };
-        conf.to_toml(&user_file_path)
-            .expect("Failed to save user test config");
-    }
-
-    (owner_file_path, user_file_path)
-}
-
-#[allow(dead_code)]
-pub(crate) fn force_save_kms_cli_config(kms_ctx: &TestsContext) -> (String, String) {
-    // Ensure binary is built before any test that uses it
-    ensure_ckms_binary();
-    let pid = std::process::id();
-
-    let owner_file_path = env::temp_dir()
-        .join(format!("owner_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    let conf = ClientConfig {
-        kms_config: kms_ctx.owner_client_config.clone(),
-    };
-    conf.to_toml(&owner_file_path)
-        .expect("Failed to save owner test config");
-
-    let user_file_path = env::temp_dir()
-        .join(format!("user_{}_{}.toml", kms_ctx.server_port, pid))
-        .to_string_lossy()
-        .into_owned();
-    let conf = ClientConfig {
-        kms_config: kms_ctx.user_client_config.clone(),
-    };
-    conf.to_toml(&user_file_path)
-        .expect("Failed to save user test config");
-
-    (owner_file_path, user_file_path)
 }

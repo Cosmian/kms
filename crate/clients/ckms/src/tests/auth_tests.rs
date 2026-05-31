@@ -1,13 +1,10 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use assert_cmd::prelude::*;
 use base64::Engine;
 use cosmian_config_utils::ConfigUtils;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kms_client::{
-        read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
-    },
+use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
+    read_object_from_json_ttlv_file, reexport::cosmian_http_client::HttpClientConfig,
 };
 use cosmian_logger::{debug, info, log_init, trace};
 use tempfile::TempDir;
@@ -16,16 +13,15 @@ use test_kms_server::{
     start_test_server_with_patch, test_config_path,
 };
 
-use super::utils::recover_cmd_logs;
+use super::utils::{force_save_kms_cli_config, recover_cmd_logs};
 use crate::{
     config::{CKMS_CONF_ENV, ClientConfig},
     error::result::CosmianResult,
     tests::{
-        PROG_NAME,
         access::SUB_COMMAND,
-        force_save_kms_cli_config,
         shared::{ExportKeyParams, export_key},
         symmetric::create_key::create_symmetric_key,
+        utils::ckms_bin,
     },
 };
 
@@ -49,7 +45,7 @@ fn run_owned_cli_command(owner_client_conf_path: &str) {
             }
         );
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
@@ -78,7 +74,7 @@ fn run_owned_cli_command_expect_failure(owner_client_conf_path: &str) {
             }
         );
     }
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, owner_client_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
@@ -88,7 +84,7 @@ fn run_owned_cli_command_expect_failure(owner_client_conf_path: &str) {
 
 fn create_api_token(owner_client_conf_path: &str) -> CosmianResult<(String, String)> {
     // Create and export an API token
-    let api_token_id = create_symmetric_key(owner_client_conf_path, CreateKeyAction::default())?;
+    let api_token_id = create_symmetric_key(owner_client_conf_path, &[])?;
     trace!("Symmetric key created of unique identifier: {api_token_id:?}");
 
     // Export as default (JsonTTLV with Raw Key Format Type)

@@ -28,7 +28,7 @@ use crate::{
         certificates::import_certificate::ImportCertificateAction,
         google::gmail_client::GmailClient,
     },
-    error::KmsCliError,
+    error::{KmsCliError, result::KmsCliResult},
 };
 
 const RSA_4096: usize = 4096;
@@ -180,15 +180,38 @@ impl CreateKeyPairsAction {
         GmailClient::handle_response(response).await
     }
 
-    #[expect(clippy::print_stdout)]
     /// # Errors
     /// Returns an error if the request fails or if the response is not successful.
     pub async fn run(&self, kms_rest_client: KmsClient) -> Result<UniqueIdentifier, KmsCliError> {
-        let gmail_client = GmailClient::new(kms_rest_client.config.clone(), &self.user_id);
         let email = &self.user_id;
 
-        let kacls_url = kms_rest_client.google_cse_status();
+        let (_private_key_id, public_key_id, wrapped_key_bytes) =
+            self.resolve_key_pair(&kms_rest_client, email).await?;
 
+        let certificate_unique_identifier = self
+            .resolve_certificate(&kms_rest_client, email, &public_key_id)
+            .await?;
+
+        info!("[{email}] - certificate ID used: {certificate_unique_identifier}");
+
+        self.push_to_gmail(
+            &kms_rest_client,
+            email,
+            &certificate_unique_identifier,
+            wrapped_key_bytes,
+        )
+        .await?;
+
+        Ok(certificate_unique_identifier)
+    }
+
+    /// Resolve or create the RSA key pair and export the wrapped private key.
+    #[expect(clippy::print_stdout)]
+    async fn resolve_key_pair(
+        &self,
+        kms_rest_client: &KmsClient,
+        email: &str,
+    ) -> KmsCliResult<(String, String, Vec<u8>)> {
         let (private_key_id, public_key_id) = if let Some(id) = &self.rsa_private_key_id {
             let attributes_response = kms_rest_client
                 .get_attributes(GetAttributes {
@@ -197,7 +220,6 @@ impl CreateKeyPairsAction {
                 })
                 .await?;
             if attributes_response.attributes.object_type == Some(ObjectType::PrivateKey) {
-                // Do we need to add encryption Algorithm to RSA too?
                 if let Some(linked_public_key_id) = attributes_response
                     .attributes
                     .get_link(LinkType::PublicKeyLink)
@@ -237,7 +259,7 @@ impl CreateKeyPairsAction {
 
         // Export wrapped private key with google CSE key
         let (_, wrapped_private_key, _attributes) = export_object(
-            &kms_rest_client,
+            kms_rest_client,
             &private_key_id,
             ExportObjectParams {
                 wrapping_key_id: Some(&self.cse_key_id),
@@ -251,16 +273,26 @@ impl CreateKeyPairsAction {
         )
         .await?;
 
-        let wrapped_key_bytes = wrapped_private_key.key_block()?.wrapped_key_bytes()?;
+        let wrapped_key_bytes = wrapped_private_key
+            .key_block()?
+            .wrapped_key_bytes()?
+            .to_vec();
+        Ok((private_key_id, public_key_id, wrapped_key_bytes))
+    }
 
+    /// Resolve the leaf certificate: use an existing one, create from extensions, or import PKCS12.
+    #[expect(clippy::print_stdout)]
+    async fn resolve_certificate(
+        &self,
+        kms_rest_client: &KmsClient,
+        email: &str,
+        public_key_id: &str,
+    ) -> KmsCliResult<UniqueIdentifier> {
         trace!("Determine the certificate to use - either existing or newly created");
-        let certificate_unique_identifier = match (
-            // Choice 1
+        match (
             &self.leaf_certificate_id,
-            // Choice 2
             &self.issuer_private_key_id,
             &self.leaf_certificate_extensions,
-            // Choice 3
             &self.leaf_certificate_pkcs12_file,
             &self.leaf_certificate_pkcs12_password,
         ) {
@@ -269,7 +301,6 @@ impl CreateKeyPairsAction {
                     "[{email}] - Generating new leaf certificate with extensions file: {:?}",
                     self.leaf_certificate_extensions
                 );
-                // Generate new certificate as before
                 let certificate_extensions_bytes =
                     tokio::fs::read(leaf_certificate_extensions).await?;
 
@@ -302,7 +333,7 @@ impl CreateKeyPairsAction {
 
                 debug!("Creating new leaf certificate with attributes: {attributes}");
                 let certify_request = Certify {
-                    unique_identifier: Some(UniqueIdentifier::TextString(public_key_id)),
+                    unique_identifier: Some(UniqueIdentifier::TextString(public_key_id.to_owned())),
                     attributes: Some(attributes),
                     ..Certify::default()
                 };
@@ -316,13 +347,12 @@ impl CreateKeyPairsAction {
                     .unique_identifier;
 
                 println!("[{email}] - certificate ID: {certificate_unique_identifier}");
-                certificate_unique_identifier
+                Ok(certificate_unique_identifier)
             }
             (None, None, None, Some(p12_file), Some(p12_password)) => {
                 info!(
                     "[{email}] - Import PKCS12 file before using it in Google key pair generation"
                 );
-                // Import leaf certificate file
                 let import_action = ImportCertificateAction {
                     certificate_file: Some(p12_file.clone()),
                     input_format: CertificateInputFormat::Pkcs12,
@@ -342,32 +372,37 @@ impl CreateKeyPairsAction {
                             )
                         })?;
 
-                // Only remove suffix _sk to get certificate unique identifier
                 let certificate_unique_identifier =
                     private_unique_identifier.replace(SYSTEM_TAG_PRIVATE_KEY, "");
                 println!("[{email}] - certificate ID: {certificate_unique_identifier}");
-                UniqueIdentifier::TextString(certificate_unique_identifier)
+                Ok(UniqueIdentifier::TextString(certificate_unique_identifier))
             }
             (Some(leaf_cert_id), None, None, None, None) => {
-                // Use existing leaf certificate by ID
                 println!("[{email}] - Using existing leaf certificate ID: {leaf_cert_id}");
-                UniqueIdentifier::TextString(leaf_cert_id.clone())
+                Ok(UniqueIdentifier::TextString(leaf_cert_id.clone()))
             }
-            _ => {
-                return Err(KmsCliError::InvalidRequest(
-                    "Incorrect parameters. Only exclusive options are possible: either \
-                     --leaf_certificate_id argument OR --leaf-certificate-extensions AND \
-                     --issuer_private_key_id OR --leaf-certificate-pkcs12-file AND \
-                     --leaf-certificate-pkcs12-password must be provided"
-                        .to_owned(),
-                ));
-            }
-        };
-        info!("[{email}] - certificate ID used: {certificate_unique_identifier}");
+            _ => Err(KmsCliError::InvalidRequest(
+                "Incorrect parameters. Only exclusive options are possible: either \
+                 --leaf_certificate_id argument OR --leaf-certificate-extensions AND \
+                 --issuer_private_key_id OR --leaf-certificate-pkcs12-file AND \
+                 --leaf-certificate-pkcs12-password must be provided"
+                    .to_owned(),
+            )),
+        }
+    }
 
-        // From the created leaf certificate, export the associated PKCS7 containing the whole cert chain
-        let (_, pkcs7_object, _pkcs7_object_export_attributes) = export_object(
-            &kms_rest_client,
+    /// Export the PKCS7 certificate chain and push the key pair to Gmail.
+    #[expect(clippy::print_stdout)]
+    async fn push_to_gmail(
+        &self,
+        kms_rest_client: &KmsClient,
+        email: &str,
+        certificate_unique_identifier: &UniqueIdentifier,
+        wrapped_key_bytes: Vec<u8>,
+    ) -> KmsCliResult<()> {
+        // Export PKCS7 containing the whole cert chain
+        let (_, pkcs7_object, _) = export_object(
+            kms_rest_client,
             &certificate_unique_identifier.to_string(),
             ExportObjectParams {
                 key_format_type: Some(KeyFormatType::PKCS7),
@@ -393,18 +428,20 @@ impl CreateKeyPairsAction {
         if self.dry_run {
             println!("Dry run mode - key pair not pushed to Gmail API");
         } else {
-            let email = &self.user_id;
             println!("[{email}] - Pushing new keypair to Gmail API");
             if let Object::Certificate(Certificate {
                 certificate_value, ..
             }) = pkcs7_object
             {
                 println!("Processing {email:?}.");
+                let gmail_client =
+                    GmailClient::new(kms_rest_client.config.clone(), &self.user_id).await?;
+                let kacls_url = kms_rest_client.google_cse_status().await?.kacls_url;
                 Self::post_keypair(
-                    &gmail_client.await?,
+                    &gmail_client,
                     certificate_value,
                     general_purpose::STANDARD.encode(wrapped_key_bytes),
-                    kacls_url.await?.kacls_url,
+                    kacls_url,
                 )
                 .await?;
                 println!("Key pair inserted for {email:?}.");
@@ -414,6 +451,6 @@ impl CreateKeyPairsAction {
                 )));
             }
         }
-        Ok(certificate_unique_identifier)
+        Ok(())
     }
 }

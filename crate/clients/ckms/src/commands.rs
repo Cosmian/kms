@@ -18,6 +18,42 @@ use crate::{
     error::result::CosmianResult, headers_config::HeadersConfig, proxy_config::ProxyConfig,
 };
 
+/// Prompts for an optional string field. Sets `$field` to `Some(value)` if non-empty, `None` otherwise.
+macro_rules! prompt_optional {
+    ($field:expr, $prompt:expr) => {{
+        let value: String = Input::new()
+            .with_prompt($prompt)
+            .allow_empty(true)
+            .with_initial_text($field.clone().unwrap_or_default())
+            .interact_text()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+        $field = if value.is_empty() { None } else { Some(value) };
+    }};
+}
+
+/// Prompts for an optional password field. Sets `$field` to `Some(value)` if non-empty, `None` otherwise.
+macro_rules! prompt_password {
+    ($field:expr, $prompt:expr) => {{
+        let value: String = Password::new()
+            .with_prompt($prompt)
+            .allow_empty_password(true)
+            .interact()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+        $field = if value.is_empty() { None } else { Some(value) };
+    }};
+}
+
+/// Prompts for a required string field. Assigns the result directly to `$field`.
+macro_rules! prompt_required {
+    ($field:expr, $prompt:expr) => {
+        $field = Input::new()
+            .with_prompt($prompt)
+            .with_initial_text($field)
+            .interact_text()
+            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    };
+}
+
 /// Updates proxy configuration for the KMS client
 ///
 /// # Arguments
@@ -418,48 +454,22 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
     }
 
     // CA certificate for server TLS verification
-    let verified_cert: String = Input::new()
-        .with_prompt(
-            "CA certificate for server TLS verification (PEM path, leave empty to use system roots)",
-        )
-        .allow_empty(true)
-        .with_initial_text(http.verified_cert.clone().unwrap_or_default())
-        .interact_text()
-        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-    http.verified_cert = if verified_cert.is_empty() {
-        None
-    } else {
-        Some(verified_cert)
-    };
+    prompt_optional!(
+        http.verified_cert,
+        "CA certificate for server TLS verification (PEM path, leave empty to use system roots)"
+    );
 
     // Database secret (Redis-findex client-side encryption key)
-    let db_secret: String = Password::new()
-        .with_prompt(
-            "Database secret (Redis-findex client-side encryption key, leave empty to skip)",
-        )
-        .allow_empty_password(true)
-        .interact()
-        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-    http.database_secret = if db_secret.is_empty() {
-        None
-    } else {
-        Some(db_secret)
-    };
+    prompt_password!(
+        http.database_secret,
+        "Database secret (Redis-findex client-side encryption key, leave empty to skip)"
+    );
 
     // TLS cipher suites
-    let cipher_suites: String = Input::new()
-        .with_prompt(
-            "TLS cipher suites (colon-separated, e.g. TLS_AES_256_GCM_SHA384, leave empty for default)",
-        )
-        .allow_empty(true)
-        .with_initial_text(http.cipher_suites.clone().unwrap_or_default())
-        .interact_text()
-        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-    http.cipher_suites = if cipher_suites.is_empty() {
-        None
-    } else {
-        Some(cipher_suites)
-    };
+    prompt_optional!(
+        http.cipher_suites,
+        "TLS cipher suites (colon-separated, e.g. TLS_AES_256_GCM_SHA384, leave empty for default)"
+    );
 
     // Custom HTTP headers
     let add_headers = Confirm::new()
@@ -549,61 +559,24 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
                     client_x509_cert_url: String::new(),
                     universe_domain: String::new(),
                 });
-            g.account_type = Input::new()
-                .with_prompt("Gmail account type")
-                .with_initial_text(g.account_type)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.project_id = Input::new()
-                .with_prompt("Gmail project_id")
-                .with_initial_text(g.project_id)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.private_key_id = Input::new()
-                .with_prompt("Gmail private_key_id")
-                .with_initial_text(g.private_key_id)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            prompt_required!(g.account_type, "Gmail account type");
+            prompt_required!(g.project_id, "Gmail project_id");
+            prompt_required!(g.private_key_id, "Gmail private_key_id");
             g.private_key = Password::new()
                 .with_prompt("Gmail private_key")
                 .with_confirmation("Confirm private_key", "Keys do not match")
                 .interact()
                 .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.client_email = Input::new()
-                .with_prompt("Gmail client_email")
-                .with_initial_text(g.client_email)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.client_id = Input::new()
-                .with_prompt("Gmail client_id")
-                .with_initial_text(g.client_id)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.auth_uri = Input::new()
-                .with_prompt("Gmail auth_uri")
-                .with_initial_text(g.auth_uri)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.token_uri = Input::new()
-                .with_prompt("Gmail token_uri")
-                .with_initial_text(g.token_uri)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.auth_provider_x509_cert_url = Input::new()
-                .with_prompt("Gmail auth_provider_x509_cert_url")
-                .with_initial_text(g.auth_provider_x509_cert_url)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.client_x509_cert_url = Input::new()
-                .with_prompt("Gmail client_x509_cert_url")
-                .with_initial_text(g.client_x509_cert_url)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            g.universe_domain = Input::new()
-                .with_prompt("Gmail universe_domain")
-                .with_initial_text(g.universe_domain)
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+            prompt_required!(g.client_email, "Gmail client_email");
+            prompt_required!(g.client_id, "Gmail client_id");
+            prompt_required!(g.auth_uri, "Gmail auth_uri");
+            prompt_required!(g.token_uri, "Gmail token_uri");
+            prompt_required!(
+                g.auth_provider_x509_cert_url,
+                "Gmail auth_provider_x509_cert_url"
+            );
+            prompt_required!(g.client_x509_cert_url, "Gmail client_x509_cert_url");
+            prompt_required!(g.universe_domain, "Gmail universe_domain");
             config.kms_config.gmail_api_conf = Some(g);
         }
     } else {
