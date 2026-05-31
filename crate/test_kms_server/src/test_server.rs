@@ -333,9 +333,11 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
 // Create a KEK in the HSM before running server with `key_encryption_key` arg
 async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     // Use a unique path per CI job to avoid conflicts when multiple CI runners
-    // share the same /tmp directory.
+    // share the same /tmp directory. Include the process ID to prevent collisions
+    // when multiple test binaries run concurrently via `cargo test --workspace`.
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_kek_{}_{}",
+        "kms_test_kek_{}_{}_{}",
+        std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -454,7 +456,8 @@ fn get_softhsm2_slot_id() -> usize {
 async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
     let slot = get_softhsm2_slot_id();
     let workspace_dir = std::env::temp_dir().join(format!(
-        "kms_test_softhsm2_kek_{}_{}",
+        "kms_test_softhsm2_kek_{}_{}_{}",
+        std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -779,7 +782,7 @@ fn start_test_kms_server(
             })
     });
     trace!("Waiting for test KMS server to start...");
-    let server_handle = rx.recv_timeout(Duration::from_secs(60)).map_err(|e| {
+    let server_handle = rx.recv_timeout(Duration::from_secs(25)).map_err(|e| {
         KmsClientError::UnexpectedError(format!("Error getting test KMS server handle: {e}"))
     })?;
     trace!("... got handle ...");
@@ -938,10 +941,13 @@ fn load_test_config_from_toml(config_path: &Path) -> Result<ClapConfig, KmsClien
     allocate_dynamic_port(&mut config)?;
 
     // Use a unique temp directory for SQLite and workspace to avoid collisions.
-    // Combine timestamp with an atomic counter so that tests starting within
-    // the same clock tick (macOS resolution ≈ 1 µs) still get distinct paths.
+    // Include the process ID so that concurrent test binaries (e.g. `ckms` and
+    // `cosmian_kms_cli_actions` running in parallel via `cargo test --workspace`)
+    // never hash-collide even when their per-process atomic counters both start
+    // at 0 within the same clock tick.
     let tmp_dir = std::env::temp_dir().join(format!(
-        "kms_test_toml_{}_{}",
+        "kms_test_toml_{}_{}_{}",
+        std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

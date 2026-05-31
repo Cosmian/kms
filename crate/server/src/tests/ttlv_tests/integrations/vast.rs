@@ -227,7 +227,58 @@ fn create_aes_256_key_with_mask(client: &SocketClient, mask: CryptographicUsageM
     cr.unique_identifier.clone()
 }
 
-/// Revoke then destroy `key_id` for cleanup.
+/// Revoke `key_id` (Cessation of Operation) for cleanup.
+fn revoke_key(client: &SocketClient, key_id: &str) {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+        kmip_1_4::kmip_operations::Revoke,
+    };
+    let request_message = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::Revoke,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::Revoke(Revoke {
+                    unique_identifier: Some(key_id.to_owned()),
+                    revocation_reason: RevocationReason {
+                        revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+                        revocation_message: None,
+                    },
+                    compromise_occurrence_date: None,
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &request_message)
+        .expect("Revoke: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(batch_item)) = response.batch_item.first()
+    else {
+        panic!("Revoke: expected V14 batch item");
+    };
+
+    assert_eq!(
+        batch_item.result_status,
+        ResultStatusEnumeration::Success,
+        "Revoke: expected Success, got {:?}: {:?}",
+        batch_item.result_status,
+        batch_item.result_message
+    );
+}
+
+/// Destroy `key_id` for cleanup (key must already be `Deactivated` or `PreActive`).
 fn destroy_key(client: &SocketClient, key_id: &str) {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_operations::Destroy;
     let request_message = RequestMessage {
@@ -355,7 +406,7 @@ fn test_vast_rekey_aes_key() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::ReKey(ReKey {
-                    unique_identifier: original_uid,
+                    unique_identifier: original_uid.clone(),
                     offset: None,
                     template_attribute: None,
                 }),
@@ -389,16 +440,22 @@ fn test_vast_rekey_aes_key() {
         !rekey_response.unique_identifier.is_empty(),
         "ReKey: UniqueIdentifier must not be empty"
     );
-    // NOTE: the KMS ReKey operation replaces the key material in-place and
-    // returns the same UniqueIdentifier (replace_existing=true semantics).
-    // This is intentional — the same object is updated with a new key value.
+    // Per KMIP spec, ReKey creates a new replacement key with a new UID.
+    // The old key remains Active and is linked to the new key.
+    assert_ne!(
+        rekey_response.unique_identifier, original_uid,
+        "ReKey: new key must have a different UID than the original"
+    );
     info!(
-        "ReKey succeeded: key uid={} (same UID, new key material)",
-        rekey_response.unique_identifier
+        "ReKey succeeded: new key uid={}, old key uid={} (old key remains Active)",
+        rekey_response.unique_identifier, original_uid
     );
 
-    // Cleanup
+    // Cleanup: destroy both the replacement key and the original key
+    revoke_key(&client, &rekey_response.unique_identifier);
     destroy_key(&client, &rekey_response.unique_identifier);
+    revoke_key(&client, &original_uid);
+    destroy_key(&client, &original_uid);
 }
 
 /// VAST issues a KMIP 1.4 `Check` to validate that an active AES-256 key

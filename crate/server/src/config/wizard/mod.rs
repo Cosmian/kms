@@ -34,7 +34,7 @@ mod tls_wizard;
 use dialoguer::{Input, theme::ColorfulTheme};
 
 use crate::{
-    config::{ClapConfig, UiConfig, default_cors_origins, get_default_config_path},
+    config::{ClapConfig, UiConfig, get_default_config_path},
     error::KmsError,
     result::KResult,
 };
@@ -90,7 +90,7 @@ pub fn run_configure_wizard() -> KResult<()> {
     let has_clients_ca = tls.clients_ca_cert_file.is_some();
     // Build default CORS origins now that TLS is known (determines scheme).
     let scheme = http.scheme(&tls);
-    http.cors_allowed_origins = Some(default_cors_origins(scheme, http.port));
+    http.cors_allowed_origins = Some(http_wizard::default_cors_origins(scheme, http.port));
     println!();
 
     // ── [4/9] KMIP socket server ──────────────────────────────────────────────

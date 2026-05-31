@@ -160,8 +160,41 @@ replays the steps sequentially.
 | KMIP Operations | `query` | Query | 1 |
 | KMIP Operations | `register_export` | Register, Get, Export, Destroy | 4 |
 | KMIP Operations | `rekey` | Create, ReKey, Encrypt | 3 |
-| KMIP Operations | `rekey_keypair_ec` | CreateKeyPair (EC), Activate, ReKeyKeyPair | 3 |
-| KMIP Operations | `rekey_keypair_rsa` | CreateKeyPair (RSA), Activate, ReKeyKeyPair | 3 |
+| KMIP Operations | `rekey_locate_by_name` | Create (named), Locate, ReKey, Locate (finds new key), GetAttributes (old=Active — ReKey does not deactivate the existing key) | 5 |
+| KMIP Operations | `rekey_deactivated_fails` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → fails) | 4 |
+| KMIP Operations | `rekey_with_links` | Create, ReKey, GetAttributes (old has ReplacementObjectLink), GetAttributes (new has ReplacedObjectLink) | 4 |
+| KMIP Operations | `rekey_with_offset` | Create, ReKey (Offset=3600s), GetAttributes (ActivationDate = now+3600) | 4 |
+| KMIP Operations | `rekey_name_removed_from_old` | Create (named), ReKey, GetAttributes (old has no Name) | 4 |
+| KMIP Operations | `rekey_double_chain` | Create, ReKey, ReKey, GetAttributes (chain of ReplacementObjectLinks) | 5 |
+| KMIP Operations | `rekey_old_key_still_decrypts` | Create, ReKey, Encrypt (old key still works) | 3 |
+| KMIP Operations | `rekey_keypair_ec` | CreateKeyPair (EC P-256), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_rsa` | CreateKeyPair (RSA-2048), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_rsa4096` | CreateKeyPair (RSA-4096), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_p384` | CreateKeyPair (EC P-384), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_p521` | CreateKeyPair (EC P-521), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_ml_kem_768` | CreateKeyPair (ML-KEM-768), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_ml_kem_1024` | CreateKeyPair (ML-KEM-1024), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_ml_dsa_65` | CreateKeyPair (ML-DSA-65), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_ml_dsa_87` | CreateKeyPair (ML-DSA-87), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_slh_dsa_sha2_128f` | CreateKeyPair (SLH-DSA-SHA2-128f), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_keypair_double_chain` | CreateKeyPair (EC), ReKeyKeyPair ×2, verify link chain | 7 |
+| KMIP Operations | `rekey_keypair_deactivated_fails` | CreateKeyPair (EC), Revoke SK, ReKeyKeyPair → fails | 4 |
+| KMIP Operations | `rekey_keypair_change_algo_fails` | CreateKeyPair (EC), ReKeyKeyPair (different algo) → fails | 3 |
+| KMIP Operations | `rekey_keypair_ec_locate_by_name` | CreateKeyPair (named), ReKeyKeyPair, Locate (finds new key) | 5 |
+| KMIP Operations | `rekey_keypair_name_removed_from_old` | CreateKeyPair (named), ReKeyKeyPair, GetAttributes (old has no Name) | 5 |
+| KMIP Operations | `rekey_keypair_old_key_still_active` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (old SK State=Active) | 5 |
+| KMIP Operations | `rekey_keypair_no_public_link_fails` | CreateKeyPair (EC), Delete PublicKeyLink, ReKeyKeyPair → fails | 4 |
+| KMIP Operations | `rekey_keypair_with_offset` | CreateKeyPair (EC), ReKeyKeyPair (Offset=3600s), verify ActivationDate | 5 |
+| KMIP Operations | `rekey_keypair_ec_with_links` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (verify links) | 5 |
+| KMIP Operations | `rekey_keypair_rsa_with_links` | CreateKeyPair (RSA), ReKeyKeyPair, GetAttributes (verify links) | 5 |
+| KMIP Operations | `rekey_keypair_rsa_encrypt_decrypt` | CreateKeyPair (RSA), ReKeyKeyPair, Encrypt+Decrypt with new key | 7 |
+| KMIP Operations | `rekey_keypair_ec_sign_verify` | CreateKeyPair (ECDSA P-256), ReKeyKeyPair, Sign+Verify with new key | 7 |
+| KMIP Operations (non-FIPS) | `rekey_keypair_ed25519` | CreateKeyPair (Ed25519), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations (non-FIPS) | `rekey_keypair_x25519` | CreateKeyPair (X25519), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations (non-FIPS) | `rekey_keypair_secp256k1` | CreateKeyPair (secp256k1), ReKeyKeyPair, Revoke+Destroy | 5 |
+| KMIP Operations | `rekey_kmip14` | Create (KMIP 1.4 JSON), ReKey (KMIP 1.4), Encrypt, Destroy ×2 | 7 |
+| KMIP Operations | `rekey_keypair_kmip14` | CreateKeyPair (KMIP 1.4 JSON), ReKeyKeyPair (KMIP 1.4), Destroy ×4 | 6 |
+| KMIP Operations | `rekey_keypair_kmip14_binary` | CreateKeyPair (KMIP 1.4 binary), ReKeyKeyPair (KMIP 1.4 binary), Destroy ×4 | 6 |
 | KMIP Operations | `rng_retrieve` | RNGRetrieve | 1 |
 | KMIP Operations | `rng_seed` | RNGSeed | 1 |
 | KMIP Operations | `secret_data` | Register, Get, Activate, Revoke, Destroy | 5 |
@@ -175,6 +208,8 @@ replays the steps sequentially.
 | Access Control | `privilege_escalation_self_grant` | Create, GrantAccess (owner → self) → denied | 2 |
 | Access Control | `privilege_escalation_non_owner_grant` | Create, GrantAccess by user (not owner) → denied ×2 | 3 |
 | Access Control | `privilege_escalation_destroy_without_permission` | Create, GrantAccess (Get only), Get (ok), Destroy (denied — Get not wildcard for lifecycle ops), Get (still exists) | 5 |
+| Access Control | `privilege_escalation_rekey_without_permission` | Create, GrantAccess (Get only), Get (ok), ReKey (denied — Get not wildcard for ReKey), Get (still exists) | 5 |
+| Access Control | `privilege_escalation_activate_without_permission` | Create (PreActive), GrantAccess (Encrypt only), Activate (denied — Encrypt does not imply Activate), Activate (owner ok) | 4 |
 | **HSM (requires SoftHSM2 + `HSM_SLOT_ID`)** | | | |
 | HSM / KEK | `hsm/kek_encrypt_decrypt` | Create (HSM+KEK), Encrypt, Decrypt, Destroy | 4 |
 | HSM / KEK | `hsm/kek_sign_verify` | CreateKeyPair (HSM+KEK RSA), Sign, SignatureVerify, Destroy ×2 | 5 |
