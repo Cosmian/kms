@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kms_server::{
-    config::{
-        ClapConfig, OpenTelemetryConfig, ServerParams, get_default_rolling_log_dir,
-        wizard::run_configure_wizard,
-    },
+    config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
     core::KMS,
     openssl_providers::safe_openssl_version_info,
     result::{KResult, KResultHelper},
@@ -95,19 +92,14 @@ async fn run() -> KResult<()> {
         log_to_syslog: clap_config.logging.log_to_syslog,
         // Use safe rust_log configuration without environment variable setting
         rust_log: get_effective_rust_log(clap_config.logging.rust_log.clone(), info_only),
-        log_to_file: {
-            let dir = clap_config
-                .logging
-                .rolling_log_dir
-                .clone()
-                .unwrap_or_else(get_default_rolling_log_dir);
+        log_to_file: clap_config.logging.rolling_log_dir.clone().map(|dir| {
             let name = clap_config
                 .logging
                 .rolling_log_name
                 .clone()
                 .unwrap_or_else(|| "kms".to_owned());
-            Some((dir, name))
-        },
+            (dir, name)
+        }),
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
