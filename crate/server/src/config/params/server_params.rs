@@ -168,10 +168,6 @@ pub struct ServerParams {
     /// Interval in seconds between background auto-rotation checks.
     /// 0 means disabled.
     pub auto_rotation_check_interval_secs: u64,
-
-    /// Maximum number of keys the server will try when decrypting with a keyset
-    /// identifier (walking the rotation chain from newest to oldest).
-    pub keyset_decrypt_max_attempts: u32,
 }
 
 /// Represents the server parameters.
@@ -431,7 +427,6 @@ impl ServerParams {
             }),
             max_locate_items: 1000,
             auto_rotation_check_interval_secs: conf.auto_rotation_check_interval_secs,
-            keyset_decrypt_max_attempts: conf.keyset_decrypt_max_attempts,
         };
 
         debug!("{res:#?}");
@@ -658,10 +653,6 @@ impl fmt::Debug for ServerParams {
         debug_struct.field(
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
-        );
-        debug_struct.field(
-            "keyset_decrypt_max_attempts",
-            &self.keyset_decrypt_max_attempts,
         );
 
         debug_struct.finish()

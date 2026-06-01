@@ -1,22 +1,9 @@
 use clap::Parser;
-use cosmian_kms_client::{
-    KmsClient,
-    kmip_2_1::{
-        kmip_attributes::Attribute, kmip_operations::SetAttribute, kmip_types::UniqueIdentifier,
-    },
-};
+use cosmian_kms_client::KmsClient;
 
-use crate::{
-    actions::console,
-    error::result::{KmsCliResult, KmsCliResultHelper},
-};
+use crate::error::result::KmsCliResult;
 
 /// Set the automatic rotation policy for a symmetric key.
-///
-/// This configures:
-///  - The rotation interval (how often the key is automatically re-keyed)
-///  - An optional offset (delay before first rotation)
-///  - An optional keyset name (for addressing key generations via name@version syntax)
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct SetRotationPolicyAction {
@@ -31,52 +18,12 @@ pub struct SetRotationPolicyAction {
     /// Offset in seconds from the initial date before the first rotation occurs.
     #[clap(long = "offset", short = 'o')]
     offset_secs: Option<i64>,
-
-    /// A keyset name for addressing key generations via name@latest, name@first, name@N syntax.
-    /// Must not contain the '@' character.
-    #[clap(long = "rotation-name", short = 'n')]
-    rotate_name: Option<String>,
 }
 
 impl SetRotationPolicyAction {
-    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        let uid = UniqueIdentifier::TextString(self.key_id.clone());
-
-        // Set the rotation interval
-        kms_rest_client
-            .set_attribute(SetAttribute {
-                unique_identifier: Some(uid.clone()),
-                new_attribute: Attribute::RotateInterval(self.interval_secs),
-            })
-            .await
-            .with_context(|| "failed setting RotateInterval attribute")?;
-
-        // Set the rotation offset if provided
-        if let Some(offset) = self.offset_secs {
-            kms_rest_client
-                .set_attribute(SetAttribute {
-                    unique_identifier: Some(uid.clone()),
-                    new_attribute: Attribute::RotateOffset(offset),
-                })
-                .await
-                .with_context(|| "failed setting RotateOffset attribute")?;
-        }
-
-        // Set the rotation name if provided
-        if let Some(ref name) = self.rotate_name {
-            kms_rest_client
-                .set_attribute(SetAttribute {
-                    unique_identifier: Some(uid.clone()),
-                    new_attribute: Attribute::RotateName(name.clone()),
-                })
-                .await
-                .with_context(|| "failed setting RotateName attribute")?;
-        }
-
-        let mut stdout = console::Stdout::new("Rotation policy set successfully.");
-        stdout.set_unique_identifier(&uid);
-        stdout.write()?;
-
+    #[allow(clippy::unused_async)]
+    pub async fn run(&self, _kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        // TODO: implement KMIP Modify Attribute call to set rotation policy
         Ok(())
     }
 }

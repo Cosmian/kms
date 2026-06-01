@@ -557,6 +557,10 @@ pub enum CertificateRequestType {
     PEM = 0x3,
 }
 
+impl_from_1to1!(CertificateRequestType => kmip_2_1::kmip_types::CertificateRequestType, [CRMF, PKCS10, PEM]);
+
+impl_try_from_infallible!(kmip_2_1::kmip_types::CertificateRequestType => CertificateRequestType, [CRMF, PKCS10, PEM]);
+
 /// KMIP 1.4 Validity Indicator Enumeration
 #[kmip_enum]
 pub enum ValidityIndicator {

@@ -1,3 +1,4 @@
+mod auto_rotate_tests;
 mod azure_ekm;
 mod bulk_encrypt_decrypt_tests;
 #[cfg(feature = "non-fips")]

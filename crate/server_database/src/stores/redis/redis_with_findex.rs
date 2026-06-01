@@ -709,9 +709,20 @@ impl ObjectsStore for RedisWithFindex {
 
         let mut out = Vec::new();
         for (uid, dbo) in redis_db_objects {
-            let has_access = dbo.owner == user || permissions.contains_key(&ObjectUid(uid.clone()));
-            if !has_access {
-                continue;
+            let is_wrapped_by = dbo
+                .object
+                .wrapping_key_uid()
+                .is_some_and(|wk| wk == wrapping_key_uid);
+            if is_wrapped_by {
+                let attrs = dbo
+                    .object
+                    .attributes()
+                    .cloned()
+                    .unwrap_or_else(|_| Attributes {
+                        object_type: Some(dbo.object.object_type()),
+                        ..Default::default()
+                    });
+                out.push((uid, dbo.state, attrs));
             }
             let attrs = dbo
                 .object

@@ -55,12 +55,6 @@ pub(crate) async fn set_attribute(
                 "DENIED: this attribute is server-managed and cannot be set by the user".to_owned(),
             ));
         }
-        Attribute::RotateName(name) if name.contains('@') => {
-            return Err(KmsError::InvalidRequest(
-                "SetAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
-                    .to_owned(),
-            ));
-        }
         _ => {}
     }
 

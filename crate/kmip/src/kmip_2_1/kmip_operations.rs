@@ -1039,12 +1039,12 @@ impl_display!(CertifyResponse, "CertifyResponse", { req unique_identifier });
 /// sets a `ReplacedObjectLink` on the new certificate pointing to the old one,
 /// and sets a `ReplacementObjectLink` on the old certificate pointing to the new one.
 ///
-/// KMIP 2.1 §6.1.45 / KMIP 1.4 §4.8
+/// KMIP 2.1 §6.1.8 / KMIP 1.4 §4.8
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReCertify {
-    /// The Unique Identifier of the Certificate being renewed.
-    /// If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
+    /// The Unique Identifier of the existing Certificate to be re-certified.
+    /// If omitted, the ID Placeholder value is used.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
     /// An Enumeration object specifying the type of certificate request.

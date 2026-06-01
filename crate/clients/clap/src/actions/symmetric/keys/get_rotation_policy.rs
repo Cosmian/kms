@@ -1,17 +1,9 @@
 use clap::Parser;
-use cosmian_kms_client::{
-    KmsClient,
-    kmip_2_1::{kmip_operations::GetAttributes, kmip_types::UniqueIdentifier},
-};
+use cosmian_kms_client::KmsClient;
 
-use crate::{
-    actions::console,
-    error::result::{KmsCliResult, KmsCliResultHelper},
-};
+use crate::error::result::KmsCliResult;
 
 /// Get the automatic rotation policy for a symmetric key.
-///
-/// Displays: rotation interval, offset, keyset name, generation, and last rotation date.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct GetRotationPolicyAction {
@@ -21,45 +13,9 @@ pub struct GetRotationPolicyAction {
 }
 
 impl GetRotationPolicyAction {
-    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
-        let uid = UniqueIdentifier::TextString(self.key_id.clone());
-
-        let response = kms_rest_client
-            .get_attributes(GetAttributes {
-                unique_identifier: Some(uid),
-                attribute_reference: None,
-            })
-            .await
-            .with_context(|| "failed retrieving attributes")?;
-
-        let attrs = &response.attributes;
-
-        let interval = attrs
-            .rotate_interval
-            .map_or_else(|| "not set".to_owned(), |v| v.to_string());
-        let offset = attrs
-            .rotate_offset
-            .map_or_else(|| "not set".to_owned(), |v| v.to_string());
-        let name = attrs.rotate_name.as_deref().unwrap_or("not set");
-        let generation = attrs
-            .rotate_generation
-            .map_or_else(|| "not set".to_owned(), |v| v.to_string());
-        let date = attrs
-            .rotate_date
-            .map_or_else(|| "never".to_owned(), |d| d.to_string());
-
-        let output = format!(
-            "Rotation policy for key: {}\n\
-             \x20 Interval (seconds): {interval}\n\
-             \x20 Offset (seconds):   {offset}\n\
-             \x20 Keyset name:        {name}\n\
-             \x20 Generation:         {generation}\n\
-             \x20 Last rotation date: {date}",
-            response.unique_identifier
-        );
-
-        console::Stdout::new(&output).write()?;
-
+    #[allow(clippy::unused_async)]
+    pub async fn run(&self, _kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        // TODO: implement KMIP Get Attributes call to retrieve rotation policy
         Ok(())
     }
 }

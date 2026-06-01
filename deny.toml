@@ -72,6 +72,9 @@ ignore = [
   { id = "RUSTSEC-2025-0009", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2025-0010", reason = "Pinned to scratchstack-aws-signature 0.10 (Feb 2026) which depends on ring 0.16.x" },
   { id = "RUSTSEC-2023-0071", reason = "Marvin Attack: potential key recovery through timing sidechannels. KMS depends now on jsonwebtoken that has 2 crypto backends (rust_crypto and aws-lc). aws-lc not being Windows compatible, we must choose rust_crypto" },
+  { id = "RUSTSEC-2026-0178", reason = "tokio-postgres DoS via malformed DataRow; not exploitable in KMS since we own the PostgreSQL server — no untrusted server connections" },
+  { id = "RUSTSEC-2026-0179", reason = "tokio-postgres DoS via unbounded SCRAM iteration count; not exploitable in KMS since we own the PostgreSQL server — no untrusted server connections" },
+  { id = "RUSTSEC-2026-0180", reason = "tokio-postgres DoS via malformed hstore value; not exploitable in KMS since we own the PostgreSQL server — no untrusted server connections" },
 ] # The path where the advisory databases are cloned/fetched into
 # db-path = "$CARGO_HOME/advisory-dbs"
 # The url(s) of the advisory databases to use

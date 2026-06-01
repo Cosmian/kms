@@ -348,7 +348,6 @@ mod tests {
             privileged_users: None,
             print_default_config: false,
             auto_rotation_check_interval_secs: 0,
-            keyset_decrypt_max_attempts: 100,
         };
 
         let toml_string = r#"

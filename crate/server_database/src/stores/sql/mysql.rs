@@ -31,10 +31,7 @@ use crate::{
         migrate::{DbState, Migrate},
         sql::{
             database::SqlDatabase,
-            locate_query::{
-                MySqlPlaceholder, find_by_rotate_name_query, find_due_for_rotation_query,
-                query_from_attributes,
-            },
+            locate_query::{MySqlPlaceholder, find_due_for_rotation_query, query_from_attributes},
         },
     },
 };
@@ -721,41 +718,6 @@ impl ObjectsStore for MySqlPool {
             }
         }
         Ok(due)
-    }
-
-    async fn find_by_rotate_name(
-        &self,
-        name: &str,
-        generation: Option<i32>,
-        latest: Option<bool>,
-        owner: &str,
-    ) -> InterfaceResult<Vec<(String, Attributes)>> {
-        let mut conn = self
-            .pool
-            .get_conn()
-            .await
-            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
-        let locate = find_by_rotate_name_query::<MySqlPlaceholder>(name, generation, latest, owner);
-        let params: Vec<mysql_async::Value> = locate
-            .params
-            .into_iter()
-            .map(|p| match p {
-                crate::stores::sql::locate_query::LocateParam::Text(s) => {
-                    mysql_async::Value::Bytes(s.into_bytes())
-                }
-                crate::stores::sql::locate_query::LocateParam::I64(i) => mysql_async::Value::Int(i),
-            })
-            .collect();
-        let rows: Vec<(String, serde_json::Value)> = conn
-            .exec(locate.sql, params)
-            .await
-            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
-        let mut results = Vec::new();
-        for (uid, attrs_val) in rows {
-            let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
-            results.push((uid, attrs));
-        }
-        Ok(results)
     }
 }
 

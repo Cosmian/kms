@@ -7,25 +7,11 @@
 - Add proper `ReCertify` and `ReCertifyResponse` KMIP 2.1 types compliant with both KMIP 1.x and 2.x ([#968](https://github.com/Cosmian/kms/pull/968))
 - Introduce `RekeyOperation` trait to unify symmetric, keypair, and certificate rotation logic ([#968](https://github.com/Cosmian/kms/pull/968))
 - Add `offset` field to `ReCertify` struct per KMIP 2.1 §6.1.45 for date-based activation scheduling ([#968](https://github.com/Cosmian/kms/pull/968))
-- Implement KMIP §4.57 transition 6 auto-deactivation: Active keys automatically transition to Deactivated when their DeactivationDate is reached ([#968](https://github.com/Cosmian/kms/pull/968))
-- Implement keyset resolution: `name@latest`, `name@first`, `name@N` syntax to address specific key generations by `rotate_name` ([#968](https://github.com/Cosmian/kms/pull/968))
-- Implement try-each-key decryption: Decrypt, SignatureVerify, and MACVerify operations with a bare keyset name walk the rotation chain (newest→oldest) until one key succeeds ([#968](https://github.com/Cosmian/kms/pull/968))
-- Add `--keyset-decrypt-max-attempts` server config flag (default: 100) to cap rotation chain traversal depth ([#968](https://github.com/Cosmian/kms/pull/968))
-- Add `find_by_rotate_name()` to `ObjectsStore` trait with SQLite, PostgreSQL, and MySQL implementations for keyset lookup ([#968](https://github.com/Cosmian/kms/pull/968))
-- Inherit `rotate_name` from old key to new key during ReKey so keyset resolution works across generations ([#968](https://github.com/Cosmian/kms/pull/968))
-- Implement `ckms sym keys set-rotation-policy` CLI command with `--interval`, `--offset`, `--rotation-name` flags ([#968](https://github.com/Cosmian/kms/pull/968))
-- Implement `ckms sym keys get-rotation-policy` CLI command to display interval, offset, keyset name, generation, and last rotation date ([#968](https://github.com/Cosmian/kms/pull/968))
-- Add Web UI components for Set Rotation Policy, Get Rotation Policy, and Re-Key under Symmetric Keys ([#968](https://github.com/Cosmian/kms/pull/968))
-- Add HSM keyset support: store keyset metadata in `CKA_LABEL` (`name::gen::base_id[::latest]`); `SetAttribute rotate_name` writes `CKA_LABEL`; `SetAttribute rotate_interval` writes `CKA_START_DATE`/`CKA_END_DATE`; `Re-Key` on HSM UIDs generates a new HSM key and updates both CKA_LABELs; keyset resolution via `find_by_rotate_name` enumerates PKCS#11 objects and sorts by generation ([#968](https://github.com/Cosmian/kms/pull/968))
-- Enrich `HsmStore::retrieve()` export path with CKA_LABEL keyset metadata (`rotate_name`, `rotate_generation`, `rotate_latest`) so the non-latest guard works for extractable HSM keys ([#968](https://github.com/Cosmian/kms/pull/968))
 
 ## Security
 
 - Mark `x-rotate-generation` and `x-rotate-date` as server-managed read-only attributes: reject user modifications via AddAttribute, SetAttribute, ModifyAttribute, and DeleteAttribute ([#968](https://github.com/Cosmian/kms/pull/968))
-- Guard `Re-Key` / `Re-Key Key Pair` to reject rotation of non-latest keyset members (`x-rotate-latest = false` and `x-rotate-name` set) with a clear error; keys without a keyset name are unaffected ([#968](https://github.com/Cosmian/kms/pull/968))
-- Reject `SetAttribute rotate_offset` on HSM keys with `NotSupported` — HSM rotation scheduling uses `CKA_START_DATE`/`CKA_END_DATE`, not SQL-managed offset windows ([#968](https://github.com/Cosmian/kms/pull/968))
-- Restrict rotation to Active or Deactivated keys: `Re-Key`, `Re-Key Key Pair`, and `ReCertify` now reject PreActive, Compromised, Destroyed, and Destroyed_Compromised objects with an explicit error (KMIP §6.1.46 does not list `Wrong_Key_Lifecycle_State` for Re-Key) ([#968](https://github.com/Cosmian/kms/pull/968))
-- Reject `@` character in `rotate_name` attribute values to prevent keyset versioning syntax injection ([#968](https://github.com/Cosmian/kms/pull/968))
+- Reject `Re-Key` and `Re-Key Key Pair` on HSM-managed keys (`hsm::` UID prefix) with an explicit `Not Supported` error instead of silently failing deep in the pipeline ([#968](https://github.com/Cosmian/kms/pull/968))
 
 ## Bug Fixes
 
@@ -48,9 +34,6 @@
 - Fix symmetric rekey hardcoding `State::Active` — now uses `setup_object_lifecycle` for date-based state computation ([#968](https://github.com/Cosmian/kms/pull/968))
 - Fix `setup_object_lifecycle` not storing `activation_date` for `PreActive` keys — offset-based activation scheduling now works correctly ([#968](https://github.com/Cosmian/kms/pull/968))
 - Add `ReCertify` request/response deserialization to KMIP 2.1 message handler ([#968](https://github.com/Cosmian/kms/pull/968))
-- Fix `find_by_rotate_name` SQL queries using wrong JSON path (`$.rotate_name` → `$.RotateName`) matching PascalCase serde serialization ([#968](https://github.com/Cosmian/kms/pull/968))
-- Fix `GetAttributes` not returning rotation policy fields (interval, offset, name, generation, date) because they lack `Tag` enum entries ([#968](https://github.com/Cosmian/kms/pull/968))
-- Implement `find_by_rotate_name()` on Redis-Findex backend and index `rotate_name` attribute in Findex keywords ([#968](https://github.com/Cosmian/kms/pull/968))
 - Fix `ReCertify.generate_replacement` passing empty user to `get_subject`/`get_issuer` — use certificate owner instead ([#968](https://github.com/Cosmian/kms/pull/968))
 - Fix `ReCertify` not computing lifecycle state from offset — certificates with future activation_date are now `PreActive` ([#968](https://github.com/Cosmian/kms/pull/968))
 
@@ -104,7 +87,6 @@
 - Correct HSM key rotation section: the KMS cannot use KMIP `Re-Key` on
   HSM-managed keys (no SQL attribute storage, non-extractable key material);
   use PKCS#11 vendor tools instead ([#968](https://github.com/Cosmian/kms/pull/968))
-- Add HSM keyset section to `key_auto_rotation.md`: CKA_LABEL convention, UID generation format, supported/unsupported attributes, example workflow, and keyset resolution description ([#968](https://github.com/Cosmian/kms/pull/968))
 - Document `x-rotate-generation` and `x-rotate-date` invariants: monotonically
   increasing counter unique within a key-set, authoritative last-rotation
   timestamp relied on by `is_due_for_rotation` ([#968](https://github.com/Cosmian/kms/pull/968))

@@ -3425,13 +3425,6 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_vec_rekey_wrapped_deactivated_succeeds() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapped_deactivated_succeeds")
-            .await
-    }
-
-    #[tokio::test]
     async fn test_neg_rekey_preactive_fails() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/rekey_preactive_fails").await

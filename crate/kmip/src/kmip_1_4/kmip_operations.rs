@@ -506,18 +506,15 @@ pub struct ReCertifyResponse {
 }
 
 impl From<ReCertify> for kmip_2_1::kmip_operations::ReCertify {
-    fn from(recertify: ReCertify) -> Self {
-        let cert_req_type = recertify.certificate_request_type.map(|t| match t {
-            CertificateRequestType::CRMF => kmip_2_1::kmip_types::CertificateRequestType::CRMF,
-            CertificateRequestType::PKCS10 => kmip_2_1::kmip_types::CertificateRequestType::PKCS10,
-            CertificateRequestType::PEM => kmip_2_1::kmip_types::CertificateRequestType::PEM,
-        });
+    fn from(r: ReCertify) -> Self {
         Self {
-            unique_identifier: recertify.unique_identifier.map(Into::into),
-            certificate_request_type: cert_req_type,
-            certificate_request_value: recertify.certificate_request_value,
+            unique_identifier: r
+                .unique_identifier
+                .map(kmip_2_1::kmip_types::UniqueIdentifier::TextString),
+            certificate_request_type: r.certificate_request_type.map(Into::into),
+            certificate_request_value: r.certificate_request_value,
+            attributes: r.template_attribute.map(Into::into),
             offset: None,
-            attributes: recertify.template_attribute.map(Into::into),
             protection_storage_masks: None,
         }
     }
@@ -526,30 +523,11 @@ impl From<ReCertify> for kmip_2_1::kmip_operations::ReCertify {
 impl TryFrom<kmip_2_1::kmip_operations::ReCertifyResponse> for ReCertifyResponse {
     type Error = KmipError;
 
-    fn try_from(value: kmip_2_1::kmip_operations::ReCertifyResponse) -> Result<Self, Self::Error> {
+    fn try_from(r: kmip_2_1::kmip_operations::ReCertifyResponse) -> Result<Self, Self::Error> {
         Ok(Self {
-            unique_identifier: value.unique_identifier.to_string(),
+            unique_identifier: r.unique_identifier.to_string(),
             template_attribute: None,
         })
-    }
-}
-
-impl From<kmip_2_1::kmip_operations::ReCertify> for ReCertify {
-    fn from(recertify: kmip_2_1::kmip_operations::ReCertify) -> Self {
-        // Per KMIP 1.4 §4.8 Table 188, all fields are optional.
-        // Certificate Request Type is "REQUIRED if the Certificate Request is present".
-        let cert_req_type = recertify.certificate_request_type.map(|t| match t {
-            kmip_2_1::kmip_types::CertificateRequestType::CRMF => CertificateRequestType::CRMF,
-            kmip_2_1::kmip_types::CertificateRequestType::PKCS10 => CertificateRequestType::PKCS10,
-            kmip_2_1::kmip_types::CertificateRequestType::PEM => CertificateRequestType::PEM,
-        });
-        Self {
-            unique_identifier: recertify.unique_identifier.map(|u| u.to_string()),
-            certificate_request_type: cert_req_type,
-            certificate_request_value: recertify.certificate_request_value,
-            template_attribute: None,
-            // KMIP 1.4 does not support offset; it is dropped during downgrade.
-        }
     }
 }
 
