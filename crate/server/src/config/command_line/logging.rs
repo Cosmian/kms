@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn get_default_rolling_log_dir() -> PathBuf {
-    PathBuf::from("/var/log/cosmian")
+    PathBuf::from("/var/log/")
 }
 
 #[cfg(target_os = "windows")]
@@ -60,8 +60,9 @@ pub struct LoggingConfig {
     pub log_to_syslog: bool,
 
     /// The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.
-    /// Defaults to a platform-specific path when not set:
-    ///   Linux: /var/log/cosmian
+    /// File logging is disabled unless this option is explicitly set.
+    /// Suggested paths:
+    ///   Linux: /var/log/
     ///   Windows: C:\ProgramData\Cosmian KMS Server\logs
     ///   macOS: ~/Library/Logs/Cosmian KMS Server
     #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]

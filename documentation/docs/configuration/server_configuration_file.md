@@ -349,10 +349,10 @@ log_to_syslog = false
 
 # Daily rolling logs: <rolling_log_name>.YYYY-MM-DD
 # When not set, the binary uses a platform-specific default:
-#   Linux:   /var/log/cosmian
+#   Linux:   /var/log/
 #   Windows: C:\ProgramData\Cosmian KMS Server\logs
 #   macOS:   ~/Library/Logs/Cosmian KMS Server
-# rolling_log_dir = "/var/log/cosmian"
+# rolling_log_dir = "/var/log/"
 
 # The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
 # Defaults to "cosmian_kms" if not set.
