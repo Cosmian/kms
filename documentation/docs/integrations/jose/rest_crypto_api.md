@@ -16,6 +16,7 @@ Key material **never leaves the KMS**. Only ciphertext, signatures, and MACs tra
 - [Endpoints](#endpoints)
     - [POST /v1/crypto/keys](#post-v1cryptokeys)
     - [DELETE /v1/crypto/keys/{kid}](#delete-v1cryptokeyskid)
+    - [POST /v1/crypto/keys/unwrap](#post-v1cryptokeysunwrap)
     - [POST /v1/crypto/encrypt](#post-v1cryptoencrypt)
     - [POST /v1/crypto/decrypt](#post-v1cryptodecrypt)
     - [POST /v1/crypto/sign](#post-v1cryptosign)
@@ -31,7 +32,7 @@ Key material **never leaves the KMS**. Only ciphertext, signatures, and MACs tra
 
 The `/v1/crypto` endpoints share the same authentication as the rest of the KMS API.
 Pass a JWT bearer token, a TLS client certificate, or an API token, depending on your
-server configuration. See [Authentication](../configuration/authentication.md).
+server configuration. See [Authentication](../../configuration/authentication.md).
 
 ---
 
@@ -103,6 +104,113 @@ key in the pair.
 #### Response
 
 - **204 No Content** on success (empty body).
+
+---
+
+### `POST /v1/crypto/keys/unwrap`
+
+Unwrap (decrypt) a JWE `encrypted_key` using an RSA private key and import the
+resulting symmetric CEK into the KMS as a managed key. The raw key material is
+**never returned** to the caller — only a `kid` identifier is provided.
+
+This endpoint is designed for the JWE decryption use case where the same CEK is
+reused across multiple messages: unwrap once, then decrypt subsequent ciphertexts
+using `POST /v1/crypto/decrypt` with `alg=dir`.
+
+**Supported `alg` values**: `RSA-OAEP`, `RSA-OAEP-256`.
+**Supported `enc` values**: `A128GCM`, `A192GCM`, `A256GCM`.
+
+#### Flow — Unwrap CEK then decrypt
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant KMS
+    Note over Client,KMS: Prerequisite: RSA key pair exists in KMS
+    Client->>KMS: POST /v1/crypto/keys/unwrap<br/>{protected: {alg,enc,kid}, encrypted_key}
+    Note over KMS: RSA-OAEP decrypt → CEK<br/>Import CEK as Active symmetric key
+    KMS-->>Client: {"kid":"<cek-uuid>","kty":"oct","alg":"A256GCM","key_ops":[...]}
+    Client->>KMS: POST /v1/crypto/decrypt<br/>{protected: {alg:"dir",enc,kid:"<cek-uuid>"},<br/>iv, ciphertext, tag}
+    Note over KMS: AES-GCM decrypt with persisted CEK
+    KMS-->>Client: {"kid":"<cek-uuid>","data":"..."}
+```
+
+#### Request body
+
+```json
+{
+  "protected":     "<base64url JWE Protected Header>",
+  "encrypted_key": "<base64url wrapped CEK>"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `protected` | ✓ | Base64url-encoded JWE Protected Header (must contain `alg`, `enc`, `kid`) |
+| `encrypted_key` | ✓ | Base64url-encoded RSA-OAEP-wrapped CEK (must be non-empty) |
+
+The `protected` header must decode to a JSON object containing:
+
+| Header field | Required | Description |
+|--------------|----------|-------------|
+| `kid` | ✓ | UUID of the RSA private key (or its linked public key) |
+| `alg` | ✓ | `RSA-OAEP` or `RSA-OAEP-256` |
+| `enc` | ✓ | `A128GCM`, `A192GCM`, or `A256GCM` (determines expected CEK size) |
+
+#### Response body
+
+```json
+{
+  "kid":     "<cek-uuid>",
+  "kty":     "oct",
+  "alg":     "A256GCM",
+  "key_ops": ["encrypt", "decrypt"]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `kid` | UUID of the imported symmetric key in the KMS |
+| `kty` | Always `oct` (symmetric key) |
+| `alg` | The `enc` algorithm from the protected header |
+| `key_ops` | Allowed operations: `["encrypt", "decrypt"]` |
+
+#### Error conditions
+
+| Condition | Status | Error code |
+|-----------|--------|------------|
+| Invalid base64url in `protected` or `encrypted_key` | 400 | `bad_request` |
+| Missing `kid`, `alg`, or `enc` in protected header | 400 | `bad_request` |
+| Empty `encrypted_key` | 400 | `bad_request` |
+| Unsupported algorithm (e.g., `dir`, `A128KW`) | 422 | `unsupported_algorithm` |
+| Private key not found | 404 | `not_found` |
+| Decryption failure (wrong key, corrupted data) | 422 | `decryption_failed` |
+| CEK size does not match `enc` algorithm | 422 | `crypto_failure` |
+
+#### Example (curl)
+
+```bash
+# Assume $PROTECTED and $ENCRYPTED_KEY come from a JWE token
+# The protected header contains {"alg":"RSA-OAEP-256","enc":"A256GCM","kid":"<priv-uuid>"}
+
+# 1. Unwrap the CEK
+UNWRAP_RESP=$(curl -s -X POST https://kms.example.com/v1/crypto/keys/unwrap \
+  -H 'Content-Type: application/json' \
+  -d "{\"protected\":\"$PROTECTED\",\"encrypted_key\":\"$ENCRYPTED_KEY\"}")
+CEK_KID=$(echo "$UNWRAP_RESP" | jq -r '.kid')
+
+# 2. Decrypt subsequent ciphertexts using the persisted CEK
+# Build a protected header for direct decryption:
+DIR_HEADER=$(printf '{"alg":"dir","enc":"A256GCM","kid":"%s"}' "$CEK_KID" \
+  | base64 | tr '+/' '-_' | tr -d '=')
+curl -s -X POST https://kms.example.com/v1/crypto/decrypt \
+  -H 'Content-Type: application/json' \
+  -d "{\"protected\":\"$DIR_HEADER\",\"iv\":\"$IV\",\"ciphertext\":\"$CT\",\"tag\":\"$TAG\"}" \
+  | jq -r '.data | @base64d'
+
+# 3. Clean up
+curl -s -X DELETE https://kms.example.com/v1/crypto/keys/$CEK_KID
+```
 
 ---
 
@@ -537,11 +645,11 @@ The following JOSE features are **not yet implemented** in this API.
 
 ### Key management algorithms (`alg`)
 
-| Algorithm     | FIPS | Operation         | Notes |
-|---------------|------|-------------------|-------|
-| `dir`         | ✓    | encrypt / decrypt | Direct use of symmetric key as CEK |
-| `RSA-OAEP`   | ✓    | encrypt / decrypt | RSA-OAEP with SHA-1 (RFC 7518 §4.3) |
-| `RSA-OAEP-256`| ✓   | encrypt / decrypt | RSA-OAEP with SHA-256 (RFC 7518 §4.3) |
+| Algorithm     | FIPS | Operation                   | Notes |
+|---------------|------|-----------------------------|-------|
+| `dir`         | ✓    | encrypt / decrypt           | Direct use of symmetric key as CEK |
+| `RSA-OAEP`   | ✓    | encrypt / decrypt / unwrap  | RSA-OAEP with SHA-1 (RFC 7518 §4.3) |
+| `RSA-OAEP-256`| ✓   | encrypt / decrypt / unwrap  | RSA-OAEP with SHA-256 (RFC 7518 §4.3) |
 
 ### Content encryption algorithms (`enc`)
 

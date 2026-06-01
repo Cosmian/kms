@@ -523,6 +523,46 @@ components:
           type: string
           description: RSA public exponent (base64url) — public keys only
 
+    KeyUnwrapRequest:
+      type: object
+      required: [protected, encrypted_key]
+      description: |
+        Unwrap a JWE encrypted_key using an RSA private key in the KMS.
+        The `protected` header must contain `alg` (RSA-OAEP or RSA-OAEP-256),
+        `enc` (A128GCM, A192GCM, or A256GCM), and `kid` (the unique identifier
+        of an RSA private key or a public key linked to a private key).
+      properties:
+        protected:
+          type: string
+          description: Base64url-encoded JWE Protected Header JSON (must contain alg, enc, kid)
+          example: eyJhbGciOiJSU0EtT0FFUC0yNTYiLCJlbmMiOiJBMjU2R0NNIiwia2lkIjoiYWJjZC0xMjM0In0
+        encrypted_key:
+          type: string
+          description: Base64url-encoded RSA-OAEP-wrapped CEK (must be non-empty)
+
+    KeyUnwrapResponse:
+      type: object
+      required: [kid, kty, alg, key_ops]
+      description: Metadata of the unwrapped symmetric key. Key material is stored in the KMS but never returned.
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the imported symmetric key
+        kty:
+          type: string
+          description: Always "oct" (symmetric key)
+          enum: [oct]
+        alg:
+          type: string
+          description: Content encryption algorithm (matches `enc` from protected header)
+          enum: [A128GCM, A192GCM, A256GCM]
+        key_ops:
+          type: array
+          items:
+            type: string
+          description: Permitted operations — always ["encrypt", "decrypt"]
+          example: [encrypt, decrypt]
+
     # ── Access Control ────────────────────────────────────────────────────────
 
     CurrentUserResponse:
@@ -2001,6 +2041,41 @@ paths:
       responses:
         '204':
           description: Key destroyed — no content
+
+  /v1/crypto/keys/unwrap:
+    post:
+      tags: [REST Crypto API]
+      summary: Unwrap a CEK (JWE key import)
+      description: |
+        Unwraps (decrypts) a JWE `encrypted_key` using an RSA private key stored in the KMS
+        and imports the resulting symmetric CEK as a managed key. The raw key material is
+        never returned to the caller — only the `kid` identifier.
+
+        Supported algorithms: `RSA-OAEP`, `RSA-OAEP-256`.
+        Supported content encryption: `A128GCM`, `A192GCM`, `A256GCM`.
+      operationId: cryptoUnwrapKey
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KeyUnwrapRequest'
+      responses:
+        '200':
+          description: Unwrapped key metadata (key material is stored, never returned)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyUnwrapResponse'
+        '400':
+          description: Bad request — invalid base64, missing field in protected header, empty encrypted_key
+        '404':
+          description: Private key not found
+        '422':
+          description: Unsupported algorithm, decryption failure, or CEK size mismatch
 
   # ── Google CSE ───────────────────────────────────────────────────────────────
 

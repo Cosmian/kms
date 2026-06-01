@@ -77,6 +77,9 @@ nav:
       - Other HSMs: hsm_support/other_hsms.md
   - Integrations:
       - API Endpoints: integrations/api.md
+      - JOSE / REST Crypto:
+          - REST Native Crypto API: integrations/jose/rest_crypto_api.md
+          - JWE Key Unwrap: integrations/jose/jwe_decryption.md
       - Cloud providers:
           - Amazon Web Services (AWS):
               - ECS Fargate: integrations/cloud_providers/aws/fargate.md
