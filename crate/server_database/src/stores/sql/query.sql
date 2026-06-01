@@ -138,3 +138,17 @@ ON objects.id = matched_tags.id;
 
 -- name: select-uids-from-tags
 SELECT id FROM tags WHERE tag IN (@TAGS) GROUP BY id HAVING COUNT(DISTINCT tag) = @LEN;
+
+-- name: find-wrapped-by
+SELECT DISTINCT objects.id, objects.state, objects.attributes
+FROM objects
+LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = $2
+WHERE (objects.owner = $2 OR read_access.userid = $2)
+  AND (
+    objects.object->'SymmetricKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1
+    OR objects.object->'PublicKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1
+    OR objects.object->'PrivateKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1
+    OR objects.object->'SecretData'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1
+    OR objects.object->'SplitKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1
+    OR objects.object->'PGPKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1
+  );

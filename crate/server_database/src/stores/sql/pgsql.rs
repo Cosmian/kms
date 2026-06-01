@@ -797,21 +797,7 @@ impl ObjectsStore for PgPool {
         user: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         pg_retry!(self.pool, |client| {
-            // PostgreSQL uses ->> for JSON text extraction.
-            // We check the 5 object variants that can hold a KeyBlock with wrapping data.
-            let sql = "\
-                SELECT DISTINCT objects.id, objects.state, objects.attributes \
-                FROM objects \
-                LEFT JOIN read_access ON objects.id = read_access.id \
-                    AND read_access.userid = $2 \
-                WHERE (objects.owner = $2 OR read_access.userid = $2) \
-                  AND ( \
-                    objects.object->'SymmetricKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
-                    OR objects.object->'PrivateKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
-                    OR objects.object->'SecretData'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
-                    OR objects.object->'SplitKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
-                    OR objects.object->'PGPKey'->'KeyBlock'->'KeyWrappingData'->'EncryptionKeyInformation'->>'UniqueIdentifier' = $1 \
-                  )";
+            let sql = get_pgsql_query!("find-wrapped-by");
             let rows = client
                 .query(sql, &[&wrapping_key_uid, &user])
                 .await

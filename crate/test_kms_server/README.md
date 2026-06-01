@@ -172,6 +172,10 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_name_removed_from_old` | Create (named), ReKey, GetAttributes (old has no Name) | 4 |
 | KMIP Operations | `rekey_double_chain` | Create, ReKey, ReKey, GetAttributes (chain of ReplacementObjectLinks) | 5 |
 | KMIP Operations | `rekey_old_key_still_decrypts` | Create, ReKey, Encrypt (old key still works) | 3 |
+| KMIP Operations | `rekey_wrapping_key` | Create wrapping key, Create wrapped dep, ReKey wrapping key (re-wraps dep), Encrypt dep, GetAttributes | 11 |
+| KMIP Operations | `rekey_wrapped_key` | Create wrapping key, Create wrapped key, ReKey wrapped key (unwrap→new material→re-wrap), Encrypt, GetAttributes | 11 |
+| KMIP Operations | `rekey_wrapping_key_with_links` | Create wrapping key + 2 deps, ReKey, verify links + both deps encrypt | 16 |
+| KMIP Operations | `rekey_wrapping_key_double_chain` | Create wrapping key K0 + 2 deps, ReKey×2 (K0→K1→K2), verify full link chain + deps encrypt | 22 |
 | KMIP Operations | `rekey_keypair_ec` | CreateKeyPair (EC P-256), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_rsa` | CreateKeyPair (RSA-2048), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_rsa4096` | CreateKeyPair (RSA-4096), ReKeyKeyPair, Revoke+Destroy | 5 |
@@ -223,6 +227,7 @@ replays the steps sequentially.
 | HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | CreateKeyPair (RSA-2048, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | CreateKeyPair (EC P-256, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK Create | `hsm/kek_ed25519_create_sign` | CreateKeyPair (Ed25519, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK ReKey | `hsm/kek_rekey_wrapped` | Create (AES-256, KEK-wrapped), Encrypt, ReKey (unwrap from KEK, new material, re-wrap), Encrypt new, GetAttributes | 9 |
 | HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | CreateKeyPair (RSA-1024, KEK-wrapped) → FIPS rejection | 1 |
 | HSM / Resident Create | `hsm/resident_aes128_create_encrypt` | Create (AES-128, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
 | HSM / Resident Create | `hsm/resident_aes256_create_encrypt` | Create (AES-256, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
@@ -328,6 +333,7 @@ replays the steps sequentially.
 | Negative / ReCertify | `negative/recertify_missing_uid` | ReCertify without UniqueIdentifier → error | 1 |
 | Negative / ReCertify | `negative/recertify_nonexistent` | ReCertify non-existent certificate → error | 1 |
 | Negative / ReCertify | `negative/recertify_not_a_certificate` | ReCertify a symmetric key → error | 2 |
+| Negative / ReKey | `negative/rekey_wrapped_deactivated` | Create wrapping key + wrapped key, Revoke wrapped, ReKey → fails (deactivated) | 7 |
 | **non-FIPS CryptographicParameters** | | | |
 | non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_explicit_nonce` | Create (AES-128), Encrypt (client 12-B nonce), Decrypt | 3 |
 | non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_explicit_nonce` | Create (AES-256), Encrypt (client 12-B nonce), Decrypt | 3 |

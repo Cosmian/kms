@@ -1039,7 +1039,7 @@ impl_display!(CertifyResponse, "CertifyResponse", { req unique_identifier });
 /// sets a `ReplacedObjectLink` on the new certificate pointing to the old one,
 /// and sets a `ReplacementObjectLink` on the old certificate pointing to the new one.
 ///
-/// KMIP 2.1 §6.1.8 / KMIP 1.4 §4.8
+/// KMIP 2.1 §6.1.45 / KMIP 1.4 §4.8
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReCertify {
