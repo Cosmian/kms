@@ -30,7 +30,9 @@ use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, KeyCreateRequest, KeyCreateResponse,
-    algorithm::{curve_from_crv, key_bits_from_alg, symmetric_algorithm_from_alg},
+    algorithm::{
+        curve_from_crv, key_bits_from_alg, symmetric_algorithm_from_alg, usage_mask_from_alg,
+    },
     b64_decode,
 };
 use crate::core::KMS;
@@ -380,17 +382,13 @@ async fn import_symmetric_key(
     let key_len_bits =
         i32::try_from(actual_bits).map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
+    // Set usage mask based on algorithm class (HMAC → MAC ops, AES → Encrypt/Decrypt)
+    let usage_mask = usage_mask_from_alg(alg);
+
     let attributes = Attributes {
         cryptographic_algorithm: Some(crypto_alg),
         cryptographic_length: Some(key_len_bits),
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::MACGenerate
-                | CryptographicUsageMask::MACVerify,
-        ),
+        cryptographic_usage_mask: Some(usage_mask),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         ..Attributes::default()
     };
@@ -503,13 +501,24 @@ async fn import_ec_key(
         .private_key_to_der()
         .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
+    // Set usage mask and key_format_type based on the intended JOSE algorithm
+    let ec_usage_mask = alg.map_or(
+        CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
+        usage_mask_from_alg,
+    );
+    let ec_attributes = Attributes {
+        cryptographic_usage_mask: Some(ec_usage_mask),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        ..Attributes::default()
+    };
+
     let object = Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
-                attributes: Some(Attributes::default()),
+                attributes: Some(ec_attributes.clone()),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -521,7 +530,7 @@ async fn import_ec_key(
         kms.vendor_id(),
         None,
         object,
-        None,
+        Some(ec_attributes),
         false,
         false,
         Vec::<&str>::new(),
@@ -637,13 +646,24 @@ async fn import_rsa_key(
         .private_key_to_der()
         .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
+    // Set usage mask and key_format_type based on the intended JOSE algorithm
+    let rsa_usage_mask = alg.map_or(
+        CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
+        usage_mask_from_alg,
+    );
+    let rsa_attributes = Attributes {
+        cryptographic_usage_mask: Some(rsa_usage_mask),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        ..Attributes::default()
+    };
+
     let object = Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
-                attributes: Some(Attributes::default()),
+                attributes: Some(rsa_attributes.clone()),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -655,7 +675,7 @@ async fn import_rsa_key(
         kms.vendor_id(),
         None,
         object,
-        None,
+        Some(rsa_attributes),
         false,
         false,
         Vec::<&str>::new(),
@@ -724,13 +744,24 @@ async fn import_okp_key(
         .private_key_to_der()
         .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
+    // Set usage mask and key_format_type based on the intended JOSE algorithm
+    let okp_usage_mask = alg.map_or(
+        CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
+        usage_mask_from_alg,
+    );
+    let okp_attributes = Attributes {
+        cryptographic_usage_mask: Some(okp_usage_mask),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        ..Attributes::default()
+    };
+
     let object = Object::PrivateKey(PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS8,
             key_compression_type: None,
             key_value: Some(KeyValue::Structure {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
-                attributes: Some(Attributes::default()),
+                attributes: Some(okp_attributes.clone()),
             }),
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -742,7 +773,7 @@ async fn import_okp_key(
         kms.vendor_id(),
         None,
         object,
-        None,
+        Some(okp_attributes),
         false,
         false,
         Vec::<&str>::new(),

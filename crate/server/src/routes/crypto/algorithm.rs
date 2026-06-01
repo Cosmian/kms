@@ -312,8 +312,6 @@ pub(crate) fn key_bits_from_alg(alg: &str) -> Option<usize> {
 /// - Signing algs → `Sign | Verify`
 /// - Encryption algs (`dir` + enc) → `Encrypt | Decrypt`
 /// - MAC algs → `MACGenerate | MACVerify`
-// Will be used for import-path usage validation.
-#[allow(dead_code)]
 pub(crate) fn usage_mask_from_alg(alg: &str) -> CryptographicUsageMask {
     match alg {
         // Signature algorithms

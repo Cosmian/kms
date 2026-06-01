@@ -54,10 +54,14 @@ impl CryptoOpSpec for SignatureVerifyOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         match owm.object() {
-            Object::PublicKey { .. } => has_usage_mask(owm, CryptographicUsageMask::Verify, true),
-            // Accept private keys for verification (imported keys may lack a paired public key;
-            // the public component is extracted at execution time).
-            Object::PrivateKey { .. } => has_usage_mask(owm, CryptographicUsageMask::Sign, false),
+            // Accept both public and private keys for verification.
+            // Private keys are supported for imported keys that may lack a paired public key;
+            // the public component is extracted at execution time.
+            // Use Verify mask with lenient=true so imported keys without an explicit mask
+            // still work.
+            Object::PublicKey { .. } | Object::PrivateKey { .. } => {
+                has_usage_mask(owm, CryptographicUsageMask::Verify, true)
+            }
             _ => false,
         }
     }
