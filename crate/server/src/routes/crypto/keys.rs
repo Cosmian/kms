@@ -5,27 +5,40 @@ use actix_web::{
     web::{Data, Json, Path},
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
+        kmip_attributes::Attributes,
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, PrivateKey, SymmetricKey},
         kmip_operations::{Destroy, Revoke},
-        kmip_types::UniqueIdentifier,
+        kmip_types::{KeyFormatType, UniqueIdentifier},
         requests::{
-            create_ec_key_pair_request, create_rsa_key_pair_request, symmetric_key_create_request,
+            create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request,
+            symmetric_key_create_request,
         },
     },
 };
 use cosmian_logger::trace;
+use openssl::{
+    bn::BigNum,
+    ec::{EcGroup, EcKey, EcPoint},
+    nid::Nid,
+    pkey::PKey,
+    rsa::Rsa,
+};
+use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, KeyCreateRequest, KeyCreateResponse,
     algorithm::{curve_from_crv, key_bits_from_alg, symmetric_algorithm_from_alg},
+    b64_decode,
 };
 use crate::core::KMS;
 
 /// `POST /v1/crypto/keys` — generate or import a JWK-style key.
 ///
 /// Dispatch logic:
-/// - If key material fields (`k`, `d`) are present → **import** (not yet implemented).
+/// - If key material fields (`k`, `d`) are present → **import** the key into the KMS.
 /// - Otherwise → **generate** a new key based on `kty`/`alg`/`crv`/`bits`.
 #[post("/keys")]
 pub(crate) async fn create_key(
@@ -39,10 +52,16 @@ pub(crate) async fn create_key(
     trace!(user = user, "POST /v1/crypto/keys kty={}", body.kty);
 
     if body.is_import() {
-        return Err(CryptoApiError::BadRequest(
-            "Key import is not yet implemented. Omit key material fields (k, d) to generate a key."
-                .to_owned(),
-        ));
+        return match body.kty.as_str() {
+            "oct" => import_symmetric_key(&kms, &user, &body).await.map(Json),
+            "EC" => import_ec_key(&kms, &user, &body).await.map(Json),
+            "RSA" => import_rsa_key(&kms, &user, &body).await.map(Json),
+            #[cfg(feature = "non-fips")]
+            "OKP" => import_okp_key(&kms, &user, &body).await.map(Json),
+            other => Err(CryptoApiError::BadRequest(format!(
+                "Unsupported key type '{other}' for import."
+            ))),
+        };
     }
 
     let alg_str = body.alg.as_deref().unwrap_or("");
@@ -312,7 +331,462 @@ async fn generate_okp_key_pair(
     })
 }
 
+// ─── Internal: symmetric key import ─────────────────────────────────────────
+
+async fn import_symmetric_key(
+    kms: &Arc<KMS>,
+    user: &str,
+    body: &KeyCreateRequest,
+) -> Result<KeyCreateResponse, CryptoApiError> {
+    let k_str = body.k.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'k' (base64url-encoded key material) is required for symmetric key import."
+                .to_owned(),
+        )
+    })?;
+
+    let alg = body.alg.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'alg' is required for symmetric key import (e.g. HS256, A256GCM).".to_owned(),
+        )
+    })?;
+
+    let key_bytes = b64_decode("k", k_str)?;
+
+    // Validate key length against algorithm expectation.
+    // For HMAC (HS*), RFC 7518 §3.2 specifies a minimum key size; for AES, exact match required.
+    let expected_bits = key_bits_from_alg(alg).ok_or_else(|| {
+        CryptoApiError::BadRequest(format!(
+            "Cannot infer expected key size from algorithm '{alg}'."
+        ))
+    })?;
+    let actual_bits = key_bytes.len() * 8;
+    let is_hmac = alg.starts_with("HS");
+    if is_hmac {
+        if actual_bits < expected_bits {
+            return Err(CryptoApiError::BadRequest(format!(
+                "Key length too short: algorithm '{alg}' requires at least {expected_bits} bits, \
+                 but 'k' contains {actual_bits} bits."
+            )));
+        }
+    } else if actual_bits != expected_bits {
+        return Err(CryptoApiError::BadRequest(format!(
+            "Key length mismatch: algorithm '{alg}' requires {expected_bits} bits, \
+             but 'k' contains {actual_bits} bits."
+        )));
+    }
+
+    let crypto_alg = symmetric_algorithm_from_alg(alg)?;
+    let key_len_bits =
+        i32::try_from(actual_bits).map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(crypto_alg),
+        cryptographic_length: Some(key_len_bits),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::MACGenerate
+                | CryptographicUsageMask::MACVerify,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        ..Attributes::default()
+    };
+
+    let object = Object::SymmetricKey(SymmetricKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::TransparentSymmetricKey {
+                    key: Zeroizing::from(key_bytes),
+                },
+                attributes: Some(attributes.clone()),
+            }),
+            cryptographic_algorithm: Some(crypto_alg),
+            cryptographic_length: Some(key_len_bits),
+            key_wrapping_data: None,
+        },
+    });
+
+    let import_req = import_object_request(
+        kms.vendor_id(),
+        None,
+        object,
+        Some(attributes),
+        false,
+        false,
+        Vec::<&str>::new(),
+    )
+    .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let resp = kms
+        .import(import_req, user, None)
+        .await
+        .map_err(CryptoApiError::from)?;
+
+    let kid = resp.unique_identifier.to_string();
+    let key_ops = key_ops_from_alg(alg);
+
+    Ok(KeyCreateResponse {
+        kid,
+        kid_public: None,
+        kty: "oct".to_owned(),
+        alg: Some(alg.to_owned()),
+        crv: None,
+        key_ops,
+        x: None,
+        y: None,
+        n: None,
+        e: None,
+    })
+}
+
+// ─── Internal: EC key import ────────────────────────────────────────────────
+
+async fn import_ec_key(
+    kms: &Arc<KMS>,
+    user: &str,
+    body: &KeyCreateRequest,
+) -> Result<KeyCreateResponse, CryptoApiError> {
+    let d_str = body.d.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'd' (base64url-encoded private key scalar) is required for EC key import."
+                .to_owned(),
+        )
+    })?;
+
+    let crv = body.crv.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'crv' is required for EC key import (e.g. P-256, P-384, P-521).".to_owned(),
+        )
+    })?;
+
+    // Validate the curve is also supported by the KMIP layer
+    let _recommended_curve = curve_from_crv(crv)?;
+    let nid = nid_from_crv(crv)?;
+    let alg = body.alg.as_deref();
+
+    let d_bytes = b64_decode("d", d_str)?;
+
+    // Reconstruct EC private key via OpenSSL
+    let group =
+        EcGroup::from_curve_name(nid).map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+    let d_bn =
+        BigNum::from_slice(&d_bytes).map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // Compute public point = d * G
+    let mut ctx = openssl::bn::BigNumContext::new()
+        .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+    let mut public_point =
+        EcPoint::new(&group).map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+    public_point
+        .mul_generator2(&group, &d_bn, &mut ctx)
+        .map_err(|e| {
+            CryptoApiError::BadRequest(format!(
+                "Invalid EC private key scalar for curve '{crv}': {e}"
+            ))
+        })?;
+
+    let ec_key = EcKey::from_private_components(&group, &d_bn, &public_point).map_err(|e| {
+        CryptoApiError::BadRequest(format!("Invalid EC key components for curve '{crv}': {e}"))
+    })?;
+    ec_key.check_key().map_err(|e| {
+        CryptoApiError::BadRequest(format!("EC key validation failed for curve '{crv}': {e}"))
+    })?;
+
+    let pkey =
+        PKey::from_ec_key(ec_key).map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+    let pkcs8_der = pkey
+        .private_key_to_der()
+        .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let object = Object::PrivateKey(PrivateKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
+                attributes: Some(Attributes::default()),
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let import_req = import_object_request(
+        kms.vendor_id(),
+        None,
+        object,
+        None,
+        false,
+        false,
+        Vec::<&str>::new(),
+    )
+    .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let resp = kms
+        .import(import_req, user, None)
+        .await
+        .map_err(CryptoApiError::from)?;
+
+    let kid = resp.unique_identifier.to_string();
+    let key_ops = alg.map_or_else(
+        || vec!["sign".to_owned(), "verify".to_owned()],
+        key_ops_from_alg,
+    );
+
+    Ok(KeyCreateResponse {
+        kid,
+        kid_public: None,
+        kty: "EC".to_owned(),
+        alg: alg.map(ToOwned::to_owned),
+        crv: Some(crv.to_owned()),
+        key_ops,
+        x: None,
+        y: None,
+        n: None,
+        e: None,
+    })
+}
+
+// ─── Internal: RSA key import ───────────────────────────────────────────────
+
+async fn import_rsa_key(
+    kms: &Arc<KMS>,
+    user: &str,
+    body: &KeyCreateRequest,
+) -> Result<KeyCreateResponse, CryptoApiError> {
+    // All RSA CRT components are required by OpenSSL
+    let n_str = body.n.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest("Field 'n' (modulus) is required for RSA key import.".to_owned())
+    })?;
+    let e_str = body.e.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'e' (public exponent) is required for RSA key import.".to_owned(),
+        )
+    })?;
+    let d_str = body.d.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'd' (private exponent) is required for RSA key import.".to_owned(),
+        )
+    })?;
+    let p_str = body.p.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'p' (first prime) is required for RSA key import.".to_owned(),
+        )
+    })?;
+    let q_str = body.q.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'q' (second prime) is required for RSA key import.".to_owned(),
+        )
+    })?;
+    let dp_str = body.dp.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'dp' (d mod p-1) is required for RSA key import.".to_owned(),
+        )
+    })?;
+    let dq_str = body.dq.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'dq' (d mod q-1) is required for RSA key import.".to_owned(),
+        )
+    })?;
+    let qi_str = body.qi.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'qi' (CRT coefficient) is required for RSA key import.".to_owned(),
+        )
+    })?;
+
+    let alg = body.alg.as_deref();
+
+    // Decode all components
+    let n_bn = BigNum::from_slice(&b64_decode("n", n_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'n': {e}")))?;
+    let e_bn = BigNum::from_slice(&b64_decode("e", e_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'e': {e}")))?;
+    let d_bn = BigNum::from_slice(&b64_decode("d", d_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'd': {e}")))?;
+    let p_bn = BigNum::from_slice(&b64_decode("p", p_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'p': {e}")))?;
+    let q_bn = BigNum::from_slice(&b64_decode("q", q_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'q': {e}")))?;
+    let dp_bn = BigNum::from_slice(&b64_decode("dp", dp_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'dp': {e}")))?;
+    let dq_bn = BigNum::from_slice(&b64_decode("dq", dq_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'dq': {e}")))?;
+    let qi_bn = BigNum::from_slice(&b64_decode("qi", qi_str)?)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid 'qi': {e}")))?;
+
+    // Validate minimum key size
+    let key_bits = n_bn.num_bits();
+    if key_bits < 2048 {
+        return Err(CryptoApiError::BadRequest(format!(
+            "RSA key size must be at least 2048 bits (got {key_bits})."
+        )));
+    }
+
+    let rsa_key =
+        Rsa::from_private_components(n_bn, e_bn, d_bn, p_bn, q_bn, dp_bn, dq_bn, qi_bn)
+            .map_err(|e| CryptoApiError::BadRequest(format!("Invalid RSA key components: {e}")))?;
+
+    let pkey = PKey::from_rsa(rsa_key).map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+    let pkcs8_der = pkey
+        .private_key_to_der()
+        .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let object = Object::PrivateKey(PrivateKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
+                attributes: Some(Attributes::default()),
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let import_req = import_object_request(
+        kms.vendor_id(),
+        None,
+        object,
+        None,
+        false,
+        false,
+        Vec::<&str>::new(),
+    )
+    .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let resp = kms
+        .import(import_req, user, None)
+        .await
+        .map_err(CryptoApiError::from)?;
+
+    let kid = resp.unique_identifier.to_string();
+    let key_ops = alg.map_or_else(
+        || vec!["sign".to_owned(), "verify".to_owned()],
+        key_ops_from_alg,
+    );
+
+    Ok(KeyCreateResponse {
+        kid,
+        kid_public: None,
+        kty: "RSA".to_owned(),
+        alg: alg.map(ToOwned::to_owned),
+        crv: None,
+        key_ops,
+        x: None,
+        y: None,
+        n: None,
+        e: None,
+    })
+}
+
+// ─── Internal: OKP (Ed25519) key import (non-FIPS) ──────────────────────────
+
+#[cfg(feature = "non-fips")]
+async fn import_okp_key(
+    kms: &Arc<KMS>,
+    user: &str,
+    body: &KeyCreateRequest,
+) -> Result<KeyCreateResponse, CryptoApiError> {
+    let d_str = body.d.as_deref().ok_or_else(|| {
+        CryptoApiError::BadRequest(
+            "Field 'd' (base64url-encoded private key) is required for OKP key import.".to_owned(),
+        )
+    })?;
+
+    let crv = body.crv.as_deref().unwrap_or("Ed25519");
+    let alg = body.alg.as_deref();
+
+    if crv != "Ed25519" {
+        return Err(CryptoApiError::BadRequest(format!(
+            "Unsupported OKP curve '{crv}' for import. Supported: Ed25519."
+        )));
+    }
+
+    let d_bytes = b64_decode("d", d_str)?;
+    if d_bytes.len() != 32 {
+        return Err(CryptoApiError::BadRequest(format!(
+            "Ed25519 private key must be exactly 32 bytes, got {}.",
+            d_bytes.len()
+        )));
+    }
+
+    let pkey = PKey::private_key_from_raw_bytes(&d_bytes, openssl::pkey::Id::ED25519)
+        .map_err(|e| CryptoApiError::BadRequest(format!("Invalid Ed25519 private key: {e}")))?;
+    let pkcs8_der = pkey
+        .private_key_to_der()
+        .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let object = Object::PrivateKey(PrivateKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs8_der)),
+                attributes: Some(Attributes::default()),
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let import_req = import_object_request(
+        kms.vendor_id(),
+        None,
+        object,
+        None,
+        false,
+        false,
+        Vec::<&str>::new(),
+    )
+    .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    let resp = kms
+        .import(import_req, user, None)
+        .await
+        .map_err(CryptoApiError::from)?;
+
+    let kid = resp.unique_identifier.to_string();
+    let key_ops = alg.map_or_else(
+        || vec!["sign".to_owned(), "verify".to_owned()],
+        key_ops_from_alg,
+    );
+
+    Ok(KeyCreateResponse {
+        kid,
+        kid_public: None,
+        kty: "OKP".to_owned(),
+        alg: alg.map(ToOwned::to_owned),
+        crv: Some(crv.to_owned()),
+        key_ops,
+        x: None,
+        y: None,
+        n: None,
+        e: None,
+    })
+}
+
 // ─── Shared helpers ─────────────────────────────────────────────────────────
+
+/// Map a JOSE `crv` string to an OpenSSL NID.
+fn nid_from_crv(crv: &str) -> Result<Nid, CryptoApiError> {
+    match crv {
+        "P-256" => Ok(Nid::X9_62_PRIME256V1),
+        "P-384" => Ok(Nid::SECP384R1),
+        "P-521" => Ok(Nid::SECP521R1),
+        other => Err(CryptoApiError::BadRequest(format!(
+            "Unsupported curve '{other}' for import. Supported: P-256, P-384, P-521."
+        ))),
+    }
+}
 
 /// Derive `key_ops` strings from a JOSE algorithm.
 fn key_ops_from_alg(alg: &str) -> Vec<String> {

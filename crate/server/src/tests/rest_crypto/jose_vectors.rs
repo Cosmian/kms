@@ -86,25 +86,14 @@ fn resolve_plaintext(request: &Value) -> Vec<u8> {
 
 /// Provision a key using `POST /v1/crypto/keys` and return `(kid, kid_public)`.
 ///
-/// For KAT vectors with existing key material (`key.k` present), falls back to
-/// the import helper (since `/v1/crypto/keys` import is not yet implemented).
+/// Both key generation (no material) and key import (material present via `k` or `d`)
+/// are handled by the REST endpoint.
 async fn provision_key<S, B>(app: &S, key: &Value) -> KResult<(String, Option<String>)>
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: actix_web::body::MessageBody,
 {
-    // KAT vectors with existing key material — use KMIP import directly
-    // (import via /v1/crypto/keys is not yet implemented)
-    if key.get("k").is_some() {
-        let key_b64 = key["k"].as_str().expect("key.k must be a string");
-        let key_bytes = URL_SAFE_NO_PAD
-            .decode(key_b64)
-            .expect("key.k must be valid base64url");
-        let kid = super::common::import_hmac_key(app, key_bytes).await?;
-        return Ok((kid, None));
-    }
-
-    // Generate key via POST /v1/crypto/keys
+    // All key requests (generate or import) go through POST /v1/crypto/keys
     let resp: Value = test_utils::post_json_with_uri(app, key, "/v1/crypto/keys").await?;
     let kid = resp["kid"]
         .as_str()
@@ -652,12 +641,14 @@ where
         "Vector {filename}: POST /v1/crypto/keys must return non-empty kid"
     );
 
-    // Verify asymmetric keys return kid_public
+    // Verify asymmetric key-generation (no material provided) returns kid_public.
+    // Imported private keys (material present via 'd') do not create a paired public key.
     let kty = key["kty"].as_str().unwrap_or("oct");
-    if kty == "EC" || kty == "RSA" || kty == "OKP" {
+    let is_import = key.get("k").is_some() || key.get("d").is_some();
+    if (kty == "EC" || kty == "RSA" || kty == "OKP") && !is_import {
         assert!(
             kid_public.is_some(),
-            "Vector {filename}: asymmetric key must return kid_public"
+            "Vector {filename}: asymmetric generated key must return kid_public"
         );
     }
 
@@ -681,13 +672,15 @@ where
         }
         "sign" => {
             let sign_kid = &kid;
-            let verify_kid = kid_public.as_deref().expect("sign needs kid_public");
-            let resp: Value = test_utils::post_json_with_uri(
+            // For generated keys, verify with the public kid; for imports, use private kid
+            let verify_kid = kid_public.as_deref().unwrap_or(&kid);
+            let sign_result: KResult<Value> = test_utils::post_json_with_uri(
                 app,
                 json!({"kid": sign_kid, "alg": alg, "data": data_b64}),
                 "/v1/crypto/sign",
             )
-            .await?;
+            .await;
+            let resp = sign_result?;
             let protected = resp["protected"].as_str().expect("missing protected");
             let signature = resp["signature"].as_str().expect("missing signature");
 
@@ -934,7 +927,7 @@ async fn test_jose_vectors() -> KResult<()> {
     }
 
     if errors.is_empty() {
-        eprintln!("JOSE vectors: {passed}/{} passed", vectors.len());
+        // All vectors passed
     } else {
         panic!(
             "JOSE vectors: {passed}/{} passed, {} failed:\n  {}",
