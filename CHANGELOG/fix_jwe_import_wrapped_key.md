@@ -1,12 +1,10 @@
-# Changelog — develop
-
 ## Features
 
 - Add `POST /v1/crypto/keys/unwrap` endpoint for RSA-OAEP CEK unwrapping without key exposure
-  - Decrypts the wrapped CEK using the private key referenced in the JWE protected header
-  - Imports the symmetric key as an Active KMIP object in the KMS database
-  - Returns the key identifier (`kid`), key type, algorithm, and allowed operations
-  - Supports `RSA-OAEP` and `RSA-OAEP-256` algorithms with `A128GCM`, `A192GCM`, `A256GCM`
+    - Decrypts the wrapped CEK using the private key referenced in the JWE protected header
+    - Imports the symmetric key as an Active KMIP object in the KMS database
+    - Returns the key identifier (`kid`), key type, algorithm, and allowed operations
+    - Supports `RSA-OAEP` and `RSA-OAEP-256` algorithms with `A128GCM`, `A192GCM`, `A256GCM`
 
 ## Testing
 

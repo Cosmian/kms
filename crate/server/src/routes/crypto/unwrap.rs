@@ -166,9 +166,7 @@ pub(crate) async fn unwrap_key(
         None,
         &encrypted_key_bytes,
     )
-    .map_err(|e| {
-        CryptoApiError::CryptoFailure(format!("Key unwrap: RSA-OAEP unwrap failed: {e}"))
-    })?;
+    .map_err(|_e| CryptoApiError::DecryptionFailed)?;
 
     // Validate unwrapped key size matches enc expectation
     if cek.len() != expected_cek_len {

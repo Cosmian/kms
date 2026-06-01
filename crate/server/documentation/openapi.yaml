@@ -529,7 +529,8 @@ components:
       description: |
         Unwrap a JWE encrypted_key using an RSA private key in the KMS.
         The `protected` header must contain `alg` (RSA-OAEP or RSA-OAEP-256),
-        `enc` (A128GCM, A192GCM, or A256GCM), and `kid` (RSA private key UUID).
+        `enc` (A128GCM, A192GCM, or A256GCM), and `kid` (the unique identifier
+        of an RSA private key or a public key linked to a private key).
       properties:
         protected:
           type: string
