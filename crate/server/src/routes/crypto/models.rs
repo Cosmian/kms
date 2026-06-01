@@ -218,3 +218,31 @@ pub(crate) struct MacVerifyResponse {
     /// `true` if MAC is valid
     pub(crate) valid: bool,
 }
+
+// ─── Key unwrap (import wrapped CEK) ────────────────────────────────────────
+
+/// POST /v1/crypto/keys/unwrap — request body.
+///
+/// Accepts a subset of a JWE Flattened JSON (`protected` + `encrypted_key`)
+/// and imports the unwrapped symmetric key into the KMS without exposing it to
+/// the caller.
+#[derive(Debug, Deserialize)]
+pub(crate) struct KeyUnwrapRequest {
+    /// BASE64URL(UTF8(JWE Protected Header)) — must contain `alg`, `enc`, `kid`
+    pub(crate) protected: String,
+    /// The RSA-OAEP wrapped CEK as base64url
+    pub(crate) encrypted_key: String,
+}
+
+/// POST /v1/crypto/keys/unwrap — response body.
+#[derive(Debug, Serialize)]
+pub(crate) struct KeyUnwrapResponse {
+    /// KMS unique identifier of the imported symmetric key
+    pub(crate) kid: String,
+    /// JWK key type (always `"oct"` for symmetric keys)
+    pub(crate) kty: String,
+    /// JOSE content-encryption algorithm this key is bound to
+    pub(crate) alg: String,
+    /// Permitted key operations
+    pub(crate) key_ops: Vec<String>,
+}

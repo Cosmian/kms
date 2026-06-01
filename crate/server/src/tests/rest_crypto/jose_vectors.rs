@@ -156,6 +156,7 @@ where
         "encrypt_decrypt_tamper_reject" => {
             run_encrypt_decrypt_tamper_reject(app, &v, &filename).await
         }
+        "unwrap_key_round_trip" => run_unwrap_key_round_trip(app, &v, &filename).await,
         "key_lifecycle" => run_key_lifecycle(app, &v, &filename).await,
         "expect_error" => run_expect_error(app, &v, &filename).await,
         unknown => panic!("Vector {filename}: unknown type '{unknown}'"),
@@ -532,6 +533,101 @@ where
     );
 
     delete_key(app, &kid).await;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Unwrap key tests (RSA-OAEP → import CEK → encrypt/decrypt round-trip)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Run an unwrap-key round-trip vector:
+/// 1. Provision an RSA key pair
+/// 2. Encrypt with RSA-OAEP (wraps a fresh CEK with the public key)
+/// 3. Call `POST /v1/crypto/keys/unwrap` with the protected header + encrypted_key
+/// 4. Use the unwrapped symmetric key to encrypt/decrypt a payload
+async fn run_unwrap_key_round_trip<S, B>(app: &S, v: &Value, filename: &str) -> KResult<()>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: actix_web::body::MessageBody,
+{
+    let key = &v["key"];
+    let (kid, kid_public) = provision_key(app, key).await?;
+    let pub_kid = kid_public.unwrap_or_else(|| kid.clone());
+
+    let alg = v["algorithm"].as_str().expect("algorithm missing");
+    let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
+    let plaintext = resolve_plaintext(&v["request"]);
+    let plaintext_b64 = URL_SAFE_NO_PAD.encode(&plaintext);
+
+    // Step 1: Encrypt with RSA-OAEP → produces wrapped CEK
+    let enc_resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"kid": pub_kid, "alg": alg, "enc": enc_alg, "data": plaintext_b64}),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+
+    let protected = enc_resp["protected"]
+        .as_str()
+        .expect("missing protected in encrypt response");
+    let encrypted_key = enc_resp["encrypted_key"]
+        .as_str()
+        .expect("missing encrypted_key in encrypt response");
+
+    // Step 2: Unwrap the CEK via POST /v1/crypto/keys/unwrap
+    let unwrap_resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"protected": protected, "encrypted_key": encrypted_key}),
+        "/v1/crypto/keys/unwrap",
+    )
+    .await?;
+
+    let sym_kid = unwrap_resp["kid"]
+        .as_str()
+        .expect("unwrap response missing kid");
+    assert!(
+        !sym_kid.is_empty(),
+        "Vector {filename}: unwrap must return non-empty kid"
+    );
+    assert_eq!(
+        unwrap_resp["kty"].as_str(),
+        Some("oct"),
+        "Vector {filename}: unwrapped key must be symmetric (kty=oct)"
+    );
+    assert_eq!(
+        unwrap_resp["alg"].as_str(),
+        Some(enc_alg),
+        "Vector {filename}: unwrapped key alg must match enc"
+    );
+
+    // Step 3: Verify the unwrapped key works for encrypt + decrypt
+    let enc2_resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"kid": sym_kid, "alg": "dir", "enc": enc_alg, "data": plaintext_b64}),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+
+    let dec_payload = json!({
+        "protected":  enc2_resp["protected"],
+        "iv":         enc2_resp["iv"],
+        "ciphertext": enc2_resp["ciphertext"],
+        "tag":        enc2_resp["tag"]
+    });
+    let dec_resp: Value =
+        test_utils::post_json_with_uri(app, dec_payload, "/v1/crypto/decrypt").await?;
+
+    let recovered = URL_SAFE_NO_PAD
+        .decode(dec_resp["data"].as_str().expect("missing data"))
+        .expect("base64 decode");
+    assert_eq!(
+        recovered, plaintext,
+        "Vector {filename}: decrypt with unwrapped key must yield original plaintext"
+    );
+
+    // Cleanup
+    delete_key(app, &kid).await;
+    delete_key(app, sym_kid).await;
     Ok(())
 }
 

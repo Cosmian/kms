@@ -19,3 +19,4 @@ mod jose_vectors;
 mod mac;
 mod rfc_vectors;
 mod sign_verify;
+mod unwrap;
