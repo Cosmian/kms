@@ -276,6 +276,8 @@ target = "cosmian_cng.dll"
 display-language-selector = false
 installer-mode = "currentUser"
 languages = ["English"]
+# Custom template that adds $INSTDIR to user PATH (so ckms.exe is in PATH)
+template = "installer.nsi"
 
 # END WINDOWS/macOS INSTALLER PACKAGING
 # ------------------------------------------------------------------------------

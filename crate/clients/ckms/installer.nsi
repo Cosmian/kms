@@ -1,3 +1,6 @@
+; Cosmian KMS CLI (ckms) NSIS installer template
+; Based on cargo-packager default template with PATH manipulation added.
+;
 ; Set the compression algorithm.
 !if "{{compression}}" == ""
   SetCompressor /SOLID lzma
@@ -40,11 +43,6 @@ ${StrLoc}
 !define MANUPRODUCTKEY "Software\${MANUFACTURER}\${PRODUCTNAME}"
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
-
-; Windows service name
-!define SERVICENAME "CosmianKMS"
-!define SERVICEDISPLAYNAME "Cosmian KMS Server"
-!define SERVICEDESCRIPTION "Cosmian Key Management System server"
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -320,7 +318,8 @@ Var AppStartMenuFolder
 !define MUI_FINISHPAGE_SHOWREADME
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "$(createDesktop)"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
-; Do not show "Run app" on finish page — this is a service, not a GUI app
+; Show run app after installation.
+!define MUI_FINISHPAGE_RUN "$INSTDIR\${MAINBINARYNAME}.exe"
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_FINISH
 
@@ -473,25 +472,10 @@ SectionEnd
   app_check_done:
 !macroend
 
-; --- Windows Service helpers ---
-!macro StopAndDeleteService
-  ; Stop the service (ignore errors if not running or not installed)
-  nsExec::ExecToLog 'sc stop "${SERVICENAME}"'
-  Pop $0
-  ; Wait for the service to stop
-  Sleep 2000
-  ; Delete the service
-  nsExec::ExecToLog 'sc delete "${SERVICENAME}"'
-  Pop $0
-!macroend
-
 Section Install
   SetOutPath $INSTDIR
 
   !insertmacro CheckIfAppIsRunning
-
-  ; Stop existing service before upgrading
-  !insertmacro StopAndDeleteService
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -526,29 +510,6 @@ Section Install
     WriteRegStr SHCTX "Software\Classes\\{{protocol}}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
   {{/each}}
 
-  ; --- Register Windows Service ---
-  ; Create the service with auto-start, running as LocalSystem
-  nsExec::ExecToLog 'sc create "${SERVICENAME}" binPath= "$INSTDIR\${MAINBINARYNAME}.exe" start= auto DisplayName= "${SERVICEDISPLAYNAME}"'
-  Pop $0
-  ${If} $0 != 0
-    DetailPrint "Warning: sc create returned $0"
-  ${EndIf}
-
-  ; Set service description
-  nsExec::ExecToLog 'sc description "${SERVICENAME}" "${SERVICEDESCRIPTION}"'
-  Pop $0
-
-  ; Configure service recovery: restart on first and second failure, reset after 1 day
-  nsExec::ExecToLog 'sc failure "${SERVICENAME}" reset= 86400 actions= restart/5000/restart/10000//'
-  Pop $0
-
-  ; Start the service
-  nsExec::ExecToLog 'sc start "${SERVICENAME}"'
-  Pop $0
-  ${If} $0 != 0
-    DetailPrint "Note: service start returned $0 (may need configuration before starting)"
-  ${EndIf}
-
   ; Create uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -573,20 +534,32 @@ Section Install
   WriteRegDWORD SHCTX "${UNINSTKEY}" "EstimatedSize" "${ESTIMATEDSIZE}"
 
   ; =========================================================================
-  ; Add install directory to system PATH so cosmian_kms is available from any shell
+  ; Add install directory to user PATH so ckms.exe is available from any shell
   ; =========================================================================
-  ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
+  ReadRegStr $0 HKCU "Environment" "Path"
   ${If} $0 == ""
-    WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$INSTDIR"
+    ; PATH is empty — set it to just $INSTDIR
+    WriteRegExpandStr HKCU "Environment" "Path" "$INSTDIR"
   ${Else}
+    ; Check if $INSTDIR is already in PATH (avoid duplicates)
     ${StrLoc} $1 $0 "$INSTDIR" ">"
     ${If} $1 == ""
       ; Not found — append
-      WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$0;$INSTDIR"
+      WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR"
     ${EndIf}
   ${EndIf}
   ; Notify running applications that environment variables have changed
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+
+  ; =========================================================================
+  ; Register the Cosmian CNG Key Storage Provider
+  ; Writes to HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers
+  ; Provider name: "Cosmian KMS Key Storage Provider"
+  ; =========================================================================
+  WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider" \
+    "DllFileName" "$INSTDIR\cosmian_cng.dll"
+  WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider" \
+    "Capabilities" 0x00000002
 
   ; Create start menu shortcut (GUI)
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
@@ -611,8 +584,16 @@ Section Install
 SectionEnd
 
 Function .onInstSuccess
-  ; For a service installer, do not auto-launch the exe on /R flag
-  ; The service is already started by sc start above
+  ; Check for `/R` flag only in silent and passive installers because
+  ; GUI installer has a toggle for the user to (re)start the app
+  IfSilent check_r_flag 0
+  ${IfThen} $PassiveMode == 1 ${|} Goto check_r_flag ${|}
+  Goto run_done
+  check_r_flag:
+    ${GetOptions} $CMDLINE "/R" $R0
+    IfErrors run_done 0
+      Exec '"$INSTDIR\${MAINBINARYNAME}.exe"'
+  run_done:
 FunctionEnd
 
 Function un.onInit
@@ -627,13 +608,6 @@ FunctionEnd
 
 Section Uninstall
   !insertmacro CheckIfAppIsRunning
-
-  ; --- Stop and remove Windows Service before deleting files ---
-  nsExec::ExecToLog 'sc stop "${SERVICENAME}"'
-  Pop $0
-  Sleep 3000
-  nsExec::ExecToLog 'sc delete "${SERVICENAME}"'
-  Pop $0
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
@@ -692,14 +666,19 @@ Section Uninstall
   DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
 
   ; =========================================================================
-  ; Remove install directory from system PATH
-  ; Uses PowerShell for reliable PATH entry removal
+  ; Unregister the Cosmian CNG Key Storage Provider
+  ; =========================================================================
+  DeleteRegKey HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider"
+
+  ; =========================================================================
+  ; Remove install directory from user PATH
+  ; Uses PowerShell (guaranteed on Windows 10+) for reliable PATH entry removal
   ; =========================================================================
   nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \
-    "$$curPath = [Environment]::GetEnvironmentVariable(''Path'', ''Machine''); \
+    "$$curPath = [Environment]::GetEnvironmentVariable(''Path'', ''User''); \
      if ($$curPath) { \
        $$entries = $$curPath -split '';'' | Where-Object { $$_ -ne ''$INSTDIR'' }; \
-       [Environment]::SetEnvironmentVariable(''Path'', ($$entries -join '';''), ''Machine'') \
+       [Environment]::SetEnvironmentVariable(''Path'', ($$entries -join '';''), ''User'') \
      }"'
   ; Notify running applications that environment variables have changed
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
