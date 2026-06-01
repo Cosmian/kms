@@ -264,6 +264,7 @@ impl RekeyOperation for CertificateRekey {
         relink_keys_to_new_certificate(
             kms,
             user,
+            &candidate.uid,
             candidate.owm.attributes(),
             &replacement.new_uid,
             &mut operations,
@@ -290,16 +291,11 @@ impl RekeyOperation for CertificateRekey {
 async fn relink_keys_to_new_certificate(
     kms: &KMS,
     _user: &str,
+    old_cert_uid: &str,
     old_cert_attrs: &Attributes,
     new_cert_uid: &str,
     operations: &mut Vec<AtomicOperation>,
 ) -> KResult<()> {
-    let old_cert_uid = old_cert_attrs
-        .unique_identifier
-        .as_ref()
-        .map(std::string::ToString::to_string)
-        .unwrap_or_default();
-
     // Collect key UIDs linked from the old certificate
     let key_uids: Vec<String> = [LinkType::PublicKeyLink, LinkType::PrivateKeyLink]
         .iter()
@@ -307,7 +303,7 @@ async fn relink_keys_to_new_certificate(
         .collect();
 
     for key_uid in key_uids {
-        if let Some(op) = relink_single_key(kms, &key_uid, &old_cert_uid, new_cert_uid).await? {
+        if let Some(op) = relink_single_key(kms, &key_uid, old_cert_uid, new_cert_uid).await? {
             operations.push(op);
         }
     }

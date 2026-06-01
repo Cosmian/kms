@@ -622,6 +622,58 @@ impl ObjectsStore for RedisWithFindex {
             })
             .collect())
     }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // Get UIDs owned by the user via Findex
+        let user_keyword = Keyword::from(user.as_bytes());
+        let owned_uids = self
+            .findex
+            .search(&user_keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching owned UIDs: {e:?}")))?;
+        let mut accessible_uids: HashSet<String> = owned_uids
+            .iter()
+            .filter_map(|uid| String::from_utf8(uid.to_vec()).ok())
+            .collect();
+
+        // Add UIDs the user has read access to
+        let permissions = self
+            .permission_db
+            .list_user_permissions(&UserId(user.to_owned()))
+            .await?;
+        accessible_uids.extend(permissions.keys().map(|k| k.0.clone()));
+
+        if accessible_uids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Fetch all accessible objects and filter by wrapping key UID
+        let redis_db_objects = self.objects_db.objects_get(&accessible_uids).await?;
+        let mut out = Vec::new();
+        for (uid, dbo) in redis_db_objects {
+            let is_wrapped_by = dbo
+                .object
+                .key_wrapping_data()
+                .and_then(|kwd| kwd.encryption_key_information.as_ref())
+                .is_some_and(|eki| eki.unique_identifier.to_string() == wrapping_key_uid);
+            if is_wrapped_by {
+                let attrs = dbo
+                    .object
+                    .attributes()
+                    .cloned()
+                    .unwrap_or_else(|_| Attributes {
+                        object_type: Some(dbo.object.object_type()),
+                        ..Default::default()
+                    });
+                out.push((uid, dbo.state, attrs));
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[async_trait(?Send)]

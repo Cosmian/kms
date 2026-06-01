@@ -1630,6 +1630,32 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_kmip14").await
     }
 
+    #[tokio::test]
+    async fn test_vec_rekey_wrapping_key() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapping_key").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapped_key() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapped_key").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapping_key_with_links() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapping_key_with_links")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapping_key_double_chain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapping_key_double_chain")
+            .await
+    }
+
     #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_kmip14() -> Result<(), KmsClientError> {
@@ -3380,6 +3406,12 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/negative/recertify_not_a_certificate").await
     }
 
+    #[tokio::test]
+    async fn test_neg_rekey_wrapped_deactivated() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_wrapped_deactivated").await
+    }
+
     // ── KMIP operations: ReKeyKeyPair (non-FIPS only) ────────────────────
     // These vectors do not supply PrivateKeyAttributes/PublicKeyAttributes with
     // FIPS-compliant CryptographicUsageMask values, and some use PQC algorithms
@@ -3776,6 +3808,12 @@ ObjectType = "SymmetricKey"
     async fn test_vec_hsm_kek_ed25519_create_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/kek_ed25519_create_sign").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_rekey_wrapped() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_rekey_wrapped").await
     }
 
     #[tokio::test]

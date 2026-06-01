@@ -551,6 +551,7 @@ impl ObjectsStore for SqlitePool {
              WHERE (objects.owner = $2 OR read_access.userid = $2) \
                AND ( \
                  json_extract(objects.object, '$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
+                 OR json_extract(objects.object, '$.PublicKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
                  OR json_extract(objects.object, '$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
                  OR json_extract(objects.object, '$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
                  OR json_extract(objects.object, '$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \

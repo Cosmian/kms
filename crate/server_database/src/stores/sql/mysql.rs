@@ -631,20 +631,7 @@ impl ObjectsStore for MySqlPool {
         wrapping_key_uid: &str,
         user: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        // MySQL uses JSON_EXTRACT with unquoting via JSON_UNQUOTE or ->> operator (MySQL 8+).
-        let sql = "\
-            SELECT DISTINCT objects.id, objects.state, objects.attributes \
-            FROM objects \
-            LEFT JOIN read_access ON objects.id = read_access.id \
-                AND read_access.userid = ? \
-            WHERE (objects.owner = ? OR read_access.userid = ?) \
-              AND ( \
-                objects.object->>'$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
-                OR objects.object->>'$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
-                OR objects.object->>'$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
-                OR objects.object->>'$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
-                OR objects.object->>'$.PGPKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier' = ? \
-              )";
+        let sql = get_mysql_query!("find-wrapped-by");
         let mut conn = self
             .pool
             .get_conn()
@@ -657,6 +644,7 @@ impl ObjectsStore for MySqlPool {
                     user,
                     user,
                     user,
+                    wrapping_key_uid,
                     wrapping_key_uid,
                     wrapping_key_uid,
                     wrapping_key_uid,

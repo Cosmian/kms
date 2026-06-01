@@ -1,4 +1,4 @@
-//! Shared logic for KMIP `ReKey` (§4.4), `ReKeyKeyPair` (§4.5), and `ReCertify` (§4.7) operations.
+//! Shared logic for KMIP `ReKey` (§4.4), `ReKeyKeyPair` (§4.5), and `ReCertify` (§4.8) operations.
 //!
 //! All rotation operations follow the same pattern via the [`RekeyOperation`] trait:
 //! - Validate inputs and resolve candidates for rotation.
@@ -773,12 +773,24 @@ async fn rewrap_dependants(
         .await
         .unwrap_or_default();
 
-    for (dep_uid, _dep_state, dep_attrs) in wrapped_dependants {
+    for (dep_uid, _dep_state, _dep_attrs) in wrapped_dependants {
         let Some(dep_owm) = kms.database.retrieve_object(&dep_uid).await? else {
             warn!("wrapped dependant {dep_uid} not found, skipping");
             continue;
         };
+        // Security: only re-wrap dependants owned by the caller
+        if dep_owm.owner() != owner {
+            warn!(
+                "skipping re-wrap of dependant {dep_uid}: owned by '{}', not by '{owner}'",
+                dep_owm.owner()
+            );
+            continue;
+        }
         let mut dep_object = dep_owm.object().clone();
+        // Use the full metadata attributes from retrieve_object (not from find_wrapped_by)
+        // because find_wrapped_by may return incomplete attributes for wrapped objects
+        // (Object::attributes() fails on wrapped keys, losing activation_date etc.)
+        let dep_attrs = dep_owm.attributes().clone();
 
         if let Some(op) =
             rewrap_single_dependant(kms, owner, &dep_uid, &mut dep_object, dep_attrs, new_uid)
