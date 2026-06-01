@@ -2445,6 +2445,25 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_integration_fortigate_locate_many_similar_names() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/fortigate_locate_many_similar_names")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_integration_fortigate_locate_multi_tunnel() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/fortigate_locate_multi_tunnel").await
+    }
+
+    #[tokio::test]
+    async fn test_integration_fortigate_locate_no_match() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/fortigate_locate_no_match").await
+    }
+
+    #[tokio::test]
     async fn test_integration_synology_dsm() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/integrations/synology_dsm").await
