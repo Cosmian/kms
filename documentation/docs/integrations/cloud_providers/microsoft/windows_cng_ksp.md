@@ -204,8 +204,8 @@ certificate), or unauthenticated (for local dev/test only).
 | KSP error | SECURITY_STATUS returned |
 |---|---|
 | Handle invalid / null | `NTE_INVALID_HANDLE` (`0x80090026`) |
-| Key not found in KMS | `NTE_NO_KEY` (`0x80090008`) |
-| Algorithm not in supported list | `NTE_BAD_ALGID` (`0x8009000D`) |
+| Key not found in KMS | `NTE_BAD_KEYSET` (`0x80090016`) |
+| Algorithm not in supported list | `NTE_BAD_ALGID` (`0x80090008`) |
 | Export requested on non-exportable key | `NTE_PERM` (`0x80090010`) |
 | Output buffer too small | `NTE_BUFFER_TOO_SMALL` (`0x80090028`) |
 | Any KMS REST error | `NTE_FAIL` (`0x8009002A`) |
@@ -641,7 +641,7 @@ The **cng_verify** tool exercises the following NCrypt operations against a live
 | ECDSA signature verify (P-256) | `SignHash` → `VerifySignature` |
 | EC P-384 key pair + sign | `CreatePersistedKey` → `FinalizeKey` → `ExportKey` → `SignHash` (SHA-384) |
 | EC P-521 key pair + export | `CreatePersistedKey` → `FinalizeKey` → `ExportKey` |
-| DeleteKey + verify gone | `DeleteKey` → `OpenKey` (expect `NTE_NO_KEY`) |
+| DeleteKey + verify gone | `DeleteKey` → `OpenKey` (expect `NTE_BAD_KEYSET`) |
 
 ### Environment variables
 
@@ -677,7 +677,7 @@ not in CI.
 | Problem | Likely cause | Solution |
 |---|---|---|
 | `NTE_FAIL` on `OpenKey` or `CreatePersistedKey` | `ckms.toml` missing or KMS unreachable | Verify `ckms.toml` is present and `server_url` is reachable (`curl https://<kms>/kmip/2_1`). |
-| `NTE_NO_KEY` on `OpenKey` | Key name not found in the KMS | Run `ckms cng list-keys`; verify the name and that the `cng-ksp::<name>` tag exists. |
+| `NTE_BAD_KEYSET` on `OpenKey` | Key name not found in the KMS | Run `ckms cng list-keys`; verify the name and that the `cng-ksp::<name>` tag exists. |
 | `NTE_PERM` on `ExportKey` | Export policy disabled (by design) | Private key export is intentionally blocked. Use `ExportKey` only for public key blobs. |
 | `NTE_BAD_ALGID` | Algorithm string not recognised | Use `RSA`, `ECDSA_P256`, `ECDSA_P384`, `ECDSA_P521`, `ECDH_P256`, `ECDH_P384`, or `ECDH_P521`. |
 | `RegCreateKeyExW` returns `0x80070005` (Access Denied) | Not running as Administrator | Run `ckms cng register` from an elevated PowerShell prompt. |

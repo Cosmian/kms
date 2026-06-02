@@ -9,6 +9,7 @@
 - Change macOS default rolling log directory from `~/Library/Logs/Cosmian KMS Server` to `~/Library/Logs/` (standard per-user log directory)
 - **Fix CNG KSP not visible to `certutil -csplist` and `NCryptOpenStorageProvider`**: registry value name was `DllFileName` instead of the standard `Image Path` expected by Windows CNG infrastructure
 - **Fix CNG KSP registration with relative DLL path**: `ckms cng register --dll .\cosmian_cng.dll` now canonicalizes to an absolute path before writing to the registry (Windows CNG cannot resolve relative paths)
+- Fix `ckms cng verify` "DeleteKey + verify gone" test: expect `NTE_BAD_KEYSET` (0x80090016) instead of wrong `NTE_NO_KEY` constant, matching the actual CNG provider behavior
 
 ## Features
 

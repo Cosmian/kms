@@ -147,7 +147,11 @@ pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
     let mut dll_filename_w = to_wide(CNG_DLL_FILENAME);
 
     // Build the interface registration for NCRYPT_KEY_STORAGE_INTERFACE
-    #[allow(clippy::as_ptr_cast_mut, clippy::as_conversions, clippy::ptr_cast_constness)]
+    #[allow(
+        clippy::as_ptr_cast_mut,
+        clippy::as_conversions,
+        clippy::ptr_cast_constness
+    )]
     let mut key_storage_algo: *mut u16 = NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr() as *mut u16;
 
     let mut interface_reg = CryptInterfaceReg {
@@ -174,8 +178,11 @@ pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
 
     unsafe {
         // Step 1: Register the provider (creates the UM\Image + interface keys)
-        let status =
-            BCryptRegisterProvider(provider_name_w.as_ptr(), 0, std::ptr::from_ref(&provider_reg));
+        let status = BCryptRegisterProvider(
+            provider_name_w.as_ptr(),
+            0,
+            std::ptr::from_ref(&provider_reg),
+        );
         if status != STATUS_SUCCESS {
             return Err(format!(
                 "BCryptRegisterProvider failed with NTSTATUS {status:#010x}"

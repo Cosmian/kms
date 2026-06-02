@@ -296,7 +296,11 @@ fn bcrypt_register_ksp(dll: &std::path::Path) -> Result<(), String> {
 
     let provider_name_w = to_wide(KSP_PROVIDER_NAME);
     let mut dll_filename_w = to_wide("cosmian_cng.dll");
-    #[allow(clippy::as_ptr_cast_mut, clippy::as_conversions, clippy::ptr_cast_constness)]
+    #[allow(
+        clippy::as_ptr_cast_mut,
+        clippy::as_conversions,
+        clippy::ptr_cast_constness
+    )]
     let mut key_storage_algo: *mut u16 = NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr() as *mut u16;
 
     let mut interface_reg = CryptInterfaceReg {
@@ -319,8 +323,11 @@ fn bcrypt_register_ksp(dll: &std::path::Path) -> Result<(), String> {
     };
 
     unsafe {
-        let status =
-            BCryptRegisterProvider(provider_name_w.as_ptr(), 0, std::ptr::from_ref(&provider_reg));
+        let status = BCryptRegisterProvider(
+            provider_name_w.as_ptr(),
+            0,
+            std::ptr::from_ref(&provider_reg),
+        );
         if status != 0 {
             return Err(format!(
                 "BCryptRegisterProvider failed with NTSTATUS {status:#010x}"
