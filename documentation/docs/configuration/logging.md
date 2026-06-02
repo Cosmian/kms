@@ -77,12 +77,12 @@ platform-specific default:
 > standard users. When running as a Windows service (LocalSystem), the `LOCALAPPDATA`
 > variable may not be set; the server then falls back to
 > `C:\ProgramData\Cosmian KMS Server`.
-
+>
 > **Note (macOS):** The server defaults to `~/Library/Logs/` which is the standard
 > per-user log directory on macOS and is writable without root. If you run the server
 > as a LaunchDaemon (root), you may override this with
 > `--rolling-log-dir /Library/Logs/`.
-
+>
 > **Graceful fallback:** If the configured rolling log directory does not exist and cannot
 > be created, or is not writable by the current process, the server disables file logging
 > with a warning message on stderr and continues operating normally. This prevents the
