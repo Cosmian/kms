@@ -547,7 +547,7 @@ When upgrading OpenSSL:
 
 ## Coding rules
 
-- **Function length**: keep functions under 50 lines; extract helpers for longer ones.
+- **Function length**: try to keep functions under 50 lines unless it's more relevant to go longer; extract helpers for longer ones.
 - **Clones**: avoid unnecessary clones; prefer references and borrowing.
 - **Use Rust Generics and Traits** to abstract over common patterns and avoid code duplication.
 - **Use Rust macros** to eliminate boilerplate, especially for repetitive match blocks and trait implementations.
@@ -555,6 +555,7 @@ When upgrading OpenSSL:
 - **Error handling**: use `?` propagation; never use `.unwrap()` in production code; never ignore errors in tests.
 - **Feature flags**: gate non-FIPS code with `#[cfg(feature = "non-fips")]` at the function level, not inline inside function bodies.
 - **Unsafe code**: avoid unless strictly necessary; every `unsafe` block requires a `// SAFETY:` comment.
+- **Live database/backend tests**: when working on a feature that requires a live backend, run `docker compose up -d` from the repository root (services available: `postgres` :5432, `mysql` :3306, `percona` :3307, `mariadb` :3308, `redis` :6379, `otel-collector` :4317/4318/8889). Start only what's needed with `docker compose up -d <service>`. If the command fails or Docker is unavailable, inform the user.
 - **Clippy**: all code must pass `cargo clippy --workspace --all-targets --all-features -- -D warnings` with zero warnings.
 - **Tests**: write unit tests in a `#[cfg(test)]` submodule close to the code they exercise.
 - **Documentation**: add `///` doc comments to all public items; internal helpers should explain _why_, not just _what_.
