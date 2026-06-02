@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
             elliptic_curves::verify::{ecdsa_verify, ed_verify},
             rsa::{default_cryptographic_parameters, verify::rsa_verify},
         },
-        openssl::kmip_public_key_to_openssl,
+        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
@@ -53,10 +53,17 @@ impl CryptoOpSpec for SignatureVerifyOp {
     }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
-        if let Object::PublicKey { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Verify, true);
+        match owm.object() {
+            // Accept both public and private keys for verification.
+            // Private keys are supported for imported keys that may lack a paired public key;
+            // the public component is extracted at execution time.
+            // Use Verify mask with lenient=true so imported keys without an explicit mask
+            // still work.
+            Object::PublicKey { .. } | Object::PrivateKey { .. } => {
+                has_usage_mask(owm, CryptographicUsageMask::Verify, true)
+            }
+            _ => false,
         }
-        false
     }
 
     async fn execute_local(
@@ -233,6 +240,14 @@ pub(crate) async fn signature_verify(
 fn extract_verification_key(object: &Object) -> KResult<PKey<Public>> {
     match object.object_type() {
         ObjectType::PublicKey => Ok(kmip_public_key_to_openssl(object)?),
+        ObjectType::PrivateKey => {
+            // Extract the public component from a private key (covers imported keys
+            // that have no paired public key object in the store).
+            let pkey = kmip_private_key_to_openssl(object)?;
+            // openssl PKey<Private> can be converted to its public component via raw bytes
+            let pub_der = pkey.public_key_to_der()?;
+            Ok(PKey::public_key_from_der(&pub_der)?)
+        }
         _ => Err(KmsError::InvalidRequest(format!(
             "Object type {} is not valid for signature verification",
             object.object_type()

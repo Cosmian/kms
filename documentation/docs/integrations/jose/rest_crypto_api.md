@@ -40,8 +40,11 @@ server configuration. See [Authentication](../../configuration/authentication.md
 
 ### `POST /v1/crypto/keys`
 
-Generate a new cryptographic key (or key pair) in the KMS. The request follows JWK
+Generate or import a cryptographic key (or key pair) in the KMS. The request follows JWK
 conventions — specify `kty` (key type) and `alg` (algorithm) at minimum.
+
+- **Generate**: omit key material fields to create a new random key.
+- **Import**: include key material (`k` for symmetric, `d` for asymmetric) to import an existing key.
 
 #### Request body
 
@@ -57,34 +60,63 @@ conventions — specify `kty` (key type) and `alg` (algorithm) at minimum.
 | `kty` | ✓ | Key type: `oct` (symmetric), `RSA`, `EC`, `OKP` (non-FIPS) |
 | `alg` | ✓ | JOSE algorithm identifier (determines key size and usage) |
 | `crv` | EC/OKP | Curve name: `P-256`, `P-384`, `P-521`, `Ed25519` (non-FIPS) |
+| `k` | import oct | Base64url-encoded symmetric key material |
+| `d` | import EC/RSA/OKP | Base64url-encoded private key scalar (EC/OKP) or private exponent (RSA) |
+| `n` | import RSA | Base64url-encoded RSA modulus |
+| `e` | import RSA | Base64url-encoded RSA public exponent |
+| `p` | import RSA | Base64url-encoded first prime factor |
+| `q` | import RSA | Base64url-encoded second prime factor |
+| `dp` | import RSA | Base64url-encoded d mod (p-1) |
+| `dq` | import RSA | Base64url-encoded d mod (q-1) |
+| `qi` | import RSA | Base64url-encoded CRT coefficient (q^-1 mod p) |
 
 #### Response body
 
 ```json
 {
   "kid": "<key-uuid>",
-  "kid_public": "<public-key-uuid>"  // only for asymmetric key pairs
+  "kid_public": "<public-key-uuid>"  // only for generated asymmetric key pairs
 }
 ```
 
+> **Note**: Imported asymmetric keys return `kid_public: null` because only the private key
+> is stored. The KMS derives the public key internally when needed for verification or encryption.
+
 #### Examples
 
-**Symmetric key (AES-256-GCM)**:
+**Symmetric key generation (AES-256-GCM)**:
 
 ```json
 { "kty": "oct", "alg": "A256GCM" }
 ```
 
-**RSA key pair (PS256)**:
+**Symmetric key import (HMAC-SHA256)**:
+
+```json
+{ "kty": "oct", "alg": "HS256", "k": "<base64url-encoded-32-byte-key>" }
+```
+
+**RSA key pair generation (PS256)**:
 
 ```json
 { "kty": "RSA", "alg": "PS256" }
 ```
 
-**EC key pair (ES256)**:
+**EC key import (P-256)**:
 
 ```json
-{ "kty": "EC", "crv": "P-256", "alg": "ES256" }
+{ "kty": "EC", "crv": "P-256", "alg": "ES256", "d": "<base64url-encoded-scalar>" }
+```
+
+**RSA key import**:
+
+```json
+{
+  "kty": "RSA", "alg": "RS256",
+  "n": "<modulus>", "e": "AQAB", "d": "<private-exponent>",
+  "p": "<prime1>", "q": "<prime2>",
+  "dp": "<exponent1>", "dq": "<exponent2>", "qi": "<coefficient>"
+}
 ```
 
 ---
