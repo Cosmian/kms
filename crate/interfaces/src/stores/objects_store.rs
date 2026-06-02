@@ -6,6 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 
+use cosmian_logger::warn;
+
 use crate::{InterfaceResult, ObjectWithMetadata};
 
 /// An atomic operation on the objects database
@@ -122,7 +124,10 @@ pub trait ObjectsStore {
     /// real implementation when ready. A `TODO` comment is added at each
     /// call site that still uses the default.
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        // TODO: implement for this backend — currently returns 0 (safe fallback)
+        warn!(
+            "count_all_non_destroyed not implemented for this ObjectsStore backend — \
+             kms.objects.total will read 0 until a real implementation is provided"
+        );
         Ok(0)
     }
 }

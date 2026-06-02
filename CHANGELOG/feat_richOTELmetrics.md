@@ -32,27 +32,24 @@
 ### Object Count Metric — `kms.objects.total` (Step 3)
 
 - Add `ObjectsStore::count_all_non_destroyed(&self) -> InterfaceResult<u64>` default
-  method to the `ObjectsStore` trait.  The default returns `Ok(0)` so existing backends
-  compile without change; concrete implementations override it.
+  method to the `ObjectsStore` trait.  The default logs a `warn!` and returns `Ok(0)`,
+  making it visible when a new backend forgets to implement it.
+- Add explicit silent `Ok(0)` overrides to `RedisWithFindex` and `HsmStore` to suppress
+  the warning for intentionally deferred implementations.
 - Implement `count_all_non_destroyed` for SQLite, PostgreSQL, and MySQL via named SQL
   queries (`count-non-destroyed-objects`) that scan the full `objects` table without
   user/permission filters — a privileged metrics-only operation.
-- Add `TODO(redis)` comment in `RedisWithFindex`; Redis remains on the default `Ok(0)`
-  pending a `SCAN do::*`-based implementation.
-- Add `DbMetricsRecorder::record_object_delta(delta: i64)` method to the recorder trait,
-  allowing the database facade to push incremental object-count changes to OTEL without
-  a crate-cycle dependency.
-- Wire `record_object_delta` in the `Database` facade:
-  - `+1` on successful `create()`
-  - `-1` on successful `delete()`
-  - Pre-computed delta on `atomic()` with Upsert pre-read to distinguish insert vs update;
-    TOCTOU drift is corrected by the periodic absolute sync.
-- Add `OtelMetrics::objects_total_mirror: Arc<RwLock<i64>>` and
-  `update_objects_total(absolute: i64)` using the mirror pattern (same as
-  `update_active_keys_count`) to simulate a gauge on `UpDownCounter`.
+- Change `kms_objects_total` and `active_keys_count` from `UpDownCounter<i64>` to
+  `Gauge<i64>` — the semantically correct OTEL instrument for an absolute current value.
+  This eliminates the `objects_total_mirror` and `active_keys_count_value` `Arc<RwLock>`
+  mirror fields; `update_objects_total` and `update_active_keys_count` now call
+  `gauge.record(absolute, &[])` directly.
+- Remove `DbMetricsRecorder::record_object_delta` and all per-operation delta wiring
+  (`+1` on create, `-1` on delete, Upsert pre-read in atomic) — the gauge is updated
+  exclusively by the startup seed and the 30-second cron absolute sync, which is
+  sufficient accuracy for a metrics gauge.
 - Seed `kms.objects.total` at server startup from `count_all_non_destroyed_objects()`
   so the gauge is correct from second 0, not after the first cron tick.
-- Add 30-second periodic absolute sync in `cron.rs` alongside the active-keys refresh;
-  corrects any drift from TOCTOU races or Redis backends.
+- Add 30-second periodic absolute sync in `cron.rs` alongside the active-keys refresh.
 - Add `Database::count_all_non_destroyed_objects()` facade that sums counts across all
   registered stores with `saturating_add`, tolerating partial failures.

@@ -631,9 +631,12 @@ impl ObjectsStore for RedisWithFindex {
     // of a full Redis key scan on large datasets and because Redis-findex is
     // a non-FIPS backend with lower CI priority.
     //
-    // For now, the default `Ok(0)` from the trait is used, which means
-    // `kms.objects.total` will read `0` for Redis-backed deployments.
-    // async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> { ... }
+    // Override the trait default (which logs a warning) with a silent `Ok(0)`
+    // because Redis intentionally defers this implementation — the warning
+    // would be misleading and noisy (fired every 30 s from the metrics cron).
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        Ok(0)
+    }
 }
 
 #[async_trait(?Send)]
