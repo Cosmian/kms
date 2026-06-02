@@ -384,6 +384,8 @@ impl ObjectsStore for SqlitePool {
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
         let del_obj = replace_dollars_with_qn(get_sqlite_query!("delete-object"));
         let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
+        let del_access =
+            replace_dollars_with_qn(get_sqlite_query!("delete-read-access-for-object"));
         let uid_s = uid.to_owned();
         self.writer
             .call(
@@ -391,6 +393,7 @@ impl ObjectsStore for SqlitePool {
                     let tx = c.transaction()?;
                     tx.execute(&del_obj, params_from_iter([&uid_s]))?;
                     tx.execute(&del_tags, params_from_iter([&uid_s]))?;
+                    tx.execute(&del_access, params_from_iter([&uid_s]))?;
                     tx.commit()?;
                     Ok(())
                 },
@@ -985,6 +988,9 @@ fn apply_owned_ops(
                 tx.execute(&del_obj, params_from_iter([uid]))?;
                 let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
                 tx.execute(&del_tags, params_from_iter([uid]))?;
+                let del_access =
+                    replace_dollars_with_qn(get_sqlite_query!("delete-read-access-for-object"));
+                tx.execute(&del_access, params_from_iter([uid]))?;
                 uids.push(uid.clone());
             }
         }

@@ -31,7 +31,7 @@ flowchart TD
     subgraph TestData["Test Data"]
         TOML["test_data/configs/server/test/*.toml\n(server configs)"]
         CERT["test_data/certificates/\n(TLS certs)"]
-        XML["crate/kmip/src/.../XML/\n(KMIP normative XML vectors)"]
+        XML["kmip/v*/XML/\n(KMIP normative XML vectors)"]
         VEC["test_data/vectors/\n(176 vectors: FIPS/non-FIPS regression + KAT + TLS + integration + negative)"]
         PROP["crate/kmip/src/.../proptest\n(random TTLV roundtrip)"]
     end

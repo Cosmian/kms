@@ -840,6 +840,11 @@ pub(super) async fn delete_(uid: &str, tx: &mut Transaction<'_>) -> DbResult<()>
         .await
         .map_err(DbError::from)?;
 
+    // delete the read_access
+    tx.exec_drop(get_mysql_query!("delete-read-access-for-object"), (uid,))
+        .await
+        .map_err(DbError::from)?;
+
     trace!("Deleted in DB: {uid}");
     Ok(())
 }

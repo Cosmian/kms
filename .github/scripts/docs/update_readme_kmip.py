@@ -6,6 +6,7 @@ Generate KMIP support documentation by analyzing the actual KMS server implement
 This script:
 1. Scans crate/server/src/core/operations to detect implemented operations
 2. Parses crate/kmip/src/kmip_2_1/kmip_attributes.rs to identify defined attributes
+3. Reads KMIP specification HTML files from kmip/v*/ to determine exact version support
 3. Parses OASIS KMIP specification HTML files to determine exact version support
 4. Determines baseline profile compliance
 5. Generates comprehensive tables showing support across KMIP versions
@@ -40,21 +41,22 @@ OPS_DIR = ROOT / 'crate' / 'server' / 'src' / 'core' / 'operations'
 ATTRS_FILE = ROOT / 'crate' / 'kmip' / 'src' / 'kmip_2_1' / 'kmip_attributes.rs'
 SUPPORT_MD = ROOT / 'documentation' / 'docs' / 'kmip_support' / 'support.md'
 README_MD = ROOT / 'README.md'
-OASIS_DIR = ROOT / 'crate' / 'kmip' / 'src' / 'oasis'
+KMIP_DIR = ROOT / 'kmip'
 
 
 START_MARKER = '<!-- KMIP_SUPPORT_START -->'
 END_MARKER = '<!-- KMIP_SUPPORT_END -->'
 
-# Map version to HTML file
+# Map version to HTML file (relative to KMIP_DIR)
 SPEC_FILES = {
-    '1.0': 'kmip-spec-1.0-os.html',
-    '1.1': 'kmip-spec-v1.1-os.html',
-    '1.2': 'kmip-spec-v1.2-os.html',
-    '1.3': 'kmip-spec-v1.3-os.html',
-    '1.4': 'kmip-spec-v1.4-os.html',
-    '2.0': 'kmip-spec-v2.0-os.html',
-    '2.1': 'kmip-spec-v2.1-os.html',
+    '1.0': 'v1.0/kmip-spec-1.0-os.html',
+    '1.1': 'v1.1/kmip-spec-v1.1-os.html',
+    '1.2': 'v1.2/kmip-spec-v1.2-os.html',
+    '1.3': 'v1.3/kmip-spec-v1.3-os.html',
+    '1.4': 'v1.4/kmip-spec-v1.4-os.html',
+    '2.0': 'v2.0/kmip-spec-v2.0-os.html',
+    '2.1': 'v2.1/kmip-spec-v2.1-os.html',
+    '3.0': 'v3.0/kmip-spec-v3.0-csd01.html',
 }
 
 
@@ -94,7 +96,7 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
     Parse KMIP specification HTML file using BeautifulSoup4 for accurate extraction.
     Extracts operations, attributes, managed objects, and key structures.
     """
-    spec_file = OASIS_DIR / SPEC_FILES.get(version, '')
+    spec_file = KMIP_DIR / SPEC_FILES.get(version, '')
 
     if not spec_file.exists():
         print(
@@ -127,7 +129,7 @@ def parse_kmip_spec_with_bs4(version: str) -> Dict[str, Set[str]]:
 
         # Determine which section contains operations based on version
         major_version = version.split('.')[0]
-        operation_section = '6' if major_version == '2' else '4'
+        operation_section = '6' if major_version in ('2', '3') else '4'
 
         for heading in soup.find_all(['h2']):  # Operations are typically in h2 headings
             text = heading.get_text(strip=True)
@@ -395,6 +397,9 @@ def get_fallback_version_data(version: str) -> Dict[str, Set[str]]:
     # KMIP 2.1 (same as 2.0)
     ops_v2_1 = ops_v2_0.copy()
 
+    # KMIP 3.0 (same as 2.1)
+    ops_v3_0 = ops_v2_1.copy()
+
     ops_by_version = {
         '1.0': ops_v1_0,
         '1.1': ops_v1_1,
@@ -403,6 +408,7 @@ def get_fallback_version_data(version: str) -> Dict[str, Set[str]]:
         '1.4': ops_v1_4,
         '2.0': ops_v2_0,
         '2.1': ops_v2_1,
+        '3.0': ops_v3_0,
     }
 
     # Managed objects (all versions support these core types)
@@ -429,7 +435,7 @@ def get_fallback_version_data(version: str) -> Dict[str, Set[str]]:
     }
 
     return {
-        'operations': ops_by_version.get(version, ops_v2_1),
+        'operations': ops_by_version.get(version, ops_v3_0),
         'attributes': set(),  # Attributes are harder to track by version
         'managed_objects': managed_objects,
         'base_objects': set(),
@@ -467,7 +473,7 @@ def get_operations_by_version() -> Dict[str, Set[str]]:
     print('Parsing KMIP specifications for operation support...')
     ops_by_version = {}
 
-    for version in ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']:
+    for version in ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1', '3.0']:
         print(f'  Parsing KMIP {version}...')
         spec_data = parse_kmip_spec(version)
         ops_by_version[version] = spec_data['operations']
@@ -841,7 +847,7 @@ def get_version_support_for_operation(
     Returns dict mapping version to status symbol.
     """
     result = {}
-    for version in ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']:
+    for version in ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1', '3.0']:
         if op_name in ops_by_version.get(version, set()):
             # Operation exists in this KMIP version
             result[version] = '✅' if implemented else '❌'
@@ -858,7 +864,7 @@ def group_version_columns(version_support: Dict[str, str]) -> List[Tuple[str, st
 
     Example: {'1.0': '✅', '1.1': '✅', '1.2': '✅'} -> [('1.0-1.2', '✅')]
     """
-    versions = ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1']
+    versions = ['1.0', '1.1', '1.2', '1.3', '1.4', '2.0', '2.1', '3.0']
     if not version_support:
         return []
 
@@ -1666,6 +1672,7 @@ def get_operation_field_support(versions: List[str]) -> Dict[str, Dict[str, Set[
     # Map versions to actual implementation files
     # 1.0-1.3 don't have separate implementations, they use 1.4
     # 2.0 uses 2.1
+    # 3.0 has its own implementation
     version_to_impl = {
         '1.0': '1.4',
         '1.1': '1.4',
@@ -1674,6 +1681,7 @@ def get_operation_field_support(versions: List[str]) -> Dict[str, Dict[str, Set[
         '1.4': '1.4',
         '2.0': '2.1',
         '2.1': '2.1',
+        '3.0': '3.0',
     }
 
     parsed_impls = {}  # Cache parsed implementations

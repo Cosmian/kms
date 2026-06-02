@@ -119,6 +119,11 @@ FROM read_access
 WHERE id = ?
   AND userid = ?;
 
+-- name: delete-read-access-for-object
+DELETE
+FROM read_access
+WHERE id = ?;
+
 -- name: has-row-objects
 SELECT 1
 FROM objects

@@ -1,5 +1,6 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
+use super::common::parse_all_xml_vectors;
 use crate::{
     kmip_0::kmip_messages::ResponseMessageBatchItemVersioned as V,
     kmip_2_1::{
@@ -11,30 +12,12 @@ use crate::{
 
 #[test]
 fn test_parse_all_kmip_2_1_mandatory_vectors() {
-    let base = PathBuf::from("./src/kmip_2_1/specifications/XML/mandatory");
-    assert!(base.is_dir(), "mandatory directory missing: {base:?}");
-    let mut parsed = 0_usize;
-    for entry in fs::read_dir(&base).expect("list mandatory dir") {
-        let entry = entry.expect("dir entry");
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("xml") {
-            continue;
-        }
-        let doc = KmipXmlDoc::new_with_file(&path).expect("parse xml test vector");
-        assert_eq!(
-            doc.requests.len(),
-            doc.responses.len(),
-            "mismatched req/resp count in {path:?}"
-        );
-        // (Optional) validations could go here; currently we only assert the file parses.
-        parsed += 1;
-    }
-    assert!(parsed > 0, "no xml files parsed");
+    parse_all_xml_vectors("../../kmip/v2.1/XML/mandatory", "KMIP 2.1 mandatory");
 }
 
 #[test]
 fn tl_m_3_21_attribute_reference_count() {
-    let path = PathBuf::from("./src/kmip_2_1/specifications/XML/mandatory/TL-M-3-21.xml");
+    let path = PathBuf::from("../../kmip/v2.1/XML/mandatory/TL-M-3-21.xml");
     assert!(path.is_file(), "missing TL-M-3-21.xml at {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).expect("parse TL-M-3-21.xml");
     // Find the response containing GetAttributeList

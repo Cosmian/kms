@@ -6,55 +6,26 @@
 //! - AKLC (Asymmetric Key Lifecycle)
 //! - OMOS (Opaque Managed Object Store)
 //!
-//! Each XML file in `./src/kmip_1_0/specifications/XML/mandatory/` contains
+//! Each XML file in `../../kmip/v1.0/XML/mandatory/` contains
 //! one or more `RequestMessage` / `ResponseMessage` pairs wrapped in a
 //! `<KmipTestCase>` root element.  The parser strips the wrapper and deserialises
 //! the KMIP messages via the TTLV XML pipeline.
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
+use super::common::parse_all_xml_vectors;
 use crate::ttlv::xml::KmipXmlDoc;
 
 #[test]
 fn test_parse_all_kmip_1_0_mandatory_vectors() {
-    let base = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory");
-    assert!(base.is_dir(), "mandatory directory missing: {base:?}");
-    let mut parsed = 0_usize;
-    let mut failures: Vec<String> = Vec::new();
-    for entry in fs::read_dir(&base).expect("list mandatory dir") {
-        let entry = entry.expect("dir entry");
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("xml") {
-            continue;
-        }
-        match KmipXmlDoc::new_with_file(&path) {
-            Ok(doc) => {
-                assert_eq!(
-                    doc.requests.len(),
-                    doc.responses.len(),
-                    "mismatched req/resp count in {path:?}"
-                );
-                parsed += 1;
-            }
-            Err(e) => {
-                failures.push(format!("{}: {e}", path.display()));
-            }
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "Failed to parse {} KMIP 1.0 mandatory vector(s):\n{}",
-        failures.len(),
-        failures.join("\n")
-    );
-    assert!(parsed > 0, "no xml files parsed");
+    parse_all_xml_vectors("../../kmip/v1.0/XML/mandatory", "KMIP 1.0 mandatory");
 }
 
 // ── SKLC (Symmetric Key Lifecycle) ───────────────────────────────────────────
 
 #[test]
 fn test_sklc_m_1_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/SKLC-M-1-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/SKLC-M-1-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     // Create + GetAttributes + Destroy = 3 request/response pairs
@@ -64,7 +35,7 @@ fn test_sklc_m_1_kmip_1_0() {
 
 #[test]
 fn test_sklc_m_2_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/SKLC-M-2-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/SKLC-M-2-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
@@ -76,7 +47,7 @@ fn test_sklc_m_2_kmip_1_0() {
 
 #[test]
 fn test_sklc_m_3_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/SKLC-M-3-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/SKLC-M-3-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
@@ -90,7 +61,7 @@ fn test_sklc_m_3_kmip_1_0() {
 
 #[test]
 fn test_skff_m_1_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/SKFF-M-1-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/SKFF-M-1-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     // Create + Destroy = 2 pairs
@@ -102,9 +73,7 @@ fn test_skff_m_1_kmip_1_0() {
 fn test_skff_m_2_to_12_kmip_1_0() {
     for i in 2..=12_usize {
         let name = format!("SKFF-M-{i}-10.xml");
-        let path = PathBuf::from(format!(
-            "./src/kmip_1_0/specifications/XML/mandatory/{name}"
-        ));
+        let path = PathBuf::from(format!("../../kmip/v1.0/XML/mandatory/{name}"));
         assert!(path.is_file(), "missing {path:?}");
         let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("parse {name}: {e}"));
         assert_eq!(
@@ -119,7 +88,7 @@ fn test_skff_m_2_to_12_kmip_1_0() {
 
 #[test]
 fn test_aklc_m_1_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/AKLC-M-1-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/AKLC-M-1-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
@@ -131,7 +100,7 @@ fn test_aklc_m_1_kmip_1_0() {
 
 #[test]
 fn test_aklc_m_2_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/AKLC-M-2-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/AKLC-M-2-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
@@ -143,7 +112,7 @@ fn test_aklc_m_2_kmip_1_0() {
 
 #[test]
 fn test_aklc_m_3_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/AKLC-M-3-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/AKLC-M-3-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(
@@ -157,7 +126,7 @@ fn test_aklc_m_3_kmip_1_0() {
 
 #[test]
 fn test_omos_m_1_kmip_1_0() {
-    let path = PathBuf::from("./src/kmip_1_0/specifications/XML/mandatory/OMOS-M-1-10.xml");
+    let path = PathBuf::from("../../kmip/v1.0/XML/mandatory/OMOS-M-1-10.xml");
     assert!(path.is_file(), "missing {path:?}");
     let doc = KmipXmlDoc::new_with_file(&path).unwrap_or_else(|e| panic!("{e}"));
     // Register + Destroy = 2 pairs

@@ -92,6 +92,9 @@ INSERT INTO read_access (id, userid, permissions) VALUES ($1, $2, $3)
 -- name: delete-rows-read_access
 DELETE FROM read_access WHERE id=$1 AND userid=$2;
 
+-- name: delete-read-access-for-object
+DELETE FROM read_access WHERE id=$1;
+
 -- name: has-row-objects
 SELECT 1 FROM objects WHERE id=$1 AND owner=$2;
 

@@ -19,7 +19,7 @@ use crate::{
     ttlv::xml::KmipXmlDoc,
 };
 
-const XML_PATH: &str = "./src/kmip_2_1/specifications/XML/mandatory/CS-BC-M-GCM-2-21.xml";
+const XML_PATH: &str = "../../kmip/v2.1/XML/mandatory/CS-BC-M-GCM-2-21.xml";
 
 #[test]
 fn kmip_cs_bc_m_gcm_all() {
