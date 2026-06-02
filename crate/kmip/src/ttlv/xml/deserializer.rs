@@ -25,6 +25,102 @@ const ALLOW_IMPLICIT_STRUCTURE: bool = true; // keep acceptance of existing vect
 /// KMIP XML depth (typical maximum ~8 levels) while preventing the attack.
 const MAX_XML_STACK_DEPTH: usize = 64;
 
+/// Lookup table: `CryptographicUsageMask` / `ProtectionStorageMask` token name → bit value.
+/// Generated from KMIP `kmip_0::kmip_types::CryptographicUsageMask` and related mask fields.
+macro_rules! define_usage_mask_lookup {
+    ($($($name:literal)|+ => $value:expr),+ $(,)?) => {
+        fn lookup_usage_mask_token(token: &str) -> Option<i32> {
+            match token {
+                $( $($name)|+ => Some($value), )+
+                _ => None,
+            }
+        }
+    };
+}
+
+define_usage_mask_lookup! {
+    "Sign" | "Software" => 0x0000_0001,
+    "Verify" | "Hardware" => 0x0000_0002,
+    "Encrypt" | "OnProcessor" => 0x0000_0004,
+    "Decrypt" | "OnSystem" => 0x0000_0008,
+    "WrapKey" | "OffSystem" => 0x0000_0010,
+    "UnwrapKey" | "Hypervisor" => 0x0000_0020,
+    "OperatingSystem" => 0x0000_0040,
+    "MACGenerate" | "Container" => 0x0000_0080,
+    "MACVerify" | "OnPremises" => 0x0000_0100,
+    "DeriveKey" | "OffPremises" => 0x0000_0200,
+    "SelfManaged" => 0x0000_0400,
+    "KeyAgreement" | "Outsourced" => 0x0000_0800,
+    "CertificateSign" | "Validated" => 0x0000_1000,
+    "CRLSign" | "SameJurisdiction" => 0x0000_2000,
+    "Authenticate" => 0x0010_0000,
+    "Unrestricted" => 0x0020_0000,
+}
+
+/// Lookup table: KMIP attribute/tag names → Tag codes (`0x42_XXXX`).
+/// Used for resolving `AttributeReference` enumerations in test vectors.
+macro_rules! define_attribute_tag_lookup {
+    ($($($name:literal)|+ => $code:expr),+ $(,)?) => {
+        fn lookup_attribute_reference_tag(s: &str) -> Option<u32> {
+            match s {
+                $( $($name)|+ => Some($code), )+
+                _ => None,
+            }
+        }
+    };
+}
+
+define_attribute_tag_lookup! {
+    "ActivationDate" => 0x42_0001,
+    "ApplicationSpecificInformation" => 0x42_0004,
+    "ArchiveDate" => 0x42_0005,
+    "CompromiseDate" => 0x42_0020,
+    "CompromiseOccurrenceDate" => 0x42_0021,
+    "CryptographicAlgorithm" => 0x42_0028,
+    "CryptographicLength" => 0x42_002A,
+    "CryptographicUsageMask" => 0x42_002C,
+    "DeactivationDate" => 0x42_002F,
+    "DestroyDate" => 0x42_0033,
+    "Digest" => 0x42_0034,
+    "InitialDate" => 0x42_0039,
+    "KeyFormatType" => 0x42_0042,
+    "LastChangeDate" => 0x42_0048,
+    "LeaseTime" => 0x42_0049,
+    "Link" => 0x42_004A,
+    "Name" => 0x42_0053,
+    "ObjectType" => 0x42_0057,
+    "ProcessStartDate" => 0x42_0067,
+    "ProtectStopDate" => 0x42_0068,
+    "RevocationReason" => 0x42_0081,
+    "RevocationReasonCode" => 0x42_0082,
+    "State" => 0x42_008D,
+    "UniqueIdentifier" => 0x42_0094,
+    "UsageLimits" => 0x42_0095,
+    "UsageLimitsCount" => 0x42_0096,
+    "UsageLimitsTotal" => 0x42_0097,
+    "UsageLimitsUnit" => 0x42_0098,
+    "ValidityDate" => 0x42_009A,
+    "ValidityIndicator" => 0x42_009B,
+    "CertificateLength" => 0x42_00AD,
+    "OriginalCreationDate" => 0x42_00BC,
+    "AlternativeName" => 0x42_00BF,
+    "Fresh" => 0x42_00CB,
+    "RngAlgorithm" | "RNGAlgorithm" => 0x42_00DA,
+    "RandomNumberGenerator" => 0x42_00DE,
+    "Description" => 0x42_00FC,
+    "CertificateSubjectCN" => 0x42_0108,
+    "Sensitive" => 0x42_0120,
+    "AlwaysSensitive" => 0x42_0121,
+    "Extractable" => 0x42_0122,
+    "NeverExtractable" => 0x42_0123,
+    "ShortUniqueIdentifier" => 0x42_0136,
+    "ProtectionStorageMask" => 0x42_015E,
+    "ProtectionStorageMasks" => 0x42_015F,
+    "CommonProtectionStorageMasks" => 0x42_0163,
+    "PrivateProtectionStorageMasks" => 0x42_0164,
+    "PublicProtectionStorageMasks" => 0x42_0165,
+}
+
 pub struct TTLVXMLDeserializer;
 impl TTLVXMLDeserializer {
     // Group non-contiguous <Attribute> vendor-attribute children under an <Attributes> aggregate
@@ -169,8 +265,11 @@ impl TTLVXMLDeserializer {
                             _ => {}
                         }
                     }
-                    if ty.is_none() && value.is_none() && ALLOW_IMPLICIT_STRUCTURE {
-                        // Accept an implicit empty structure (e.g., ResponsePayload with no members)
+                    if (ty.is_none() && value.is_none() && ALLOW_IMPLICIT_STRUCTURE)
+                        || ty.as_deref() == Some("Structure")
+                    {
+                        // Accept an empty structure: either implicit (no type/value) or
+                        // explicit type="Structure" on a self-closing element.
                         let ttlv = TTLV {
                             tag,
                             value: TTLValue::Structure(Vec::new()),
@@ -258,27 +357,7 @@ impl TTLVXMLDeserializer {
                         if token.is_empty() {
                             continue;
                         }
-                        let bit = match token {
-                            // KMIP CryptographicUsageMask bit values (kmip_0::kmip_types::CryptographicUsageMask)
-                            // and ProtectionStorageMasks combined when provided as tokens
-                            "Sign" | "Software" => Some(0x0000_0001),
-                            "Verify" | "Hardware" => Some(0x0000_0002),
-                            "Encrypt" | "OnProcessor" => Some(0x0000_0004),
-                            "Decrypt" | "OnSystem" => Some(0x0000_0008),
-                            "WrapKey" | "OffSystem" => Some(0x0000_0010),
-                            "UnwrapKey" | "Hypervisor" => Some(0x0000_0020),
-                            "OperatingSystem" => Some(0x0000_0040),
-                            "MACGenerate" | "Container" => Some(0x0000_0080),
-                            "MACVerify" | "OnPremises" => Some(0x0000_0100),
-                            "DeriveKey" | "OffPremises" => Some(0x0000_0200),
-                            "KeyAgreement" | "Outsourced" => Some(0x0000_0800),
-                            "CertificateSign" | "Validated" => Some(0x0000_1000),
-                            "CRLSign" | "SameJurisdiction" => Some(0x0000_2000),
-                            "Authenticate" => Some(0x0010_0000),
-                            "Unrestricted" => Some(0x0020_0000),
-                            "SelfManaged" => Some(0x0000_0400),
-                            _ => None,
-                        };
+                        let bit = lookup_usage_mask_token(token);
                         if let Some(b) = bit {
                             acc |= b;
                             any = true;
@@ -386,75 +465,6 @@ impl TTLVXMLDeserializer {
                 let raw = value.ok_or_else(|| KmipError::Default("missing value".into()))?;
                 // Try numeric first; otherwise attempt known textual KMIP enumeration name mapping
                 // via the shared lookup table in `enum_lookup`. Returns (code, canonical_variant_name).
-                // (lookup_enum_code is imported from crate::ttlv::enum_lookup)
-                // Provide correct Tag codes for AttributeReference names used in vectors
-                let lookup_attribute_reference_tag = |s: &str| -> Option<u32> {
-                    match s {
-                        // Accurate Tag codes from kmip_2_1::kmip_types::Tag
-                        "ActivationDate" => Some(0x42_0001),
-                        "CryptographicAlgorithm" => Some(0x42_0028),
-                        "CryptographicLength" => Some(0x42_002A),
-                        "CryptographicUsageMask" => Some(0x42_002C),
-                        "Digest" => Some(0x42_0034),
-                        "InitialDate" => Some(0x42_0039),
-                        "KeyFormatType" => Some(0x42_0042),
-                        "LastChangeDate" => Some(0x42_0048),
-                        "LeaseTime" => Some(0x42_0049),
-                        "Link" => Some(0x42_004A),
-                        "Name" => Some(0x42_0053),
-                        "ObjectType" => Some(0x42_0057),
-                        "OriginalCreationDate" => Some(0x42_00BC),
-                        "RandomNumberGenerator" => Some(0x42_00DE),
-                        "State" => Some(0x42_008D),
-                        "UniqueIdentifier" => Some(0x42_0094),
-                        "ShortUniqueIdentifier" => Some(0x42_0136),
-                        "AlwaysSensitive" => Some(0x42_0121),
-                        "NeverExtractable" => Some(0x42_0123),
-                        // Lifecycle / date-related attributes (batch added for test vectors)
-                        "CompromiseDate" => Some(0x42_0020),
-                        "CompromiseOccurrenceDate" => Some(0x42_0021),
-                        "DeactivationDate" => Some(0x42_002F),
-                        "DestroyDate" => Some(0x42_0033),
-                        "ArchiveDate" => Some(0x42_0005),
-                        "Extractable" => Some(0x42_0122),
-                        // Usage limits related
-                        "UsageLimits" => Some(0x42_0095),
-                        "UsageLimitsCount" => Some(0x42_0096),
-                        "UsageLimitsTotal" => Some(0x42_0097),
-                        "UsageLimitsUnit" => Some(0x42_0098),
-                        // Protection storage mask(s)
-                        "ProtectionStorageMask" => Some(0x42_015E),
-                        "ProtectionStorageMasks" => Some(0x42_015F),
-                        "CommonProtectionStorageMasks" => Some(0x42_0163),
-                        "PrivateProtectionStorageMasks" => Some(0x42_0164),
-                        "PublicProtectionStorageMasks" => Some(0x42_0165),
-                        // Validity
-                        "ValidityIndicator" => Some(0x42_009B),
-                        "ValidityDate" => Some(0x42_009A),
-                        // KMIP 1.4 mandatory vectors include this AttributeName in GetAttributeList.
-                        // Even if the Rust KMIP 1.4 model does not expose an Attribute::Fresh variant,
-                        // the XML test vectors are normative and must remain parseable.
-                        "Fresh" => Some(0x42_00CB),
-                        // Misc frequently referenced attributes
-                        "Description" => Some(0x42_00FC),
-                        "ProcessStartDate" => Some(0x42_0067),
-                        "ProtectStopDate" => Some(0x42_0068),
-                        "RevocationReason" => Some(0x42_0081),
-                        "RevocationReasonCode" => Some(0x42_0082),
-                        // Sensitivity related
-                        "Sensitive" => Some(0x42_0120),
-                        // Name & alternative naming structures
-                        "ApplicationSpecificInformation" => Some(0x42_0004),
-                        "AlternativeName" => Some(0x42_00BF),
-                        // Certificate related frequently referenced
-                        "CertificateLength" => Some(0x42_00AD),
-                        "CertificateSubjectCN" => Some(0x42_0108),
-                        // Random number generation related
-                        // Accept both historical internal form RngAlgorithm and spec form RNGAlgorithm
-                        "RngAlgorithm" | "RNGAlgorithm" => Some(0x42_00DA),
-                        _ => None,
-                    }
-                };
                 // Support decimal or 0x prefixed hexadecimal numeric enumeration literals.
                 let (v, final_name) = if let Some(stripped) = raw.strip_prefix("0x") {
                     match u32::from_str_radix(stripped, 16) {

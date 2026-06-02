@@ -549,6 +549,11 @@ impl ObjectsStore for PgPool {
                 .await
                 .map_err(DbError::from)?;
             tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+            let d3 = tx
+                .prepare(get_pgsql_query!("delete-read-access-for-object"))
+                .await
+                .map_err(DbError::from)?;
+            tx.execute(&d3, &[&uid]).await.map_err(DbError::from)?;
             Ok(())
         }
         pg_retry_tx!(self.pool, |tx| transact(&tx, uid).await)
@@ -681,6 +686,11 @@ impl ObjectsStore for PgPool {
                             .await
                             .map_err(DbError::from)?;
                         tx.execute(&d2, &[&uid]).await.map_err(DbError::from)?;
+                        let d3 = tx
+                            .prepare(get_pgsql_query!("delete-read-access-for-object"))
+                            .await
+                            .map_err(DbError::from)?;
+                        tx.execute(&d3, &[&uid]).await.map_err(DbError::from)?;
                         uids.push(uid.clone());
                     }
                 }

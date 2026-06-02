@@ -16,6 +16,48 @@ use crate::tests::xml::{
     request::PrepareRequest,
 };
 
+/// Run all XML vectors in a directory (sorted alphabetically) against the shared test server.
+/// Optionally exclude specific filenames (e.g., PKCS11 tests that require special setup).
+pub(crate) async fn run_all_xml_vectors_in_dir(dir: &str, exclude: &[&str]) {
+    log_init(None);
+    let ctx = start_default_test_kms_server().await;
+    let client = ctx.get_owner_client();
+
+    let dir_path = PathBuf::from(dir);
+    assert!(
+        dir_path.is_dir(),
+        "XML vector directory not found: {}",
+        dir_path.display()
+    );
+
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(&dir_path)
+        .unwrap_or_else(|e| panic!("cannot read directory {}: {e}", dir_path.display()))
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("xml") {
+                let file_name = path.file_name()?.to_str()?.to_owned();
+                if !exclude.contains(&file_name.as_str()) {
+                    return Some(path);
+                }
+            }
+            None
+        })
+        .collect();
+    entries.sort();
+
+    assert!(
+        !entries.is_empty(),
+        "No XML files found in {}",
+        dir_path.display()
+    );
+
+    for path in &entries {
+        let test_name = path.file_stem().unwrap().to_str().unwrap();
+        run_single_xml_vector_on_client(test_name, &client, path.to_str().unwrap()).await;
+    }
+}
+
 /// Run a single XML vector by starting a shared default test server.
 pub(crate) async fn run_single_xml_vector_with_server(test_name: &str, path: &str) {
     log_init(None);
@@ -36,7 +78,8 @@ pub(crate) async fn run_single_xml_vector_on_client(
         path.display()
     );
 
-    let doc = KmipXmlDoc::new_with_file(&path).expect("parse xml vector");
+    let doc = KmipXmlDoc::new_with_file(&path)
+        .unwrap_or_else(|e| panic!("parse xml vector {}: {e}", path.display()));
     assert!(
         doc.requests.len() == doc.responses.len(),
         "{}: mismatched request/response count ({} vs {})",

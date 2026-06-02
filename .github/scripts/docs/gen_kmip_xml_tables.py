@@ -12,15 +12,15 @@ For each step, the table shows:
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 import argparse
+import sys
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
-# Repository root (the folder containing this scripts/ directory)
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_XML_DIR = ROOT / 'crate/kmip/src/kmip_2_1/specifications/XML'
-DEFAULT_README = ROOT / 'crate/kmip/src/kmip_2_1/specifications/README.md'
+# Repository root (three levels up from this script's directory)
+ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_XML_DIR = ROOT / 'kmip/v2.1/XML'
+DEFAULT_README = ROOT / 'kmip/v2.1/README.md'
 
 
 def attr_val(elem: ET.Element | None, name: str = 'value') -> str | None:

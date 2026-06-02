@@ -15,6 +15,7 @@ use actix_web::{
     web::{self, Data},
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
     kmip_2_1::{kmip_operations::LocateResponse, kmip_types::UniqueIdentifier},
     ttlv::{TTLV, from_ttlv, to_ttlv},
 };
@@ -386,6 +387,34 @@ where
         return Ok(*boxed.downcast::<R>().expect("TypeId matched"));
     }
 
+    Ok(from_ttlv(ttlv)?)
+}
+
+/// Post a full `RequestMessage` as JSON to `/kmip` and return the parsed `ResponseMessage`.
+/// This exercises the version-aware JSON handler (supports KMIP 1.4, 2.1, and 3.0).
+pub(crate) async fn post_kmip_json<B, S>(
+    app: &S,
+    request_message: &RequestMessage,
+) -> KResult<ResponseMessage>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let ttlv = to_ttlv(request_message)?;
+    let req = test::TestRequest::post()
+        .uri("/kmip")
+        .insert_header(("Content-Type", "application/json"))
+        .set_json(&ttlv)
+        .to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
+        );
+    }
+    let body = read_body(res).await;
+    let ttlv: TTLV = serde_json::from_slice(&body)?;
     Ok(from_ttlv(ttlv)?)
 }
 

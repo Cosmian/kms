@@ -57,6 +57,20 @@ jobs:
           # jose (REST crypto + jwcrypto interop) runs only with non-fips
           - type: jose
             features: fips
+        include:
+          # Docker services required per test type (types without an entry need no containers)
+          - type: psql
+            docker: postgres
+          - type: mysql
+            docker: mysql
+          - type: percona
+            docker: percona
+          - type: mariadb
+            docker: mariadb
+          - type: redis
+            docker: redis
+          - type: otel_export
+            docker: otel-collector jaeger
 
     steps:
       - name: Manual cleanup for extra space
@@ -97,9 +111,9 @@ jobs:
           done
 
       - name: Run docker containers
+        if: matrix.docker
         run: |
-          docker compose -h
-          docker compose up -d
+          docker compose up -d ${{ matrix.docker }}
 
       - name: Test
         env:
