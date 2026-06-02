@@ -164,15 +164,11 @@ impl KMS {
         if let Some(ref m) = metrics {
             match database.count_all_non_destroyed_objects().await {
                 Ok(count) => {
-                    m.update_objects_total(
-                        i64::try_from(count).unwrap_or(i64::MAX),
-                    );
+                    m.update_objects_total(i64::try_from(count).unwrap_or(i64::MAX));
                 }
                 Err(e) => {
                     // Non-fatal: the cron will correct the value within 30 s.
-                    cosmian_logger::debug!(
-                        "[kms-init] Failed to seed kms.objects.total: {e}"
-                    );
+                    cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
                 }
             }
         }
