@@ -59,5 +59,6 @@ pub fn configure_http() -> KResult<HttpConfig> {
         api_token_id: None,
         rate_limit_per_second,
         cors_allowed_origins: None,
+        server_workers: None,
     })
 }

@@ -771,6 +771,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .map_or(u32::MAX, |rps| rps.saturating_mul(3)),
     );
 
+    // Extract worker count before kms_server is moved into the HttpServer closure.
+    let server_workers = kms_server.params.server_workers;
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
@@ -1143,6 +1146,14 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // lets us observe true protocol-level failures instead of transport resets.
     // Additionally, actix-web has a default client_request_timeout of 5 seconds which
     // was causing "408 Request Timeout" errors during long-running test operations.
+
+    // Apply configured worker count; None → actix default (one thread per logical CPU).
+    let server = if let Some(n) = server_workers {
+        info!("KMS HTTP server configured with {n} worker thread(s)");
+        server.workers(n)
+    } else {
+        server
+    };
 
     // Start and return the main KMS server
     Ok(match tls_config {

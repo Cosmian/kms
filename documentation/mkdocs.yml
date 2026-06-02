@@ -161,6 +161,7 @@ nav:
               - Standard algorithms: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks.md
               - Load tests: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks_load_tests.md
               - DKE and Google CSE: certifications_and_compliance/cryptographic_algorithms/benchmarks/google_dke_benchmarks.md
+              - CPU Scaling & Flamegraphs: certifications_and_compliance/cryptographic_algorithms/benchmarks/cpu_scaling.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:
           - SBOM: certifications_and_compliance/audit/sbom.md

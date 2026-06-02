@@ -41,6 +41,7 @@ default_username = "admin"
 [http]
 port = 9998
 hostname = "0.0.0.0"
+# server_workers = 8  # leave unset to use all logical CPUs
 
 [db]
 database_type = "redis-findex"
