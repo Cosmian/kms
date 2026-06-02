@@ -553,13 +553,16 @@ Section Install
 
   ; =========================================================================
   ; Register the Cosmian CNG Key Storage Provider
-  ; Writes to HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers
-  ; Provider name: "Cosmian KMS Key Storage Provider"
+  ; Uses ckms.exe (just installed above) which calls BCryptRegisterProvider,
+  ; BCryptAddContextFunction, and BCryptAddContextFunctionProvider.
+  ; The DLL is copied to System32 by the register command.
   ; =========================================================================
-  WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider" \
-    "DllFileName" "$INSTDIR\cosmian_cng.dll"
-  WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider" \
-    "Capabilities" 0x00000002
+  nsExec::ExecToLog '"$INSTDIR\${MAINBINARYNAME}.exe" cng register --dll "$INSTDIR\cosmian_cng.dll"'
+
+  ; Deploy ckms.toml to System32 so the DLL can find its config when loaded
+  ; by SYSTEM processes (e.g. Intune).
+  IfFileExists "$INSTDIR\ckms.toml" 0 +2
+    CopyFiles /SILENT "$INSTDIR\ckms.toml" "$SYSDIR\ckms.toml"
 
   ; Create start menu shortcut (GUI)
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
@@ -667,8 +670,11 @@ Section Uninstall
 
   ; =========================================================================
   ; Unregister the Cosmian CNG Key Storage Provider
+  ; Uses ckms.exe which calls BCryptRemoveContextFunctionProvider,
+  ; BCryptUnregisterProvider, and removes the DLL from System32.
   ; =========================================================================
-  DeleteRegKey HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider"
+  nsExec::ExecToLog '"$INSTDIR\${MAINBINARYNAME}.exe" cng unregister'
+  Delete "$SYSDIR\ckms.toml"
 
   ; =========================================================================
   ; Remove install directory from user PATH

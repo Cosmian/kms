@@ -393,18 +393,12 @@ Function .onInit
 
   ${If} $INSTDIR == ""
     ; Set default install location
+    ; Always install under %LOCALAPPDATA% so that the server binary, kms.toml,
+    ; and rolling logs all live in the same user-writable directory.  This keeps
+    ; the installer, the wizard (`cosmian_kms configure`), and the server's
+    ; default config path (`get_default_config_path()`) in sync.
     !if "${INSTALLMODE}" == "perMachine"
-      ${If} ${RunningX64}
-        !if "${ARCH}" == "x64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else if "${ARCH}" == "arm64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else
-          StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-        !endif
-      ${Else}
-        StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-      ${EndIf}
+      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     !else if "${INSTALLMODE}" == "currentUser"
       StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     !endif
@@ -526,12 +520,10 @@ Section Install
     WriteRegStr SHCTX "Software\Classes\\{{protocol}}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
   {{/each}}
 
-  ; --- Create data directories for the service ---
-  ; These directories live under ProgramData (writable by LocalSystem) and are
-  ; used for rolling logs and SQLite data when the service is running.
-  CreateDirectory "$COMMONAPPDATA\Cosmian KMS Server"
-  CreateDirectory "$COMMONAPPDATA\Cosmian KMS Server\logs"
-  CreateDirectory "$COMMONAPPDATA\Cosmian KMS Server\data"
+  ; --- Create data directories under install directory ---
+  ; Rolling logs and SQLite data live under $INSTDIR (= %LOCALAPPDATA%\Cosmian KMS Server).
+  CreateDirectory "$INSTDIR\logs"
+  CreateDirectory "$INSTDIR\data"
 
   ; --- Register Windows Service ---
   ; Create the service with auto-start, running as LocalSystem.
@@ -723,10 +715,9 @@ Section Uninstall
   ${EndIf}
   {{/if}}
 
-  ; --- Remove service data directories created during installation ---
-  RMDir /r "$COMMONAPPDATA\Cosmian KMS Server\logs"
-  RMDir /r "$COMMONAPPDATA\Cosmian KMS Server\data"
-  RMDir "$COMMONAPPDATA\Cosmian KMS Server"
+  ; --- Remove data directories created during installation ---
+  RMDir /r "$INSTDIR\logs"
+  RMDir /r "$INSTDIR\data"
 
   ${GetOptions} $CMDLINE "/P" $R0
   IfErrors +2 0

@@ -70,9 +70,9 @@ struct BcryptOaepPaddingInfo {
 use crate::{
     backend,
     error::{
-        ERROR_SUCCESS, KspError, KspResult, NTE_BAD_ALGID, NTE_BUFFER_TOO_SMALL, NTE_FAIL,
-        NTE_INVALID_HANDLE, NTE_INVALID_PARAMETER, NTE_NO_KEY, NTE_NOT_SUPPORTED, NTE_PERM,
-        STATUS_SUCCESS_VAL, SecurityStatus,
+        ERROR_SUCCESS, KspError, KspResult, NTE_BAD_ALGID, NTE_BAD_KEYSET, NTE_BUFFER_TOO_SMALL,
+        NTE_FAIL, NTE_INVALID_HANDLE, NTE_INVALID_PARAMETER, NTE_NO_MORE_ITEMS, NTE_NOT_SUPPORTED,
+        NTE_PERM, STATUS_SUCCESS_VAL, SecurityStatus,
     },
     key::{CngKeyCtx, ExportPolicy, KeyAlgorithm, KeyState, KeyUsage, PendingCreation},
 };
@@ -270,7 +270,7 @@ unsafe extern "system" fn open_key(
 
     let priv_uid = match backend::locate_key_by_name(&prov.client, &name) {
         Ok(uid) => uid,
-        Err(KspError::KeyNotFound(_)) => return NTE_NO_KEY,
+        Err(KspError::KeyNotFound(_)) => return NTE_BAD_KEYSET,
         Err(e) => {
             error!("CNG KSP open_key({name}): {e}");
             return NTE_FAIL;
@@ -1108,7 +1108,7 @@ unsafe extern "system" fn enum_keys(
 
     if idx >= keys.len() {
         // Signal end of enumeration per CNG convention
-        return 0x8009_002A_u32 as i32; // NTE_FAIL acts as end signal when no more keys
+        return NTE_NO_MORE_ITEMS;
     }
 
     let (name, _uid) = &keys[idx];

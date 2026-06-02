@@ -24,11 +24,11 @@ pub fn get_default_rolling_log_dir() -> PathBuf {
 #[cfg(target_os = "macos")]
 #[must_use]
 pub fn get_default_rolling_log_dir() -> PathBuf {
-    // Use ~/Library/Logs which is writable without root.
-    // /Library/Logs/ requires elevated privileges and is reserved for system daemons.
+    // Use ~/Library/Logs/ which is the standard per-user log directory on macOS
+    // and is writable without root.
     std::env::var_os("HOME").map_or_else(
-        || PathBuf::from("/tmp/cosmian_kms_logs"),
-        |home| PathBuf::from(home).join("Library/Logs/Cosmian KMS Server"),
+        || PathBuf::from("/tmp"),
+        |home| PathBuf::from(home).join("Library/Logs"),
     )
 }
 

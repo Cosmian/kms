@@ -89,13 +89,26 @@ function Start-KmsServer {
         exit 1
     }
 
+    # Write a minimal test config to avoid conflicts with an existing default kms.toml
+    $kmsTestConf = Join-Path $env:TEMP "kms-cng-test.toml"
+    @"
+[db]
+database_type = "sqlite"
+sqlite_path = "$($SQLITE_PATH -replace '\\', '\\')"
+
+[http]
+port = $KMS_PORT
+hostname = "0.0.0.0"
+"@ | Set-Content -Path $kmsTestConf -Encoding UTF8
+
     $env:RUST_LOG = "cosmian_kms_server=info,cosmian_cng=debug"
     $script:KmsProcess = Start-Process -FilePath $kmsExe `
-        -ArgumentList "--database-type", "sqlite", "--sqlite-path", $SQLITE_PATH, "--port", $KMS_PORT `
+        -ArgumentList "-c", $kmsTestConf `
         -PassThru -NoNewWindow -RedirectStandardOutput $KMS_LOG -RedirectStandardError "${KMS_LOG}.err"
 
     if (-not (Wait-ForKms -TimeoutSec 60)) {
         Write-Error "KMS server did not start within 60 s. Log: $KMS_LOG"
+        if (Test-Path "${KMS_LOG}.err") { Get-Content "${KMS_LOG}.err" | Select-Object -First 20 | Write-Host }
         exit 1
     }
     Write-Ok "KMS server running (PID $($script:KmsProcess.Id))"
@@ -133,6 +146,10 @@ if ($env:OPENSSL_DIR) {
 # -- 1. Build -----------------------------------------------------------------
 
 Write-Step "Building KMS server, CNG KSP DLL, verification tool, and ckms CLI"
+
+# Kill any pre-existing KMS process to avoid "access denied" when overwriting the binary
+Get-Process cosmian_kms -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
 
 # Build the server binary
 Invoke-Native cargo (@("build", "--bin", "cosmian_kms", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build KMS server"
@@ -191,8 +208,22 @@ server_url = "$KMS_URL"
         Invoke-Native $ckmsExe @("cng", "register", "--dll", (Resolve-Path $DllPath).Path) "ckms cng register failed"
         Write-Ok "KSP registered"
 
+        # Copy ckms.toml to System32 so the DLL finds its config at runtime
+        $sys32Toml = Join-Path $env:SystemRoot "System32\ckms.toml"
+        Copy-Item -Path $CkmsToml -Destination $sys32Toml -Force
+        Write-Ok "ckms.toml deployed to $sys32Toml"
+
         Invoke-Native $ckmsExe @("cng", "status") "ckms cng status failed"
         Write-Ok "ckms cng status confirms registration"
+
+        # Verify the provider is visible to Windows via certutil
+        $cspOutput = certutil.exe -csplist 2>&1 | Select-String "Cosmian"
+        if ($cspOutput) {
+            Write-Ok "certutil -csplist shows: $($cspOutput.Line.Trim())"
+        } else {
+            Write-Fail "certutil -csplist does not list the Cosmian KSP"
+            exit 1
+        }
     } else {
         Write-Step "Skipping KSP registry registration (not Administrator)"
         Write-Host "  [SKIP] ckms cng register" -ForegroundColor Yellow
@@ -255,6 +286,9 @@ server_url = "$KMS_URL"
         } else {
             Write-Ok "KSP unregistered"
         }
+        # Remove ckms.toml from System32
+        $sys32Toml = Join-Path $env:SystemRoot "System32\ckms.toml"
+        Remove-Item -Path $sys32Toml -Force -ErrorAction SilentlyContinue
     } else {
         Write-Step "Skipping KSP unregistration (not Administrator)"
         Write-Host "  [SKIP] ckms cng unregister" -ForegroundColor Yellow

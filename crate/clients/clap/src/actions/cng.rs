@@ -74,18 +74,15 @@ const CNG_KSP_TAG: &str = "cng-ksp";
 #[cfg(windows)]
 #[allow(clippy::print_stdout, clippy::ptr_arg)]
 fn register(dll: &PathBuf) -> KmsCliResult<()> {
-    let dll_str = dll
-        .to_str()
-        .ok_or_else(|| KmsCliError::Default("DLL path contains non-UTF-8 characters".to_owned()))?;
     if !dll.exists() {
         return Err(KmsCliError::Default(format!(
             "DLL not found: {}",
             dll.display()
         )));
     }
-    write_ksp_registry(dll_str).map_err(KmsCliError::Default)?;
+    bcrypt_register_ksp(dll).map_err(KmsCliError::Default)?;
     println!("Cosmian KMS CNG KSP registered successfully.");
-    println!("DLL: {dll_str}");
+    println!("DLL: {}", dll.display());
     Ok(())
 }
 
@@ -102,7 +99,7 @@ fn register(_dll: &PathBuf) -> KmsCliResult<()> {
 #[cfg(windows)]
 #[allow(clippy::print_stdout)]
 fn unregister() -> KmsCliResult<()> {
-    delete_ksp_registry().map_err(KmsCliError::Default)?;
+    bcrypt_unregister_ksp().map_err(KmsCliError::Default)?;
     println!("Cosmian KMS CNG KSP unregistered successfully.");
     Ok(())
 }
@@ -119,7 +116,7 @@ fn unregister() -> KmsCliResult<()> {
 #[cfg(windows)]
 #[allow(clippy::print_stdout, clippy::unnecessary_wraps)]
 fn status() -> KmsCliResult<()> {
-    if ksp_is_registered() {
+    if bcrypt_is_ksp_registered() {
         println!("Cosmian KMS CNG KSP: REGISTERED");
     } else {
         println!("Cosmian KMS CNG KSP: NOT registered");
@@ -175,129 +172,225 @@ fn verify(dll: &PathBuf) -> KmsCliResult<()> {
     crate::actions::cng_verify::win::run_verify(dll)
 }
 
-// ─── Windows Registry helpers ─────────────────────────────────────────────────
+// ─── Windows BCrypt registration helpers ─────────────────────────────────────
+// Uses the official BCrypt APIs (BCryptRegisterProvider, BCryptAddContextFunction,
+// BCryptAddContextFunctionProvider) to properly register the KSP so it appears
+// in certutil -csplist and is usable by NCryptOpenStorageProvider / Intune.
 
 #[cfg(windows)]
 const KSP_PROVIDER_NAME: &str = "Cosmian KMS Key Storage Provider";
+
 #[cfg(windows)]
-const KSP_REGISTRY_PATH: &str = r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers";
-/// `NCRYPT_IMPL_SOFTWARE_FLAG`
+#[allow(clippy::upper_case_acronyms)]
+type Ntstatus = i32;
 #[cfg(windows)]
-const KSP_CAPABILITIES: u32 = 2_u32;
+#[allow(clippy::upper_case_acronyms)]
+type Pcwstr = *const u16;
+#[cfg(windows)]
+#[allow(clippy::upper_case_acronyms)]
+type Pwstr = *mut u16;
+
+#[cfg(windows)]
+const CRYPT_LOCAL: u32 = 1;
+#[cfg(windows)]
+const CRYPT_PRIORITY_BOTTOM: u32 = 0xFFFF_FFFF;
+#[cfg(windows)]
+const NCRYPT_KEY_STORAGE_INTERFACE: u32 = 0x0001_0001;
+
+#[cfg(windows)]
+#[allow(clippy::as_conversions)]
+const NCRYPT_KEY_STORAGE_ALGORITHM: &[u16] = &[
+    b'K' as u16,
+    b'E' as u16,
+    b'Y' as u16,
+    b'_' as u16,
+    b'S' as u16,
+    b'T' as u16,
+    b'O' as u16,
+    b'R' as u16,
+    b'A' as u16,
+    b'G' as u16,
+    b'E' as u16,
+    0,
+];
+
+#[cfg(windows)]
+#[repr(C)]
+struct CryptInterfaceReg {
+    dw_interface: u32,
+    dw_flags: u32,
+    c_functions: u32,
+    rgpsz_functions: *mut Pwstr,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct CryptImageReg {
+    psz_image: Pwstr,
+    c_interfaces: u32,
+    rgp_interfaces: *mut *mut CryptInterfaceReg,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct CryptProviderReg {
+    c_aliases: u32,
+    rgpsz_aliases: *mut Pwstr,
+    p_um: *mut CryptImageReg,
+    p_km: *mut CryptImageReg,
+}
+
+#[cfg(windows)]
+#[link(name = "bcrypt")]
+#[allow(unsafe_code)]
+unsafe extern "system" {
+    fn BCryptRegisterProvider(
+        pszProvider: Pcwstr,
+        dwFlags: u32,
+        pReg: *const CryptProviderReg,
+    ) -> Ntstatus;
+    fn BCryptUnregisterProvider(pszProvider: Pcwstr) -> Ntstatus;
+    fn BCryptAddContextFunction(
+        dwTable: u32,
+        pszContext: Pcwstr,
+        dwInterface: u32,
+        pszFunction: Pcwstr,
+        dwPosition: u32,
+    ) -> Ntstatus;
+    fn BCryptAddContextFunctionProvider(
+        dwTable: u32,
+        pszContext: Pcwstr,
+        dwInterface: u32,
+        pszFunction: Pcwstr,
+        pszProvider: Pcwstr,
+        dwPosition: u32,
+    ) -> Ntstatus;
+    fn BCryptRemoveContextFunctionProvider(
+        dwTable: u32,
+        pszContext: Pcwstr,
+        dwInterface: u32,
+        pszFunction: Pcwstr,
+        pszProvider: Pcwstr,
+    ) -> Ntstatus;
+}
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
-fn write_ksp_registry(dll_path: &str) -> Result<(), String> {
-    use windows_sys::Win32::System::Registry::{
-        HKEY, HKEY_LOCAL_MACHINE, KEY_WRITE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
-        RegCloseKey, RegCreateKeyExW, RegSetValueExW,
+fn bcrypt_register_ksp(dll: &std::path::Path) -> Result<(), String> {
+    let dll_abs = dll
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize DLL path '{}': {e}", dll.display()))?;
+
+    // CNG resolves provider DLLs from System32 — copy there first
+    let sys_dir = std::env::var("SystemRoot")
+        .map_err(|_e| "SystemRoot environment variable not set".to_owned())?;
+    let dest = std::path::PathBuf::from(&sys_dir)
+        .join("System32")
+        .join("cosmian_cng.dll");
+    std::fs::copy(&dll_abs, &dest).map_err(|e| {
+        format!(
+            "Failed to copy DLL to '{}': {e} — run as Administrator?",
+            dest.display()
+        )
+    })?;
+
+    let provider_name_w = to_wide(KSP_PROVIDER_NAME);
+    let mut dll_filename_w = to_wide("cosmian_cng.dll");
+    #[allow(clippy::as_ptr_cast_mut, clippy::as_conversions, clippy::ptr_cast_constness)]
+    let mut key_storage_algo: *mut u16 = NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr() as *mut u16;
+
+    let mut interface_reg = CryptInterfaceReg {
+        dw_interface: NCRYPT_KEY_STORAGE_INTERFACE,
+        dw_flags: CRYPT_LOCAL,
+        c_functions: 1,
+        rgpsz_functions: &raw mut key_storage_algo,
+    };
+    let mut interface_ptr: *mut CryptInterfaceReg = &raw mut interface_reg;
+    let mut image_reg = CryptImageReg {
+        psz_image: dll_filename_w.as_mut_ptr(),
+        c_interfaces: 1,
+        rgp_interfaces: &raw mut interface_ptr,
+    };
+    let provider_reg = CryptProviderReg {
+        c_aliases: 0,
+        rgpsz_aliases: std::ptr::null_mut(),
+        p_um: &raw mut image_reg,
+        p_km: std::ptr::null_mut(),
     };
 
-    let key_path = format!("{KSP_REGISTRY_PATH}\\{KSP_PROVIDER_NAME}");
-    let key_path_w = to_wide(&key_path);
-
     unsafe {
-        let mut hkey: HKEY = std::ptr::null_mut();
-        let mut disposition: u32 = 0;
+        let status =
+            BCryptRegisterProvider(provider_name_w.as_ptr(), 0, std::ptr::from_ref(&provider_reg));
+        if status != 0 {
+            return Err(format!(
+                "BCryptRegisterProvider failed with NTSTATUS {status:#010x}"
+            ));
+        }
 
-        let status = RegCreateKeyExW(
-            HKEY_LOCAL_MACHINE,
-            key_path_w.as_ptr(),
-            0,
+        let _ = BCryptAddContextFunction(
+            CRYPT_LOCAL,
             std::ptr::null(),
-            REG_OPTION_NON_VOLATILE,
-            KEY_WRITE,
+            NCRYPT_KEY_STORAGE_INTERFACE,
+            NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr(),
+            CRYPT_PRIORITY_BOTTOM,
+        );
+
+        let status = BCryptAddContextFunctionProvider(
+            CRYPT_LOCAL,
             std::ptr::null(),
-            &raw mut hkey,
-            &raw mut disposition,
+            NCRYPT_KEY_STORAGE_INTERFACE,
+            NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr(),
+            provider_name_w.as_ptr(),
+            CRYPT_PRIORITY_BOTTOM,
         );
         if status != 0 {
             return Err(format!(
-                "RegCreateKeyExW failed with code {status:#010x} for key '{key_path}' — run as Administrator?"
+                "BCryptAddContextFunctionProvider failed with NTSTATUS {status:#010x}"
             ));
         }
-
-        // DllFileName (REG_SZ)
-        let dll_w = to_wide(dll_path);
-        let dll_bytes: Vec<u8> = dll_w.iter().flat_map(|c| c.to_le_bytes()).collect();
-        let s = RegSetValueExW(
-            hkey,
-            to_wide("DllFileName").as_ptr(),
-            0,
-            REG_SZ,
-            dll_bytes.as_ptr(),
-            u32::try_from(dll_bytes.len()).unwrap_or(u32::MAX),
-        );
-        if s != 0 {
-            let _ = RegCloseKey(hkey);
-            return Err(format!("RegSetValueExW(DllFileName) failed with {s:#010x}"));
-        }
-
-        // Capabilities (REG_DWORD)
-        let cap_bytes = KSP_CAPABILITIES.to_le_bytes();
-        let s = RegSetValueExW(
-            hkey,
-            to_wide("Capabilities").as_ptr(),
-            0,
-            REG_DWORD,
-            cap_bytes.as_ptr(),
-            4,
-        );
-        if s != 0 {
-            let _ = RegCloseKey(hkey);
-            return Err(format!(
-                "RegSetValueExW(Capabilities) failed with {s:#010x}"
-            ));
-        }
-
-        let _ = RegCloseKey(hkey);
     }
     Ok(())
 }
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
-fn delete_ksp_registry() -> Result<(), String> {
-    use windows_sys::Win32::System::Registry::{
-        HKEY, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, RegCloseKey, RegDeleteKeyW, RegOpenKeyExW,
-    };
-
-    let base_w = to_wide(KSP_REGISTRY_PATH);
+fn bcrypt_unregister_ksp() -> Result<(), String> {
+    let provider_name_w = to_wide(KSP_PROVIDER_NAME);
     unsafe {
-        let mut hroot: HKEY = std::ptr::null_mut();
-        let status = RegOpenKeyExW(
-            HKEY_LOCAL_MACHINE,
-            base_w.as_ptr(),
-            0,
-            KEY_ALL_ACCESS,
-            &raw mut hroot,
+        let _ = BCryptRemoveContextFunctionProvider(
+            CRYPT_LOCAL,
+            std::ptr::null(),
+            NCRYPT_KEY_STORAGE_INTERFACE,
+            NCRYPT_KEY_STORAGE_ALGORITHM.as_ptr(),
+            provider_name_w.as_ptr(),
         );
-        if status != 0 {
+        let status = BCryptUnregisterProvider(provider_name_w.as_ptr());
+        // STATUS_NOT_FOUND = 0xC0000225 — already gone
+        if status != 0 && status != -0x3FFF_FDDB_i32 {
             return Err(format!(
-                "RegOpenKeyExW failed with {status:#010x} — run as Administrator?"
+                "BCryptUnregisterProvider failed with NTSTATUS {status:#010x}"
             ));
         }
-        let name_w = to_wide(KSP_PROVIDER_NAME);
-        let s = RegDeleteKeyW(hroot, name_w.as_ptr());
-        let _ = RegCloseKey(hroot);
-        if s != 0 && s != 0x2 {
-            // 0x2 = ERROR_FILE_NOT_FOUND — already gone
-            return Err(format!(
-                "RegDeleteKeyW failed with {s:#010x} for '{KSP_PROVIDER_NAME}'"
-            ));
-        }
+    }
+    // Remove DLL from System32
+    if let Ok(sys_root) = std::env::var("SystemRoot") {
+        let dll_path = std::path::PathBuf::from(sys_root)
+            .join("System32")
+            .join("cosmian_cng.dll");
+        drop(std::fs::remove_file(dll_path));
     }
     Ok(())
 }
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
-fn ksp_is_registered() -> bool {
+fn bcrypt_is_ksp_registered() -> bool {
     use windows_sys::Win32::System::Registry::{
         HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RegCloseKey, RegOpenKeyExW,
     };
 
-    let key_path = format!("{KSP_REGISTRY_PATH}\\{KSP_PROVIDER_NAME}");
+    let key_path =
+        format!(r"SYSTEM\CurrentControlSet\Control\Cryptography\Providers\{KSP_PROVIDER_NAME}\UM");
     let key_path_w = to_wide(&key_path);
 
     unsafe {
@@ -313,8 +406,8 @@ fn ksp_is_registered() -> bool {
             return false;
         }
         let _ = RegCloseKey(hkey);
+        true
     }
-    true
 }
 
 #[cfg(windows)]

@@ -315,20 +315,34 @@ the KMS server — check `ckms.toml` and network connectivity before proceeding.
 ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
 ```
 
-This writes the following registry key:
+This performs the following steps:
+
+1. Copies `cosmian_cng.dll` to `%SystemRoot%\System32` (CNG resolves provider
+   DLLs from that directory)
+2. Calls `BCryptRegisterProvider` to create the proper registry structure:
 
 ```text
 HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
     Cosmian KMS Key Storage Provider\
-        DllFileName  REG_SZ  "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
-        Capabilities REG_DWORD  2  (NCRYPT_IMPL_SOFTWARE_FLAG)
+        UM\
+            Image        REG_SZ     "cosmian_cng.dll"
+            00010001\
+                (Default)   REG_SZ         "CRYPT_KEY_STORAGE_INTERFACE"
+                Functions   REG_MULTI_SZ   "KEY_STORAGE"
 ```
+
+3. Calls `BCryptAddContextFunctionProvider` to make the provider discoverable by
+   `NCryptOpenStorageProvider` and `certutil -csplist`
 
 ### 5. Verify registration
 
 ```powershell
 ckms cng status
 # Expected: Cosmian KMS CNG KSP: REGISTERED
+
+# Also verify Windows sees the provider:
+certutil -csplist | Select-String "Cosmian"
+# Expected output includes: "Cosmian KMS Key Storage Provider"
 ```
 
 ---
@@ -463,6 +477,72 @@ Set **Key storage provider (KSP)** to
 **"Enroll to Custom KSP, otherwise fail"** and enter the same provider name.
 The Intune PKCS connector will use the Cosmian KSP to generate the key pair on
 the device.
+
+### Imported PFX certificate (PFXImport PowerShell module)
+
+For importing existing PFX certificates via the
+[IntunePfxImport](https://learn.microsoft.com/en-us/mem/intune/protect/certificates-imported-pfx-configure)
+PowerShell module, follow these steps on the Certificate Connector server:
+
+1. **Ensure the KMS server is running** and reachable (e.g. `http://localhost:9998`).
+
+2. **Register the KSP** (see [Installation](#installation) above):
+
+    ```powershell
+    ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+    ```
+
+3. **Verify Windows discovers the provider**:
+
+    ```powershell
+    certutil -csplist | Select-String "Cosmian"
+    # Expected: "Cosmian KMS Key Storage Provider"
+    ```
+
+4. **Import the IntunePfxImport module** (from the
+   [IntunePfxImportUtilities](https://github.com/microsoft/Intune-Resource-Access/tree/develop/src/PFXImportPowershell)
+   release folder):
+
+    ```powershell
+    Import-Module .\IntunePfxImport.psd1
+    ```
+
+5. **Create the encryption key pair** in Cosmian KMS:
+
+    ```powershell
+    Add-IntuneKspKey `
+        -ProviderName "Cosmian KMS Key Storage Provider" `
+        -KeyName "PFXEncryptionKey" `
+        -MakeExportable
+    ```
+
+    This calls `NCryptCreatePersistedKey` → `NCryptSetProperty(Export Policy)` →
+    `NCryptFinalizeKey` on the Cosmian KSP. The RSA key pair is created and
+    stored exclusively in Cosmian KMS. The `-MakeExportable` flag sets the
+    `NCRYPT_ALLOW_EXPORT_FLAG` so the public key can be exported for use on
+    other connector servers.
+
+6. **Export the public key** (if multiple connector servers share the key):
+
+    ```powershell
+    Export-IntunePublicKey `
+        -ProviderName "Cosmian KMS Key Storage Provider" `
+        -KeyName "PFXEncryptionKey" `
+        -FilePath "C:\temp\PFXEncryptionKey.pfx"
+    ```
+
+7. **Import PFX certificates** to Intune using the key:
+
+    ```powershell
+    $userPFXObject = New-IntuneUserPfxCertificate `
+        -PathToPfxFile "C:\temp\userA.pfx" `
+        $SecureFilePassword `
+        "userA@contoso.com" `
+        "Cosmian KMS Key Storage Provider" `
+        "PFXEncryptionKey" `
+        "smimeEncryption"
+    Import-IntuneUserPfxCertificate -CertificateList $userPFXObject
+    ```
 
 ### Remote key revocation for lost devices
 
