@@ -2,6 +2,7 @@
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::cast_possible_truncation,
+    clippy::as_conversions,
     let_underscore_drop
 )]
 //! HTTP throughput benchmark: proves that the KMS scales on multiple CPUs.
@@ -17,11 +18,11 @@
 //!   4. Reports throughput in req/s so the scaling curve is visible.
 //!
 //! Run:
-//!   cargo bench --bench http_throughput -p test_kms_server
+//!   `cargo bench --bench http_throughput -p test_kms_server`
 //!
 //! Generate a flamegraph (Linux, requires `cargo install flamegraph`):
-//!   CARGO_PROFILE_BENCH_DEBUG=true \
-//!   cargo flamegraph --bench http_throughput -p test_kms_server -- --bench
+//!   `CARGO_PROFILE_BENCH_DEBUG=true`
+//!   `cargo flamegraph --bench http_throughput -p test_kms_server -- --bench`
 
 use std::time::Instant;
 
