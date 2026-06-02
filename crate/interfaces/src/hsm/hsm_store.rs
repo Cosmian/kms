@@ -377,6 +377,13 @@ impl ObjectsStore for HsmStore {
 
         Ok(uids)
     }
+
+    /// HSM object counting is not implemented — HSMs do not expose a key-count
+    /// API in the PKCS#11 interface.  Override the trait default to suppress
+    /// the warning that would otherwise fire every 30 s from the metrics cron.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        Ok(0)
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

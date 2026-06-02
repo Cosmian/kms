@@ -19,7 +19,7 @@ use std::{
 use cosmian_kms_server_database::{DbMetricsRecorder, MainDbKind};
 use opentelemetry::{
     KeyValue,
-    metrics::{Counter, Histogram, Meter, MeterProvider, UpDownCounter},
+    metrics::{Counter, Gauge, Histogram, Meter, MeterProvider, UpDownCounter},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 
@@ -78,23 +78,11 @@ pub struct OtelMetrics {
     /// Current number of active connections
     pub active_connections: UpDownCounter<i64>,
 
-    /// Total number of objects in the KMS
-    pub kms_objects_total: UpDownCounter<i64>,
+    /// Total number of objects in the KMS (gauge — records absolute count directly)
+    pub kms_objects_total: Gauge<i64>,
 
-    /// Current number of active keys (absolute count from Locate responses)
-    pub active_keys_count: UpDownCounter<i64>,
-
-    /// Mirror of `active_keys_count` for tracking the last set value
-    active_keys_count_value: Arc<RwLock<i64>>,
-
-    /// Mirror of `kms_objects_total` for tracking the last emitted absolute count.
-    ///
-    /// Because `kms_objects_total` is an `UpDownCounter` (delta-based), we cannot
-    /// "set" it to an absolute value.  When a periodic sync delivers a fresh
-    /// absolute count, we compute `delta = new_count - last_known` and add that
-    /// delta.  `objects_total_mirror` holds the last known value so subsequent
-    /// sync calls produce the correct incremental delta.
-    objects_total_mirror: Arc<RwLock<i64>>,
+    /// Current number of active keys in Active state (gauge — records absolute count directly)
+    pub active_keys_count: Gauge<i64>,
 
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
@@ -234,22 +222,21 @@ impl OtelMetrics {
             .with_unit("{connection}")
             .build();
 
-        // KMS objects
+        // KMS objects — gauge records the current absolute count directly
         let kms_objects_total = meter
-            .i64_up_down_counter("kms.objects.total")
+            .i64_gauge("kms.objects.total")
             .with_description("Total number of objects in the KMS")
             .with_unit("{object}")
             .build();
 
-        // Active Keys count (absolute number of keys in Active state)
+        // Active keys count — gauge records the current absolute count directly
         let active_keys_count = meter
-            .i64_up_down_counter("kms.keys.active.count")
+            .i64_gauge("kms.keys.active.count")
             .with_description("Number of keys in Active state (absolute count based on Locate)")
             .with_unit("{key}")
             .build();
-        // Force the time series to exist even when the count is 0.
-        // Without at least one measurement, some backends won't expose the metric at all.
-        active_keys_count.add(0, &[]);
+        // Seed the time series so it is visible in the backend from server start.
+        active_keys_count.record(0, &[]);
 
         // Cache operations
         let cache_operations_total = meter
@@ -285,8 +272,6 @@ impl OtelMetrics {
             active_connections,
             kms_objects_total,
             active_keys_count,
-            active_keys_count_value: Arc::new(RwLock::new(0)),
-            objects_total_mirror: Arc::new(RwLock::new(0)),
             cache_operations_total,
             hsm_operations_total,
         })
@@ -436,56 +421,17 @@ impl OtelMetrics {
         self.active_connections.add(-1, &[]);
     }
 
-    /// Update object count for a specific type
-    pub fn update_object_count(&self, object_type: &str, count: f64) {
-        // For UpDownCounter, we need to track the delta
-        // This is a simplified implementation - in production you might want to track previous values
-        // Round the f64 to avoid truncation issues
-        #[allow(clippy::cast_possible_wrap)]
-        #[allow(clippy::cast_possible_truncation)]
-        #[allow(clippy::as_conversions)]
-        let count_i64 = count.round() as i64;
-        self.kms_objects_total.add(
-            count_i64,
-            &[KeyValue::new("object_type", object_type.to_owned())],
-        );
-    }
-
-    /// Set the current active keys count from an absolute Locate response
-    ///
-    /// OTLP instrument is an `UpDownCounter`, so we compute the delta from
-    /// the previously observed value and add it. The last value is mirrored
-    /// internally for subsequent updates and optional inspection.
+    /// Set the current active keys count from an absolute Locate response.
     pub fn update_active_keys_count(&self, absolute_count: i64) {
-        if let Ok(mut last) = self.active_keys_count_value.write() {
-            let delta = absolute_count - *last;
-            if delta != 0 {
-                self.active_keys_count.add(delta, &[]);
-                *last = absolute_count;
-            }
-        }
+        self.active_keys_count.record(absolute_count, &[]);
     }
 
-    /// Set the current `kms.objects.total` gauge from an absolute object count.
+    /// Set `kms.objects.total` to the current absolute object count.
     ///
-    /// `kms_objects_total` is an `UpDownCounter`, which only accepts incremental
-    /// `add(delta)` calls. To simulate a gauge "set", we keep a mirror of the
-    /// last emitted absolute value in `objects_total_mirror` and emit only the
-    /// delta between the new count and that mirror on each call.
-    ///
-    /// This method is called:
-    ///   - Once at server startup with the result of `count_all_non_destroyed_objects`
-    ///     to seed the gauge from the real DB state.
-    ///   - Every 30 s by the metrics cron task to correct drift that may have
-    ///     accumulated from the fast-path delta tracking.
+    /// Called once at server startup (seeding from the real DB count) and
+    /// every 30 s by the metrics cron task.
     pub fn update_objects_total(&self, absolute_count: i64) {
-        if let Ok(mut last) = self.objects_total_mirror.write() {
-            let delta = absolute_count - *last;
-            if delta != 0 {
-                self.kms_objects_total.add(delta, &[]);
-                *last = absolute_count;
-            }
-        }
+        self.kms_objects_total.record(absolute_count, &[]);
     }
 
     /// Record cache operation
@@ -531,23 +477,6 @@ impl DbMetricsRecorder for OtelMetrics {
         duration_seconds: f64,
     ) {
         self.record_database_operation(operation, backend, outcome, duration_seconds);
-    }
-
-    /// Add a signed delta to `kms.objects.total`.
-    ///
-    /// This is the fast path called synchronously after each mutating DB
-    /// operation (+1 for create, -1 for delete, pre-computed delta for
-    /// atomic).  Calls with `delta == 0` are silently ignored to avoid
-    /// emitting no-op measurements to the OTLP backend.
-    ///
-    /// Note: this does **not** update `objects_total_mirror`.  The mirror is
-    /// only updated by the absolute-sync path (`update_objects_total`) so that
-    /// the periodic cron can always correct accumulated drift from this fast
-    /// path without the two paths interfering with each other.
-    fn record_object_delta(&self, delta: i64) {
-        if delta != 0 {
-            self.kms_objects_total.add(delta, &[]);
-        }
     }
 }
 
