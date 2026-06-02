@@ -526,9 +526,18 @@ Section Install
     WriteRegStr SHCTX "Software\Classes\\{{protocol}}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
   {{/each}}
 
+  ; --- Create data directories for the service ---
+  ; These directories live under ProgramData (writable by LocalSystem) and are
+  ; used for rolling logs and SQLite data when the service is running.
+  CreateDirectory "$COMMONAPPDATA\Cosmian KMS Server"
+  CreateDirectory "$COMMONAPPDATA\Cosmian KMS Server\logs"
+  CreateDirectory "$COMMONAPPDATA\Cosmian KMS Server\data"
+
   ; --- Register Windows Service ---
-  ; Create the service with auto-start, running as LocalSystem
-  nsExec::ExecToLog 'sc create "${SERVICENAME}" binPath= "$INSTDIR\${MAINBINARYNAME}.exe" start= auto DisplayName= "${SERVICEDISPLAYNAME}"'
+  ; Create the service with auto-start, running as LocalSystem.
+  ; Pass -c pointing to the bundled configuration file so the service finds it
+  ; regardless of its working directory.
+  nsExec::ExecToLog 'sc create "${SERVICENAME}" binPath= "\"$INSTDIR\${MAINBINARYNAME}.exe\" -c \"$INSTDIR\kms.toml\"" start= auto DisplayName= "${SERVICEDISPLAYNAME}"'
   Pop $0
   ${If} $0 != 0
     DetailPrint "Warning: sc create returned $0"
@@ -713,6 +722,11 @@ Section Uninstall
       {{/each}}
   ${EndIf}
   {{/if}}
+
+  ; --- Remove service data directories created during installation ---
+  RMDir /r "$COMMONAPPDATA\Cosmian KMS Server\logs"
+  RMDir /r "$COMMONAPPDATA\Cosmian KMS Server\data"
+  RMDir "$COMMONAPPDATA\Cosmian KMS Server"
 
   ${GetOptions} $CMDLINE "/P" $R0
   IfErrors +2 0

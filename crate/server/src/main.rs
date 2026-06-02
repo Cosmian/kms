@@ -74,6 +74,45 @@ async fn run() -> KResult<()> {
         KMS::validate_otlp_url(url, &otel_config)?;
     }
 
+    // ── Pre-validate rolling log directory ──────────────────────────────────
+    // tracing-appender panics if the directory is not writable.  Gracefully
+    // disable file logging when the configured path cannot be used.
+    let log_to_file = clap_config.logging.rolling_log_dir.clone().and_then(|dir| {
+        // Attempt to create the directory hierarchy.
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            eprintln!(
+                "WARNING: Cannot create rolling log directory '{}': {e}. \
+                     File logging disabled. Use --rolling-log-dir or KMS_ROLLING_LOG_DIR \
+                     to specify an alternative writable path.",
+                dir.display()
+            );
+            return None;
+        }
+        // Verify write access by creating and removing a temporary probe file.
+        let probe = dir.join(".cosmian_kms_write_probe");
+        match std::fs::File::create(&probe) {
+            Ok(file) => {
+                drop(file);
+                std::fs::remove_file(&probe).ok();
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARNING: Rolling log directory '{}' is not writable: {e}. \
+                         File logging disabled. Use --rolling-log-dir or KMS_ROLLING_LOG_DIR \
+                         to specify an alternative writable path.",
+                    dir.display()
+                );
+                return None;
+            }
+        }
+        let name = clap_config
+            .logging
+            .rolling_log_name
+            .clone()
+            .unwrap_or_else(|| "kms".to_owned());
+        Some((dir, name))
+    });
+
     // Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
         service_name: "cosmian_kms".to_owned(),
@@ -92,14 +131,7 @@ async fn run() -> KResult<()> {
         log_to_syslog: clap_config.logging.log_to_syslog,
         // Use safe rust_log configuration without environment variable setting
         rust_log: get_effective_rust_log(clap_config.logging.rust_log.clone(), info_only),
-        log_to_file: clap_config.logging.rolling_log_dir.clone().map(|dir| {
-            let name = clap_config
-                .logging
-                .rolling_log_name
-                .clone()
-                .unwrap_or_else(|| "kms".to_owned());
-            (dir, name)
-        }),
+        log_to_file,
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 

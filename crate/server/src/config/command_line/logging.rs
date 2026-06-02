@@ -12,7 +12,13 @@ pub fn get_default_rolling_log_dir() -> PathBuf {
 #[cfg(target_os = "windows")]
 #[must_use]
 pub fn get_default_rolling_log_dir() -> PathBuf {
-    PathBuf::from(r"C:\ProgramData\Cosmian KMS Server\logs")
+    // Use %LOCALAPPDATA%\Cosmian KMS Server which is guaranteed to exist and is
+    // writable by standard (non-admin) users.  Falls back to ProgramData only
+    // when the environment variable is missing (e.g. LocalSystem service account).
+    std::env::var("LOCALAPPDATA").map_or_else(
+        |_| PathBuf::from(r"C:\ProgramData\Cosmian KMS Server"),
+        |localappdata| PathBuf::from(localappdata).join("Cosmian KMS Server"),
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -63,7 +69,7 @@ pub struct LoggingConfig {
     /// File logging is disabled unless this option is explicitly set.
     /// Suggested paths:
     ///   Linux: /var/log/
-    ///   Windows: C:\ProgramData\Cosmian KMS Server\logs
+    ///   Windows: %LOCALAPPDATA%\Cosmian KMS Server
     ///   macOS: ~/Library/Logs/Cosmian KMS Server
     #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]
     pub rolling_log_dir: Option<PathBuf>,

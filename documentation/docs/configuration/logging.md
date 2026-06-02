@@ -65,16 +65,28 @@ The server writes daily rolling log files by default. Log files are named
 When the log directory is not explicitly configured, the server uses a
 platform-specific default:
 
-| Platform | Default directory                        |
+| Platform | Default directory                         |
 | -------- | ---------------------------------------- |
 | Linux    | `/var/log/`                              |
-| Windows  | `C:\ProgramData\Cosmian KMS Server\logs` |
+| Windows  | `%LOCALAPPDATA%\Cosmian KMS Server`      |
 | macOS    | `~/Library/Logs/Cosmian KMS Server`      |
+
+> **Note (Windows):** The previous default `C:\ProgramData\Cosmian KMS Server\logs`
+> requires administrator privileges. The server now defaults to
+> `%LOCALAPPDATA%\Cosmian KMS Server` which is guaranteed to exist and is writable by
+> standard users. When running as a Windows service (LocalSystem), the `LOCALAPPDATA`
+> variable may not be set; the server then falls back to
+> `C:\ProgramData\Cosmian KMS Server`.
 
 > **Note (macOS):** The previous default `/Library/Logs/Cosmian KMS Server` requires root
 > privileges. The server now defaults to `~/Library/Logs/Cosmian KMS Server` which is
 > writable by the current user. If you run the server as a LaunchDaemon (root), you may
 > override this with `--rolling-log-dir /Library/Logs/Cosmian KMS Server`.
+
+> **Graceful fallback:** If the configured rolling log directory does not exist and cannot
+> be created, or is not writable by the current process, the server disables file logging
+> with a warning message on stderr and continues operating normally. This prevents the
+> server from panicking due to inaccessible log paths.
 
 The directory and file name can be overridden via:
 

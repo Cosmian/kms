@@ -50,8 +50,8 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
         let default_log_dir = "/var/log".to_owned();
         #[cfg(target_os = "windows")]
         let default_log_dir = std::env::var("LOCALAPPDATA").map_or_else(
-            |_| String::from("C:\\ProgramData\\cosmian\\logs"),
-            |localappdata| format!("{localappdata}\\Cosmian KMS Server\\logs"),
+            |_| String::from("C:\\ProgramData\\Cosmian KMS Server"),
+            |localappdata| format!("{localappdata}\\Cosmian KMS Server"),
         );
 
         let dir: String = Input::with_theme(&theme)
@@ -59,6 +59,16 @@ pub fn configure_logging() -> KResult<LoggingConfig> {
             .default(default_log_dir)
             .interact_text()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+
+        // Create the directory tree so that the server can write logs immediately.
+        let dir_path = std::path::Path::new(&dir);
+        std::fs::create_dir_all(dir_path).map_err(|e| {
+            KmsError::ServerError(format!(
+                "Cannot create rolling log directory '{}': {e}",
+                dir_path.display()
+            ))
+        })?;
+
         let name: String = Input::with_theme(&theme)
             .with_prompt("Rolling log file name prefix (default: 'kms')")
             .default("kms".to_owned())

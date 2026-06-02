@@ -591,6 +591,13 @@ fn run_configure_wizard(mut config: ClientConfig) -> CosmianResult<()> {
     // Save to default path explicitly (ignore env override to satisfy requirement)
     let default_path = get_default_conf_path(crate::config::CKMS_CONF_PATH)
         .map_err(|e| cli_error!("Failed to get default config path: {e}"))?;
+
+    // Create parent directory if it does not exist (covers all platforms).
+    if let Some(parent) = default_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| cli_error!("Cannot create directory '{}': {e}", parent.display()))?;
+    }
+
     println!(
         "\nWriting configuration to default path: {}",
         default_path.display()
