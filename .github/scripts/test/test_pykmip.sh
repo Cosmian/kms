@@ -64,7 +64,9 @@ echo "Upgrading pip in virtual environment…"
 env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -m pip install --upgrade pip
 
 # Install PyKMIP if not already present
-if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -c "import kmip" >/dev/null 2>&1; then
+# Note: use "from kmip.services import kmip_client" rather than bare "import kmip"
+# because the repo's kmip/ submodule directory is picked up as a namespace package.
+if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -c "from kmip.services import kmip_client" >/dev/null 2>&1; then
   echo "Installing PyKMIP into virtualenv …"
   # Prefer a straightforward install; fall back to dev head if needed
   if ! env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES python -m pip install --no-compile PyKMIP >/dev/null; then

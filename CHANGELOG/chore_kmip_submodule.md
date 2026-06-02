@@ -10,6 +10,8 @@
 
 ## Bug Fixes
 
+- Fix CI failure: skip `SASED-M-2-13.xml` in KMIP 1.3 mandatory test vectors (uses deprecated `Template` object type removed in KMIP 2.0, not supported by our parser)
+- Fix CI failure: PyKMIP install skipped because `kmip/` submodule directory was picked up as a Python namespace package; use `from kmip.services import kmip_client` for the install-check
 - Fix TTLV XML deserializer: handle explicit `type="Structure"` on self-closing elements (previously caused "unsupported type: Structure" error)
 - Fix XML test response comparison: `result_reason` in v1.4 was not being checked (duplicate `result_status` check); now correctly uses lenient comparison for non-success responses
 - Fix XML test response comparison: `KeyMaterial::ByteString` and `KeyValue::ByteString` empty match arms no longer silently pass — they now verify length when expected is non-empty

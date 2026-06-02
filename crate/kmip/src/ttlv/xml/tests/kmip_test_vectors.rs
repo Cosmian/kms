@@ -25,11 +25,19 @@ xml_vector_test!(
 // KMIP 1.3
 // ═══════════════════════════════════════════════════════════════════════════════
 
-xml_vector_test!(
-    test_parse_all_kmip_1_3_mandatory_vectors,
-    "../../kmip/v1.3/XML/mandatory",
-    "KMIP 1.3 mandatory"
-);
+/// SASED-M-2-13.xml uses the `Template` object type (deprecated in KMIP 2.0,
+/// not supported by our parser) — skip it.
+const KMIP_1_3_MANDATORY_SKIP: &[&str] = &["SASED-M-2-13.xml"];
+
+#[test]
+fn test_parse_all_kmip_1_3_mandatory_vectors() {
+    super::common::parse_all_xml_vectors_with_skip(
+        "../../kmip/v1.3/XML/mandatory",
+        "KMIP 1.3 mandatory",
+        KMIP_1_3_MANDATORY_SKIP,
+    );
+}
+
 xml_vector_test!(
     test_parse_all_kmip_1_3_optional_vectors,
     "../../kmip/v1.3/XML/optional",
