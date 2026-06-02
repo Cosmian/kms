@@ -724,15 +724,38 @@ fn backend_available(backend: &str) -> bool {
 /// Get or initialize a singleton test server for the given backend.
 async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContext, KmsClientError> {
     let root = repo_root()?;
-    let (cell, toml) = match backend {
-        "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml"),
-        "mysql" => (&ONCE_VECTOR_MYSQL, "mysql.toml"),
-        "redis-findex" => (&ONCE_VECTOR_REDIS_FINDEX, "redis_findex.toml"),
-        _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml"),
+    let (cell, toml, env_var) = match backend {
+        "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml", "KMS_POSTGRES_URL"),
+        "mysql" => (&ONCE_VECTOR_MYSQL, "mysql.toml", "KMS_MYSQL_URL"),
+        "redis-findex" => (
+            &ONCE_VECTOR_REDIS_FINDEX,
+            "redis_findex.toml",
+            "KMS_REDIS_URL",
+        ),
+        _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml", ""),
     };
     let p = root.join("test_data/configs/server/test").join(toml);
-    cell.get_or_try_init(|| async move { crate::start_test_server_from_toml(&p).await })
+    // Override the database URL from the environment when set (e.g. MariaDB on
+    // port 3308 or Percona on port 3307 reuse the "mysql" backend with a
+    // different connection URL).
+    let url_override = if env_var.is_empty() {
+        None
+    } else {
+        std::env::var(env_var).ok()
+    };
+    cell.get_or_try_init(|| async move {
+        crate::start_test_server_with_patch(
+            &p,
+            |config| {
+                if let Some(url) = &url_override {
+                    config.db.database_url = Some(url.clone());
+                }
+            },
+            crate::TestClientOptions::default(),
+        )
         .await
+    })
+    .await
 }
 
 /// Run a test vector from a directory containing `manifest.toml` and step JSON files.
