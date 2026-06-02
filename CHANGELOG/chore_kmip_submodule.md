@@ -16,3 +16,7 @@
 - Fix XML test response comparison: `result_reason` in v1.4 was not being checked (duplicate `result_status` check); now correctly uses lenient comparison for non-success responses
 - Fix XML test response comparison: `KeyMaterial::ByteString` and `KeyValue::ByteString` empty match arms no longer silently pass — they now verify length when expected is non-empty
 - Fix XML test response comparison: `response_payload` presence mismatch in both v1.4 and v2.1 now correctly returns an error instead of silently passing
+
+## CI
+
+- Optimize `test_all.yml`: skip Docker container startup for test types that don't need it; start only required services via matrix `docker` field (saves ~30s and avoids pulling unused images)
