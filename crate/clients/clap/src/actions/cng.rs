@@ -21,7 +21,7 @@ pub enum CngCommands {
     /// Requires elevated (Administrator) privileges.
     ///
     /// Example:
-    ///   `ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll""`
+    ///   `ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"`
     Register {
         /// Full path to the `cosmian_cng.dll` file.
         #[arg(long, short = 'd')]

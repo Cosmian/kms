@@ -391,20 +391,14 @@ Function .onInit
 
   !insertmacro SetContext
 
-  ${If} $INSTDIR == ""
-    ; Set default install location
-    ; Always install under %LOCALAPPDATA% so that the server binary, kms.toml,
-    ; and rolling logs all live in the same user-writable directory.  This keeps
-    ; the installer, the wizard (`cosmian_kms configure`), and the server's
-    ; default config path (`get_default_config_path()`) in sync.
-    !if "${INSTALLMODE}" == "perMachine"
-      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
-    !else if "${INSTALLMODE}" == "currentUser"
-      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
-    !endif
-
-    Call RestorePreviousInstallLocation
-  ${EndIf}
+  ; Set default install location unconditionally.
+  ; Always install under %LOCALAPPDATA% so that the server binary, kms.toml,
+  ; and rolling logs all live in the same user-writable directory.  This keeps
+  ; the installer, the wizard (`cosmian_kms configure`), and the server's
+  ; default config path (`get_default_config_path()`) in sync.
+  ; NOTE: We override $INSTDIR unconditionally because cargo-packager and/or
+  ; a previous installation may have pre-filled it with a Program Files path.
+  StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
 
 
   !if "${INSTALLMODE}" == "both"

@@ -40,7 +40,7 @@
 //! ## Installation
 //!
 //! ```powershell
-//! ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+//! ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
 //! ```
 
 use std::path::PathBuf;
@@ -125,10 +125,12 @@ pub(crate) fn dll_directory() -> Option<PathBuf> {
         }
     }
 
-    // Hard-coded fallback: the well-known install location.
-    let fallback = PathBuf::from(r"C:\Program Files\Cosmian\Kms");
-    if fallback.is_dir() {
-        return Some(fallback);
+    // Hard-coded fallback: the well-known install location (%LOCALAPPDATA%\Cosmian KMS CLI).
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let fallback = PathBuf::from(local_app_data).join("Cosmian KMS CLI");
+        if fallback.is_dir() {
+            return Some(fallback);
+        }
     }
     None
 }

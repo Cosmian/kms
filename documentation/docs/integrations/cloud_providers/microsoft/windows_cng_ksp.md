@@ -258,15 +258,15 @@ Start-Process -FilePath "$env:TEMP\cosmian-kms-cli.exe" -ArgumentList "/S" -Wait
 The installer places both files in the default installation directory:
 
 ```text
-C:\Program Files\Cosmian\Kms\ckms.exe
-C:\Program Files\Cosmian\Kms\cosmian_cng.dll
+%LOCALAPPDATA%\Cosmian KMS CLI\ckms.exe
+%LOCALAPPDATA%\Cosmian KMS CLI\cosmian_cng.dll
 ```
 
-Ensure `C:\Program Files\Cosmian\Kms` is on your `PATH` (the installer does
-this automatically for system-wide installs):
+Ensure the installation directory is on your `PATH` (the installer does
+this automatically):
 
 ```powershell
-$env:PATH += ";C:\Program Files\Cosmian\Kms"
+$env:PATH += ";$env:LOCALAPPDATA\Cosmian KMS CLI"
 ```
 
 ### 2. Configure the KMS connection
@@ -287,7 +287,7 @@ Before registering the KSP, confirm that the DLL loads correctly and can reach
 the KMS server:
 
 ```powershell
-ckms cng verify --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+ckms cng verify --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
 ```
 
 Expected output (with a running KMS):
@@ -295,7 +295,7 @@ Expected output (with a running KMS):
 ```text
 === Cosmian CNG KSP Verification ===
 
-Loading DLL: C:\Program Files\Cosmian\Kms\cosmian_cng.dll
+Loading DLL: C:\Users\<user>\AppData\Local\Cosmian KMS CLI\cosmian_cng.dll
 
   [OK]   OpenProvider
 ── RSA key pair + sign + export + lookup ──
@@ -312,7 +312,7 @@ the KMS server — check `ckms.toml` and network connectivity before proceeding.
 
 ```powershell
 # From an elevated PowerShell prompt:
-ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
 ```
 
 This performs the following steps:
@@ -489,7 +489,7 @@ PowerShell module, follow these steps on the Certificate Connector server:
 2. **Register the KSP** (see [Installation](#installation) above):
 
     ```powershell
-    ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+    ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
     ```
 
 3. **Verify Windows discovers the provider**:

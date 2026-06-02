@@ -390,26 +390,12 @@ Function .onInit
 
   !insertmacro SetContext
 
-  ${If} $INSTDIR == ""
-    ; Set default install location
-    !if "${INSTALLMODE}" == "perMachine"
-      ${If} ${RunningX64}
-        !if "${ARCH}" == "x64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else if "${ARCH}" == "arm64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else
-          StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-        !endif
-      ${Else}
-        StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-      ${EndIf}
-    !else if "${INSTALLMODE}" == "currentUser"
-      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
-    !endif
-
-    Call RestorePreviousInstallLocation
-  ${EndIf}
+  ; Set default install location unconditionally.
+  ; Always install under %LOCALAPPDATA% so that the ckms binary, cosmian_cng.dll,
+  ; and cosmian_pkcs11.dll all live in a user-writable directory.
+  ; NOTE: We override $INSTDIR unconditionally because cargo-packager and/or
+  ; a previous installation may have pre-filled it with a Program Files path.
+  StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
 
 
   !if "${INSTALLMODE}" == "both"
