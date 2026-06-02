@@ -53,6 +53,11 @@ pub(crate) async fn create_key(
 
     trace!(user = user, "POST /v1/crypto/keys kty={}", body.kty);
 
+    // Validate algorithm ↔ key type consistency to prevent key confusion attacks.
+    if let Some(alg) = body.alg.as_deref() {
+        validate_alg_kty_consistency(alg, &body.kty)?;
+    }
+
     if body.is_import() {
         return match body.kty.as_str() {
             "oct" => import_symmetric_key(&kms, &user, &body).await.map(Json),
@@ -364,10 +369,20 @@ async fn import_symmetric_key(
     })?;
     let actual_bits = key_bytes.len() * 8;
     let is_hmac = alg.starts_with("HS");
+
     if is_hmac {
         if actual_bits < expected_bits {
             return Err(CryptoApiError::BadRequest(format!(
                 "Key length too short: algorithm '{alg}' requires at least {expected_bits} bits, \
+                 but 'k' contains {actual_bits} bits."
+            )));
+        }
+        // Cap HMAC keys at 4096 bytes (32768 bits) to prevent memory-based DoS.
+        // RFC 7518 §3.2 recommends keys equal to the hash output size; anything
+        // beyond 4 KiB is unreasonable and likely an attack vector.
+        if actual_bits > 32_768 {
+            return Err(CryptoApiError::BadRequest(format!(
+                "HMAC key too large: maximum 32768 bits allowed, \
                  but 'k' contains {actual_bits} bits."
             )));
         }
@@ -487,6 +502,52 @@ async fn import_ec_key(
                 "Invalid EC private key scalar for curve '{crv}': {e}"
             ))
         })?;
+
+    // If x,y coordinates are provided, validate they match the computed public point.
+    // Reject on mismatch to prevent key confusion attacks (the KMS always derives
+    // the public point from d, so inconsistent x,y indicates a malformed JWK).
+    if body.x.is_some() || body.y.is_some() {
+        let computed_uncompressed = public_point
+            .to_bytes(
+                &group,
+                openssl::ec::PointConversionForm::UNCOMPRESSED,
+                &mut ctx,
+            )
+            .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+        // Uncompressed form: 0x04 || x || y, each coordinate is field_len bytes
+        let field_len = (computed_uncompressed.len().saturating_sub(1)) / 2;
+        let computed_x = computed_uncompressed.get(1..=field_len).ok_or_else(|| {
+            CryptoApiError::InternalError(
+                "EC public point encoding too short for x coordinate".to_owned(),
+            )
+        })?;
+        let computed_y = computed_uncompressed.get(1 + field_len..).ok_or_else(|| {
+            CryptoApiError::InternalError(
+                "EC public point encoding too short for y coordinate".to_owned(),
+            )
+        })?;
+
+        if let Some(x_str) = body.x.as_deref() {
+            let x_bytes = b64_decode("x", x_str)?;
+            if x_bytes != computed_x {
+                return Err(CryptoApiError::BadRequest(
+                    "EC key import: provided 'x' coordinate does not match public point \
+                     derived from 'd'. Remove x/y or correct the key material."
+                        .to_owned(),
+                ));
+            }
+        }
+        if let Some(y_str) = body.y.as_deref() {
+            let y_bytes = b64_decode("y", y_str)?;
+            if y_bytes != computed_y {
+                return Err(CryptoApiError::BadRequest(
+                    "EC key import: provided 'y' coordinate does not match public point \
+                     derived from 'd'. Remove x/y or correct the key material."
+                        .to_owned(),
+                ));
+            }
+        }
+    }
 
     let ec_key = EcKey::from_private_components(&group, &d_bn, &public_point).map_err(|e| {
         CryptoApiError::BadRequest(format!("Invalid EC key components for curve '{crv}': {e}"))
@@ -635,6 +696,19 @@ async fn import_rsa_key(
         return Err(CryptoApiError::BadRequest(format!(
             "RSA key size must be at least 2048 bits (got {key_bits})."
         )));
+    }
+
+    // Validate public exponent per FIPS 186-4 §B.3.1: e must be odd and ≥ 3.
+    // Common values: 3, 17, 65537. Values of 0, 1, or 2 are cryptographically broken.
+    if e_bn.num_bits() < 2 {
+        return Err(CryptoApiError::BadRequest(
+            "RSA public exponent 'e' must be at least 3 (got value < 3).".to_owned(),
+        ));
+    }
+    if !e_bn.is_odd() {
+        return Err(CryptoApiError::BadRequest(
+            "RSA public exponent 'e' must be odd.".to_owned(),
+        ));
     }
 
     let rsa_key =
@@ -829,4 +903,30 @@ fn key_ops_from_alg(alg: &str) -> Vec<String> {
         // Encryption algorithms
         _ => vec!["encrypt".to_owned(), "decrypt".to_owned()],
     }
+}
+
+/// Validate that the JOSE `alg` is compatible with the declared `kty`.
+///
+/// Rejects mismatches like `kty=RSA` + `alg=ES256` which could lead to
+/// algorithm confusion or key confusion attacks.
+fn validate_alg_kty_consistency(alg: &str, kty: &str) -> Result<(), CryptoApiError> {
+    let valid = match kty {
+        "oct" => matches!(
+            alg,
+            "HS256" | "HS384" | "HS512" | "A128GCM" | "A192GCM" | "A256GCM" | "dir"
+        ),
+        "EC" => matches!(alg, "ES256" | "ES384" | "ES512"),
+        "RSA" => matches!(
+            alg,
+            "RS256" | "RS384" | "RS512" | "PS256" | "PS384" | "PS512" | "RSA-OAEP" | "RSA-OAEP-256"
+        ),
+        "OKP" => matches!(alg, "EdDSA" | "MLDSA44"),
+        _ => false, // Unknown kty will be rejected downstream
+    };
+    if !valid {
+        return Err(CryptoApiError::BadRequest(format!(
+            "Algorithm '{alg}' is not compatible with key type '{kty}'."
+        )));
+    }
+    Ok(())
 }

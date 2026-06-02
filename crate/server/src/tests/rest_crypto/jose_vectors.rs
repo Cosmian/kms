@@ -20,6 +20,28 @@ use serde_json::{Value, json};
 
 use crate::{result::KResult, tests::test_utils};
 
+/// Returns `true` if this vector requires non-FIPS algorithms (e.g. OKP/EdDSA)
+/// and should be skipped when the `non-fips` feature is not enabled.
+#[cfg(not(feature = "non-fips"))]
+fn is_non_fips_vector(v: &Value) -> bool {
+    let kty = v
+        .get("key")
+        .and_then(|k| k.get("kty"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let alg = v
+        .get("algorithm")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            v.get("key")
+                .and_then(|k| k.get("alg"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("");
+    // OKP (Ed25519, X25519) is not FIPS-approved
+    kty == "OKP" || alg == "EdDSA"
+}
+
 /// Root directory for JOSE test vectors (relative to workspace root).
 fn vectors_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -912,10 +934,24 @@ async fn test_jose_vectors() -> KResult<()> {
     );
 
     let mut passed = 0;
+    #[allow(unused_mut)]
+    let mut skipped: usize = 0;
     let mut errors: Vec<String> = Vec::new();
 
     for path in &vectors {
         let filename = path.file_name().unwrap().to_string_lossy();
+
+        // Skip non-FIPS vectors when running in FIPS mode
+        #[cfg(not(feature = "non-fips"))]
+        {
+            let v = load_vector(path);
+            if is_non_fips_vector(&v) {
+                skipped += 1;
+                tracing::info!("Skipping non-FIPS vector: {filename}");
+                continue;
+            }
+        }
+
         match run_vector(&app, path).await {
             Ok(()) => {
                 passed += 1;
@@ -927,10 +963,10 @@ async fn test_jose_vectors() -> KResult<()> {
     }
 
     if errors.is_empty() {
-        // All vectors passed
+        tracing::info!("JOSE vectors: {passed} passed, {skipped} skipped (non-FIPS), 0 failed");
     } else {
         panic!(
-            "JOSE vectors: {passed}/{} passed, {} failed:\n  {}",
+            "JOSE vectors: {passed}/{} passed, {skipped} skipped, {} failed:\n  {}",
             vectors.len(),
             errors.len(),
             errors.join("\n  ")
