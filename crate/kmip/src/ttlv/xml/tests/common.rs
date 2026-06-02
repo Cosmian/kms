@@ -4,6 +4,23 @@ use std::{fs, path::PathBuf};
 
 use crate::ttlv::xml::KmipXmlDoc;
 
+/// Generate a test function that parses all XML vectors in a directory.
+///
+/// Usage:
+/// ```ignore
+/// xml_vector_test!(test_name, "../../kmip/v1.4/XML/mandatory", "KMIP 1.4 mandatory");
+/// ```
+macro_rules! xml_vector_test {
+    ($name:ident, $dir:expr, $label:expr) => {
+        #[test]
+        fn $name() {
+            super::common::parse_all_xml_vectors($dir, $label);
+        }
+    };
+}
+
+pub(super) use xml_vector_test;
+
 /// Parse all XML files in the given directory and assert:
 /// - each file parses successfully
 /// - request/response counts match in every file

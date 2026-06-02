@@ -16,9 +16,8 @@ use cosmian_kmip::{
     kmip_2_1::{self, kmip_operations::Operation, kmip_types::UniqueIdentifier},
 };
 
-// Import version-specific artifact updaters
-use crate::tests::xml::kmip_1_4::request::update_cached_artifacts_v14;
-use crate::tests::xml::kmip_2_1::request::update_cached_artifacts_v21;
+// Import unified version-dispatched artifact updater
+use crate::tests::xml::versioned::update_cached_artifacts_versioned;
 
 /// Contains all the state and artifacts needed for request preparation during KMIP test execution.
 /// This struct consolidates the various maps, cached artifacts, and flags that are passed between
@@ -182,9 +181,7 @@ impl PrepareRequest {
         resp: &ResponseMessage,
         pending_encrypt_aad: &mut Option<Vec<u8>>,
     ) {
-        // Delegate to version-specific updaters
-        update_cached_artifacts_v21(self, resp, pending_encrypt_aad);
-        update_cached_artifacts_v14(self, resp, pending_encrypt_aad);
+        update_cached_artifacts_versioned(self, resp, pending_encrypt_aad);
     }
 
     /// Capture the AAD bytes of any Encrypt request (if present) before sending so we can

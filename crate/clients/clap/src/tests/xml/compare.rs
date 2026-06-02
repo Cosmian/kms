@@ -1,25 +1,20 @@
 use cosmian_kmip::{
-    kmip_0::{self},
+    kmip_0,
     kmip_2_1::{self, kmip_objects::Object},
 };
-use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_messages::{
-    ResponseMessage, ResponseMessageBatchItemVersioned,
-};
+use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_messages::ResponseMessage;
 use cosmian_logger::trace;
 
-// Bring in version-specific payload comparators
-use crate::tests::xml::kmip_1_4::compare::compare_payload_v14;
 use crate::{
     error::{KmsCliError, result::KmsCliResult},
-    tests::xml::kmip_2_1::compare::compare_payload_v21,
+    tests::xml::versioned::compare_versioned_batch_item,
 };
 
-// Compare expected and actual KMIP1 responses on essential fields and payloads.
+/// Compare expected and actual KMIP responses on essential fields and payloads.
 pub(crate) fn compare_response_messages(
     expected: &ResponseMessage,
     actual: &ResponseMessage,
 ) -> KmsCliResult<()> {
-    // Compare number of batch items
     if expected.batch_item.len() != actual.batch_item.len() {
         return Err(KmsCliError::Default(format!(
             "batch size mismatch expected={} actual={}",
@@ -28,84 +23,13 @@ pub(crate) fn compare_response_messages(
         )));
     }
 
-    // Compare batch items one by one
     for (index, (exp_item, act_item)) in expected
         .batch_item
         .iter()
         .zip(actual.batch_item.iter())
         .enumerate()
     {
-        match (exp_item, act_item) {
-            (
-                ResponseMessageBatchItemVersioned::V21(exp),
-                ResponseMessageBatchItemVersioned::V21(act),
-            ) => {
-                if exp.result_status != act.result_status {
-                    return Err(KmsCliError::Default(format!(
-                        "batch[{index}] result_status mismatch expected={:?} actual={:?}",
-                        exp.result_status, act.result_status
-                    )));
-                }
-
-                if exp.result_reason != act.result_reason {
-                    return Err(KmsCliError::Default(format!(
-                        "batch[{index}] result_reason mismatch expected={:?} actual={:?}",
-                        exp.result_reason, act.result_reason
-                    )));
-                }
-
-                if exp.result_message.is_some() != act.result_message.is_some() {
-                    return Err(KmsCliError::Default(format!(
-                        "batch[{index}] result_message presence mismatch expected={:?} actual={:?}",
-                        exp.result_message.is_some(),
-                        act.result_message.is_some()
-                    )));
-                }
-
-                if let (Some(exp_payload), Some(act_payload)) =
-                    (&exp.response_payload, &act.response_payload)
-                {
-                    // Fail fast on first payload mismatch
-                    compare_payload_v21(exp_payload, act_payload)?;
-                }
-            }
-            (
-                ResponseMessageBatchItemVersioned::V14(exp),
-                ResponseMessageBatchItemVersioned::V14(act),
-            ) => {
-                if exp.result_status != act.result_status {
-                    return Err(KmsCliError::Default(format!(
-                        "batch[{index}] result_status mismatch expected={:?} actual={:?}",
-                        exp.result_status, act.result_status
-                    )));
-                }
-                if exp.result_status != act.result_status {
-                    return Err(KmsCliError::Default(format!(
-                        "batch[{index}] result_status mismatch expected={:?} actual={:?}",
-                        exp.result_status, act.result_status
-                    )));
-                }
-                if exp.result_message.is_some() != act.result_message.is_some() {
-                    return Err(KmsCliError::Default(format!(
-                        "batch[{index}] result_message presence mismatch expected={:?} actual={:?}",
-                        exp.result_message.is_some(),
-                        act.result_message.is_some()
-                    )));
-                }
-                // Where safe, compare minimal payload details to mirror 2.1 checks
-                if let (Some(exp_payload), Some(act_payload)) =
-                    (&exp.response_payload, &act.response_payload)
-                {
-                    compare_payload_v14(exp_payload, act_payload)?;
-                }
-                // Note: UniqueBatchItemID equality could be enforced if needed
-            }
-            _ => {
-                return Err(KmsCliError::Default(format!(
-                    "batch[{index}] response version mismatch or unsupported combination"
-                )));
-            }
-        }
+        compare_versioned_batch_item(index, exp_item, act_item)?;
     }
 
     Ok(())
@@ -286,15 +210,16 @@ pub(crate) fn compare_key_value(
         )));
     }
     match (expected, actual) {
-        (KeyValue::ByteString(_eb), KeyValue::ByteString(_ab)) => {
-            // Cannot compare without modifying ResponseMessage: AX-M-2-21.xml
-            // if eb.as_slice() != ab.as_slice() {
-            //     return Err(KmsCliError::Default(format!(
-            //         "KeyValue::ByteString mismatch expected_len={} actual_len={}",
-            //         eb.len(),
-            //         ab.len()
-            //     )));
-            // }
+        (KeyValue::ByteString(eb), KeyValue::ByteString(ab)) => {
+            // When expected is empty (placeholder substitution), accept any actual content.
+            // Otherwise, lengths must match (content may differ for server-generated material).
+            if !eb.is_empty() && eb.len() != ab.len() {
+                return Err(KmsCliError::Default(format!(
+                    "KeyValue::ByteString length mismatch expected_len={} actual_len={}",
+                    eb.len(),
+                    ab.len()
+                )));
+            }
         }
         (
             KeyValue::Structure {
@@ -320,14 +245,16 @@ pub(crate) fn compare_key_value(
             }
 
             match (ekm, akm) {
-                (KeyMaterial::ByteString(_e), KeyMaterial::ByteString(_a)) => {
-                    // Cannot compare without modifying ResponseMessage: AX-M-1-21.xml
-                    // if e.len() != a.len() {
-                    //     return Err(KmsCliError::Default(format!(
-                    //         "KeyMaterial::ByteString mismatch expected={:?} actual={:?}",
-                    //         e, a
-                    //     )));
-                    // }
+                (KeyMaterial::ByteString(e), KeyMaterial::ByteString(a)) => {
+                    // When expected is empty (placeholder substitution), accept any actual content.
+                    // Otherwise, lengths must match (content may differ for server-generated material).
+                    if !e.is_empty() && e.len() != a.len() {
+                        return Err(KmsCliError::Default(format!(
+                            "KeyMaterial::ByteString length mismatch expected_len={} actual_len={}",
+                            e.len(),
+                            a.len()
+                        )));
+                    }
                 }
                 (
                     KeyMaterial::TransparentSymmetricKey { key: ek },
