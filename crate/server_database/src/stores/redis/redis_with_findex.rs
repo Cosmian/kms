@@ -23,7 +23,9 @@ use uuid::Uuid;
 
 use super::{
     FINDEX_KEY_LENGTH,
-    objects_db::{DB_KEY_LENGTH, ObjectsDB, RedisDbObject, keywords_from_attributes},
+    objects_db::{
+        DB_KEY_LENGTH, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject, keywords_from_attributes,
+    },
     permissions::PermissionDB,
 };
 use crate::{
@@ -42,6 +44,15 @@ use crate::{
 
 const REDIS_WITH_FINDEX_MASTER_KEY_DERIVATION_SALT: &[u8; 16] = b"rediswithfindex_";
 const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
+
+/// Returns `true` when an object's state counts toward the live-object total.
+///
+/// `Destroyed` and `Destroyed_Compromised` are terminal states — the object is
+/// no longer usable and should not appear in the `kms.objects.total` gauge.
+#[inline]
+const fn is_live(state: State) -> bool {
+    !matches!(state, State::Destroyed | State::Destroyed_Compromised)
+}
 
 /// Derive a Redis Master Key from a password
 pub fn redis_master_key_from_password(
@@ -329,8 +340,9 @@ impl ObjectsStore for RedisWithFindex {
             .prepare_object_for_create(uid, owner, object, attributes, tags)
             .await?;
 
-        // create the object
         self.objects_db.object_create(&uid, &db_object).await?;
+        // New objects are always PreActive (live) — increment unconditionally.
+        self.objects_db.adjust_live_count(1).await?;
 
         Ok(uid)
     }
@@ -381,10 +393,26 @@ impl ObjectsStore for RedisWithFindex {
     }
 
     async fn update_state(&self, uid: &str, state: State) -> InterfaceResult<()> {
+        // Read the object once here so we can:
+        //   1. Capture the old state for the counter delta.
+        //   2. Pass it as `existing` to avoid a second object_get inside
+        //      prepare_object_for_state_update.
+        let existing = self.objects_db.object_get(uid).await?;
+        let old_state = existing.as_ref().map(|o| o.state);
+
         let db_object = self
-            .prepare_object_for_state_update(uid, state, None)
+            .prepare_object_for_state_update(uid, state, existing)
             .await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
+
+        // Adjust counter only when the liveness crosses a boundary:
+        //   live → destroyed  →  -1
+        //   destroyed → live  →  +1
+        //   no boundary cross →   0
+        if let Some(old) = old_state {
+            let delta = i64::from(is_live(state)) - i64::from(is_live(old));
+            self.objects_db.adjust_live_count(delta).await?;
+        }
         Ok(())
     }
 
@@ -393,6 +421,11 @@ impl ObjectsStore for RedisWithFindex {
             self.delete_findex_keywords(uid, &db_object.keywords())
                 .await?;
             self.objects_db.object_delete(uid).await?;
+            // Only decrement for live objects — destroying an already-destroyed
+            // object must not double-decrement the counter.
+            if is_live(db_object.state) {
+                self.objects_db.adjust_live_count(-1).await?;
+            }
         }
         Ok(())
     }
@@ -408,9 +441,26 @@ impl ObjectsStore for RedisWithFindex {
         // would clobber previous modifications for the same UID.
         let mut pending: HashMap<String, RedisDbObject> = HashMap::new();
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
+        // Accumulate the net live-object delta for the entire batch.  We emit a
+        // single INCRBY at the end rather than one per operation to keep the
+        // counter update close to the data write.
+        let mut live_delta: i64 = 0;
+
         for operation in operations {
             match operation {
                 AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
+                    // Determine whether this Upsert is an insert (+1 if live)
+                    // or an update (±1 on liveness boundary).
+                    // Check pending first (already processed in this batch), then Redis.
+                    let old_state = if let Some(p) = pending.get(uid.as_str()) {
+                        Some(p.state)
+                    } else {
+                        self.objects_db.object_get(uid).await?.map(|o| o.state)
+                    };
+                    let new_live = i64::from(is_live(*state));
+                    live_delta +=
+                        old_state.map_or(new_live, |old| new_live - i64::from(is_live(old)));
+
                     // TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_insert(
@@ -426,6 +476,9 @@ impl ObjectsStore for RedisWithFindex {
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::Create((uid, object, attributes, tags)) => {
+                    // New objects are always live.
+                    live_delta += 1;
+
                     let (uid, db_object) = self
                         .prepare_object_for_create(
                             Some(uid.clone()),
@@ -439,7 +492,9 @@ impl ObjectsStore for RedisWithFindex {
                     redis_operations.push(RedisOperation::Create(uid, db_object));
                 }
                 AtomicOperation::Delete(uid) => {
-                    // Clean up Findex entries before deleting the object
+                    // The existing object is read below (for Findex keyword
+                    // cleanup); we capture its state for the counter at the same
+                    // time — zero extra round trips.
                     let existing = pending.remove(uid);
                     let db_object = match existing {
                         Some(obj) => obj,
@@ -452,11 +507,15 @@ impl ObjectsStore for RedisWithFindex {
                             }
                         }
                     };
+                    if is_live(db_object.state) {
+                        live_delta -= 1;
+                    }
                     self.delete_findex_keywords(uid, &db_object.keywords())
                         .await?;
                     redis_operations.push(RedisOperation::Delete(uid.clone()));
                 }
                 AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                    // State is unchanged by UpdateObject — no counter adjustment.
                     // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
                     let existing = pending.remove(uid);
                     let db_object = self
@@ -466,17 +525,36 @@ impl ObjectsStore for RedisWithFindex {
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
                 AtomicOperation::UpdateState((uid, state)) => {
-                    // TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
-                    let existing = pending.remove(uid);
+                    // Fetch once: either from in-flight pending map or Redis.
+                    // Pass it as `existing` to avoid a second object_get inside
+                    // prepare_object_for_state_update.
+                    let existing = match pending.remove(uid) {
+                        Some(obj) => Some(obj),
+                        None => self.objects_db.object_get(uid).await?,
+                    };
+                    let old_state = existing.as_ref().map(|o| o.state);
+
                     let db_object = self
                         .prepare_object_for_state_update(uid, *state, existing)
                         .await?;
                     pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
+
+                    if let Some(old) = old_state {
+                        live_delta += i64::from(is_live(*state)) - i64::from(is_live(old));
+                    }
                 }
             }
         }
-        Ok(self.objects_db.atomic(&redis_operations).await?)
+
+        let result = self.objects_db.atomic(&redis_operations).await?;
+
+        // Emit a single counter adjustment for the whole batch after the data
+        // write succeeds.  On failure the Redis transaction is rolled back and
+        // the counter should not move.
+        self.objects_db.adjust_live_count(live_delta).await?;
+
+        Ok(result)
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -623,19 +701,33 @@ impl ObjectsStore for RedisWithFindex {
             .collect())
     }
 
-    // TODO(redis): implement count_all_non_destroyed properly.
-    //
-    // Redis-findex stores objects as individual keys with prefix `do::<uid>`.
-    // A correct implementation would use `SCAN do::*` and then retrieve and
-    // filter each object's state field. This is deferred due to the high cost
-    // of a full Redis key scan on large datasets and because Redis-findex is
-    // a non-FIPS backend with lower CI priority.
-    //
-    // Override the trait default (which logs a warning) with a silent `Ok(0)`
-    // because Redis intentionally defers this implementation — the warning
-    // would be misleading and noisy (fired every 30 s from the metrics cron).
+    /// Return the count of live (non-destroyed) objects.
+    ///
+    /// # Fast path (steady state)
+    ///
+    /// Reads a single counter key `kms::metrics::live_object_count` that is
+    /// incremented/decremented in sync with every mutating operation in this
+    /// backend.  Cost: one O(1) `GET`, no decryption.
+    ///
+    /// # Bootstrap (first boot or after `FLUSHDB`)
+    ///
+    /// When the counter key is absent (counter has never been initialised or
+    /// was manually deleted), a one-time SCAN of all `do::*` keys is performed,
+    /// each blob is decrypted, and the result is written to the counter key.
+    /// Subsequent calls return the fast path immediately.
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        Ok(0)
+        // Fast path: counter key already exists.
+        if let Some(count) = self.objects_db.get_live_count().await? {
+            return Ok(count);
+        }
+        // Bootstrap: scan + decrypt once to establish the baseline.
+        let count = self.objects_db.scan_count_non_destroyed().await?;
+        self.objects_db.set_live_count(count).await?;
+        debug!(
+            "[redis-metrics] bootstrapped {} live object(s) into `{}`",
+            count, LIVE_COUNT_KEY
+        );
+        Ok(count)
     }
 }
 

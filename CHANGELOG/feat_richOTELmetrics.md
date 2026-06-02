@@ -53,3 +53,23 @@
 - Add 30-second periodic absolute sync in `cron.rs` alongside the active-keys refresh.
 - Add `Database::count_all_non_destroyed_objects()` facade that sums counts across all
   registered stores with `saturating_add`, tolerating partial failures.
+
+### Object Count Metric — Redis-findex backend (Step 3, continued)
+
+- Implement `count_all_non_destroyed` for the `RedisWithFindex` backend using an
+  O(1) counter key (`kms::metrics::live_object_count`) instead of a full key scan.
+- **`ObjectsDB`**: add 4 new methods — `adjust_live_count(delta)` (`INCRBY`),
+  `get_live_count()` (`GET`, returns `None` when key absent), `set_live_count(count)`
+  (`SET`, bootstrap only), and `scan_count_non_destroyed()` (one-time SCAN+decrypt
+  to establish the baseline on first boot or after `FLUSHDB`).
+- **`RedisWithFindex`**: add `is_live(state) -> bool` helper; wire `adjust_live_count`
+  into `create` (+1), `update_state` (±1 on boundary cross), `delete` (-1 for live
+  objects only), and `atomic` (accumulate `live_delta` for the batch, emit one
+  `INCRBY` after the transaction succeeds).
+- **`count_all_non_destroyed`**: fast path reads the counter key (O(1), no
+  decryption); if absent it falls back to `scan_count_non_destroyed`, persists the
+  result, then returns it.  After the first call the fast path is always taken.
+- **Test** (`test_live_count_counter`): 6-step integration test covering create →
+  destroy → delete-live → delete-destroyed → fast-path count → bootstrap-SCAN count.
+  Registered in `test_db_redis_with_findex`.
+  Tagged `#[ignore = "Requires a running Redis instance"]`.
