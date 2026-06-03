@@ -13,6 +13,7 @@
 - Added `.github/workflows/flamegraph.yml`: CI job that runs the throughput bench on an 8-core
   Ubuntu runner and generates flamegraph SVGs (via `cargo-flamegraph` / Linux `perf`) per worker
   count, uploading both Criterion HTML reports and SVGs as GitHub Actions artifacts.
-- Added `documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/cpu_scaling.md`:
-  documentation page explaining the methodology, how to reproduce locally, and how to interpret
-  scaling charts and flamegraphs.
+- Added `.github/scripts/benchmarks/bench_run_flamegraph.sh`: shell script that runs
+  the `http_throughput` Criterion bench across all worker counts and generates per-worker
+  flamegraph SVGs via `cargo-flamegraph` / Linux `perf`, then writes an updated
+  `cpu_scaling.md` documentation page.
