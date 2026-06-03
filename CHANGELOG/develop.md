@@ -19,3 +19,12 @@
   the `http_throughput` Criterion bench across all worker counts and generates per-worker
   flamegraph SVGs via `cargo-flamegraph` / Linux `perf`, then writes an updated
   `cpu_scaling.md` documentation page.
+
+### Performance
+- `[profile.bench]`: override `opt-level` from `"z"` (size) to `3` (speed) — release profile
+  was silently costing 15–40% throughput in all benchmarks
+- `.cargo/config.toml`: add `target-cpu=native` for x86_64 to enable AES-NI/AVX2/SHA-NI
+  in non-crypto glue code; add `bench-native` alias for local benchmark runs
+- SQLite: add `PRAGMA cache_size=-65536` (64 MiB page cache), `PRAGMA mmap_size=268435456`
+  (256 MiB mmap window), and `PRAGMA temp_store=MEMORY` to reduce syscall overhead for
+  read-heavy concurrent workloads

@@ -22,3 +22,16 @@ deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 # Publish dry-run helpers (allow dirty tree during local checks)
 publish-dry = "publish --dry-run --workspace --allow-dirty"
 publish-dry-crate = "publish --dry-run --allow-dirty"
+
+# Run throughput bench with native-CPU tuning for maximum representative throughput.
+# cargo bench-native -- http_throughput
+bench-native = "bench --bench http_throughput"
+
+[target.x86_64-unknown-linux-gnu]
+# Enable AES-NI, AVX2, and SHA extensions for the bench profile.
+# These are the same instructions OpenSSL's crypto engine selects at runtime
+# via CPUID, so this flag has no correctness impact — it only allows rustc
+# to emit AVX2 vector code in non-crypto glue (serialisation, hashing, etc.).
+# NOTE: binaries built with this flag are not portable to older CPUs.
+# Remove or override with RUSTFLAGS="" for reproducible CI release builds.
+rustflags = ["-C", "target-cpu=native"]
