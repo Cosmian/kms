@@ -5,11 +5,16 @@
 Subcommands
 -----------
 verify-jws          Verify a detached JWS using a DER-encoded public key (via jwcrypto).
+sign-jws            Sign data with a DER-encoded private key, output compact JWS.
 decrypt-jwe         Decrypt a flattened JWE using raw symmetric key bytes (via jwcrypto).
 encrypt-jwe         Encrypt plaintext as a flattened JWE using raw symmetric key bytes (via jwcrypto).
 decrypt-jwe-rsa     Decrypt a flattened JWE using an RSA private key (RSA-OAEP / RSA-OAEP-256).
 encrypt-jwe-rsa     Encrypt plaintext as a flattened JWE using an RSA public key (RSA-OAEP / RSA-OAEP-256).
 mac-sha256          Compute HMAC-SHA256 over raw bytes using a base64url key (via jwcrypto).
+mac                 Compute HMAC (HS256/HS384/HS512) over raw bytes using a hex key.
+mac-verify          Verify HMAC (HS256/HS384/HS512) over raw bytes using a hex key.
+wrap-cek-rsa        Wrap a symmetric CEK using RSA-OAEP with a DER public key.
+generate-jwk        Generate a JWK key and output full private JWK JSON.
 
 All inputs/outputs use hex or base64url encoding to be shell-friendly.
 
@@ -49,7 +54,8 @@ def cmd_verify_jws(args: argparse.Namespace) -> None:
     pub_der = binascii.unhexlify(args.pub_der_hex)
 
     # Import the public key from DER
-    from cryptography.hazmat.primitives.serialization import load_der_public_key
+    from cryptography.hazmat.primitives.serialization import \
+        load_der_public_key
 
     pub_key_crypto = load_der_public_key(pub_der)
 
@@ -68,6 +74,33 @@ def cmd_verify_jws(args: argparse.Namespace) -> None:
     except Exception as e:
         print(f"error={e}", file=sys.stderr)
         sys.exit(2)
+
+
+# ── sign-jws ──────────────────────────────────────────────────────────────────
+
+
+def cmd_sign_jws(args: argparse.Namespace) -> None:
+    """Sign data with a DER-encoded private key, output compact JWS."""
+    from cryptography.hazmat.primitives.serialization import \
+        load_der_private_key
+
+    priv_der = binascii.unhexlify(args.priv_der_hex)
+    priv_key_crypto = load_der_private_key(priv_der, password=None)
+
+    key = jwk.JWK()
+    key.import_from_pyca(priv_key_crypto)
+
+    payload_bytes = _b64url_decode(args.payload_b64url)
+
+    protected_header: dict = {'alg': args.alg}
+    if args.kid:
+        protected_header['kid'] = args.kid
+
+    jws_obj = jws.JWS(payload_bytes)
+    jws_obj.add_signature(key, alg=args.alg, protected=json.dumps(protected_header))
+
+    # Output compact serialization: header.payload.signature
+    print(jws_obj.serialize(compact=True))
 
 
 # ── decrypt-jwe ───────────────────────────────────────────────────────────────
@@ -137,7 +170,8 @@ def cmd_encrypt_jwe(args: argparse.Namespace) -> None:
 
 def cmd_encrypt_jwe_rsa(args: argparse.Namespace) -> None:
     """Encrypt plaintext as flattened JWE using an RSA public key (RSA-OAEP)."""
-    from cryptography.hazmat.primitives.serialization import load_der_public_key
+    from cryptography.hazmat.primitives.serialization import \
+        load_der_public_key
 
     pub_der = binascii.unhexlify(args.pub_der_hex)
     plaintext = binascii.unhexlify(args.plaintext_hex)
@@ -167,7 +201,8 @@ def cmd_encrypt_jwe_rsa(args: argparse.Namespace) -> None:
 
 def cmd_decrypt_jwe_rsa(args: argparse.Namespace) -> None:
     """Decrypt a flattened JWE using an RSA private key (RSA-OAEP)."""
-    from cryptography.hazmat.primitives.serialization import load_der_private_key
+    from cryptography.hazmat.primitives.serialization import \
+        load_der_private_key
 
     priv_der = binascii.unhexlify(args.priv_der_hex)
     priv_key_crypto = load_der_private_key(priv_der, password=None)
@@ -212,6 +247,127 @@ def cmd_mac_sha256(args: argparse.Namespace) -> None:
     print(_b64url_no_pad(mac_value))
 
 
+# ── mac (generic) ─────────────────────────────────────────────────────────────
+
+_HMAC_ALG_MAP = {
+    'HS256': 'sha256',
+    'HS384': 'sha384',
+    'HS512': 'sha512',
+}
+
+
+def cmd_mac(args: argparse.Namespace) -> None:
+    """Compute HMAC (HS256/HS384/HS512) over raw bytes, output as base64url."""
+    import hashlib
+    import hmac
+
+    hash_name = _HMAC_ALG_MAP.get(args.alg)
+    if not hash_name:
+        print(f"error=unsupported alg: {args.alg}", file=sys.stderr)
+        sys.exit(1)
+
+    key_bytes = binascii.unhexlify(args.key_hex)
+    data_bytes = binascii.unhexlify(args.data_hex)
+
+    mac_value = hmac.new(key_bytes, data_bytes, getattr(hashlib, hash_name)).digest()
+    print(_b64url_no_pad(mac_value))
+
+
+# ── mac-verify ────────────────────────────────────────────────────────────────
+
+
+def cmd_mac_verify(args: argparse.Namespace) -> None:
+    """Verify HMAC (HS256/HS384/HS512) over raw bytes."""
+    import hashlib
+    import hmac
+
+    hash_name = _HMAC_ALG_MAP.get(args.alg)
+    if not hash_name:
+        print(f"error=unsupported alg: {args.alg}", file=sys.stderr)
+        sys.exit(1)
+
+    key_bytes = binascii.unhexlify(args.key_hex)
+    data_bytes = binascii.unhexlify(args.data_hex)
+    expected_mac = _b64url_decode(args.mac_b64url)
+
+    computed = hmac.new(key_bytes, data_bytes, getattr(hashlib, hash_name)).digest()
+    if hmac.compare_digest(computed, expected_mac):
+        print('valid=true')
+    else:
+        print('valid=false')
+        sys.exit(1)
+
+
+# ── wrap-cek-rsa ──────────────────────────────────────────────────────────────
+
+
+def cmd_wrap_cek_rsa(args: argparse.Namespace) -> None:
+    """Wrap a symmetric CEK with RSA-OAEP using a DER public key.
+
+    Outputs the wrapped key as base64url (no padding).
+    """
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.primitives.serialization import \
+        load_der_public_key
+
+    pub_der = binascii.unhexlify(args.pub_der_hex)
+    cek_bytes = binascii.unhexlify(args.cek_hex)
+
+    pub_key = load_der_public_key(pub_der)
+
+    if args.alg == 'RSA-OAEP':
+        oaep_padding = padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA1()),
+            algorithm=hashes.SHA1(),
+            label=None,
+        )
+    elif args.alg == 'RSA-OAEP-256':
+        oaep_padding = padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        )
+    else:
+        print(f"error=unsupported alg: {args.alg}", file=sys.stderr)
+        sys.exit(1)
+
+    wrapped = pub_key.encrypt(cek_bytes, oaep_padding)
+    print(_b64url_no_pad(wrapped))
+
+
+# ── generate-jwk ──────────────────────────────────────────────────────────────
+
+
+def cmd_generate_jwk(args: argparse.Namespace) -> None:
+    """Generate a JWK key using jwcrypto, output full private JWK JSON.
+
+    Supports RSA, EC, OKP (Ed25519), and oct (symmetric).
+    The output includes all private components needed for import into KMS.
+    """
+    if args.kty == 'RSA':
+        key = jwk.JWK.generate(kty='RSA', size=args.bits or 2048)
+    elif args.kty == 'EC':
+        crv = args.crv or 'P-256'
+        key = jwk.JWK.generate(kty='EC', crv=crv)
+    elif args.kty == 'OKP':
+        crv = args.crv or 'Ed25519'
+        key = jwk.JWK.generate(kty='OKP', crv=crv)
+    elif args.kty == 'oct':
+        size = args.bits or 256
+        key = jwk.JWK.generate(kty='oct', size=size)
+    else:
+        print(f"error=unsupported kty: {args.kty}", file=sys.stderr)
+        sys.exit(1)
+
+    # Export full JWK (private for asymmetric, symmetric for oct)
+    if args.kty == 'oct':
+        jwk_dict = json.loads(key.export_symmetric())
+    else:
+        jwk_dict = json.loads(key.export_private())
+    print(json.dumps(jwk_dict))
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
@@ -229,6 +385,19 @@ def main() -> None:
     )
     p_vj.add_argument(
         '--compact', required=True, help='Compact JWS (header.payload.signature)'
+    )
+
+    # sign-jws
+    p_sj = sub.add_parser('sign-jws', help='Sign data and output compact JWS')
+    p_sj.add_argument('--alg', required=True, help='JOSE algorithm (e.g. RS256)')
+    p_sj.add_argument(
+        '--priv-der-hex', required=True, help='Private key in DER format (hex)'
+    )
+    p_sj.add_argument(
+        '--payload-b64url', required=True, help='Payload (base64url, no padding)'
+    )
+    p_sj.add_argument(
+        '--kid', default=None, help='Key ID to include in protected header'
     )
 
     # decrypt-jwe
@@ -291,15 +460,65 @@ def main() -> None:
     )
     p_mac.add_argument('--data-hex', required=True, help='Data bytes (hex)')
 
+    # mac (generic)
+    p_mac_g = sub.add_parser('mac', help='Compute HMAC (HS256/HS384/HS512)')
+    p_mac_g.add_argument(
+        '--alg', required=True, help='HMAC algorithm (HS256, HS384, HS512)'
+    )
+    p_mac_g.add_argument('--key-hex', required=True, help='Key bytes (hex)')
+    p_mac_g.add_argument('--data-hex', required=True, help='Data bytes (hex)')
+
+    # mac-verify
+    p_mac_v = sub.add_parser(
+        'mac-verify', help='Verify HMAC (HS256/HS384/HS512)'
+    )
+    p_mac_v.add_argument(
+        '--alg', required=True, help='HMAC algorithm (HS256, HS384, HS512)'
+    )
+    p_mac_v.add_argument('--key-hex', required=True, help='Key bytes (hex)')
+    p_mac_v.add_argument('--data-hex', required=True, help='Data bytes (hex)')
+    p_mac_v.add_argument(
+        '--mac-b64url', required=True, help='Expected MAC (base64url, no padding)'
+    )
+
+    # wrap-cek-rsa
+    p_wrap = sub.add_parser(
+        'wrap-cek-rsa', help='Wrap CEK with RSA-OAEP public key'
+    )
+    p_wrap.add_argument(
+        '--pub-der-hex', required=True, help='RSA public key in DER format (hex)'
+    )
+    p_wrap.add_argument('--cek-hex', required=True, help='CEK bytes (hex)')
+    p_wrap.add_argument(
+        '--alg',
+        default='RSA-OAEP-256',
+        help='Key management alg (default: RSA-OAEP-256)',
+    )
+
+    # generate-jwk
+    p_gen = sub.add_parser(
+        'generate-jwk', help='Generate a JWK key and output full private JWK JSON'
+    )
+    p_gen.add_argument(
+        '--kty', required=True, help='Key type (RSA, EC, OKP, oct)'
+    )
+    p_gen.add_argument('--crv', default=None, help='Curve (P-256, P-384, P-521, Ed25519)')
+    p_gen.add_argument('--bits', type=int, default=None, help='Key size in bits')
+
     args = parser.parse_args()
 
     commands = {
         'verify-jws': cmd_verify_jws,
+        'sign-jws': cmd_sign_jws,
         'decrypt-jwe': cmd_decrypt_jwe,
         'encrypt-jwe': cmd_encrypt_jwe,
         'decrypt-jwe-rsa': cmd_decrypt_jwe_rsa,
         'encrypt-jwe-rsa': cmd_encrypt_jwe_rsa,
         'mac-sha256': cmd_mac_sha256,
+        'mac': cmd_mac,
+        'mac-verify': cmd_mac_verify,
+        'wrap-cek-rsa': cmd_wrap_cek_rsa,
+        'generate-jwk': cmd_generate_jwk,
     }
     commands[args.command](args)
 

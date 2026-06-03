@@ -7,11 +7,12 @@ use actix_web::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
+        extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, PrivateKey, SymmetricKey},
+        kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
         kmip_operations::{Destroy, Revoke},
-        kmip_types::{KeyFormatType, UniqueIdentifier},
+        kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
         requests::{
             create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request,
             symmetric_key_create_request,
@@ -457,6 +458,68 @@ async fn import_symmetric_key(
     })
 }
 
+// ─── Internal: derive and import the public key for an imported private key ──
+
+/// After importing a private key, derive its public key (SPKI DER), import it
+/// as a separate `PublicKey` object with UID `{private_key_uid}_pk`, and set up
+/// bidirectional links (`PublicKeyLink` on the private key, `PrivateKeyLink` on
+/// the public key).
+async fn import_public_key_for_private(
+    kms: &Arc<KMS>,
+    user: &str,
+    pkey: &PKey<openssl::pkey::Private>,
+    private_key_uid: &str,
+    usage_mask: CryptographicUsageMask,
+) -> Result<String, CryptoApiError> {
+    let pub_uid = format!("{private_key_uid}{SYSTEM_TAG_PUBLIC_KEY}");
+
+    let spki_der = pkey
+        .public_key_to_der()
+        .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    // Build Attributes for the public key with PrivateKeyLink
+    let mut pub_attributes = Attributes {
+        cryptographic_usage_mask: Some(usage_mask),
+        key_format_type: Some(KeyFormatType::PKCS8),
+        ..Attributes::default()
+    };
+    pub_attributes.set_link(
+        LinkType::PrivateKeyLink,
+        LinkedObjectIdentifier::TextString(private_key_uid.to_owned()),
+    );
+
+    let pub_object = Object::PublicKey(PublicKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(Zeroizing::from(spki_der)),
+                attributes: Some(pub_attributes.clone()),
+            }),
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    });
+
+    let import_req = import_object_request(
+        kms.vendor_id(),
+        Some(pub_uid.clone()),
+        pub_object,
+        Some(pub_attributes),
+        false,
+        false,
+        Vec::<&str>::new(),
+    )
+    .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+
+    kms.import(import_req, user, None)
+        .await
+        .map_err(CryptoApiError::from)?;
+
+    Ok(pub_uid)
+}
+
 // ─── Internal: EC key import ────────────────────────────────────────────────
 
 async fn import_ec_key(
@@ -604,6 +667,11 @@ async fn import_ec_key(
         .map_err(CryptoApiError::from)?;
 
     let kid = resp.unique_identifier.to_string();
+
+    // Derive and import the public key alongside the private key
+    let pub_usage = CryptographicUsageMask::Verify;
+    let kid_public = import_public_key_for_private(kms, user, &pkey, &kid, pub_usage).await?;
+
     let key_ops = alg.map_or_else(
         || vec!["sign".to_owned(), "verify".to_owned()],
         key_ops_from_alg,
@@ -611,7 +679,7 @@ async fn import_ec_key(
 
     Ok(KeyCreateResponse {
         kid,
-        kid_public: None,
+        kid_public: Some(kid_public),
         kty: "EC".to_owned(),
         alg: alg.map(ToOwned::to_owned),
         crv: Some(crv.to_owned()),
@@ -762,6 +830,11 @@ async fn import_rsa_key(
         .map_err(CryptoApiError::from)?;
 
     let kid = resp.unique_identifier.to_string();
+
+    // Derive and import the public key alongside the private key
+    let pub_usage = CryptographicUsageMask::Verify;
+    let kid_public = import_public_key_for_private(kms, user, &pkey, &kid, pub_usage).await?;
+
     let key_ops = alg.map_or_else(
         || vec!["sign".to_owned(), "verify".to_owned()],
         key_ops_from_alg,
@@ -769,7 +842,7 @@ async fn import_rsa_key(
 
     Ok(KeyCreateResponse {
         kid,
-        kid_public: None,
+        kid_public: Some(kid_public),
         kty: "RSA".to_owned(),
         alg: alg.map(ToOwned::to_owned),
         crv: None,
@@ -860,6 +933,11 @@ async fn import_okp_key(
         .map_err(CryptoApiError::from)?;
 
     let kid = resp.unique_identifier.to_string();
+
+    // Derive and import the public key alongside the private key
+    let pub_usage = CryptographicUsageMask::Verify;
+    let kid_public = import_public_key_for_private(kms, user, &pkey, &kid, pub_usage).await?;
+
     let key_ops = alg.map_or_else(
         || vec!["sign".to_owned(), "verify".to_owned()],
         key_ops_from_alg,
@@ -867,7 +945,7 @@ async fn import_okp_key(
 
     Ok(KeyCreateResponse {
         kid,
-        kid_public: None,
+        kid_public: Some(kid_public),
         kty: "OKP".to_owned(),
         alg: alg.map(ToOwned::to_owned),
         crv: Some(crv.to_owned()),
