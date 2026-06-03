@@ -19,6 +19,9 @@
 #   WORKER_COUNTS    Space-separated worker counts to sweep  (default: "1 2 4 8")
 #   PROFILE_TIME     Seconds to record per flamegraph  (default: 15)
 #   BENCH_OPERATION  Criterion bench filter for flamegraph  (default: "ECDSA P-256 sign")
+#   PERF_FREQ        perf sampling frequency in Hz  (default: 500)
+#                    997 Hz (cargo-flamegraph default) × 8 threads can overflow the
+#                    256-page ring buffer; 500 Hz is a safe default that halves pressure.
 #   OUT_MD           Output markdown path  (default: documentation/docs/…/cpu_scaling.md)
 #   CARGO_TARGET_DIR Override cargo target directory
 #   SKIP_FLAMEGRAPH  Set to 1 to skip flamegraph generation (throughput bench only)
@@ -44,6 +47,11 @@ export CARGO_TARGET_DIR
 WORKER_COUNTS="${WORKER_COUNTS:-1 2 4 8}"
 PROFILE_TIME="${PROFILE_TIME:-15}"
 BENCH_OPERATION="${BENCH_OPERATION:-ECDSA P-256 sign}"
+# 500 Hz instead of cargo-flamegraph's default 997 Hz.
+# At 997 Hz × 8 worker threads the ring buffer (256 pages = 1 MB) can fill faster
+# than the kernel drains it, producing "lost N chunks" warnings and incomplete traces.
+# 500 Hz halves ring-buffer pressure with negligible impact on flamegraph resolution.
+PERF_FREQ="${PERF_FREQ:-500}"
 SKIP_FLAMEGRAPH="${SKIP_FLAMEGRAPH:-0}"
 SKIP_THROUGHPUT="${SKIP_THROUGHPUT:-0}"
 OUT_MD="${OUT_MD:-documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/cpu_scaling.md}"
@@ -53,6 +61,7 @@ echo "  Cosmian KMS — CPU Scaling Flamegraph Benchmark"
 echo "  Variant       : ${VARIANT}"
 echo "  Worker counts : ${WORKER_COUNTS}"
 echo "  Profile time  : ${PROFILE_TIME}s per worker count"
+echo "  perf frequency: ${PERF_FREQ} Hz"
 echo "  Operation     : ${BENCH_OPERATION}"
 echo "============================================================"
 
@@ -123,12 +132,25 @@ if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
     BENCH_FILTER="${BENCH_OPERATION}/${workers} workers"
     echo ""
     echo "   Worker count: ${workers}  →  ${SVG_OUT}"
+    # --freq: reduced from the default 997 Hz to avoid ring-buffer overflow
+    #   ("lost N chunks") at high thread counts. 500 Hz still gives ~7500 samples
+    #   over 15 s — more than enough flamegraph resolution.
+    # --no-inline: skips the slow inline-frame expansion step in `perf script`;
+    #   reduces post-processing time from minutes to seconds at the cost of not
+    #   expanding inlined function calls (rarely meaningful for a KMS hotspot chart).
+    # -c: explicit perf record command with --call-graph fp to guarantee frame-pointer
+    #   unwinding even if cargo-flamegraph's auto-detect falls back to dwarf.
+    #   fp unwinding stores only 8-byte addresses per frame (vs 65 KB for dwarf),
+    #   keeping perf.data in the tens-of-MB range instead of gigabytes.
+    PERF_CMD="perf record --call-graph fp -F ${PERF_FREQ} -g -o perf.data"
     CARGO_PROFILE_BENCH_DEBUG=true \
     cargo flamegraph \
       --bench http_throughput \
       -p test_kms_server \
       "${BENCH_FEATURES_ARGS[@]+"${BENCH_FEATURES_ARGS[@]}"}" \
       --output "${SVG_OUT}" \
+      --no-inline \
+      -c "${PERF_CMD}" \
       -- \
       --bench \
       "${BENCH_FILTER}" \

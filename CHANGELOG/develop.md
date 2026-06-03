@@ -31,3 +31,7 @@
 - `.cargo/config.toml`: add `-C force-frame-pointers=yes` to x86_64 rustflags so
   `cargo-flamegraph` / `perf` uses `--call-graph fp` instead of `--call-graph dwarf`;
   reduces `perf.data` size 50–100× and eliminates the multi-minute `perf script` parsing step
+- `bench_run_flamegraph.sh`: reduce default perf sampling frequency from 997 Hz to 500 Hz
+  (`PERF_FREQ` env), add `--no-inline` (eliminates slow inline-frame expansion in perf script),
+  and force `--call-graph fp` via `-c` custom perf command to prevent DWARF fallback that
+  was producing multi-GB perf.data files and multi-minute parse times
