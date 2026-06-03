@@ -28,10 +28,18 @@ publish-dry-crate = "publish --dry-run --allow-dirty"
 bench-native = "bench --bench http_throughput"
 
 [target.x86_64-unknown-linux-gnu]
-# Enable AES-NI, AVX2, and SHA extensions for the bench profile.
-# These are the same instructions OpenSSL's crypto engine selects at runtime
-# via CPUID, so this flag has no correctness impact — it only allows rustc
-# to emit AVX2 vector code in non-crypto glue (serialisation, hashing, etc.).
-# NOTE: binaries built with this flag are not portable to older CPUs.
-# Remove or override with RUSTFLAGS="" for reproducible CI release builds.
-rustflags = ["-C", "target-cpu=native"]
+# target-cpu=native: enables AES-NI, AVX2, SHA-NI for non-crypto Rust glue code.
+#   OpenSSL already probes these via CPUID at runtime; this flag makes rustc emit
+#   them for serialisation/hashing paths too.
+#   NOTE: produces non-portable binaries — override with RUSTFLAGS="" for CI.
+#
+# force-frame-pointers=yes: makes perf/cargo-flamegraph use --call-graph fp
+#   instead of --call-graph dwarf.  DWARF unwinding requires capturing up to 65 KB
+#   of raw stack per sample, producing hundreds-of-MB perf.data files that take
+#   minutes to parse with `perf script`.  Frame-pointer unwinding stores only a
+#   chain of 8-byte addresses per sample → 50–100× smaller perf.data, instant
+#   `perf script`.  cargo-flamegraph auto-detects the presence of frame pointers
+#   and picks the faster call-graph mode automatically.
+#   Overhead: ~1% throughput from keeping rbp as frame pointer (not used for
+#   general-purpose register allocation); no correctness impact.
+rustflags = ["-C", "target-cpu=native", "-C", "force-frame-pointers=yes"]

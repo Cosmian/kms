@@ -28,3 +28,6 @@
 - SQLite: add `PRAGMA cache_size=-65536` (64 MiB page cache), `PRAGMA mmap_size=268435456`
   (256 MiB mmap window), and `PRAGMA temp_store=MEMORY` to reduce syscall overhead for
   read-heavy concurrent workloads
+- `.cargo/config.toml`: add `-C force-frame-pointers=yes` to x86_64 rustflags so
+  `cargo-flamegraph` / `perf` uses `--call-graph fp` instead of `--call-graph dwarf`;
+  reduces `perf.data` size 50–100× and eliminates the multi-minute `perf script` parsing step
