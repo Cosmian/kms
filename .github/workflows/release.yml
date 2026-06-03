@@ -64,6 +64,7 @@ on:
 concurrency:
   group: release
   cancel-in-progress: false
+  queue: max
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────

@@ -274,6 +274,7 @@ jobs:
     concurrency:
       group: publish-sbom-${{ matrix.features }}-${{ matrix.link }}
       cancel-in-progress: false
+      queue: max
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
