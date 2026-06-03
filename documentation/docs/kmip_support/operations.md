@@ -1,4 +1,4 @@
-In [chapter 6](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239394), the KMIP 2.1
+In [chapter 6](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115631), the KMIP 2.1
 specifications describe 57 potential operations that can be performed on a KMS.
 
 ### Supported Operations

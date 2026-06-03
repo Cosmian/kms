@@ -1,4 +1,4 @@
-In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239322), the KMIP 2.1 specification specifies a list of 63 Attributes, mostly made of enumerations and data structures, often nested in each other. Despite this impressive list, and as expected in such a large specification, KMIP allows for extensions to support new cryptographic schemes such as the ones enabled by Eviden.
+In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115559), the KMIP 2.1 specification specifies a list of 63 Attributes, mostly made of enumerations and data structures, often nested in each other. Despite this impressive list, and as expected in such a large specification, KMIP allows for extensions to support new cryptographic schemes such as the ones enabled by Eviden.
 
 Extensions in KMIP consist mostly in augmenting enumerations with new values and attributing a specific prefix values, usually `0x8880` to the new variants.
 
@@ -41,7 +41,7 @@ CoverCrypt = 0x8880_0004,
 
 #### Vendor Attributes
 
-All keys managed by the Eviden KMS server are primarily a `KeyMaterial` made of bytes. Some keys, typically those of ABE, also carry information regarding the underlying access policies. This information is carried together with the keys using [VendorAttributes](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239382)
+All keys managed by the Eviden KMS server are primarily a `KeyMaterial` made of bytes. Some keys, typically those of ABE, also carry information regarding the underlying access policies. This information is carried together with the keys using [VendorAttributes](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115619)
 
 Typically a vendor attribute is made of 3 values: a `Vendor Identification` - set to the server's configured vendor ID (default: `cosmian`, configurable via `--vendor-identification` / `KMS_VENDOR_IDENTIFICATION`) - and a tuple `Attribute Name`, `Attribute Value`.
 

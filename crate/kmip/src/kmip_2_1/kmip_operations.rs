@@ -707,7 +707,7 @@ pub enum InteropFunction {
 /// `OperationUndone` in the response, potentially including only the Unique Identifier
 /// in the payload as per the KMIP profiles.
 ///
-/// Reference: <https://docs.oasis-open.org/kmip/kmip-spec/v2.0/os/kmip-spec-v2.0-os.html>#_`Toc6497533L`
+/// Reference: <https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115639>
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct Check {
