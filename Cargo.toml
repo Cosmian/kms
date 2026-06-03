@@ -120,6 +120,17 @@ incremental = false # Disable incremental compilation for determinism
 debug = 0 # No debug info (timestamps/paths)
 overflow-checks = true # Catch integer overflows in release builds (ANSSI LANG-ARITH)
 
+[profile.bench]
+# Inherits release optimisations but keeps symbols so cargo-flamegraph / perf
+# can resolve function names across all crates (server, crypto, OpenSSL wrapper).
+# lto = "thin" is used instead of "fat" to keep link times manageable while
+# still allowing cross-crate inlining that is visible in flamegraphs.
+inherits = "release"
+strip = "none"          # MUST be none — perf needs symbol tables
+debug = 1               # Line-table DWARF: enough for flamegraphs, ~10% size overhead
+lto = "thin"            # Thin LTO: faster link, still shows cross-crate frames
+codegen-units = 1       # Keep single CGU for realistic inlining
+
 [profile.dev]
 strip = "debuginfo"
 incremental = false
