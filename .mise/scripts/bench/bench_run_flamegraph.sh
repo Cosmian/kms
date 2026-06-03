@@ -132,17 +132,20 @@ if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
     BENCH_FILTER="${BENCH_OPERATION}/${workers} workers"
     echo ""
     echo "   Worker count: ${workers}  →  ${SVG_OUT}"
-    # --freq: reduced from the default 997 Hz to avoid ring-buffer overflow
-    #   ("lost N chunks") at high thread counts. 500 Hz still gives ~7500 samples
-    #   over 15 s — more than enough flamegraph resolution.
-    # --no-inline: skips the slow inline-frame expansion step in `perf script`;
-    #   reduces post-processing time from minutes to seconds at the cost of not
-    #   expanding inlined function calls (rarely meaningful for a KMS hotspot chart).
-    # -c: explicit perf record command with --call-graph fp to guarantee frame-pointer
-    #   unwinding even if cargo-flamegraph's auto-detect falls back to dwarf.
-    #   fp unwinding stores only 8-byte addresses per frame (vs 65 KB for dwarf),
-    #   keeping perf.data in the tens-of-MB range instead of gigabytes.
-    PERF_CMD="perf record --call-graph fp -F ${PERF_FREQ} -g -o perf.data"
+    # The -c/--cmd argument to cargo-flamegraph is appended token-by-token to
+    # `Command::new("perf")` — do NOT include "perf" itself at the start.
+    # The default args string is "record -F {freq} --call-graph dwarf,64000 -g";
+    # we replace it entirely to force frame-pointer unwinding and lower frequency.
+    #
+    #   record              → perf sub-command (required)
+    #   --call-graph fp     → frame-pointer unwinding: 8-byte addresses per frame
+    #                         instead of 65 KB of raw stack (dwarf); keeps perf.data
+    #                         in the tens-of-MB range, eliminates multi-minute parse
+    #   -F ${PERF_FREQ}     → sampling rate; 500 Hz avoids ring-buffer overflow at
+    #                         high thread counts (997 Hz default × 8 threads ≫ 1 MB ring)
+    #   -g                  → enable call-graph recording (belt-and-suspenders alongside
+    #                         --call-graph fp)
+    PERF_CMD="record --call-graph fp -F ${PERF_FREQ} -g"
     CARGO_PROFILE_BENCH_DEBUG=true \
     cargo flamegraph \
       --bench http_throughput \
