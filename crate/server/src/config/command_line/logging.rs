@@ -69,8 +69,11 @@ pub struct LoggingConfig {
     /// File logging is disabled unless this option is explicitly set.
     /// Suggested paths:
     ///   Linux: /var/log/
-    ///   Windows: %LOCALAPPDATA%\Cosmian KMS Server
+    ///   Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
     ///   macOS: ~/Library/Logs/Cosmian KMS Server
+    ///
+    /// WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
+    /// expanded. Use the fully-resolved path.
     #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]
     pub rolling_log_dir: Option<PathBuf>,
 

@@ -48,16 +48,31 @@ function Write-Step { param([string]$Msg) Write-Host "`n=== $Msg ===" -Foregroun
 function Write-Ok { param([string]$Msg) Write-Host "  [OK] $Msg" -ForegroundColor Green }
 function Write-Fail { param([string]$Msg) Write-Host "  [FAIL] $Msg" -ForegroundColor Red }
 
-# Invoke a native program and throw only on non-zero exit code.
-# In PowerShell 5.1, cargo's stderr (build progress / warnings) is converted
-# to error records.  Wrapping in try/catch absorbs those records while still
-# letting us check the real exit code via $LASTEXITCODE.
+# Invoke a native program and fail hard on non-zero exit code.
+# PowerShell 5.1 treats ANY stderr output as a NativeCommandError when
+# $ErrorActionPreference="Stop", even with file-based redirects. The only
+# reliable workaround is to run the native program via cmd /c so that
+# PowerShell never sees the stderr stream at all.
 function Invoke-Native {
     param([string]$Program, [string[]]$Arguments, [string]$FailMessage)
-    try { & $Program @Arguments } catch { }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "$FailMessage (exit code $LASTEXITCODE)"
-        exit $LASTEXITCODE
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    # Build a single command line for cmd /c.  Quote arguments that contain spaces.
+    $escapedArgs = @($Program) + ($Arguments | ForEach-Object {
+        if ($_ -match '\s') { "`"$_`"" } else { $_ }
+    })
+    $cmdLine = $escapedArgs -join ' '
+    cmd /c "$cmdLine 2>`"$stderrFile`""
+    $exitCode = $LASTEXITCODE
+    if (Test-Path $stderrFile) {
+        $stderrContent = Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue
+        if ($stderrContent) {
+            Write-Host $stderrContent -ForegroundColor DarkGray
+        }
+        Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0) {
+        Write-Host "`n  FAILED: $FailMessage (exit code $exitCode)" -ForegroundColor Red
+        exit $exitCode
     }
 }
 
@@ -205,6 +220,8 @@ server_url = "$KMS_URL"
     $ckmsExe = Join-Path $TARGET_DIR "ckms.exe"
     if ($IsAdmin) {
         Write-Step "Registering CNG KSP in Windows registry"
+        # Unregister first in case a previous run left it registered (avoids STATUS_OBJECT_NAME_COLLISION)
+        cmd /c "`"$ckmsExe`" cng unregister 2>nul" | Out-Null
         Invoke-Native $ckmsExe @("cng", "register", "--dll", (Resolve-Path $DllPath).Path) "ckms cng register failed"
         Write-Ok "KSP registered"
 
@@ -258,6 +275,120 @@ server_url = "$KMS_URL"
     # status (already tested above, but confirm again after test operations)
     Invoke-Native $ckmsExe @("cng", "status") "ckms cng status works"
     Write-Ok "ckms cng status works"
+
+    # -- 8b. Intune PFX Import workflow (Add-IntuneKspKey + Export) --------
+
+    if ($IsAdmin) {
+        Write-Step "Testing Intune PFX Import workflow (Add-IntuneKspKey + Export-IntunePublicKey)"
+
+        # Locate IntunePfxImport module: check INTUNE_PFX_MODULE_PATH env var,
+        # then well-known CI path, then skip if unavailable.
+        $intuneModulePath = $null
+        if ($env:INTUNE_PFX_MODULE_PATH -and (Test-Path $env:INTUNE_PFX_MODULE_PATH)) {
+            $intuneModulePath = $env:INTUNE_PFX_MODULE_PATH
+        } elseif (Test-Path "$PSScriptRoot\..\..\..\test_data\intune\IntunePfxImport.psd1") {
+            $intuneModulePath = Resolve-Path "$PSScriptRoot\..\..\..\test_data\intune\IntunePfxImport.psd1"
+        }
+
+        if ($intuneModulePath) {
+            Import-Module $intuneModulePath -Force
+            Write-Ok "IntunePfxImport module loaded from $intuneModulePath"
+
+            # Create an encryption key pair via Add-IntuneKspKey.
+            # This calls NCryptCreatePersistedKey → NCryptSetProperty → NCryptFinalizeKey
+            # on the Cosmian KSP. The RSA key pair is created in the KMS.
+            $intuneKeyName = "intune-pfx-test-key"
+            try {
+                Add-IntuneKspKey `
+                    -ProviderName "Cosmian KMS Key Storage Provider" `
+                    -KeyName $intuneKeyName `
+                    -MakeExportable
+                Write-Ok "Add-IntuneKspKey created key '$intuneKeyName' in Cosmian KMS"
+            } catch {
+                Write-Fail "Add-IntuneKspKey failed: $($_.Exception.Message)"
+                exit 1
+            }
+
+            # Verify the key exists via ckms list-keys (output shows UIDs, not names)
+            $listOutput = & $ckmsExe cng list-keys 2>&1 | Out-String
+            if ($listOutput -match "No CNG KSP keys found") {
+                Write-Fail "Key '$intuneKeyName' NOT found in ckms cng list-keys (no keys listed)"
+                exit 1
+            } elseif ($listOutput -match "CNG KSP keys in the KMS:") {
+                Write-Ok "Key '$intuneKeyName' visible in ckms cng list-keys"
+            } else {
+                Write-Fail "ckms cng list-keys returned unexpected output: $listOutput"
+                exit 1
+            }
+
+            # Export the public key via Export-IntunePublicKey.
+            # This calls NCryptOpenKey → NCryptExportKey (BCRYPT_RSAPUBLIC_BLOB)
+            # and writes the CNG blob to a file.
+            $exportPath = Join-Path $env:TEMP "intune-pfx-test-key.pfx"
+            if (Test-Path $exportPath) { Remove-Item -Force $exportPath }
+            try {
+                Export-IntunePublicKey `
+                    -ProviderName "Cosmian KMS Key Storage Provider" `
+                    -KeyName $intuneKeyName `
+                    -FilePath $exportPath
+            } catch {
+                Write-Fail "Export-IntunePublicKey failed: $($_.Exception.Message)"
+                exit 1
+            }
+            if (Test-Path $exportPath) {
+                $fileSize = (Get-Item $exportPath).Length
+                if ($fileSize -lt 100) {
+                    Write-Fail "Export-IntunePublicKey file too small ($fileSize bytes)"
+                    exit 1
+                }
+                Write-Ok "Export-IntunePublicKey wrote $fileSize bytes to $exportPath"
+            } else {
+                Write-Fail "Export-IntunePublicKey did not create output file"
+                exit 1
+            }
+
+            # Clean up the exported public key file
+            Remove-Item -Force $exportPath -ErrorAction SilentlyContinue
+
+            # Export the private key via Export-IntunePrivateKey.
+            # This calls NCryptOpenKey → NCryptExportKey with PKCS8_PRIVATEKEY blob type.
+            $privExportPath = Join-Path $env:TEMP "intune-pfx-test-key-priv.pfx"
+            if (Test-Path $privExportPath) { Remove-Item -Force $privExportPath }
+            Export-IntunePrivateKey `
+                -ProviderName "Cosmian KMS Key Storage Provider" `
+                -KeyName $intuneKeyName `
+                -FilePath $privExportPath
+            if (-not (Test-Path $privExportPath)) {
+                throw "Export-IntunePrivateKey did not produce output file"
+            }
+            $privFileSize = (Get-Item $privExportPath).Length
+            if ($privFileSize -eq 0) {
+                throw "Export-IntunePrivateKey produced empty file"
+            }
+            Write-Ok "Export-IntunePrivateKey wrote $privFileSize bytes"
+
+            # Import a private key via Import-IntunePrivateKey.
+            # This calls NCryptImportKey with RSAFULLPRIVATEBLOB blob type.
+            $importKeyName = "intune-pfx-import-test-key"
+            Import-IntunePrivateKey `
+                -ProviderName "Cosmian KMS Key Storage Provider" `
+                -KeyName $importKeyName `
+                -FilePath $privExportPath `
+                -MakeExportable
+            Write-Ok "Import-IntunePrivateKey succeeded"
+
+            # Clean up
+            Remove-Item -Force $privExportPath -ErrorAction SilentlyContinue
+
+            Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublic + ExportPrivate + Import)"
+        } else {
+            Write-Host "  [SKIP] IntunePfxImport module not found (set INTUNE_PFX_MODULE_PATH)" -ForegroundColor Yellow
+            Write-Host "         To enable: download IntunePfxImportUtilities and set the env var" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Step "Skipping Intune PFX Import test (not Administrator)"
+        Write-Host "  [SKIP] Add-IntuneKspKey requires a registered KSP (Administrator)" -ForegroundColor Yellow
+    }
 
     # -- 9. Check KMS server logs for errors ------------------------------
 

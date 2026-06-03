@@ -13,6 +13,8 @@ pub mod routes;
 pub mod socket_server;
 pub mod start_kms_server;
 pub mod tls_config;
+#[cfg(windows)]
+pub mod windows_service;
 
 #[expect(
     clippy::panic,

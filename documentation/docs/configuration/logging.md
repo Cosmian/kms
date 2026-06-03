@@ -65,18 +65,25 @@ The server writes daily rolling log files by default. Log files are named
 When the log directory is not explicitly configured, the server uses a
 platform-specific default:
 
-| Platform | Default directory                         |
-| -------- | ---------------------------------------- |
-| Linux    | `/var/log/`                              |
-| Windows  | `%LOCALAPPDATA%\Cosmian KMS Server`      |
-| macOS    | `~/Library/Logs/`                        |
+| Platform | Default directory                                        |
+| -------- | ------------------------------------------------------- |
+| Linux    | `/var/log/`                                             |
+| Windows  | `C:\Users\<username>\AppData\Local\Cosmian KMS Server` |
+| macOS    | `~/Library/Logs/`                                       |
 
-> **Note (Windows):** The previous default `C:\ProgramData\Cosmian KMS Server\logs`
-> requires administrator privileges. The server now defaults to
-> `%LOCALAPPDATA%\Cosmian KMS Server` which is guaranteed to exist and is writable by
-> standard users. When running as a Windows service (LocalSystem), the `LOCALAPPDATA`
-> variable may not be set; the server then falls back to
-> `C:\ProgramData\Cosmian KMS Server`.
+> **Warning (Windows):** The server does **not** expand Windows environment variables
+> such as `%LOCALAPPDATA%` in configuration files. If you override `rolling_log_dir`
+> in `kms.toml`, you must use the fully-expanded path, for example:
+>
+> ```toml
+> rolling_log_dir = "C:\\Users\\<username>\\AppData\\Local\\Cosmian KMS Server"
+> ```
+>
+> When `rolling_log_dir` is not set, the server resolves the `LOCALAPPDATA`
+> environment variable at runtime and defaults to
+> `C:\Users\<username>\AppData\Local\Cosmian KMS Server`.
+> When running as a Windows service under LocalSystem, the variable may not be set;
+> the server then falls back to `C:\ProgramData\Cosmian KMS Server`.
 >
 > **Note (macOS):** The server defaults to `~/Library/Logs/` which is the standard
 > per-user log directory on macOS and is writable without root. If you run the server

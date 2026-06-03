@@ -614,7 +614,7 @@ pub(crate) mod win {
     }
 
     fn step_fail(name: &str, err: &dyn std::fmt::Display) {
-        eprintln!("  [FAIL] {name}: {err}");
+        println!("  [FAIL] {name}: {err}");
     }
 
     // ── Verification steps ───────────────────────────────────────────────
@@ -1289,6 +1289,7 @@ pub(crate) mod win {
             println!("All verification steps PASSED.");
             Ok(())
         } else {
+            println!("ERROR: {failures} verification step(s) FAILED.");
             Err(KmsCliError::Default(format!(
                 "{failures} verification step(s) FAILED."
             )))

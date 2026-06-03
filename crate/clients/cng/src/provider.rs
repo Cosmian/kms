@@ -96,6 +96,7 @@ pub struct CngProviderCtx {
     pub magic: u32,
     pub client:
         Arc<ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient>,
+    pub vendor_id: String,
 }
 
 impl CngProviderCtx {
@@ -188,6 +189,44 @@ unsafe fn parse_hash_alg_from_wide(ptr: *const u16) -> Option<ckms::reexport::co
     }
 }
 
+/// Try to extract a key name from `NCryptBufferDesc` parameter list.
+///
+/// Windows passes a `NCRYPTBUFFER_PKCS_KEY_NAME` (type 45) buffer containing
+/// the key name as a null-terminated UTF-16 string.
+unsafe fn extract_key_name_from_params(params: *const BCryptBufferDesc) -> Option<String> {
+    const NCRYPTBUFFER_PKCS_KEY_NAME: u32 = 45;
+
+    if params.is_null() {
+        return None;
+    }
+    let desc = unsafe { &*params };
+    if desc.cBuffers == 0 || desc.pBuffers.is_null() {
+        return None;
+    }
+    let buffers = unsafe { std::slice::from_raw_parts(desc.pBuffers, desc.cBuffers as usize) };
+    for buf in buffers {
+        if buf.BufferType == NCRYPTBUFFER_PKCS_KEY_NAME
+            && !buf.pvBuffer.is_null()
+            && buf.cbBuffer > 0
+        {
+            let wide_ptr = buf.pvBuffer as *const u16;
+            // cbBuffer is in bytes; wide chars = cbBuffer / 2
+            let wide_len = (buf.cbBuffer as usize) / 2;
+            if wide_len == 0 {
+                continue;
+            }
+            // Read up to null terminator
+            let slice = unsafe { std::slice::from_raw_parts(wide_ptr, wide_len) };
+            let end = slice.iter().position(|&c| c == 0).unwrap_or(wide_len);
+            if end == 0 {
+                continue;
+            }
+            return String::from_utf16(&slice[..end]).ok();
+        }
+    }
+    None
+}
+
 // ─── KSP function implementations ────────────────────────────────────────────
 
 /// `NCryptOpenStorageProvider` — initialise a provider session.
@@ -214,9 +253,11 @@ unsafe extern "system" fn open_provider(
 
     match backend::get_kms_client(explicit_conf) {
         Ok(client) => {
+            let vendor_id = backend::query_vendor_id(&client);
             let ctx = Box::new(CngProviderCtx {
                 magic: PROVIDER_CTX_MAGIC,
                 client: Arc::new(client),
+                vendor_id,
             });
             let raw = Box::into_raw(ctx);
             #[allow(clippy::as_conversions)]
@@ -268,12 +309,21 @@ unsafe extern "system" fn open_key(
         Err(_) => return NTE_INVALID_PARAMETER,
     };
 
-    let priv_uid = match backend::locate_key_by_name(&prov.client, &name) {
+    let priv_uid = match backend::locate_key_by_name(&prov.client, &prov.vendor_id, &name) {
         Ok(uid) => uid,
         Err(KspError::KeyNotFound(_)) => return NTE_BAD_KEYSET,
         Err(e) => {
             error!("CNG KSP open_key({name}): {e}");
             return NTE_FAIL;
+        }
+    };
+
+    // Also locate the public key so ExportKey can return SPKI
+    let pub_uid = match backend::locate_public_key_by_name(&prov.client, &prov.vendor_id, &name) {
+        Ok(uid) => uid,
+        Err(e) => {
+            error!("CNG KSP open_key pub({name}): {e}");
+            None
         }
     };
 
@@ -291,12 +341,16 @@ unsafe extern "system" fn open_key(
 
     let ctx = CngKeyCtx::new_persisted(
         Arc::clone(&prov.client),
+        prov.vendor_id.clone(),
         priv_uid,
-        None,
+        pub_uid,
         algorithm,
         name,
         usage,
-        ExportPolicy::default(),
+        ExportPolicy {
+            allow_export: true,
+            allow_plaintext_export: true,
+        },
     );
     let raw = Box::into_raw(ctx);
     #[allow(clippy::as_conversions)]
@@ -339,14 +393,14 @@ unsafe extern "system" fn create_persisted_key(
         Ok(a) => a,
         Err(_) => return NTE_BAD_ALGID,
     };
-
     let pending = PendingCreation {
         algorithm,
         key_name,
         usage: KeyUsage::SIGN | KeyUsage::DECRYPT,
         export_policy: ExportPolicy::default(),
+        import_blob: None,
     };
-    let ctx = CngKeyCtx::new_pending(Arc::clone(&prov.client), pending);
+    let ctx = CngKeyCtx::new_pending(Arc::clone(&prov.client), prov.vendor_id.clone(), pending);
     let raw = Box::into_raw(ctx);
     #[allow(clippy::as_conversions)]
     unsafe {
@@ -575,6 +629,15 @@ unsafe extern "system" fn set_key_property(
             }
             ERROR_SUCCESS
         }
+        // CNG key blob import: .NET CngKey.Create sets the blob as a property
+        "RSAFULLPRIVATEBLOB" => {
+            if let KeyState::Pending(p) = &mut ctx.state {
+                p.import_blob = Some(input.to_vec());
+            }
+            ERROR_SUCCESS
+        }
+        // Security descriptor — silently accept (KMS has its own access control)
+        "Security Descr" => ERROR_SUCCESS,
         _ => NTE_NOT_SUPPORTED,
     }
 }
@@ -918,11 +981,17 @@ unsafe extern "system" fn export_key(
                 e.to_security_status()
             }
         },
-        "PRIVATEKEYBLOB" | "RSAPRIVATEBLOB" | "ECCPRIVATEBLOB" => {
+        "PKCS8_PRIVATEKEY" | "PRIVATEKEYBLOB" | "RSAPRIVATEBLOB" | "ECCPRIVATEBLOB" => {
             if !ctx.export_policy().allow_export {
                 return NTE_PERM;
             }
-            NTE_NOT_SUPPORTED
+            match ctx.export_private_pkcs8() {
+                Ok(blob) => unsafe { write_output(pb_output, cb_output, pcb_result, &blob) },
+                Err(e) => {
+                    error!("CNG KSP export_key private: {e}");
+                    e.to_security_status()
+                }
+            }
         }
         _ => NTE_NOT_SUPPORTED,
     }
@@ -930,16 +999,93 @@ unsafe extern "system" fn export_key(
 
 /// `NCryptImportKey` — import a key blob into the KMS.
 unsafe extern "system" fn import_key(
-    _h_provider: usize,
+    h_provider: usize,
     _h_import_key: usize,
-    _psz_blob_type: *const u16,
-    _p_parameter_list: *const BCryptBufferDesc,
-    _ph_key: *mut usize,
-    _pb_data: *const u8,
-    _cb_data: u32,
+    psz_blob_type: *const u16,
+    p_parameter_list: *const BCryptBufferDesc,
+    ph_key: *mut usize,
+    pb_data: *const u8,
+    cb_data: u32,
     _dw_flags: u32,
 ) -> SecurityStatus {
-    NTE_NOT_SUPPORTED
+    if ph_key.is_null() || pb_data.is_null() || cb_data == 0 {
+        return NTE_INVALID_PARAMETER;
+    }
+    let prov = match unsafe { CngProviderCtx::from_handle(h_provider) } {
+        Ok(p) => p,
+        Err(_) => return NTE_INVALID_HANDLE,
+    };
+    let blob_type = if psz_blob_type.is_null() {
+        String::new()
+    } else {
+        match unsafe { wide_ptr_to_string(psz_blob_type) } {
+            Ok(b) => b,
+            Err(_) => return NTE_INVALID_PARAMETER,
+        }
+    };
+
+    let blob = unsafe { std::slice::from_raw_parts(pb_data, cb_data as usize) };
+
+    // Try to extract a key name from the parameter list (NCryptBuffer with
+    // NCRYPTBUFFER_PKCS_KEY_NAME type = 45).  If not provided, generate one.
+    let key_name = unsafe { extract_key_name_from_params(p_parameter_list) }
+        .unwrap_or_else(|| format!("imported-{:08x}", blob.len()));
+
+    match blob_type.as_str() {
+        "RSAFULLPRIVATEBLOB" => {
+            let pkcs8_der = match crate::blob::pkcs8_from_rsa_full_private_blob(blob) {
+                Ok(der) => der,
+                Err(e) => {
+                    error!("CNG KSP import_key parse blob: {e}");
+                    return e.to_security_status();
+                }
+            };
+            let (priv_uid, _pub_uid) = match backend::import_rsa_private_key(
+                &prov.client,
+                &prov.vendor_id,
+                &key_name,
+                &pkcs8_der,
+            ) {
+                Ok(ids) => ids,
+                Err(e) => {
+                    error!("CNG KSP import_key backend: {e}");
+                    return e.to_security_status();
+                }
+            };
+
+            // Fetch attributes to determine key size
+            let attrs = match backend::get_key_attributes(&prov.client, &priv_uid) {
+                Ok(a) => a,
+                Err(e) => {
+                    error!("CNG KSP import_key attrs: {e}");
+                    return NTE_FAIL;
+                }
+            };
+            let algorithm = attrs_to_algorithm(&attrs);
+            let usage = attrs_to_usage(&attrs);
+
+            let ctx = CngKeyCtx::new_persisted(
+                Arc::clone(&prov.client),
+                prov.vendor_id.clone(),
+                priv_uid,
+                None,
+                algorithm,
+                key_name,
+                usage,
+                ExportPolicy {
+                    allow_export: true,
+                    allow_plaintext_export: true,
+                },
+            );
+            let raw = Box::into_raw(ctx);
+            #[allow(clippy::as_conversions)]
+            unsafe {
+                *ph_key = raw as usize;
+            }
+            ERROR_SUCCESS
+        }
+        _ => NTE_NOT_SUPPORTED,
+    }
 }
 
 /// `NCryptIsAlgSupported`
@@ -1098,7 +1244,7 @@ unsafe extern "system" fn enum_keys(
         unsafe { **idx_ptr }
     };
 
-    let keys = match backend::list_cng_keys(&prov.client) {
+    let keys = match backend::list_cng_keys(&prov.client, &prov.vendor_id) {
         Ok(k) => k,
         Err(e) => {
             error!("CNG KSP enum_keys: {e}");

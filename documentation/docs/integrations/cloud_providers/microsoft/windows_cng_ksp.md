@@ -258,8 +258,8 @@ Start-Process -FilePath "$env:TEMP\cosmian-kms-cli.exe" -ArgumentList "/S" -Wait
 The installer places both files in the default installation directory:
 
 ```text
-%LOCALAPPDATA%\Cosmian KMS CLI\ckms.exe
-%LOCALAPPDATA%\Cosmian KMS CLI\cosmian_cng.dll
+C:\Users\<username>\AppData\Local\Cosmian KMS CLI\ckms.exe
+C:\Users\<username>\AppData\Local\Cosmian KMS CLI\cosmian_cng.dll
 ```
 
 Ensure the installation directory is on your `PATH` (the installer does
@@ -585,6 +585,7 @@ run against a **local Cosmian KMS server** with a SQLite backend.
 | **Rust lib tests** | Backend functions (`backend::create_rsa_key_pair`, `sign_hash`, `list_cng_keys`, …) via an in-process KMS | `cargo test --lib -p cosmian_cng` | `crate/clients/cng/src/tests.rs` |
 | **DLL surface tests** | Loads `cosmian_cng.dll` at runtime, calls `GetKeyStorageInterface`, exercises every `NCrypt*` function pointer against a live KMS | `ckms cng verify --dll <path>` | `crate/clients/clap/src/actions/cng_verify.rs` |
 | **CLI commands** | `ckms cng register`, `status`, `list-keys`, `unregister` | PowerShell assertions | `.github/scripts/windows/test_cng_ksp.ps1` |
+| **Intune PFX Import** | `Add-IntuneKspKey` + `Export-IntunePublicKey` via the `IntunePfxImportUtilities` module against the registered KSP | PowerShell (requires Admin + module) | `.github/scripts/windows/test_cng_ksp.ps1` |
 
 ### Running the full test suite
 
@@ -604,6 +605,7 @@ sequenceDiagram
     participant Reg as Windows Registry
     participant Verify as cng_verify.exe
     participant Tests as cargo test
+    participant Intune as IntunePfxImport module
 
     PS->>Build: 1. Build KMS server, cosmian_cng.dll, cng_verify, ckms
     Build-->>PS: Binaries ready
@@ -622,6 +624,10 @@ sequenceDiagram
     Tests-->>PS: Tests passed
     PS->>KMS: 8. ckms cng list-keys / ckms cng status
     KMS-->>PS: Key list and status
+    PS->>Intune: 8b. Add-IntuneKspKey + Export-IntunePublicKey
+    Intune->>KMS: NCryptCreatePersistedKey → NCryptFinalizeKey → NCryptExportKey
+    KMS-->>Intune: Key created + public blob exported
+    Intune-->>PS: Intune PFX workflow passed
     PS->>PS: 9. Parse KMS logs for ERROR / PANIC
     PS->>Reg: 10. ckms cng unregister (remove HKLM KSP key)
     PS->>KMS: Stop KMS server
@@ -653,6 +659,7 @@ The **cng_verify** tool exercises the following NCrypt operations against a live
 | `CNG_TEST_RELEASE` | `0` | Set to `1` to build and test in release mode |
 | `RUST_LOG` | `cosmian_kms_server=info,cosmian_cng=debug` | Log verbosity for KMS server and DLL |
 | `COSMIAN_CNG_KSP_LOGGING_LEVEL` | `info` | DLL-specific logging (trace/debug/info/warn/error) |
+| `INTUNE_PFX_MODULE_PATH` | — | Path to `IntunePfxImport.psd1`; enables the Intune PFX Import test step |
 
 ### Testing the Intune enrollment flow
 

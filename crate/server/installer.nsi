@@ -392,13 +392,19 @@ Function .onInit
   !insertmacro SetContext
 
   ; Set default install location unconditionally.
-  ; Always install under %LOCALAPPDATA% so that the server binary, kms.toml,
-  ; and rolling logs all live in the same user-writable directory.  This keeps
-  ; the installer, the wizard (`cosmian_kms configure`), and the server's
-  ; default config path (`get_default_config_path()`) in sync.
-  ; NOTE: We override $INSTDIR unconditionally because cargo-packager and/or
-  ; a previous installation may have pre-filled it with a Program Files path.
+  ; Always install under the *invoking user's* %LOCALAPPDATA% so that the
+  ; server binary, kms.toml, and rolling logs all live in the same
+  ; user-writable directory.  This keeps the installer, the wizard
+  ; (`cosmian_kms configure`), and the server's default config path
+  ; (`get_default_config_path()`) in sync.
+  ;
+  ; NOTE: In perMachine mode, SetContext sets SetShellVarContext to "all",
+  ; which makes $LOCALAPPDATA resolve to C:\ProgramData (the "all users"
+  ; equivalent).  We temporarily switch to "current" to read the real
+  ; per-user $LOCALAPPDATA, then restore the context.
+  SetShellVarContext current
   StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
+  SetShellVarContext all
 
 
   !if "${INSTALLMODE}" == "both"
@@ -526,7 +532,15 @@ Section Install
   nsExec::ExecToLog 'sc create "${SERVICENAME}" binPath= "\"$INSTDIR\${MAINBINARYNAME}.exe\" -c \"$INSTDIR\kms.toml\"" start= auto DisplayName= "${SERVICEDISPLAYNAME}"'
   Pop $0
   ${If} $0 != 0
-    DetailPrint "Warning: sc create returned $0"
+    ; Service may already exist (e.g. marked for deletion but handle still open,
+    ; or a previous install was not fully uninstalled).  Use 'sc config' to
+    ; update the existing service's binPath and start type.
+    DetailPrint "sc create returned $0, attempting sc config..."
+    nsExec::ExecToLog 'sc config "${SERVICENAME}" binPath= "\"$INSTDIR\${MAINBINARYNAME}.exe\" -c \"$INSTDIR\kms.toml\"" start= auto'
+    Pop $0
+    ${If} $0 != 0
+      DetailPrint "Warning: sc config also returned $0 — service may need manual setup"
+    ${EndIf}
   ${EndIf}
 
   ; Set service description

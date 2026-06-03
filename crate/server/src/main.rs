@@ -33,8 +33,28 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
+///
+/// On Windows, if the process was launched by the Service Control Manager, it
+/// dispatches to the Windows service entry point instead.
 #[tokio::main]
 async fn main() {
+    // On Windows, attempt to register with the SCM.  If the process was launched
+    // by the SCM, `try_run_as_service()` blocks until the service stops and then
+    // returns Ok(()).  If launched from a console, it returns Err (not an SCM
+    // launch) and we fall through to the normal interactive startup path.
+    #[cfg(windows)]
+    {
+        match cosmian_kms_server::windows_service::try_run_as_service() {
+            Ok(()) => {
+                // Service ran and stopped — exit cleanly.
+                return;
+            }
+            Err(_e) => {
+                // Not launched by the SCM — continue with normal console startup.
+            }
+        }
+    }
+
     if let Err(e) = run().await {
         eprintln!("Error: {e}");
         std::process::exit(1);

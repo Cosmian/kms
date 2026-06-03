@@ -333,6 +333,215 @@ fn spki_ec_inner_key(spki: &[u8]) -> KspResult<(EcCurve, &[u8])> {
     Ok((curve, point))
 }
 
+// ─── RSA private key import: BCRYPT_RSAFULLPRIVATE_BLOB → PKCS#8 DER ────────
+
+/// RSA OID (1.2.840.113549.1.1.1) used in PKCS#8 AlgorithmIdentifier.
+const OID_RSA_ENCRYPTION: &[u8] = &[0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01];
+
+/// Parse a `BCRYPT_RSAFULLPRIVATE_BLOB` and encode it as PKCS#8 DER.
+///
+/// The CNG blob layout:
+/// ```text
+/// Header (24 bytes): Magic, BitLength, cbPublicExp, cbModulus, cbPrime1, cbPrime2
+/// Data: e, n, p, q, dp, dq, qInv, d
+/// ```
+///
+/// Returns PKCS#8 PrivateKeyInfo DER encoding.
+#[allow(clippy::min_ident_chars, clippy::many_single_char_names)]
+pub fn pkcs8_from_rsa_full_private_blob(blob: &[u8]) -> KspResult<Vec<u8>> {
+    if blob.len() < 24 {
+        return Err(KspError::InvalidParameter(
+            "RSA full private blob too short for header".to_owned(),
+        ));
+    }
+
+    let magic = u32::from_le_bytes([blob[0], blob[1], blob[2], blob[3]]);
+    if magic != BCRYPT_RSAFULLPRIVATE_MAGIC {
+        return Err(KspError::InvalidParameter(format!(
+            "Expected RSA3 magic (0x{BCRYPT_RSAFULLPRIVATE_MAGIC:08X}), got 0x{magic:08X}"
+        )));
+    }
+
+    let cb_pub_exp = u32::from_le_bytes([blob[8], blob[9], blob[10], blob[11]]) as usize;
+    let cb_modulus = u32::from_le_bytes([blob[12], blob[13], blob[14], blob[15]]) as usize;
+    let cb_prime1 = u32::from_le_bytes([blob[16], blob[17], blob[18], blob[19]]) as usize;
+    let cb_prime2 = u32::from_le_bytes([blob[20], blob[21], blob[22], blob[23]]) as usize;
+
+    let expected_len = 24
+        + cb_pub_exp
+        + cb_modulus
+        + cb_prime1
+        + cb_prime2
+        + cb_prime1
+        + cb_prime2
+        + cb_prime1
+        + cb_modulus;
+    if blob.len() < expected_len {
+        return Err(KspError::InvalidParameter(format!(
+            "RSA full private blob too short: need {expected_len}, got {}",
+            blob.len()
+        )));
+    }
+
+    let mut offset = 24;
+    let e = &blob[offset..offset + cb_pub_exp];
+    offset += cb_pub_exp;
+    let n = &blob[offset..offset + cb_modulus];
+    offset += cb_modulus;
+    let p = &blob[offset..offset + cb_prime1];
+    offset += cb_prime1;
+    let q = &blob[offset..offset + cb_prime2];
+    offset += cb_prime2;
+    let dp = &blob[offset..offset + cb_prime1];
+    offset += cb_prime1;
+    let dq = &blob[offset..offset + cb_prime2];
+    offset += cb_prime2;
+    let q_inv = &blob[offset..offset + cb_prime1];
+    offset += cb_prime1;
+    let d = &blob[offset..offset + cb_modulus];
+
+    // Build PKCS#1 RSAPrivateKey DER
+    let pkcs1 = encode_rsa_private_key_der(n, e, d, p, q, dp, dq, q_inv);
+    // Wrap in PKCS#8 PrivateKeyInfo
+    Ok(encode_pkcs8_rsa(&pkcs1))
+}
+
+/// Encode a DER INTEGER with sign padding if necessary.
+fn der_encode_uint(value: &[u8]) -> Vec<u8> {
+    let v = strip_leading_zero_for_encode(value);
+    let needs_pad = !v.is_empty() && (v[0] & 0x80) != 0;
+    let len = v.len() + usize::from(needs_pad);
+    let mut out = Vec::with_capacity(2 + len + 2); // tag + length + pad + value
+    out.push(0x02); // INTEGER tag
+    der_encode_length(&mut out, len);
+    if needs_pad {
+        out.push(0x00);
+    }
+    out.extend_from_slice(v);
+    out
+}
+
+/// Strip leading zeros from CNG blob fields (which are fixed-width, big-endian).
+fn strip_leading_zero_for_encode(v: &[u8]) -> &[u8] {
+    let mut s = v;
+    while s.len() > 1 && s[0] == 0 {
+        s = &s[1..];
+    }
+    s
+}
+
+/// Encode DER length.
+#[allow(clippy::cast_possible_truncation, clippy::branches_sharing_code)]
+fn der_encode_length(out: &mut Vec<u8>, len: usize) {
+    if len < 0x80 {
+        out.push(len as u8);
+    } else if len < 0x100 {
+        out.push(0x81);
+        out.push(len as u8);
+    } else if len < 0x1_0000 {
+        out.push(0x82);
+        out.push((len >> 8) as u8);
+        out.push(len as u8);
+    } else {
+        out.push(0x83);
+        out.push((len >> 16) as u8);
+        out.push((len >> 8) as u8);
+        out.push(len as u8);
+    }
+}
+
+/// Encode PKCS#1 RSAPrivateKey DER.
+#[allow(
+    clippy::too_many_arguments,
+    clippy::min_ident_chars,
+    clippy::many_single_char_names
+)]
+fn encode_rsa_private_key_der(
+    n: &[u8],
+    e: &[u8],
+    d: &[u8],
+    p: &[u8],
+    q: &[u8],
+    dp: &[u8],
+    dq: &[u8],
+    q_inv: &[u8],
+) -> Vec<u8> {
+    let version = der_encode_uint(&[0]); // version 0
+    let n_enc = der_encode_uint(n);
+    let e_enc = der_encode_uint(e);
+    let d_enc = der_encode_uint(d);
+    let p_enc = der_encode_uint(p);
+    let q_enc = der_encode_uint(q);
+    let dp_enc = der_encode_uint(dp);
+    let dq_enc = der_encode_uint(dq);
+    let qi_enc = der_encode_uint(q_inv);
+
+    let inner_len = version.len()
+        + n_enc.len()
+        + e_enc.len()
+        + d_enc.len()
+        + p_enc.len()
+        + q_enc.len()
+        + dp_enc.len()
+        + dq_enc.len()
+        + qi_enc.len();
+
+    let mut seq = Vec::with_capacity(4 + inner_len);
+    seq.push(0x30); // SEQUENCE tag
+    der_encode_length(&mut seq, inner_len);
+    seq.extend_from_slice(&version);
+    seq.extend_from_slice(&n_enc);
+    seq.extend_from_slice(&e_enc);
+    seq.extend_from_slice(&d_enc);
+    seq.extend_from_slice(&p_enc);
+    seq.extend_from_slice(&q_enc);
+    seq.extend_from_slice(&dp_enc);
+    seq.extend_from_slice(&dq_enc);
+    seq.extend_from_slice(&qi_enc);
+    seq
+}
+
+/// Wrap a PKCS#1 RSAPrivateKey DER in PKCS#8 PrivateKeyInfo.
+///
+/// ```text
+/// PrivateKeyInfo ::= SEQUENCE {
+///   version INTEGER (0),
+///   privateKeyAlgorithm AlgorithmIdentifier { rsaEncryption, NULL },
+///   privateKey OCTET STRING (RSAPrivateKey DER)
+/// }
+/// ```
+fn encode_pkcs8_rsa(pkcs1_der: &[u8]) -> Vec<u8> {
+    // version INTEGER 0
+    let version = der_encode_uint(&[0]);
+
+    // AlgorithmIdentifier SEQUENCE { OID rsaEncryption, NULL }
+    let mut algo_id = Vec::new();
+    algo_id.push(0x30); // SEQUENCE
+    let oid_tlv_len = 2 + OID_RSA_ENCRYPTION.len() + 2; // OID TLV + NULL TLV
+    der_encode_length(&mut algo_id, oid_tlv_len);
+    algo_id.push(0x06); // OID tag
+    der_encode_length(&mut algo_id, OID_RSA_ENCRYPTION.len());
+    algo_id.extend_from_slice(OID_RSA_ENCRYPTION);
+    algo_id.push(0x05); // NULL tag
+    algo_id.push(0x00); // NULL length
+
+    // privateKey OCTET STRING
+    let mut priv_key_oct = Vec::with_capacity(4 + pkcs1_der.len());
+    priv_key_oct.push(0x04); // OCTET STRING tag
+    der_encode_length(&mut priv_key_oct, pkcs1_der.len());
+    priv_key_oct.extend_from_slice(pkcs1_der);
+
+    // Outer SEQUENCE
+    let inner_len = version.len() + algo_id.len() + priv_key_oct.len();
+    let mut pkcs8 = Vec::with_capacity(4 + inner_len);
+    pkcs8.push(0x30); // SEQUENCE tag
+    der_encode_length(&mut pkcs8, inner_len);
+    pkcs8.extend_from_slice(&version);
+    pkcs8.extend_from_slice(&algo_id);
+    pkcs8.extend_from_slice(&priv_key_oct);
+    pkcs8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

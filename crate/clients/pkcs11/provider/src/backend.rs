@@ -55,12 +55,17 @@ fn require_id(query: SearchOptions, caller: &str) -> ModuleResult<String> {
 
 pub(crate) struct CliBackend {
     kms_rest_client: KmsClient,
+    vendor_id: String,
 }
 
 impl CliBackend {
     /// Instantiate a new `CliBackend` using the
-    pub(crate) const fn instantiate(kms_rest_client: KmsClient) -> Self {
-        Self { kms_rest_client }
+    pub(crate) fn instantiate(kms_rest_client: KmsClient) -> Self {
+        let vendor_id = crate::kms_object::query_vendor_id(&kms_rest_client);
+        Self {
+            kms_rest_client,
+            vendor_id,
+        }
     }
 
     fn get_key_size_and_algorithm(attributes: &Attributes) -> ModuleResult<(usize, KeyAlgorithm)> {
@@ -254,6 +259,7 @@ impl Backend for CliBackend {
             .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
         let kms_objects = get_kms_certificate_objects(
             &self.kms_rest_client,
+            &self.vendor_id,
             &[disk_encryption_tag, SYSTEM_TAG_CERTIFICATE.to_owned()],
         )?;
         let mut result = Vec::with_capacity(kms_objects.len());
@@ -267,7 +273,12 @@ impl Backend for CliBackend {
     fn find_private_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PrivateKey>> {
         trace!("find_private_key: {:?}", query);
         let id = require_id(query, "find_private_key")?;
-        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
+        let kms_object = get_kms_object(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &id,
+            KeyFormatType::PKCS8,
+        )?;
         Ok(Arc::new(Pkcs11PrivateKey::try_from_kms_object(kms_object)?))
     }
 
@@ -283,6 +294,7 @@ impl Backend for CliBackend {
 
         let disk_ids = locate_kms_objects(
             &self.kms_rest_client,
+            &self.vendor_id,
             &[disk_encryption_tag, SYSTEM_TAG_PRIVATE_KEY.to_owned()],
         )
         .unwrap_or_default();
@@ -296,6 +308,7 @@ impl Backend for CliBackend {
 
         let ssh_ids = locate_kms_objects(
             &self.kms_rest_client,
+            &self.vendor_id,
             &[ssh_key_tag, SYSTEM_TAG_PRIVATE_KEY.to_owned()],
         )
         .unwrap_or_default();
@@ -313,7 +326,12 @@ impl Backend for CliBackend {
     fn find_public_key(&self, query: SearchOptions) -> ModuleResult<Arc<dyn PublicKey>> {
         trace!("find_public_key: {:?}", query);
         let id = require_id(query, "find_public_key")?;
-        let kms_object = get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)?;
+        let kms_object = get_kms_object(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &id,
+            KeyFormatType::PKCS8,
+        )?;
         Ok(Arc::new(Pkcs11PublicKey::try_from_kms_object(&kms_object)?))
     }
 
@@ -322,12 +340,20 @@ impl Backend for CliBackend {
         // Use the system tag alone so ALL public keys are visible regardless of user tags.
         // The previous query ["ssh-auth", "_pk"] used AND semantics (HAVING COUNT = 2)
         // and silently dropped any public key that did not also carry the "ssh-auth" tag.
-        let ids = locate_kms_objects(&self.kms_rest_client, &[SYSTEM_TAG_PUBLIC_KEY.to_owned()])
-            .unwrap_or_default();
+        let ids = locate_kms_objects(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &[SYSTEM_TAG_PUBLIC_KEY.to_owned()],
+        )
+        .unwrap_or_default();
         let mut public_keys = Vec::with_capacity(ids.len());
         for id in ids {
-            let kms_object = match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::PKCS8)
-            {
+            let kms_object = match get_kms_object(
+                &self.kms_rest_client,
+                &self.vendor_id,
+                &id,
+                KeyFormatType::PKCS8,
+            ) {
                 Ok(o) => o,
                 Err(e) => {
                     warn!(
@@ -359,6 +385,7 @@ impl Backend for CliBackend {
         // would cause batch_export_objects to fail if those objects cannot be exported as Raw.
         let kms_objects = get_kms_secret_data_objects(
             &self.kms_rest_client,
+            &self.vendor_id,
             &[SYSTEM_TAG_SECRET_DATA.to_owned()],
         )?;
         trace!("find_all_data_objects: found {} objects", kms_objects.len());
@@ -376,6 +403,7 @@ impl Backend for CliBackend {
         let id = require_id(query, "find_symmetric_key")?;
         let kms_object = get_kms_object(
             &self.kms_rest_client,
+            &self.vendor_id,
             &id,
             KeyFormatType::TransparentSymmetricKey,
         )?;
@@ -388,6 +416,7 @@ impl Backend for CliBackend {
         trace!("find_all_symmetric_keys");
         let kms_ids = locate_kms_objects(
             &self.kms_rest_client,
+            &self.vendor_id,
             &[SYSTEM_TAG_SYMMETRIC_KEY.to_owned()],
         )?;
         let mut symmetric_keys = Vec::with_capacity(kms_ids.len());
@@ -404,7 +433,12 @@ impl Backend for CliBackend {
     fn find_data_object(&self, query: SearchOptions) -> ModuleResult<Option<Arc<dyn DataObject>>> {
         trace!("find_data_object: {:?}", query);
         let id = require_id(query, "find_data_object")?;
-        match get_kms_object(&self.kms_rest_client, &id, KeyFormatType::Raw) {
+        match get_kms_object(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &id,
+            KeyFormatType::Raw,
+        ) {
             Ok(kms_object) => Ok(Some(Arc::new(Pkcs11DataObject::try_from_kms_object(
                 kms_object,
             )?))),
@@ -434,7 +468,8 @@ impl Backend for CliBackend {
             SYSTEM_TAG_COVER_CRYPT_USER_KEY,
         ] {
             let kms_ids =
-                locate_kms_objects(&self.kms_rest_client, &[tag.to_owned()]).unwrap_or_default();
+                locate_kms_objects(&self.kms_rest_client, &self.vendor_id, &[tag.to_owned()])
+                    .unwrap_or_default();
             for id in kms_ids {
                 if seen_ids.insert(id.clone()) {
                     if let Ok(attributes) = get_kms_object_attributes(&self.kms_rest_client, &id) {
@@ -468,6 +503,7 @@ impl Backend for CliBackend {
 
         let kms_object = kms_import_symmetric_key(
             &self.kms_rest_client,
+            &self.vendor_id,
             algorithm,
             key_length,
             sensitive,
@@ -480,7 +516,7 @@ impl Backend for CliBackend {
 
     fn create_object(&self, label: &str, data: &[u8]) -> ModuleResult<Arc<dyn DataObject>> {
         trace!("create_object: {label:?}");
-        let kms_object = kms_import_object(&self.kms_rest_client, label, data)?;
+        let kms_object = kms_import_object(&self.kms_rest_client, &self.vendor_id, label, data)?;
         Ok(Arc::new(Pkcs11DataObject::try_from_kms_object(kms_object)?))
     }
 

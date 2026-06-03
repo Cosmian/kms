@@ -16,15 +16,16 @@ use ckms::{
             kmip_2_1::{
                 extra::tagging::{VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
                 kmip_attributes::Attributes,
+                kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType},
                 kmip_operations::{
-                    CreateKeyPair, Decrypt, Destroy, Encrypt, GetAttributes, Locate, Revoke, Sign,
-                    SignatureVerify,
+                    CreateKeyPair, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
+                    Revoke, Sign, SignatureVerify,
                 },
                 kmip_types::{
                     AttributeReference, CryptographicAlgorithm, CryptographicDomainParameters,
                     CryptographicParameters, DigitalSignatureAlgorithm, KeyFormatType,
-                    RecommendedCurve, UniqueIdentifier, ValidityIndicator,
+                    QueryFunction, RecommendedCurve, UniqueIdentifier, ValidityIndicator,
                     VendorAttributeReference,
                 },
             },
@@ -66,17 +67,35 @@ pub fn get_kms_client(explicit_conf: Option<PathBuf>) -> KspResult<KmsClient> {
         .map_err(|e: KmsClientError| KspError::Backend(format!("Failed to create KMS client: {e}")))
 }
 
+/// Query the KMS server for its vendor identification string.
+///
+/// Falls back to `VENDOR_ID_COSMIAN` if the server doesn't report one.
+pub fn query_vendor_id(client: &KmsClient) -> String {
+    RUNTIME
+        .block_on(async {
+            let request = Query {
+                query_function: Some(vec![QueryFunction::QueryServerInformation]),
+            };
+            client
+                .query(request)
+                .await
+                .ok()
+                .and_then(|resp| resp.vendor_identification)
+        })
+        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned())
+}
+
 /// Locate a KMS object by its CNG key name (returns the KMS UUID).
 ///
 /// Looks for an object carrying the tag `cng-ksp::<name>`.
-pub fn locate_key_by_name(client: &KmsClient, name: &str) -> KspResult<String> {
+pub fn locate_key_by_name(client: &KmsClient, vendor_id: &str, name: &str) -> KspResult<String> {
     let tag = cng_key_tag(name);
     trace!("CNG KSP: locate_key_by_name tag={tag}");
 
     let resp = RUNTIME.block_on(async {
         let mut attrs = Attributes::default();
         attrs
-            .set_tags(VENDOR_ID_COSMIAN, [tag.as_str()])
+            .set_tags(vendor_id, [tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
         // Filter to private keys only: both private and public keys share the
         // same CNG name tag, so without this filter the Locate response may
@@ -98,14 +117,45 @@ pub fn locate_key_by_name(client: &KmsClient, name: &str) -> KspResult<String> {
         .ok_or_else(|| KspError::KeyNotFound(name.to_owned()))
 }
 
+/// Locate the **public** key UUID by its CNG key name.
+///
+/// Same as `locate_key_by_name` but filters on `ObjectType::PublicKey`.
+pub fn locate_public_key_by_name(
+    client: &KmsClient,
+    vendor_id: &str,
+    name: &str,
+) -> KspResult<Option<String>> {
+    let tag = cng_key_tag(name);
+    trace!("CNG KSP: locate_public_key_by_name tag={tag}");
+
+    let resp = RUNTIME.block_on(async {
+        let mut attrs = Attributes::default();
+        attrs
+            .set_tags(vendor_id, [tag.as_str()])
+            .map_err(|e| KspError::Backend(e.to_string()))?;
+        attrs.object_type = Some(ObjectType::PublicKey);
+        let locate = Locate {
+            attributes: attrs,
+            ..Default::default()
+        };
+        client
+            .locate(locate)
+            .await
+            .map_err(|e| KspError::Backend(e.to_string()))
+    })?;
+
+    let ids = resp.unique_identifier.unwrap_or_default();
+    Ok(ids.first().map(ToString::to_string))
+}
+
 /// List all CNG KSP key names and their KMS UUIDs.
-pub fn list_cng_keys(client: &KmsClient) -> KspResult<Vec<(String, String)>> {
+pub fn list_cng_keys(client: &KmsClient, vendor_id: &str) -> KspResult<Vec<(String, String)>> {
     trace!("CNG KSP: list_cng_keys");
 
     RUNTIME.block_on(async {
         let mut attrs = Attributes::default();
         attrs
-            .set_tags(VENDOR_ID_COSMIAN, [CNG_KSP_TAG])
+            .set_tags(vendor_id, [CNG_KSP_TAG])
             .map_err(|e| KspError::Backend(e.to_string()))?;
         let locate = Locate {
             attributes: attrs,
@@ -122,7 +172,7 @@ pub fn list_cng_keys(client: &KmsClient) -> KspResult<Vec<(String, String)>> {
         // (GetAttributes with attribute_reference=None excludes the tag
         //  vendor attribute by default.)
         let tag_ref = AttributeReference::Vendor(VendorAttributeReference {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            vendor_identification: vendor_id.to_owned(),
             attribute_name: VENDOR_ATTR_TAG.to_owned(),
         });
         let mut result = Vec::with_capacity(ids.len());
@@ -133,7 +183,7 @@ pub fn list_cng_keys(client: &KmsClient) -> KspResult<Vec<(String, String)>> {
                 attribute_reference: Some(vec![tag_ref.clone()]),
             };
             if let Ok(attr_resp) = client.get_attributes(get_attrs).await {
-                let name = extract_cng_name_from_tags(&attr_resp.attributes);
+                let name = extract_cng_name_from_tags(vendor_id, &attr_resp.attributes);
                 result.push((name.unwrap_or_else(|| uid_str.clone()), uid_str));
             }
         }
@@ -142,8 +192,8 @@ pub fn list_cng_keys(client: &KmsClient) -> KspResult<Vec<(String, String)>> {
 }
 
 /// Extract the CNG key name from the vendor tags on an `Attributes`.
-fn extract_cng_name_from_tags(attrs: &Attributes) -> Option<String> {
-    let tags = attrs.get_tags(VENDOR_ID_COSMIAN);
+fn extract_cng_name_from_tags(vendor_id: &str, attrs: &Attributes) -> Option<String> {
+    let tags = attrs.get_tags(vendor_id);
     for tag in tags {
         if let Some(suffix) = tag.strip_prefix("cng-ksp::") {
             return Some(suffix.to_owned());
@@ -221,6 +271,88 @@ pub fn export_public_key_spki(client: &KmsClient, uid: &str) -> KspResult<Vec<u8
             .await
             .map_err(|e| KspError::Backend(e.to_string()))?;
         key_bytes_from_object(&obj)
+    })
+}
+
+/// Export a private key from the KMS in PKCS#8 DER format.
+///
+/// This is used by `NCryptExportKey` with the `PKCS8_PRIVATEKEY` blob type
+/// (e.g. Intune `Export-IntunePrivateKey`).
+pub fn export_private_key_pkcs8(client: &KmsClient, uid: &str) -> KspResult<Vec<u8>> {
+    debug!("CNG KSP: export_private_key_pkcs8 uid={uid}");
+    RUNTIME.block_on(async {
+        let params = ExportObjectParams {
+            key_format_type: Some(KeyFormatType::PKCS8),
+            ..ExportObjectParams::new()
+        };
+        let (_, obj, _) = export_object(client, uid, params)
+            .await
+            .map_err(|e| KspError::Backend(e.to_string()))?;
+        key_bytes_from_object(&obj)
+    })
+}
+
+/// Import an RSA private key (PKCS#8 DER) into the KMS and return
+/// `(private_uid, public_uid)`.
+///
+/// Used by `NCryptImportKey` with the `RSAFULLPRIVATEBLOB` blob type
+/// (e.g. Intune `Import-IntunePrivateKey`).
+pub fn import_rsa_private_key(
+    client: &KmsClient,
+    vendor_id: &str,
+    key_name: &str,
+    pkcs8_der: &[u8],
+) -> KspResult<(String, String)> {
+    debug!("CNG KSP: import_rsa_private_key name={key_name}");
+    let tag = cng_key_tag(key_name);
+    RUNTIME.block_on(async {
+        let mut attributes = Attributes {
+            object_type: Some(ObjectType::PrivateKey),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            key_format_type: Some(KeyFormatType::PKCS8),
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Sign
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::UnwrapKey,
+            ),
+            activation_date: Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?),
+            ..Attributes::default()
+        };
+        attributes
+            .set_tags(vendor_id, [CNG_KSP_TAG, tag.as_str()])
+            .map_err(|e| KspError::Backend(e.to_string()))?;
+
+        let object = Object::PrivateKey(
+            ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_objects::PrivateKey {
+                key_block: KeyBlock {
+                    key_format_type: KeyFormatType::PKCS8,
+                    key_compression_type: None,
+                    key_value: Some(KeyValue::Structure {
+                        key_material: KeyMaterial::ByteString(Zeroizing::new(pkcs8_der.to_vec())),
+                        attributes: Some(attributes.clone()),
+                    }),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                    cryptographic_length: None,
+                    key_wrapping_data: None,
+                },
+            },
+        );
+
+        let import_req = Import {
+            unique_identifier: UniqueIdentifier::TextString(String::new()),
+            object_type: ObjectType::PrivateKey,
+            replace_existing: Some(false),
+            key_wrap_type: None,
+            attributes,
+            object,
+        };
+        let resp = client
+            .import(import_req)
+            .await
+            .map_err(|e| KspError::Backend(e.to_string()))?;
+        let priv_uid = resp.unique_identifier.to_string();
+        // Use private UID also as public UID — caller can derive the public key later
+        Ok((priv_uid.clone(), priv_uid))
     })
 }
 
@@ -423,6 +555,7 @@ pub fn encrypt_data(
 /// and return `(private_uuid, public_uuid)`.
 pub fn create_rsa_key_pair(
     client: &KmsClient,
+    vendor_id: &str,
     key_name: &str,
     bit_length: u32,
     use_for_sign: bool,
@@ -448,7 +581,7 @@ pub fn create_rsa_key_pair(
         };
         let mut attrs = attrs;
         attrs
-            .set_tags(VENDOR_ID_COSMIAN, [CNG_KSP_TAG, tag.as_str()])
+            .set_tags(vendor_id, [CNG_KSP_TAG, tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
 
         let op = CreateKeyPair {
@@ -469,6 +602,7 @@ pub fn create_rsa_key_pair(
 /// Create an EC key pair in the KMS with the given curve and name tag.
 pub fn create_ec_key_pair(
     client: &KmsClient,
+    vendor_id: &str,
     key_name: &str,
     curve: RecommendedCurve,
 ) -> KspResult<(String, String)> {
@@ -493,7 +627,7 @@ pub fn create_ec_key_pair(
         };
         let mut attrs = attrs;
         attrs
-            .set_tags(VENDOR_ID_COSMIAN, [CNG_KSP_TAG, tag.as_str()])
+            .set_tags(vendor_id, [CNG_KSP_TAG, tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
 
         let op = CreateKeyPair {

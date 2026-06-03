@@ -136,7 +136,9 @@ fn status() -> KmsCliResult<()> {
 #[allow(clippy::print_stdout)]
 async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResult<()> {
     use cosmian_kmip::kmip_2_1::{
-        extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes, kmip_operations::Locate,
+        extra::tagging::VENDOR_ID_COSMIAN,
+        kmip_attributes::Attributes,
+        kmip_operations::{GetAttributes, Locate},
     };
 
     let mut attrs = Attributes::default();
@@ -159,7 +161,27 @@ async fn list_keys(kms_rest_client: cosmian_kms_client::KmsClient) -> KmsCliResu
     } else {
         println!("CNG KSP keys in the KMS:");
         for id in &ids {
-            println!("  {id}");
+            // Try to resolve the CNG key name from tags
+            let key_name = match kms_rest_client
+                .get_attributes(GetAttributes {
+                    unique_identifier: Some(id.clone()),
+                    attribute_reference: None,
+                })
+                .await
+            {
+                Ok(attr_resp) => {
+                    let tags = attr_resp.attributes.get_tags(VENDOR_ID_COSMIAN);
+                    tags.iter()
+                        .find_map(|t| t.strip_prefix("cng-ksp::"))
+                        .map(String::from)
+                }
+                Err(_) => None,
+            };
+            if let Some(name) = key_name {
+                println!("  {id}  (name: {name})");
+            } else {
+                println!("  {id}");
+            }
         }
     }
     Ok(())
