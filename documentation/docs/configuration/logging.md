@@ -59,11 +59,14 @@ On Linux, logs can be redirected to syslog instead of stdout by setting:
 
 ## Rolling log files
 
-The server writes daily rolling log files by default. Log files are named
-`<name>.YYYY-MM-DD`, where `<name>` defaults to `cosmian_kms`.
+The server can write daily rolling log files. File logging is **disabled** unless
+`rolling_log_dir` is explicitly configured (via `--rolling-log-dir`, the
+`KMS_ROLLING_LOG_DIR` environment variable, or the TOML configuration).
 
-When the log directory is not explicitly configured, the server uses a
-platform-specific default:
+Log files are named `<name>.YYYY-MM-DD`, where `<name>` defaults to `kms`.
+
+When `rolling_log_dir` is set without specifying a path (e.g. via the
+configuration wizard), the recommended platform-specific defaults are:
 
 | Platform | Default directory                                        |
 | -------- | ------------------------------------------------------- |

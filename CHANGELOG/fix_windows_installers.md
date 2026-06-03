@@ -3,6 +3,12 @@
 ## Bug Fixes
 
 - Fix server panic on Windows when rolling log directory is not writable by standard users — gracefully disable file logging with a warning instead of panicking
+- Fix Windows service not initializing tracing/logging subscriber — service code path now runs the same logging init as the console startup path
+- Fix `status_handle` ownership in Windows service: wrap in `Arc` so both the background thread and main task can report SCM status
+- Fix `logging_wizard.rs` failing to compile on non-Linux/macOS/Windows targets — use `#[cfg(not(any(...)))]` fallback
+- Fix `test_cng_ksp.ps1` TOML backslash escaping — prevent `\t`/`\f` in paths from being interpreted as TOML escape sequences
+- Fix documentation claiming rolling log files are enabled by default — file logging requires explicit `rolling_log_dir` configuration
+- Fix macOS default rolling log directory references to `~/Library/Logs/` (not `~/Library/Logs/Cosmian KMS Server`)
 - Fix Windows service not starting: installer now passes `-c kms.toml` in the service `binPath` and creates required data directories
 - Change default Windows rolling log directory from `C:\ProgramData\Cosmian KMS Server\logs` to `C:\Users\<username>\AppData\Local\Cosmian KMS Server` (guaranteed writable)
 - **Documentation: warn that Windows env vars (`%LOCALAPPDATA%`) are not expanded in config files** — use fully-resolved paths in `kms.toml`

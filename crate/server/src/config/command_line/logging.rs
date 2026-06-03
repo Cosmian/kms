@@ -70,7 +70,7 @@ pub struct LoggingConfig {
     /// Suggested paths:
     ///   Linux: /var/log/
     ///   Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
-    ///   macOS: ~/Library/Logs/Cosmian KMS Server
+    ///   macOS: ~/Library/Logs/
     ///
     /// WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
     /// expanded. Use the fully-resolved path.

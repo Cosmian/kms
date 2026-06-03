@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # test_cng_ksp.ps1 -- End-to-end CNG KSP integration tests on Windows.
 #
 # This script exercises the full Cosmian KMS CNG KSP integration:
@@ -106,10 +106,13 @@ function Start-KmsServer {
 
     # Write a minimal test config to avoid conflicts with an existing default kms.toml
     $kmsTestConf = Join-Path $env:TEMP "kms-cng-test.toml"
+    # Double backslashes for TOML string escaping (prevents \t, \f, etc. being
+    # interpreted as TOML escape sequences).
+    $escapedSqlitePath = $SQLITE_PATH -replace '\\', '\\\\'
     @"
 [db]
 database_type = "sqlite"
-sqlite_path = "$($SQLITE_PATH -replace '\\', '\\')"
+sqlite_path = "$escapedSqlitePath"
 
 [http]
 port = $KMS_PORT

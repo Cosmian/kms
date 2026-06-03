@@ -12,6 +12,7 @@
 
 use std::{ffi::OsString, sync::Arc, time::Duration};
 
+use cosmian_logger::{TelemetryConfig, TracingConfig, tracing_init};
 use tracing::{error, info};
 use windows_service::{
     define_windows_service,
@@ -83,8 +84,11 @@ async fn run_service_async() -> crate::result::KResult<()> {
         }
     };
 
-    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)
-        .map_err(|e| crate::error::KmsError::ServerError(format!("SCM register failed: {e}")))?;
+    let status_handle = Arc::new(
+        service_control_handler::register(SERVICE_NAME, event_handler).map_err(|e| {
+            crate::error::KmsError::ServerError(format!("SCM register failed: {e}"))
+        })?,
+    );
 
     // Report StartPending
     status_handle
@@ -104,17 +108,74 @@ async fn run_service_async() -> crate::result::KResult<()> {
     // Load config (same path as normal main)
     dotenvy::dotenv().ok();
     let clap_config = ClapConfig::load_configuration()?;
+
+    // Initialize tracing/logging (same as main.rs::run()) so that the Windows
+    // service has proper log output, rolling file logs, and OTLP export.
+    let log_to_file = clap_config.logging.rolling_log_dir.clone().and_then(|dir| {
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            eprintln!(
+                "WARNING: Cannot create rolling log directory '{}': {e}. \
+                 File logging disabled.",
+                dir.display()
+            );
+            return None;
+        }
+        let probe = dir.join(".cosmian_kms_write_probe");
+        match std::fs::File::create(&probe) {
+            Ok(file) => {
+                drop(file);
+                std::fs::remove_file(&probe).ok();
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARNING: Rolling log directory '{}' is not writable: {e}. \
+                     File logging disabled.",
+                    dir.display()
+                );
+                return None;
+            }
+        }
+        let name = clap_config
+            .logging
+            .rolling_log_name
+            .clone()
+            .unwrap_or_else(|| "kms".to_owned());
+        Some((dir, name))
+    });
+
+    let _otel_guard = tracing_init(&TracingConfig {
+        service_name: "cosmian_kms".to_owned(),
+        otlp: clap_config
+            .logging
+            .otlp
+            .as_ref()
+            .map(|url| TelemetryConfig {
+                version: option_env!("CARGO_PKG_VERSION").map(String::from),
+                environment: clap_config.logging.environment.clone(),
+                otlp_url: url.to_owned(),
+                enable_metering: clap_config.logging.enable_metering,
+            }),
+        no_log_to_stdout: clap_config.logging.quiet,
+        rust_log: clap_config.logging.rust_log.clone().or_else(|| {
+            std::env::var("RUST_LOG").ok().or_else(|| {
+                Some("info,cosmian=info,cosmian_kms_server=info,actix_web=info".to_owned())
+            })
+        }),
+        log_to_file,
+        with_ansi_colors: clap_config.logging.ansi_colors,
+    });
+
     let server_params = Arc::new(ServerParams::try_from(clap_config)?);
 
     // Spawn a background OS thread that:
     //  1. Waits for the ServerHandle from start_kms_server.
     //  2. Reports Running to the SCM.
     //  3. Waits for the SCM Stop signal.
-    //  4. Calls handle.stop(true) to trigger graceful Actix shutdown.
+    //  4. Calls handle.stop(false) to trigger immediate Actix shutdown.
     //
     // We use a plain thread because the event loop is single-threaded
     // (LocalSet) and we cannot spawn_blocking from it.
-    let status_handle_clone = status_handle;
+    let status_handle_clone = Arc::clone(&status_handle);
     std::thread::spawn(move || {
         // Block until the server has started and sent its handle.
         let Ok(server_handle) = handle_rx.recv() else {
@@ -149,7 +210,7 @@ async fn run_service_async() -> crate::result::KResult<()> {
             process_id: None,
         });
 
-        // Trigger Actix shutdown.
+        // Trigger Actix shutdown (immediate, not graceful).
         // `ServerHandle::stop(graceful)` sends a stop command and returns a
         // future that resolves once the server loop exits.  We just need to
         // send the stop signal — the main task (start_kms_server) will observe
