@@ -244,9 +244,9 @@ fn bench_http_throughput(c: &mut Criterion) {
                                     tokio::spawn(async move { aes_encrypt(&c, &k).await })
                                 })
                                 .collect();
-for res in join_all(tasks).await {
-    res.expect("task panicked").expect("request failed");
-}
+                            for res in join_all(tasks).await {
+                                res.expect("task panicked").expect("request failed");
+                            }
                         }
                         start.elapsed()
                     }
@@ -279,9 +279,9 @@ for res in join_all(tasks).await {
                                     )
                                 })
                                 .collect();
-for res in join_all(tasks).await {
-    res.expect("task panicked").expect("request failed");
-}
+                            for res in join_all(tasks).await {
+                                res.expect("task panicked").expect("request failed");
+                            }
                         }
                         start.elapsed()
                     }
@@ -309,9 +309,9 @@ for res in join_all(tasks).await {
                                     tokio::spawn(async move { ec_sign(&c, &k).await })
                                 })
                                 .collect();
-for res in join_all(tasks).await {
-    res.expect("task panicked").expect("request failed");
-}
+                            for res in join_all(tasks).await {
+                                res.expect("task panicked").expect("request failed");
+                            }
                         }
                         start.elapsed()
                     }
