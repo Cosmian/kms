@@ -628,48 +628,46 @@ impl ObjectsStore for RedisWithFindex {
         wrapping_key_uid: &str,
         user: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        // Get UIDs owned by the user via Findex
-        let user_keyword = Keyword::from(user.as_bytes());
-        let owned_uids = self
+        // Search Findex for objects indexed under this wrapping key
+        let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+        let indexed_uids = self
             .findex
-            .search(&user_keyword)
+            .search(&keyword)
             .await
-            .map_err(|e| db_error!(format!("Error searching owned UIDs: {e:?}")))?;
-        let mut accessible_uids: HashSet<String> = owned_uids
+            .map_err(|e| db_error!(format!("Error searching wrapped_by keyword: {e:?}")))?;
+        if indexed_uids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let candidate_uids: HashSet<String> = indexed_uids
             .iter()
-            .filter_map(|uid| String::from_utf8(uid.to_vec()).ok())
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
             .collect();
 
-        // Add UIDs the user has read access to
+        // Fetch only the candidate objects
+        let redis_db_objects = self.objects_db.objects_get(&candidate_uids).await?;
+
+        // Filter by access: user must own the object or have permissions on it
         let permissions = self
             .permission_db
             .list_user_permissions(&UserId(user.to_owned()))
             .await?;
-        accessible_uids.extend(permissions.keys().map(|k| k.0.clone()));
 
-        if accessible_uids.is_empty() {
-            return Ok(vec![]);
-        }
-
-        // Fetch all accessible objects and filter by wrapping key UID
-        let redis_db_objects = self.objects_db.objects_get(&accessible_uids).await?;
         let mut out = Vec::new();
         for (uid, dbo) in redis_db_objects {
-            let is_wrapped_by = dbo
-                .object
-                .wrapping_key_uid()
-                .is_some_and(|wk| wk == wrapping_key_uid);
-            if is_wrapped_by {
-                let attrs = dbo
-                    .object
-                    .attributes()
-                    .cloned()
-                    .unwrap_or_else(|_| Attributes {
-                        object_type: Some(dbo.object.object_type()),
-                        ..Default::default()
-                    });
-                out.push((uid, dbo.state, attrs));
+            let has_access = dbo.owner == user || permissions.contains_key(&ObjectUid(uid.clone()));
+            if !has_access {
+                continue;
             }
+            let attrs = dbo
+                .object
+                .attributes()
+                .cloned()
+                .unwrap_or_else(|_| Attributes {
+                    object_type: Some(dbo.object.object_type()),
+                    ..Default::default()
+                });
+            out.push((uid, dbo.state, attrs));
         }
         Ok(out)
     }
