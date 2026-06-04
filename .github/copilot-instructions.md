@@ -27,7 +27,8 @@ cargo test -p cosmian_kms_cli
 
 # ── Lint ─────────────────────────────────────────────────────────────────
 cargo clippy-all                     # clippy --workspace --all-targets --all-features -- -D warnings
-cargo format                         # fmt --all -- --check
+cargo format                         # fmt --all -- --check (check-only; exits non-zero if files need reformatting, makes no changes)
+cargo fmt --all                      # apply formatting (actually rewrites files — use this in the workflow)
 
 # ── Run locally ──────────────────────────────────────────────────────────
 cargo run --bin cosmian_kms -- --database-type sqlite --sqlite-path /tmp/kms-data
@@ -183,7 +184,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 
 ## 4. Coding rules
 
-- **Function length**: try to keep functions under 50 lines unless it's more relevant to go longer; extract helpers for longer ones.
+- **Function length**: Keep functions under 50 lines. Exceptions are permitted only when: (a) the function is a straight-line state machine or match dispatch that cannot be meaningfully split, or (b) splitting would require passing more than 5 parameters to helpers. In all other cases, extract helpers.
 - **Clones**: avoid unnecessary clones; prefer references and borrowing.
 - **Use Rust Generics and Traits** to abstract over common patterns and avoid code duplication.
 - **Use Rust macros** to eliminate boilerplate, especially for repetitive match blocks and trait implementations.
@@ -198,12 +199,11 @@ Use `--features non-fips` to enable all non-approved algorithms.
      mandated by a spec, an inherently lossy conversion with a proven safe invariant) →
      Keep the allow and add a precise inline comment on the same or next line explaining
      **why** the lint cannot be satisfied and why the code is correct despite it.
-  3. **Cannot be decided** → Report to the user; do not silently suppress.
+  3. **Cannot be decided** → Report the undecided lint to the user with the exact warning text and location, in the prompt's report.
 - **Tests**: write unit tests in a `#[cfg(test)]` submodule close to the code they exercise.
 - **Documentation**: add `///` doc comments to all public items; internal helpers should explain _why_, not just _what_.
 - **Naming**: follow Rust idioms — `snake_case` for functions/variables, `PascalCase` for types, `SCREAMING_SNAKE_CASE` for constants.
 - **Logging**: use `trace!` for per-request detail, `debug!` for internal state, `info!` for lifecycle events; `warn!`/`error!` only for operator-actionable problems.
-- **CHANGELOG**: update `CHANGELOG/<branch_name_without_slashes>.md` for every user-visible change (see "Updating CHANGELOG.md" section).
 - **Commit scope**: make minimal, focused changes. Don't refactor surrounding code alongside a bug fix.
 - **TypeScript (UI)**: `tsconfig.app.json` enforces `strict: true`, `noUnusedLocals: true`, `noUnusedParameters: true`.
 - **Live database/backend tests**: when working on a feature that requires a live backend, run docker compose up -d from the repository root (services available: postgres :5432, mysql :3306, percona :3307, mariadb :3308, redis :6379, otel-collector :4317/4318/8889). Start only what's needed with docker compose up -d <service>. If the command fails or Docker is unavailable, inform the user.
@@ -216,12 +216,12 @@ After **every** code-changing prompt, execute the following steps **in order** b
 
 ### 1. Tests (always)
 
-Verify if non-regression vectors (test_data/vectors) are up-to-date and if relevant, add non-regression vectors to always improve the coverage. Never run the full test suite, unless it's the feature is fully developed and you want to make sure the whole codebase is sane. When code changes affect only a certain scope of the codebase, only run the concerned tests.
+Run only the tests that directly exercise the changed code. Never run the full test suite unless the feature is fully developed and a global sanity check is needed. When code changes affect only a certain scope, target that scope.
 
 ```bash
-# Example: running tests after a editing Redis backend's behavior
+# Example: running tests after editing Redis backend's behavior
 docker compose up -d
-cargo test -p cosmian_kms_server_database --features non-fips test_db_redis_with_findex 
+cargo test -p cosmian_kms_server_database --features non-fips test_db_redis_with_findex
 ```
 
 Fix every failing test. Never skip or mark tests as `#[ignore]` to make the suite green.
@@ -237,7 +237,7 @@ For every new feature, bug fix, or behavioral guard added:
 3. Run `cargo test -p test_kms_server <test_fn_name>` and confirm it passes.
 4. Update `crate/test_kms_server/README.md`: add the new vector to the table and update the total vector count at the top of the table.
 
-**Do not add tests that do not make use of the newly added feature, or that re-do exactly what some previous test already does. If adding a test vector is non relevant for the current newly added code, skip this step*.
+Skip this step only if the change is purely refactoring with no behavioral difference (i.e., all existing test vectors still pass unchanged and no new observable output is produced). In all other cases, add a vector. Do not add test vectors that duplicate what existing vectors already cover with no additional code involved.
 
 ### 3. Clippy and formatting (always)
 
@@ -255,9 +255,27 @@ cargo fmt --all
 ```
 
 
-### 5. Apply synchronization rules (when applicable)
+### 4. Apply synchronization rules (consult the trigger table below)
 
-#### 5.1 Server SPA routes ↔ React Router ↔ Menu items
+Scan the table to identify which sub-rules apply to your task, then execute only those sub-rules.
+
+| Task type | Sub-rules to apply |
+|---|---|
+| New/modified KMIP operation | 4.3, 4.10 |
+| New/modified REST endpoint | 4.2, 4.10 |
+| New/modified CLI command/flag | 4.4, 4.15 |
+| New/modified UI feature | 4.1, 4.4, 4.5 (if WASM needed) |
+| Non-FIPS-only feature | 4.8 |
+| Auth method change | 4.9 |
+| Server config/wizard change | 4.6, 4.7 |
+| Cloud provider integration | 4.12 |
+| HSM backend | 4.13 |
+| Documentation/behavior change | 4.14 |
+| Playwright E2E test change | 4.16 |
+| OpenSSL upgrade | 4.17 |
+| `Cargo.lock` or `pnpm-lock.yaml` change | 4.11 |
+
+#### 4.1 Server SPA routes ⇔ React Router ⇔ Menu items
 
 When adding or renaming a UI feature path:
 
@@ -265,7 +283,7 @@ When adding or renaming a UI feature path:
 2. **`ui/src/App.tsx`** — add nested `<Route path="..." element={<Component />} />` declarations.
 3. **`ui/src/menuItems.tsx`** — add or update the `baseMenu` entry; the `key` field must match the route path prefix (e.g. `"fpe"`).
 
-#### 5.2 Server REST endpoints ↔ OpenAPI ↔ Route registration
+#### 4.2 Server REST endpoints ⇔ OpenAPI ⇔ Route registration
 
 When adding or modifying a REST endpoint:
 
@@ -275,7 +293,7 @@ When adding or modifying a REST endpoint:
 4. **`crate/server/documentation/openapi.yaml`** — add or update the path, request/response schemas, and tags.
 5. Use crate/test_kms_server/src/openapi_validation.rs tests to validate changes on Swagger/OpenAPI side.
 
-#### 5.3 KMIP operations: types → dispatch → implementation
+#### 4.3 KMIP operations: types → dispatch → implementation
 
 When adding a new KMIP operation:
 
@@ -283,7 +301,7 @@ When adding a new KMIP operation:
 2. **`crate/server/src/core/operations/dispatch.rs`** — add the match arm routing the tag to the handler function.
 3. **`crate/server/src/core/operations/<operation>.rs`** — implement the handler (create the file and register it in `mod.rs`).
 
-#### 5.4 CLI ↔ Web UI feature parity
+#### 4.4 CLI ⇔ Web UI feature parity
 
 The `ckms` CLI and the Web UI must mirror each other:
 
@@ -296,15 +314,16 @@ The `ckms` CLI and the Web UI must mirror each other:
 
 In addition, for each ckms subcommands changes, add corresponding tests on ckms in crate/clients/ckms/src/tests.
 
-#### 5.5 WASM bindings ↔ Web UI
+#### 4.5 WASM bindings ⇔ Web UI
 
 When the UI needs a new KMIP request builder or response parser:
 
 1. **`crate/clients/wasm/src/wasm.rs`** — add `#[wasm_bindgen]` exported function (e.g. `create_fpe_key_ttlv_request`).
 2. **`ui/src/wasm/pkg/`** — rebuild with `wasm-pack build --target web` (auto-generates TS types).
+   > If `wasm-pack` is not installed or the build fails, do not proceed with UI changes. Report the error to the user and install with: `cargo install wasm-pack`.
 3. **UI component** — import and call the new WASM function.
 
-#### 5.6 Server configuration ↔ Wizard ↔ TOML templates
+#### 4.6 Server configuration ⇔ Wizard ⇔ TOML templates
 
 When modifying `ClapConfig` or its sub-structs:
 
@@ -314,13 +333,13 @@ When modifying `ClapConfig` or its sub-structs:
 4. **`crate/server/kms_template.toml`** — update the template included in tarballs.
 5. **`pkg/kms.toml`** — update the service deployment config.
 
-#### 5.7 Server wizard ↔ Client wizard
+#### 4.7 Server wizard ⇔ Client wizard
 
 When the server wizard (`crate/server/src/config/wizard/`) changes:
 
 - Keep `crate/clients/client/src/config.rs` (client config struct) consistent so the client can serialize/deserialize settings the server now expects.
 
-#### 5.8 Feature flags: non-FIPS gating across the stack
+#### 4.8 Feature flags: non-FIPS gating across the stack
 
 When implementing a non-FIPS-only feature:
 
@@ -333,7 +352,7 @@ When implementing a non-FIPS-only feature:
 7. **E2E tests** — `test.skip(FIPS_MODE, "...")` in Playwright specs.
 8. **Test vectors** — place in `test_data/vectors/non-fips/` or gate runner with `#[cfg(feature = "non-fips")]`.
 
-#### 5.9 Authentication middleware consistency
+#### 4.9 Authentication middleware consistency
 
 When adding or modifying an auth method:
 
@@ -343,7 +362,7 @@ When adding or modifying an auth method:
 4. **All scopes** — every authenticated scope in `start_kms_server.rs` must wrap the new middleware with `Condition::new(use_<auth>, <Middleware>)`.
 5. **`EnsureAuth::new`** — the `auth_is_configured` boolean must be `use_jwt_auth || use_cert_auth || use_api_token_auth` for every scope (except mTLS-only scopes like Azure EKM).
 
-#### 5.10 Test vectors: directory → runner → README
+#### 4.10 Test vectors: directory → runner → README
 
 For every feature or bug fix:
 
@@ -351,14 +370,14 @@ For every feature or bug fix:
 2. **`crate/test_kms_server/src/vector_runner.rs`** — add `#[tokio::test]` function.
 3. **`crate/test_kms_server/README.md`** — add row to the table and update the total count.
 
-#### 5.11 Nix vendor hashes ↔ lock files
+#### 4.11 Nix vendor hashes ⇔ lock files
 
 When `Cargo.lock` or `ui/pnpm-lock.yaml` change:
 
 - Update the corresponding files in `nix/expected-hashes/` with the correct `sha256-...` hash from CI output.
 - Hash files: `server.vendor.{static,dynamic}.sha256`, `cli.vendor.{static,dynamic}.{darwin,linux}.sha256`, `ui.vendor.{fips,non-fips}.sha256`, `ui.pnpm.{darwin,linux}.sha256`.
 
-#### 5.12 Cloud provider integrations
+#### 4.12 Cloud provider integrations
 
 When adding AWS XKS / Azure EKM / Google CSE / MS DKE support:
 
@@ -370,7 +389,7 @@ When adding AWS XKS / Azure EKM / Google CSE / MS DKE support:
 6. **CLI actions** — `crate/clients/clap/src/actions/<provider>/`.
 7. **UI actions** — `ui/src/actions/CloudProviders/`.
 
-#### 5.13 HSM backend support
+#### 4.13 HSM backend support
 
 When adding a new HSM model:
 
@@ -380,7 +399,7 @@ When adding a new HSM model:
 4. **Test vectors** — `test_data/vectors/hsm/<model>/`.
 5. **CI** — add matrix entry in `.github/workflows/test_all.yml`.
 
-#### 5.14 Documentation ↔ mkdocs ↔ README
+#### 4.14 Documentation ⇔ mkdocs ⇔ README
 
 When behaviour or user interface changes:
 
@@ -389,20 +408,20 @@ When behaviour or user interface changes:
 3. **`README.md`** — add a brief summary with a link (no full duplication).
 4. **`cli_documentation/docs/`** — if CLI-visible, run `ckms markdown` to regenerate.
 
-#### 5.15 CLI documentation auto-generation
+#### 4.15 CLI documentation auto-generation
 
 When CLI commands or flags change:
 
 - Run `cargo run --bin ckms -- markdown cli_documentation/docs/main_commands.md` to regenerate.
 - Commit the regenerated file — manual edits will be overwritten.
 
-#### 5.16 E2E test documentation
+#### 4.16 E2E test documentation
 
 When Playwright E2E tests are added or removed:
 
 - Update `ui/tests/e2e/README.md` to reflect the current spec files, FIPS-skip table, and test coverage.
 
-#### 5.17 OpenSSL version updates
+#### 4.17 OpenSSL version updates
 
 When upgrading OpenSSL:
 
@@ -414,10 +433,10 @@ When upgrading OpenSSL:
 > These previous steps are **not optional suggestions**. They are part of every response that
 > touches code. An incomplete response is one that skips any of them.
 
-### 6. Update SECURITY.md on security-related changes (when applicable)
+### 5. Update SECURITY.md on security-related changes (when applicable)
 If the prompt adds a new security feature, hardens an existing one, or fixes a security bug, update SECURITY.md with a brief summary of the change and its impact on users. Link to the relevant CHANGELOG entry and test vector.
 
-### 7. Post-task self-review
+### 6. Post-task self-review
 
 #### When to run this
 
@@ -453,6 +472,8 @@ If any answer is "yes", fix it before finishing.
 > Determine the branch name by running `git branch --show-current` — never guess.
 
 Update CHANGELOG/<branch_name_without_slashes>.md only when the change is high-level and worth a release note, such as a new feature, a user-visible behavior change, a bug fix, a security change, a compatibility change, or a significant refactor that materially affects users or operators. Skip changelog entries for routine implementation work, local cleanup, formatting, minor refactors, and test-only changes unless they affect observable behavior. Use the sections convention: `Features`, `Bug Fixes`, `Build`, `Refactor`, `Documentation`, `Testing`, `CI`, `Security`. Under a section, regroup by sub-feature or component when multiple entries relate to the same area.
+
+**Decision rule**: If the change alters any of: public API signatures, CLI flags/output, config file keys, default behavior, supported algorithms, or error messages visible to operators — write a changelog entry. Otherwise skip.
 
 If appliable and the feature's code is complete, add the GitHub PR or issue link at the EOL: `([#XXX](https://github.com/Cosmian/kms/issues/XXX))`. Add at the bottom `Closes #xxx` lines as needed to automatically close related issues.
 
