@@ -30,17 +30,20 @@ use crate::core::cover_crypt::rekey_keypair_cover_crypt;
 use crate::{
     core::{
         KMS,
-        operations::{create_key_pair::generate_key_pair, key_ops::ObjectWithMetadataOps},
+        operations::{
+            create_key_pair::generate_key_pair,
+            key_ops::{ObjectWithMetadataOps, reject_protection_storage_masks},
+        },
     },
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
 };
 
-/// Implementor of [`RekeyOperation`] for KMIP `ReKeyKeyPair` (§4.5) on asymmetric key pairs.
+/// Implementor of [`RekeyOperation`] for KMIP `ReKeyKeyPair` (KMIP 1.4 §4.5 / KMIP 2.1 §6.1.47) on asymmetric key pairs.
 struct KeypairRekey {
-    /// The `offset` from the `ReKeyKeyPair` request (date arithmetic per KMIP Table 176).
-    offset: Option<i32>,
+    /// The `offset` from the `ReKeyKeyPair` request (date computation per KMIP 1.4 Table 176 / KMIP 2.1 Table 308).
+    offset: Option<i64>,
 }
 
 /// KMIP `ReKeyKeyPair` operation for asymmetric key pairs.
@@ -51,7 +54,7 @@ struct KeypairRekey {
 /// - Sets `ReplacedObjectLink` on both new private and public keys.
 /// - The replacement keys take over the Name attributes of the existing keys.
 /// - The existing keys' State is NOT changed.
-/// - If `offset` is provided, date arithmetic per Table 176 is applied.
+/// - If `offset` is provided, date computation per Table 176 is applied.
 /// - Rotation metadata is set on both old and new keys.
 ///
 /// For Covercrypt keys (non-FIPS only), delegates to the existing in-place
@@ -60,16 +63,13 @@ pub(crate) async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
     user: &str,
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("ReKeyKeyPair: {}", serde_json::to_string(&request)?);
 
     // Covercrypt early-return: uses a completely different code path (in-place attribute rekey)
     // that doesn't fit the rotation trait pattern.
     #[cfg(feature = "non-fips")]
-    if let Some(response) =
-        try_covercrypt_rekey(kms, &request, user, privileged_users.clone()).await?
-    {
+    if let Some(response) = try_covercrypt_rekey(kms, &request, user).await? {
         return Ok(response);
     }
 
@@ -80,7 +80,6 @@ pub(crate) async fn rekey_keypair(
         kms,
         &request,
         user,
-        &privileged_users,
     )
     .await
 }
@@ -91,7 +90,6 @@ async fn try_covercrypt_rekey(
     kms: &KMS,
     request: &ReKeyKeyPair,
     user: &str,
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<Option<ReKeyKeyPairResponse>> {
     let uid_or_tags = request
         .private_key_unique_identifier
@@ -124,7 +122,6 @@ async fn try_covercrypt_rekey(
                     user,
                     action,
                     owm.attributes().sensitive.unwrap_or(false),
-                    privileged_users,
                 ))
                 .await
                 .context("ReKeyKeyPair: Covercrypt rekey failed")?;
@@ -144,16 +141,14 @@ impl RekeyOperation for KeypairRekey {
         kms: &KMS,
         request: &ReKeyKeyPair,
         user: &str,
-        privileged: &Option<Vec<String>>,
     ) -> KResult<Vec<RotationCandidate>> {
-        if request.common_protection_storage_masks.is_some()
-            || request.private_protection_storage_masks.is_some()
-            || request.public_protection_storage_masks.is_some()
-        {
-            kms_bail!(KmsError::UnsupportedPlaceholder)
-        }
+        reject_protection_storage_masks(
+            request.common_protection_storage_masks.is_some()
+                || request.private_protection_storage_masks.is_some()
+                || request.public_protection_storage_masks.is_some(),
+        )?;
 
-        enforce_privileged_user(kms, user, privileged).await?;
+        enforce_privileged_user(kms, user).await?;
 
         let uid_or_tags = request
             .private_key_unique_identifier
@@ -161,6 +156,18 @@ impl RekeyOperation for KeypairRekey {
             .ok_or(KmsError::UnsupportedPlaceholder)?
             .as_str()
             .context("ReKeyKeyPair: the private key unique identifier must be a string")?;
+
+        // HSM-managed keys cannot be re-keyed via KMIP: they have no KMIP attribute
+        // storage and are often non-extractable (CKA_EXTRACTABLE = false).
+        // Use PKCS#11 vendor tools for HSM key lifecycle management.
+        if uid_or_tags.starts_with("hsm::") {
+            return Err(KmsError::NotSupported(
+                "Re-Key Key Pair is not supported for HSM-managed keys. \
+                 Use PKCS#11 vendor tools or the HSM administration console \
+                 to manage HSM key lifecycle."
+                    .to_owned(),
+            ));
+        }
 
         for owm in retrieve_eligible_keys(kms, uid_or_tags, ObjectType::PrivateKey).await? {
             if !owm
@@ -375,7 +382,7 @@ fn prepare_sk_replacement(
         Some((pk_new_uid, LinkType::PublicKeyLink)),
         vendor_id,
     )?;
-    preserve_wrapping_key_link(candidate.owm.object(), &mut sk.attributes);
+    preserve_wrapping_key_link(candidate.owm.object(), &mut sk.attributes)?;
     Ok(())
 }
 
@@ -395,7 +402,7 @@ fn prepare_pk_replacement(
         Some((sk_new_uid, LinkType::PrivateKeyLink)),
         vendor_id,
     )?;
-    preserve_wrapping_key_link(candidate.owm.object(), &mut pk.attributes);
+    preserve_wrapping_key_link(candidate.owm.object(), &mut pk.attributes)?;
     // Public key IS a wrapping key — dependants get re-wrapped to it
     pk.rewrap_to = Some(pk.new_uid.clone());
     Ok(())

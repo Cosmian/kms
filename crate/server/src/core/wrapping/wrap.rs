@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, trace};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix, wrapping::unwrap_object},
@@ -71,20 +71,10 @@ pub(crate) async fn wrap_and_cache(
 
     // A key cannot be its own wrapping key.
     if wrapping_key_id == unique_identifier.to_string() {
-        // The wrapping_key_id came from the request attributes (user-supplied),
-        // not from the server-wide KEK. Reject this as an explicit self-wrap.
-        if kms.params.key_wrapping_key.as_deref() != Some(&wrapping_key_id) {
-            return Err(KmsError::InvalidRequest(format!(
-                "Key '{wrapping_key_id}' cannot be used as its own wrapping key: \
-                 the wrapping key ID must differ from the key ID being created"
-            )));
-        }
-        // The server-wide KEK coincidentally matches the new key's UID — skip silently.
-        // This should not happen in practice (KEKs use prefixed UIDs like "hsm::softhsm2::0::kek").
-        warn!(
-            "Server KEK '{wrapping_key_id}' matches the UID of the key being created; skipping self-wrap"
-        );
-        return Ok(());
+        return Err(KmsError::InvalidRequest(format!(
+            "Key '{wrapping_key_id}' cannot be used as its own wrapping key: \
+             the wrapping key ID must differ from the key ID being created"
+        )));
     }
 
     // This is useful to store a key on the default data store but wrapped by a key stored in an HSM

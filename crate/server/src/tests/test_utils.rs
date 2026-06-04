@@ -196,7 +196,6 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 /// # Arguments
 ///
 /// * `kms_public_url` - Optional public URL for the KMS server
-/// * `privileged_users` - Optional list of users with elevated permissions
 ///
 /// # Google CSE Support
 ///
@@ -207,7 +206,6 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 /// - Public key stored as  `google_cse_rsa_pk` and exposed via `/google_cse/certs`
 pub(crate) async fn test_app(
     kms_public_url: Option<String>,
-    privileged_users: Option<Vec<String>>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config_opts(kms_public_url);
 
@@ -229,7 +227,6 @@ pub(crate) async fn test_app(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .app_data(Data::new(privileged_users))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
         .service(routes::get_version)
@@ -285,7 +282,6 @@ pub(crate) async fn test_app(
 /// and enforcement settings and then validate behavior through the HTTP stack.
 pub(crate) async fn test_app_with_clap_config(
     clap_config: ClapConfig,
-    privileged_users: Option<Vec<String>>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let server_params =
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
@@ -304,7 +300,6 @@ pub(crate) async fn test_app_with_clap_config(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .app_data(Data::new(privileged_users))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
         .service(routes::get_version)

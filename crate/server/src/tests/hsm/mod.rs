@@ -255,7 +255,7 @@ async fn import_object(
         object: object.clone(),
     };
 
-    let create_response = kms.import(import_request, owner, None).await?;
+    let create_response = kms.import(import_request, owner).await?;
     Ok(create_response.unique_identifier)
 }
 

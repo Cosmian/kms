@@ -206,7 +206,7 @@ pub(crate) async fn unwrap_key(
     };
 
     let import_response = kms
-        .import(import_request, &user, None)
+        .import(import_request, &user)
         .await
         .map_err(CryptoApiError::from)?;
 

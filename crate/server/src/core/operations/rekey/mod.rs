@@ -1,7 +1,8 @@
-//! KMIP key rotation operations: `ReKey` (§4.4), `ReKeyKeyPair` (§4.5).
+//! KMIP key rotation operations: `ReKey` (KMIP 1.4 §4.4 / KMIP 2.1 §6.1.46),
+//! `ReKeyKeyPair` (KMIP 1.4 §4.5 / KMIP 2.1 §6.1.47), `ReCertify` (KMIP 1.4 §4.8 / KMIP 2.1 §6.1.45).
 //!
 //! Submodules:
-//! - [`common`] — Shared helpers for date arithmetic, attribute preparation,
+//! - [`common`] — Shared helpers for date computation, attribute preparation,
 //!   rotation metadata, and privileged-user enforcement.
 //! - [`symmetric`] — `ReKey` for symmetric keys (plain, wrapped, wrapping keys).
 //! - [`keypair`] — `ReKeyKeyPair` for asymmetric key pairs (RSA, EC, PQC, Covercrypt).

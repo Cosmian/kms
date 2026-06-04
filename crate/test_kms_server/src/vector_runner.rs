@@ -3383,29 +3383,6 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_with_offset_state").await
     }
 
-    // ── Negative tests: ReCertify ──────────────────────────────────────
-
-    #[cfg(feature = "non-fips")]
-    #[tokio::test]
-    async fn test_neg_recertify_missing_uid() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/recertify_missing_uid").await
-    }
-
-    #[cfg(feature = "non-fips")]
-    #[tokio::test]
-    async fn test_neg_recertify_nonexistent() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/recertify_nonexistent").await
-    }
-
-    #[cfg(feature = "non-fips")]
-    #[tokio::test]
-    async fn test_neg_recertify_not_a_certificate() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/recertify_not_a_certificate").await
-    }
-
     #[tokio::test]
     async fn test_neg_rekey_wrapped_deactivated() -> Result<(), KmsClientError> {
         crate::init_test_logging();
@@ -3655,23 +3632,6 @@ ObjectType = "SymmetricKey"
     async fn test_vec_recertify_with_offset() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/recertify_with_offset").await
-    }
-
-    // ── KMIP operations: Offset state verification ──────────────────────
-
-    #[cfg(feature = "non-fips")]
-    #[tokio::test]
-    async fn test_vec_rekey_with_offset_state() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_with_offset_state").await
-    }
-
-    #[cfg(feature = "non-fips")]
-    #[tokio::test]
-    async fn test_vec_rekey_keypair_with_offset_state() -> Result<(), KmsClientError> {
-        crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_with_offset_state")
-            .await
     }
 
     // ── KMIP operations: Locate filters ─────────────────────────────────

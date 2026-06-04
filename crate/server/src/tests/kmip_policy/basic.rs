@@ -17,7 +17,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::U
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_ec_key_pair_request;
 #[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::time_normalize;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
     kmip_2_1::{
@@ -73,7 +72,7 @@ fn default_policy_allows_aes_gcm_encrypt_params() {
 async fn e2e_default_policy_allows_aes_gcm_encrypt_params() {
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let key_uid = create_aes_key_with_size(&app, "e2e-aes-gcm", 256)
         .await
@@ -117,7 +116,7 @@ fn default_policy_denies_deprecated_algorithm_des() {
 async fn e2e_default_policy_denies_deprecated_algorithm_des() {
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let req = Operation::Create(Create {
         object_type: ObjectType::SymmetricKey,
@@ -156,7 +155,7 @@ fn default_policy_denies_aes_invalid_key_size() {
 async fn e2e_default_policy_denies_aes_invalid_key_size() {
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let req = Operation::Create(Create {
         object_type: ObjectType::SymmetricKey,
@@ -270,7 +269,7 @@ async fn e2e_default_policy_denies_disallowed_block_cipher_mode_ecb() {
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
     conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let key_uid = create_aes_key_with_size(&app, "e2e-aes-ecb", 256)
         .await
@@ -348,7 +347,7 @@ async fn e2e_default_policy_allows_curve_p256() {
         CryptographicAlgorithm::EC,
         CryptographicAlgorithm::ECDH,
     ]);
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let create_kp = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
@@ -395,7 +394,7 @@ async fn e2e_default_policy_denies_padding_method_none_allowed_list() {
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
     conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::PKCS5]);
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let key_uid = create_aes_key_with_size(&app, "e2e-padding-deny", 256)
         .await
@@ -486,7 +485,6 @@ fn _create_aes_key_request_for_export(tag: &str) -> Operation {
             cryptographic_usage_mask: Some(
                 CryptographicUsageMask::WrapKey | CryptographicUsageMask::Encrypt,
             ),
-            activation_date: Some(time_normalize().expect("time_normalize should work")),
             alternative_name: Some(AlternativeName {
                 alternative_name_type: AlternativeNameType::UninterpretedTextString,
                 alternative_name_value: tag.to_owned(),

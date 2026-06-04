@@ -16,14 +16,14 @@ use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn test_aes128gcm_round_trip() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     super::common::aes_gcm_round_trip(&app, 128, "A128GCM").await
 }
 
 #[tokio::test]
 async fn test_aes256gcm_round_trip() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     super::common::aes_gcm_round_trip(&app, 256, "A256GCM").await
 }
 
@@ -31,7 +31,7 @@ async fn test_aes256gcm_round_trip() -> KResult<()> {
 #[tokio::test]
 async fn test_aad_binding() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,

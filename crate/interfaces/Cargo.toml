@@ -23,4 +23,5 @@ cosmian_logger = { workspace = true }
 num-bigint-dig = { workspace = true, features = ["std", "rand", "serde", "zeroize"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 zeroize = { workspace = true, default-features = true }

@@ -20,16 +20,59 @@ use time::OffsetDateTime;
 
 use super::digest::digest;
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, retrieve_object_utils::user_has_permission, uid_utils::has_prefix},
     error::KmsError,
+    kms_bail,
     result::KResult,
 };
 
+/// Enforce that the caller has `Create` access-right.
+///
+/// When `privileged_users` is configured, the user must either:
+/// - have been explicitly granted the `Create` operation on any object,
+/// - be listed in `privileged_users`, or
+/// - be the `default_username` (unauthenticated / local access).
+///
+/// This check applies uniformly to `Create`, `CreateKeyPair`, `Import`, and `Register`.
+pub(crate) async fn enforce_create_permission(kms: &KMS, user: &str) -> KResult<()> {
+    if let Some(ref users) = kms.params.privileged_users {
+        let has_permission = user_has_permission(user, None, &KmipOperation::Create, kms).await?;
+
+        if !has_permission
+            && !users.iter().any(|u| u == user)
+            && user != kms.params.default_username
+        {
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
+    }
+    Ok(())
+}
+
+/// Reject requests that specify `ProtectionStorageMasks`.
+///
+/// KMIP defines this field but the server does not implement storage-level
+/// masking.  Fail early rather than silently ignoring the field.
+#[allow(clippy::missing_const_for_fn)] // kms_bail! is not const-compatible
+pub(crate) fn reject_protection_storage_masks(has_masks: bool) -> KResult<()> {
+    if has_masks {
+        kms_bail!(KmsError::UnsupportedPlaceholder)
+    }
+    Ok(())
+}
+
 /// Initialize lifecycle attributes on a newly created or imported object.
 ///
-/// Sets state (`PreActive` or `Active` based on `requested_activation_date`), digest,
-/// `initial_date`, `original_creation_date`, `last_change_date`, `activation_date` (if `Active`),
-/// and `object_type` on the object's attributes. Returns a clone of the final attributes.
+/// - No `requested_activation_date` → state `PreActive` (requires explicit
+///   Activate call or auto-activation via `get_effective_state`).
+/// - `requested_activation_date` ≤ now → state `Active` immediately.
+/// - `requested_activation_date` > now → state `PreActive`, date stored for
+///   auto-transition by `get_effective_state`.
+///
+/// Also sets `digest`, `initial_date`, `original_creation_date`,
+/// `last_change_date`, and `object_type`. Returns a clone of the final
+/// attributes.
 pub(crate) fn setup_object_lifecycle(
     object: &mut Object,
     object_type: ObjectType,
@@ -39,6 +82,8 @@ pub(crate) fn setup_object_lifecycle(
     let digest = digest(object)?;
     let attributes = object.attributes_mut()?;
 
+    // KMIP semantics: activation_date present and ≤ now → Active,
+    // otherwise PreActive (absent or future date).
     let activation_allows_active = requested_activation_date.is_some_and(|d| d <= now);
     let state = if activation_allows_active {
         State::Active
@@ -55,7 +100,7 @@ pub(crate) fn setup_object_lifecycle(
     if state == State::Active {
         attributes.activation_date = Some(now);
     } else if let Some(future_date) = requested_activation_date {
-        // PreActive: store the future activation date so auto-transition works
+        // PreActive with future date: store it so auto-transition works
         attributes.activation_date = Some(future_date);
     }
 
@@ -218,7 +263,7 @@ mod tests {
         kmip_0::kmip_types::State,
         kmip_2_1::{
             kmip_attributes::Attributes,
-            kmip_data_structures::{KeyBlock, KeyValue},
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, SymmetricKey},
             kmip_types::{CryptographicAlgorithm, KeyFormatType},
         },
@@ -232,7 +277,10 @@ mod tests {
         Object::SymmetricKey(SymmetricKey {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
-                key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![1, 2, 3, 4]))),
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3, 4])),
+                    attributes: Some(Attributes::default()),
+                }),
                 key_compression_type: None,
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 cryptographic_length: Some(256),
@@ -297,6 +345,33 @@ mod tests {
         );
 
         assert_eq!(owm.get_effective_state()?, State::PreActive);
+        Ok(())
+    }
+
+    #[test]
+    fn test_setup_object_lifecycle_past_date_gives_active() -> KResult<()> {
+        let mut obj = test_object();
+        let past = time_normalize()? - Duration::hours(1);
+        let attrs = setup_object_lifecycle(&mut obj, ObjectType::SymmetricKey, Some(past))?;
+        assert_eq!(attrs.state, Some(State::Active));
+        Ok(())
+    }
+
+    #[test]
+    fn test_setup_object_lifecycle_no_date_gives_preactive() -> KResult<()> {
+        let mut obj = test_object();
+        let attrs = setup_object_lifecycle(&mut obj, ObjectType::SymmetricKey, None)?;
+        assert_eq!(attrs.state, Some(State::PreActive));
+        Ok(())
+    }
+
+    #[test]
+    fn test_setup_object_lifecycle_future_date_gives_preactive() -> KResult<()> {
+        let mut obj = test_object();
+        let future = time_normalize()? + Duration::hours(1);
+        let attrs = setup_object_lifecycle(&mut obj, ObjectType::SymmetricKey, Some(future))?;
+        assert_eq!(attrs.state, Some(State::PreActive));
+        assert_eq!(attrs.activation_date, Some(future));
         Ok(())
     }
 

@@ -1,4 +1,6 @@
-//! Shared logic for KMIP `ReKey` (§4.4), `ReKeyKeyPair` (§4.5), and `ReCertify` (§4.8) operations.
+//! Shared logic for KMIP `ReKey` (§6.1.46), `ReKeyKeyPair` (§6.1.47), and `ReCertify` (§6.1.45) operations.
+//!
+//! All section references are to KMIP 2.1 (OASIS Standard).
 //!
 //! All rotation operations follow the same pattern via the [`RekeyOperation`] trait:
 //! - Validate inputs and resolve candidates for rotation.
@@ -16,7 +18,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
-            KmipOperation,
             kmip_attributes::Attributes,
             kmip_data_structures::KeyWrappingSpecification,
             kmip_objects::{Object, ObjectType},
@@ -36,8 +37,7 @@ use uuid::Uuid;
 use crate::{
     core::{
         KMS,
-        operations::key_ops::setup_object_lifecycle,
-        retrieve_object_utils::user_has_permission,
+        operations::key_ops::{enforce_create_permission, setup_object_lifecycle},
         wrapping::{unwrap_object, wrap_and_cache, wrap_object},
     },
     error::KmsError,
@@ -65,15 +65,30 @@ pub(crate) fn extract_rewrap_spec(object: &Object) -> Option<KeyWrappingSpecific
 
 /// Extract the wrapping key UID from a wrapped object's encryption key information.
 ///
-/// Returns `None` if the object is not wrapped or has no `EncryptionKeyInformation`.
-pub(crate) fn extract_wrapping_key_uid(object: &Object) -> Option<String> {
-    object
-        .key_block()
-        .ok()
-        .and_then(|kb| kb.key_wrapping_data.as_ref())
-        .and_then(|kwd| kwd.encryption_key_information.as_ref())
-        .and_then(|eki| eki.unique_identifier.as_str())
-        .map(str::to_owned)
+/// Returns:
+/// - `Ok(Some(uid))` if the object is wrapped and has a valid wrapping key UID.
+/// - `Ok(None)` if the object has no key block or no `KeyWrappingData` (i.e. not wrapped).
+/// - `Err(...)` if the object has `KeyWrappingData` but the `EncryptionKeyInformation`
+///   is missing or has no `UniqueIdentifier` — this is a structural invariant violation.
+pub(crate) fn extract_wrapping_key_uid(object: &Object) -> KResult<Option<String>> {
+    let Some(kb) = object.key_block().ok() else {
+        return Ok(None);
+    };
+    let Some(kwd) = &kb.key_wrapping_data else {
+        return Ok(None);
+    };
+    // Object has wrapping data → the wrapping key UID MUST be present
+    let eki = kwd.encryption_key_information.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "Object has KeyWrappingData but no EncryptionKeyInformation".to_owned(),
+        )
+    })?;
+    let uid = eki.unique_identifier.as_str().ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "EncryptionKeyInformation has no UniqueIdentifier for the wrapping key".to_owned(),
+        )
+    })?;
+    Ok(Some(uid.to_owned()))
 }
 
 /// Copy the `WrappingKeyLink` from an old (wrapped) object to the new object's attributes.
@@ -81,13 +96,17 @@ pub(crate) fn extract_wrapping_key_uid(object: &Object) -> Option<String> {
 /// If the old object was wrapped, the wrapping key UID is preserved as a
 /// `LinkType::WrappingKeyLink` on the replacement's attributes so that
 /// dependant re-wrapping and attribute queries work correctly.
-pub(crate) fn preserve_wrapping_key_link(old_object: &Object, new_attrs: &mut Attributes) {
-    if let Some(wrapping_key_uid) = extract_wrapping_key_uid(old_object) {
+pub(crate) fn preserve_wrapping_key_link(
+    old_object: &Object,
+    new_attrs: &mut Attributes,
+) -> KResult<()> {
+    if let Some(wrapping_key_uid) = extract_wrapping_key_uid(old_object)? {
         new_attrs.set_link(
             LinkType::WrappingKeyLink,
             LinkedObjectIdentifier::TextString(wrapping_key_uid),
         );
     }
+    Ok(())
 }
 
 /// Retrieve all eligible objects matching the given identifier, filtered by state and type.
@@ -164,7 +183,6 @@ pub(crate) trait RekeyOperation {
         kms: &KMS,
         request: &Self::Request,
         user: &str,
-        privileged: &Option<Vec<String>>,
     ) -> impl std::future::Future<Output = KResult<Vec<RotationCandidate>>>;
 
     /// Step 2: Detect wrapping context on existing object(s).
@@ -371,9 +389,8 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
     kms: &KMS,
     request: &T::Request,
     user: &str,
-    privileged: &Option<Vec<String>>,
 ) -> KResult<T::Response> {
-    let candidates = op.validate(kms, request, user, privileged).await?;
+    let candidates = op.validate(kms, request, user).await?;
     let wrap_specs = op.detect_wrapping(&candidates);
     let mut replacements = op.generate_replacement(kms, &candidates).await?;
     op.prepare_attributes(kms, &candidates, &mut replacements)?;
@@ -389,7 +406,7 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
 
 /// Dates computed for a replacement key based on the existing key's dates and an optional offset.
 ///
-/// Per KMIP 1.4 Tables 172/176:
+/// Per KMIP 1.4 §4.4 Table 172 / §4.5 Table 176 / §4.8 Table 186:
 /// - `activation = initialization + offset` (if offset provided)
 /// - `deactivation = old_deactivation + (new_activation - old_activation)` (if both exist)
 #[allow(clippy::struct_field_names)]
@@ -401,18 +418,17 @@ pub(crate) struct ReplacementDates {
 
 /// Compute the replacement key's dates from the existing key's attributes and an optional offset.
 ///
-/// KMIP 1.4 §4.4 Table 172 / §4.5 Table 176:
+/// KMIP 1.4 §4.4 Table 172 / §4.5 Table 176 / §4.8 Table 186:
 /// - Initialization Date (IT₂) = now (always > IT₁)
 /// - Activation Date (AT₂) = IT₂ + Offset (if offset provided), else IT₂ (immediate activation)
 /// - Deactivation Date = DT₁ + (AT₂ - AT₁) (if both DT₁ and AT₁ exist)
 pub(crate) fn compute_replacement_dates(
     old_attrs: &Attributes,
-    offset: Option<i32>,
+    offset: Option<i64>,
 ) -> KResult<ReplacementDates> {
     let now = time_normalize()?;
 
-    let activation_date =
-        Some(offset.map_or(now, |secs| now + time::Duration::seconds(i64::from(secs))));
+    let activation_date = Some(offset.map_or(now, |secs| now + time::Duration::seconds(secs)));
 
     let deactivation_date = match (old_attrs.deactivation_date, old_attrs.activation_date) {
         (Some(old_deactivation), Some(old_activation)) => {
@@ -432,7 +448,7 @@ pub(crate) fn compute_replacement_dates(
     })
 }
 
-/// Prepare attributes for a replacement key, following KMIP 1.4 §4.4 Table 173 / §4.5 Table 177.
+/// Prepare attributes for a replacement key, following KMIP 1.4 §4.4 Table 173 / §4.5 Table 177 / §4.8 Table 187.
 ///
 /// This function:
 /// - Copies attributes from the existing key
@@ -440,12 +456,12 @@ pub(crate) fn compute_replacement_dates(
 /// - Sets `ReplacedObjectLink` → old key
 /// - Transfers the Name from old key (already in the cloned attributes)
 /// - Sets Initial Date, Last Change Date to now
-/// - Applies offset-based date arithmetic
+/// - Applies offset-based date computation
 /// - Clears fields that must not be carried over (`destroy_date`, compromise dates, revocation)
 pub(crate) fn prepare_replacement_attributes(
     old_attrs: &Attributes,
     old_uid: &str,
-    offset: Option<i32>,
+    offset: Option<i64>,
 ) -> KResult<Attributes> {
     let dates = compute_replacement_dates(old_attrs, offset)?;
 
@@ -480,7 +496,7 @@ pub(crate) fn prepare_replacement_attributes(
 
 /// Update the old key's attributes after a rekey operation.
 ///
-/// Per KMIP 1.4 §4.4 Table 173 / §4.5 Table 177:
+/// Per KMIP 1.4 §4.4 Table 173 / §4.5 Table 177 / §4.8 Table 187:
 /// - Sets `ReplacementObjectLink` → new key
 /// - Removes the Name attribute (transferred to the replacement)
 /// - Updates Last Change Date to now
@@ -536,22 +552,10 @@ pub(crate) const fn clear_rotation_flags_on_old_key(old_attrs: &mut Attributes) 
 /// Enforce privileged-user restriction for rekey operations that create new keys.
 ///
 /// Both `ReKey` and `ReKeyKeyPair` create replacement keys, so the caller
-/// must either have `Create` permission or be in the privileged users list.
-pub(crate) async fn enforce_privileged_user(
-    kms: &KMS,
-    user: &str,
-    privileged_users: &Option<Vec<String>>,
-) -> KResult<()> {
-    if let Some(users) = privileged_users {
-        let has_permission = user_has_permission(user, None, &KmipOperation::Create, kms).await?;
-
-        if !has_permission && !users.iter().any(|u| u == user) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
-    Ok(())
+/// must either have `Create` permission or be in the privileged users list
+/// (configured in `kms.params.privileged_users`).
+pub(crate) async fn enforce_privileged_user(kms: &KMS, user: &str) -> KResult<()> {
+    enforce_create_permission(kms, user).await
 }
 
 /// Validate that request attributes do not attempt to change cryptographic parameters.
@@ -688,6 +692,10 @@ pub(crate) fn setup_new_key(
         }
     }
 
+    // Pass the activation_date directly to setup_object_lifecycle:
+    // - Past/present date → Active (replacement inherits active state)
+    // - Future date → PreActive (scheduled activation)
+    // - None → PreActive (requires explicit Activate)
     setup_object_lifecycle(key_object, object_type, replacement_attrs.activation_date)
 }
 

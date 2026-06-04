@@ -311,7 +311,7 @@ async fn create_key(
         protection_storage_masks: None,
     };
 
-    if let Err(e) = kms.create(create, &kms.params.default_username, None).await {
+    if let Err(e) = kms.create(create, &kms.params.default_username).await {
         // If the key already exists, ignore the creation error (idempotent CreateKey).
         let get_att_response = kms
             .get_attributes(
@@ -347,7 +347,6 @@ async fn create_key(
                 ],
             },
             &kms.params.default_username,
-            None,
         )
         .await
         .map_err(|e| XksErrorReply {

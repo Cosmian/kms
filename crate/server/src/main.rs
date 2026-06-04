@@ -347,6 +347,7 @@ mod tests {
             non_revocable_key_id: None,
             privileged_users: None,
             print_default_config: false,
+            auto_rotation_check_interval_secs: 0,
         };
 
         let toml_string = r#"

@@ -68,7 +68,7 @@ async fn grant_ops(
         user_id: user_id.to_owned(),
         operation_types: ops,
     };
-    kms.grant_access(&access, owner, None).await
+    kms.grant_access(&access, owner).await
 }
 
 /// Helper: revoke operations on an HSM key
@@ -84,7 +84,7 @@ async fn revoke_ops(
         user_id: user_id.to_owned(),
         operation_types: ops,
     };
-    kms.revoke_access(&access, owner, None).await
+    kms.revoke_access(&access, owner).await
 }
 
 /// Helper: encrypt data using a key.

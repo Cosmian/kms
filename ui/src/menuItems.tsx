@@ -52,6 +52,9 @@ const baseMenu: MenuItem[] = [
                     { key: "sym/keys/create", label: "Create" },
                     { key: "sym/keys/export", label: "Export" },
                     { key: "sym/keys/import", label: "Import" },
+                    { key: "sym/keys/rekey", label: "Re-Key" },
+                    { key: "sym/keys/set-rotation-policy", label: "Set Rotation Policy" },
+                    { key: "sym/keys/get-rotation-policy", label: "Get Rotation Policy" },
                     { key: "sym/keys/revoke", label: "Revoke" },
                     { key: "sym/keys/destroy", label: "Destroy" },
                 ],
@@ -64,7 +67,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "rsa",
         label: "RSA",
-        icon: <SafetyOutlined />,
+        icon: <LockOutlined />,
         collapsedlabel: "RSA",
         children: [
             {

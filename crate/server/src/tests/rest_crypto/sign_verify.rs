@@ -13,7 +13,7 @@ use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn test_rs256_round_trip() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let kp_req =
         create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 2048, false, None)?;
@@ -27,7 +27,7 @@ async fn test_rs256_round_trip() -> KResult<()> {
 #[tokio::test]
 async fn test_es256_round_trip() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let kp_req = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,

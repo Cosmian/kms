@@ -421,6 +421,15 @@ impl Object {
         self.key_block()
             .is_ok_and(|kb| kb.key_wrapping_data.is_some())
     }
+
+    /// Returns the UID of the wrapping (encryption) key embedded in this
+    /// object's `KeyWrappingData`, or `None` if the object is not wrapped.
+    #[must_use]
+    pub fn wrapping_key_uid(&self) -> Option<String> {
+        self.key_wrapping_data()
+            .and_then(|kwd| kwd.encryption_key_information.as_ref())
+            .map(|eki| eki.unique_identifier.to_string())
+    }
 }
 
 impl TryFrom<&[u8]> for Object {

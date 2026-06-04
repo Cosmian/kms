@@ -1298,6 +1298,7 @@ dependencies = [
  "num-bigint-dig",
  "serde_json",
  "thiserror 2.0.17",
+ "time",
  "zeroize",
 ]
 
@@ -1388,6 +1389,7 @@ dependencies = [
  "strum",
  "tempfile",
  "thiserror 2.0.17",
+ "time",
  "tokio",
  "tokio-postgres",
  "tokio-rusqlite",
@@ -4075,7 +4077,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -4112,9 +4114,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

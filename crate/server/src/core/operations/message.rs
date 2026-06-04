@@ -363,8 +363,6 @@ async fn process_operation(
 
     let start_time = std::time::Instant::now();
 
-    let privileged_users = kms.params.privileged_users.clone();
-
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = async {
         Ok(match request_operation {
@@ -434,15 +432,15 @@ async fn process_operation(
             Operation::CheckResponse(check(kms, kmip_request, user).await?)
         }
             Operation::Certify(kmip_request) => Operation::CertifyResponse(
-                kms.certify(*kmip_request, user, privileged_users)
+                kms.certify(*kmip_request, user)
                     .await?,
             ),
             Operation::Create(kmip_request) => Operation::CreateResponse(
-                kms.create(kmip_request, user, privileged_users)
+                kms.create(kmip_request, user)
                     .await?,
             ),
             Operation::CreateKeyPair(kmip_request) => Operation::CreateKeyPairResponse(
-                kms.create_key_pair(*kmip_request, user, privileged_users)
+                kms.create_key_pair(*kmip_request, user)
                     .await?,
             ),
             Operation::Decrypt(kmip_request) => {
@@ -476,7 +474,7 @@ async fn process_operation(
                 Operation::HashResponse(kms.hash(kmip_request, user).await?)
             }
             Operation::Import(kmip_request) => Operation::ImportResponse(
-                kms.import(*kmip_request, user, privileged_users)
+                kms.import(*kmip_request, user)
                     .await?,
             ),
             Operation::Locate(kmip_request) => {
@@ -492,18 +490,18 @@ async fn process_operation(
                 Operation::QueryResponse(Box::new(kms.query(kmip_request).await?))
             }
             Operation::Register(kmip_request) => Operation::RegisterResponse(
-                kms.register(*kmip_request, user, privileged_users)
+                kms.register(*kmip_request, user)
                     .await?,
             ),
             Operation::ReCertify(kmip_request) => Operation::ReCertifyResponse(
-                kms.recertify(*kmip_request, user, privileged_users)
+                kms.recertify(*kmip_request, user)
                     .await?,
             ),
             Operation::ReKey(kmip_request) => {
-                Operation::ReKeyResponse(kms.rekey(kmip_request, user, privileged_users).await?)
+                Operation::ReKeyResponse(kms.rekey(kmip_request, user).await?)
             }
             Operation::ReKeyKeyPair(kmip_request) => Operation::ReKeyKeyPairResponse(
-                kms.rekey_keypair(*kmip_request, user, privileged_users)
+                kms.rekey_keypair(*kmip_request, user)
                     .await?,
             ),
             Operation::Revoke(kmip_request) => {

@@ -368,7 +368,6 @@ mod tests {
                     None,
                 )?,
                 "user",
-                None,
             )
             .await?
             .unique_identifier,

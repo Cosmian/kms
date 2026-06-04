@@ -337,6 +337,40 @@ impl PgPool {
             )
             .await
             .map_err(DbError::from)?;
+        // Add wrapping_key_id column if not present, then backfill existing wrapped objects.
+        client
+            .batch_execute(
+                "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
+            )
+            .await
+            .map_err(DbError::from)?;
+        // Backfill: deserialize each object in Rust and extract wrapping key UID
+        let select_stmt = client
+            .prepare(get_pgsql_query!("select-objects-null-wrapping-key"))
+            .await
+            .map_err(DbError::from)?;
+        let update_stmt = client
+            .prepare(get_pgsql_query!("update-wrapping-key-id"))
+            .await
+            .map_err(DbError::from)?;
+        let null_rows = client
+            .query(&select_stmt, &[])
+            .await
+            .map_err(DbError::from)?;
+        for row in &null_rows {
+            let id: String = row.get(0);
+            let object_json: String = row.get(1);
+            if let Ok(obj) =
+                serde_json::from_str::<cosmian_kmip::kmip_2_1::kmip_objects::Object>(&object_json)
+            {
+                if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                    client
+                        .execute(&update_stmt, &[&wrapping_uid, &id])
+                        .await
+                        .map_err(DbError::from)?;
+                }
+            }
+        }
 
         // Optionally clear any existing data (useful for tests)
         if clear_database {
@@ -398,14 +432,25 @@ impl ObjectsStore for PgPool {
             let object_json = serde_json::to_string(object).map_err(DbError::from)?;
             let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
             let state = attributes.state.unwrap_or(State::PreActive).to_string();
+            let wrapping_key_id = object.wrapping_key_uid();
             let stmt = tx
                 .prepare(get_pgsql_query!("insert-objects"))
                 .await
                 .map_err(DbError::from)?;
             let attrs_param = Json(&attributes_json);
-            tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &owner])
-                .await
-                .map_err(DbError::from)?;
+            tx.execute(
+                &stmt,
+                &[
+                    &uid,
+                    &object_json,
+                    &attrs_param,
+                    &state,
+                    &owner,
+                    &wrapping_key_id,
+                ],
+            )
+            .await
+            .map_err(DbError::from)?;
             if !tags.is_empty() {
                 let transaction_stmt = tx
                     .prepare(get_pgsql_query!("insert-tags"))
@@ -488,12 +533,13 @@ impl ObjectsStore for PgPool {
         ) -> DbResult<()> {
             let object_json = serde_json::to_string(object).map_err(DbError::from)?;
             let attributes_json = serde_json::to_value(attributes).map_err(DbError::from)?;
+            let wrapping_key_id = object.wrapping_key_uid();
             let stmt = tx
                 .prepare(get_pgsql_query!("update-object-with-object"))
                 .await
                 .map_err(DbError::from)?;
             let attrs_param = Json(&attributes_json);
-            tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
+            tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
                 .await
                 .map_err(DbError::from)?;
             if let Some(tags) = tags {
@@ -578,14 +624,25 @@ impl ObjectsStore for PgPool {
                         let attributes_json =
                             serde_json::to_value(attributes).map_err(DbError::from)?;
                         let state = attributes.state.unwrap_or(State::PreActive).to_string();
+                        let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
                             .prepare(get_pgsql_query!("insert-objects"))
                             .await
                             .map_err(DbError::from)?;
                         let attrs_param = Json(&attributes_json);
-                        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &state, &user])
-                            .await
-                            .map_err(DbError::from)?;
+                        tx.execute(
+                            &stmt,
+                            &[
+                                &uid,
+                                &object_json,
+                                &attrs_param,
+                                &state,
+                                &user,
+                                &wrapping_key_id,
+                            ],
+                        )
+                        .await
+                        .map_err(DbError::from)?;
                         if !tags.is_empty() {
                             let insert_stmt = tx
                                 .prepare(get_pgsql_query!("insert-tags"))
@@ -603,12 +660,13 @@ impl ObjectsStore for PgPool {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attributes_json =
                             serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
                             .prepare(get_pgsql_query!("update-object-with-object"))
                             .await
                             .map_err(DbError::from)?;
                         let attrs_param = Json(&attributes_json);
-                        tx.execute(&stmt, &[&object_json, &attrs_param, &uid])
+                        tx.execute(&stmt, &[&object_json, &attrs_param, &wrapping_key_id, &uid])
                             .await
                             .map_err(DbError::from)?;
                         if let Some(tags) = tags {
@@ -646,15 +704,26 @@ impl ObjectsStore for PgPool {
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attributes_json =
                             serde_json::to_value(attributes).map_err(DbError::from)?;
+                        let wrapping_key_id = object.wrapping_key_uid();
                         let stmt = tx
                             .prepare(get_pgsql_query!("upsert-object"))
                             .await
                             .map_err(DbError::from)?;
                         let st = state.to_string();
                         let attrs_param = Json(&attributes_json);
-                        tx.execute(&stmt, &[&uid, &object_json, &attrs_param, &st, &user])
-                            .await
-                            .map_err(DbError::from)?;
+                        tx.execute(
+                            &stmt,
+                            &[
+                                &uid,
+                                &object_json,
+                                &attrs_param,
+                                &st,
+                                &user,
+                                &wrapping_key_id,
+                            ],
+                        )
+                        .await
+                        .map_err(DbError::from)?;
                         if let Some(tags) = tags {
                             let delete_stmt = tx
                                 .prepare(get_pgsql_query!("delete-tags"))
@@ -814,6 +883,31 @@ impl ObjectsStore for PgPool {
                 out.push((uid, state, attrs));
             }
             Ok(out)
+        })
+    }
+
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<String>> {
+        pg_retry!(self.pool, |client| {
+            let sql = crate::stores::sql::locate_query::find_due_for_rotation_query::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >();
+            let rows = client
+                .query(&sql, &[])
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut due = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+                if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                    due.push(uid);
+                }
+            }
+            Ok(due)
         })
     }
 }
