@@ -29,7 +29,7 @@ jobs:
   cpu-scaling:
     name: HTTP Throughput – CPU Scaling
     # Use a large GitHub-hosted runner (8 vCPUs) for reproducible results
-    runs-on: ubuntu-24.04-8core
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     steps:
