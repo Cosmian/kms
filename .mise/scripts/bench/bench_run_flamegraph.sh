@@ -176,14 +176,21 @@ KMS_VERSION="$(cargo metadata --no-deps --format-version 1 2>/dev/null \
 # Build throughput table from bencher-format output (lines: "bench_name: iter ns/iter")
 THROUGHPUT_TABLE=""
 if [ -f "${THROUGHPUT_OUTPUT}" ]; then
-  THROUGHPUT_TABLE="$(awk '
+  THROUGHPUT_TABLE="$(awk -v conc=16 '
     /^test .* bench:/ {
-      name = $2
-      ns   = $4
-      if (ns > 0) {
-        # Throughput in req/s  ≈ 1e9 / ns  (bencher reports ns/iter; iter = 1 concurrent batch)
-        rps = int(1e9 / ns)
-        printf "| %s | %s |\n", name, rps
+      name = $0
+      sub(/^test /, "", name)
+      sub(/ bench:.*/, "", name)
+
+      if (match($0, /bench:[[:space:]]*[0-9,]+[[:space:]]*ns\/iter/)) {
+        ns = substr($0, RSTART, RLENGTH)
+        gsub(/bench:[[:space:]]*/, "", ns)
+        gsub(/[[:space:]]*ns\/iter/, "", ns)
+        gsub(/,/, "", ns)
+        if (ns + 0 > 0) {
+          rps = int((1e9 / (ns + 0)) * conc)
+          printf "| %s | %s |\n", name, rps
+        }
       }
     }
   ' "${THROUGHPUT_OUTPUT}" 2>/dev/null || true)"
