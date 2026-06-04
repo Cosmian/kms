@@ -8,11 +8,11 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{CryptographicUsageMask, RevocationReason, RevocationReasonCode},
     kmip_2_1::{
         extra::tagging::SYSTEM_TAG_PUBLIC_KEY,
-        kmip_attributes::Attributes,
+        kmip_attributes::{Attribute, Attributes},
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, PrivateKey, PublicKey, SymmetricKey},
-        kmip_operations::{Destroy, Revoke},
-        kmip_types::{KeyFormatType, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
+        kmip_operations::{Destroy, Revoke, SetAttribute},
+        kmip_types::{KeyFormatType, Link, LinkType, LinkedObjectIdentifier, UniqueIdentifier},
         requests::{
             create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request,
             symmetric_key_create_request,
@@ -516,6 +516,21 @@ async fn import_public_key_for_private(
     kms.import(import_req, user, None)
         .await
         .map_err(CryptoApiError::from)?;
+
+    // Set PublicKeyLink on the private key so sign.rs can resolve the public kid
+    // for the JWS protected header (RFC 7515 §4.1.4).
+    kms.set_attribute(
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(private_key_uid.to_owned())),
+            new_attribute: Attribute::Link(Link {
+                link_type: LinkType::PublicKeyLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(pub_uid.clone()),
+            }),
+        },
+        user,
+    )
+    .await
+    .map_err(CryptoApiError::from)?;
 
     Ok(pub_uid)
 }

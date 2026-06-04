@@ -1,3 +1,7 @@
+## Bug Fixes
+
+- Fix `POST /v1/crypto/keys` import for asymmetric keys: set `PublicKeyLink` on the imported private key so the JOSE sign endpoint correctly puts the public `kid` in the JWS protected header (RFC 7515 §4.1.4) — fixes `test_jose_vectors` failure on `import_ec_sign_es256.json`
+
 ## Testing
 
 - Rewrite JOSE interoperability test suite to use JOSE REST key creation exclusively (`POST /v1/crypto/keys`) — eliminates all KMIP Create/Import for key provisioning
