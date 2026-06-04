@@ -1,10 +1,13 @@
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attribute,
-        kmip_objects::ObjectType,
-        kmip_operations::{SetAttribute, SetAttributeResponse},
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attribute,
+            kmip_objects::ObjectType,
+            kmip_operations::{SetAttribute, SetAttributeResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
@@ -30,6 +33,17 @@ pub(crate) async fn set_attribute(
         .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
         .context("Set Attribute: the unique identifier must be a string")?;
+
+    // Read-only guard — must be checked before the DB round-trip.
+    match &request.new_attribute {
+        Attribute::State(_) | Attribute::RotateGeneration(_) | Attribute::RotateDate(_) => {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Attribute_Read_Only,
+                "DENIED: this attribute is server-managed and cannot be set by the user".to_owned(),
+            ));
+        }
+        _ => {}
+    }
 
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         uid_or_tags,

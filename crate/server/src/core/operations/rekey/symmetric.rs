@@ -14,42 +14,32 @@ use super::common::{
     set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
 };
 use crate::{
-    core::{KMS, operations::key_ops::ObjectWithMetadataOps},
+    core::{
+        KMS,
+        operations::key_ops::{ObjectWithMetadataOps, reject_protection_storage_masks},
+    },
     error::KmsError,
-    kms_bail,
     result::{KResult, KResultHelper},
 };
 
-/// Implementor of [`RekeyOperation`] for KMIP `ReKey` (§4.4) on symmetric keys.
+/// Implementor of [`RekeyOperation`] for KMIP `ReKey` (KMIP 2.1 §6.1.46) on symmetric keys.
 pub(crate) struct SymmetricRekey {
-    /// The `offset` from the `ReKey` request (date arithmetic per KMIP Table 172).
-    offset: Option<i32>,
+    /// The `Offset` from the `ReKey` request — an interval added to the new key's
+    /// `Initial Date` to compute its `Activation Date` (KMIP 2.1 §6.1.46 Table 305).
+    offset: Option<i64>,
 }
 
-/// KMIP `ReKey` operation for symmetric keys.
+/// KMIP `ReKey` operation for symmetric keys (KMIP 2.1 §6.1.46).
 ///
-/// Per KMIP 1.4 §4.4:
 /// - Generates fresh key material with the same algorithm and length.
 /// - Assigns a new UID (preserving user-facing name prefixes across rotations).
 /// - Handles wrapped keys: unwraps → generates → re-wraps with same wrapping key.
 /// - Phase-1/Phase-2 commit for wrapping keys: re-wraps all dependant keys.
 /// - Sets rotation metadata on both old and new keys.
-pub(crate) async fn rekey(
-    kms: &KMS,
-    request: ReKey,
-    owner: &str,
-    privileged_users: Option<Vec<String>>,
-) -> KResult<ReKeyResponse> {
+pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReKeyResponse> {
     trace!("ReKey: {}", serde_json::to_string(&request)?);
     let offset = request.offset;
-    execute_rekey(
-        &SymmetricRekey { offset },
-        kms,
-        &request,
-        owner,
-        &privileged_users,
-    )
-    .await
+    execute_rekey(&SymmetricRekey { offset }, kms, &request, owner).await
 }
 
 impl RekeyOperation for SymmetricRekey {
@@ -61,13 +51,10 @@ impl RekeyOperation for SymmetricRekey {
         kms: &KMS,
         request: &ReKey,
         user: &str,
-        privileged: &Option<Vec<String>>,
     ) -> KResult<Vec<RotationCandidate>> {
-        if request.protection_storage_masks.is_some() {
-            kms_bail!(KmsError::UnsupportedPlaceholder)
-        }
+        reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
-        enforce_privileged_user(kms, user, privileged).await?;
+        enforce_privileged_user(kms, user).await?;
 
         let uid_or_tags = request
             .unique_identifier
@@ -75,6 +62,18 @@ impl RekeyOperation for SymmetricRekey {
             .ok_or(KmsError::UnsupportedPlaceholder)?
             .as_str()
             .context("Rekey: the symmetric key unique identifier must be a string")?;
+
+        // HSM-managed keys cannot be re-keyed via KMIP: they have no KMIP attribute
+        // storage and are often non-extractable (CKA_EXTRACTABLE = false).
+        // Use PKCS#11 vendor tools for HSM key lifecycle management.
+        if uid_or_tags.starts_with("hsm::") {
+            return Err(KmsError::NotSupported(
+                "Re-Key is not supported for HSM-managed keys. \
+                 Use PKCS#11 vendor tools or the HSM administration console \
+                 to manage HSM key lifecycle."
+                    .to_owned(),
+            ));
+        }
 
         for owm in retrieve_eligible_keys(kms, uid_or_tags, ObjectType::SymmetricKey).await? {
             if !owm
@@ -171,7 +170,7 @@ impl RekeyOperation for SymmetricRekey {
         )?;
 
         // Preserve WrappingKeyLink if the old key was wrapped
-        preserve_wrapping_key_link(candidate.owm.object(), &mut replacement.attributes);
+        preserve_wrapping_key_link(candidate.owm.object(), &mut replacement.attributes)?;
 
         // Set rotation metadata
         set_rotation_metadata_on_new_key(&mut replacement.attributes, candidate.owm.attributes())?;

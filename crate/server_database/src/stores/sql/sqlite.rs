@@ -23,13 +23,13 @@ use serde_json::Value;
 use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
-use super::locate_query::{SqlitePlaceholder, query_from_attributes};
+use super::locate_query::{SqlitePlaceholder, find_due_for_rotation_query, query_from_attributes};
 use crate::{
     db_error,
     error::{DbError, DbResult},
     migrate_block_cipher_mode_if_needed,
     stores::{
-        SQLITE_QUERIES,
+        PGSQL_QUERIES,
         migrate::{DbState, Migrate},
         sql::database::SqlDatabase,
     },
@@ -37,7 +37,7 @@ use crate::{
 
 macro_rules! get_sqlite_query {
     ($name:literal) => {
-        SQLITE_QUERIES
+        PGSQL_QUERIES
             .get($name)
             .ok_or_else(|| db_error!("{} SQL query can't be found", $name))?
     };
@@ -134,6 +134,62 @@ impl SqlitePool {
             )
             .await
             .map_err(DbError::from)?;
+
+        // Add wrapping_key_id column if not present (migration for existing databases),
+        // then backfill from the embedded JSON for any pre-existing wrapped objects.
+        // Note: SQLite does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
+        // so we check PRAGMA table_info first.
+        pool.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let has_column: bool = {
+                        let mut stmt = c.prepare("PRAGMA table_info(objects)")?;
+                        let mut rows = stmt.query([])?;
+                        let mut found = false;
+                        while let Some(row) = rows.next()? {
+                            let col_name: String = row.get(1)?;
+                            if col_name == "wrapping_key_id" {
+                                found = true;
+                                break;
+                            }
+                        }
+                        found
+                    };
+                    if !has_column {
+                        c.execute_batch(
+                            "ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);",
+                        )?;
+                    }
+                    // Backfill: deserialize each object and extract wrapping key UID via Rust
+                    let mut stmt =
+                        c.prepare("SELECT id, object FROM objects WHERE wrapping_key_id IS NULL")?;
+                    let pairs: Vec<(String, String)> = {
+                        let mut rows = stmt.query([])?;
+                        let mut out = Vec::new();
+                        while let Some(row) = rows.next()? {
+                            out.push((row.get(0)?, row.get(1)?));
+                        }
+                        out
+                    };
+                    for (id, object_json) in &pairs {
+                        if let Ok(obj) = serde_json::from_str::<
+                            cosmian_kmip::kmip_2_1::kmip_objects::Object,
+                        >(object_json)
+                        {
+                            if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                                c.execute(
+                                    "UPDATE objects SET wrapping_key_id = ?1 WHERE id = ?2",
+                                    rusqlite::params![wrapping_uid, id],
+                                )?;
+                            }
+                        }
+                    }
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+
         if clear_database {
             pool.set_current_db_version(env!("CARGO_PKG_VERSION"))
                 .await?;
@@ -161,7 +217,7 @@ impl SqlitePool {
 
 impl SqlDatabase for SqlitePool {
     fn get_loader(&self) -> &Loader {
-        &SQLITE_QUERIES
+        &PGSQL_QUERIES
     }
 }
 
@@ -248,6 +304,7 @@ impl ObjectsStore for SqlitePool {
             .map_err(|e| InterfaceError::Db(format!("failed serializing attributes: {e}")))?;
         let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
         let owner_s = owner.to_owned();
+        let wrapping_key_id = object.wrapping_key_uid();
 
         let insert_object = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
         let insert_tag = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
@@ -261,13 +318,14 @@ impl ObjectsStore for SqlitePool {
                     // Insert object
                     tx.execute(
                         &insert_object,
-                        params_from_iter([
-                            &uid_clone,
-                            &object_json,
-                            &attributes_json,
-                            &state_s,
-                            &owner_s,
-                        ]),
+                        rusqlite::params![
+                            uid_clone,
+                            object_json,
+                            attributes_json,
+                            state_s,
+                            owner_s,
+                            wrapping_key_id,
+                        ],
                     )?;
                     // Insert tags
                     for tag in &tags_owned {
@@ -333,6 +391,7 @@ impl ObjectsStore for SqlitePool {
             .map_err(|e| InterfaceError::Db(format!("failed serializing object: {e}")))?;
         let attributes_json = serde_json::to_string(attributes)
             .map_err(|e| InterfaceError::Db(format!("failed serializing attributes: {e}")))?;
+        let wrapping_key_id = object.wrapping_key_uid();
 
         let sql_update = replace_dollars_with_qn(get_sqlite_query!("update-object-with-object"));
         let sql_delete_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
@@ -346,7 +405,7 @@ impl ObjectsStore for SqlitePool {
                     let tx = c.transaction()?;
                     tx.execute(
                         &sql_update,
-                        params_from_iter([&object_json, &attributes_json, &uid_s]),
+                        rusqlite::params![object_json, attributes_json, wrapping_key_id, uid_s],
                     )?;
                     if let Some(tags) = tags_owned.as_ref() {
                         tx.execute(&sql_delete_tags, params_from_iter([&uid_s]))?;
@@ -540,24 +599,7 @@ impl ObjectsStore for SqlitePool {
         wrapping_key_uid: &str,
         user: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        // Search in the stored `object` JSON column for objects whose KeyWrappingData
-        // EncryptionKeyInformation UniqueIdentifier matches the given wrapping key UID.
-        // We check all the object variant prefixes that can hold a KeyBlock.
-        let sql = replace_dollars_with_qn(
-            "SELECT DISTINCT objects.id, objects.state, objects.attributes \
-             FROM objects \
-             LEFT JOIN read_access ON objects.id = read_access.id \
-                 AND read_access.userid = $2 \
-             WHERE (objects.owner = $2 OR read_access.userid = $2) \
-               AND ( \
-                 json_extract(objects.object, '$.SymmetricKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
-                 OR json_extract(objects.object, '$.PublicKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
-                 OR json_extract(objects.object, '$.PrivateKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
-                 OR json_extract(objects.object, '$.SecretData.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
-                 OR json_extract(objects.object, '$.SplitKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
-                 OR json_extract(objects.object, '$.PGPKey.KeyBlock.KeyWrappingData.EncryptionKeyInformation.UniqueIdentifier') = $1 \
-               )",
-        );
+        let sql = replace_dollars_with_qn(get_sqlite_query!("find-wrapped-by"));
         let uid_s = wrapping_key_uid.to_owned();
         let user_s = user.to_owned();
         let rows = self
@@ -592,13 +634,49 @@ impl ObjectsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(rows)
     }
+
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<String>> {
+        let sql = find_due_for_rotation_query::<SqlitePlaceholder>();
+        let rows = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Vec<(String, String)>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let mut q = stmt.query([])?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        let id: String = r.get(0)?;
+                        let attrs_json: String = r.get(1)?;
+                        out.push((id, attrs_json));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+
+        let mut due = Vec::new();
+        for (uid, attrs_json) in rows {
+            let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
+            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                due.push(uid);
+            }
+        }
+        Ok(due)
+    }
 }
 
 #[async_trait(?Send)]
 impl Migrate for SqlitePool {
     async fn get_db_state(&self) -> DbResult<Option<DbState>> {
         let select_param = replace_dollars_with_qn(
-            SQLITE_QUERIES
+            PGSQL_QUERIES
                 .get("select-parameter")
                 .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
         );
@@ -625,7 +703,7 @@ impl Migrate for SqlitePool {
 
     async fn set_db_state(&self, state: DbState) -> DbResult<()> {
         let upsert_param = replace_dollars_with_qn(
-            SQLITE_QUERIES
+            PGSQL_QUERIES
                 .get("upsert-parameter")
                 .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
         );
@@ -649,7 +727,7 @@ impl Migrate for SqlitePool {
 
     async fn get_current_db_version(&self) -> DbResult<Option<String>> {
         let select_param = replace_dollars_with_qn(
-            SQLITE_QUERIES
+            PGSQL_QUERIES
                 .get("select-parameter")
                 .ok_or_else(|| db_error!("select-parameter SQL query can't be found"))?,
         );
@@ -673,7 +751,7 @@ impl Migrate for SqlitePool {
 
     async fn set_current_db_version(&self, version: &str) -> DbResult<()> {
         let upsert_param = replace_dollars_with_qn(
-            SQLITE_QUERIES
+            PGSQL_QUERIES
                 .get("upsert-parameter")
                 .ok_or_else(|| db_error!("upsert-parameter SQL query can't be found"))?,
         );
@@ -902,13 +980,21 @@ fn create_sqlite(
         DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
     })?;
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let wrapping_key_id = object.wrapping_key_uid();
 
     let sql = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
     let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
     let owner_s = owner.to_owned();
     tx.execute(
         &sql,
-        params_from_iter([&uid, &object_json, &attributes_json, &state_s, &owner_s]),
+        rusqlite::params![
+            uid,
+            object_json,
+            attributes_json,
+            state_s,
+            owner_s,
+            wrapping_key_id
+        ],
     )?;
 
     let sql = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
@@ -931,11 +1017,12 @@ fn update_object_sqlite(
     let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
     })?;
+    let wrapping_key_id = object.wrapping_key_uid();
     let sql = replace_dollars_with_qn(get_sqlite_query!("update-object-with-object"));
     let uid_s = uid.to_owned();
     tx.execute(
         &sql,
-        params_from_iter([&object_json, &attributes_json, &uid_s]),
+        rusqlite::params![object_json, attributes_json, wrapping_key_id, uid_s],
     )?;
     if let Some(tags) = tags {
         let del = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
@@ -963,13 +1050,21 @@ fn upsert_sqlite(
     let attributes_json = serde_json::to_string(attributes).map_err(|e| {
         DbError::DatabaseError(format!("failed serializing the attributes to JSON: {e}"))
     })?;
+    let wrapping_key_id = object.wrapping_key_uid();
     let sql = replace_dollars_with_qn(get_sqlite_query!("upsert-object"));
     let state_s = state.to_string();
     let uid_s = uid.to_owned();
     let owner_s = owner.to_owned();
     tx.execute(
         &sql,
-        params_from_iter([&uid_s, &object_json, &attributes_json, &state_s, &owner_s]),
+        rusqlite::params![
+            uid_s,
+            object_json,
+            attributes_json,
+            state_s,
+            owner_s,
+            wrapping_key_id
+        ],
     )?;
     if let Some(tags) = tags {
         let del = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));

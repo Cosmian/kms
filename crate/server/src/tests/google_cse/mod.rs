@@ -249,7 +249,7 @@ async fn test_google_cse_resource_key_hash() -> KResult<()> {
 async fn test_google_cse_status() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
     let response: StatusResponse =
         test_utils::get_json_with_uri(&app, "/google_cse/status").await?;
@@ -270,7 +270,7 @@ async fn test_google_cse_private_key_sign() -> KResult<()> {
     };
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -393,7 +393,6 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 object: google_cse_object,
             },
             owner,
-            None,
         )
         .await?;
 
@@ -409,7 +408,6 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
                 None,
             )?,
             owner,
-            None,
         )
         .await?;
 
@@ -467,7 +465,7 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
         attributes,
         object: private_key,
     };
-    let intermediate_cert = kms.import(import_request, owner, None).await?;
+    let intermediate_cert = kms.import(import_request, owner).await?;
 
     // Certify the public key: sign created public key with issuer private key
     let attributes = Attributes {
@@ -495,10 +493,8 @@ async fn test_google_cse_create_pair_encrypt_decrypt() -> KResult<()> {
         ..Certify::default()
     };
 
-    let certificate_unique_identifier = kms
-        .certify(certify_request, owner, None)
-        .await?
-        .unique_identifier;
+    let certificate_unique_identifier =
+        kms.certify(certify_request, owner).await?.unique_identifier;
 
     // Export the certificate and chain in PKCS7 format (just checking that it works)
     let pkcs7 = kms
@@ -568,7 +564,7 @@ async fn test_cse_private_key_decrypt(
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     };
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
 
@@ -603,7 +599,7 @@ async fn test_google_cse_encrypt_and_private_key_decrypt() -> KResult<()> {
         std::env::set_var("KMS_GOOGLE_CSE_GMAIL_JWT_ISSUER", JWT_ISSUER_URI);
     };
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
 
@@ -636,7 +632,7 @@ async fn test_google_cse_wrap_unwrap_key() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -688,7 +684,7 @@ async fn test_google_cse_privileged_wrap_unwrap_key() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
     // Import google CSE key
     import_google_cse_symmetric_key_with_access(&app).await?;
@@ -741,7 +737,7 @@ async fn test_google_cse_privileged_private_key_decrypt() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned()), None).await;
+    let app = test_utils::test_app(Some("http://127.0.0.1/".to_owned())).await;
 
     let path = std::env::current_dir()?;
     println!("The current directory is {}", path.display());
@@ -822,7 +818,7 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned()), None).await;
+    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned())).await;
 
     let resource_name = "resource_name_test".to_owned();
     let kacls_url = "https://127.0.0.1:9998/google_cse";
@@ -916,7 +912,7 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned()), None).await;
+    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned())).await;
 
     let resource_name = "resource_name_test".to_owned();
     let kacls_url = "https://127.0.0.1:9998/google_cse";
@@ -1004,7 +1000,7 @@ async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
 
     log_init(None);
 
-    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned()), None).await;
+    let app = test_utils::test_app(Some("https://127.0.0.1:9998".to_owned())).await;
     let resource_name = "resource_name_test".to_owned();
     let kacls_url = "https://127.0.0.1:9998/google_cse";
 

@@ -343,6 +343,17 @@ impl Database {
         Ok(results)
     }
 
+    /// Find all Active objects that have a `rotate_interval > 0` and whose next
+    /// rotation instant is ≤ `now`. Returns a list of UIDs.
+    pub async fn find_due_for_rotation(&self, now: time::OffsetDateTime) -> DbResult<Vec<String>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<String> = Vec::new();
+        for db in map.values() {
+            results.extend(db.find_due_for_rotation(now).await.unwrap_or_default());
+        }
+        Ok(results)
+    }
+
     /// Perform an atomic set of operations on the database.
     ///
     /// This function executes a series of operations (typically in a transaction) atomically.

@@ -54,7 +54,7 @@ async fn test_kmip_endpoints() -> KResult<()> {
     let request_message = build_query_request(2, 1);
 
     let fut = async {
-        let app = test_utils::test_app(None, None).await;
+        let app = test_utils::test_app(None).await;
         let _ttlv: TTLV =
             test_utils::post_json_with_uri(&app, to_ttlv(&request_message)?, "/kmip").await?;
         Ok::<(), KmsError>(())
@@ -74,7 +74,7 @@ async fn test_kmip_json_rejects_old_versions() -> KResult<()> {
     log_init(option_env!("RUST_LOG"));
 
     let fut = async {
-        let app = test_utils::test_app(None, None).await;
+        let app = test_utils::test_app(None).await;
 
         // These versions should be rejected by the JSON /kmip endpoint
         let rejected_versions = [(1, 0), (1, 1), (1, 2), (1, 3)];

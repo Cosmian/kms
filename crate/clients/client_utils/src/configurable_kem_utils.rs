@@ -175,9 +175,9 @@ pub fn build_create_configurable_kem_keypair_request<T: IntoIterator<Item = impl
         vendor_attributes,
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive: sensitive.then_some(true),
-        activation_date: Some(time_normalize().map_err(|e| UtilsError::Default(e.to_string()))?),
         cryptographic_domain_parameters,
         cryptographic_parameters,
+        activation_date: Some(time_normalize().map_err(|e| UtilsError::Default(e.to_string()))?),
         ..Attributes::default()
     };
     attributes.set_tags(vendor_id, tags)?;

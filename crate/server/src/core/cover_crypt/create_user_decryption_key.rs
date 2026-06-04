@@ -34,7 +34,6 @@ pub(crate) async fn create_user_decryption_key(
     create_request: &Create,
     owner: &str,
     sensitive: bool,
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<Object> {
     let msk_uid_or_tags = create_request
         .attributes
@@ -94,9 +93,7 @@ pub(crate) async fn create_user_decryption_key(
             object: msk_obj,
         };
 
-        kmip_server
-            .import(import_request, owner, privileged_users)
-            .await?;
+        kmip_server.import(import_request, owner).await?;
 
         return Ok(usk_obj);
     }

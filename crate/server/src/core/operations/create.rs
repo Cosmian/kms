@@ -1,6 +1,6 @@
-use cosmian_kms_server_database::reexport::{
-    cosmian_kmip,
-    cosmian_kmip::kmip_2_1::{
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
         kmip_objects::ObjectType,
         kmip_operations::{Create, CreateResponse},
         kmip_types::UniqueIdentifier,
@@ -9,48 +9,22 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
+use super::key_ops::{enforce_create_permission, reject_protection_storage_masks};
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
+    core::{KMS, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
 };
 
-pub(crate) async fn create(
-    kms: &KMS,
-    request: Create,
-    owner: &str,
-    privileged_users: Option<Vec<String>>,
-) -> KResult<CreateResponse> {
+pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<CreateResponse> {
     trace!("{request}");
-    if request.protection_storage_masks.is_some() {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
-
-    // To create an object, check that the user has `Create` access right
-    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users.clone() {
-        let has_permission = user_has_permission(
-            owner,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == owner) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
+    reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+    enforce_create_permission(kms, owner).await?;
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
-        ObjectType::PrivateKey => {
-            kms.create_private_key_and_tags(&request, owner, privileged_users)
-                .await?
-        }
+        ObjectType::PrivateKey => kms.create_private_key_and_tags(&request, owner).await?,
         ObjectType::SecretData => KMS::create_secret_data_and_tags(kms.vendor_id(), &request)?,
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
@@ -74,7 +48,7 @@ pub(crate) async fn create(
         let protection_period_present = attrs.protection_period.is_some();
         if qs && (protection_level_present || protection_period_present) {
             kms_bail!(KmsError::Kmip21Error(
-                cosmian_kmip::kmip_0::kmip_types::ErrorReason::General_Failure,
+                ErrorReason::General_Failure,
                 "NOT_SAFE".to_owned(),
             ));
         }

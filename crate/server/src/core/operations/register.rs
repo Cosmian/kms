@@ -1,5 +1,4 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    self,
     kmip_0::kmip_types::State,
     kmip_2_1::{
         kmip_objects::ObjectType,
@@ -10,7 +9,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::{debug, trace};
 
-use super::import::process_opaque_object;
+use super::{
+    import::process_opaque_object,
+    key_ops::{enforce_create_permission, reject_protection_storage_masks},
+};
 use crate::{
     core::{
         KMS,
@@ -18,7 +20,6 @@ use crate::{
             process_certificate, process_private_key, process_public_key, process_secret_data,
             process_symmetric_key,
         },
-        retrieve_object_utils::user_has_permission,
     },
     error::KmsError,
     kms_bail,
@@ -29,31 +30,10 @@ pub(crate) async fn register(
     kms: &KMS,
     mut request: Register,
     owner: &str,
-
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<RegisterResponse> {
     trace!("{request}");
-    if request.protection_storage_masks.is_some() {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
-
-    // To register an object, check that the user has `Create` access right
-    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users.clone() {
-        let has_permission = user_has_permission(
-            owner,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == owner) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right to register objects.".to_owned()
-            ))
-        }
-    }
+    reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+    enforce_create_permission(kms, owner).await?;
 
     if request.object_type != request.object.object_type() {
         kms_bail!(KmsError::InconsistentOperation(

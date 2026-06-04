@@ -34,7 +34,10 @@ use super::rekey::{
 use crate::{
     core::{
         KMS,
-        operations::certify::{build_and_sign_certificate, get_issuer, get_subject},
+        operations::{
+            certify::{build_and_sign_certificate, get_issuer, get_subject},
+            key_ops::reject_protection_storage_masks,
+        },
         retrieve_object_utils::retrieve_object_for_operation,
     },
     error::KmsError,
@@ -44,8 +47,8 @@ use crate::{
 
 /// Implementor of [`RekeyOperation`] for certificate rotation (`ReCertify`).
 pub(crate) struct CertificateRekey {
-    /// The `offset` from the `ReCertify` request (date arithmetic per KMIP §6.1.45).
-    offset: Option<i32>,
+    /// The `offset` from the `ReCertify` request (date computation per KMIP §6.1.45).
+    offset: Option<i64>,
 }
 
 /// KMIP `ReCertify` operation — certificate rotation with new UID.
@@ -57,17 +60,15 @@ pub(crate) async fn recertify(
     kms: &KMS,
     request: ReCertify,
     owner: &str,
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<ReCertifyResponse> {
     trace!("ReCertify: {}", serde_json::to_string(&request)?);
     let offset = request.offset;
-    execute_rekey(
+    Box::pin(execute_rekey(
         &CertificateRekey { offset },
         kms,
         &request,
         owner,
-        &privileged_users,
-    )
+    ))
     .await
 }
 
@@ -80,13 +81,10 @@ impl RekeyOperation for CertificateRekey {
         kms: &KMS,
         request: &ReCertify,
         user: &str,
-        privileged: &Option<Vec<String>>,
     ) -> KResult<Vec<RotationCandidate>> {
-        if request.protection_storage_masks.is_some() {
-            kms_bail!(KmsError::UnsupportedPlaceholder)
-        }
+        reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
-        enforce_privileged_user(kms, user, privileged).await?;
+        enforce_privileged_user(kms, user).await?;
 
         let uid = request
             .unique_identifier
@@ -146,7 +144,7 @@ impl RekeyOperation for CertificateRekey {
 
         // Resolve subject (will produce Subject::Certificate from existing cert)
         let owner = candidate.owm.owner();
-        let subject = Box::pin(get_subject(kms, &certify_request, owner, None)).await?;
+        let subject = Box::pin(get_subject(kms, &certify_request, owner)).await?;
         // Resolve issuer from the old certificate's attributes
         let issuer = Box::pin(get_issuer(&subject, kms, &certify_request, owner)).await?;
         // Build and sign the new certificate
@@ -179,7 +177,7 @@ impl RekeyOperation for CertificateRekey {
             .first_mut()
             .ok_or_else(|| KmsError::InvalidRequest("no replacement object".to_owned()))?;
 
-        // Use shared date arithmetic for offset-based activation/deactivation
+        // Use shared date computation for offset-based activation/deactivation
         let base_attrs =
             prepare_replacement_attributes(old_attrs, &replacement.old_uid, self.offset)?;
         replacement.attributes.activation_date = base_attrs.activation_date;

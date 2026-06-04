@@ -1043,8 +1043,8 @@ impl_display!(CertifyResponse, "CertifyResponse", { req unique_identifier });
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReCertify {
-    /// The Unique Identifier of the existing Certificate to be re-certified.
-    /// If omitted, the ID Placeholder value is used.
+    /// The Unique Identifier of the Certificate being renewed.
+    /// If omitted, then the ID Placeholder value is used by the server as the Unique Identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unique_identifier: Option<UniqueIdentifier>,
     /// An Enumeration object specifying the type of certificate request.
@@ -1058,7 +1058,7 @@ pub struct ReCertify {
     /// and the Activation Date of the new certificate.  Per KMIP 2.1 §6.1.45,
     /// the new certificate's Activation Date = Initial Date + Offset.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<i32>,
+    pub offset: Option<i64>,
     /// Specifies desired attributes to be associated with the new certificate.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Attributes>,
@@ -2543,7 +2543,7 @@ pub struct ReKey {
 
     // An Interval object indicating the difference between the Initial Date and the Activation Date of the replacement key to be created.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<i32>,
+    pub offset: Option<i64>,
 
     /// Specifies desired attributes to be associated with the new object.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2608,7 +2608,7 @@ pub struct ReKeyKeyPair {
     // An Interval object indicating the difference between the Initial Date and the Activation
     // Date of the replacement key pair to be created.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<i32>,
+    pub offset: Option<i64>,
 
     // Specifies desired attributes that apply to both the Private and Public Key Objects.
     #[serde(skip_serializing_if = "Option::is_none")]

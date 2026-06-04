@@ -657,9 +657,8 @@ impl ObjectsStore for RedisWithFindex {
         for (uid, dbo) in redis_db_objects {
             let is_wrapped_by = dbo
                 .object
-                .key_wrapping_data()
-                .and_then(|kwd| kwd.encryption_key_information.as_ref())
-                .is_some_and(|eki| eki.unique_identifier.to_string() == wrapping_key_uid);
+                .wrapping_key_uid()
+                .is_some_and(|wk| wk == wrapping_key_uid);
             if is_wrapped_by {
                 let attrs = dbo
                     .object

@@ -33,6 +33,18 @@ pub(crate) async fn add_attribute(
         .as_str()
         .context("Add Attribute: the unique identifier must be a string")?;
 
+    // Read-only guard — these attributes are server-managed.
+    match &request.new_attribute {
+        Attribute::RotateGeneration(_) | Attribute::RotateDate(_) => {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Attribute_Read_Only,
+                "DENIED: this attribute is server-managed and cannot be added by the user"
+                    .to_owned(),
+            ));
+        }
+        _ => {}
+    }
+
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
         KmipOperation::AddAttribute,

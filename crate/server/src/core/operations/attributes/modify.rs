@@ -49,10 +49,14 @@ pub(crate) async fn modify_attribute(
 
     // Read-only guard — must be checked before the DB round-trip.
     match &request.new_attribute {
-        Attribute::State(_) | Attribute::CertificateLength(_) => {
+        Attribute::State(_)
+        | Attribute::CertificateLength(_)
+        | Attribute::RotateGeneration(_)
+        | Attribute::RotateDate(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Attribute_Read_Only,
-                "DENIED".to_owned(),
+                "DENIED: this attribute is server-managed and cannot be modified by the user"
+                    .to_owned(),
             ));
         }
         _ => {}

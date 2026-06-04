@@ -19,7 +19,7 @@ static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
     GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
-    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN, time_normalize},
+    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN},
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -375,7 +375,6 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
             ),
             object_type: Some(ObjectType::SymmetricKey),
             unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-            activation_date: Some(time_normalize()?),
             ..Default::default()
         },
         protection_storage_masks: None,
@@ -496,7 +495,6 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
             ),
             object_type: Some(ObjectType::SymmetricKey),
             unique_identifier: Some(UniqueIdentifier::TextString(kek_id.clone())),
-            activation_date: Some(time_normalize()?),
             ..Default::default()
         },
         protection_storage_masks: None,

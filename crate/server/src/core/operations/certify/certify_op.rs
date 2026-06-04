@@ -19,12 +19,7 @@ use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 /// Certify a certificate.
 /// This operation is used to issue a certificate based on a public key, a CSR or a key pair.
 /// The certificate can be self-signed or signed by another certificate.
-pub(crate) async fn certify(
-    kms: &KMS,
-    request: Certify,
-    user: &str,
-    privileged_users: Option<Vec<String>>,
-) -> KResult<CertifyResponse> {
+pub(crate) async fn certify(kms: &KMS, request: Certify, user: &str) -> KResult<CertifyResponse> {
     trace!("{}", serde_json::to_string(&request)?);
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
@@ -34,7 +29,7 @@ pub(crate) async fn certify(
     // generate_x509(get_issuer(get_subject)))
     // The code below could be rewritten in a more functional way
     // but this would require manipulating some sort of Monad Transformer
-    let subject = Box::pin(get_subject(kms, &request, user, privileged_users)).await?;
+    let subject = Box::pin(get_subject(kms, &request, user)).await?;
     trace!("Subject name: {:?}", subject.subject_name());
     let issuer = Box::pin(get_issuer(&subject, kms, &request, user)).await?;
     trace!("Issuer Subject name: {:?}", issuer.subject_name());

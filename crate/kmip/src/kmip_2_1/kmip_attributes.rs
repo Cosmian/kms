@@ -381,7 +381,7 @@ pub struct Attributes {
     /// The Rotate Interval attribute specifies the interval between rotations of a
     /// Managed Cryptographic Object, measured in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotate_interval: Option<i32>,
+    pub rotate_interval: Option<i64>,
 
     /// The Rotate Latest attribute is a Boolean that indicates whether the latest
     /// rotation time should be recalculated based on the Rotation Interval and
@@ -399,7 +399,13 @@ pub struct Attributes {
     /// Date and the Rotation Date of a Managed Cryptographic Object, measured in
     /// seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotate_offset: Option<i32>,
+    pub rotate_offset: Option<i64>,
+
+    /// Tracks the last warning threshold (in days) for which a renewal-warning
+    /// notification was already sent in the current rotation cycle.
+    /// Reset to `None` after each successful rotation so warnings restart fresh.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_last_warning_days: Option<i32>,
 
     /// If True then the server SHALL prevent the object value being retrieved
     /// (via the Get operation) unless it is wrapped by another key. The server
@@ -734,6 +740,7 @@ impl Attributes {
         merge_option_field!(rotate_latest);
         merge_option_field!(rotate_name);
         merge_option_field!(rotate_offset);
+        merge_option_field!(rotate_last_warning_days);
         merge_option_field!(sensitive);
         merge_option_field!(short_unique_identifier);
         merge_option_field!(state);
@@ -963,6 +970,9 @@ impl Display for Attributes {
         }
         if let Some(value) = &self.rotate_offset {
             writeln!(f, "  Rotate Offset: {value}")?;
+        }
+        if let Some(value) = &self.rotate_last_warning_days {
+            writeln!(f, "  Rotate Last Warning Days: {value}")?;
         }
         if let Some(value) = &self.sensitive {
             writeln!(f, "  Sensitive: {value}")?;
@@ -1250,7 +1260,7 @@ pub enum Attribute {
 
     /// The Rotate Interval attribute specifies the interval between rotations of a
     /// Managed Cryptographic Object, measured in seconds.
-    RotateInterval(i32),
+    RotateInterval(i64),
 
     /// The Rotate Latest attribute is a Boolean that indicates whether the latest
     /// rotation time should be recalculated based on the Rotation Interval and
@@ -1265,7 +1275,7 @@ pub enum Attribute {
     /// The Rotate Offset attribute specifies the time offset between the Creation
     /// Date and the Rotation Date of a Managed Cryptographic Object, measured in
     /// seconds.
-    RotateOffset(i32),
+    RotateOffset(i64),
 
     /// If True then the server SHALL prevent the object value being retrieved (via the Get operation) unless it is
     /// wrapped by another key. The server SHALL set the value to False if the value is not provided by the

@@ -164,6 +164,10 @@ pub struct ServerParams {
     /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
     /// applied automatically. Prevents unbounded DB queries and large response payloads.
     pub max_locate_items: u32,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// 0 means disabled.
+    pub auto_rotation_check_interval_secs: u64,
 }
 
 /// Represents the server parameters.
@@ -422,6 +426,7 @@ impl ServerParams {
                 crate::config::default_cors_origins(cors_scheme, conf.http.port)
             }),
             max_locate_items: 1000,
+            auto_rotation_check_interval_secs: conf.auto_rotation_check_interval_secs,
         };
 
         debug!("{res:#?}");
@@ -645,6 +650,10 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
+        debug_struct.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
 
         debug_struct.finish()
     }

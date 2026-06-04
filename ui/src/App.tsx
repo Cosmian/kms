@@ -33,8 +33,11 @@ import FpeEncryptForm from "./actions/FPE/FpeEncrypt";
 import FpeKeyCreateForm from "./actions/FPE/FpeKeysCreate";
 import CseInfo from "./actions/Keys/CseInfo";
 import DeriveKeyForm from "./actions/Keys/DeriveKey";
+import GetRotationPolicyForm from "./actions/Keys/GetRotationPolicy";
 import KeyExportForm from "./actions/Keys/KeysExport";
 import KeyImportForm from "./actions/Keys/KeysImport";
+import KeysReKeyForm from "./actions/Keys/KeysReKey";
+import SetRotationPolicyForm from "./actions/Keys/SetRotationPolicy";
 import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
@@ -67,8 +70,7 @@ import TokenizeWordPatternMask from "./actions/Tokenize/TokenizeWordPatternMask"
 import TokenizeWordTokenize from "./actions/Tokenize/TokenizeWordTokenize";
 import LocateForm from "./components/common/Locate";
 import MainLayout from "./components/layout/MainLayout";
-import { AuthProvider } from "./contexts/AuthContext";
-import { useAuth } from "./contexts/useAuth";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { useBranding } from "./contexts/useBranding";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -90,9 +92,8 @@ const isLoopbackHost = (host: string): boolean => LOOPBACK_HOSTS.has(host);
 
 const resolveServerUrl = (): string => {
     const configuredUrl = (import.meta.env.VITE_KMS_URL as string | undefined)?.trim();
-    const isDevMode = import.meta.env.DEV || import.meta.env.VITE_DEV_MODE === "true";
     const defaultDevUrl = `${window.location.protocol}//${window.location.hostname}:9998`;
-    const fallbackUrl = isDevMode ? defaultDevUrl : window.location.origin;
+    const fallbackUrl = import.meta.env.DEV ? defaultDevUrl : window.location.origin;
     const candidate = configuredUrl && configuredUrl.length > 0 ? configuredUrl : fallbackUrl;
 
     try {
@@ -263,6 +264,9 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
+                            <Route path="keys/rekey" element={<KeysReKeyForm />} />
+                            <Route path="keys/set-rotation-policy" element={<SetRotationPolicyForm />} />
+                            <Route path="keys/get-rotation-policy" element={<GetRotationPolicyForm />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
                             <Route path="encrypt" element={<SymmetricEncryptForm />} />

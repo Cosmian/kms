@@ -924,7 +924,7 @@ fn inject_kid(body: &mut Value, kid: &str, kid_public: Option<&str>) {
 #[tokio::test]
 async fn test_jose_vectors() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let vectors = discover_vectors();
     assert!(
