@@ -2,7 +2,7 @@
 
 Cosmian KMS supports **scheduled, policy-driven key rotation** for symmetric
 keys and asymmetric key pairs.  Instead of requiring an operator to call the
-`Re-Key` or `Re-Key Key Pair` KMIP operations manually, a per-key *rotation
+`Re-Key`, `Re-Key Key Pair` or `ReCertify` KMIP operations manually, a per-key *rotation
 policy* can be attached to any key object.  A background task then checks
 periodically which keys are overdue and rotates them automatically.
 
@@ -13,16 +13,39 @@ periodically which keys are overdue and rotates them automatically.
 All rotation-policy state is stored as vendor-extension KMIP attributes on
 the key object itself.  The following attributes are available:
 
-| Attribute | Type | Description |
-|---|---|---|
-| `x-rotate-interval` | `i32` (seconds) | How often this key should be rotated. `0` disables auto-rotation. |
-| `x-rotate-name` | `String` | Optional human-readable label for the policy (e.g. `"daily"`, `"annual"`). |
-| `x-rotate-offset` | `i32` (seconds) | Shift the first rotation trigger by this many seconds after `Initial Date`. |
-| `x-rotate-generation` | `u64` | Incremented on every rotation; `0` for never-rotated keys. |
-| `x-rotate-date` | `datetime` | Timestamp of the last rotation; populated automatically after each rotation. |
+| Attribute             | Type            | Description                                                                                                 | Mutable |
+| --------------------- | --------------- | ----------------------------------------------------------------------------------------------------------- | ------- |
+| `x-rotate-interval`     | `i64` (seconds) | How often this key should be rotated. `0` disables auto-rotation.                                           | Yes     |
+| `x-rotate-name`       | `String`        | Optional human-readable label for the policy (e.g. `"daily"`, `"annual"`).                                  | Yes     |
+| `x-rotate-offset`     | `i64` (seconds) | Shift the first rotation trigger by this many seconds after `Initial Date`.                                 | Yes     |
+| `x-rotate-generation` | `u64`           | Incremented on every rotation; `0` for never-rotated keys. **Server-managed, read-only.**                   | No      |
+| `x-rotate-date`       | `datetime`      | Timestamp of the last rotation; populated automatically after each rotation. **Server-managed, read-only.** | No      |
+
+> **Read-only attributes:** `x-rotate-generation` and `x-rotate-date` are set
+> exclusively by the server during the `Re-Key` operation.  Any attempt to
+> modify them via `AddAttribute`, `SetAttribute`, `ModifyAttribute`, or
+> `DeleteAttribute` will be rejected with `Attribute_Read_Only`.
+>
+> These restrictions preserve two invariants that the scheduler and the
+> rotation link-chain logic rely on:
+>
+> - **Monotonically increasing counter** — `x-rotate-generation` starts at `0`
+>   for a never-rotated key and is incremented by exactly `1` on each successful
+>   rotation.  Within a key-set (keys linked via `ReplacedObjectLink` /
+>   `ReplacementObjectLink`), the generation number is therefore unique and
+>   strictly increasing, which lets the scheduler and client tooling identify
+>   the *current* key in a chain without inspecting every member.
+> - **Authoritative last-rotation timestamp** — `x-rotate-date` is the only
+>   reliable source for "when was this key last rotated".  The scheduler's
+>   `is_due_for_rotation` function computes the next trigger as
+>   `x-rotate-date + x-rotate-interval` (for previously-rotated keys) or as
+>   `initial_date + x-rotate-offset + x-rotate-interval` (for never-rotated
+>   keys with an initial date).  Any external modification to `x-rotate-date`
+>   would cause the scheduler to fire too early, skip a scheduled rotation, or
+>   produce an inconsistent link chain.
 
 Use the `SetAttribute` KMIP operation (or the `ckms sym keys set-rotation-policy`
-CLI command) to configure these attributes on an existing key.
+CLI command) to configure the mutable attributes on an existing key.
 
 ```bash
 # Rotate the key every hour starting from its Initial Date
@@ -34,21 +57,45 @@ ckms sym keys set-rotation-policy \
 
 ---
 
-> **⚠️ HSM-resident keys cannot be auto-rotated**
+> **⚠️ HSM-resident keys cannot be auto-rotated via KMIP**
 >
-> Keys whose UID starts with `hsm::` are stored entirely inside the Hardware
-> Security Module. The KMS has no ability to generate new key material inside
-> the HSM, replace an existing HSM key, or migrate key material to a new UID.
+> Keys whose UID starts with `hsm::` (e.g. `hsm::softhsm2::0::my-kek`) are
+> managed by a PKCS#11-capable Hardware Security Module.  The KMS server *can*
+> generate new HSM key material by calling `C_GenerateKey` / `C_GenerateKeyPair`
+> on the HSM, but it cannot perform the full KMIP `Re-Key` / `Re-Key Key Pair`
+> operation on them for two reasons:
+>
+> 1. **No KMIP attribute storage** — KMIP vendor attributes such as
+>    `x-rotate-interval`, `x-rotate-generation`, and `x-rotate-date` are stored
+>    in the KMS SQL metadata column.  HSM objects live exclusively inside the
+>    HSM and have no corresponding SQL row, so rotation metadata cannot be
+>    attached to them.
+> 2. **Non-extractable key material** — HSM keys are typically created with
+>    `CKA_SENSITIVE = true` and `CKA_EXTRACTABLE = false`, meaning the raw key
+>    bytes can never leave the hardware boundary.  The KMIP re-key pipeline
+>    unwraps and re-wraps dependant keys in software, which is impossible for
+>    non-extractable HSM keys.
+>
 > As a result:
 >
-> - `find_due_for_rotation` never returns HSM UIDs (they are not in the KMS
->   database), so the scheduler will never attempt to rotate them.
-> - Calling `Re-Key` manually on an `hsm::` UID will fail.
-> - Setting `x-rotate-interval` on an HSM key is unsupported and has no effect.
+> - `find_due_for_rotation` **never** returns HSM UIDs — the HSM object store
+>   returns an empty list, so the scheduler skips them entirely.
+> - Calling `Re-Key` or `Re-Key Key Pair` on an `hsm::` UID is explicitly
+>   **rejected** by the server with a `Not Supported` error.
+> - Setting `x-rotate-interval` on an `hsm::` UID has no effect because there is
+>   no attribute row to update.
 >
-> To rotate an HSM key, use the vendor's own key-management tools
-> (e.g. `softhsm2-util`, the Utimaco administration console, `pkcs11-tool`,
-> etc.) and re-register the new key with the KMS server if needed.
+> **HSM key lifecycle management** should instead use PKCS#11-native mechanisms:
+>
+> | Mechanism | Description |
+> |---|---|
+> | `CKA_START_DATE` / `CKA_END_DATE` | Encode a validity period directly on the HSM object |
+> | `pkcs11-tool --keygen` | Generate a new HSM key with `pkcs11-tool` |
+> | `softhsm2-util`, Utimaco console, etc. | Vendor administration tools for slot / key lifecycle |
+>
+> After generating a new HSM key with vendor tools, register it with the KMS
+> server by creating a KMIP `SymmetricKey` object whose UID uses the
+> `hsm::<model>::<slot>::<key_id>` format.
 
 ---
 
@@ -232,17 +279,12 @@ sequenceDiagram
 
 ---
 
-### 5. Wrapped private key (CoverCrypt)
+### 5. Wrapped private key (Covercrypt)
 
-A **CoverCrypt** private key that has been wrapped follows the same flow as any
+A **Covercrypt** master private key and user decryption key that have been wrapped follows the same flow as any
 other `PrivateKey` rotation: the `ReKeyKeyPair` (`rekey_keypair`) operation
-unwraps the key in memory, rekeys the CoverCrypt partition, and stores a new
+unwraps the key in memory, rekeys the Covercrypt partition, and stores a new
 wrapped private key under a fresh UID.
-
-> **Note on RSA / EC private keys**: auto-rotation of RSA and EC private keys
-> via `ReKeyKeyPair` is not yet supported.  If a rotation policy is set on an
-> RSA or EC private key, the scheduler will attempt rotation and log a warning
-> instead of failing.
 
 Setting a rotation policy attribute on a wrapped private key works in all
 cases: the attribute is stored in the metadata column (not in the ciphertext
@@ -267,14 +309,14 @@ standard `ReplacementObjectLink` / `ReplacedObjectLink` pair.
 
 #### Standards and RFCs
 
-| Standard | Title | Relevance |
-|----------|-------|-----------|
-| [KMIP 2.1 §6.1.45](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115677) | Re-certify operation | Normative definition: request/response payload, attribute handling, link semantics |
-| [RFC 4210](https://www.rfc-editor.org/rfc/rfc4210.html) | Internet X.509 PKI — Certificate Management Protocol (CMP) | Defines `kur` (Key Update Request, §5.3.5) / `kup` (Key Update Response, §5.3.6) for certificate renewal over the wire. KMIP `ReCertify` is the KMS-internal equivalent. |
-| [RFC 4211](https://www.rfc-editor.org/rfc/rfc4211.html) | Internet X.509 CRMF (Certificate Request Message Format) | §6.5 "OldCert ID Control" — identifies the certificate being renewed in a CMP request |
-| [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280.html) | Internet X.509 PKI — Certificate and CRL Profile | Defines X.509v3 certificate structure, extensions, validity periods |
-| [RFC 2986](https://www.rfc-editor.org/rfc/rfc2986.html) | PKCS#10: Certification Request Syntax | CSR format supported by KMIP `CertificateRequestType` |
-| [RFC 5272](https://www.rfc-editor.org/rfc/rfc5272.html) | Certificate Management over CMS (CMC) | Alternative certificate lifecycle protocol |
+| Standard                                                                                                   | Title                                                      | Relevance                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [KMIP 2.1 §6.1.45](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115677) | Re-certify operation                                       | Normative definition: request/response payload, attribute handling, link semantics                                                                                       |
+| [RFC 4210](https://www.rfc-editor.org/rfc/rfc4210.html)                                                    | Internet X.509 PKI — Certificate Management Protocol (CMP) | Defines `kur` (Key Update Request, §5.3.5) / `kup` (Key Update Response, §5.3.6) for certificate renewal over the wire. KMIP `ReCertify` is the KMS-internal equivalent. |
+| [RFC 4211](https://www.rfc-editor.org/rfc/rfc4211.html)                                                    | Internet X.509 CRMF (Certificate Request Message Format)   | §6.5 "OldCert ID Control" — identifies the certificate being renewed in a CMP request                                                                                    |
+| [RFC 5280](https://www.rfc-editor.org/rfc/rfc5280.html)                                                    | Internet X.509 PKI — Certificate and CRL Profile           | Defines X.509v3 certificate structure, extensions, validity periods                                                                                                      |
+| [RFC 2986](https://www.rfc-editor.org/rfc/rfc2986.html)                                                    | PKCS#10: Certification Request Syntax                      | CSR format supported by KMIP `CertificateRequestType`                                                                                                                    |
+| [RFC 5272](https://www.rfc-editor.org/rfc/rfc5272.html)                                                    | Certificate Management over CMS (CMC)                      | Alternative certificate lifecycle protocol                                                                                                                               |
 
 #### Relationship between CMP and KMIP ReCertify
 
@@ -318,29 +360,29 @@ sequenceDiagram
 
 #### Attribute handling (KMIP 2.1 §6.1.45 Table 299)
 
-| Attribute | New certificate | Old certificate |
-|-----------|-----------------|-----------------|
-| `Unique Identifier` | Fresh UUID | Unchanged |
-| `Initial Date` | Set to current time | Unchanged |
-| `Link[ReplacedObjectLink]` | → old cert UID | — |
-| `Link[ReplacementObjectLink]` | — | → new cert UID |
-| `Link[PublicKeyLink]` | Preserved from old cert | Unchanged |
-| `Link[PrivateKeyLink]` | Preserved from old cert | Unchanged |
-| `Name` | Inherited from old cert | Removed (per KMIP spec) |
-| `State` | Active | Active |
-| `x-rotate-generation` | old value + 1 | Unchanged |
-| `x-rotate-date` | Current timestamp | Unchanged |
-| `Destroy Date` | Not set | Unchanged |
-| `Revocation Reason` | Not set | Unchanged |
+| Attribute                     | New certificate         | Old certificate         |
+| ----------------------------- | ----------------------- | ----------------------- |
+| `Unique Identifier`           | Fresh UUID              | Unchanged               |
+| `Initial Date`                | Set to current time     | Unchanged               |
+| `Link[ReplacedObjectLink]`    | → old cert UID          | —                       |
+| `Link[ReplacementObjectLink]` | —                       | → new cert UID          |
+| `Link[PublicKeyLink]`         | Preserved from old cert | Unchanged               |
+| `Link[PrivateKeyLink]`        | Preserved from old cert | Unchanged               |
+| `Name`                        | Inherited from old cert | Removed (per KMIP spec) |
+| `State`                       | Active                  | Active                  |
+| `x-rotate-generation`         | old value + 1           | Unchanged               |
+| `x-rotate-date`               | Current timestamp       | Unchanged               |
+| `Destroy Date`                | Not set                 | Unchanged               |
+| `Revocation Reason`           | Not set                 | Unchanged               |
 
 #### Key differences from key rotation
 
-| Aspect | Key rotation (`ReKey` / `ReKeyKeyPair`) | Certificate renewal (`ReCertify`) |
-|--------|------------------------------------------|-----------------------------------|
-| New material generated? | Yes (new key bytes) | No (same key pair) |
-| Wrapping involved? | Yes (if key was wrapped) | Never |
-| Dependants re-wrapped? | Yes (for wrapping keys) | No — keys are *relinked* instead |
-| KMIP operation | `Re-Key` (0x0A) / `Re-Key Key Pair` (0x0B) | `Re-Certify` (0x07) |
+| Aspect                  | Key rotation (`ReKey` / `ReKeyKeyPair`)    | Certificate renewal (`ReCertify`) |
+| ----------------------- | ------------------------------------------ | --------------------------------- |
+| New material generated? | Yes (new key bytes)                        | No (same key pair)                |
+| Wrapping involved?      | Yes (if key was wrapped)                   | Never                             |
+| Dependants re-wrapped?  | Yes (for wrapping keys)                    | No — keys are *relinked* instead  |
+| KMIP operation          | `Re-Key` (0x0A) / `Re-Key Key Pair` (0x0B) | `Re-Certify` (0x07)               |
 
 #### CLI usage
 
@@ -522,33 +564,33 @@ when a key is rotated.
 
 ### Auto-rotation (cron-triggered)
 
-| Attribute | Old key | New key |
-|---|---|---|
-| `Unique Identifier` | unchanged | fresh UUID |
-| `Link[ReplacementObjectLink]` | → new key UID | — |
-| `Link[ReplacedObjectLink]` | — | → old key UID |
-| `Link[WrappingKeyLink]` | unchanged | copied from old key |
-| `x-rotate-generation` | unchanged | old value + 1 |
-| `x-rotate-date` | unchanged | timestamp of rotation |
-| `x-rotate-interval` | **set to `0`** (disabled, so cron skips the old key in future runs) | **inherited** from old key (policy continues on the new key) |
-| `x-rotate-name` | unchanged | inherited from old key |
-| `x-rotate-offset` | unchanged | inherited from old key |
-| `x-initial-date` | cleared | set to now (resets the baseline for the next rotation deadline) |
-| `State` | Active | Active |
-| `Cryptographic Algorithm` | unchanged | copied from old key |
-| `Cryptographic Length` | unchanged | copied from old key |
+| Attribute                     | Old key                                                             | New key                                                         |
+| ----------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `Unique Identifier`           | unchanged                                                           | fresh UUID                                                      |
+| `Link[ReplacementObjectLink]` | → new key UID                                                       | —                                                               |
+| `Link[ReplacedObjectLink]`    | —                                                                   | → old key UID                                                   |
+| `Link[WrappingKeyLink]`       | unchanged                                                           | copied from old key                                             |
+| `x-rotate-generation`         | unchanged                                                           | old value + 1                                                   |
+| `x-rotate-date`               | unchanged                                                           | timestamp of rotation                                           |
+| `x-rotate-interval`             | **set to `0`** (disabled, so cron skips the old key in future runs) | **inherited** from old key (policy continues on the new key)    |
+| `x-rotate-name`               | unchanged                                                           | inherited from old key                                          |
+| `x-rotate-offset`             | unchanged                                                           | inherited from old key                                          |
+| `x-initial-date`              | cleared                                                             | set to now (resets the baseline for the next rotation deadline) |
+| `State`                       | Active                                                              | Active                                                          |
+| `Cryptographic Algorithm`     | unchanged                                                           | copied from old key                                             |
+| `Cryptographic Length`        | unchanged                                                           | copied from old key                                             |
 
 ### Manual rekey (user-triggered via `Re-Key` / `re-key` CLI)
 
 When a user explicitly calls `Re-Key` (e.g. `ckms sym keys re-key --key-id <UID>`),
 the semantics deliberately differ from auto-rotation:
 
-| Attribute | Old key | New key |
-|---|---|---|
-| `x-rotate-interval` | **set to `0`** (disabled) | **`0`** (not inherited — user must re-arm the new key explicitly) |
-| `x-rotate-generation` | unchanged | old value + 1 |
-| `Link[ReplacementObjectLink]` | → new key UID | — |
-| `Link[ReplacedObjectLink]` | — | → old key UID |
+| Attribute                     | Old key                   | New key                                                           |
+| ----------------------------- | ------------------------- | ----------------------------------------------------------------- |
+| `x-rotate-interval`             | **set to `0`** (disabled) | **`0`** (not inherited — user must re-arm the new key explicitly) |
+| `x-rotate-generation`         | unchanged                 | old value + 1                                                     |
+| `Link[ReplacementObjectLink]` | → new key UID             | —                                                                 |
+| `Link[ReplacedObjectLink]`    | —                         | → old key UID                                                     |
 
 This asymmetry is intentional: a manual rekey is an out-of-cycle operator action
 (e.g. for incident response), so the operator is expected to re-evaluate the
@@ -582,7 +624,7 @@ manual-rotation flows:
   re-keying, **Certificate Renewal** for certificate operations
 - `Re-Key` implementation for all six symmetric/asymmetric scenarios
 - `Re-Key Key Pair` for all curve types (RSA, EC, ML-KEM, ML-DSA, SLH-DSA,
-  X25519, secp256k1, CoverCrypt)
+  X25519, secp256k1, Covercrypt)
 - `ReCertify` (KMIP §6.1.45) for self-signed and CA-signed certificate renewal
 - Offset-based `PreActive` state for keys/certificates with future activation
   dates
