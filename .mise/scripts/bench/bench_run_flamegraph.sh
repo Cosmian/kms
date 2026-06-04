@@ -128,7 +128,7 @@ if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
   echo "── Generating flamegraphs ────────────────────────────────────────────"
 
   for workers in ${WORKER_COUNTS}; do
-    SVG_OUT="${FLAMEGRAPH_DIR}/ecdsa_w${workers}.svg"
+    SVG_OUT="${FLAMEGRAPH_DIR}/ecdsa_sign_w${workers}.svg"
     BENCH_FILTER="${BENCH_OPERATION}/${workers} workers"
     echo ""
     echo "   Worker count: ${workers}  →  ${SVG_OUT}"
