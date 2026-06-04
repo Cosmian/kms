@@ -205,7 +205,9 @@ if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
     if [ -f "${SVG_OUT}" ]; then
       FLAMEGRAPH_SECTION+="### ${workers} worker(s) — \`${BENCH_OPERATION}\`
 
-![ flamegraph ${workers} workers](${SVG_OUT})
+![ flamegraph ${workers} workers](${SVG_OUT##*/})
+
+"
 
 "
     fi
