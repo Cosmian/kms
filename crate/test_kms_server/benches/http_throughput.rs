@@ -307,7 +307,9 @@ for res in join_all(tasks).await {
                                     tokio::spawn(async move { ec_sign(&c, &k).await })
                                 })
                                 .collect();
-                            join_all(tasks).await;
+for res in join_all(tasks).await {
+    res.expect("task panicked").expect("request failed");
+}
                         }
                         start.elapsed()
                     }
