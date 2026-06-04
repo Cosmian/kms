@@ -54,7 +54,7 @@ BENCH_OPERATION="${BENCH_OPERATION:-ECDSA P-256 sign}"
 PERF_FREQ="${PERF_FREQ:-500}"
 SKIP_FLAMEGRAPH="${SKIP_FLAMEGRAPH:-0}"
 SKIP_THROUGHPUT="${SKIP_THROUGHPUT:-0}"
-OUT_MD="${OUT_MD:-documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/cpu_scaling.md}"
+OUT_MD="${OUT_MD:-target/flamegraphs/cpu_scaling.md}"
 
 echo "============================================================"
 echo "  Cosmian KMS — CPU Scaling Flamegraph Benchmark"
