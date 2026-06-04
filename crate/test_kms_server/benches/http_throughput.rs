@@ -279,7 +279,9 @@ for res in join_all(tasks).await {
                                     )
                                 })
                                 .collect();
-                            join_all(tasks).await;
+for res in join_all(tasks).await {
+    res.expect("task panicked").expect("request failed");
+}
                         }
                         start.elapsed()
                     }
