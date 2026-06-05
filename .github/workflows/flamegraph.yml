@@ -2,7 +2,7 @@
 name: CPU Scaling Flamegraph
 
 on:
-  # Run on demand (useful to generate fresh flamegraphs and throughput charts)
+  # Run on demand only (useful to generate fresh flamegraphs and throughput charts)
   workflow_dispatch:
     inputs:
       profile_time:
@@ -13,17 +13,6 @@ on:
         description: Comma-separated worker counts to include (e.g. 1,2,4,8)
         required: false
         default: '1,2,4,8'
-
-  # Run weekly on Monday at 03:00 UTC to track scaling over time
-  schedule:
-    - cron: '0 3 * * 1'
-
-  # Run on PRs that touch the server workers path or the bench itself
-  pull_request:
-    paths:
-      - 'crate/server/src/config/command_line/http_config.rs'
-      - 'crate/server/src/start_kms_server.rs'
-      - 'crate/test_kms_server/benches/http_throughput.rs'
 
 jobs:
   cpu-scaling:
