@@ -515,6 +515,52 @@ ON objects.id = matched_tags.id"
     qb.finish(query)
 }
 
+/// Build the SQL query to find objects by their `RotateName` vendor attribute.
+///
+/// Optionally filters by `RotateGeneration` (integer equality) and `RotateLatest` (text
+/// `"true"`/`"false"`) directly in SQL, reducing the result set at the database level.
+///
+/// Returns a `LocateQuery` with parameterized bindings suitable for all SQL backends.
+pub(super) fn find_by_rotate_name_query<P: PlaceholderTrait>(
+    name: &str,
+    generation: Option<i32>,
+    latest: Option<bool>,
+    owner: &str,
+) -> LocateQuery {
+    let mut qb = LocateQueryBuilder::<P>::new();
+
+    let owner_bind = qb.bind_text(owner);
+    let name_bind = qb.bind_text(name);
+    let rotate_name_extract = P::extract_attribute_path(&["RotateName"]);
+
+    let mut query = format!(
+        "SELECT objects.id, objects.attributes FROM objects \
+         WHERE objects.owner = {owner_bind} \
+         AND {rotate_name_extract} = {name_bind}"
+    );
+
+    if let Some(g) = generation {
+        let gen_extract = P::extract_attribute_path(&["RotateGeneration"]);
+        let gen_bind = qb.bind_i64(i64::from(g));
+        if P::NEEDS_INTEGER_CAST {
+            query = format!(
+                "{query} AND CAST({gen_extract} AS {}) = {gen_bind}",
+                P::TYPE_INTEGER
+            );
+        } else {
+            query = format!("{query} AND CAST({gen_extract} AS SIGNED) = {gen_bind}");
+        }
+    }
+
+    if let Some(lat) = latest {
+        let latest_extract = P::extract_attribute_path(&["RotateLatest"]);
+        let latest_bind = qb.bind_text(if lat { "true" } else { "false" });
+        query = format!("{query} AND {latest_extract} = {latest_bind}");
+    }
+
+    qb.finish(query)
+}
+
 /// Build the SQL query to find objects that are candidates for rotation.
 /// Selects active objects with a non-null `RotateInterval > 0`.
 /// The actual "due" check (comparing timestamps) is done in Rust via `is_due_for_rotation`.

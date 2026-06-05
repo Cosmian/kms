@@ -8,8 +8,9 @@ use pkcs11_sys::{
     CK_C_Finalize, CK_C_FindObjects, CK_C_FindObjectsFinal, CK_C_FindObjectsInit, CK_C_GenerateKey,
     CK_C_GenerateKeyPair, CK_C_GenerateRandom, CK_C_GetAttributeValue, CK_C_GetInfo,
     CK_C_GetMechanismInfo, CK_C_GetMechanismList, CK_C_INITIALIZE_ARGS, CK_C_Initialize,
-    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_SeedRandom, CK_C_Sign, CK_C_SignInit,
-    CK_C_UnwrapKey, CK_C_WrapKey, CKF_OS_LOCKING_OK, CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_OK,
+    CK_C_Login, CK_C_Logout, CK_C_OpenSession, CK_C_SeedRandom, CK_C_SetAttributeValue, CK_C_Sign,
+    CK_C_SignInit, CK_C_UnwrapKey, CK_C_WrapKey, CKF_OS_LOCKING_OK,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_OK,
 };
 
 use crate::{HResult, hsm_call};
@@ -85,6 +86,7 @@ pub struct HsmLib {
     pub(crate) C_SeedRandom: CK_C_SeedRandom,
 
     pub(crate) C_GetAttributeValue: CK_C_GetAttributeValue,
+    pub(crate) C_SetAttributeValue: CK_C_SetAttributeValue,
 
     pub(crate) C_GetInfo: CK_C_GetInfo,
     pub(crate) C_GetMechanismList: CK_C_GetMechanismList,
@@ -130,6 +132,7 @@ impl HsmLib {
                 C_GenerateRandom: Some(*library.get(b"C_GenerateRandom")?),
                 C_SeedRandom: Some(*library.get(b"C_SeedRandom")?),
                 C_GetAttributeValue: Some(*library.get(b"C_GetAttributeValue")?),
+                C_SetAttributeValue: Some(*library.get(b"C_SetAttributeValue")?),
                 C_GetInfo: Some(*library.get(b"C_GetInfo")?),
                 C_GetMechanismList: Some(*library.get(b"C_GetMechanismList")?),
                 C_GetMechanismInfo: Some(*library.get(b"C_GetMechanismInfo")?),

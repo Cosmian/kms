@@ -71,6 +71,7 @@ impl Default for ClapConfig {
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
+            keyset_decrypt_max_attempts: 100,
         }
     }
 }
@@ -219,6 +220,12 @@ pub struct ClapConfig {
     /// Set to 0 (default) to disable the auto-rotation background task.
     #[clap(long, default_value = "0", verbatim_doc_comment)]
     pub auto_rotation_check_interval_secs: u64,
+
+    /// Maximum number of keys the server will try when decrypting with a keyset
+    /// identifier (walking the rotation chain from newest to oldest).
+    /// Prevents unbounded chain traversal.
+    #[clap(long, default_value = "100", verbatim_doc_comment)]
+    pub keyset_decrypt_max_attempts: u32,
 }
 
 impl ClapConfig {
@@ -660,6 +667,10 @@ impl fmt::Debug for ClapConfig {
         let x = x.field(
             "auto_rotation_check_interval_secs",
             &self.auto_rotation_check_interval_secs,
+        );
+        let x = x.field(
+            "keyset_decrypt_max_attempts",
+            &self.keyset_decrypt_max_attempts,
         );
 
         x.finish()

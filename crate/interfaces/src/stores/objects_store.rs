@@ -130,4 +130,45 @@ pub trait ObjectsStore {
     async fn find_due_for_rotation(&self, _now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
         Ok(vec![])
     }
+
+    /// Find objects by their `x-rotate-name` vendor attribute.
+    ///
+    /// Optionally filter by:
+    /// - `generation`: match `x-rotate-generation` exactly
+    /// - `latest`: match `x-rotate-latest` flag
+    /// - `owner`: match the object owner
+    ///
+    /// Returns a list of `(uid, attributes)` pairs.
+    /// The default implementation returns an empty list; backends should override.
+    async fn find_by_rotate_name(
+        &self,
+        _name: &str,
+        _generation: Option<i32>,
+        _latest: Option<bool>,
+        _owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        Ok(vec![])
+    }
+
+    /// Set the human-readable label on a key object.
+    ///
+    /// For HSM backends this writes `CKA_LABEL` via `C_SetAttributeValue`.
+    /// The SQL backends ignore this call (labels are carried in the KMIP `Name` attribute
+    /// and managed separately). Default: no-op.
+    async fn set_key_label(&self, _uid: &str, _label: &str) -> InterfaceResult<()> {
+        Ok(())
+    }
+
+    /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
+    ///
+    /// `start_date` and `end_date` are stored as `CKA_START_DATE` / `CKA_END_DATE`.
+    /// SQL backends ignore this call. Default: no-op.
+    async fn set_key_rotation_dates(
+        &self,
+        _uid: &str,
+        _start_date: Option<time::Date>,
+        _end_date: Option<time::Date>,
+    ) -> InterfaceResult<()> {
+        Ok(())
+    }
 }

@@ -348,6 +348,7 @@ mod tests {
             privileged_users: None,
             print_default_config: false,
             auto_rotation_check_interval_secs: 0,
+            keyset_decrypt_max_attempts: 100,
         };
 
         let toml_string = r#"
@@ -360,8 +361,11 @@ hsm_model = ""
 hsm_admin = []
 hsm_slot = []
 hsm_password = []
+hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
+auto_rotation_check_interval_secs = 0
+keyset_decrypt_max_attempts = 100
 
 [db]
 database_type = "[redis-findex, postgresql,...]"
@@ -385,6 +389,7 @@ tls_cipher_suites = "TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256"
 [http]
 port = 443
 hostname = "[hostname]"
+rate_limit_per_second = 100
 
 [proxy]
 proxy_url = "https://proxy.example.com:8080"
@@ -420,6 +425,7 @@ tmp_path = "[tmp path]"
 [logging]
 rust_log = "info,cosmian_kms=debug"
 otlp = "http://localhost:4317"
+otlp_allow_insecure = false
 quiet = false
 log_to_syslog = false
 rolling_log_dir = "[rolling log dir]"

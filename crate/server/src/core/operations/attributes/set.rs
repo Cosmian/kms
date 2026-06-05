@@ -12,12 +12,25 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{debug, trace};
+use time::OffsetDateTime;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::has_prefix},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
+
+/// Extract the PKCS#11 `key_id` from an HSM UID of the form
+/// `hsm::<model>::<slot_id>::<key_id>`.
+///
+/// Returns `None` if the UID cannot be parsed.
+fn extract_hsm_key_id(uid: &str) -> Option<&str> {
+    let prefix = has_prefix(uid)?;
+    // Strip "hsm::<model>::" to get "<slot_id>::<key_id>"
+    let rest = uid.strip_prefix(&format!("{prefix}::"))?;
+    // Skip the slot_id segment
+    rest.split_once("::").map(|(_, key_id)| key_id)
+}
 
 pub(crate) async fn set_attribute(
     kms: &KMS,
@@ -42,6 +55,12 @@ pub(crate) async fn set_attribute(
                 "DENIED: this attribute is server-managed and cannot be set by the user".to_owned(),
             ));
         }
+        Attribute::RotateName(name) if name.contains('@') => {
+            return Err(KmsError::InvalidRequest(
+                "SetAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
+                    .to_owned(),
+            ));
+        }
         _ => {}
     }
 
@@ -53,6 +72,24 @@ pub(crate) async fn set_attribute(
     ))
     .await?;
     trace!("Set Attribute: Retrieved target object");
+
+    // Capture HSM-rotation values before the `match_set_attribute!` macro may
+    // partially move `request.new_attribute`.  We do this here — after object
+    // retrieval — so we can inspect `owm.id()` to confirm it is an HSM key.
+    let (hsm_rotate_name, hsm_rotate_interval_secs) = if has_prefix(owm.id()).is_some() {
+        match &request.new_attribute {
+            Attribute::RotateOffset(_) => {
+                return Err(KmsError::NotSupported(
+                    "SetAttribute: rotate_offset is not supported for HSM keys".to_owned(),
+                ));
+            }
+            Attribute::RotateName(n) => (Some(n.clone()), None::<i64>),
+            Attribute::RotateInterval(n) => (None::<String>, Some(*n)),
+            _ => (None, None),
+        }
+    } else {
+        (None, None)
+    };
 
     let mut attributes = owm.attributes_mut().clone();
 
@@ -153,6 +190,40 @@ pub(crate) async fn set_attribute(
     }
 
     let tags = kms.database.retrieve_tags(owm.id()).await?;
+
+    // HSM-specific: propagate rotation attributes directly to PKCS#11 storage.
+    // `HsmStore::update_object` is a no-op for attributes (the HSM has no
+    // generic KV attribute storage), so we must explicitly write CKA_LABEL and
+    // CKA_START_DATE / CKA_END_DATE when the caller sets rotation metadata.
+    if let Some(rotate_name) = hsm_rotate_name {
+        // Register key in a keyset by writing CKA_LABEL at generation 0.
+        let key_id = extract_hsm_key_id(owm.id()).ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "SetAttribute: cannot parse key_id from HSM UID '{}'",
+                owm.id()
+            ))
+        })?;
+        let label = format!("{rotate_name}::0::{key_id}::latest");
+        trace!(
+            "SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'",
+            label,
+            owm.id()
+        );
+        kms.database.set_key_label(owm.id(), &label).await?;
+    } else if let Some(interval_secs) = hsm_rotate_interval_secs {
+        let today = OffsetDateTime::now_utc().date();
+        let days = interval_secs / 86400;
+        let end_date = today + time::Duration::days(days);
+        trace!(
+            "SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'",
+            today,
+            end_date,
+            owm.id()
+        );
+        kms.database
+            .set_key_rotation_dates(owm.id(), Some(today), Some(end_date))
+            .await?;
+    }
 
     match owm.object().object_type() {
         ObjectType::PublicKey

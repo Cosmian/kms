@@ -23,7 +23,10 @@ use serde_json::Value;
 use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
-use super::locate_query::{SqlitePlaceholder, find_due_for_rotation_query, query_from_attributes};
+use super::locate_query::{
+    SqlitePlaceholder, find_by_rotate_name_query, find_due_for_rotation_query,
+    query_from_attributes,
+};
 use crate::{
     db_error,
     error::{DbError, DbResult},
@@ -669,6 +672,57 @@ impl ObjectsStore for SqlitePool {
             }
         }
         Ok(due)
+    }
+
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        latest: Option<bool>,
+        owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        let locate =
+            find_by_rotate_name_query::<SqlitePlaceholder>(name, generation, latest, owner);
+        let sql = replace_dollars_with_qn(&locate.sql);
+        let locate_params = locate.params;
+        let rows = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Vec<(String, String)>,
+                    rusqlite::Error,
+                > {
+                    let mut stmt = c.prepare(&sql)?;
+                    let values: Vec<rusqlite::types::Value> = locate_params
+                        .into_iter()
+                        .map(|p| match p {
+                            crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                                rusqlite::types::Value::Text(s)
+                            }
+                            crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                                rusqlite::types::Value::Integer(i)
+                            }
+                        })
+                        .collect();
+                    let mut q = stmt.query(rusqlite::params_from_iter(values.iter()))?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        let id: String = r.get(0)?;
+                        let attrs_json: String = r.get(1)?;
+                        out.push((id, attrs_json));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+
+        let mut results = Vec::new();
+        for (uid, attrs_json) in rows {
+            let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
+            results.push((uid, attrs));
+        }
+        Ok(results)
     }
 }
 

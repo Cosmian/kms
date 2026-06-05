@@ -18,7 +18,7 @@ use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -121,6 +121,10 @@ impl CryptoOpSpec for MacVerifyOp {
 
     fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
         Some(&request.unique_identifier)
+    }
+
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::TryEach
     }
 
     fn usage_data_len(request: &Self::Request) -> usize {

@@ -540,7 +540,7 @@ pub(crate) fn update_old_key_after_rekey(old_attrs: &mut Attributes, new_uid: &s
 /// - `rotate_date` = now
 /// - `rotate_interval` = 0 (manual rekey does not inherit the policy)
 /// - `rotate_latest` = true (this is the newest key in the chain)
-/// - `rotate_name` = None (cleared for manual rekey)
+/// - `rotate_name` = inherited from old key (required for keyset resolution)
 /// - `rotate_offset` = None (cleared for manual rekey)
 pub(crate) fn set_rotation_metadata_on_new_key(
     new_attrs: &mut Attributes,
@@ -551,7 +551,8 @@ pub(crate) fn set_rotation_metadata_on_new_key(
     // Manual rekey: do not inherit the rotation policy — user must re-arm explicitly
     new_attrs.rotate_interval = Some(0);
     new_attrs.rotate_latest = Some(true);
-    new_attrs.rotate_name = None;
+    // Inherit rotate_name so keyset resolution (name@latest, bare name) can find the new key
+    new_attrs.rotate_name.clone_from(&old_attrs.rotate_name);
     new_attrs.rotate_offset = None;
     Ok(())
 }

@@ -910,6 +910,51 @@ impl ObjectsStore for PgPool {
             Ok(due)
         })
     }
+
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        latest: Option<bool>,
+        owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        let name = name.to_owned();
+        let owner = owner.to_owned();
+        pg_retry!(self.pool, |client| {
+            let locate = crate::stores::sql::locate_query::find_by_rotate_name_query::<
+                crate::stores::sql::locate_query::PgSqlPlaceholder,
+            >(&name, generation, latest, &owner);
+            let stmt = client
+                .prepare(&locate.sql)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut owned: Vec<Box<dyn ToSql + Sync>> = Vec::with_capacity(locate.params.len());
+            for p in locate.params {
+                match p {
+                    crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                        owned.push(Box::new(s));
+                    }
+                    crate::stores::sql::locate_query::LocateParam::I64(i) => {
+                        owned.push(Box::new(i));
+                    }
+                }
+            }
+            let params: Vec<&(dyn ToSql + Sync)> =
+                owned.iter().map(std::convert::AsRef::as_ref).collect();
+            let rows = client
+                .query(&stmt, &params)
+                .await
+                .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+            let mut results = Vec::new();
+            for row in rows {
+                let uid: String = row.get(0);
+                let attrs_val: Value = row.get(1);
+                let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+                results.push((uid, attrs));
+            }
+            Ok(results)
+        })
+    }
 }
 
 #[async_trait(?Send)]
