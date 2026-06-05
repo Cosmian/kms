@@ -208,8 +208,6 @@ if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
 ![ flamegraph ${workers} workers](${SVG_OUT##*/})
 
 "
-
-"
     fi
   done
 fi
