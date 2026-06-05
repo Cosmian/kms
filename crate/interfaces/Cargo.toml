@@ -24,3 +24,7 @@ num-bigint-dig = { workspace = true, features = ["std", "rand", "serde", "zeroiz
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 zeroize = { workspace = true, default-features = true }
+
+[dev-dependencies]
+mockall = "0.13"
+tokio = { workspace = true, features = ["rt", "macros"] }

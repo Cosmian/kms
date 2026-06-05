@@ -378,11 +378,14 @@ impl ObjectsStore for HsmStore {
         Ok(uids)
     }
 
-    /// HSM object counting is not implemented — HSMs do not expose a key-count
-    /// API in the PKCS#11 interface.  Override the trait default to suppress
-    /// the warning that would otherwise fire every 30 s from the metrics cron.
+    /// Count all non-destroyed objects on this HSM.
+    ///
+    /// On an HSM every object present in a slot is by definition non-destroyed:
+    /// deleted keys are physically removed from the device rather than being
+    /// transitioned to a `Destroyed` state.  All HSM objects are also key
+    /// material, so this delegates directly to [`Self::count_non_destroyed_keys`].
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        Ok(0)
+        self.count_non_destroyed_keys().await
     }
 
     /// Count non-destroyed key objects across all HSM slots.
@@ -1136,13 +1139,108 @@ fn to_object_with_metadata(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
     use cosmian_kmip::kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_types::{Name, NameType},
     };
+    use zeroize::Zeroizing;
 
     use super::check_basic_compatibility;
-    use crate::InterfaceError;
+    use crate::{
+        CryptoAlgorithm, HSM, HsmKeyAlgorithm, HsmKeypairAlgorithm, HsmObject, HsmObjectFilter,
+        InterfaceError, InterfaceResult, KeyMetadata, KeyType, ObjectsStore, SigningAlgorithm,
+        crypto_oracle::EncryptedContent, hsm::HsmStore,
+    };
+
+    // ── mockall-generated test double for HSM ─────────────────────────────────
+
+    mockall::mock! {
+        /// Auto-generated test double for the `HSM` trait.
+        /// All async methods get expectation machinery; `hsm_lib` is a concrete
+        /// no-op implementation that always returns `None` (avoids mockall's
+        /// limitations with `&self`-bounded reference return types).
+        pub Hsm {}
+
+        #[async_trait]
+        impl HSM for Hsm {
+            async fn get_available_slot_list(&self) -> InterfaceResult<Vec<usize>>;
+            async fn find(
+                &self,
+                slot_id: usize,
+                object_filter: HsmObjectFilter,
+            ) -> InterfaceResult<Vec<Vec<u8>>>;
+            async fn get_supported_algorithms(
+                &self,
+                slot_id: usize,
+            ) -> InterfaceResult<Vec<CryptoAlgorithm>>;
+            async fn create_key(
+                &self,
+                slot_id: usize,
+                id: &[u8],
+                algorithm: HsmKeyAlgorithm,
+                key_length_in_bits: usize,
+                sensitive: bool,
+            ) -> InterfaceResult<()>;
+            async fn create_keypair(
+                &self,
+                slot_id: usize,
+                sk_id: &[u8],
+                pk_id: &[u8],
+                algorithm: HsmKeypairAlgorithm,
+                key_length_in_bits: usize,
+                sensitive: bool,
+            ) -> InterfaceResult<()>;
+            async fn export(
+                &self,
+                slot_id: usize,
+                object_id: &[u8],
+            ) -> InterfaceResult<Option<HsmObject>>;
+            async fn delete(&self, slot_id: usize, object_id: &[u8]) -> InterfaceResult<()>;
+            async fn encrypt(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                algorithm: CryptoAlgorithm,
+                data: &[u8],
+            ) -> InterfaceResult<EncryptedContent>;
+            async fn decrypt(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                algorithm: CryptoAlgorithm,
+                data: &[u8],
+            ) -> InterfaceResult<Zeroizing<Vec<u8>>>;
+            async fn get_key_type(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+            ) -> InterfaceResult<Option<KeyType>>;
+            async fn get_key_metadata(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+            ) -> InterfaceResult<Option<KeyMetadata>>;
+            async fn sign(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                algorithm: SigningAlgorithm,
+                data: &[u8],
+            ) -> InterfaceResult<Vec<u8>>;
+            async fn generate_random(
+                &self,
+                slot_id: usize,
+                len: usize,
+            ) -> InterfaceResult<Vec<u8>>;
+            async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()>;
+            fn hsm_lib(&self) -> Option<&'static dyn std::any::Any> { None }
+        }
+    }
+
+    // ── Tests ─────────────────────────────────────────────────────────────────
 
     /// Locate with a Name filter must not match any HSM key (issue #935):
     /// HSM keys have no KMIP Name, so the filter should yield empty results
@@ -1178,5 +1276,42 @@ mod tests {
             result.is_ok(),
             "Expected ObjectType-only filter to be compatible with HSM, got: {result:?}"
         );
+    }
+
+    /// `count_all_non_destroyed` must equal `count_non_destroyed_keys` for an `HsmStore`
+    /// because all objects present on an HSM are non-destroyed key material by definition.
+    ///
+    /// Uses a `MockHsm` with two slots (3 + 2 keys) to verify that both methods return 5
+    /// and that `count_all_non_destroyed` is not hard-coded to 0.
+    #[tokio::test]
+    async fn test_count_all_non_destroyed_delegates_to_count_non_destroyed_keys()
+    -> InterfaceResult<()> {
+        let mut mock = MockHsm::new();
+        mock.expect_get_available_slot_list()
+            .returning(|| Ok(vec![0, 1]));
+        mock.expect_find()
+            .returning(|slot_id, _filter| match slot_id {
+                0 => Ok(vec![vec![0], vec![1], vec![2]]), // 3 keys in slot 0
+                1 => Ok(vec![vec![0], vec![1]]),          // 2 keys in slot 1
+                _ => Ok(vec![]),
+            });
+
+        let store = HsmStore::new(Arc::new(mock), &["admin".to_owned()], "cosmian", "hsm");
+
+        let via_all = store.count_all_non_destroyed().await?;
+        let via_keys = store.count_non_destroyed_keys().await?;
+
+        if via_all != 5 {
+            return Err(InterfaceError::Default(format!(
+                "count_all_non_destroyed should return 5 (3+2), got {via_all}"
+            )));
+        }
+        if via_all != via_keys {
+            return Err(InterfaceError::Default(format!(
+                "count_all_non_destroyed ({via_all}) must equal count_non_destroyed_keys \
+                 ({via_keys}) for HsmStore"
+            )));
+        }
+        Ok(())
     }
 }
