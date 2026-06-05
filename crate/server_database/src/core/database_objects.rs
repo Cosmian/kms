@@ -455,6 +455,39 @@ impl Database {
         }
         Ok(total)
     }
+
+    /// Return the total count of non-destroyed key objects (`SymmetricKey`, `PrivateKey`,
+    /// `PublicKey`, `SplitKey`) across all registered stores.
+    ///
+    /// Aggregates results from every registered backend (SQL stores, HSM stores, etc.).
+    /// Backends that have not yet implemented `count_non_destroyed_keys` return `0` via
+    /// the trait default — the sum remains a valid lower bound.
+    pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
+        let map = self.objects.read().await;
+        let mut total: u64 = 0;
+        for store in map.values() {
+            let n = store.count_non_destroyed_keys().await.unwrap_or(0); // A single backend failure must not block the aggregate
+            total = total.saturating_add(n);
+        }
+        Ok(total)
+    }
+
+    /// Perform an authoritative reconciliation of cached object-count counters
+    /// across all registered stores.
+    ///
+    /// SQL backends are no-ops (every COUNT query is authoritative).
+    /// Redis backends recompute counts from a full SCAN and overwrite cached keys.
+    /// Called by the slow-path cron loop (every 5 minutes) to prevent counter drift.
+    pub async fn reconcile_all_object_counts(&self) -> DbResult<()> {
+        let map = self.objects.read().await;
+        for store in map.values() {
+            if let Err(e) = store.reconcile_counts().await {
+                // Non-fatal: log and continue so one failing backend does not block others.
+                cosmian_logger::warn!("[database] reconcile_counts failed for a store: {e}");
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

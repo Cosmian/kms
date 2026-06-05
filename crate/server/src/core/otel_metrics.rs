@@ -232,7 +232,11 @@ impl OtelMetrics {
         // Active keys count — gauge records the current absolute count directly
         let active_keys_count = meter
             .i64_gauge("kms.keys.active.count")
-            .with_description("Number of keys in Active state (absolute count based on Locate)")
+            .with_description(
+                "Number of non-destroyed key objects (SymmetricKey, PrivateKey, PublicKey, \
+                 SplitKey) across all backends. Counts keys in all non-terminal states: \
+                 PreActive, Active, Deactivated, Compromised.",
+            )
             .with_unit("{key}")
             .build();
         // Seed the time series so it is visible in the backend from server start.

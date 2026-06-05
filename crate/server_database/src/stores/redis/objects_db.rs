@@ -340,6 +340,10 @@ pub(crate) enum RedisOperation {
 /// Redis key that stores the count of live (non-destroyed) objects.
 pub(crate) const LIVE_COUNT_KEY: &str = "kms::metrics::live_object_count";
 
+/// Redis key that stores the count of non-destroyed key objects
+/// (`SymmetricKey`, `PrivateKey`, `PublicKey`, `SplitKey`).
+pub(crate) const ACTIVE_KEY_COUNT_KEY: &str = "kms::metrics::active_key_count";
+
 /// SCAN batch hint passed to Redis.  Redis may return more or fewer keys per
 /// batch; `200` is a pragmatic balance between round-trips and command latency.
 const SCAN_BATCH_HINT: u64 = 200;
@@ -434,6 +438,103 @@ impl ObjectsDB {
                         Err(e) => {
                             // Skip corrupted / foreign blobs rather than
                             // aborting the entire count.
+                            debug!("[redis-bootstrap] skipping key {key}: {e}");
+                        }
+                    }
+                }
+            }
+
+            cursor = next_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(count)
+    }
+
+    /// Atomically adjust the active-key counter by `delta`.
+    ///
+    /// "Active key" means a non-destroyed key object (`ObjectType` ∈ {`SymmetricKey`,
+    /// `PrivateKey`, `PublicKey`, `SplitKey`}, state ∉ {`Destroyed`, `Destroyed_Compromised`}).
+    /// Uses `INCRBY`; the key is auto-created at `delta` if absent — the cron
+    /// reconcile will correct it on the next tick.
+    pub(crate) async fn adjust_active_key_count(&self, delta: i64) -> DbResult<()> {
+        if delta == 0 {
+            return Ok(());
+        }
+        self.mgr
+            .clone()
+            .incr::<_, i64, i64>(ACTIVE_KEY_COUNT_KEY, delta)
+            .await?;
+        Ok(())
+    }
+
+    /// Return the current active-key count, or `None` if the key has never
+    /// been set (i.e. the bootstrap scan has not yet run).
+    pub(crate) async fn get_active_key_count(&self) -> DbResult<Option<u64>> {
+        let raw: Option<i64> = self.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
+        Ok(raw.map(|n| u64::try_from(n.max(0)).unwrap_or(0)))
+    }
+
+    /// Overwrite the active-key counter with an absolute value.
+    ///
+    /// Called once during bootstrap and by the reconcile path.
+    pub(crate) async fn set_active_key_count(&self, count: u64) -> DbResult<()> {
+        self.mgr
+            .clone()
+            .set::<_, _, ()>(ACTIVE_KEY_COUNT_KEY, count)
+            .await?;
+        Ok(())
+    }
+
+    /// One-time bootstrap: scan every `do::*` key, decrypt each blob, and count
+    /// objects that are both a key type (`SymmetricKey`, `PrivateKey`, `PublicKey`,
+    /// `SplitKey`) **and** non-destroyed.
+    ///
+    /// Same cost and error-handling semantics as `scan_count_non_destroyed`.
+    pub(crate) async fn scan_count_non_destroyed_keys(&self) -> DbResult<u64> {
+        let mut count: u64 = 0;
+        let mut cursor: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("do::*")
+                .arg("COUNT")
+                .arg(SCAN_BATCH_HINT)
+                .query_async(&mut self.mgr.clone())
+                .await?;
+
+            if !keys.is_empty() {
+                let mut pipeline = pipe();
+                for key in &keys {
+                    pipeline.get(key);
+                }
+                let values: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
+
+                for (key, ciphertext) in keys.iter().zip(values) {
+                    if ciphertext.is_empty() {
+                        continue;
+                    }
+                    let uid = key.strip_prefix("do::").unwrap_or(key.as_str());
+                    match self.decrypt_object(uid, &ciphertext) {
+                        Ok(obj) => {
+                            let is_key = matches!(
+                                obj.object_type,
+                                ObjectType::SymmetricKey
+                                    | ObjectType::PrivateKey
+                                    | ObjectType::PublicKey
+                                    | ObjectType::SplitKey
+                            );
+                            let is_non_destroyed = !matches!(
+                                obj.state,
+                                State::Destroyed | State::Destroyed_Compromised
+                            );
+                            if is_key && is_non_destroyed {
+                                count += 1;
+                            }
+                        }
+                        Err(e) => {
                             debug!("[redis-bootstrap] skipping key {key}: {e}");
                         }
                     }

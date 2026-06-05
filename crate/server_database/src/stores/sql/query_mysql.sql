@@ -78,6 +78,16 @@ FROM tags;
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
 
+-- name: count-non-destroyed-keys
+-- Privileged metrics-only query: counts non-destroyed key objects (MySQL).
+-- ObjectType is stored as a JSON field inside the 'attributes' column
+-- (serialised via serde with rename_all = "PascalCase").
+-- Key object types: SymmetricKey, PrivateKey, PublicKey, SplitKey.
+-- All states except Destroyed / Destroyed_Compromised are counted.
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
+
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner)
 VALUES (?, ?, ?, ?, ?);

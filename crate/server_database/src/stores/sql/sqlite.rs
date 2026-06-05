@@ -556,6 +556,20 @@ impl ObjectsStore for SqlitePool {
             .map_err(DbError::from)?;
         Ok(u64::try_from(count).unwrap_or(0))
     }
+
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        // No $N placeholders — no need for replace_dollars_with_qn.
+        let sql = get_sqlite_query!("count-non-destroyed-keys-sqlite").to_string();
+        let count: i64 = self
+            .reader()
+            .call(move |c: &mut rusqlite::Connection| {
+                let mut stmt = c.prepare(&sql)?;
+                stmt.query_row([], |r| r.get(0))
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
 }
 
 #[async_trait(?Send)]

@@ -812,6 +812,20 @@ impl ObjectsStore for PgPool {
         let count: i64 = row.get(0);
         Ok(u64::try_from(count).unwrap_or(0))
     }
+
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        let sql = get_pgsql_query!("count-non-destroyed-keys-pg");
+        let client = pg_get_client(&self.pool)
+            .await
+            .map_err(InterfaceError::from)?;
+        let row = client
+            .query_one(sql, &[])
+            .await
+            .map_err(DbError::from)
+            .map_err(InterfaceError::from)?;
+        let count: i64 = row.get(0);
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
 }
 
 #[async_trait(?Send)]

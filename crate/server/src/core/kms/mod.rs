@@ -171,6 +171,16 @@ impl KMS {
                     cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
                 }
             }
+            // Seed kms.keys.active.count from the real DB count on startup.
+            match database.count_non_destroyed_key_objects().await {
+                Ok(count) => {
+                    m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
+                }
+                Err(e) => {
+                    // Non-fatal: the cron will correct the value within 30 s.
+                    cosmian_logger::debug!("[kms-init] Failed to seed kms.keys.active.count: {e}");
+                }
+            }
         }
 
         Ok(Self {
