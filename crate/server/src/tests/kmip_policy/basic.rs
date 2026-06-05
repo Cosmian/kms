@@ -16,7 +16,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operatio
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_ec_key_pair_request;
-#[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, PaddingMethod},
     kmip_2_1::{

@@ -1222,6 +1222,7 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
 
 #[cfg(test)]
 #[expect(clippy::expect_used)]
+#[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
 
@@ -1308,7 +1309,9 @@ mod tests {
             let uris = vec!["http://idp.example.com/.well-known/jwks.json".to_owned()];
             let result = validate_jwks_uris_are_https(&uris);
             assert!(result.is_err(), "HTTP JWKS URI must be rejected");
-            let msg = result.unwrap_err().to_string();
+            let msg = result
+                .expect_err("HTTP JWKS URI must be rejected")
+                .to_string();
             assert!(
                 msg.contains("HTTPS") || msg.contains("https"),
                 "Error message must mention HTTPS, got: {msg}"
@@ -1346,7 +1349,9 @@ mod tests {
                 result.is_err(),
                 "List containing an HTTP URI must be rejected"
             );
-            let msg = result.unwrap_err().to_string();
+            let msg = result
+                .expect_err("List containing an HTTP URI must be rejected")
+                .to_string();
             assert!(
                 msg.contains("bad.example.com"),
                 "Error message must identify the offending URI, got: {msg}"

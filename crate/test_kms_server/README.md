@@ -165,7 +165,7 @@ replays the steps sequentially.
 | KMIP Operations | `register_export` | Register, Get, Export, Destroy | 4 |
 | KMIP Operations | `rekey` | Create, ReKey, Encrypt | 3 |
 | KMIP Operations | `rekey_locate_by_name` | Create (named), Locate, ReKey, Locate (finds new key), GetAttributes (old=Active — ReKey does not deactivate the existing key) | 5 |
-| KMIP Operations | `rekey_deactivated_fails` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → fails) | 4 |
+| KMIP Operations | `rekey_deactivated_succeeds` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → succeeds per KMIP §6.1.46) | 9 |
 | KMIP Operations | `rekey_with_links` | Create, ReKey, GetAttributes (old has ReplacementObjectLink), GetAttributes (new has ReplacedObjectLink) | 4 |
 | KMIP Operations | `rekey_with_offset` | Create, ReKey (Offset=3600s), GetAttributes (ActivationDate = now+3600) | 4 |
 | KMIP Operations | `rekey_with_offset_state` | Create, ReKey (Offset=0 → Active), Create, ReKey (Offset=86400 → PreActive), cleanup | 13 |
@@ -187,7 +187,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_keypair_ml_dsa_87` | CreateKeyPair (ML-DSA-87), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_slh_dsa_sha2_128f` | CreateKeyPair (SLH-DSA-SHA2-128f), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_double_chain` | CreateKeyPair (EC), ReKeyKeyPair ×2, verify link chain | 7 |
-| KMIP Operations | `rekey_keypair_deactivated_fails` | CreateKeyPair (EC), Revoke SK, ReKeyKeyPair → fails | 4 |
+| KMIP Operations | `rekey_keypair_deactivated_succeeds` | CreateKeyPair (EC), Revoke SK, ReKeyKeyPair → succeeds per KMIP §6.1.47 | 10 |
 | KMIP Operations | `rekey_keypair_change_algo_fails` | CreateKeyPair (EC), ReKeyKeyPair (different algo) → fails | 3 |
 | KMIP Operations | `rekey_keypair_ec_locate_by_name` | CreateKeyPair (named), ReKeyKeyPair, Locate (finds new key) | 5 |
 | KMIP Operations | `rekey_keypair_name_removed_from_old` | CreateKeyPair (named), ReKeyKeyPair, GetAttributes (old has no Name) | 5 |
@@ -333,7 +333,9 @@ replays the steps sequentially.
 | Negative / ReCertify | `negative/recertify_missing_uid` | ReCertify without UniqueIdentifier → error | 1 |
 | Negative / ReCertify | `negative/recertify_nonexistent` | ReCertify non-existent certificate → error | 1 |
 | Negative / ReCertify | `negative/recertify_not_a_certificate` | ReCertify a symmetric key → error | 2 |
-| Negative / ReKey | `negative/rekey_wrapped_deactivated` | Create wrapping key + wrapped key, Revoke wrapped, ReKey → fails (deactivated) | 7 |
+| KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Create wrapping key + wrapped key, Revoke wrapped, ReKey → succeeds (KMIP §6.1.46) | 10 |
+| Negative / ReKey | `negative/rekey_preactive_fails` | Create (no ActivationDate → PreActive), ReKey → fails (not Active or Deactivated) | 4 |
+| Negative / ReKeyKeyPair | `negative/rekey_keypair_preactive_fails` | CreateKeyPair (no ActivationDate → PreActive), ReKeyKeyPair → fails (not Active or Deactivated) | 5 |
 | **non-FIPS CryptographicParameters** | | | |
 | non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_explicit_nonce` | Create (AES-128), Encrypt (client 12-B nonce), Decrypt | 3 |
 | non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_explicit_nonce` | Create (AES-256), Encrypt (client 12-B nonce), Decrypt | 3 |

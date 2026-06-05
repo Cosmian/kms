@@ -112,25 +112,41 @@ pub(crate) fn preserve_wrapping_key_link(
 /// Retrieve all eligible objects matching the given identifier, filtered by state and type.
 ///
 /// Filters by:
-/// - State: `Active` or `PreActive`
+/// - State: `Active` or `Deactivated` (per KMIP §6.1.46 — `Wrong_Key_Lifecycle_State` is NOT
+///   listed in the Re-Key error table, meaning Deactivated keys are eligible for rotation).
+///   `PreActive`, `Compromised`, `Destroyed`, and `Destroyed_Compromised` keys are rejected.
 /// - Object type: the specified `object_type`
 ///
-/// Returns the list of matching [`ObjectWithMetadata`] entries.
+/// When a specific UID resolves to a key of the correct type but in an
+/// ineligible state, an explicit error is returned rather than silently
+/// skipping. For tag-based queries, ineligible keys are filtered out.
 pub(crate) async fn retrieve_eligible_keys(
     kms: &KMS,
     uid_or_tags: &str,
     object_type: ObjectType,
 ) -> KResult<Vec<ObjectWithMetadata>> {
-    Ok(kms
-        .database
-        .retrieve_objects(uid_or_tags)
-        .await?
-        .into_values()
-        .filter(|owm| {
-            (owm.state() == State::Active || owm.state() == State::PreActive)
-                && owm.object().object_type() == object_type
-        })
-        .collect())
+    let is_tag_query = uid_or_tags.starts_with('[');
+    let objects = kms.database.retrieve_objects(uid_or_tags).await?;
+    let mut eligible = Vec::new();
+
+    for owm in objects.into_values() {
+        if owm.object().object_type() != object_type {
+            continue;
+        }
+        if owm.state() != State::Active && owm.state() != State::Deactivated {
+            // For direct UID queries, give an explicit error instead of silently skipping
+            if !is_tag_query {
+                return Err(KmsError::InvalidRequest(format!(
+                    "key '{}' is in state '{}' — only Active or Deactivated keys can be rotated",
+                    owm.id(),
+                    owm.state()
+                )));
+            }
+            continue;
+        }
+        eligible.push(owm);
+    }
+    Ok(eligible)
 }
 
 // ─── Trait: RekeyOperation ───────────────────────────────────────────────────

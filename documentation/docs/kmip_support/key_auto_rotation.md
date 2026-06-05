@@ -116,6 +116,38 @@ keys owned by any user whose `x-rotate-interval` has elapsed since either
 
 ---
 
+## State restrictions
+
+Only keys (or certificates) in the **Active** or **Deactivated** state can be
+rotated.  Attempting to call `Re-Key`, `Re-Key Key Pair`, or `ReCertify` on an
+object in any other state will produce an error:
+
+| State                  | Rotation allowed? | Rationale                                                                   |
+| ---------------------- | ----------------- | --------------------------------------------------------------------------- |
+| **Active**             | ✅ Yes            | The primary valid source state for rotation.                                |
+| **Deactivated**        | ✅ Yes            | KMIP §6.1.46 does not list `Wrong_Key_Lifecycle_State` — a deactivated key may produce a replacement. |
+| **Pre-Active**         | ❌ No             | The key has never been activated — rotating unused material is premature.   |
+| **Compromised**        | ❌ No             | Rotating a compromised key would create confusion about trust lineage.      |
+| **Destroyed**          | ❌ No             | The object no longer exists.                                                |
+| **Destroyed_Compromised** | ❌ No          | The object no longer exists.                                                |
+
+> **Note:** This restriction applies to the **source** key only.  The *output*
+> of a rotation operation can still enter the `Pre-Active` state when an
+> `Offset > 0` is supplied in the request (the new key's `Activation Date` is
+> computed as `Initial Date + Offset`, scheduling future activation).
+
+---
+
+## Auto-deactivation (KMIP §4.57 transition 6)
+
+Per KMIP §4.57 state transition 6, the server **automatically transitions** an
+Active key to the Deactivated state when its `Deactivation Date` is reached.
+This happens on retrieval (the same mechanism as PreActive → Active
+auto-activation).  There is no need for an explicit `Revoke` call — setting a
+`Deactivation Date` in the future schedules the deactivation.
+
+---
+
 ## Key types and rotation flows
 
 The behaviour differs according to whether the key is plain, a wrapping key,
