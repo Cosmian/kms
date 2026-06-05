@@ -7,11 +7,13 @@
 - Add proper `ReCertify` and `ReCertifyResponse` KMIP 2.1 types compliant with both KMIP 1.x and 2.x ([#968](https://github.com/Cosmian/kms/pull/968))
 - Introduce `RekeyOperation` trait to unify symmetric, keypair, and certificate rotation logic ([#968](https://github.com/Cosmian/kms/pull/968))
 - Add `offset` field to `ReCertify` struct per KMIP 2.1 §6.1.45 for date-based activation scheduling ([#968](https://github.com/Cosmian/kms/pull/968))
+- Implement KMIP §4.57 transition 6 auto-deactivation: Active keys automatically transition to Deactivated when their DeactivationDate is reached ([#968](https://github.com/Cosmian/kms/pull/968))
 
 ## Security
 
 - Mark `x-rotate-generation` and `x-rotate-date` as server-managed read-only attributes: reject user modifications via AddAttribute, SetAttribute, ModifyAttribute, and DeleteAttribute ([#968](https://github.com/Cosmian/kms/pull/968))
 - Reject `Re-Key` and `Re-Key Key Pair` on HSM-managed keys (`hsm::` UID prefix) with an explicit `Not Supported` error instead of silently failing deep in the pipeline ([#968](https://github.com/Cosmian/kms/pull/968))
+- Restrict rotation to Active or Deactivated keys: `Re-Key`, `Re-Key Key Pair`, and `ReCertify` now reject PreActive, Compromised, Destroyed, and Destroyed_Compromised objects with an explicit error (KMIP §6.1.46 does not list `Wrong_Key_Lifecycle_State` for Re-Key) ([#968](https://github.com/Cosmian/kms/pull/968))
 
 ## Bug Fixes
 
@@ -68,6 +70,7 @@
 - Add 4 ReCertify test vectors (self-signed, chain, with-links, with-offset) ([#968](https://github.com/Cosmian/kms/pull/968))
 - Add 3 negative ReCertify test vectors (missing UID, non-existent, not a certificate) ([#968](https://github.com/Cosmian/kms/pull/968))
 - Add 2 offset state verification vectors (rekey + rekey-keypair: Offset=0 → Active, Offset=86400 → PreActive) ([#968](https://github.com/Cosmian/kms/pull/968))
+- Add 2 negative state restriction vectors: `rekey_preactive_fails`, `rekey_keypair_preactive_fails` ([#968](https://github.com/Cosmian/kms/pull/968))
 
 ## Documentation
 

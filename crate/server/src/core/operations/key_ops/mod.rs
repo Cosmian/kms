@@ -138,30 +138,41 @@ impl ObjectWithMetadataOps for ObjectWithMetadata {
     fn get_effective_state(&self) -> KResult<State> {
         let stored_state = self.state();
 
-        // Only PreActive objects can auto-transition to Active
-        if stored_state != State::PreActive {
-            return Ok(stored_state);
-        }
-
-        // Check if there's an activation_date set
-        let activation_date = self.attributes().activation_date.or_else(|| {
-            // Fallback to object's attributes if not in metadata
-            self.object()
-                .attributes()
-                .ok()
-                .and_then(|attrs| attrs.activation_date)
-        });
-
-        if let Some(activation_date) = activation_date {
-            let now = time_normalize()?;
-            if activation_date <= now {
-                // The activation date has passed, treat as Active
-                return Ok(State::Active);
+        match stored_state {
+            State::PreActive => {
+                // KMIP §4.57 transition 4: PreActive → Active when ActivationDate is reached
+                let activation_date = self.attributes().activation_date.or_else(|| {
+                    self.object()
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.activation_date)
+                });
+                if let Some(activation_date) = activation_date {
+                    let now = time_normalize()?;
+                    if activation_date <= now {
+                        return Ok(State::Active);
+                    }
+                }
+                Ok(State::PreActive)
             }
+            State::Active => {
+                // KMIP §4.57 transition 6: Active → Deactivated when DeactivationDate is reached
+                let deactivation_date = self.attributes().deactivation_date.or_else(|| {
+                    self.object()
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.deactivation_date)
+                });
+                if let Some(deactivation_date) = deactivation_date {
+                    let now = time_normalize()?;
+                    if deactivation_date <= now {
+                        return Ok(State::Deactivated);
+                    }
+                }
+                Ok(State::Active)
+            }
+            _ => Ok(stored_state),
         }
-
-        // No activation_date or it's in the future, remain PreActive
-        Ok(State::PreActive)
     }
 
     fn check_process_window(&self) -> KResult<()> {
@@ -379,6 +390,46 @@ mod tests {
     fn test_effective_state_active_remains_active() -> KResult<()> {
         let attrs = Attributes {
             state: Some(State::Active),
+            ..Default::default()
+        };
+
+        let owm = ObjectWithMetadata::new(
+            "test-id".to_owned(),
+            test_object(),
+            "owner".to_owned(),
+            State::Active,
+            attrs,
+        );
+
+        assert_eq!(owm.get_effective_state()?, State::Active);
+        Ok(())
+    }
+
+    #[test]
+    fn test_effective_state_active_with_past_deactivation_date() -> KResult<()> {
+        let attrs = Attributes {
+            state: Some(State::Active),
+            deactivation_date: Some(time_normalize()? - Duration::hours(1)),
+            ..Default::default()
+        };
+
+        let owm = ObjectWithMetadata::new(
+            "test-id".to_owned(),
+            test_object(),
+            "owner".to_owned(),
+            State::Active,
+            attrs,
+        );
+
+        assert_eq!(owm.get_effective_state()?, State::Deactivated);
+        Ok(())
+    }
+
+    #[test]
+    fn test_effective_state_active_with_future_deactivation_date() -> KResult<()> {
+        let attrs = Attributes {
+            state: Some(State::Active),
+            deactivation_date: Some(time_normalize()? + Duration::hours(1)),
             ..Default::default()
         };
 

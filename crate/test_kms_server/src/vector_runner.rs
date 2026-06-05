@@ -1589,9 +1589,9 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_vec_rekey_deactivated_fails() -> Result<(), KmsClientError> {
+    async fn test_vec_rekey_deactivated_succeeds() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_deactivated_fails").await
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_deactivated_succeeds").await
     }
 
     #[tokio::test]
@@ -3384,9 +3384,22 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_neg_rekey_wrapped_deactivated() -> Result<(), KmsClientError> {
+    async fn test_vec_rekey_wrapped_deactivated_succeeds() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/negative/rekey_wrapped_deactivated").await
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapped_deactivated_succeeds")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_preactive_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_preactive_fails").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_keypair_preactive_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_keypair_preactive_fails").await
     }
 
     // ── KMIP operations: ReKeyKeyPair (non-FIPS only) ────────────────────
@@ -3518,9 +3531,9 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
-    async fn test_vec_rekey_keypair_deactivated_fails() -> Result<(), KmsClientError> {
+    async fn test_vec_rekey_keypair_deactivated_succeeds() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_deactivated_fails")
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_deactivated_succeeds")
             .await
     }
 

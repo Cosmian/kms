@@ -110,6 +110,14 @@ impl RekeyOperation for CertificateRekey {
             )));
         }
 
+        if owm.state() != State::Active && owm.state() != State::Deactivated {
+            kms_bail!(KmsError::InvalidRequest(format!(
+                "ReCertify: certificate '{uid}' is in state '{}' — only Active or Deactivated \
+                 certificates can be renewed",
+                owm.state()
+            )));
+        }
+
         Ok(vec![RotationCandidate {
             owm,
             uid: uid.to_owned(),
