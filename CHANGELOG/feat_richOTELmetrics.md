@@ -73,3 +73,42 @@
   destroy → delete-live → delete-destroyed → fast-path count → bootstrap-SCAN count.
   Registered in `test_db_redis_with_findex`.
   Tagged `#[ignore = "Requires a running Redis instance"]`.
+
+### Active Key Count Metric — `kms.keys.active.count` V2 (Step 3.bis)
+
+Replace the previous Locate-based implementation with a privileged backend count
+that returns the number of non-destroyed key objects (`SymmetricKey`, `PrivateKey`,
+`PublicKey`, `SplitKey`) across all backends.  "Non-destroyed" means the object
+state is not `Destroyed` or `Destroyed_Compromised`.
+
+- **`ObjectsStore` trait** (`crate/interfaces`): add two new default methods —
+  `count_non_destroyed_keys()` (default: `warn!` + `Ok(0)`) and `reconcile_counts()`
+  (default: no-op `Ok(())`), keeping all existing backends compilable without changes.
+- **SQL backends** (SQLite / PostgreSQL / MySQL): add named SQL queries
+  (`count-non-destroyed-keys-sqlite`, `count-non-destroyed-keys-pg`,
+  `count-non-destroyed-keys`) that filter `objects` by `ObjectType IN (...)` and
+  `state NOT IN ('Destroyed', 'Destroyed_Compromised')` using backend-specific
+  JSON extraction syntax.
+- **HSM store**: implement `count_non_destroyed_keys` by iterating all available
+  slots, calling `hsm.find(slot_id, HsmObjectFilter::Any)`, and summing slot lengths.
+  All HSM objects are considered non-destroyed active keys.
+- **Redis-findex — `ObjectsDB`**: add O(1) counter key `kms::metrics::active_key_count`
+  with helpers `adjust_active_key_count(delta)`, `get_active_key_count()`,
+  `set_active_key_count(count)`, and `scan_count_non_destroyed_keys()` (bootstrap SCAN).
+- **Redis-findex — `RedisWithFindex`**: add `is_key_type(ObjectType) -> bool` helper;
+  wire `adjust_active_key_count` into `create`, `update_state`, `delete`, and `atomic`
+  mirroring the existing `live_delta` pattern. Implement `count_non_destroyed_keys`
+  (O(1) fast path / bootstrap SCAN fallback) and `reconcile_counts` (scans both
+  `live_object_count` and `active_key_count` counters atomically).
+- **Database facade** (`crate/server_database`): add `count_non_destroyed_key_objects()`
+  and `reconcile_all_object_counts()` aggregating across all registered stores.
+- **Cron** (`crate/server/src/cron.rs`): remove dead Locate-based implementation;
+  replace with `database.count_non_destroyed_key_objects()` on the 30-second tick and
+  a 5-minute `reconcile_all_object_counts()` tick for counter drift correction.
+- **Startup seed** (`crate/server/src/core/kms/mod.rs`): seed `kms.keys.active.count`
+  at startup from `count_non_destroyed_key_objects()` (non-fatal, same pattern as
+  `kms.objects.total`).
+- **Test** (`test_active_key_count_counter`): 6-step integration test covering
+  create 2 keys, create non-key object (OpaqueObject), deactivate, destroy, delete,
+  and bootstrap-SCAN reconcile.  Registered in `test_db_redis_with_findex`.
+  Tagged `#[ignore = "Requires a running Redis instance"]`.

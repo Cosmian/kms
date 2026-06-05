@@ -649,6 +649,21 @@ impl ObjectsStore for MySqlPool {
             .unwrap_or(0);
         Ok(count)
     }
+
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        let sql = get_mysql_query!("count-non-destroyed-keys");
+        let mut conn = self
+            .get_configured_conn()
+            .await
+            .map_err(InterfaceError::from)?;
+        let count: u64 = conn
+            .exec_first(sql, ())
+            .await
+            .map_err(DbError::from)
+            .map_err(InterfaceError::from)?
+            .unwrap_or(0);
+        Ok(count)
+    }
 }
 
 #[async_trait(?Send)]

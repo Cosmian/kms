@@ -384,6 +384,37 @@ impl ObjectsStore for HsmStore {
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
         Ok(0)
     }
+
+    /// Count non-destroyed key objects across all HSM slots.
+    ///
+    /// All objects present in an HSM are cryptographic key material and are by
+    /// definition non-destroyed (deleted keys are removed from the HSM).
+    /// Each PKCS#11 slot is queried via `find(slot, HsmObjectFilter::Any)` and
+    /// the returned key IDs are counted.  Slot errors are non-fatal: a failed
+    /// slot contributes 0 and a warning is logged, so a single unavailable slot
+    /// does not block the aggregate count.
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        let slot_ids = self
+            .hsm
+            .get_available_slot_list()
+            .await
+            .unwrap_or_else(|e| {
+                warn!("HSM count_non_destroyed_keys: failed to list slots: {e}");
+                vec![]
+            });
+        let mut total: u64 = 0;
+        for slot_id in slot_ids {
+            match self.hsm.find(slot_id, HsmObjectFilter::Any).await {
+                Ok(keys) => {
+                    total = total.saturating_add(u64::try_from(keys.len()).unwrap_or(u64::MAX));
+                }
+                Err(e) => {
+                    debug!("HSM count_non_destroyed_keys: slot {slot_id} query failed: {e}");
+                }
+            }
+        }
+        Ok(total)
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

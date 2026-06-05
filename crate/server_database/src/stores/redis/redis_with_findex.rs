@@ -7,7 +7,11 @@ use async_trait::async_trait;
 use cosmian_findex::{Findex, IndexADT, MemoryEncryptionLayer, generic_decode, generic_encode};
 use cosmian_kmip::{
     kmip_0::kmip_types::State,
-    kmip_2_1::{KmipOperation, kmip_attributes::Attributes, kmip_objects::Object},
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, ObjectType},
+    },
 };
 use cosmian_kms_crypto::{
     crypto::password_derivation::derive_key_from_password,
@@ -24,7 +28,8 @@ use uuid::Uuid;
 use super::{
     FINDEX_KEY_LENGTH,
     objects_db::{
-        DB_KEY_LENGTH, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject, keywords_from_attributes,
+        ACTIVE_KEY_COUNT_KEY, DB_KEY_LENGTH, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject,
+        keywords_from_attributes,
     },
     permissions::PermissionDB,
 };
@@ -52,6 +57,21 @@ const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 #[inline]
 const fn is_live(state: State) -> bool {
     !matches!(state, State::Destroyed | State::Destroyed_Compromised)
+}
+
+/// Returns `true` when `object_type` is a key type counted by `kms.keys.active.count`.
+///
+/// Key types: `SymmetricKey`, `PrivateKey`, `PublicKey`, `SplitKey`.
+/// Excluded: `Certificate`, `SecretData`, `OpaqueObject`, `PGPKey`, `CertificateRequest`.
+#[inline]
+const fn is_key_type(object_type: ObjectType) -> bool {
+    matches!(
+        object_type,
+        ObjectType::SymmetricKey
+            | ObjectType::PrivateKey
+            | ObjectType::PublicKey
+            | ObjectType::SplitKey
+    )
 }
 
 /// Derive a Redis Master Key from a password
@@ -343,6 +363,10 @@ impl ObjectsStore for RedisWithFindex {
         self.objects_db.object_create(&uid, &db_object).await?;
         // New objects are always PreActive (live) — increment unconditionally.
         self.objects_db.adjust_live_count(1).await?;
+        // New key objects are non-destroyed by definition — increment the key counter.
+        if is_key_type(db_object.object_type) {
+            self.objects_db.adjust_active_key_count(1).await?;
+        }
 
         Ok(uid)
     }
@@ -412,6 +436,17 @@ impl ObjectsStore for RedisWithFindex {
         if let Some(old) = old_state {
             let delta = i64::from(is_live(state)) - i64::from(is_live(old));
             self.objects_db.adjust_live_count(delta).await?;
+            // Mirror the same boundary check for the key counter.
+            if is_key_type(db_object.object_type) {
+                let key_delta = i64::from(!matches!(
+                    state,
+                    State::Destroyed | State::Destroyed_Compromised
+                )) - i64::from(!matches!(
+                    old,
+                    State::Destroyed | State::Destroyed_Compromised
+                ));
+                self.objects_db.adjust_active_key_count(key_delta).await?;
+            }
         }
         Ok(())
     }
@@ -425,6 +460,10 @@ impl ObjectsStore for RedisWithFindex {
             // object must not double-decrement the counter.
             if is_live(db_object.state) {
                 self.objects_db.adjust_live_count(-1).await?;
+            }
+            // Decrement the key counter if this was a non-destroyed key object.
+            if is_key_type(db_object.object_type) && is_live(db_object.state) {
+                self.objects_db.adjust_active_key_count(-1).await?;
             }
         }
         Ok(())
@@ -445,6 +484,8 @@ impl ObjectsStore for RedisWithFindex {
         // single INCRBY at the end rather than one per operation to keep the
         // counter update close to the data write.
         let mut live_delta: i64 = 0;
+        // Accumulate the net active-key delta (non-destroyed key objects) for the batch.
+        let mut active_key_delta: i64 = 0;
 
         for operation in operations {
             match operation {
@@ -452,11 +493,13 @@ impl ObjectsStore for RedisWithFindex {
                     // Determine whether this Upsert is an insert (+1 if live)
                     // or an update (±1 on liveness boundary).
                     // Check pending first (already processed in this batch), then Redis.
-                    let old_state = if let Some(p) = pending.get(uid.as_str()) {
-                        Some(p.state)
+                    let old_obj = if let Some(p) = pending.get(uid.as_str()) {
+                        Some(p.clone())
                     } else {
-                        self.objects_db.object_get(uid).await?.map(|o| o.state)
+                        self.objects_db.object_get(uid).await?
                     };
+                    let old_state = old_obj.as_ref().map(|o| o.state);
+                    let old_object_type = old_obj.as_ref().map(|o| o.object_type);
                     let new_live = i64::from(is_live(*state));
                     live_delta +=
                         old_state.map_or(new_live, |old| new_live - i64::from(is_live(old)));
@@ -472,6 +515,19 @@ impl ObjectsStore for RedisWithFindex {
                             *state,
                         )
                         .await?;
+                    // Accumulate key-counter delta.  Use the resolved object_type
+                    // from the newly built db_object (covers both insert and update).
+                    let obj_type = db_object.object_type;
+                    if is_key_type(obj_type) {
+                        let new_key_live = i64::from(is_live(*state));
+                        // For an existing object we compare old vs new liveness.
+                        // For a new insert (no old state) we use new_key_live directly.
+                        let old_key_live = old_object_type
+                            .filter(|ot| is_key_type(*ot))
+                            .and(old_state)
+                            .map_or(0, |old| i64::from(is_live(old)));
+                        active_key_delta += new_key_live - old_key_live;
+                    }
                     pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
@@ -488,6 +544,10 @@ impl ObjectsStore for RedisWithFindex {
                             tags,
                         )
                         .await?;
+                    // New key objects are always non-destroyed.
+                    if is_key_type(db_object.object_type) {
+                        active_key_delta += 1;
+                    }
                     pending.insert(uid.clone(), db_object.clone());
                     redis_operations.push(RedisOperation::Create(uid, db_object));
                 }
@@ -509,6 +569,9 @@ impl ObjectsStore for RedisWithFindex {
                     };
                     if is_live(db_object.state) {
                         live_delta -= 1;
+                    }
+                    if is_key_type(db_object.object_type) && is_live(db_object.state) {
+                        active_key_delta -= 1;
                     }
                     self.delete_findex_keywords(uid, &db_object.keywords())
                         .await?;
@@ -533,6 +596,7 @@ impl ObjectsStore for RedisWithFindex {
                         None => self.objects_db.object_get(uid).await?,
                     };
                     let old_state = existing.as_ref().map(|o| o.state);
+                    let object_type = existing.as_ref().map(|o| o.object_type);
 
                     let db_object = self
                         .prepare_object_for_state_update(uid, *state, existing)
@@ -542,6 +606,12 @@ impl ObjectsStore for RedisWithFindex {
 
                     if let Some(old) = old_state {
                         live_delta += i64::from(is_live(*state)) - i64::from(is_live(old));
+                        if let Some(ot) = object_type {
+                            if is_key_type(ot) {
+                                active_key_delta +=
+                                    i64::from(is_live(*state)) - i64::from(is_live(old));
+                            }
+                        }
                     }
                 }
             }
@@ -553,6 +623,9 @@ impl ObjectsStore for RedisWithFindex {
         // write succeeds.  On failure the Redis transaction is rolled back and
         // the counter should not move.
         self.objects_db.adjust_live_count(live_delta).await?;
+        self.objects_db
+            .adjust_active_key_count(active_key_delta)
+            .await?;
 
         Ok(result)
     }
@@ -728,6 +801,45 @@ impl ObjectsStore for RedisWithFindex {
             count, LIVE_COUNT_KEY
         );
         Ok(count)
+    }
+
+    /// Count non-destroyed key objects (`SymmetricKey`, `PrivateKey`, `PublicKey`, `SplitKey`).
+    ///
+    /// # Fast path
+    /// When `ACTIVE_KEY_COUNT_KEY` exists: one O(1) `GET`, no decryption.
+    ///
+    /// # Bootstrap
+    /// When the key is absent (first boot or after `FLUSHDB`): scans all `do::*`
+    /// keys, decrypts each, filters by key type and non-destroyed state, writes
+    /// the result to `ACTIVE_KEY_COUNT_KEY`, and returns the count.
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        if let Some(count) = self.objects_db.get_active_key_count().await? {
+            return Ok(count);
+        }
+        let count = self.objects_db.scan_count_non_destroyed_keys().await?;
+        self.objects_db.set_active_key_count(count).await?;
+        debug!(
+            "[redis-metrics] bootstrapped {} non-destroyed key(s) into `{}`",
+            count, ACTIVE_KEY_COUNT_KEY
+        );
+        Ok(count)
+    }
+
+    /// Authoritative reconcile: recompute both Redis counter keys from a full
+    /// SCAN and overwrite the cached values.
+    ///
+    /// Called by the slow-path cron loop (every 5 minutes) to prevent counter
+    /// drift from accumulating due to partial failures.  The O(N) scan cost is
+    /// acceptable at that frequency.
+    async fn reconcile_counts(&self) -> InterfaceResult<()> {
+        let live_count = self.objects_db.scan_count_non_destroyed().await?;
+        self.objects_db.set_live_count(live_count).await?;
+        let key_count = self.objects_db.scan_count_non_destroyed_keys().await?;
+        self.objects_db.set_active_key_count(key_count).await?;
+        debug!(
+            "[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}"
+        );
+        Ok(())
     }
 }
 

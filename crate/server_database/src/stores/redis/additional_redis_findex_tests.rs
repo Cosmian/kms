@@ -6,8 +6,12 @@ use cosmian_kmip::{
     KmipResultHelper,
     kmip_0::kmip_types::State,
     kmip_2_1::{
-        KmipOperation, extra::tagging::VENDOR_ID_COSMIAN, kmip_attributes::Attributes,
-        kmip_types::CryptographicAlgorithm, requests::create_symmetric_key_kmip_object,
+        KmipOperation,
+        extra::tagging::VENDOR_ID_COSMIAN,
+        kmip_attributes::Attributes,
+        kmip_objects::{Object, OpaqueObject},
+        kmip_types::{CryptographicAlgorithm, OpaqueDataType},
+        requests::create_symmetric_key_kmip_object,
     },
 };
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
@@ -24,7 +28,7 @@ use crate::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex,
         redis::{
             init_findex_redis,
-            objects_db::{LIVE_COUNT_KEY, ObjectsDB, RedisDbObject},
+            objects_db::{ACTIVE_KEY_COUNT_KEY, LIVE_COUNT_KEY, ObjectsDB, RedisDbObject},
             permissions::{ObjectUid, PermissionDB, UserId},
         },
     },
@@ -479,6 +483,116 @@ pub(crate) async fn test_live_count_counter() -> DbResult<()> {
 
     // ── Teardown ─────────────────────────────────────────────────────────────
     db.delete(&uid3).await?;
+
+    Ok(())
+}
+
+/// Verify that `ACTIVE_KEY_COUNT_KEY` is maintained correctly across the
+/// full lifecycle of key and non-key objects.
+///
+/// Steps:
+///   1. Create 2 `SymmetricKey` objects → counter = 2.
+///   2. Create an `OpaqueObject` → counter must stay at 2 (not a key type).
+///   3. `update_state` key1 → Deactivated → counter stays at 2 (still non-destroyed).
+///   4. `update_state` key1 → Destroyed → counter drops to 1.
+///   5. `delete` key2 (live) → counter drops to 0.
+///   6. Bootstrap SCAN path: delete the counter key, call `count_non_destroyed_keys`,
+///      expect it to return 0 and persist the counter.
+pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
+
+    let mut rng = CsRng::from_entropy();
+    let redis_url = get_redis_url();
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let db = RedisWithFindex::instantiate(&redis_url, master_key, true).await?;
+
+    // ── Step 1: create 2 SymmetricKey objects ────────────────────────────────
+    let mut key_bytes = vec![0_u8; 32];
+    rng.fill_bytes(&mut key_bytes);
+    let key1 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+    rng.fill_bytes(&mut key_bytes);
+    let key2 = create_symmetric_key_kmip_object(
+        VENDOR_ID_COSMIAN,
+        &key_bytes,
+        &Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Default::default()
+        },
+    )?;
+
+    let uid_key1 = db
+        .create(None, "owner", &key1, key1.attributes()?, &HashSet::new())
+        .await?;
+    let uid_key2 = db
+        .create(None, "owner", &key2, key2.attributes()?, &HashSet::new())
+        .await?;
+
+    let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
+    assert_eq!(raw, Some(2), "counter should be 2 after creating 2 keys");
+
+    // ── Step 2: create an OpaqueObject → counter must NOT increment ──────────
+    let opaque = Object::OpaqueObject(OpaqueObject {
+        opaque_data_type: OpaqueDataType::Unknown,
+        opaque_data_value: b"test-opaque".to_vec(),
+    });
+    let _uid_opaque = db
+        .create(
+            None,
+            "owner",
+            &opaque,
+            &Attributes::default(),
+            &HashSet::new(),
+        )
+        .await?;
+    let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
+    assert_eq!(
+        raw,
+        Some(2),
+        "creating an OpaqueObject must not increment the key counter"
+    );
+
+    // ── Step 3: Deactivate key1 → counter stays at 2 (still non-destroyed) ───
+    db.update_state(&uid_key1, State::Deactivated).await?;
+    let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
+    assert_eq!(
+        raw,
+        Some(2),
+        "Deactivated key is non-destroyed and must still be counted"
+    );
+
+    // ── Step 4: Destroy key1 → counter drops to 1 ───────────────────────────
+    db.update_state(&uid_key1, State::Destroyed).await?;
+    let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
+    assert_eq!(raw, Some(1), "counter should be 1 after destroying key1");
+
+    // ── Step 5: delete key2 (live) → counter drops to 0 ─────────────────────
+    db.delete(&uid_key2).await?;
+    let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
+    assert_eq!(raw, Some(0), "counter should be 0 after deleting key2");
+
+    // ── Step 6: bootstrap SCAN path ─────────────────────────────────────────
+    // Delete the counter key to simulate a first-boot / FLUSHDB situation.
+    redis::cmd("DEL")
+        .arg(ACTIVE_KEY_COUNT_KEY)
+        .query_async::<()>(&mut db.mgr.clone())
+        .await?;
+
+    // count_non_destroyed_keys must fall back to SCAN, count 0 non-destroyed
+    // key objects, write the counter key, and return 0.
+    let n = db.count_non_destroyed_keys().await?;
+    assert_eq!(
+        n, 0,
+        "count_non_destroyed_keys (bootstrap SCAN) should return 0"
+    );
+    let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
+    assert_eq!(raw, Some(0), "bootstrap must persist the counter to Redis");
 
     Ok(())
 }
