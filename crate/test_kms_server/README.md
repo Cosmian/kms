@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**353 vectors** across 8 categories:
+**361 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -228,6 +228,9 @@ replays the steps sequentially.
 | HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | CreateKeyPair (EC P-256, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK Create | `hsm/kek_ed25519_create_sign` | CreateKeyPair (Ed25519, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK ReKey | `hsm/kek_rekey_wrapped` | Create (AES-256, KEK-wrapped), Encrypt, ReKey (unwrap from KEK, new material, re-wrap), Encrypt new, GetAttributes | 9 |
+| HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Create (AES-256, HSM), SetAttribute rotate_name (writes CKA_LABEL), Encrypt by keyset name, Decrypt by UID | 4 |
+| HSM / Resident Keyset | `hsm/resident_keyset_rekey_and_decrypt` | Create, SetAttribute rotate_name, Encrypt (gen-0), ReKey, Decrypt by keyset name (chain: gen-1→gen-0) | 7 |
+| HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Create, SetAttribute rotate_name, Encrypt (gen-0), ReKey ×2, Decrypt by keyset name (chain: gen-2→gen-1→gen-0) | 9 |
 | HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | CreateKeyPair (RSA-1024, KEK-wrapped) → FIPS rejection | 1 |
 | HSM / Resident Create | `hsm/resident_aes128_create_encrypt` | Create (AES-128, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
 | HSM / Resident Create | `hsm/resident_aes256_create_encrypt` | Create (AES-256, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
@@ -345,6 +348,17 @@ replays the steps sequentially.
 | non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Create, Encrypt (CryptographicParameters{ChaCha20} + 8-B nonce), Decrypt | 3 |
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_explicit_nonce` | Create, Encrypt (AEAD + client 12-B nonce), Decrypt | 3 |
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_aad` | Create, Encrypt (AEAD + AAD + server nonce), Decrypt | 3 |
+| **Keyset Resolution** | | | |
+| Keyset / Encrypt | `keyset_encrypt_latest` | Create, SetAttribute(RotateName), Encrypt(@latest), Decrypt | 6 |
+| Keyset / Encrypt | `keyset_encrypt_bare_name` | Create, SetAttribute(RotateName), Encrypt(bare name), Decrypt | 6 |
+| Keyset / Encrypt | `keyset_encrypt_latest_after_rotation` | Create, SetAttribute, ReKey, Encrypt(bare name→latest), Decrypt(new key) | 9 |
+| Keyset / Decrypt | `keyset_decrypt_try_each` | Create, SetAttribute, Encrypt, ReKey, Decrypt(bare name→try-each) | 9 |
+| Keyset / Decrypt | `keyset_decrypt_double_rotation` | Create, SetAttribute, Encrypt, ReKey×2, Decrypt(bare name→chain walk) | 12 |
+| Keyset / Decrypt | `keyset_decrypt_at_latest` | Create, SetAttribute, ReKey, Encrypt(new key), Decrypt(@latest) | 9 |
+| Negative / Keyset | `negative/keyset_rotate_name_at_rejected` | Create, SetAttribute(RotateName with @) → error | 4 |
+| Negative / Keyset | `negative/rekey_non_latest_sql` | Create, SetAttribute(RotateName), ReKey (gen-0→gen-1), ReKey(gen-0 again) → "not the latest" error | 8 |
+| Negative / HSM Keyset | `negative/rekey_non_latest_hsm` | Create (AES-256, HSM), SetAttribute(RotateName), ReKey (gen-0→gen-1), ReKey(gen-0 again) → "not the latest" error | 6 |
+| Negative / HSM Keyset | `negative/set_attribute/hsm_rotate_offset_rejected` | Create (AES-256, HSM), SetAttribute(rotate_offset) → NotSupported | 3 |
 
 ---
 

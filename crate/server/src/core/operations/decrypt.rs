@@ -44,7 +44,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode, has_usage_mask, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -65,6 +65,10 @@ impl CryptoOpSpec for DecryptOp {
 
     fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
         request.unique_identifier.as_ref()
+    }
+
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::TryEach
     }
 
     fn usage_data_len(request: &Self::Request) -> usize {

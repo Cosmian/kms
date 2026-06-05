@@ -62,7 +62,7 @@ pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;
 pub(crate) use register::register;
 pub(crate) mod algorithm_policy;
-pub(crate) use key_ops::{CryptoOpSpec, has_usage_mask, perform_crypto_operation};
+pub(crate) use key_ops::{CryptoOpSpec, KeysetMode, has_usage_mask, perform_crypto_operation};
 pub(crate) use recertify::recertify;
 pub(crate) use rekey::{rekey, rekey_keypair};
 #[cfg(feature = "non-fips")]

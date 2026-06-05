@@ -15,11 +15,12 @@ the key object itself.  The following attributes are available:
 
 | Attribute             | Type            | Description                                                                                                 | Mutable |
 | --------------------- | --------------- | ----------------------------------------------------------------------------------------------------------- | ------- |
-| `x-rotate-interval`     | `i64` (seconds) | How often this key should be rotated. `0` disables auto-rotation.                                           | Yes     |
-| `x-rotate-name`       | `String`        | Optional human-readable label for the policy (e.g. `"daily"`, `"annual"`).                                  | Yes     |
+| `x-rotate-interval`   | `i64` (seconds) | How often this key should be rotated. `0` disables auto-rotation.                                           | Yes     |
+| `x-rotate-name`       | `String`        | Name of the keyset this key belongs to (see [Keysets](#keysets)).                                           | Yes     |
 | `x-rotate-offset`     | `i64` (seconds) | Shift the first rotation trigger by this many seconds after `Initial Date`.                                 | Yes     |
-| `x-rotate-generation` | `u64`           | Incremented on every rotation; `0` for never-rotated keys. **Server-managed, read-only.**                   | No      |
+| `x-rotate-generation` | `i32`           | Incremented on every rotation; `0` for never-rotated keys. **Server-managed, read-only.**                   | No      |
 | `x-rotate-date`       | `datetime`      | Timestamp of the last rotation; populated automatically after each rotation. **Server-managed, read-only.** | No      |
+| `x-rotate-latest`     | `bool`          | `true` on the most-recent member of a keyset; `false` on all older (retired) members. **Server-managed, read-only.** | No |
 
 > **Read-only attributes:** `x-rotate-generation` and `x-rotate-date` are set
 > exclusively by the server during the `Re-Key` operation.  Any attempt to
@@ -57,45 +58,170 @@ ckms sym keys set-rotation-policy \
 
 ---
 
-> **⚠️ HSM-resident keys cannot be auto-rotated via KMIP**
+> **ℹ️ HSM-resident keys support manual rotation but not auto-rotation**
 >
-> Keys whose UID starts with `hsm::` (e.g. `hsm::softhsm2::0::my-kek`) are
-> managed by a PKCS#11-capable Hardware Security Module.  The KMS server *can*
-> generate new HSM key material by calling `C_GenerateKey` / `C_GenerateKeyPair`
-> on the HSM, but it cannot perform the full KMIP `Re-Key` / `Re-Key Key Pair`
-> operation on them for two reasons:
+> Keys whose UID starts with `hsm::` (e.g. `hsm::softhsm2::473094471::my-kek`)
+> are managed by a PKCS#11-capable Hardware Security Module.
 >
-> 1. **No KMIP attribute storage** — KMIP vendor attributes such as
->    `x-rotate-interval`, `x-rotate-generation`, and `x-rotate-date` are stored
->    in the KMS SQL metadata column.  HSM objects live exclusively inside the
->    HSM and have no corresponding SQL row, so rotation metadata cannot be
->    attached to them.
-> 2. **Non-extractable key material** — HSM keys are typically created with
->    `CKA_SENSITIVE = true` and `CKA_EXTRACTABLE = false`, meaning the raw key
->    bytes can never leave the hardware boundary.  The KMIP re-key pipeline
->    unwraps and re-wraps dependant keys in software, which is impossible for
->    non-extractable HSM keys.
->
-> As a result:
->
-> - `find_due_for_rotation` **never** returns HSM UIDs — the HSM object store
->   returns an empty list, so the scheduler skips them entirely.
-> - Calling `Re-Key` or `Re-Key Key Pair` on an `hsm::` UID is explicitly
->   **rejected** by the server with a `Not Supported` error.
-> - Setting `x-rotate-interval` on an `hsm::` UID has no effect because there is
->   no attribute row to update.
->
-> **HSM key lifecycle management** should instead use PKCS#11-native mechanisms:
->
-> | Mechanism | Description |
-> |---|---|
-> | `CKA_START_DATE` / `CKA_END_DATE` | Encode a validity period directly on the HSM object |
-> | `pkcs11-tool --keygen` | Generate a new HSM key with `pkcs11-tool` |
-> | `softhsm2-util`, Utimaco console, etc. | Vendor administration tools for slot / key lifecycle |
->
-> After generating a new HSM key with vendor tools, register it with the KMS
-> server by creating a KMIP `SymmetricKey` object whose UID uses the
-> `hsm::<model>::<slot>::<key_id>` format.
+> | Capability | Supported | Notes |
+> |---|---|---|
+> | Manual `Re-Key` via KMIP | ✅ Yes | Calls `C_GenerateKey` on the same HSM slot; see [HSM key rotation and keysets](#hsm-key-rotation-and-keysets) |
+> | Keyset membership (`x-rotate-name`) | ✅ Yes | Stored in `CKA_LABEL`; supports bare-name and `name@version` addressing |
+> | Auto-rotation scheduler | ❌ No | `find_due_for_rotation` never returns HSM UIDs; the scheduler skips them |
+> | `x-rotate-interval` | ✅ Yes | Writes `CKA_START_DATE` / `CKA_END_DATE` for validity tracking |
+> | `x-rotate-offset` | ❌ No | Not applicable to PKCS#11 scheduling; rejected with `NotSupported` |
+
+---
+
+## Keysets
+
+A **keyset** is a named group of related key generations.  Each generation is
+a distinct cryptographic key (different key material, different UID for SQL
+keys or different `key_id` suffix for HSM keys) produced by successive
+`Re-Key` operations.  Keysets are supported for both SQL-backed and
+HSM-resident keys.
+
+### Assigning a key to a keyset
+
+Set `x-rotate-name` via `SetAttribute` (or the CLI):
+
+```bash
+# SQL key
+ckms sym keys set-rotation-policy --key-id <UID> --name "my-keyset"
+
+# HSM key (same command — writes CKA_LABEL on the PKCS#11 object)
+ckms sym keys set-rotation-policy --key-id "hsm::softhsm2::473094471::my-key" --name "my-keyset"
+```
+
+The first `SetAttribute` marks the key as generation `0` and `x-rotate-latest = true`.
+Every subsequent `Re-Key` increments the generation, sets `x-rotate-latest = true`
+on the new key, and sets `x-rotate-latest = false` on the old key.
+
+### Keyset addressing syntax
+
+A keyset can be referenced by name instead of a specific UID:
+
+| Syntax | Resolves to |
+|---|---|
+| `my-keyset` (bare name) | Latest generation (`x-rotate-latest = true`) |
+| `my-keyset@latest` | Latest generation (explicit) |
+| `my-keyset@first` or `my-keyset@0` | Generation 0 (the original key) |
+| `my-keyset@N` | Generation N |
+
+Keyset names are accepted wherever a `UniqueIdentifier` is expected: `Encrypt`,
+`Decrypt`, `Sign`, `Verify`, `Get`, `GetAttributes`, `Re-Key`, etc.
+
+**Encrypt / Sign** resolves to the latest generation.
+**Decrypt / Verify** walks the chain newest-to-oldest, trying each generation
+until one succeeds.  This lets in-flight ciphertexts produced with an older
+key continue to decrypt after rotation.
+
+### Non-latest guard
+
+Only the **latest generation** of a keyset can be rotated via `Re-Key`.  Attempting
+to re-key a retired (non-latest) member is rejected:
+
+```text
+Invalid Request: ReKey: key '<uid>' is not the latest in its keyset —
+only the latest generation can be rotated
+```
+
+This prevents accidentally branching the rotation chain.  Keys that do not
+belong to any keyset (no `x-rotate-name`) are not subject to this restriction.
+
+### SQL keyset internals
+
+For SQL-backed keys the keyset state is stored as KMIP vendor attributes in the
+database:
+
+- `x-rotate-name` — the keyset name (set once, inherited by each successive generation)
+- `x-rotate-generation` — integer, starts at `0`, incremented per `Re-Key`
+- `x-rotate-latest` — `true` on the current key; `false` on all older keys
+
+The rotation chain is also reflected in KMIP link attributes:
+`ReplacementObjectLink` (old → new) and `ReplacedObjectLink` (new → old).
+These back-pointers allow clients to traverse the full history.
+
+---
+
+## HSM key rotation and keysets
+
+HSM-resident keys **fully support manual rotation via the `Re-Key` KMIP
+operation** and the keyset feature.  The background auto-rotation scheduler
+does not apply to HSM keys (see note above).
+
+### CKA_LABEL convention
+
+HSM keyset metadata is stored entirely in the PKCS#11 `CKA_LABEL` attribute —
+no SQL shadow rows are written.
+
+| CKA_LABEL value                   | Meaning                            |
+| --------------------------------- | ---------------------------------- |
+| `{name}::{gen}::{base_id}::latest` | Current (newest) key in the keyset |
+| `{name}::{gen}::{base_id}`        | Retired (older) key in the keyset  |
+| *(anything else)*                 | Key does not belong to a keyset    |
+
+- `name` — the value set via `SetAttribute x-rotate-name`
+- `gen` — integer starting at `0`, incremented on every `Re-Key`
+- `base_id` — the original PKCS#11 `CKA_ID` of the gen-0 key
+
+### UID generation scheme
+
+```text
+hsm::<slot_id>::<key_id>        ← gen 0 (original key)
+hsm::<slot_id>::<key_id>::1     ← gen 1 (after first Re-Key)
+hsm::<slot_id>::<key_id>::2     ← gen 2 (after second Re-Key)
+```
+
+The numeric suffix is appended to the original `key_id`; the base name is
+never changed.  The full chain can therefore be discovered by inspecting
+`CKA_LABEL` on the HSM slot.
+
+### Keyset resolution for HSM keys
+
+When a bare keyset name (e.g. `my-hsm-keyset`) or `name@version` syntax is
+used, the server calls `find_by_rotate_name` which scans PKCS#11 objects in the
+HSM slot and filters by `CKA_LABEL` prefix.  Results are sorted by generation
+(descending).  For `Decrypt`, each generation is tried in order until one
+succeeds.
+
+Unlike SQL-backed keys, HSM keysets do **not** use
+`ReplacedObjectLink`/`ReplacementObjectLink` back-pointers; all state lives in
+PKCS#11 attributes.
+
+### Example workflow
+
+```bash
+# 1. Create an AES-256 key directly on the HSM (legacy UID format)
+ckms sym keys create \
+    --key-id "hsm::473094471::my-hsm-key" \
+    --algorithm aes --length 256
+
+# 2. Register the key in a keyset (writes CKA_LABEL = "my-keyset::0::my-hsm-key::latest")
+ckms sym keys set-rotation-policy \
+    --key-id "hsm::473094471::my-hsm-key" \
+    --name   "my-hsm-keyset"
+
+# 3. Encrypt using the keyset bare name (resolves to the latest key)
+ckms sym encrypt --key-id "my-hsm-keyset" plaintext.bin
+
+# 4. Rotate: C_GenerateKey on the same HSM slot; updates CKA_LABEL on both keys
+ckms sym keys rekey --key-id "hsm::473094471::my-hsm-key"
+# → new UID: hsm::473094471::my-hsm-key::1
+# CKA_LABEL (gen-0): "my-keyset::0::my-hsm-key"          (retired)
+# CKA_LABEL (gen-1): "my-keyset::1::my-hsm-key::latest"  (current)
+
+# 5. Decrypt old ciphertext: keyset tries gen-1 then gen-0 automatically
+ckms sym decrypt --key-id "my-hsm-keyset" ciphertext.enc
+
+# 6. Second rotation
+ckms sym keys rekey --key-id "hsm::473094471::my-hsm-key::1"
+# → new UID: hsm::473094471::my-hsm-key::2
+
+# Attempting to re-key a retired generation is rejected:
+ckms sym keys rekey --key-id "hsm::473094471::my-hsm-key"   # gen-0 — REJECTED
+# Error: not the latest in its keyset
+```
 
 ---
 
@@ -122,14 +248,14 @@ Only keys (or certificates) in the **Active** or **Deactivated** state can be
 rotated.  Attempting to call `Re-Key`, `Re-Key Key Pair`, or `ReCertify` on an
 object in any other state will produce an error:
 
-| State                  | Rotation allowed? | Rationale                                                                   |
-| ---------------------- | ----------------- | --------------------------------------------------------------------------- |
-| **Active**             | ✅ Yes            | The primary valid source state for rotation.                                |
-| **Deactivated**        | ✅ Yes            | KMIP §6.1.46 does not list `Wrong_Key_Lifecycle_State` — a deactivated key may produce a replacement. |
-| **Pre-Active**         | ❌ No             | The key has never been activated — rotating unused material is premature.   |
-| **Compromised**        | ❌ No             | Rotating a compromised key would create confusion about trust lineage.      |
-| **Destroyed**          | ❌ No             | The object no longer exists.                                                |
-| **Destroyed_Compromised** | ❌ No          | The object no longer exists.                                                |
+| State                     | Rotation allowed? | Rationale                                                                                             |
+| ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------- |
+| **Active**                | ✅ Yes             | The primary valid source state for rotation.                                                          |
+| **Deactivated**           | ✅ Yes             | KMIP §6.1.46 does not list `Wrong_Key_Lifecycle_State` — a deactivated key may produce a replacement. |
+| **Pre-Active**            | ❌ No              | The key has never been activated — rotating unused material is premature.                             |
+| **Compromised**           | ❌ No              | Rotating a compromised key would create confusion about trust lineage.                                |
+| **Destroyed**             | ❌ No              | The object no longer exists.                                                                          |
+| **Destroyed_Compromised** | ❌ No              | The object no longer exists.                                                                          |
 
 > **Note:** This restriction applies to the **source** key only.  The *output*
 > of a rotation operation can still enter the `Pre-Active` state when an
@@ -604,7 +730,7 @@ when a key is rotated.
 | `Link[WrappingKeyLink]`       | unchanged                                                           | copied from old key                                             |
 | `x-rotate-generation`         | unchanged                                                           | old value + 1                                                   |
 | `x-rotate-date`               | unchanged                                                           | timestamp of rotation                                           |
-| `x-rotate-interval`             | **set to `0`** (disabled, so cron skips the old key in future runs) | **inherited** from old key (policy continues on the new key)    |
+| `x-rotate-interval`           | **set to `0`** (disabled, so cron skips the old key in future runs) | **inherited** from old key (policy continues on the new key)    |
 | `x-rotate-name`               | unchanged                                                           | inherited from old key                                          |
 | `x-rotate-offset`             | unchanged                                                           | inherited from old key                                          |
 | `x-initial-date`              | cleared                                                             | set to now (resets the baseline for the next rotation deadline) |
@@ -619,7 +745,7 @@ the semantics deliberately differ from auto-rotation:
 
 | Attribute                     | Old key                   | New key                                                           |
 | ----------------------------- | ------------------------- | ----------------------------------------------------------------- |
-| `x-rotate-interval`             | **set to `0`** (disabled) | **`0`** (not inherited — user must re-arm the new key explicitly) |
+| `x-rotate-interval`           | **set to `0`** (disabled) | **`0`** (not inherited — user must re-arm the new key explicitly) |
 | `x-rotate-generation`         | unchanged                 | old value + 1                                                     |
 | `Link[ReplacementObjectLink]` | → new key UID             | —                                                                 |
 | `Link[ReplacedObjectLink]`    | —                         | → old key UID                                                     |

@@ -15,7 +15,7 @@ pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsS
 
 /// Supported cryptographic object types
 /// in plugins
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyType {
     AesKey,
     RsaPrivateKey,

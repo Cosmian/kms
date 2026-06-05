@@ -188,6 +188,18 @@ impl RekeyOperation for KeypairRekey {
                 continue;
             }
 
+            // Reject Re-Key on a retired (non-latest) member of a named keyset.
+            // Keys without a rotate_name are not keyset members and may be freely re-keyed.
+            if owm.attributes().rotate_name.is_some()
+                && owm.attributes().rotate_latest == Some(false)
+            {
+                return Err(KmsError::InvalidRequest(format!(
+                    "ReKeyKeyPair: key '{}' is not the latest in its keyset — only the \
+                     latest generation can be rotated",
+                    owm.id()
+                )));
+            }
+
             // Validate no crypto param changes
             validate_no_crypto_param_change(
                 owm.attributes(),

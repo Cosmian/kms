@@ -15,12 +15,23 @@ use zeroize::Zeroizing;
 
 use crate::{InterfaceError, KeyType, error::InterfaceResult};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KeyMetadata {
     pub key_type: KeyType,
     pub key_length_in_bits: usize,
     pub sensitive: bool,
     pub id: String,
+    /// PKCS#11 `CKA_START_DATE` — when the key became active.
+    pub start_date: Option<time::Date>,
+    /// PKCS#11 `CKA_END_DATE` — when the key is due for rotation.
+    pub end_date: Option<time::Date>,
+    /// Keyset name parsed from `CKA_LABEL` (`rotate_name::generation::key_id[::latest]`).
+    /// `None` means the key has no keyset membership.
+    pub rotate_name: Option<String>,
+    /// Keyset generation counter parsed from `CKA_LABEL`.
+    pub rotate_generation: Option<i32>,
+    /// `true` if the key carries the `::latest` suffix in `CKA_LABEL`.
+    pub rotate_latest: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

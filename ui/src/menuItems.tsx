@@ -11,7 +11,6 @@ import {
     KeyOutlined,
     LockOutlined,
     SafetyCertificateOutlined,
-    SafetyOutlined,
     SearchOutlined,
     SolutionOutlined,
     TeamOutlined,

@@ -59,6 +59,12 @@ pub(crate) async fn modify_attribute(
                     .to_owned(),
             ));
         }
+        Attribute::RotateName(name) if name.contains('@') => {
+            return Err(KmsError::InvalidRequest(
+                "ModifyAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
+                    .to_owned(),
+            ));
+        }
         _ => {}
     }
 

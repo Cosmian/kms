@@ -623,6 +623,60 @@ impl ObjectsStore for RedisWithFindex {
             .collect())
     }
 
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        latest: Option<bool>,
+        owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        // Search Findex for objects indexed under this rotate_name keyword
+        let keyword = Keyword::from(format!("rotate_name::{name}").as_bytes());
+        let indexed_uids = self
+            .findex
+            .search(&keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching rotate_name keyword: {e:?}")))?;
+        if indexed_uids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let candidate_uids: HashSet<String> = indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+            .collect();
+
+        // Fetch the candidate objects
+        let redis_db_objects = self.objects_db.objects_get(&candidate_uids).await?;
+
+        // Filter by owner, generation, and latest flag
+        let mut results = Vec::new();
+        for (uid, dbo) in redis_db_objects {
+            if dbo.owner != owner {
+                continue;
+            }
+            let attrs = dbo.attributes.unwrap_or_default();
+            // Verify the rotate_name matches (double-check)
+            if attrs.rotate_name.as_deref() != Some(name) {
+                continue;
+            }
+            // Filter by generation if requested
+            if let Some(expected_gen) = generation {
+                if attrs.rotate_generation != Some(expected_gen) {
+                    continue;
+                }
+            }
+            // Filter by latest flag if requested
+            if let Some(lat) = latest {
+                if attrs.rotate_latest != Some(lat) {
+                    continue;
+                }
+            }
+            results.push((uid, attrs));
+        }
+        Ok(results)
+    }
+
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,

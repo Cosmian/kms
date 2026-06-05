@@ -3297,6 +3297,12 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_neg_hsm_rotate_offset_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/hsm_rotate_offset_rejected").await
+    }
+
+    #[tokio::test]
     async fn test_neg_spec_sign_invalid_message() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/sign/invalid_message").await
@@ -3400,6 +3406,18 @@ ObjectType = "SymmetricKey"
     async fn test_neg_rekey_keypair_preactive_fails() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/rekey_keypair_preactive_fails").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_non_latest_sql() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_non_latest_sql").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_non_latest_hsm() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_non_latest_hsm").await
     }
 
     // ── KMIP operations: ReKeyKeyPair (non-FIPS only) ────────────────────
@@ -3789,6 +3807,26 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/kek_rekey_wrapped").await
     }
 
+    // ── HSM Resident: Keyset (rotate_name / CKA_LABEL) ───────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_set_rotate_name() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_set_rotate_name").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_rekey_and_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_rekey_and_decrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_double_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_double_rotation").await
+    }
+
     #[tokio::test]
     #[cfg(not(feature = "non-fips"))]
     async fn test_vec_hsm_kek_rsa1024_rejected() -> Result<(), KmsClientError> {
@@ -4044,5 +4082,53 @@ ObjectType = "SymmetricKey"
     async fn test_vec_serial_import_destroy_reimport() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/serialization/import_destroy_reimport").await
+    }
+
+    // ─── Keyset resolution & try-each-key vectors ────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_latest() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_encrypt_latest").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_bare_name() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_encrypt_bare_name").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_try_each() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_try_each").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_double_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_double_rotation")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_latest_after_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/fips/kmip_operations/keyset_encrypt_latest_after_rotation",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_at_latest() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_at_latest").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_rotate_name_at_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/keyset_rotate_name_at_rejected").await
     }
 }

@@ -8,6 +8,7 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore};
+use time::Date;
 
 use crate::{
     Database,
@@ -352,6 +353,52 @@ impl Database {
             results.extend(db.find_due_for_rotation(now).await.unwrap_or_default());
         }
         Ok(results)
+    }
+
+    /// Find objects by their `x-rotate-name` vendor attribute.
+    ///
+    /// Queries all registered object stores and returns matching `(uid, attributes)` pairs.
+    pub async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        latest: Option<bool>,
+        owner: &str,
+    ) -> DbResult<Vec<(String, Attributes)>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, Attributes)> = Vec::new();
+        for db in map.values() {
+            results.extend(
+                db.find_by_rotate_name(name, generation, latest, owner)
+                    .await
+                    .unwrap_or_default(),
+            );
+        }
+        Ok(results)
+    }
+
+    /// Set the `CKA_LABEL` (or equivalent) on a key identified by `uid`.
+    ///
+    /// Routes to the object store responsible for `uid`. SQL stores silently ignore this.
+    pub async fn set_key_label(&self, uid: &str, label: &str) -> DbResult<()> {
+        let store = self.get_object_store(uid).await?;
+        store.set_key_label(uid, label).await.map_err(Into::into)
+    }
+
+    /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
+    ///
+    /// Routes to the object store responsible for `uid`. SQL stores silently ignore this.
+    pub async fn set_key_rotation_dates(
+        &self,
+        uid: &str,
+        start_date: Option<Date>,
+        end_date: Option<Date>,
+    ) -> DbResult<()> {
+        let store = self.get_object_store(uid).await?;
+        store
+            .set_key_rotation_dates(uid, start_date, end_date)
+            .await
+            .map_err(Into::into)
     }
 
     /// Perform an atomic set of operations on the database.

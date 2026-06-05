@@ -63,6 +63,12 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
             }
         }
     }
+    // Index rotate_name so find_by_rotate_name can search by keyword
+    if let Some(rotate_name) = &attributes.rotate_name {
+        keywords.insert(Keyword::from(
+            format!("rotate_name::{rotate_name}").as_bytes(),
+        ));
+    }
     keywords
 }
 

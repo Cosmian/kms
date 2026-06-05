@@ -10,16 +10,31 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
+use cosmian_logger::trace;
 
 use super::{DatabaseOps, ObjectWithMetadataOps};
 use crate::{
     core::{
         KMS,
-        uid_utils::{has_prefix, uids_from_unique_identifier},
+        uid_utils::{
+            KeysetVersion, has_prefix, parse_keyset_identifier, resolve_keyset_to_single_uid,
+            uids_from_unique_identifier, walk_keyset_chain,
+        },
     },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
+
+// ─── Keyset mode ─────────────────────────────────────────────────────────────
+
+/// Determines how a keyset reference (bare name without `@version`) is handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeysetMode {
+    /// Use only the latest key in the keyset (for encrypt, sign, MAC).
+    SingleLatest,
+    /// Try each key in the chain from newest to oldest (for decrypt, verify).
+    TryEach,
+}
 
 // ─── Generic crypto operation key resolution ─────────────────────────────────
 
@@ -31,6 +46,9 @@ pub(crate) enum ResolvedKey {
     /// Key is in the local database: selected, Active, lifecycle-validated.
     /// NOT yet unwrapped — the caller handles unwrapping based on operation needs.
     Local(Box<ObjectWithMetadata>),
+    /// A keyset chain: ordered list of UIDs from newest to oldest.
+    /// The caller tries each key in order until one succeeds.
+    Keyset(Vec<String>),
 }
 
 /// Check whether a managed object's usage mask permits the given operation.
@@ -90,6 +108,14 @@ pub(crate) trait CryptoOpSpec {
 
     /// Extract the `UniqueIdentifier` from the typed request.
     fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier>;
+
+    /// How this operation handles a bare keyset name (no `@version` suffix).
+    ///
+    /// - `SingleLatest`: resolve to the latest key only (encrypt, sign, MAC).
+    /// - `TryEach`: walk the chain and try each key newest→oldest (decrypt, verify).
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::SingleLatest
+    }
 
     /// Compute the data length for `UsageLimits` enforcement.
     ///
@@ -165,30 +191,107 @@ pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
         ResolvedKey::Oracle { uid, prefix } => {
             Op::execute_oracle(kms, &request, &uid, &prefix).await
         }
-        ResolvedKey::Local(owm) => {
-            let mut owm = *owm;
-
-            // Clone before unwrap: preserve the wrapped key for DB persistence.
-            let mut unwrapped_owm = owm.clone();
-            unwrap_and_enforce_policy(kms, &mut unwrapped_owm, Op::OP_NAME, user)
-                .await
-                .with_context(|| {
-                    format!(
-                        "{}: the key: {}, cannot be unwrapped.",
-                        Op::OP_NAME,
-                        owm.id()
-                    )
-                })?;
-
-            let data_len = Op::usage_data_len(&request);
-            enforce_usage_limits(&owm, data_len)?;
-
-            let res = Op::execute_local(kms, &unwrapped_owm, &request, user).await?;
-
-            decrement_usage_limits(kms, &mut owm, Op::OP_NAME, data_len).await?;
-            Ok(res)
+        ResolvedKey::Local(owm) => execute_local_with_limits::<Op>(kms, *owm, &request, user).await,
+        ResolvedKey::Keyset(chain) => {
+            execute_keyset_try_each::<Op>(kms, &chain, &request, user).await
         }
     }
+}
+
+/// Execute a local operation with unwrapping and usage-limit accounting.
+async fn execute_local_with_limits<Op: CryptoOpSpec>(
+    kms: &KMS,
+    owm: ObjectWithMetadata,
+    request: &Op::Request,
+    user: &str,
+) -> KResult<Op::Response> {
+    let mut owm = owm;
+
+    // Clone before unwrap: preserve the wrapped key for DB persistence.
+    let mut unwrapped_owm = owm.clone();
+    unwrap_and_enforce_policy(kms, &mut unwrapped_owm, Op::OP_NAME, user)
+        .await
+        .with_context(|| {
+            format!(
+                "{}: the key: {}, cannot be unwrapped.",
+                Op::OP_NAME,
+                owm.id()
+            )
+        })?;
+
+    let data_len = Op::usage_data_len(request);
+    enforce_usage_limits(&owm, data_len)?;
+
+    let res = Op::execute_local(kms, &unwrapped_owm, request, user).await?;
+
+    decrement_usage_limits(kms, &mut owm, Op::OP_NAME, data_len).await?;
+    Ok(res)
+}
+
+/// Try each key in a keyset chain (newest→oldest) until one succeeds.
+///
+/// Used for decrypt/verify operations where the ciphertext may have been
+/// encrypted with an older generation key.
+async fn execute_keyset_try_each<Op: CryptoOpSpec>(
+    kms: &KMS,
+    chain: &[String],
+    request: &Op::Request,
+    user: &str,
+) -> KResult<Op::Response> {
+    let mut last_err: Option<KmsError> = None;
+
+    for uid in chain {
+        let Some(owm) = kms.database.retrieve_object(uid).await? else {
+            continue;
+        };
+
+        // Must be Active
+        if owm.get_effective_state()? != State::Active {
+            continue;
+        }
+
+        // Permission check
+        if !kms
+            .database
+            .is_user_authorized_for_operation(uid, user, Op::KMIP_OP)
+            .await?
+        {
+            continue;
+        }
+
+        // Eligibility check
+        if !Op::is_key_eligible(&owm, kms.vendor_id()) {
+            continue;
+        }
+
+        // Lifecycle check
+        if owm.check_process_window().is_err() {
+            continue;
+        }
+
+        match execute_local_with_limits::<Op>(kms, owm, request, user).await {
+            Ok(response) => return Ok(response),
+            Err(e) => {
+                trace!(
+                    "execute_keyset_try_each: key {} failed for {}: {}",
+                    uid,
+                    Op::OP_NAME,
+                    e
+                );
+                last_err = Some(e);
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| {
+        KmsError::Kmip21Error(
+            ErrorReason::Item_Not_Found,
+            format!(
+                "{}: decryption failed — no key in the keyset could process the request",
+                Op::OP_NAME
+            ),
+        )
+    }))
 }
 
 /// Collect the single eligible crypto-oracle UID for a cryptographic operation.
@@ -327,19 +430,76 @@ where
 /// Resolve the key for a cryptographic operation using the [`CryptoOpSpec`] trait.
 ///
 /// Performs the entire key selection pipeline generically:
-/// 1. Resolves UIDs from the `unique_identifier`.
-/// 2. Attempts oracle (HSM) routing.
-/// 3. Selects the key from the database with `Op::is_key_eligible`.
-/// 4. Applies error mapping via `Op::map_selection_error`.
-/// 5. Enforces process window constraints (`ProcessStartDate` / `ProtectStopDate`).
+/// 1. Checks if the identifier is a keyset reference (name or name@version).
+/// 2. Resolves UIDs from the `unique_identifier`.
+/// 3. Attempts oracle (HSM) routing.
+/// 4. Selects the key from the database with `Op::is_key_eligible`.
+/// 5. Applies error mapping via `Op::map_selection_error`.
+/// 6. Enforces process window constraints (`ProcessStartDate` / `ProtectStopDate`).
 ///
-/// Returns [`ResolvedKey::Oracle`] for HSM keys or [`ResolvedKey::Local`] for DB keys.
+/// Returns [`ResolvedKey::Oracle`] for HSM keys, [`ResolvedKey::Local`] for DB keys,
+/// or [`ResolvedKey::Keyset`] for try-each keyset chains.
 /// Local keys are NOT unwrapped — `perform_crypto_operation` handles unwrapping.
 pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
     unique_identifier: &UniqueIdentifier,
     kms: &KMS,
     user: &str,
 ) -> KResult<ResolvedKey> {
+    let uid_str = unique_identifier
+        .as_str()
+        .context("The unique identifier must be a string")?;
+
+    // ── Keyset detection ─────────────────────────────────────────────────────
+    if let Some(keyset_ref) = parse_keyset_identifier(uid_str) {
+        // Explicit @version → resolve to a single key
+        match &keyset_ref.version {
+            KeysetVersion::Latest | KeysetVersion::First | KeysetVersion::Generation(_) => {
+                if let Some(uid) = resolve_keyset_to_single_uid(&keyset_ref, kms, user).await? {
+                    let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
+                        KmsError::ItemNotFound(format!(
+                            "{}: keyset key not found: {uid}",
+                            Op::OP_NAME
+                        ))
+                    })?;
+                    owm.check_process_window()?;
+                    return Ok(ResolvedKey::Local(Box::new(owm)));
+                }
+                // Keyset name not found in DB — fall through to normal UID resolution
+            }
+            KeysetVersion::Bare => {
+                // Bare keyset name: behavior depends on operation's keyset_mode
+                match Op::keyset_mode() {
+                    KeysetMode::SingleLatest => {
+                        if let Some(uid) =
+                            resolve_keyset_to_single_uid(&keyset_ref, kms, user).await?
+                        {
+                            let owm =
+                                kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
+                                    KmsError::ItemNotFound(format!(
+                                        "{}: keyset key not found: {uid}",
+                                        Op::OP_NAME
+                                    ))
+                                })?;
+                            owm.check_process_window()?;
+                            return Ok(ResolvedKey::Local(Box::new(owm)));
+                        }
+                        // Not a keyset → fall through to normal path
+                    }
+                    KeysetMode::TryEach => {
+                        let max_depth = kms.params.keyset_decrypt_max_attempts;
+                        let chain =
+                            walk_keyset_chain(&keyset_ref.name, kms, user, max_depth).await?;
+                        if !chain.is_empty() {
+                            return Ok(ResolvedKey::Keyset(chain));
+                        }
+                        // Not a keyset → fall through to normal path
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Standard UID / tag resolution ────────────────────────────────────────
     let uids = uids_from_unique_identifier(unique_identifier, kms)
         .await
         .context(Op::OP_NAME)?;
