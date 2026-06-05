@@ -89,9 +89,14 @@ state is not `Destroyed` or `Destroyed_Compromised`.
   `count-non-destroyed-keys`) that filter `objects` by `ObjectType IN (...)` and
   `state NOT IN ('Destroyed', 'Destroyed_Compromised')` using backend-specific
   JSON extraction syntax.
-- **HSM store**: implement `count_non_destroyed_keys` by iterating all available
-  slots, calling `hsm.find(slot_id, HsmObjectFilter::Any)`, and summing slot lengths.
-  All HSM objects are considered non-destroyed active keys.
+- **HSM store — `count_non_destroyed_keys`**: implemented by iterating all available
+  slots via `hsm.find(slot_id, HsmObjectFilter::Any)` and summing results.  All HSM
+  objects are non-destroyed active keys by definition (deleted keys are removed from
+  the device, not marked Destroyed).
+- **HSM store — `count_all_non_destroyed` bug fix**: the previous `Ok(0)` stub
+  (incorrect comment: "HSMs do not expose a key-count API") is replaced with a
+  delegation to `count_non_destroyed_keys()`.  PKCS#11 `C_FindObjects` is sufficient
+  to count objects.  `kms.objects.total` now correctly includes HSM-backed keys.
 - **Redis-findex — `ObjectsDB`**: add O(1) counter key `kms::metrics::active_key_count`
   with helpers `adjust_active_key_count(delta)`, `get_active_key_count()`,
   `set_active_key_count(count)`, and `scan_count_non_destroyed_keys()` (bootstrap SCAN).
@@ -108,7 +113,28 @@ state is not `Destroyed` or `Destroyed_Compromised`.
 - **Startup seed** (`crate/server/src/core/kms/mod.rs`): seed `kms.keys.active.count`
   at startup from `count_non_destroyed_key_objects()` (non-fatal, same pattern as
   `kms.objects.total`).
-- **Test** (`test_active_key_count_counter`): 6-step integration test covering
-  create 2 keys, create non-key object (OpaqueObject), deactivate, destroy, delete,
-  and bootstrap-SCAN reconcile.  Registered in `test_db_redis_with_findex`.
-  Tagged `#[ignore = "Requires a running Redis instance"]`.
+- **Test** (`test_active_key_count_counter`): 6-step integration test for the Redis
+  counter lifecycle — create 2 keys, create non-key object, deactivate, destroy,
+  delete, bootstrap-SCAN reconcile.  Tagged `#[ignore = "Requires a running Redis instance"]`.
+- **Test** (`test_count_all_non_destroyed_delegates_to_count_non_destroyed_keys`):
+  pure in-process unit test using a `MockHsm` (2 slots, 3+2 keys) that verifies
+  `count_all_non_destroyed` returns 5 and equals `count_non_destroyed_keys`.
+  Runs without any hardware.  Added `tokio` as a dev-dependency to
+  `cosmian_kms_interfaces`.
+
+## Testing
+
+### Mockall test infrastructure
+
+- Add `mockall = "0.13"` as a dev-dependency of `cosmian_kms_interfaces`.
+- Replace the 130-line hand-rolled `MockHsm` struct (with full `impl HSM`) in
+  `crate/interfaces/src/hsm/hsm_store.rs` with a `mockall::mock!`-generated
+  `MockHsm` (~20 lines of method signatures).  The macro generates expectation
+  machinery for all 14 async methods; `hsm_lib` is a concrete no-op `{ None }`
+  to sidestep mockall's limitation with `&self`-bound reference return types.
+- The `test_count_all_non_destroyed_delegates_to_count_non_destroyed_keys` test
+  now uses `mock.expect_get_available_slot_list()` / `mock.expect_find()` with
+  `returning(...)` closures instead of a bespoke `HashMap`-based data structure.
+- `MockRecorder` in `crate/server_database` is retained as-is: it is a stateful
+  recorder (collects `(op, backend, outcome)` triples in a `Vec`) where mockall
+  would add complexity without reducing code.
