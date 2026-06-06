@@ -513,7 +513,7 @@ async fn import_public_key_for_private(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    kms.import(import_req, user, None)
+    kms.import(import_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
