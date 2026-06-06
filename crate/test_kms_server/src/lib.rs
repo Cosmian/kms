@@ -13,6 +13,7 @@ pub use test_server::{
     start_default_test_kms_server_with_privileged_users,
     start_default_test_kms_server_with_softhsm2_and_kek,
     start_default_test_kms_server_with_softhsm2_and_kek_for_vectors,
+    start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors,
     start_default_test_kms_server_with_three_softhsm2,
     start_default_test_kms_server_with_utimaco_and_kek,
     start_default_test_kms_server_with_utimaco_hsm, start_test_kms_server_with_config,
@@ -23,6 +24,8 @@ pub use vector_runner::{run_test_vector, run_test_vector_with_context};
 mod test_server;
 
 mod test_jwt;
+
+pub mod test_env;
 
 pub mod vector_runner;
 

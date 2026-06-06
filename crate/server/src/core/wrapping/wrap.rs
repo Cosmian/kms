@@ -59,18 +59,28 @@ pub(crate) async fn wrap_and_cache(
     // or in the HSM.
     // Either the user has provided a wrapping key ID or a key wrapping key is
     // provided in the parameters.
-    let Some(wrapping_key_id) = object
+    let uid_str = unique_identifier.to_string();
+    let explicit_wrapping_key_id = object
         .attributes_mut()
         .ok()
-        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()))
-        .or_else(|| kms.params.key_wrapping_key.clone())
-    else {
-        // no wrapping key provided
-        return Ok(());
+        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()));
+    let wrapping_key_id = if let Some(id) = explicit_wrapping_key_id {
+        id
+    } else {
+        let Some(kek) = kms.params.key_wrapping_key.clone() else {
+            // no wrapping key provided
+            return Ok(());
+        };
+        // HSM-resident keys are hardware-protected: skip the server-wide KEK wrapping
+        // to avoid creating a circular dependency where the KEK would wrap itself.
+        if has_prefix(&uid_str).is_some() {
+            return Ok(());
+        }
+        kek
     };
 
     // A key cannot be its own wrapping key.
-    if wrapping_key_id == unique_identifier.to_string() {
+    if wrapping_key_id == uid_str {
         return Err(KmsError::InvalidRequest(format!(
             "Key '{wrapping_key_id}' cannot be used as its own wrapping key: \
              the wrapping key ID must differ from the key ID being created"
