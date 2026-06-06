@@ -30,6 +30,10 @@ static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_AUTH_HTTPS: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring `SoftHSM2` + KEK.
 static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests where the HSM KEK is configured but **not yet created**.
+/// Used to verify that `wrap_and_cache` does not attempt to self-wrap when the first
+/// operation creates the KEK itself (regression for PR #968 self-wrap bug).
+static ONCE_VECTOR_HSM_KEK_UNCREATED: OnceCell<TestsContext> = OnceCell::const_new();
 
 /// A test vector manifest loaded from a TOML file.
 ///
@@ -438,12 +442,14 @@ fn load_request_json(
             ))
         })?;
         let var_name = &rest[..end];
-        let var_value = std::env::var(var_name).map_err(|_e| {
-            KmsClientError::UnexpectedError(format!(
-                "Environment variable '{var_name}' referenced in {} is not set",
-                path.display()
-            ))
-        })?;
+        let var_value = crate::test_env::get(var_name)
+            .or_else(|| std::env::var(var_name).ok())
+            .ok_or_else(|| {
+                KmsClientError::UnexpectedError(format!(
+                    "Environment variable '{var_name}' referenced in {} is not set",
+                    path.display()
+                ))
+            })?;
         content = format!(
             "{}{var_value}{}",
             &content[..start],
@@ -479,13 +485,15 @@ fn resolve_assertion_value(
         let rest = &result[start + 3..];
         if let Some(end) = rest.find("}}") {
             let var_name = &rest[..end];
-            let var_value = std::env::var(var_name).map_err(|_err| {
-                KmsClientError::UnexpectedError(format!(
-                    "resolve_assertion_value: environment variable '{var_name}' \
-                     referenced in assertion template '{template}' is not set — \
-                     refusing to silently use an empty string"
-                ))
-            })?;
+            let var_value = crate::test_env::get(var_name)
+                .or_else(|| std::env::var(var_name).ok())
+                .ok_or_else(|| {
+                    KmsClientError::UnexpectedError(format!(
+                        "resolve_assertion_value: environment variable '{var_name}' \
+                         referenced in assertion template '{template}' is not set — \
+                         refusing to silently use an empty string"
+                    ))
+                })?;
             result = format!("{}{}{}", &result[..start], var_value, &rest[end + 2..]);
         } else {
             break;
@@ -789,7 +797,7 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
 
     // Check required environment variables; skip gracefully if any is missing
     for env_var in &manifest.requires_env {
-        if std::env::var(env_var).is_err() {
+        if crate::test_env::get(env_var).is_none() && std::env::var(env_var).is_err() {
             eprintln!(
                 "SKIP vector '{}': required env var '{env_var}' is not set",
                 manifest.name
@@ -810,6 +818,19 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                     .await?;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek'",
+                    manifest.name
+                );
+                return execute_steps(context, &manifest, &vector_path).await;
+            }
+            "hsm_kek_uncreated" => {
+                let context = ONCE_VECTOR_HSM_KEK_UNCREATED
+                    .get_or_try_init(|| async {
+                        crate::start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+                            .await
+                    })
+                    .await?;
+                eprintln!(
+                    "▶ Running vector '{}' on server_type 'hsm_kek_uncreated'",
                     manifest.name
                 );
                 return execute_steps(context, &manifest, &vector_path).await;
@@ -3805,6 +3826,15 @@ ObjectType = "SymmetricKey"
     async fn test_vec_hsm_kek_rekey_wrapped() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/kek_rekey_wrapped").await
+    }
+
+    /// Regression test for the HSM self-wrap bug (PR #968):
+    /// `wrap_and_cache` must not attempt to wrap an HSM-resident key with the
+    /// server-wide KEK when the key being created IS the configured KEK UID.
+    #[tokio::test]
+    async fn test_vec_hsm_kek_bootstrap_self_create() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_bootstrap_self_create").await
     }
 
     // ── HSM Resident: Keyset (rotate_name / CKA_LABEL) ───────────────────

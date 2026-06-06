@@ -228,6 +228,7 @@ replays the steps sequentially.
 | HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | CreateKeyPair (EC P-256, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK Create | `hsm/kek_ed25519_create_sign` | CreateKeyPair (Ed25519, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK ReKey | `hsm/kek_rekey_wrapped` | Create (AES-256, KEK-wrapped), Encrypt, ReKey (unwrap from KEK, new material, re-wrap), Encrypt new, GetAttributes | 9 |
+| HSM / KEK Bootstrap | `hsm/kek_bootstrap_self_create` | **Regression**: Create KEK itself (self-wrap guard bypass), Create DEK, Encrypt, Decrypt, Revoke, Destroy DEK | 6 |
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Create (AES-256, HSM), SetAttribute rotate_name (writes CKA_LABEL), Encrypt by keyset name, Decrypt by UID | 4 |
 | HSM / Resident Keyset | `hsm/resident_keyset_rekey_and_decrypt` | Create, SetAttribute rotate_name, Encrypt (gen-0), ReKey, Decrypt by keyset name (chain: gen-1→gen-0) | 7 |
 | HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Create, SetAttribute rotate_name, Encrypt (gen-0), ReKey ×2, Decrypt by keyset name (chain: gen-2→gen-1→gen-0) | 9 |
