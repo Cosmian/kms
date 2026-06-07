@@ -23,8 +23,8 @@ The following specifications are **not** currently implemented:
 
 - **Merkle Tree Certificates** (IETF draft) — transparency-based certificate format.
 - **Composite Certificates** (draft-ietf-lamps-pq-composite-sigs / draft-ietf-lamps-pq-composite-kem) — hybrid classical+PQC keys in a single certificate.
+- **Delta CRLs** ([RFC 5280 §5.4](https://www.rfc-editor.org/rfc/rfc5280#section-5.4)) — incremental CRLs containing only certificates revoked since the last full CRL baseline.
 - **OCSP responder** — the KMS does not act as an OCSP responder.
-- **CRL generation** — the KMS does not generate CRLs; it can include `crlDistributionPoints` pointing to an external CRL.
 
 ## Certificate export formats
 
@@ -260,6 +260,41 @@ All standard KMIP certificate lifecycle operations work with certificates:
 | `Destroy` | Permanently delete a certificate and its keys           |
 
 ## Revocation handling
+
+### CRL generation
+
+The KMS can generate X.509 v2 Certificate Revocation Lists (CRLs) per
+[RFC 5280 §5](https://www.rfc-editor.org/rfc/rfc5280#section-5).
+
+A CRL lists all certificates issued by a CA that have been revoked. The KMS
+automatically collects revoked certificates (those in `Deactivated` or
+`Compromised` state with a `CertificateLink` pointing to the issuer) and
+signs the CRL with the CA private key.
+
+**CLI usage:**
+
+```bash
+ckms certificates generate-crl \
+  --certificate-id <CA_CERT_ID> \
+  --validity-days 7 \
+  --output-format pem \
+  --output-file /tmp/crl.pem
+```
+
+**REST endpoint:**
+
+```http
+GET /certificates/{issuer_id}/crl?format=pem&validity_days=7
+```
+
+Returns `application/pkix-crl` (DER, default) or `application/x-pem-file` (PEM).
+
+The generated CRL includes:
+
+- **Authority Key Identifier** (AKI) extension
+- **CRL Number** extension (monotonically increasing)
+- Per-entry **CRL Reason Code** (mapped from the KMIP revocation reason)
+- Per-entry **Invalidity Date** (when available in object attributes)
 
 ### CRL distribution points
 

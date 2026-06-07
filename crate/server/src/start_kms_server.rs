@@ -65,7 +65,7 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
         get_version,
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
@@ -1525,6 +1525,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
             .service(get_version)
+            // Public CRL distribution point (no authentication, RFC 5280 §3).
+            // Registered directly on the app (not in a scope) so it takes priority over
+            // the default catch-all scope without interfering with other routes.
+            .service(crl::get_crl_public)
             .service(swagger::get_openapi_yaml)
             .service(swagger::get_swagger_ui)
             .service(swagger::get_swagger_ui_js)
@@ -1664,6 +1668,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(crl::get_crl)
             .service(access::get_crypto_officer_status)
             .service(access::disable_crypto_officer)
             .service(access::activate_crypto_officer_ceremony)

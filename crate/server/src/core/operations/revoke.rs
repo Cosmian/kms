@@ -44,7 +44,6 @@ pub(crate) async fn revoke_operation(
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    // TODO   Reasons should be kept in the database
     let revocation_reason = request.revocation_reason.clone();
     let compromise_occurrence_date = request.compromise_occurrence_date;
 
@@ -298,6 +297,8 @@ async fn revoke_key_core(
         if let Some(date) = compromise_occurrence_date {
             object_attributes.compromise_occurrence_date = Some(date);
         }
+        // persist the revocation reason (needed for CRL generation per RFC 5280 §5.3.1)
+        object_attributes.revocation_reason = Some(revocation_reason.clone());
     }
     // Update the state in the "external" attributes
     owm.attributes_mut().state = Some(state);
@@ -307,6 +308,8 @@ async fn revoke_key_core(
     if let Some(date) = compromise_occurrence_date {
         owm.attributes_mut().compromise_occurrence_date = Some(date);
     }
+    // Persist the revocation reason in the "external" attributes
+    owm.attributes_mut().revocation_reason = Some(revocation_reason);
 
     kms.database
         .atomic(

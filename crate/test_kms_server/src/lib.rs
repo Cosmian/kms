@@ -54,6 +54,9 @@ pub mod reexport {
 mod certify_tests;
 
 #[cfg(test)]
+mod crl_tests;
+
+#[cfg(test)]
 mod db_hsm_tests;
 
 #[cfg(test)]
@@ -61,3 +64,7 @@ mod auth_verifier_tests;
 
 #[cfg(test)]
 mod openapi_validation;
+
+#[cfg(test)]
+#[cfg(feature = "non-fips")]
+mod pqc_export_tests;

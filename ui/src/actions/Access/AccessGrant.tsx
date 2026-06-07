@@ -5,6 +5,7 @@ import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import LocateButton from "../../components/common/LocateButton";
+import LocateButton from "../../components/common/LocateButton";
 import * as wasm from "../../wasm/pkg";
 
 interface AccessGrantFormData {
