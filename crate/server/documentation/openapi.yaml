@@ -30,6 +30,8 @@ tags:
     description: Access-control and permission management for KMS objects
   - name: Server
     description: Server information and HSM status
+  - name: Certificates
+    description: X.509 certificate lifecycle — CRL generation
   - name: REST Crypto API
     description: Simplified JWE/JWS/HMAC REST API built on top of KMIP keys
   - name: Google CSE
@@ -2253,7 +2255,118 @@ paths:
                 items:
                   type: object
 
+  # ── Certificates ─────────────────────────────────────────────────────────────
+
+  /certificates/{issuer_id}/crl:
+    get:
+      tags: [Certificates]
+      summary: Generate a CRL for the specified issuer certificate
+      description: |
+        Returns a signed X.509 Certificate Revocation List (CRL v2) for the issuer
+        identified by `issuer_id`. The CRL is generated on-the-fly by collecting
+        all revoked certificates issued by that CA and signing them with the issuer
+        private key.
+
+        Supported output formats:
+        - **DER** (default, `application/pkix-crl`, RFC 2585 §3)
+        - **PEM** (`application/x-pem-file`)
+      operationId: getCrl
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: issuer_id
+          in: path
+          required: true
+          description: KMIP unique identifier of the issuer certificate object
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: false
+          description: Output format — `der` (default, RFC 2585) or `pem`
+          schema:
+            type: string
+            enum: [der, pem]
+            default: der
+        - name: validity_days
+          in: query
+          required: false
+          description: 'CRL validity period in days (default: 7)'
+          schema:
+            type: integer
+            minimum: 1
+            default: 7
+      responses:
+        '200':
+          description: |
+            Signed CRL in the requested format.
+            Content-Type is `application/pkix-crl` for DER or `application/x-pem-file` for PEM.
+          content:
+            application/pkix-crl:
+              schema:
+                type: string
+                format: binary
+            application/x-pem-file:
+              schema:
+                type: string
+                example: |
+                  -----BEGIN X509 CRL-----
+                  MIIBpDCBjQIBATANBgkqhkiG9w0BAQsFADARMQ8wDQYDVQQDDAZSb290Q0EX
+                  ...
+                  -----END X509 CRL-----
+        '401':
+          description: Unauthorized — missing or invalid credentials
+        '404':
+          description: Issuer certificate not found
+        '500':
+          description: Internal server error — CRL generation failed
+
   # ── REST Crypto API ──────────────────────────────────────────────────────────
+
+  /public/certificates/{issuer_id}/crl:
+    get:
+      tags: [Certificates]
+      summary: Retrieve a pre-signed CRL (public, no authentication required)
+      description: |
+        Returns the most recently generated CRL DER bytes for the specified issuer
+        from the server's in-memory cache.
+
+        This endpoint is intended for **CRL Distribution Point (CDP) URIs** embedded
+        in certificates. Standard PKI relying parties (browsers, TLS stacks, OCSP
+        clients) fetch CDP URIs without credentials, as intended by RFC 5280 §3.
+
+        The CRL is pre-signed; no key material is accessed at serve time.
+
+        **Important**: this endpoint returns HTTP 404 if the CA owner has not yet
+        called the authenticated `GET /certificates/{issuer_id}/crl` endpoint since
+        the last server start.
+      operationId: getCrlPublic
+      security: []
+      parameters:
+        - name: issuer_id
+          in: path
+          required: true
+          description: KMIP unique identifier of the issuer certificate object
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pre-signed DER-encoded CRL (RFC 2585 §3, `application/pkix-crl`)
+          headers:
+            Last-Modified:
+              description: HTTP-date when the CRL was last generated
+              schema:
+                type: string
+          content:
+            application/pkix-crl:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: |
+            No CRL found in cache for this issuer. The CA owner must call
+            `GET /certificates/{issuer_id}/crl` (authenticated) at least once.
 
   /v1/crypto/encrypt:
     post:

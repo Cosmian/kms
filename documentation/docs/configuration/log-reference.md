@@ -157,7 +157,6 @@ Crate path: `crate/server`
 | `debug` | `Created secret data with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Created symmetric key with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Creating SecretData object` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `CRL list already contains key: {path}` | `src/core/operations/validate.rs` | `path`: filesystem path | - |
 | `debug` | `CRL list already contains key: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
@@ -477,7 +476,6 @@ Crate path: `crate/server`
 | `error` | `OpenSSL does not appear to be available (version number is 0).              Please verify that OpenSSL is correctly installed and accessible.` | `src/main.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
-| `warn` | `CRL signature could not be verified against chain issuers; issuer: {:?}.                          Continuing with status checks.` | `src/core/operations/validate.rs` | — | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
@@ -1083,7 +1081,7 @@ Crate path: `crate/clients/client`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | - |
+| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | ×2 in this file |
 | `info` | `The decrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the decrypted output file | ×2 in this file |
 | `info` | `The encrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the encrypted output file | ×2 in this file |
 | `info` | `Using server URL: {}` | `src/http_client/client.rs` | — | — |
