@@ -61,6 +61,8 @@ exclude = [
   'readthedocs\.io',
 
   # Sites that block automated crawlers (valid in browser but return 4xx/5xx to bots)
+  # github.com consistently returns HTTP/2 protocol errors to automated crawlers/CI runners
+  'github\.com',
   'cosmian\.com',
   'package\.cosmian\.com',
   'www\.mysql\.com',
@@ -107,6 +109,12 @@ exclude = [
   'docs\.intersystems\.com',
   # Ubuntu manpages — frequent timeouts from automated requests
   'manpages\.ubuntu\.com',
+
+  # ANSSI (cyber.gouv.fr) — publications periodically restructure their URLs
+  'cyber\.gouv\.fr',
+
+  # Fortinet documentation — returns 503 to automated crawlers
+  'docs\.fortinet\.com',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',

@@ -135,7 +135,19 @@ pub(crate) async fn validate_operation(
 
     verify_chain_signature(&certificates)?;
     validate_chain_date(&certificates, &request.validity_time)?;
-    verify_crls(certificates, kms.params.proxy_params.as_ref()).await?;
+
+    // CRL check: hard CRL errors (expired CRL, bad signature, explicit revocation)
+    // make the chain invalid. Network errors (unreachable CRL distribution point)
+    // are treated as soft failures inside `verify_crls()` and do not cause
+    // this function to return an error — the certificate is treated as valid when
+    // the CRL DP is simply unreachable. Only deterministic revocation evidence
+    // or a malformed/expired CRL propagates here as an error.
+    if let Err(crl_err) = verify_crls(certificates, kms.params.proxy_params.as_ref()).await {
+        warn!("CRL validation failed: {crl_err}");
+        return Err(KmsError::Certificate(format!(
+            "Certificate chain is invalid: {crl_err}"
+        )));
+    }
 
     Ok(ValidateResponse {
         validity_indicator: ValidityIndicator::Valid,
@@ -470,7 +482,26 @@ async fn get_crl_bytes(
     for uri in uri_list {
         // checking whether the resource is an URL or a Pathname
         let uri_type = if let Ok(url) = url::Url::parse(&uri) {
-            Some(UriType::Url(url.into()))
+            // file:// URLs should be treated as local file paths
+            if url.scheme() == "file" {
+                match url.to_file_path() {
+                    Ok(path_buf) => match path_buf.to_str() {
+                        Some(s) => Some(UriType::Path(s.to_owned())),
+                        None => {
+                            return Err(KmsError::Certificate(
+                                "The file:// URI contains an invalid path".to_owned(),
+                            ));
+                        }
+                    },
+                    Err(()) => {
+                        return Err(KmsError::Certificate(format!(
+                            "Cannot convert file:// URI to local path: {uri}"
+                        )));
+                    }
+                }
+            } else {
+                Some(UriType::Url(url.into()))
+            }
         } else {
             let path_buf = path::Path::new(&uri).canonicalize()?;
             match path_buf.to_str() {
@@ -566,16 +597,10 @@ async fn get_crl_bytes(
                 )));
             }
             Some(UriType::Path(path)) => {
-                // Get PEM file (path should be already canonic)
-                let mut crls = CRL_CACHE_MAP.write().await;
-                if crls.contains_key(&path) {
-                    debug!("CRL list already contains key: {path}");
-                    crls.get(&path).and_then(|v| result.insert(path, v.clone()));
-                    continue;
-                }
-
+                // File-path CRLs are always read fresh from disk (no caching).
+                // Unlike HTTP CRLs, file reads are cheap and the file may be
+                // updated (e.g. after a revocation triggers CRL regeneration).
                 let crl_bytes = std::fs::read(path::Path::new(&path))?;
-                crls.insert(path.clone(), crl_bytes.clone());
                 result.insert(path, crl_bytes);
             }
             _ => {
@@ -635,6 +660,10 @@ pub(crate) async fn verify_crls(
                 let crl = X509Crl::from_pem(crl_value.as_slice())
                     .or_else(|_| X509Crl::from_der(crl_value.as_slice()))?;
                 trace!("CRL deserialized OK: {crl_path}");
+
+                // RFC 5280 §6.3 step (a)(1)(ii): reject expired CRLs.
+                check_crl_freshness(&crl, crl_path)?;
+
                 let res = crl_status_to_validity_indicator(&crl.get_by_cert(certificate));
                 debug!("Parent CRL verification: revocation status: {res:?}");
                 if res == ValidityIndicator::Invalid {
@@ -672,7 +701,26 @@ pub(crate) async fn verify_crls(
                 }
             }
 
-            current_crls = get_crl_bytes(uri_list, proxy_params).await?;
+            // RFC 5280 §6.3: if the CRL distribution point is unreachable
+            // (network error, DNS failure), the revocation status cannot be
+            // determined.  Treat this as a soft failure — warn and skip the
+            // revocation check for this certificate.  Hard errors (expired CRL,
+            // bad signature, explicit revocation) still propagate.
+            match get_crl_bytes(uri_list, proxy_params).await {
+                Ok(crls) => {
+                    current_crls = crls;
+                }
+                Err(KmsError::ClientConnectionError(ref e)) => {
+                    warn!(
+                        "[{idx}] CRL distribution point unreachable for '{:?}', skipping \
+                         revocation check: {e}",
+                        certificate.subject_name()
+                    );
+                    current_crls = HashMap::new();
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
 
             // Test if certificate is in current CRLs
             //
@@ -682,11 +730,18 @@ pub(crate) async fn verify_crls(
                     .or_else(|_| X509Crl::from_der(crl_value.as_slice()))?;
                 trace!("CRL deserialized OK: {crl_path}");
 
-                // Best-effort CRL signature verification:
-                // Try verifying with any chain certificate whose SUBJECT matches the CRL issuer.
-                // If none verify, log a warning but continue to check revocation status.
+                // RFC 5280 §6.3 step (a)(1)(ii): reject expired CRLs.
+                check_crl_freshness(&crl, crl_path)?;
+
+                // RFC 5280 §6.3 step (f): verify CRL signature.
+                //
+                // For HTTP(S)-fetched CRLs, an unverifiable signature is a hard error:
+                // a MITM could substitute a forged CRL that omits revoked entries.
+                //
+                // For file:// and filesystem-path CRLs (local, OS-controlled delivery),
+                // signature verification failure is a warning only — the file path itself
+                // is already trusted at the OS level.
                 let crl_issuer = crl.issuer_name();
-                // Prepare comparable forms (DER) of subject names
                 let crl_issuer_der = crl_issuer.to_der()?;
                 let mut verified = false;
                 for cand in certificates.iter().take(idx + 1) {
@@ -701,10 +756,22 @@ pub(crate) async fn verify_crls(
                     }
                 }
                 if !verified {
+                    let is_http =
+                        crl_path.starts_with("http://") || crl_path.starts_with("https://");
+                    if is_http {
+                        // Use ServerError (not Certificate) so that import.rs treats this as
+                        // a soft infrastructure failure (→ Active) rather than evidence of
+                        // revocation (→ Compromised). The Validate operation propagates the
+                        // error to the caller regardless of error type.
+                        return Err(KmsError::ServerError(format!(
+                            "CRL signature verification failed for HTTP CRL '{crl_path}'; \
+                             issuer: {crl_issuer:?}. Rejecting to prevent forged-CRL attack."
+                        )));
+                    }
                     warn!(
-                        "CRL signature could not be verified against chain issuers; issuer: {:?}. \
-                         Continuing with status checks.",
-                        crl_issuer
+                        "CRL signature could not be verified against chain issuers; \
+                         issuer: {crl_issuer:?}, path: {crl_path}. \
+                         Continuing (trusted local delivery)."
                     );
                 }
 
@@ -805,4 +872,40 @@ const fn crl_status_to_validity_indicator(status: &CrlStatus) -> ValidityIndicat
         CrlStatus::NotRevoked => ValidityIndicator::Valid,
         CrlStatus::RemoveFromCrl(_) | CrlStatus::Revoked(_) => ValidityIndicator::Invalid,
     }
+}
+
+/// Check that a CRL has not passed its `nextUpdate` time (RFC 5280 §6.3 step (a)(1)(ii)).
+///
+/// Returns an error if the CRL is expired. A CRL whose `nextUpdate` field is absent
+/// (non-conformant) is treated as expired per the RFC 5280 MUST requirement.
+fn check_crl_freshness(crl: &X509Crl, crl_path: &str) -> KResult<()> {
+    let now = Asn1Time::days_from_now(0).map_err(|e| {
+        // Use ServerError (not Certificate) so that `import.rs` treats this as
+        // a soft infrastructure failure rather than as evidence of revocation.
+        KmsError::ServerError(format!(
+            "Failed to get current time for CRL freshness check: {e}"
+        ))
+    })?;
+
+    let next_update = crl.next_update().ok_or_else(|| {
+        // Missing nextUpdate — RFC 5280 §5.1.2.5 requires the field; treat as
+        // infrastructure problem, not a revocation signal.
+        KmsError::ServerError(format!(
+            "CRL '{crl_path}' has no nextUpdate field; treating as expired (RFC 5280 §6.3)"
+        ))
+    })?;
+
+    // `next_update < now` → the CRL is past its validity period.
+    // Return ServerError (not Certificate) so that import.rs treats this as
+    // "CRL infrastructure unavailable / stale" (soft fail → keep Active state)
+    // rather than "certificate is revoked" (hard fail → Compromised state).
+    // The Validate operation returns the error to the caller regardless of type.
+    if next_update < now {
+        return Err(KmsError::ServerError(format!(
+            "CRL '{crl_path}' is expired (nextUpdate is in the past). \
+             Regenerate the CRL and retry validation (RFC 5280 §6.3)."
+        )));
+    }
+
+    Ok(())
 }
