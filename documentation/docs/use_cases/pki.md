@@ -23,8 +23,8 @@ The following specifications are **not** currently implemented:
 
 - **Merkle Tree Certificates** (IETF draft) — transparency-based certificate format.
 - **Composite Certificates** (draft-ietf-lamps-pq-composite-sigs / draft-ietf-lamps-pq-composite-kem) — hybrid classical+PQC keys in a single certificate.
+- **Delta CRLs** ([RFC 5280 §5.4](https://www.rfc-editor.org/rfc/rfc5280#section-5.4)) — incremental CRLs containing only certificates revoked since the last full CRL baseline.
 - **OCSP responder** — the KMS does not act as an OCSP responder.
-- **CRL generation** — the KMS does not generate CRLs; it can include `crlDistributionPoints` pointing to an external CRL.
 
 ## Certificate export formats
 
@@ -250,49 +250,16 @@ Examples of supported combinations:
 
 All standard KMIP certificate lifecycle operations work with certificates:
 
-| Operation | Description                                             |
-| --------- | ------------------------------------------------------- |
-| `Certify` | Generate a new certificate (self-signed or CA-issued)   |
-| `Export`  | Export in PEM, DER, or PKCS#12 format                   |
-| `Import`  | Import an externally generated certificate              |
-| `Validate`| Validate a certificate chain                            |
-| `Revoke`  | Revoke a certificate                                    |
-| `Destroy` | Permanently delete a certificate and its keys           |
+| Operation       | Description                                                   |
+| --------------- | ------------------------------------------------------------- |
+| `Certify`       | Generate a new certificate (self-signed or CA-issued)         |
+| `Export`        | Export in PEM, DER, or PKCS#12 format                         |
+| `Import`        | Import an externally generated certificate                    |
+| `Validate`      | Validate a certificate chain                                  |
+| `Revoke`        | Revoke a certificate                                          |
+| `Generate-CRL`  | Generate a signed CRL for an issuer CA                        |
+| `Destroy`       | Permanently delete a certificate and its keys                 |
 
-## Revocation handling
-
-### CRL distribution points
-
-To include a CRL distribution point in a certificate, add a
-`crlDistributionPoints` entry in the extension config file passed via
-`--certificate-extensions`:
-
-```ini
-[ v3_ext ]
-crlDistributionPoints=URI:http://ca.example.com/crl.pem
-```
-
-### Authority Information Access (AIA)
-
-The AIA extension (`authorityInfoAccess`, OID 1.3.6.1.5.5.7.1.1) can be added
-via the extension config file to point to an OCSP responder or CA issuer:
-
-```ini
-[ v3_ext ]
-authorityInfoAccess=OCSP;URI:http://ocsp.example.com/,caIssuers;URI:http://ca.example.com/ca.crt
-```
-
-### No Revocation Available (`id-ce-noRevAvail`, RFC 9608)
-
-For **self-signed certificates** (no issuer key provided) that do not carry a
-CRL distribution point, the KMS automatically adds the
-`id-ce-noRevAvail` extension (OID 2.5.29.56, RFC 9608 §2). This signals
-to relying parties that no revocation information is available for this
-certificate, and that they should not reject it for lack of a CRL or OCSP
-response.
-
-This behavior applies to **all algorithms** (RSA, EC, ML-DSA, SLH-DSA, …),
-not only PQC.
-
-When validating a chain, the KMS skips CRL fetching for any certificate that
-carries this extension.
+See **[Revocation & CRL Distribution](pki-revocation.md)** for CRL generation,
+automatic CDP injection, the public distribution endpoint, and the `noRevAvail`
+extension.

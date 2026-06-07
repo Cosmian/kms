@@ -245,6 +245,7 @@ impl MySqlPool {
             "create-table-read_access",
             "create-table-tags",
             "create-table-crypto_officer_activations",
+            "create-table-crls",
         ] {
             let sql = MYSQL_QUERIES
                 .get(name)
@@ -1024,6 +1025,90 @@ impl PermissionsStore for MySqlPool {
             .await
             .map_err(|e| InterfaceError::from(DbError::from(e)))?;
         Ok(())
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        let sql = get_mysql_query!("upsert-crl");
+
+        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        conn.exec_drop(
+            sql,
+            (issuer_id, crl_der, crl_number_i, generated_at, next_update),
+        )
+        .await
+        .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(())
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        let sql = get_mysql_query!("select-crl");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let row_opt: Option<mysql_async::Row> = conn
+            .exec_first(sql, (issuer_id,))
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(row_opt.and_then(|mut row| {
+            let der: Vec<u8> = row.take(0)?;
+            let generated_at: String = row.take(1)?;
+            Some((der, generated_at))
+        }))
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        let sql = get_mysql_query!("list-crl-issuers");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let rows: Vec<mysql_async::Row> = conn
+            .exec(sql, ())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|mut row| {
+                let issuer_id: String = row.take(0)?;
+                let next_update: String = row.take(1)?;
+                Some((issuer_id, next_update))
+            })
+            .collect())
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        let row_opt: Option<mysql_async::Row> = conn
+            .exec_first("SELECT MAX(crl_number) FROM crls", ())
+            .await
+            .map_err(|e| InterfaceError::from(DbError::from(e)))?;
+        // MAX() returns one row; the value is NULL when the table is empty.
+        // `take::<Option<i64>>` handles NULL gracefully: row.take returns
+        // Some(None) for NULL, Some(Some(v)) for an actual value, and None
+        // when the column index is out of bounds.
+        let max: Option<i64> = row_opt
+            .and_then(|mut row| row.take::<Option<i64>, _>(0))
+            .flatten();
+        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
     }
 }
 

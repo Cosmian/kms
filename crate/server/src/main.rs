@@ -219,6 +219,7 @@ async fn run() -> KResult<()> {
     Box::pin(cosmian_kms_server::start_kms_server::start_kms_server(
         server_params,
         None,
+        None,
     ))
     .await?;
 
@@ -233,7 +234,7 @@ mod tests {
 
     use cosmian_kms_server::{
         config::{
-            AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig,
+            AuthVerifierConfig, AzureEkmConfig, ClapConfig, CrlConfig, GoogleCseConfig, HttpConfig,
             IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
             OidcConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig, UiConfig,
             WorkspaceConfig,
@@ -376,6 +377,7 @@ mod tests {
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
             vault: cosmian_kms_server::config::VaultConfig::default(),
+            crl: CrlConfig::default(),
         };
 
         let toml_string = r#"
@@ -490,6 +492,11 @@ vault_transit_mount = ""
 vault_pki_mount = ""
 vault_pki_ca_key_label = ""
 vault_token_cache_ttl_secs = 0
+
+[crl]
+crl_default_validity_days = 7
+crl_refresh_check_hours = 1
+crl_refresh_overlap_hours = 24
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

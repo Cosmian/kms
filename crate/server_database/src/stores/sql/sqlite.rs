@@ -137,6 +137,7 @@ impl SqlitePool {
         let create_crypto_officer_activations = pool
             .get_query("create-table-crypto_officer_activations")?
             .to_owned();
+        let create_crls = pool.get_query("create-table-crls")?.to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
@@ -155,6 +156,7 @@ impl SqlitePool {
                         &replace_dollars_with_qn(&create_crypto_officer_activations),
                         [],
                     )?;
+                    tx.execute(&replace_dollars_with_qn(&create_crls), [])?;
                     if clear_database {
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
@@ -1279,6 +1281,103 @@ impl PermissionsStore for SqlitePool {
             .await
             .map_err(DbError::from)?;
         Ok(())
+    }
+
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("upsert-crl"));
+        let issuer_id_s = issuer_id.to_owned();
+        let crl_der_v = crl_der.to_vec();
+
+        let crl_number_i = i64::try_from(crl_number).unwrap_or(i64::MAX);
+        let generated_at_s = generated_at.to_owned();
+        let next_update_s = next_update.to_owned();
+        self.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(
+                        &sql,
+                        rusqlite::params![
+                            issuer_id_s,
+                            crl_der_v,
+                            crl_number_i,
+                            generated_at_s,
+                            next_update_s
+                        ],
+                    )?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("select-crl"));
+        let issuer_id_s = issuer_id.to_owned();
+        let result: Option<(Vec<u8>, String)> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<
+                    Option<(Vec<u8>, String)>,
+                    rusqlite::Error,
+                > {
+                    c.query_row(&sql, rusqlite::params![issuer_id_s], |row| {
+                        Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .optional()
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(result)
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("list-crl-issuers"));
+        let result: Vec<(String, String)> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Vec<(String, String)>, rusqlite::Error> {
+                    let mut stmt = c.prepare_cached(&sql)?;
+                    let mut q = stmt.query([])?;
+                    let mut out = Vec::new();
+                    while let Some(r) = q.next()? {
+                        out.push((r.get::<_, String>(0)?, r.get::<_, String>(1)?));
+                    }
+                    Ok(out)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(result)
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        let sql = "SELECT MAX(crl_number) FROM crls".to_owned();
+        let max: Option<i64> = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<i64>, rusqlite::Error> {
+                    // MAX() returns a single row with NULL when the table is empty.
+                    // Use Option<i64> to handle both NULL and actual values.
+                    c.query_row(&sql, [], |row| row.get::<_, Option<i64>>(0))
+                        .optional()
+                        .map(Option::flatten)
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(max.map(|v| u64::try_from(v).unwrap_or(0)))
     }
 }
 

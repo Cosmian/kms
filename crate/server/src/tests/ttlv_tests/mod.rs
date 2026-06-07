@@ -93,7 +93,7 @@ fn start_test_server(socket_port: u16) -> &'static TestServerCtx {
                 .enable_all()
                 .build()?
                 .block_on(
-                    start_kms_server(Arc::new(server_params), Some(tx)).map_err(|e| {
+                    start_kms_server(Arc::new(server_params), Some(tx), None).map_err(|e| {
                         tracing::error!("Failed to start Test KMS server: {e}");
                         e
                     }),

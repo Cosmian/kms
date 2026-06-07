@@ -52,7 +52,6 @@ Crate path: `crate/server`
 | `warn` | `Activate: object {} is already Active, rejecting` | `src/core/operations/activate.rs` | - | - |
 | `warn` | `AWS XKS create: key {uid} already exists (ignoring creation).` | `src/routes/aws_xks/key_metadata.rs` | `uid`: KMIP object UID | - |
 | `warn` | `Azure EKM client authentication is disabled, this should only be done in tests, and won't work for production environments.` | `src/start_kms_server.rs` | - | - |
-| `warn` | `Could not insert: certificate: AKI: {}, SKI: {}` | `src/core/operations/validate.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
@@ -142,7 +141,6 @@ Crate path: `crate/server`
 | `debug` | `Activate: object {} current state = {:?}` | `src/core/operations/activate.rs` | - | - |
 | `debug` | `Add Attribute: {}` | `src/core/operations/attributes/add.rs` | - | - |
 | `debug` | `AES-GCM decryption failed (expected for implicit rejection): {e}` | `src/routes/jose/aes_gcm.rs` | `e`: caught error | - |
-| `debug` | `after getting CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `algorithm: {ca:?}, ciphertext length: {}` | `src/core/operations/encrypt.rs` | `ca`: cryptographic algorithm | - |
 | `debug` | `allocation_size: {allocation_size}` | `src/routes/google_cse/operations.rs` | `allocation_size`: allocated buffer size | ×2 in this file |
 | `debug` | `API token authentication failed: {e:?}` | `src/middlewares/api_token/api_token_middleware.rs` | `e`: caught error | - |
@@ -157,8 +155,6 @@ Crate path: `crate/server`
 | `debug` | `Created secret data with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Created symmetric key with attributes: {}` | `src/core/kms/other_kms_methods.rs` | - | - |
 | `debug` | `Creating SecretData object` | `src/core/operations/derive_key.rs` | - | - |
-| `debug` | `CRL list already contains key: {path}` | `src/core/operations/validate.rs` | `path`: filesystem path | - |
-| `debug` | `CRL list already contains key: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `CSE Error: {:?}` | `src/routes/google_cse/mod.rs` | - | - |
 | `debug` | `decode encrypted_dek` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `decrypt private key` | `src/routes/google_cse/operations.rs` | - | - |
@@ -218,7 +214,6 @@ Crate path: `crate/server`
 | `debug` | `Parent CRL verification: revocation status: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
 | `debug` | `proxy_config: {config:#?}` | `src/config/params/proxy_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `re-wrapping key with current KMS` | `src/routes/google_cse/operations.rs` | - | - |
-| `debug` | `reading full bytes of CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `Register: activation_date={:?} <= now, setting state to Active` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Register: no activation_date or future date, setting state to PreActive` | `src/core/operations/register.rs` | - | - |
 | `debug` | `Registered object with uid: {}` | `src/core/operations/register.rs` | - | - |
@@ -237,7 +232,6 @@ Crate path: `crate/server`
 | `debug` | `Signature verification result: {validity_indicator:?}` | `src/core/operations/signature_verify.rs` | `validity_indicator`: signature validity result | - |
 | `debug` | `signature_verify: effective CP => alg={:?} pad={:?} hash={:?} dsa={:?} mgf1_hash={:?}` | `src/core/operations/signature_verify.rs` | - | - |
 | `debug` | `Sigv4 Middleware - Adding missing HOST header: {}` | `src/routes/aws_xks/sigv4_middleware.rs` | - | - |
-| `debug` | `Skipping non-HTTP CRL URI: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `Socket server received stop signal: {result:?}` | `src/socket_server.rs` | `result`: operation result | - |
 | `debug` | `socket server: client connected from {}` | `src/socket_server.rs` | - | - |
 | `debug` | `socket server: client {} disconnected` | `src/socket_server.rs` | - | - |
@@ -477,7 +471,6 @@ Crate path: `crate/server`
 | `error` | `OpenSSL does not appear to be available (version number is 0).              Please verify that OpenSSL is correctly installed and accessible.` | `src/main.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
-| `warn` | `CRL signature could not be verified against chain issuers; issuer: {:?}.                          Continuing with status checks.` | `src/core/operations/validate.rs` | — | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
@@ -698,6 +691,57 @@ Crate path: `crate/server`
 | `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
 | `warn` | `` `force_default_username = true` combined with `privileged_users` is                      deprecated and will become an error in a future release. All requests run                      under the same identity, making Crypto Officer dual-control meaningless.                      Please migrate to `[roles] crypto_officer_users` and remove                      `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
 | `info` | `ceremony sealing key loaded from object store` | `src/core/kms/mod.rs` | - | - |
+| `warn` | `` `privileged_users` is deprecated; please migrate to                              `[roles] crypto_officer_users` in kms.toml `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `ceremony check DB error for user {user}: {e};                      falling back to Operator role` | `src/core/operations/dispatch.rs` | `user`, `e` | - |
+| `warn` | `ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment                              variable is used in production to avoid persisting the secret to disk.                              If loaded from a config file, ensure it has restrictive permissions                              (0600) and is not committed to version control.` | `src/config/params/server_params.rs` | - | - |
+| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `warn` | `CreateSplitKey: partial failure — {} share(s) already stored                          but remaining shares could not be created. Manual cleanup required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32}                  (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
+| `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split                      — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_ACCESS: crypto officer bypassed ownership check` | `src/core/kms/permissions.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed` | `src/core/operations/join_split_key.rs` | - | - |
+| `error` | `CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked` | `src/core/kms/permissions.rs` | - | - |
+| `warn` | `` SECURITY: Crypto Officer is active in config-only mode                          (require_ceremony = false). Any user listed in                          `crypto_officer_users` is a permanent super-admin with no                          runtime activation gate. Consider enabling                          `crypto_officer_require_ceremony = true` in production                          deployments. `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `SECURITY: Crypto Officer is configured but rate_limit_per_second is not set.              The ceremony activation endpoint performs crypto operations on every request.              Set rate_limit_per_second in the server config to protect against abuse in              production deployments.` | `src/start_kms_server.rs` | - | - |
+| `debug` | `CreateSplitKey: resolved ceremony parameters` | `src/core/operations/create_split_key.rs` | - | - |
+| `info` | `POST /access/crypto_officer/disable` | `src/routes/access.rs` | - | - |
+| `info` | `JoinSplitKey: CO ceremony auto-activated via reconstructed key` | `src/core/operations/join_split_key.rs` | - | - |
+| `info` | `PEER_REVOCATION_CLEANUP: revoked victim GET access on caller's share` | `src/core/kms/permissions.rs` | - | - |
+| `debug` | `JoinSplitKey: shares reconstructed` | `src/core/operations/join_split_key.rs` | - | - |
+| `error` | `CreateSplitKey: ceremony source key destroyed after successful split` | `src/core/operations/create_split_key.rs` | `uid` (source key UID), `user`, `session_id` | Audit — ceremony source key destroyed; split shares are now the only copies |
+| `error` | `CreateSplitKey: split-key share stored` | `src/core/operations/create_split_key.rs` | `uid` (share UID), `part`, `total`, `source` (source key UID), `owner`, `user`, `session_id` | Audit — ceremony share created; `session_id` correlates all shares from one CreateSplitKey call |
+| `error` | `JoinSplitKey: reconstructed key stored` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `shares` (count), `user`, `session_id` | Audit — key reconstructed from split-key shares |
+| `error` | `JoinSplitKey: CO ceremony activation failed — rolling back                      reconstructed key from DB` | `src/core/operations/join_split_key.rs` | `uid` (reconstructed key UID), `user`, `session_id`, `error` (activation error) | Audit — compensating delete triggered; activation failure made the ceremony invalid; key is being removed |
+| `error` | `JoinSplitKey: CRITICAL — reconstructed key rollback failed;                          orphaned key remains in DB, manual cleanup required` | `src/core/operations/join_split_key.rs` | `uid` (orphaned key UID), `user`, `session_id`, `rollback_error` (delete error) | CRITICAL audit — DB is in inconsistent state; manual deletion of the `uid` object is required; alert SIEM |
+| `warn` | `` `force_default_username = true` combined with `privileged_users` is                      deprecated and will become an error in a future release. All requests run                      under the same identity, making Crypto Officer dual-control meaningless.                      Please migrate to `[roles] crypto_officer_users` and remove                      `force_default_username`. `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `[{idx}] CRL distribution point unreachable for '{:?}', skipping                          revocation check: {e}` | `src/core/operations/validate.rs` | `idx`, `e` | - |
+| `warn` | `CRL signature could not be verified against chain issuers;                          issuer: {crl_issuer:?}, path: {crl_path}.                          Continuing (trusted local delivery).` | `src/core/operations/validate.rs` | `crl_issuer`, `crl_path` | - |
+| `warn` | `CRL validation failed: {crl_err}` | `src/core/operations/validate.rs` | `crl_err` | - |
+| `info` | `GET /certificates/{}/crl` | `src/routes/crl.rs` | - | - |
+| `info` | `GET /public/certificates/{}/crl (unauthenticated)` | `src/routes/crl.rs` | - | - |
+| `debug` | `Auto-injecting CRL Distribution Point: {crl_url}` | `src/core/operations/certify/build_certificate.rs` | `crl_url` | - |
+| `debug` | `CRL cache hit: {uri}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `CRL fetched: uri={uri} size={}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `CRL generated successfully for issuer '{}': {} entries, validity {} days` | `src/core/operations/generate_crl.rs` | - | - |
+| `debug` | `CRL response received: uri={uri} status={}` | `src/core/operations/validate.rs` | `uri` | - |
+| `debug` | `Generating CRL for issuer certificate: {}` | `src/core/operations/generate_crl.rs` | - | - |
+| `error` (audit) | `CRYPTO_OFFICER_ACCESS: crypto officer generating CRL (find_all bypass)` | `src/core/operations/generate_crl.rs` | `user`, `issuer_id` | Emitted every time a CO generates a CRL; always visible regardless of `RUST_LOG`. |
+| `info` | `Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation` | `src/core/operations/revoke.rs` | `issuer_id`, `user` | Emitted on every successful auto-regen trigger. |
+| `warn` | `Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}` | `src/core/operations/revoke.rs` | `issuer_id`, `e` | Signing or DB error during auto-regen; Revoke still succeeds. |
+| `trace` | `Found {} revoked certificate(s) for issuer '{}'` | `src/core/operations/generate_crl.rs` | - | - |
+| `trace` | `Skipping certificate '{}': cannot parse DER: {e}` | `src/core/operations/generate_crl.rs` | `e` | - |
+| `warn` | `Failed to load CRL from database for issuer '{issuer_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_id`, `e` | - |
+| `warn` | `Failed to persist CRL to database for issuer '{issuer_certificate_id}': {e}` | `src/core/operations/generate_crl.rs` | `issuer_certificate_id`, `e` | - |
+| `warn` | `[crl-refresh-cron] CRL refresh failed for '{issuer_id}': {e}` | `src/cron.rs` | `issuer_id`, `e` | - |
+| `warn` | `[crl-refresh-cron] Failed to build runtime: {e}` | `src/cron.rs` | `e` | - |
+| `warn` | `[crl-refresh-cron] Failed to list CRL issuers from DB: {e}` | `src/cron.rs` | `e` | - |
+| `info` | `[crl-refresh-cron] Regenerating CRL for issuer '{issuer_id}'              (expires within {overlap_hours}h)` | `src/cron.rs` | `issuer_id`, `overlap_hours` | - |
+| `debug` | `[crl-refresh-cron] Running scheduled CRL refresh check` | `src/cron.rs` | - | - |
+| `debug` | `[crl-refresh-cron] Shutdown signal received; stopping` | `src/cron.rs` | - | - |
+| `debug` | `[kms-init] Failed to read max CRL number from DB: {e};                          using unix timestamp as CRL counter seed` | `src/core/kms/mod.rs` | `e` | - |
+| `trace` | `Sorted candidate mismatch: cert AKI={}, SKI={}, sorted SKI={}, AKI={}` | `src/core/operations/validate.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1084,7 +1128,7 @@ Crate path: `crate/clients/client`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | - |
+| `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | ×2 in this file |
 | `info` | `The decrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the decrypted output file | ×2 in this file |
 | `info` | `The encrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the encrypted output file | ×2 in this file |
 | `info` | `Using server URL: {}` | `src/http_client/client.rs` | — | — |
