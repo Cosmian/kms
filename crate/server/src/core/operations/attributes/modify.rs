@@ -246,7 +246,9 @@ pub(crate) async fn modify_attribute(
             Attribute::State(_state) => {
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Attribute_Read_Only,
-                    "ModifyAttribute: State is read-only".to_owned(),
+                    "ModifyAttribute: State is a server-managed attribute and cannot be \
+                     modified directly. Use Revoke and Destroy to change the object state."
+                        .to_owned(),
                 ));
             }
         }
