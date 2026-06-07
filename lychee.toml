@@ -145,6 +145,12 @@ exclude = [
   # Fortinet documentation — returns 503 to automated crawlers
   'docs\.fortinet\.com',
 
+  # ANSSI (cyber.gouv.fr) — publications periodically restructure their URLs
+  'cyber\.gouv\.fr',
+
+  # Fortinet documentation — returns 503 to automated crawlers
+  'docs\.fortinet\.com',
+
   # Fragment/anchor patterns that are not real URLs
   'get--export',
   'not-possible',
