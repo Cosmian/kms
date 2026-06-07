@@ -170,10 +170,8 @@ completes, breaking the chicken-and-egg problem.
 ```mermaid
 sequenceDiagram
     actor Candidate as CO candidate<br/>(ceremony mode active)
-    actor Candidate as CO candidate<br/>(ceremony mode active)
     participant KMS
 
-    Note over Candidate,KMS: Phase 1 — Ceremony provisioning
     Note over Candidate,KMS: Phase 1 — Ceremony provisioning
 
     Candidate->>KMS: Create(AES-256) → key_id
