@@ -390,26 +390,12 @@ Function .onInit
 
   !insertmacro SetContext
 
-  ${If} $INSTDIR == ""
-    ; Set default install location
-    !if "${INSTALLMODE}" == "perMachine"
-      ${If} ${RunningX64}
-        !if "${ARCH}" == "x64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else if "${ARCH}" == "arm64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else
-          StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-        !endif
-      ${Else}
-        StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-      ${EndIf}
-    !else if "${INSTALLMODE}" == "currentUser"
-      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
-    !endif
-
-    Call RestorePreviousInstallLocation
-  ${EndIf}
+  ; Set default install location unconditionally.
+  ; Always install under %LOCALAPPDATA% so that the ckms binary, cosmian_cng.dll,
+  ; and cosmian_pkcs11.dll all live in a user-writable directory.
+  ; NOTE: We override $INSTDIR unconditionally because cargo-packager and/or
+  ; a previous installation may have pre-filled it with a Program Files path.
+  StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
 
 
   !if "${INSTALLMODE}" == "both"
@@ -553,13 +539,16 @@ Section Install
 
   ; =========================================================================
   ; Register the Cosmian CNG Key Storage Provider
-  ; Writes to HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers
-  ; Provider name: "Cosmian KMS Key Storage Provider"
+  ; Uses ckms.exe (just installed above) which calls BCryptRegisterProvider,
+  ; BCryptAddContextFunction, and BCryptAddContextFunctionProvider.
+  ; The DLL is copied to System32 by the register command.
   ; =========================================================================
-  WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider" \
-    "DllFileName" "$INSTDIR\cosmian_cng.dll"
-  WriteRegDWORD HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider" \
-    "Capabilities" 0x00000002
+  nsExec::ExecToLog '"$INSTDIR\${MAINBINARYNAME}.exe" cng register --dll "$INSTDIR\cosmian_cng.dll"'
+
+  ; Deploy ckms.toml to System32 so the DLL can find its config when loaded
+  ; by SYSTEM processes (e.g. Intune).
+  IfFileExists "$INSTDIR\ckms.toml" 0 +2
+    CopyFiles /SILENT "$INSTDIR\ckms.toml" "$SYSDIR\ckms.toml"
 
   ; Create start menu shortcut (GUI)
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
@@ -667,8 +656,11 @@ Section Uninstall
 
   ; =========================================================================
   ; Unregister the Cosmian CNG Key Storage Provider
+  ; Uses ckms.exe which calls BCryptRemoveContextFunctionProvider,
+  ; BCryptUnregisterProvider, and removes the DLL from System32.
   ; =========================================================================
-  DeleteRegKey HKLM "SYSTEM\CurrentControlSet\Control\Cryptography\Providers\Cosmian KMS Key Storage Provider"
+  nsExec::ExecToLog '"$INSTDIR\${MAINBINARYNAME}.exe" cng unregister'
+  Delete "$SYSDIR\ckms.toml"
 
   ; =========================================================================
   ; Remove install directory from user PATH

@@ -11,22 +11,22 @@ pub const NTE_BAD_UID: SecurityStatus = 0x8009_0001_u32 as i32;
 pub const NTE_BAD_HASH: SecurityStatus = 0x8009_0002_u32 as i32;
 pub const NTE_BAD_KEY: SecurityStatus = 0x8009_0003_u32 as i32;
 pub const NTE_BAD_LEN: SecurityStatus = 0x8009_0004_u32 as i32;
-pub const NTE_BAD_DATA: SecurityStatus = 0x8009_0009_u32 as i32;
-pub const NTE_BAD_ALGID: SecurityStatus = 0x8009_000D_u32 as i32;
-pub const NTE_BAD_FLAGS: SecurityStatus = 0x8009_000F_u32 as i32;
-pub const NTE_BAD_KEYSET: SecurityStatus = 0x8009_0016_u32 as i32;
-pub const NTE_BAD_PROV_TYPE: SecurityStatus = 0x8009_0014_u32 as i32;
+pub const NTE_BAD_DATA: SecurityStatus = 0x8009_0005_u32 as i32;
+pub const NTE_BAD_ALGID: SecurityStatus = 0x8009_0008_u32 as i32;
+pub const NTE_BAD_FLAGS: SecurityStatus = 0x8009_0009_u32 as i32;
+pub const NTE_NO_KEY: SecurityStatus = 0x8009_000D_u32 as i32;
+pub const NTE_NO_MEMORY: SecurityStatus = 0x8009_000E_u32 as i32;
 pub const NTE_EXISTS: SecurityStatus = 0x8009_000F_u32 as i32;
-pub const NTE_NO_KEY: SecurityStatus = 0x8009_0008_u32 as i32;
-pub const NTE_NO_MEMORY: SecurityStatus = 0x8009_0011_u32 as i32;
-pub const NTE_NOT_SUPPORTED: SecurityStatus = 0x8009_0029_u32 as i32;
-pub const NTE_INVALID_PARAMETER: SecurityStatus = 0x8009_0027_u32 as i32;
-pub const NTE_INVALID_HANDLE: SecurityStatus = 0x8009_0026_u32 as i32;
-pub const NTE_FAIL: SecurityStatus = 0x8009_002A_u32 as i32;
-pub const NTE_SILENT_CONTEXT: SecurityStatus = 0x8009_002B_u32 as i32;
 pub const NTE_PERM: SecurityStatus = 0x8009_0010_u32 as i32;
-pub const NTE_BUFFER_TOO_SMALL: SecurityStatus = 0x8009_0028_u32 as i32; // ERROR_INSUFFICIENT_BUFFER mapped
-pub const NTE_KEY_DOES_NOT_EXIST: SecurityStatus = 0x8009_0008_u32 as i32;
+pub const NTE_BAD_PROV_TYPE: SecurityStatus = 0x8009_0014_u32 as i32;
+pub const NTE_BAD_KEYSET: SecurityStatus = 0x8009_0016_u32 as i32;
+pub const NTE_FAIL: SecurityStatus = 0x8009_0020_u32 as i32;
+pub const NTE_SILENT_CONTEXT: SecurityStatus = 0x8009_0022_u32 as i32;
+pub const NTE_INVALID_HANDLE: SecurityStatus = 0x8009_0026_u32 as i32;
+pub const NTE_INVALID_PARAMETER: SecurityStatus = 0x8009_0027_u32 as i32;
+pub const NTE_BUFFER_TOO_SMALL: SecurityStatus = 0x8009_0028_u32 as i32;
+pub const NTE_NOT_SUPPORTED: SecurityStatus = 0x8009_0029_u32 as i32;
+pub const NTE_NO_MORE_ITEMS: SecurityStatus = 0x8009_002A_u32 as i32;
 pub const NTE_OP_OK: SecurityStatus = 0;
 
 // NTSTATUS success
@@ -75,7 +75,7 @@ impl KspError {
     pub const fn to_security_status(&self) -> SecurityStatus {
         match self {
             Self::InvalidParameter(_) => NTE_INVALID_PARAMETER,
-            Self::KeyNotFound(_) => NTE_NO_KEY,
+            Self::KeyNotFound(_) => NTE_BAD_KEYSET,
             Self::KeyExists(_) => NTE_EXISTS,
             Self::AlgorithmNotSupported(_) => NTE_BAD_ALGID,
             Self::NotSupported(_) => NTE_NOT_SUPPORTED,

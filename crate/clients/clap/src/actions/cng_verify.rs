@@ -33,7 +33,7 @@ pub(crate) mod win {
 
     const ERROR_SUCCESS: i32 = 0;
     #[allow(clippy::cast_possible_wrap)]
-    const NTE_NO_KEY: i32 = 0x8009_0008_u32 as i32;
+    const NTE_BAD_KEYSET: i32 = 0x8009_0016_u32 as i32;
     #[allow(clippy::cast_possible_wrap)]
     const NTE_NOT_SUPPORTED: i32 = 0x8009_0029_u32 as i32;
 
@@ -614,7 +614,7 @@ pub(crate) mod win {
     }
 
     fn step_fail(name: &str, err: &dyn std::fmt::Display) {
-        eprintln!("  [FAIL] {name}: {err}");
+        println!("  [FAIL] {name}: {err}");
     }
 
     // ── Verification steps ───────────────────────────────────────────────
@@ -852,12 +852,12 @@ pub(crate) mod win {
             free_key(dll, h_provider, h_key2);
             return Err("key should not be found after DeleteKey".to_owned());
         }
-        if status != NTE_NO_KEY {
+        if status != NTE_BAD_KEYSET {
             return Err(format!(
-                "OpenKey after delete: expected NTE_NO_KEY (0x{NTE_NO_KEY:08X}), got 0x{status:08X}"
+                "OpenKey after delete: expected NTE_BAD_KEYSET (0x{NTE_BAD_KEYSET:08X}), got 0x{status:08X}"
             ));
         }
-        step_ok("OpenKey confirms key is gone (NTE_NO_KEY)");
+        step_ok("OpenKey confirms key is gone (NTE_BAD_KEYSET)");
         Ok(())
     }
 
@@ -1289,6 +1289,7 @@ pub(crate) mod win {
             println!("All verification steps PASSED.");
             Ok(())
         } else {
+            println!("ERROR: {failures} verification step(s) FAILED.");
             Err(KmsCliError::Default(format!(
                 "{failures} verification step(s) FAILED."
             )))

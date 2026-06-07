@@ -191,6 +191,7 @@ async fn test_kms_client() -> Result<(), Pkcs11Error> {
     // (e.g. certificates) depending on other tests and server reuse.
     let objects = get_kms_objects_async(
         &kms_rest_client,
+        VENDOR_ID_COSMIAN,
         &[COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned()],
         None,
     )

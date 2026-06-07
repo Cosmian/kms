@@ -10,7 +10,10 @@ use cosmian_logger::debug;
 
 use crate::{
     backend,
-    blob::{EcCurve, ec_public_blob_from_spki_der, rsa_public_blob_from_spki_der},
+    blob::{
+        EcCurve, ec_public_blob_from_spki_der, ec_public_blob_from_uncompressed,
+        rsa_public_blob_from_pkcs1_der, rsa_public_blob_from_spki_der,
+    },
     error::{KspError, KspResult},
 };
 
@@ -87,6 +90,9 @@ pub struct PendingCreation {
     pub key_name: String,
     pub usage: KeyUsage,
     pub export_policy: ExportPolicy,
+    /// If set, contains a raw CNG key blob (e.g. `RSAFULLPRIVATEBLOB`) to be
+    /// imported into the KMS instead of generating a new key pair.
+    pub import_blob: Option<Vec<u8>>,
 }
 
 // ─── Key state ───────────────────────────────────────────────────────────────
@@ -120,6 +126,8 @@ pub struct CngKeyCtx {
     pub magic: u32,
     /// Shared KMS client (owned by the provider context).
     pub client: Arc<KmsClient>,
+    /// Vendor identification string for KMIP tag operations.
+    pub vendor_id: String,
     /// The key state.
     pub state: KeyState,
 }
@@ -127,9 +135,10 @@ pub struct CngKeyCtx {
 impl CngKeyCtx {
     /// Create a new context for a key that is already persisted in the KMS.
     // Box is intentional: the context is passed to Windows as a raw handle via Box::into_raw.
-    #[allow(clippy::unnecessary_box_returns)]
+    #[allow(clippy::unnecessary_box_returns, clippy::too_many_arguments)]
     pub fn new_persisted(
         client: Arc<KmsClient>,
+        vendor_id: String,
         priv_uid: String,
         pub_uid: Option<String>,
         algorithm: KeyAlgorithm,
@@ -141,6 +150,7 @@ impl CngKeyCtx {
         Box::new(Self {
             magic: KEY_CTX_MAGIC,
             client,
+            vendor_id,
             state: KeyState::Persisted {
                 priv_uid,
                 pub_uid,
@@ -155,11 +165,16 @@ impl CngKeyCtx {
     /// Create a new context for a key that is pending creation.
     // Box is intentional: the context is passed to Windows as a raw handle via Box::into_raw.
     #[allow(clippy::unnecessary_box_returns)]
-    pub fn new_pending(client: Arc<KmsClient>, pending: PendingCreation) -> Box<Self> {
+    pub fn new_pending(
+        client: Arc<KmsClient>,
+        vendor_id: String,
+        pending: PendingCreation,
+    ) -> Box<Self> {
         #[allow(clippy::box_default)]
         Box::new(Self {
             magic: KEY_CTX_MAGIC,
             client,
+            vendor_id,
             state: KeyState::Pending(pending),
         })
     }
@@ -264,19 +279,62 @@ impl CngKeyCtx {
             KeyState::Pending(p) => p.clone(),
         };
 
-        let (priv_uid, pub_uid) = match &pending.algorithm {
-            KeyAlgorithm::Rsa { bits } => {
-                let use_sign = pending.usage.contains(KeyUsage::SIGN);
-                backend::create_rsa_key_pair(&self.client, &pending.key_name, *bits, use_sign)?
-            }
-            KeyAlgorithm::Ec { curve } => {
-                use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_types::RecommendedCurve;
-                let kms_curve = match curve {
-                    EcCurve::P256 => RecommendedCurve::P256,
-                    EcCurve::P384 => RecommendedCurve::P384,
-                    EcCurve::P521 => RecommendedCurve::P521,
-                };
-                backend::create_ec_key_pair(&self.client, &pending.key_name, kms_curve)?
+        let (priv_uid, pub_uid) = if let Some(blob) = &pending.import_blob {
+            // Import key material: detect format and convert to PKCS#8 DER.
+            // The blob may be:
+            //  - PEM text (from Export-IntunePrivateKey: "-----BEGIN PRIVATE KEY-----")
+            //  - Raw PKCS#8 DER (starts with SEQUENCE tag 0x30)
+            //  - CNG RSAFULLPRIVATEBLOB (starts with magic "RSA3")
+            debug!(
+                "CNG KSP: finalize import blob len={}, first_bytes={:?}",
+                blob.len(),
+                &blob[..blob.len().min(20)]
+            );
+            let pkcs8_der = if blob.starts_with(b"-----") {
+                // PEM: strip headers and base64-decode
+                let der = decode_pem_to_der(blob)?;
+                debug!("CNG KSP: decoded PEM to {} bytes DER", der.len());
+                der
+            } else if blob.len() > 4 && &blob[0..4] == b"RSA3" {
+                // CNG RSAFULLPRIVATEBLOB binary format
+                crate::blob::pkcs8_from_rsa_full_private_blob(blob)?
+            } else {
+                // Assume raw PKCS#8 DER
+                blob.clone()
+            };
+            backend::import_rsa_private_key(
+                &self.client,
+                &self.vendor_id,
+                &pending.key_name,
+                &pkcs8_der,
+            )?
+        } else {
+            // Generate a new key pair in the KMS
+            match &pending.algorithm {
+                KeyAlgorithm::Rsa { bits } => {
+                    let use_sign = pending.usage.contains(KeyUsage::SIGN);
+                    backend::create_rsa_key_pair(
+                        &self.client,
+                        &self.vendor_id,
+                        &pending.key_name,
+                        *bits,
+                        use_sign,
+                    )?
+                }
+                KeyAlgorithm::Ec { curve } => {
+                    use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_types::RecommendedCurve;
+                    let kms_curve = match curve {
+                        EcCurve::P256 => RecommendedCurve::P256,
+                        EcCurve::P384 => RecommendedCurve::P384,
+                        EcCurve::P521 => RecommendedCurve::P521,
+                    };
+                    backend::create_ec_key_pair(
+                        &self.client,
+                        &self.vendor_id,
+                        &pending.key_name,
+                        kms_curve,
+                    )?
+                }
             }
         };
 
@@ -317,10 +375,54 @@ impl CngKeyCtx {
             }
         };
 
-        let spki_der = backend::export_public_key_spki(&self.client, pub_uid)?;
+        let key_der = backend::export_public_key_spki(&self.client, pub_uid)?;
         match alg {
-            KeyAlgorithm::Rsa { .. } => rsa_public_blob_from_spki_der(&spki_der),
-            KeyAlgorithm::Ec { .. } => ec_public_blob_from_spki_der(&spki_der, true),
+            KeyAlgorithm::Rsa { .. } => {
+                // The KMS may return either SPKI (SEQUENCE { AlgorithmId, BIT STRING })
+                // or raw PKCS#1 (SEQUENCE { INTEGER, INTEGER }) depending on
+                // how the key was stored. Try SPKI first, fall back to PKCS#1.
+                rsa_public_blob_from_spki_der(&key_der)
+                    .or_else(|_| rsa_public_blob_from_pkcs1_der(&key_der))
+            }
+            KeyAlgorithm::Ec { curve } => {
+                // Similarly for EC: try SPKI first, fall back to raw uncompressed point.
+                ec_public_blob_from_spki_der(&key_der, true)
+                    .or_else(|_| ec_public_blob_from_uncompressed(*curve, &key_der, true))
+            }
         }
     }
+
+    /// Export the private key as PKCS#8 DER bytes from the KMS.
+    ///
+    /// Used by `NCryptExportKey` with the `PKCS8_PRIVATEKEY` blob type.
+    pub fn export_private_pkcs8(&self) -> KspResult<Vec<u8>> {
+        let priv_uid = match &self.state {
+            KeyState::Persisted { priv_uid, .. } => priv_uid.as_str(),
+            KeyState::Pending(_) => {
+                return Err(KspError::InvalidParameter(
+                    "Key not yet finalized".to_owned(),
+                ));
+            }
+        };
+        backend::export_private_key_pkcs8(&self.client, priv_uid)
+    }
+}
+
+/// Decode a PEM-encoded private key to raw DER bytes.
+/// Strips `-----BEGIN ... -----` and `-----END ... -----` headers and base64-decodes.
+fn decode_pem_to_der(pem_bytes: &[u8]) -> KspResult<Vec<u8>> {
+    use base64::Engine;
+
+    let pem_str = std::str::from_utf8(pem_bytes)
+        .map_err(|_e| KspError::InvalidParameter("PEM is not valid UTF-8".into()))?;
+
+    // Collect all lines that are not headers/footers
+    let b64: String = pem_str
+        .lines()
+        .filter(|line| !line.starts_with("-----"))
+        .collect();
+
+    base64::engine::general_purpose::STANDARD
+        .decode(b64.as_bytes())
+        .map_err(|e| KspError::InvalidParameter(format!("PEM base64 decode failed: {e}")))
 }

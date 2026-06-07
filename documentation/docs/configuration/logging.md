@@ -59,22 +59,44 @@ On Linux, logs can be redirected to syslog instead of stdout by setting:
 
 ## Rolling log files
 
-The server writes daily rolling log files by default. Log files are named
-`<name>.YYYY-MM-DD`, where `<name>` defaults to `cosmian_kms`.
+The server can write daily rolling log files. File logging is **disabled** unless
+`rolling_log_dir` is explicitly configured (via `--rolling-log-dir`, the
+`KMS_ROLLING_LOG_DIR` environment variable, or the TOML configuration).
 
-When the log directory is not explicitly configured, the server uses a
-platform-specific default:
+Log files are named `<name>.YYYY-MM-DD`, where `<name>` defaults to `kms`.
 
-| Platform | Default directory                        |
-| -------- | ---------------------------------------- |
-| Linux    | `/var/log/`                              |
-| Windows  | `C:\ProgramData\Cosmian KMS Server\logs` |
-| macOS    | `~/Library/Logs/Cosmian KMS Server`      |
+When `rolling_log_dir` is set without specifying a path (e.g. via the
+configuration wizard), the recommended platform-specific defaults are:
 
-> **Note (macOS):** The previous default `/Library/Logs/Cosmian KMS Server` requires root
-> privileges. The server now defaults to `~/Library/Logs/Cosmian KMS Server` which is
-> writable by the current user. If you run the server as a LaunchDaemon (root), you may
-> override this with `--rolling-log-dir /Library/Logs/Cosmian KMS Server`.
+| Platform | Default directory                                        |
+| -------- | ------------------------------------------------------- |
+| Linux    | `/var/log/`                                             |
+| Windows  | `C:\Users\<username>\AppData\Local\Cosmian KMS Server` |
+| macOS    | `~/Library/Logs/`                                       |
+
+> **Warning (Windows):** The server does **not** expand Windows environment variables
+> such as `%LOCALAPPDATA%` in configuration files. If you override `rolling_log_dir`
+> in `kms.toml`, you must use the fully-expanded path, for example:
+>
+> ```toml
+> rolling_log_dir = "C:\\Users\\<username>\\AppData\\Local\\Cosmian KMS Server"
+> ```
+>
+> When `rolling_log_dir` is not set, the server resolves the `LOCALAPPDATA`
+> environment variable at runtime and defaults to
+> `C:\Users\<username>\AppData\Local\Cosmian KMS Server`.
+> When running as a Windows service under LocalSystem, the variable may not be set;
+> the server then falls back to `C:\ProgramData\Cosmian KMS Server`.
+>
+> **Note (macOS):** The server defaults to `~/Library/Logs/` which is the standard
+> per-user log directory on macOS and is writable without root. If you run the server
+> as a LaunchDaemon (root), you may override this with
+> `--rolling-log-dir /Library/Logs/`.
+>
+> **Graceful fallback:** If the configured rolling log directory does not exist and cannot
+> be created, or is not writable by the current process, the server disables file logging
+> with a warning message on stderr and continues operating normally. This prevents the
+> server from panicking due to inaccessible log paths.
 
 The directory and file name can be overridden via:
 

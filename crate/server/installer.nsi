@@ -391,26 +391,20 @@ Function .onInit
 
   !insertmacro SetContext
 
-  ${If} $INSTDIR == ""
-    ; Set default install location
-    !if "${INSTALLMODE}" == "perMachine"
-      ${If} ${RunningX64}
-        !if "${ARCH}" == "x64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else if "${ARCH}" == "arm64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else
-          StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-        !endif
-      ${Else}
-        StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-      ${EndIf}
-    !else if "${INSTALLMODE}" == "currentUser"
-      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
-    !endif
-
-    Call RestorePreviousInstallLocation
-  ${EndIf}
+  ; Set default install location unconditionally.
+  ; Always install under the *invoking user's* %LOCALAPPDATA% so that the
+  ; server binary, kms.toml, and rolling logs all live in the same
+  ; user-writable directory.  This keeps the installer, the wizard
+  ; (`cosmian_kms configure`), and the server's default config path
+  ; (`get_default_config_path()`) in sync.
+  ;
+  ; NOTE: In perMachine mode, SetContext sets SetShellVarContext to "all",
+  ; which makes $LOCALAPPDATA resolve to C:\ProgramData (the "all users"
+  ; equivalent).  We temporarily switch to "current" to read the real
+  ; per-user $LOCALAPPDATA, then restore the context.
+  SetShellVarContext current
+  StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
+  SetShellVarContext all
 
 
   !if "${INSTALLMODE}" == "both"
@@ -526,12 +520,27 @@ Section Install
     WriteRegStr SHCTX "Software\Classes\\{{protocol}}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
   {{/each}}
 
+  ; --- Create data directories under install directory ---
+  ; Rolling logs and SQLite data live under $INSTDIR (= %LOCALAPPDATA%\Cosmian KMS Server).
+  CreateDirectory "$INSTDIR\logs"
+  CreateDirectory "$INSTDIR\data"
+
   ; --- Register Windows Service ---
-  ; Create the service with auto-start, running as LocalSystem
-  nsExec::ExecToLog 'sc create "${SERVICENAME}" binPath= "$INSTDIR\${MAINBINARYNAME}.exe" start= auto DisplayName= "${SERVICEDISPLAYNAME}"'
+  ; Create the service with auto-start, running as LocalSystem.
+  ; Pass -c pointing to the bundled configuration file so the service finds it
+  ; regardless of its working directory.
+  nsExec::ExecToLog 'sc create "${SERVICENAME}" binPath= "\"$INSTDIR\${MAINBINARYNAME}.exe\" -c \"$INSTDIR\kms.toml\"" start= auto DisplayName= "${SERVICEDISPLAYNAME}"'
   Pop $0
   ${If} $0 != 0
-    DetailPrint "Warning: sc create returned $0"
+    ; Service may already exist (e.g. marked for deletion but handle still open,
+    ; or a previous install was not fully uninstalled).  Use 'sc config' to
+    ; update the existing service's binPath and start type.
+    DetailPrint "sc create returned $0, attempting sc config..."
+    nsExec::ExecToLog 'sc config "${SERVICENAME}" binPath= "\"$INSTDIR\${MAINBINARYNAME}.exe\" -c \"$INSTDIR\kms.toml\"" start= auto'
+    Pop $0
+    ${If} $0 != 0
+      DetailPrint "Warning: sc config also returned $0 — service may need manual setup"
+    ${EndIf}
   ${EndIf}
 
   ; Set service description
@@ -713,6 +722,10 @@ Section Uninstall
       {{/each}}
   ${EndIf}
   {{/if}}
+
+  ; --- Remove data directories created during installation ---
+  RMDir /r "$INSTDIR\logs"
+  RMDir /r "$INSTDIR\data"
 
   ${GetOptions} $CMDLINE "/P" $R0
   IfErrors +2 0

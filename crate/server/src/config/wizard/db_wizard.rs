@@ -62,7 +62,15 @@ pub fn configure_db() -> KResult<MainDBConfig> {
             .default("./sqlite-data".to_owned())
             .interact_text()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
-        PathBuf::from(p)
+        let path = PathBuf::from(&p);
+        // Create the directory tree so the server can initialise the database.
+        std::fs::create_dir_all(&path).map_err(|e| {
+            KmsError::ServerError(format!(
+                "Cannot create SQLite directory '{}': {e}",
+                path.display()
+            ))
+        })?;
+        path
     } else {
         PathBuf::from("./sqlite-data")
     };

@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # test_cng_ksp.ps1 -- End-to-end CNG KSP integration tests on Windows.
 #
 # This script exercises the full Cosmian KMS CNG KSP integration:
@@ -48,16 +48,31 @@ function Write-Step { param([string]$Msg) Write-Host "`n=== $Msg ===" -Foregroun
 function Write-Ok { param([string]$Msg) Write-Host "  [OK] $Msg" -ForegroundColor Green }
 function Write-Fail { param([string]$Msg) Write-Host "  [FAIL] $Msg" -ForegroundColor Red }
 
-# Invoke a native program and throw only on non-zero exit code.
-# In PowerShell 5.1, cargo's stderr (build progress / warnings) is converted
-# to error records.  Wrapping in try/catch absorbs those records while still
-# letting us check the real exit code via $LASTEXITCODE.
+# Invoke a native program and fail hard on non-zero exit code.
+# PowerShell 5.1 treats ANY stderr output as a NativeCommandError when
+# $ErrorActionPreference="Stop", even with file-based redirects. The only
+# reliable workaround is to run the native program via cmd /c so that
+# PowerShell never sees the stderr stream at all.
 function Invoke-Native {
     param([string]$Program, [string[]]$Arguments, [string]$FailMessage)
-    try { & $Program @Arguments } catch { }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "$FailMessage (exit code $LASTEXITCODE)"
-        exit $LASTEXITCODE
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    # Build a single command line for cmd /c.  Quote arguments that contain spaces.
+    $escapedArgs = @($Program) + ($Arguments | ForEach-Object {
+        if ($_ -match '\s') { "`"$_`"" } else { $_ }
+    })
+    $cmdLine = $escapedArgs -join ' '
+    cmd /c "$cmdLine 2>`"$stderrFile`""
+    $exitCode = $LASTEXITCODE
+    if (Test-Path $stderrFile) {
+        $stderrContent = Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue
+        if ($stderrContent) {
+            Write-Host $stderrContent -ForegroundColor DarkGray
+        }
+        Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0) {
+        Write-Host "`n  FAILED: $FailMessage (exit code $exitCode)" -ForegroundColor Red
+        exit $exitCode
     }
 }
 
@@ -89,13 +104,29 @@ function Start-KmsServer {
         exit 1
     }
 
+    # Write a minimal test config to avoid conflicts with an existing default kms.toml
+    $kmsTestConf = Join-Path $env:TEMP "kms-cng-test.toml"
+    # Double backslashes for TOML string escaping (prevents \t, \f, etc. being
+    # interpreted as TOML escape sequences).
+    $escapedSqlitePath = $SQLITE_PATH -replace '\\', '\\\\'
+    @"
+[db]
+database_type = "sqlite"
+sqlite_path = "$escapedSqlitePath"
+
+[http]
+port = $KMS_PORT
+hostname = "0.0.0.0"
+"@ | Set-Content -Path $kmsTestConf -Encoding UTF8
+
     $env:RUST_LOG = "cosmian_kms_server=info,cosmian_cng=debug"
     $script:KmsProcess = Start-Process -FilePath $kmsExe `
-        -ArgumentList "--database-type", "sqlite", "--sqlite-path", $SQLITE_PATH, "--port", $KMS_PORT `
+        -ArgumentList "-c", $kmsTestConf `
         -PassThru -NoNewWindow -RedirectStandardOutput $KMS_LOG -RedirectStandardError "${KMS_LOG}.err"
 
     if (-not (Wait-ForKms -TimeoutSec 60)) {
         Write-Error "KMS server did not start within 60 s. Log: $KMS_LOG"
+        if (Test-Path "${KMS_LOG}.err") { Get-Content "${KMS_LOG}.err" | Select-Object -First 20 | Write-Host }
         exit 1
     }
     Write-Ok "KMS server running (PID $($script:KmsProcess.Id))"
@@ -133,6 +164,10 @@ if ($env:OPENSSL_DIR) {
 # -- 1. Build -----------------------------------------------------------------
 
 Write-Step "Building KMS server, CNG KSP DLL, verification tool, and ckms CLI"
+
+# Kill any pre-existing KMS process to avoid "access denied" when overwriting the binary
+Get-Process cosmian_kms -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
 
 # Build the server binary
 Invoke-Native cargo (@("build", "--bin", "cosmian_kms", "--features", $FEATURES) + $PROFILE_FLAG) "Failed to build KMS server"
@@ -188,11 +223,27 @@ server_url = "$KMS_URL"
     $ckmsExe = Join-Path $TARGET_DIR "ckms.exe"
     if ($IsAdmin) {
         Write-Step "Registering CNG KSP in Windows registry"
+        # Unregister first in case a previous run left it registered (avoids STATUS_OBJECT_NAME_COLLISION)
+        cmd /c "`"$ckmsExe`" cng unregister 2>nul" | Out-Null
         Invoke-Native $ckmsExe @("cng", "register", "--dll", (Resolve-Path $DllPath).Path) "ckms cng register failed"
         Write-Ok "KSP registered"
 
+        # Copy ckms.toml to System32 so the DLL finds its config at runtime
+        $sys32Toml = Join-Path $env:SystemRoot "System32\ckms.toml"
+        Copy-Item -Path $CkmsToml -Destination $sys32Toml -Force
+        Write-Ok "ckms.toml deployed to $sys32Toml"
+
         Invoke-Native $ckmsExe @("cng", "status") "ckms cng status failed"
         Write-Ok "ckms cng status confirms registration"
+
+        # Verify the provider is visible to Windows via certutil
+        $cspOutput = certutil.exe -csplist 2>&1 | Select-String "Cosmian"
+        if ($cspOutput) {
+            Write-Ok "certutil -csplist shows: $($cspOutput.Line.Trim())"
+        } else {
+            Write-Fail "certutil -csplist does not list the Cosmian KSP"
+            exit 1
+        }
     } else {
         Write-Step "Skipping KSP registry registration (not Administrator)"
         Write-Host "  [SKIP] ckms cng register" -ForegroundColor Yellow
@@ -228,6 +279,120 @@ server_url = "$KMS_URL"
     Invoke-Native $ckmsExe @("cng", "status") "ckms cng status works"
     Write-Ok "ckms cng status works"
 
+    # -- 8b. Intune PFX Import workflow (Add-IntuneKspKey + Export) --------
+
+    if ($IsAdmin) {
+        Write-Step "Testing Intune PFX Import workflow (Add-IntuneKspKey + Export-IntunePublicKey)"
+
+        # Locate IntunePfxImport module: check INTUNE_PFX_MODULE_PATH env var,
+        # then well-known CI path, then skip if unavailable.
+        $intuneModulePath = $null
+        if ($env:INTUNE_PFX_MODULE_PATH -and (Test-Path $env:INTUNE_PFX_MODULE_PATH)) {
+            $intuneModulePath = $env:INTUNE_PFX_MODULE_PATH
+        } elseif (Test-Path "$PSScriptRoot\..\..\..\test_data\intune\IntunePfxImport.psd1") {
+            $intuneModulePath = Resolve-Path "$PSScriptRoot\..\..\..\test_data\intune\IntunePfxImport.psd1"
+        }
+
+        if ($intuneModulePath) {
+            Import-Module $intuneModulePath -Force
+            Write-Ok "IntunePfxImport module loaded from $intuneModulePath"
+
+            # Create an encryption key pair via Add-IntuneKspKey.
+            # This calls NCryptCreatePersistedKey → NCryptSetProperty → NCryptFinalizeKey
+            # on the Cosmian KSP. The RSA key pair is created in the KMS.
+            $intuneKeyName = "intune-pfx-test-key"
+            try {
+                Add-IntuneKspKey `
+                    -ProviderName "Cosmian KMS Key Storage Provider" `
+                    -KeyName $intuneKeyName `
+                    -MakeExportable
+                Write-Ok "Add-IntuneKspKey created key '$intuneKeyName' in Cosmian KMS"
+            } catch {
+                Write-Fail "Add-IntuneKspKey failed: $($_.Exception.Message)"
+                exit 1
+            }
+
+            # Verify the key exists via ckms list-keys (output shows UIDs, not names)
+            $listOutput = & $ckmsExe cng list-keys 2>&1 | Out-String
+            if ($listOutput -match "No CNG KSP keys found") {
+                Write-Fail "Key '$intuneKeyName' NOT found in ckms cng list-keys (no keys listed)"
+                exit 1
+            } elseif ($listOutput -match "CNG KSP keys in the KMS:") {
+                Write-Ok "Key '$intuneKeyName' visible in ckms cng list-keys"
+            } else {
+                Write-Fail "ckms cng list-keys returned unexpected output: $listOutput"
+                exit 1
+            }
+
+            # Export the public key via Export-IntunePublicKey.
+            # This calls NCryptOpenKey → NCryptExportKey (BCRYPT_RSAPUBLIC_BLOB)
+            # and writes the CNG blob to a file.
+            $exportPath = Join-Path $env:TEMP "intune-pfx-test-key.pfx"
+            if (Test-Path $exportPath) { Remove-Item -Force $exportPath }
+            try {
+                Export-IntunePublicKey `
+                    -ProviderName "Cosmian KMS Key Storage Provider" `
+                    -KeyName $intuneKeyName `
+                    -FilePath $exportPath
+            } catch {
+                Write-Fail "Export-IntunePublicKey failed: $($_.Exception.Message)"
+                exit 1
+            }
+            if (Test-Path $exportPath) {
+                $fileSize = (Get-Item $exportPath).Length
+                if ($fileSize -lt 100) {
+                    Write-Fail "Export-IntunePublicKey file too small ($fileSize bytes)"
+                    exit 1
+                }
+                Write-Ok "Export-IntunePublicKey wrote $fileSize bytes to $exportPath"
+            } else {
+                Write-Fail "Export-IntunePublicKey did not create output file"
+                exit 1
+            }
+
+            # Clean up the exported public key file
+            Remove-Item -Force $exportPath -ErrorAction SilentlyContinue
+
+            # Export the private key via Export-IntunePrivateKey.
+            # This calls NCryptOpenKey → NCryptExportKey with PKCS8_PRIVATEKEY blob type.
+            $privExportPath = Join-Path $env:TEMP "intune-pfx-test-key-priv.pfx"
+            if (Test-Path $privExportPath) { Remove-Item -Force $privExportPath }
+            Export-IntunePrivateKey `
+                -ProviderName "Cosmian KMS Key Storage Provider" `
+                -KeyName $intuneKeyName `
+                -FilePath $privExportPath
+            if (-not (Test-Path $privExportPath)) {
+                throw "Export-IntunePrivateKey did not produce output file"
+            }
+            $privFileSize = (Get-Item $privExportPath).Length
+            if ($privFileSize -eq 0) {
+                throw "Export-IntunePrivateKey produced empty file"
+            }
+            Write-Ok "Export-IntunePrivateKey wrote $privFileSize bytes"
+
+            # Import a private key via Import-IntunePrivateKey.
+            # This calls NCryptImportKey with RSAFULLPRIVATEBLOB blob type.
+            $importKeyName = "intune-pfx-import-test-key"
+            Import-IntunePrivateKey `
+                -ProviderName "Cosmian KMS Key Storage Provider" `
+                -KeyName $importKeyName `
+                -FilePath $privExportPath `
+                -MakeExportable
+            Write-Ok "Import-IntunePrivateKey succeeded"
+
+            # Clean up
+            Remove-Item -Force $privExportPath -ErrorAction SilentlyContinue
+
+            Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublic + ExportPrivate + Import)"
+        } else {
+            Write-Host "  [SKIP] IntunePfxImport module not found (set INTUNE_PFX_MODULE_PATH)" -ForegroundColor Yellow
+            Write-Host "         To enable: download IntunePfxImportUtilities and set the env var" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Step "Skipping Intune PFX Import test (not Administrator)"
+        Write-Host "  [SKIP] Add-IntuneKspKey requires a registered KSP (Administrator)" -ForegroundColor Yellow
+    }
+
     # -- 9. Check KMS server logs for errors ------------------------------
 
     Write-Step "Checking KMS server logs for errors"
@@ -255,6 +420,9 @@ server_url = "$KMS_URL"
         } else {
             Write-Ok "KSP unregistered"
         }
+        # Remove ckms.toml from System32
+        $sys32Toml = Join-Path $env:SystemRoot "System32\ckms.toml"
+        Remove-Item -Path $sys32Toml -Force -ErrorAction SilentlyContinue
     } else {
         Write-Step "Skipping KSP unregistration (not Administrator)"
         Write-Host "  [SKIP] ckms cng unregister" -ForegroundColor Yellow

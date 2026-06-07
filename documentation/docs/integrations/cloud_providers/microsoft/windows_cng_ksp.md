@@ -204,8 +204,8 @@ certificate), or unauthenticated (for local dev/test only).
 | KSP error | SECURITY_STATUS returned |
 |---|---|
 | Handle invalid / null | `NTE_INVALID_HANDLE` (`0x80090026`) |
-| Key not found in KMS | `NTE_NO_KEY` (`0x80090008`) |
-| Algorithm not in supported list | `NTE_BAD_ALGID` (`0x8009000D`) |
+| Key not found in KMS | `NTE_BAD_KEYSET` (`0x80090016`) |
+| Algorithm not in supported list | `NTE_BAD_ALGID` (`0x80090008`) |
 | Export requested on non-exportable key | `NTE_PERM` (`0x80090010`) |
 | Output buffer too small | `NTE_BUFFER_TOO_SMALL` (`0x80090028`) |
 | Any KMS REST error | `NTE_FAIL` (`0x8009002A`) |
@@ -258,15 +258,15 @@ Start-Process -FilePath "$env:TEMP\cosmian-kms-cli.exe" -ArgumentList "/S" -Wait
 The installer places both files in the default installation directory:
 
 ```text
-C:\Program Files\Cosmian\Kms\ckms.exe
-C:\Program Files\Cosmian\Kms\cosmian_cng.dll
+C:\Users\<username>\AppData\Local\Cosmian KMS CLI\ckms.exe
+C:\Users\<username>\AppData\Local\Cosmian KMS CLI\cosmian_cng.dll
 ```
 
-Ensure `C:\Program Files\Cosmian\Kms` is on your `PATH` (the installer does
-this automatically for system-wide installs):
+Ensure the installation directory is on your `PATH` (the installer does
+this automatically):
 
 ```powershell
-$env:PATH += ";C:\Program Files\Cosmian\Kms"
+$env:PATH += ";$env:LOCALAPPDATA\Cosmian KMS CLI"
 ```
 
 ### 2. Configure the KMS connection
@@ -287,7 +287,7 @@ Before registering the KSP, confirm that the DLL loads correctly and can reach
 the KMS server:
 
 ```powershell
-ckms cng verify --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+ckms cng verify --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
 ```
 
 Expected output (with a running KMS):
@@ -295,7 +295,7 @@ Expected output (with a running KMS):
 ```text
 === Cosmian CNG KSP Verification ===
 
-Loading DLL: C:\Program Files\Cosmian\Kms\cosmian_cng.dll
+Loading DLL: C:\Users\<user>\AppData\Local\Cosmian KMS CLI\cosmian_cng.dll
 
   [OK]   OpenProvider
 ── RSA key pair + sign + export + lookup ──
@@ -312,23 +312,37 @@ the KMS server — check `ckms.toml` and network connectivity before proceeding.
 
 ```powershell
 # From an elevated PowerShell prompt:
-ckms cng register --dll "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
+ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
 ```
 
-This writes the following registry key:
+This performs the following steps:
+
+1. Copies `cosmian_cng.dll` to `%SystemRoot%\System32` (CNG resolves provider
+   DLLs from that directory)
+2. Calls `BCryptRegisterProvider` to create the proper registry structure:
 
 ```text
 HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
     Cosmian KMS Key Storage Provider\
-        DllFileName  REG_SZ  "C:\Program Files\Cosmian\Kms\cosmian_cng.dll"
-        Capabilities REG_DWORD  2  (NCRYPT_IMPL_SOFTWARE_FLAG)
+        UM\
+            Image        REG_SZ     "cosmian_cng.dll"
+            00010001\
+                (Default)   REG_SZ         "CRYPT_KEY_STORAGE_INTERFACE"
+                Functions   REG_MULTI_SZ   "KEY_STORAGE"
 ```
+
+3. Calls `BCryptAddContextFunctionProvider` to make the provider discoverable by
+   `NCryptOpenStorageProvider` and `certutil -csplist`
 
 ### 5. Verify registration
 
 ```powershell
 ckms cng status
 # Expected: Cosmian KMS CNG KSP: REGISTERED
+
+# Also verify Windows sees the provider:
+certutil -csplist | Select-String "Cosmian"
+# Expected output includes: "Cosmian KMS Key Storage Provider"
 ```
 
 ---
@@ -464,6 +478,72 @@ Set **Key storage provider (KSP)** to
 The Intune PKCS connector will use the Cosmian KSP to generate the key pair on
 the device.
 
+### Imported PFX certificate (PFXImport PowerShell module)
+
+For importing existing PFX certificates via the
+[IntunePfxImport](https://learn.microsoft.com/en-us/mem/intune/protect/certificates-imported-pfx-configure)
+PowerShell module, follow these steps on the Certificate Connector server:
+
+1. **Ensure the KMS server is running** and reachable (e.g. `http://localhost:9998`).
+
+2. **Register the KSP** (see [Installation](#installation) above):
+
+    ```powershell
+    ckms cng register --dll "$env:LOCALAPPDATA\Cosmian KMS CLI\cosmian_cng.dll"
+    ```
+
+3. **Verify Windows discovers the provider**:
+
+    ```powershell
+    certutil -csplist | Select-String "Cosmian"
+    # Expected: "Cosmian KMS Key Storage Provider"
+    ```
+
+4. **Import the IntunePfxImport module** (from the
+   [IntunePfxImportUtilities](https://github.com/microsoft/Intune-Resource-Access/tree/develop/src/PFXImportPowershell)
+   release folder):
+
+    ```powershell
+    Import-Module .\IntunePfxImport.psd1
+    ```
+
+5. **Create the encryption key pair** in Cosmian KMS:
+
+    ```powershell
+    Add-IntuneKspKey `
+        -ProviderName "Cosmian KMS Key Storage Provider" `
+        -KeyName "PFXEncryptionKey" `
+        -MakeExportable
+    ```
+
+    This calls `NCryptCreatePersistedKey` → `NCryptSetProperty(Export Policy)` →
+    `NCryptFinalizeKey` on the Cosmian KSP. The RSA key pair is created and
+    stored exclusively in Cosmian KMS. The `-MakeExportable` flag sets the
+    `NCRYPT_ALLOW_EXPORT_FLAG` so the public key can be exported for use on
+    other connector servers.
+
+6. **Export the public key** (if multiple connector servers share the key):
+
+    ```powershell
+    Export-IntunePublicKey `
+        -ProviderName "Cosmian KMS Key Storage Provider" `
+        -KeyName "PFXEncryptionKey" `
+        -FilePath "C:\temp\PFXEncryptionKey.pfx"
+    ```
+
+7. **Import PFX certificates** to Intune using the key:
+
+    ```powershell
+    $userPFXObject = New-IntuneUserPfxCertificate `
+        -PathToPfxFile "C:\temp\userA.pfx" `
+        $SecureFilePassword `
+        "userA@contoso.com" `
+        "Cosmian KMS Key Storage Provider" `
+        "PFXEncryptionKey" `
+        "smimeEncryption"
+    Import-IntuneUserPfxCertificate -CertificateList $userPFXObject
+    ```
+
 ### Remote key revocation for lost devices
 
 When a device is lost or decommissioned:
@@ -505,6 +585,7 @@ run against a **local Cosmian KMS server** with a SQLite backend.
 | **Rust lib tests** | Backend functions (`backend::create_rsa_key_pair`, `sign_hash`, `list_cng_keys`, …) via an in-process KMS | `cargo test --lib -p cosmian_cng` | `crate/clients/cng/src/tests.rs` |
 | **DLL surface tests** | Loads `cosmian_cng.dll` at runtime, calls `GetKeyStorageInterface`, exercises every `NCrypt*` function pointer against a live KMS | `ckms cng verify --dll <path>` | `crate/clients/clap/src/actions/cng_verify.rs` |
 | **CLI commands** | `ckms cng register`, `status`, `list-keys`, `unregister` | PowerShell assertions | `.github/scripts/windows/test_cng_ksp.ps1` |
+| **Intune PFX Import** | `Add-IntuneKspKey` + `Export-IntunePublicKey` via the `IntunePfxImportUtilities` module against the registered KSP | PowerShell (requires Admin + module) | `.github/scripts/windows/test_cng_ksp.ps1` |
 
 ### Running the full test suite
 
@@ -524,6 +605,7 @@ sequenceDiagram
     participant Reg as Windows Registry
     participant Verify as cng_verify.exe
     participant Tests as cargo test
+    participant Intune as IntunePfxImport module
 
     PS->>Build: 1. Build KMS server, cosmian_cng.dll, cng_verify, ckms
     Build-->>PS: Binaries ready
@@ -542,6 +624,10 @@ sequenceDiagram
     Tests-->>PS: Tests passed
     PS->>KMS: 8. ckms cng list-keys / ckms cng status
     KMS-->>PS: Key list and status
+    PS->>Intune: 8b. Add-IntuneKspKey + Export-IntunePublicKey
+    Intune->>KMS: NCryptCreatePersistedKey → NCryptFinalizeKey → NCryptExportKey
+    KMS-->>Intune: Key created + public blob exported
+    Intune-->>PS: Intune PFX workflow passed
     PS->>PS: 9. Parse KMS logs for ERROR / PANIC
     PS->>Reg: 10. ckms cng unregister (remove HKLM KSP key)
     PS->>KMS: Stop KMS server
@@ -561,7 +647,7 @@ The **cng_verify** tool exercises the following NCrypt operations against a live
 | ECDSA signature verify (P-256) | `SignHash` → `VerifySignature` |
 | EC P-384 key pair + sign | `CreatePersistedKey` → `FinalizeKey` → `ExportKey` → `SignHash` (SHA-384) |
 | EC P-521 key pair + export | `CreatePersistedKey` → `FinalizeKey` → `ExportKey` |
-| DeleteKey + verify gone | `DeleteKey` → `OpenKey` (expect `NTE_NO_KEY`) |
+| DeleteKey + verify gone | `DeleteKey` → `OpenKey` (expect `NTE_BAD_KEYSET`) |
 
 ### Environment variables
 
@@ -573,6 +659,7 @@ The **cng_verify** tool exercises the following NCrypt operations against a live
 | `CNG_TEST_RELEASE` | `0` | Set to `1` to build and test in release mode |
 | `RUST_LOG` | `cosmian_kms_server=info,cosmian_cng=debug` | Log verbosity for KMS server and DLL |
 | `COSMIAN_CNG_KSP_LOGGING_LEVEL` | `info` | DLL-specific logging (trace/debug/info/warn/error) |
+| `INTUNE_PFX_MODULE_PATH` | — | Path to `IntunePfxImport.psd1`; enables the Intune PFX Import test step |
 
 ### Testing the Intune enrollment flow
 
@@ -597,7 +684,7 @@ not in CI.
 | Problem | Likely cause | Solution |
 |---|---|---|
 | `NTE_FAIL` on `OpenKey` or `CreatePersistedKey` | `ckms.toml` missing or KMS unreachable | Verify `ckms.toml` is present and `server_url` is reachable (`curl https://<kms>/kmip/2_1`). |
-| `NTE_NO_KEY` on `OpenKey` | Key name not found in the KMS | Run `ckms cng list-keys`; verify the name and that the `cng-ksp::<name>` tag exists. |
+| `NTE_BAD_KEYSET` on `OpenKey` | Key name not found in the KMS | Run `ckms cng list-keys`; verify the name and that the `cng-ksp::<name>` tag exists. |
 | `NTE_PERM` on `ExportKey` | Export policy disabled (by design) | Private key export is intentionally blocked. Use `ExportKey` only for public key blobs. |
 | `NTE_BAD_ALGID` | Algorithm string not recognised | Use `RSA`, `ECDSA_P256`, `ECDSA_P384`, `ECDSA_P521`, `ECDH_P256`, `ECDH_P384`, or `ECDH_P521`. |
 | `RegCreateKeyExW` returns `0x80070005` (Access Denied) | Not running as Administrator | Run `ckms cng register` from an elevated PowerShell prompt. |

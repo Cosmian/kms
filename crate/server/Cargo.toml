@@ -117,6 +117,9 @@ uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
+
 [dev-dependencies]
 actix-http = { workspace = true }
 cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.23.0" }

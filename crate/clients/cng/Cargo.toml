@@ -24,6 +24,7 @@ doctest = false
 non-fips = ["ckms/non-fips", "test_kms_server/non-fips"]
 
 [dependencies]
+base64 = { workspace = true }
 bitflags = { workspace = true }
 ckms = { path = "../ckms", version = "5.23.0" }
 cosmian_logger = { workspace = true }
