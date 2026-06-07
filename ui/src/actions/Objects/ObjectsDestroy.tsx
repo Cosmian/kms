@@ -6,6 +6,7 @@ import { getObjectLabel, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
 import LocateButton from "../../components/common/LocateButton";
+import LocateButton from "../../components/common/LocateButton";
 
 interface DestroyFormData {
     objectId?: string;
