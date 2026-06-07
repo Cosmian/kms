@@ -130,6 +130,16 @@ exclude = [
   # IBM docs — returns 503 Service Unavailable (Guardium CM TDE guide)
   'www\.ibm\.com',
 
+  # IBM documentation — occasionally returns 503 to automated crawlers
+  'ibm\.com',
+
+  # Shell variable references in workflow files parsed as URLs by lychee
+  'file://\$dest',
+
+  # `file://` URIs are local-filesystem examples in Rust doc comments
+  # (e.g. `path_to_file_uri`) — never real web links to check.
+  'file://',
+
   # Kubernetes SIG documentation site — resets connections from automated crawlers
   'secrets-store-csi-driver\.sigs\.k8s\.io',
   # kubernetes.io — connection failures from CI runners

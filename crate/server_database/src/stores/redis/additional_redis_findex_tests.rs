@@ -432,6 +432,7 @@ pub(crate) async fn test_live_count_counter() -> DbResult<()> {
             &key1,
             key1.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
     let uid2 = db
@@ -441,6 +442,7 @@ pub(crate) async fn test_live_count_counter() -> DbResult<()> {
             &key2,
             key2.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
     let uid3 = db
@@ -450,6 +452,7 @@ pub(crate) async fn test_live_count_counter() -> DbResult<()> {
             &key3,
             key3.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
 
@@ -552,6 +555,7 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
             &key1,
             key1.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
     let uid_key2 = db
@@ -561,6 +565,7 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
             &key2,
             key2.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
 
@@ -579,6 +584,7 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
             &opaque,
             &Attributes::default(),
             &HashSet::new(),
+            "",
         )
         .await?;
     let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;

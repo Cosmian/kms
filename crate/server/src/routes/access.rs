@@ -17,7 +17,7 @@ use tracing::info as trace_info;
 
 use crate::{
     core::{
-        KMS, operations::perform_crypto_officer_ceremony_activation,
+        KMS, opa::OPA_USER_CONTEXT, operations::perform_crypto_officer_ceremony_activation,
         retrieve_object_utils::user_has_permission,
     },
     middlewares::UserId,
@@ -161,19 +161,24 @@ pub(crate) async fn get_create_access(
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
+    let opa_ctx = kms.extract_opa_context(&req);
 
     let has_create_permission = {
         let co_users = &kms.params.crypto_officer.users;
         if co_users.is_empty() || co_users.iter().any(|u| u == user.as_str()) {
             true
         } else {
-            user_has_permission(
-                &user,
-                None,
-                &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-                &kms,
-            )
-            .await?
+            OPA_USER_CONTEXT
+                .scope(
+                    opa_ctx,
+                    user_has_permission(
+                        &user,
+                        None,
+                        &cosmian_kmip::kmip_2_1::KmipOperation::Create,
+                        &kms,
+                    ),
+                )
+                .await?
         }
     };
     Ok(Json(CreatePermissionResponse {

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AuthVerifierConfig, CrlConfig, GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig,
-    JwksEndpointConfig, KmipPolicyConfig, MainDBConfig, RolesConfig, WorkspaceConfig,
+    JwksEndpointConfig,OpaConfig, KmipPolicyConfig, MainDBConfig, RolesConfig, WorkspaceConfig,
     logging::LoggingConfig, secret_backends::SecretBackendConfig, ui_config::UiConfig,
     vault_config::VaultConfig,
 };
@@ -53,7 +53,6 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             idp_auth: IdpAuthConfig::default(),
-            auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -72,6 +71,7 @@ impl Default for ClapConfig {
             roles: RolesConfig::default(),
             privileged_users: None,
             aws_xks_config: AwsXksConfig::default(),
+            opa: OpaConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
@@ -80,6 +80,7 @@ impl Default for ClapConfig {
             secret_backends: SecretBackendConfig::default(),
             vault: VaultConfig::default(),
             crl: CrlConfig::default(),
+            auth_verifier: AuthVerifierConfig::default(),
         }
     }
 }
@@ -221,17 +222,27 @@ pub struct ClapConfig {
     /// if set and `[roles] crypto_officer_users` is not configured, these users
     /// are promoted to the `CryptoOfficer` role automatically on startup.
     #[clap(long, hide = true, verbatim_doc_comment)]
+    /// **Deprecated** — use `--crypto-officer-users` (under `[roles]`) instead.
+    ///
+    /// List of users who have the right to create and import objects and grant
+    /// the `Create` access right to other users. Kept for backward compatibility;
+    /// if set and `[roles] crypto_officer_users` is not configured, these users
+    /// are promoted to the `CryptoOfficer` role automatically on startup.
+    #[clap(long, hide = true, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
 
+    #[clap(flatten)]
     /// RBAC role assignments (`CryptoOfficer`).
     /// Users not listed in any role default to `Operator` (minimum privilege).
     /// In TOML these fields live under the `[roles]` section.
-    #[clap(flatten)]
     #[serde(default, rename = "roles")]
     pub roles: RolesConfig,
 
     #[clap(flatten)]
     pub aws_xks_config: AwsXksConfig,
+
+    #[clap(flatten)]
+    pub opa: OpaConfig,
 
     /// KMIP algorithm policy.
     ///
@@ -494,6 +505,7 @@ impl ClapConfig {
         //  4. Deserialize into `ClapConfig`, collecting any unknown fields as errors.
         //     `serde_ignored` wraps the deserializer and calls the callback for every
         //     field the target type does not recognize — including fields that bubble up
+        //     field the target type does not recognize — including fields that bubble up
         //     via `#[serde(flatten)]` (e.g. `HsmConfig`), where `deny_unknown_fields`
         //     would conflict with the flatten and cannot be used directly.
         let load_file = |p: &PathBuf| -> KResult<Self> {
@@ -738,6 +750,8 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("non_revocable_key_id", &self.non_revocable_key_id);
         let x = x.field("privileged_users (deprecated)", &self.privileged_users);
         let x = x.field("roles", &self.roles);
+        let x = x.field("privileged_users (deprecated)", &self.privileged_users);
+        let x = x.field("roles", &self.roles);
 
         let x = x.field("aws_xks_config", &self.aws_xks_config);
         let x = if self.aws_xks_config.aws_xks_enable {
@@ -761,6 +775,7 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = x.field("opa", &self.opa);
 
         x.finish()
     }

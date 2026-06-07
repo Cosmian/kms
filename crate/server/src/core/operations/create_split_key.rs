@@ -369,6 +369,7 @@ pub(crate) async fn create_split_key(
                 &split_key_obj,
                 &share_attrs,
                 &tags,
+                "",
             )
             .await
         {

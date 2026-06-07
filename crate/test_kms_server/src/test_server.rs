@@ -144,7 +144,7 @@ fn root_dir() -> PathBuf {
 
 /// Returns the absolute path to a test server TOML configuration file.
 ///
-/// `name` should be just the filename (e.g. `"auth_plain.toml"`).
+/// `name` should be a path relative to `test_data/configs/server` (e.g. `"auth/plain.toml"`).
 /// This resolves correctly regardless of which crate is calling it.
 #[must_use]
 pub fn test_config_path(name: &str) -> PathBuf {

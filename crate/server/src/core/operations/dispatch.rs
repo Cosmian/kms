@@ -234,6 +234,9 @@ async fn dispatch_inner(
     // Enforce role-based access control before any other check.
     check_role_permission(kms, user, operation_tag, &kms.params.crypto_officer).await?;
 
+    // Enforce role-based access control before any other check.
+    check_role_permission(kms, user, operation_tag, &kms.params.crypto_officer).await?;
+
     // For operations where the request carries algorithm choices, validate them
     // before executing any cryptographic action.  Skip entirely when no policy
     // is configured — avoids a function call + match on every dispatch.

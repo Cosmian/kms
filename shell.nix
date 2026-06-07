@@ -123,6 +123,11 @@ pkgs.mkShell {
     # zlib is needed on macOS in Nix pure mode (-nodefaultlibs strips system /usr/lib).
     # Including it here puts its path into NIX_LDFLAGS so the Nix cc-wrapper can find -lz.
     pkgs.zlib
+    # Provide the Nix-native mold linker so local developer cargo configs that set
+    # `-fuse-ld=mold` work inside the pure nix-shell.  The system /usr/bin/ld.mold
+    # links against a newer libstdc++ (CXXABI_1.3.15) that is absent from the Nix
+    # gcc-13.3.0-lib; the Nix mold is ABI-compatible with the Nix toolchain.
+    pkgs.mold
   ]
   ++ (
     if withWasm then
@@ -255,9 +260,8 @@ pkgs.mkShell {
           unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
         fi
       else
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
-
       # Preload bootstrap so even statically linked libcrypto gets providers + properties
       if [ -f "${opensslFipsBootstrap}/lib/libopenssl_fips_bootstrap.so" ]; then
         export LD_PRELOAD="${opensslFipsBootstrap}/lib/libopenssl_fips_bootstrap.so''${LD_PRELOAD:+:$LD_PRELOAD}"
@@ -295,7 +299,7 @@ pkgs.mkShell {
           unset NIX_LD_LIBRARY_PATH NIX_CFLAGS_COMPILE NIX_LDFLAGS || true
         fi
       else
-        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.gcc.cc.lib}/lib:${pkgs.zlib}/lib:$OPENSSL_PKG_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       fi
     fi
 

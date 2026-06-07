@@ -189,12 +189,17 @@ impl Database {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        domain: &str,
     ) -> DbResult<String> {
         self.record("create", async move {
             let db = self
                 .get_object_store(uid.as_deref().unwrap_or_default())
                 .await?;
-            Ok(db.create(uid, owner, object, attributes, tags).await?)
+            let uid = db
+                .create(uid, owner, object, attributes, tags, domain)
+                .await?;
+            // New objects never have a cache entry; nothing to invalidate.
+            Ok(uid)
         })
         .await
     }

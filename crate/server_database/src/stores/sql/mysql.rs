@@ -79,6 +79,7 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
     let attrs_json: Value = row.get(2).context("missing attributes")?;
     let owner: String = row.get(3).context("missing owner")?;
     let state_str: String = row.get(4).context("missing state")?;
+    let domain: String = row.get(5).unwrap_or_default();
     let object: Object =
         serde_json::from_str(&object_json).context("failed deserializing the object")?;
     let object = migrate_block_cipher_mode_if_needed(object);
@@ -86,7 +87,7 @@ fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbErr
         serde_json::from_value(attrs_json).context("failed deserializing the Attributes")?;
     let state = State::try_from(state_str.as_str()).context("failed converting the state")?;
     Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
+        id, object, owner, state, attributes, domain,
     ))
 }
 
@@ -444,6 +445,7 @@ impl ObjectsStore for MySqlPool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        domain: &str,
     ) -> InterfaceResult<String> {
         async fn transact(
             tx: &mut Transaction<'_>,
@@ -452,8 +454,9 @@ impl ObjectsStore for MySqlPool {
             object: &Object,
             attributes: &Attributes,
             tags: &HashSet<String>,
+            domain: &str,
         ) -> DbResult<String> {
-            create_(uid, owner, object, attributes, tags, tx).await
+            create_(uid, owner, object, attributes, tags, domain, tx).await
         }
         let max_retries = MYSQL_DEADLOCK_MAX_RETRIES;
         for attempt in 0..max_retries {
@@ -462,7 +465,17 @@ impl ObjectsStore for MySqlPool {
                 .start_transaction(mysql_async::TxOpts::default())
                 .await
                 .map_err(DbError::from)?;
-            match transact(&mut tx, uid.clone(), owner, object, attributes, tags).await {
+            match transact(
+                &mut tx,
+                uid.clone(),
+                owner,
+                object,
+                attributes,
+                tags,
+                domain,
+            )
+            .await
+            {
                 Ok(v) => match tx.commit().await {
                     Ok(()) => return Ok(v),
                     Err(e) => {
@@ -1084,6 +1097,7 @@ pub(super) async fn create_(
     object: &Object,
     attributes: &Attributes,
     tags: &HashSet<String>,
+    domain: &str,
     tx: &mut Transaction<'_>,
 ) -> DbResult<String> {
     let object_json = serde_json::to_string_pretty(object).map_err(|e| {
@@ -1103,6 +1117,7 @@ pub(super) async fn create_(
             attributes.state.unwrap_or(State::PreActive).to_string(),
             owner.to_owned(),
             wrapping_key_id,
+            domain.to_owned(),
         ),
     )
     .await
@@ -1535,7 +1550,7 @@ pub(super) async fn atomic_(
         match operation {
             AtomicOperation::Create((uid, _owner_field, object, attributes, tags)) => {
                 if let Err(e) =
-                    create_(Some(uid.clone()), owner, object, attributes, tags, tx).await
+                    create_(Some(uid.clone()), owner, object, attributes, tags, "", tx).await
                 {
                     db_bail!("creation of object {uid} failed: {e}");
                 }

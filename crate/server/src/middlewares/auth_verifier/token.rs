@@ -72,6 +72,8 @@ pub(super) async fn handle_auth_verifier(
     Ok(AuthenticatedUser {
         username: username.into(),
         auth_method: AuthMethod::AuthVerifierJwt,
+        domain: None,
+        roles: vec![],
     })
 }
 

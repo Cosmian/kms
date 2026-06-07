@@ -236,8 +236,8 @@ mod tests {
         config::{
             AuthVerifierConfig, AzureEkmConfig, ClapConfig, CrlConfig, GoogleCseConfig, HttpConfig,
             IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig,
-            OidcConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig, UiConfig,
-            WorkspaceConfig,
+            OidcConfig, OpaConfig, ProxyConfig, RolesConfig, SocketServerConfig, TlsConfig,
+            UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
@@ -374,6 +374,7 @@ mod tests {
             roles: RolesConfig::default(),
             print_default_config: false,
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
+            opa: OpaConfig::default(),
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
             vault: cosmian_kms_server::config::VaultConfig::default(),
@@ -477,6 +478,9 @@ aws_xks_region = "us-east-1"
 aws_xks_service = "kms-xks-proxy"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+[opa]
+opa_mode = ""
 
 [kmip.allowlists]
 

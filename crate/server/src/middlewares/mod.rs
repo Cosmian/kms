@@ -90,4 +90,9 @@ pub(crate) struct AuthenticatedUser {
     pub username: UserId,
     /// Which authentication method was used
     pub auth_method: AuthMethod,
+    /// RBAC roles from JWT (empty if not present)
+    pub roles: Vec<String>,
+    /// Domain from JWT `as_rid` claim (realm ID from auth server).
+    /// Legacy tokens may carry the same value as `as_domain`.
+    pub domain: Option<String>,
 }

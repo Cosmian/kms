@@ -26,11 +26,11 @@ static ONCE_VECTOR_POSTGRESQL: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_MYSQL: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests on the `Redis-findex` backend.
 static ONCE_VECTOR_REDIS_FINDEX: OnceCell<TestsContext> = OnceCell::const_new();
-/// Singleton server for vector tests requiring mTLS cert-auth (`cert_auth.toml`).
+/// Singleton server for vector tests requiring mTLS cert-auth (`auth/cert.toml`).
 static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
-/// Singleton server for vector tests requiring server-only TLS (`auth_https.toml`).
+/// Singleton server for vector tests requiring server-only TLS (`auth/tls.toml`).
 static ONCE_VECTOR_AUTH_HTTPS: OnceCell<TestsContext> = OnceCell::const_new();
-/// Singleton server for Operator/CryptoOfficer test vectors (`cert_auth_operator_and_crypto_officer.toml`).
+/// Singleton server for Operator/CryptoOfficer test vectors (`auth/cert_roles.toml`).
 static ONCE_VECTOR_CERT_AUTH_OPERATOR_CRYPTO_OFFICER: OnceCell<TestsContext> =
     OnceCell::const_new();
 /// Singleton server for vector tests requiring `SoftHSM2` + KEK.
@@ -158,18 +158,39 @@ pub struct TestManifest {
     pub steps: Vec<TestStep>,
 }
 
-/// TLS client-certificate identity for a specific user in a test vector.
+/// Client identity for a specific user in a test vector.
 ///
-/// Paths are relative to the repository root.
-/// On macOS (native-tls / Security.framework), PEM identity loading is not
-/// supported. The runner auto-detects a `.p12` file next to the `.crt` and
-/// uses it with password `"password"` (standard test infrastructure convention).
+/// Supports two mutually exclusive authentication modes:
+/// - **mTLS** (`client_cert` + `client_key`): paths relative to the repository root.
+/// - **JWT** (`access_token_env`): the named env var holds a Bearer JWT.
+///
+/// When `access_token_env` is set the mTLS fields are ignored.
 #[derive(Debug, Deserialize, Clone)]
 pub struct IdentityConfig {
-    /// Path to the PEM client certificate
+    /// Path to the PEM client certificate (mTLS identity).
+    /// Leave empty when `access_token_env` is set.
+    #[serde(default)]
     pub client_cert: String,
-    /// Path to the PEM client private key
+    /// Path to the PEM client private key (mTLS identity).
+    /// Leave empty when `access_token_env` is set.
+    #[serde(default)]
     pub client_key: String,
+    /// Name of an environment variable that holds a Bearer JWT for this identity.
+    ///
+    /// When set, the runner reads the JWT from the named env var and uses it
+    /// as the `access_token` for all requests from this identity.  `client_cert`
+    /// and `client_key` are ignored when this field is present.
+    ///
+    /// The env var must be populated (e.g. by the test-setup function) before
+    /// the vector executes.
+    ///
+    /// Example:
+    /// ```toml
+    /// [identities.user_role]
+    /// access_token_env = "KMS_TEST_OPA_USER_ROLE_JWT"
+    /// ```
+    #[serde(default)]
+    pub access_token_env: Option<String>,
 }
 
 /// Captures the Nth occurrence of a repeated TTLV tag from a response.
@@ -1289,8 +1310,12 @@ async fn execute_generate_crl_step(
 
 /// Build one `KmsClient` per named identity declared in `manifest.identities`.
 ///
-/// Always uses PEM (`.crt` + `.key`) so the runner works in both FIPS and
-/// non-FIPS builds (PKCS12KDF is not available in FIPS mode).
+/// Two identity modes are supported:
+/// - **mTLS**: `client_cert` + `client_key` fields point to PEM files.
+/// - **JWT**: `access_token_env` names an env var that holds the Bearer token.
+///
+/// Always uses PEM (not PKCS#12) for mTLS so the runner works in both FIPS and
+/// non-FIPS builds (`PKCS12KDF` is not available in FIPS mode).
 fn build_identity_clients(
     context: &TestsContext,
     manifest: &TestManifest,
@@ -1298,13 +1323,38 @@ fn build_identity_clients(
 ) -> Result<HashMap<String, KmsClient>, KmsClientError> {
     let mut identity_clients: HashMap<String, KmsClient> = HashMap::new();
     for (name, id_cfg) in &manifest.identities {
-        let cert_path = root.join(&id_cfg.client_cert);
-        let key_path = root.join(&id_cfg.client_key);
         let mut http_cfg = context.owner_client_config.http_config.clone();
-        http_cfg.tls_client_pem_cert_path = Some(cert_path.to_string_lossy().into_owned());
-        http_cfg.tls_client_pem_key_path = Some(key_path.to_string_lossy().into_owned());
+
+        // Always clear PKCS#12 — only PEM-based mTLS is supported in the vector runner.
         http_cfg.tls_client_pkcs12_path = None;
         http_cfg.tls_client_pkcs12_password = None;
+
+        if let Some(env_name) = &id_cfg.access_token_env {
+            // JWT-based identity: read the Bearer token from the named env var.
+            let jwt = std::env::var(env_name).map_err(|_e| {
+                KmsClientError::UnexpectedError(format!(
+                    "identity '{name}': env var '{env_name}' (access_token_env) is not set"
+                ))
+            })?;
+            // Strip an optional "Bearer " prefix: the HTTP client adds it when building
+            // the Authorization header, so storing a pre-prefixed value would produce
+            // "Authorization: Bearer Bearer <token>" and fail authentication.
+            let jwt = jwt
+                .strip_prefix("Bearer ")
+                .map(str::to_owned)
+                .unwrap_or(jwt);
+            http_cfg.access_token = Some(jwt);
+            // Clear any mTLS settings inherited from the context config.
+            http_cfg.tls_client_pem_cert_path = None;
+            http_cfg.tls_client_pem_key_path = None;
+        } else {
+            // mTLS identity: use certificate + key paths from the manifest.
+            let cert_path = root.join(&id_cfg.client_cert);
+            let key_path = root.join(&id_cfg.client_key);
+            http_cfg.tls_client_pem_cert_path = Some(cert_path.to_string_lossy().into_owned());
+            http_cfg.tls_client_pem_key_path = Some(key_path.to_string_lossy().into_owned());
+        }
+
         let cfg = KmsClientConfig {
             http_config: http_cfg,
             vendor_id: VENDOR_ID_COSMIAN.to_owned(),
@@ -5130,5 +5180,648 @@ ObjectType = "SymmetricKey"
             vector_dirs.len()
         );
         Ok(())
+    }
+
+    // ── OPA authorization policy vectors ────────────────────────────────────────
+    // Mode 1 (disabled): no OPA — baseline that proves the infrastructure does not
+    // break normal owner operations.
+    // Mode 2 (exclusive): OPA is the sole authority; KMS legacy check is skipped.
+    // Mode 3 (enforcing): both OPA and KMS legacy must allow.
+    //
+    // "allowed" variants require KMS_OPA_URL + KMS_AUTH_SERVER_URL (real services).
+    // "denied"  variants require KMS_OPA_URL only (mTLS two-cert scenario).
+    // All four external-service tests skip gracefully when the env vars are absent.
+
+    /// Singleton OPA-enabled KMS servers (one per mode × `test_type`).
+    static ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED: OnceCell<TestsContext> = OnceCell::const_new();
+    /// Shared cert-auth OPA server for both exclusive and enforcing "denied" variants.
+    /// Both modes exercise the same scenario (non-owner, no roles → deny), so a single
+    /// server avoids concurrent macOS Keychain PKCS#12 loading conflicts.
+    static ONCE_VECTOR_OPA_DENIED: OnceCell<TestsContext> = OnceCell::const_new();
+    static ONCE_VECTOR_OPA_ENFORCING_ALLOWED: OnceCell<TestsContext> = OnceCell::const_new();
+
+    /// `CryptoOfficer` JWT obtained from the auth server, cached for the process lifetime.
+    static ONCE_OPA_OFFICER_JWT: OnceCell<String> = OnceCell::const_new();
+
+    /// Provision the auth server with test users and return the `CryptoOfficer` JWT.
+    ///
+    /// Calls the auth server REST API via `reqwest` with `danger_accept_invalid_certs`
+    /// (the auth server uses a self-signed test certificate). All provisioning steps
+    /// are idempotent (HTTP errors treated as "already exists"). User logins use a
+    /// separate one-shot client so the admin session cookie is never overwritten.
+    ///
+    /// Provisioning order (ALL admin ops first, then user logins):
+    ///  1. Login as super-admin (`admin` / `change_me`, realm `_`).
+    ///  2. Create realm `kms-opa-test`.
+    ///  3. Create realm `kms-opa-other` (cross-domain negative tests).
+    ///  4. Create admin `kms-opa-officer` scoped to `kms-opa-test`.
+    ///  5. Create admin `kms-opa-other-officer` scoped to `kms-opa-other`.
+    ///  6. Create userpass `kms-opa-officer`            (`CryptoOfficer`, kms-opa-test).
+    ///  7. Create userpass `kms-opa-user`               (`User`,          kms-opa-test).
+    ///  8. Create userpass `kms-opa-auditor`            (`Auditor`,       kms-opa-test).
+    ///  9. Create userpass `kms-opa-domain-admin-other` (`DomainAdmin`,   kms-opa-other).
+    /// 10. Create userpass `kms-opa-other-officer`      (`CryptoOfficer`, kms-opa-other).
+    /// 11. Login as `kms-opa-officer`            → JWT → return value.
+    /// 12. Login as `kms-opa-user`               → JWT → env var `KMS_TEST_OPA_USER_ROLE_JWT`.
+    /// 13. Login as `kms-opa-auditor`            → JWT → env var `KMS_TEST_OPA_AUDITOR_JWT`.
+    /// 14. Login as `kms-opa-domain-admin-other` → JWT → env var `KMS_TEST_OPA_DOMAIN_ADMIN_OTHER_JWT`.
+    /// 15. Login as `kms-opa-other-officer`      → JWT → env var `KMS_TEST_OPA_OTHER_DOMAIN_JWT`.
+    async fn setup_auth_server_for_opa(auth_server_url: &str) -> Result<String, KmsClientError> {
+        // Admin client: `cookie_store(true)` so the admin session persists across all
+        // admin API calls (realm creation, admin/userpass creation).
+        let admin_client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .cookie_store(true)
+            .build()
+            .map_err(|e| KmsClientError::UnexpectedError(format!("reqwest build failed: {e}")))?;
+
+        // Login client: fresh per-request, NO cookie store. User logins only need
+        // the JWT from the Set-Cookie response header; they must NOT overwrite the
+        // admin session cookie stored in `admin_client`.
+        let login_client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
+            .map_err(|e| {
+                KmsClientError::UnexpectedError(format!("reqwest login client build failed: {e}"))
+            })?;
+
+        let base = auth_server_url.trim_end_matches('/');
+        let login_url = format!("{base}/login");
+        let login_body = serde_json::json!({ "public_key_pem": null, "totp_code": null });
+
+        // Helper: login as a realm user and extract the JWT from the `_ea_` cookie.
+        let login_user = |client: &reqwest::Client,
+                          realm: &str,
+                          username: &str,
+                          password: &str,
+                          login_url: &str,
+                          login_body: &serde_json::Value| {
+            let client = client.clone();
+            let realm = realm.to_owned();
+            let username = username.to_owned();
+            let password = password.to_owned();
+            let login_url = login_url.to_owned();
+            let login_body = login_body.clone();
+            async move {
+                let resp = client
+                    .post(format!("{login_url}?realm={realm}"))
+                    .basic_auth(&username, Some(&password))
+                    .json(&login_body)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        KmsClientError::UnexpectedError(format!(
+                            "{username} login request failed: {e}"
+                        ))
+                    })?;
+                if !resp.status().is_success() {
+                    let s = resp.status();
+                    let b = resp.text().await.unwrap_or_default();
+                    return Err(KmsClientError::UnexpectedError(format!(
+                        "{username} login HTTP {s}: {b}"
+                    )));
+                }
+                resp.cookies()
+                    .find(|c| c.name() == "_ea_")
+                    .map(|c| c.value().to_owned())
+                    .ok_or_else(|| {
+                        KmsClientError::UnexpectedError(format!(
+                            "{username} login: no '_ea_' cookie — \
+                                 is the auth server (KMS_AUTH_SERVER_URL) running?"
+                        ))
+                    })
+            }
+        };
+
+        // ── Step 1: login as super-admin ────────────────────────────────────────
+        let resp = admin_client
+            .post(format!("{login_url}?realm=_"))
+            .basic_auth("admin", Some("change_me"))
+            .json(&login_body)
+            .send()
+            .await
+            .map_err(|e| {
+                KmsClientError::UnexpectedError(format!("admin login request failed: {e}"))
+            })?;
+        if !resp.status().is_success() {
+            let s = resp.status();
+            let b = resp.text().await.unwrap_or_default();
+            return Err(KmsClientError::UnexpectedError(format!(
+                "admin login HTTP {s}: {b}"
+            )));
+        }
+
+        // ── Steps 2-3: create realms (idempotent) ───────────────────────────────
+        for realm_id in ["kms-opa-test", "kms-opa-other"] {
+            drop(
+                admin_client
+                    .post(format!("{base}/admins/realms"))
+                    .json(&serde_json::json!({
+                        "id": realm_id,
+                        "auth_params": {
+                            "username_password_params": { "allow_expired_passwords": false }
+                        },
+                        "session_max_age_seconds": 3600,
+                        "session_max_stale_age_seconds": 7200
+                    }))
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        KmsClientError::UnexpectedError(format!(
+                            "create realm '{realm_id}' request failed: {e}"
+                        ))
+                    })?,
+            );
+        }
+
+        // ── Steps 4-5: create admins (idempotent) ────────────────────────────────
+        for (admin_id, realm) in [
+            ("kms-opa-officer", "kms-opa-test"),
+            ("kms-opa-other-officer", "kms-opa-other"),
+        ] {
+            drop(
+                admin_client
+                    .post(format!("{base}/admins"))
+                    .json(&serde_json::json!({
+                        "id": admin_id,
+                        "realms": [realm],
+                        "userpass": admin_id
+                    }))
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        KmsClientError::UnexpectedError(format!(
+                            "create admin '{admin_id}' request failed: {e}"
+                        ))
+                    })?,
+            );
+        }
+
+        // ── Steps 6-8: create userpass records (delete-then-create for idempotency) ─
+        // DELETE first so a stale record with a different password hash (e.g. from
+        // a previous test run with different Argon2 params) never causes login failures.
+        // 404 on DELETE is harmless — the user simply did not exist yet.
+        #[allow(clippy::items_after_statements)]
+        const OFFICER_USERNAME: &str = "kms-opa-officer";
+        #[allow(clippy::items_after_statements)]
+        const OFFICER_PASSWORD: &str = "opa-test-pass";
+        #[allow(clippy::items_after_statements)]
+        const USER_USERNAME: &str = "kms-opa-user";
+        #[allow(clippy::items_after_statements)]
+        const USER_PASSWORD: &str = "opa-user-pass";
+        #[allow(clippy::items_after_statements)]
+        const AUDITOR_USERNAME: &str = "kms-opa-auditor";
+        #[allow(clippy::items_after_statements)]
+        const AUDITOR_PASSWORD: &str = "opa-auditor-pass";
+        #[allow(clippy::items_after_statements)]
+        const DOMAIN_ADMIN_OTHER_USERNAME: &str = "kms-opa-domain-admin-other";
+        #[allow(clippy::items_after_statements)]
+        const DOMAIN_ADMIN_OTHER_PASSWORD: &str = "opa-domain-admin-other-pass";
+        #[allow(clippy::items_after_statements)]
+        const OTHER_OFFICER_USERNAME: &str = "kms-opa-other-officer";
+        #[allow(clippy::items_after_statements)]
+        const OTHER_OFFICER_PASSWORD: &str = "opa-other-pass";
+
+        let users: &[(&str, &str, &str, &[&str])] = &[
+            (
+                OFFICER_USERNAME,
+                OFFICER_PASSWORD,
+                "kms-opa-test",
+                &["CryptoOfficer"],
+            ),
+            (USER_USERNAME, USER_PASSWORD, "kms-opa-test", &["User"]),
+            (
+                AUDITOR_USERNAME,
+                AUDITOR_PASSWORD,
+                "kms-opa-test",
+                &["Auditor"],
+            ),
+            (
+                // DomainAdmin in kms-opa-other — used to test cross-domain denial.
+                DOMAIN_ADMIN_OTHER_USERNAME,
+                DOMAIN_ADMIN_OTHER_PASSWORD,
+                "kms-opa-other",
+                &["DomainAdmin"],
+            ),
+            (
+                OTHER_OFFICER_USERNAME,
+                OTHER_OFFICER_PASSWORD,
+                "kms-opa-other",
+                &["CryptoOfficer"],
+            ),
+        ];
+        for &(username, password, realm, roles) in users {
+            // Delete first (idempotent: 404 is fine) so any stale hash is replaced.
+            drop(
+                admin_client
+                    .delete(format!("{base}/realms/{realm}/userpass/{username}"))
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        KmsClientError::UnexpectedError(format!(
+                            "delete userpass '{username}' request failed: {e}"
+                        ))
+                    })?,
+            );
+            // The auth server hashes the password itself (`create_userpass`), so we
+            // must send plaintext bytes, not a pre-computed Argon2 hash.
+            let password_bytes = password.as_bytes().to_vec();
+            admin_client
+                .post(format!("{base}/realms/{realm}/userpass"))
+                .json(&serde_json::json!({
+                    "realm": realm,
+                    "username": username,
+                    "password": password_bytes,
+                    "change_password": false,
+                    "roles": roles
+                }))
+                .send()
+                .await
+                .map_err(|e| {
+                    KmsClientError::UnexpectedError(format!(
+                        "create userpass '{username}' request failed: {e}"
+                    ))
+                })?;
+        }
+
+        // ── Steps 9-11: user logins (separate client, admin cookie untouched) ────
+        let officer_jwt = login_user(
+            &login_client,
+            "kms-opa-test",
+            OFFICER_USERNAME,
+            OFFICER_PASSWORD,
+            &login_url,
+            &login_body,
+        )
+        .await?;
+
+        let user_role_jwt = login_user(
+            &login_client,
+            "kms-opa-test",
+            USER_USERNAME,
+            USER_PASSWORD,
+            &login_url,
+            &login_body,
+        )
+        .await?;
+
+        let auditor_jwt = login_user(
+            &login_client,
+            "kms-opa-test",
+            AUDITOR_USERNAME,
+            AUDITOR_PASSWORD,
+            &login_url,
+            &login_body,
+        )
+        .await?;
+
+        let domain_admin_other_jwt = login_user(
+            &login_client,
+            "kms-opa-other",
+            DOMAIN_ADMIN_OTHER_USERNAME,
+            DOMAIN_ADMIN_OTHER_PASSWORD,
+            &login_url,
+            &login_body,
+        )
+        .await?;
+
+        let other_domain_jwt = login_user(
+            &login_client,
+            "kms-opa-other",
+            OTHER_OFFICER_USERNAME,
+            OTHER_OFFICER_PASSWORD,
+            &login_url,
+            &login_body,
+        )
+        .await?;
+
+        // Store the extra JWTs in env vars so JWT-based identity clients in manifests
+        // can look them up via `access_token_env`.
+        // SAFETY: Called exactly once (serialized by ONCE_OPA_OFFICER_JWT), strictly
+        // before any test vector reads these variables. No concurrent env-var mutation.
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("KMS_TEST_OPA_USER_ROLE_JWT", &user_role_jwt);
+            std::env::set_var("KMS_TEST_OPA_AUDITOR_JWT", &auditor_jwt);
+            std::env::set_var(
+                "KMS_TEST_OPA_DOMAIN_ADMIN_OTHER_JWT",
+                &domain_admin_other_jwt,
+            );
+            std::env::set_var("KMS_TEST_OPA_OTHER_DOMAIN_JWT", &other_domain_jwt);
+        }
+
+        Ok(officer_jwt)
+    }
+
+    /// Start (or reuse) an OPA-enabled KMS server for "allowed" vectors.
+    ///
+    /// Patches `auth/plain.toml` with OPA URL, mode, and a `IdP` pointing to the
+    /// auth server's JWKS endpoint. The owner client sends the `CryptoOfficer` JWT
+    /// as a Bearer token; since KMS test mode uses `insecure_decode`, no real
+    /// JWKS fetch occurs and the JWT is accepted as-is.
+    ///
+    /// Returns `None` when `KMS_OPA_URL` or `KMS_AUTH_SERVER_URL` is not set.
+    async fn get_or_init_opa_allowed_server(
+        cell: &'static OnceCell<TestsContext>,
+        opa_mode: &'static str,
+    ) -> Result<Option<&'static TestsContext>, KmsClientError> {
+        let Ok(opa_url) = std::env::var("KMS_OPA_URL") else {
+            return Ok(None);
+        };
+        let Ok(auth_server_url) = std::env::var("KMS_AUTH_SERVER_URL") else {
+            return Ok(None);
+        };
+
+        // Obtain (or reuse) the CryptoOfficer JWT — contacts auth server once.
+        let officer_jwt = ONCE_OPA_OFFICER_JWT
+            .get_or_try_init(|| setup_auth_server_for_opa(&auth_server_url))
+            .await?
+            .clone();
+
+        let config_path = crate::test_config_path("auth/plain.toml");
+        let ctx = cell
+            .get_or_try_init(|| {
+                let opa_url_c = opa_url.clone();
+                let auth_url_c = auth_server_url.clone();
+                let jwt_c = officer_jwt.clone();
+                async move {
+                    crate::start_test_server_with_patch(
+                        &config_path,
+                        move |cfg| {
+                            cfg.opa.opa_url = Some(opa_url_c);
+                            cfg.opa.opa_mode = opa_mode.to_owned();
+                            cfg.idp_auth.jwt_auth_provider = Some(vec![format!(
+                                "cosmian-auth-test,{auth_url_c}/public/jwks"
+                            )]);
+                            // Disable Google CSE: auth/plain.toml enables it, but server
+                            // startup tries to create the CSE RSA key as the default user
+                            // who has no OPA roles → denied in enforcing/exclusive mode.
+                            cfg.google_cse_config.google_cse_enable = false;
+                        },
+                        crate::TestClientOptions {
+                            http: cosmian_kms_client::reexport::cosmian_http_client::HttpClientConfig {
+                                access_token: Some(jwt_c),
+                                ..Default::default()
+                            },
+                            send_jwt: false,
+                            send_client_cert: false,
+                            send_api_token: true,
+                        },
+                    )
+                    .await
+                }
+            })
+            .await?;
+
+        Ok(Some(ctx))
+    }
+
+    /// Start (or reuse) an OPA-enabled KMS server for "denied" vectors.
+    ///
+    /// Patches `auth/cert.toml` with OPA URL + mode. The two TLS identities
+    /// (owner cert vs user cert) map to distinct KMS usernames. The user cert
+    /// has no JWT → no roles → OPA denies (not owner, no `SuperAdmin`/`CryptoOfficer`).
+    ///
+    /// Returns `None` when `KMS_OPA_URL` is not set.
+    async fn get_or_init_opa_denied_server(
+        cell: &'static OnceCell<TestsContext>,
+        opa_mode: &'static str,
+    ) -> Result<Option<&'static TestsContext>, KmsClientError> {
+        let Ok(opa_url) = std::env::var("KMS_OPA_URL") else {
+            return Ok(None);
+        };
+
+        let config_path = crate::test_config_path("auth/cert.toml");
+        let ctx = cell
+            .get_or_try_init(|| {
+                let opa_url_c = opa_url.clone();
+                async move {
+                    crate::start_test_server_with_patch(
+                        &config_path,
+                        move |cfg| {
+                            cfg.opa.opa_url = Some(opa_url_c);
+                            cfg.opa.opa_mode = opa_mode.to_owned();
+                            // Use a dedicated port so the OPA denied server does not
+                            // conflict with ONCE_VECTOR_CERT_AUTH (auth/cert.toml port 9999).
+                            cfg.http.port = 13001;
+                            // Disable Google CSE: auth/cert.toml enables it, but the OPA
+                            // server startup would try to create the CSE RSA key as the
+                            // default user who has no OPA roles → denied in enforcing mode.
+                            cfg.google_cse_config.google_cse_enable = false;
+                            // The test vector owner uses mTLS cert with CN "owner.client@acme.com".
+                            // Cert-auth users carry no JWT roles, so OPA would deny their Create.
+                            // Adding the owner as a privileged_user lets the KMS bypass OPA for
+                            // the Create step while OPA still denies the non-owner cert user for
+                            // all subsequent operations (Get, Destroy).
+                            cfg.privileged_users = Some(vec!["owner.client@acme.com".to_owned()]);
+                            // Disable the socket server to avoid conflicting on the
+                            // fixed socket port across concurrent test processes.
+                            cfg.socket_server.socket_server_start = false;
+                            cfg.db.sqlite_path =
+                                PathBuf::from(format!("/tmp/kms_test_opa_{opa_mode}_denied"));
+                            cfg.workspace.root_data_path =
+                                PathBuf::from(format!("/tmp/kms_test_opa_{opa_mode}_denied_ws"));
+                        },
+                        crate::TestClientOptions::default(),
+                    )
+                    .await
+                }
+            })
+            .await?;
+
+        Ok(Some(ctx))
+    }
+
+    #[tokio::test]
+    async fn test_vec_opa_mode_disabled() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/opa/mode_disabled").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_opa_mode_exclusive_allowed() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            eprintln!(
+                "SKIP test_vec_opa_mode_exclusive_allowed: \
+                 KMS_OPA_URL or KMS_AUTH_SERVER_URL not set"
+            );
+            return Ok(());
+        };
+        run_test_vector_with_context("test_data/vectors/opa/mode_exclusive_allowed", ctx).await
+    }
+
+    #[tokio::test]
+    async fn test_vec_opa_mode_exclusive_denied() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) = get_or_init_opa_denied_server(&ONCE_VECTOR_OPA_DENIED, "exclusive").await?
+        else {
+            eprintln!("SKIP test_vec_opa_mode_exclusive_denied: KMS_OPA_URL not set");
+            return Ok(());
+        };
+        run_test_vector_with_context("test_data/vectors/opa/mode_exclusive_denied", ctx).await
+    }
+
+    #[tokio::test]
+    async fn test_vec_opa_mode_enforcing_allowed() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_ENFORCING_ALLOWED, "enforcing").await?
+        else {
+            eprintln!(
+                "SKIP test_vec_opa_mode_enforcing_allowed: \
+                 KMS_OPA_URL or KMS_AUTH_SERVER_URL not set"
+            );
+            return Ok(());
+        };
+        run_test_vector_with_context("test_data/vectors/opa/mode_enforcing_allowed", ctx).await
+    }
+
+    #[tokio::test]
+    async fn test_vec_opa_mode_enforcing_denied() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        // Reuse the shared denied server (same deny reason: non-owner, no roles).
+        // Both exclusive and enforcing deny via OPA; the mode check only differs
+        // in whether legacy KMS access control is also checked (both deny here).
+        let Some(ctx) = get_or_init_opa_denied_server(&ONCE_VECTOR_OPA_DENIED, "enforcing").await?
+        else {
+            eprintln!("SKIP test_vec_opa_mode_enforcing_denied: KMS_OPA_URL not set");
+            return Ok(());
+        };
+        run_test_vector_with_context("test_data/vectors/opa/mode_enforcing_denied", ctx).await
+    }
+
+    /// OPA negative: `User` role cannot `Get` (export key material) on a non-owned key.
+    ///
+    /// The `user_ops` set in `kms.rego` deliberately excludes `Get` (which exposes raw key
+    /// bytes).  Even though the user has a valid JWT and a recognised role, OPA returns
+    /// `allow = false` because `Get ∉ user_ops`.
+    ///
+    /// Requires `KMS_OPA_URL` + `KMS_AUTH_SERVER_URL` (provisioned by
+    /// `setup_auth_server_for_opa` which also sets `KMS_TEST_OPA_USER_ROLE_JWT`).
+    #[tokio::test]
+    async fn test_vec_opa_mode_exclusive_user_role_denied() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            eprintln!(
+                "SKIP test_vec_opa_mode_exclusive_user_role_denied: \
+                 KMS_OPA_URL or KMS_AUTH_SERVER_URL not set"
+            );
+            return Ok(());
+        };
+        run_test_vector_with_context("test_data/vectors/opa/mode_exclusive_user_role_denied", ctx)
+            .await
+    }
+
+    /// OPA negative: cross-domain isolation — `CryptoOfficer` in domain `kms-opa-other`
+    /// must NOT access objects created in domain `kms-opa-test`.
+    ///
+    /// The `same_domain` helper in `kms.rego` requires `input.user_domain ==
+    /// input.object_domain`.  A `CryptoOfficer` with `as_domain = "kms-opa-other"` trying
+    /// to `Get` a key owned by `kms-opa-test` fails this check → `allow = false`.
+    ///
+    /// Requires `KMS_OPA_URL` + `KMS_AUTH_SERVER_URL` (provisioned by
+    /// `setup_auth_server_for_opa` which also sets `KMS_TEST_OPA_OTHER_DOMAIN_JWT`).
+    #[tokio::test]
+    async fn test_vec_opa_mode_exclusive_wrong_domain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            eprintln!(
+                "SKIP test_vec_opa_mode_exclusive_wrong_domain: \
+                 KMS_OPA_URL or KMS_AUTH_SERVER_URL not set"
+            );
+            return Ok(());
+        };
+        run_test_vector_with_context("test_data/vectors/opa/mode_exclusive_wrong_domain", ctx).await
+    }
+
+    /// OPA negative: `Auditor` role denied `Destroy` — not in `auditor_ops`.
+    ///
+    /// The `auditor_ops` set in `kms.rego` grants read-only metadata access
+    /// (`Locate`, `Get`, `GetAttributes`, …). `Destroy` is a key-lifecycle
+    /// operation reserved for `CryptoOfficer`/`DomainAdmin`. Even with a valid
+    /// JWT and the `Auditor` role, OPA returns `allow = false`.
+    ///
+    /// Ref: kms.rego `auditor_ops` set (NIST SP 800-53 AU-9 separation-of-duties;
+    ///      PCI-DSS v4.0 Req 10 — auditor must not be able to erase evidence).
+    #[tokio::test]
+    async fn test_vec_opa_mode_exclusive_auditor_destroy_denied() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            eprintln!(
+                "SKIP test_vec_opa_mode_exclusive_auditor_destroy_denied: \
+                 KMS_OPA_URL or KMS_AUTH_SERVER_URL not set"
+            );
+            return Ok(());
+        };
+        run_test_vector_with_context(
+            "test_data/vectors/opa/mode_exclusive_auditor_destroy_denied",
+            ctx,
+        )
+        .await
+    }
+
+    /// OPA positive: `Auditor` role allowed `GetAttributes` on a non-owned key.
+    ///
+    /// `GetAttributes` IS in `auditor_ops` and the Auditor's domain matches the
+    /// key's domain (`kms-opa-test`). OPA returns `allow = true` without the
+    /// Auditor owning the key or having been granted access by the owner.
+    /// This validates the domain-scoped read-only path end-to-end.
+    ///
+    /// Ref: kms.rego `auditor_ops` set; NIST SP 800-57 Part 2 §4.3.
+    #[tokio::test]
+    async fn test_vec_opa_mode_exclusive_auditor_get_attributes_allowed()
+    -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            eprintln!(
+                "SKIP test_vec_opa_mode_exclusive_auditor_get_attributes_allowed: \
+                 KMS_OPA_URL or KMS_AUTH_SERVER_URL not set"
+            );
+            return Ok(());
+        };
+        run_test_vector_with_context(
+            "test_data/vectors/opa/mode_exclusive_auditor_get_attributes_allowed",
+            ctx,
+        )
+        .await
+    }
+
+    /// OPA negative: `DomainAdmin` in `kms-opa-other` denied access to a key
+    /// that belongs to `kms-opa-test`.
+    ///
+    /// `DomainAdmin` has full control — but only within their own domain
+    /// (the `same_domain` helper fails when `user_domain != object_domain`).
+    /// This proves domain isolation holds even for the most privileged non-super role.
+    ///
+    /// Ref: kms.rego `DomainAdmin` rule (ANSI/INCITS 359-2004 §4.2 Constrained RBAC;
+    ///      NIST SP 800-53 Rev 5 AC-6 least privilege).
+    #[tokio::test]
+    async fn test_vec_opa_mode_exclusive_domain_admin_wrong_domain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        let Some(ctx) =
+            get_or_init_opa_allowed_server(&ONCE_VECTOR_OPA_EXCLUSIVE_ALLOWED, "exclusive").await?
+        else {
+            eprintln!(
+                "SKIP test_vec_opa_mode_exclusive_domain_admin_wrong_domain: \
+                 KMS_OPA_URL or KMS_AUTH_SERVER_URL not set"
+            );
+            return Ok(());
+        };
+        run_test_vector_with_context(
+            "test_data/vectors/opa/mode_exclusive_domain_admin_wrong_domain",
+            ctx,
+        )
+        .await
     }
 }

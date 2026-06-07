@@ -5,6 +5,7 @@ End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 ## FIPS mode
 
 Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
+Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
 against a FIPS-mode KMS server. Three spec files are automatically skipped in
 FIPS mode because they exercise algorithms that are not NIST-approved:
 

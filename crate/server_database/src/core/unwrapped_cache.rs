@@ -265,6 +265,7 @@ mod tests {
                 &symmetric_key,
                 symmetric_key.attributes()?,
                 &HashSet::new(),
+                "",
             )
             .await?;
         assert_eq!(&uid, &uid_);
