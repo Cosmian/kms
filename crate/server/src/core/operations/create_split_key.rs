@@ -1,0 +1,410 @@
+use std::collections::HashSet;
+
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::{
+        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode, State},
+        kmip_2_1::{
+            KmipOperation,
+            extra::VENDOR_ID_COSMIAN,
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, ObjectType, SplitKey},
+            kmip_operations::{CreateSplitKey, CreateSplitKeyResponse, Revoke},
+            kmip_types::{KeyFormatType, SplitKeyMethod, UniqueIdentifier},
+        },
+    },
+    cosmian_kms_crypto,
+    cosmian_kms_interfaces::ObjectWithMetadata,
+};
+use cosmian_logger::{trace, warn};
+use rand_chacha::ChaCha20Rng;
+use tracing::info;
+use uuid::Uuid;
+use zeroize::Zeroizing;
+
+use crate::{
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
+    error::KmsError,
+    kms_bail,
+    middlewares::UserId,
+    result::KResult,
+};
+
+/// Vendor attribute name used to mark split key shares belonging to a Crypto Officer ceremony.
+pub(crate) const CRYPTO_OFFICER_CEREMONY_ATTR: &str = "x-cosmian-crypto-officer-ceremony";
+
+/// `CreateSplitKey` operation handler.
+///
+/// Splits an existing Managed Cryptographic Object into N share objects, each stored as a
+/// [`SplitKey`] KMIP object owned by the requesting user.  Any M shares (where M is the
+/// configured threshold) are sufficient to reconstruct the original key material via
+/// `JoinSplitKey`.
+///
+/// Only symmetric keys, secret data, and opaque objects (byte-string key material) are
+/// supported; asymmetric keys require exporting the private scalar first.
+pub(crate) async fn create_split_key(
+    kms: &KMS,
+    request: CreateSplitKey,
+    user: &str,
+) -> KResult<CreateSplitKeyResponse> {
+    trace!("{request}");
+
+    let uid_str = match &request.unique_identifier {
+        UniqueIdentifier::TextString(s) => s.clone(),
+        other => other.to_string(),
+    };
+
+    // Retrieve the master key — user must have Get permission
+    let user_id = UserId::from(user);
+    let owm: ObjectWithMetadata = retrieve_object_for_operation(
+        ObjectHandle::from(&uid_str),
+        KmipOperation::Get,
+        kms,
+        &user_id,
+    )
+    .await?;
+
+    // Only non-prefixed (database) keys can be split — HSM key material is never exported
+    if ObjectHandle::from(owm.id()).is_hsm() {
+        kms_bail!(KmsError::NotSupported(
+            "CreateSplitKey is not supported for HSM-backed keys".to_owned()
+        ));
+    }
+
+    // Validate threshold / parts parameters
+    if request.split_key_threshold < 2 {
+        kms_bail!(KmsError::InvalidRequest(
+            "CreateSplitKey: split_key_threshold must be at least 2".to_owned()
+        ));
+    }
+    if request.split_key_parts < request.split_key_threshold {
+        kms_bail!(KmsError::InvalidRequest(
+            "CreateSplitKey: split_key_parts must be >= split_key_threshold".to_owned()
+        ));
+    }
+    if request.split_key_parts > 255 {
+        kms_bail!(KmsError::InvalidRequest(
+            "CreateSplitKey: split_key_parts must be <= 255".to_owned()
+        ));
+    }
+
+    // Extract raw key bytes from the master object's key block
+    let key_bytes: Zeroizing<Vec<u8>> = extract_key_bytes(owm.object())?;
+
+    // Generate shares using the requested split method
+    let mut threshold = request.split_key_threshold;
+    let mut total_parts = request.split_key_parts;
+
+    // If the server requires a Crypto Officer ceremony, auto-determine the number
+    // of shares from the crypto_officer_users count. This ensures the split matches
+    // exactly the number of ceremony candidates, preventing misconfiguration.
+    // Only override when there are at least 2 CO users (split requires n >= 2).
+    let co_users = &kms.params.crypto_officer.users;
+    eprintln!(
+        "DEBUG create_split_key: co_users={:?} len={} require_ceremony={} total_parts={total_parts} threshold={threshold}",
+        co_users,
+        co_users.len(),
+        kms.params.crypto_officer.require_ceremony,
+    );
+    if kms.params.crypto_officer.require_ceremony && co_users.len() >= 2 {
+        let n_co = co_users.len();
+        let n_co_i32 = i32::try_from(n_co).unwrap_or(2);
+        if n_co_i32 != total_parts {
+            eprintln!("DEBUG: overriding total_parts {total_parts} -> {n_co_i32}");
+            trace!(
+                "CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32} \
+                 (matches crypto_officer_users count)"
+            );
+            total_parts = n_co_i32;
+            threshold = n_co_i32; // n-of-n
+        }
+    }
+    // Safe: both values are i32 validated above to be 2..=255; cast to u32 is lossless.
+    #[allow(clippy::cast_sign_loss, clippy::as_conversions)]
+    let total_parts_u32 = total_parts as u32;
+    // XOR n-of-n requires threshold == total_parts (all shares needed).
+    if threshold != total_parts {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "CreateSplitKey: XOR n-of-n requires threshold ({threshold}) == total_parts ({total_parts})"
+        )));
+    }
+    let mut rng = rand::make_rng::<ChaCha20Rng>();
+
+    let raw_shares: Vec<Zeroizing<Vec<u8>>> = match request.split_key_method {
+        SplitKeyMethod::PolynomialSharingGf28
+        | SplitKeyMethod::PolynomialSharingGf216
+        | SplitKeyMethod::XOR => {
+            cosmian_kms_crypto::crypto::split_key::xor_split(&key_bytes, total_parts_u32, &mut rng)
+                .map_err(|e| KmsError::InvalidRequest(format!("CreateSplitKey error: {e}")))?
+        }
+        SplitKeyMethod::PolynomialSharingPrimeField => {
+            kms_bail!(KmsError::NotSupported(
+                "CreateSplitKey: PolynomialSharingPrime is not supported".to_owned()
+            ));
+        }
+    };
+
+    // Check if the master key is tagged for Crypto Officer ceremony, OR if the server
+    // requires a split-key ceremony for CryptoOfficer elevation.  In the latter case we
+    // auto-tag the shares, removing the need for callers to manually set the vendor
+    // attribute on the master key before splitting.
+    let is_co_ceremony_key = owm
+        .attributes()
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, CRYPTO_OFFICER_CEREMONY_ATTR)
+        .is_some()
+        || kms.params.crypto_officer.require_ceremony;
+
+    // Build and store each share as a SplitKey KMIP object
+    // total_parts is validated to 2..=255; usize conversion cannot overflow.
+    let total_parts_usize = usize::try_from(total_parts).unwrap_or(0);
+    let mut share_uids: Vec<UniqueIdentifier> = Vec::with_capacity(total_parts_usize);
+
+    let now = time::OffsetDateTime::now_utc();
+
+    for (idx, share_bytes) in raw_shares.into_iter().enumerate() {
+        // 1-indexed share number; idx fits in i32 since total_parts <= 255.
+        let part_identifier = i32::try_from(idx + 1).unwrap_or(1);
+
+        // Determine the owner of this share. For ceremony keys, each share is owned
+        // by a different CO candidate to enforce dual control (NIST SP 800-57 Part 2
+        // Rev 1 §4.6). The creating user owns share 0; shares 1..n are assigned to
+        // the other CO candidates round-robin.
+        let share_owner: UserId = if is_co_ceremony_key && !co_users.is_empty() {
+            let co_idx = idx % co_users.len();
+            UserId::from(co_users.get(co_idx).map_or("unknown", |s| s.as_str()))
+        } else {
+            user_id.clone()
+        };
+
+        // Build the SplitKey KMIP object — raw share bytes stored as ByteString key material.
+        // share_bytes is moved (no clone) so the only copy lives inside Zeroizing.
+        let key_block = KeyBlock {
+            key_format_type: KeyFormatType::Opaque,
+            key_compression_type: None,
+            key_value: Some(KeyValue::Structure {
+                key_material: KeyMaterial::ByteString(share_bytes),
+                attributes: None,
+            }),
+            cryptographic_algorithm: owm
+                .object()
+                .key_block()
+                .ok()
+                .and_then(|kb| kb.cryptographic_algorithm),
+            cryptographic_length: owm
+                .object()
+                .key_block()
+                .ok()
+                .and_then(|kb| kb.cryptographic_length),
+            key_wrapping_data: None,
+        };
+
+        let split_key_obj = Object::SplitKey(SplitKey {
+            split_key_parts: total_parts,
+            key_part_identifier: part_identifier,
+            split_key_threshold: threshold,
+            split_key_method: request.split_key_method,
+            prime_field_size: None,
+            key_block,
+        });
+
+        // Build attributes for the share object — include crypto metadata so
+        // GetAttributes and the WebUI Locate table can display algorithm / length / format.
+        let share_attrs = Attributes {
+            state: Some(State::Active),
+            object_type: Some(ObjectType::SplitKey),
+            initial_date: Some(now),
+            original_creation_date: Some(now),
+            last_change_date: Some(now),
+            activation_date: Some(now),
+            cryptographic_algorithm: owm
+                .object()
+                .key_block()
+                .ok()
+                .and_then(|kb| kb.cryptographic_algorithm),
+            cryptographic_length: owm
+                .object()
+                .key_block()
+                .ok()
+                .and_then(|kb| kb.cryptographic_length),
+            key_format_type: Some(KeyFormatType::Opaque),
+            ..Attributes::default()
+        };
+        let mut share_attrs = share_attrs;
+
+        // Always stamp the source key UID on every share.
+        // This lets JoinSplitKey detect cross-key mixing (e.g. A-1 + B-1) regardless
+        // of whether this is a ceremony key or a regular split key.
+        share_attrs.set_vendor_attribute(
+            VENDOR_ID_COSMIAN,
+            "x-cosmian-split-key-source",
+            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::VendorAttributeValue::TextString(uid_str.clone()),
+        );
+
+        // Propagate Crypto Officer ceremony marker to each share
+        if is_co_ceremony_key {
+            share_attrs.set_vendor_attribute(
+                VENDOR_ID_COSMIAN,
+                CRYPTO_OFFICER_CEREMONY_ATTR,
+                cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::VendorAttributeValue::TextString("true".to_owned()),
+            );
+        }
+
+        // Build a tag set for discoverability
+        let mut tags: HashSet<String> = HashSet::new();
+        tags.insert(format!("split-key-of:{uid_str}"));
+        tags.insert(format!("split-key-part:{part_identifier}"));
+        // Include total count so the UI can render "Share X/Y" without a second request.
+        tags.insert(format!("split-key-total:{total_parts}"));
+
+        let share_uid = match kms
+            .database
+            .create(
+                Some(Uuid::new_v4().to_string()),
+                &share_owner,
+                &split_key_obj,
+                &share_attrs,
+                &tags,
+            )
+            .await
+        {
+            Ok(uid) => uid,
+            Err(e) => {
+                // Log orphaned shares for manual cleanup — the database trait does not
+                // expose a direct delete method. The shares are tagged with
+                // `split-key-of:<uid>` for discoverability.
+                if !share_uids.is_empty() {
+                    let orphan_uids: Vec<String> = share_uids
+                        .iter()
+                        .filter_map(|u| {
+                            if let UniqueIdentifier::TextString(s) = u {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    warn!(
+                        orphans = ?orphan_uids,
+                        source = %uid_str,
+                        "CreateSplitKey: partial failure — {} share(s) already stored \
+                         but remaining shares could not be created. Manual cleanup required.",
+                        orphan_uids.len(),
+                    );
+                }
+                return Err(KmsError::from(e));
+            }
+        };
+
+        info!(
+            uid = %share_uid,
+            part = part_identifier,
+            total = total_parts,
+            source = %uid_str,
+            owner = %share_owner,
+            user = %user,
+            "CreateSplitKey: stored share",
+        );
+
+        share_uids.push(UniqueIdentifier::TextString(share_uid));
+    }
+
+    // For ceremony keys, destroy the original key after all shares have been stored.
+    // This is a critical security requirement: the key creator owns K and S1, so they can
+    // compute any other share (S_i) as long as K remains accessible. Destroying K after
+    // splitting ensures that no single CO retains the complete secret, regardless of n.
+    // (With n ≥ 3 this is defence-in-depth; destruction is still required because a
+    // malicious creator could have exported K before calling CreateSplitKey.)
+    if is_co_ceremony_key {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Destroy;
+
+        // Revoke the source key before destroying — the destroy operation requires
+        // prior revocation for keys with an explicit activation_date.
+        let revoke_req = Revoke {
+            unique_identifier: Some(request.unique_identifier.clone()),
+            revocation_reason: RevocationReason {
+                revocation_reason_code: RevocationReasonCode::KeyCompromise,
+                revocation_message: Some(
+                    "Ceremony source key superseded by split key shares".to_owned(),
+                ),
+            },
+            compromise_occurrence_date: None,
+            cascade: false,
+        };
+        let destroy_user = UserId::from(user);
+        if let Err(e) = Box::pin(super::revoke::revoke_operation(
+            kms,
+            revoke_req,
+            &destroy_user,
+        ))
+        .await
+        {
+            return Err(KmsError::InvalidRequest(format!(
+                "CreateSplitKey: failed to revoke ceremony source key \
+                 '{uid_str}' before destruction: {e}"
+            )));
+        }
+
+        let destroy_req = Destroy {
+            unique_identifier: Some(request.unique_identifier.clone()),
+            remove: true, // physically remove — the key is superseded by its shares
+            cascade: false,
+            expected_object_type: None,
+        };
+        match Box::pin(super::destroy::destroy_operation(
+            kms,
+            destroy_req,
+            &destroy_user,
+        ))
+        .await
+        {
+            Ok(_) => {
+                info!(
+                    uid = %uid_str,
+                    user = %user,
+                    "CreateSplitKey: ceremony source key destroyed after successful split",
+                );
+            }
+            Err(e) => {
+                // Destroy failure must not silently succeed — the shares are already stored.
+                // Log clearly and propagate so the caller knows the key still exists.
+                warn!(
+                    uid = %uid_str,
+                    error = %e,
+                    "CreateSplitKey: ceremony source key could not be destroyed after split \
+                     — key material may still be accessible. Manual destruction required.",
+                );
+                return Err(KmsError::InvalidRequest(format!(
+                    "CreateSplitKey: shares were created but the ceremony source key \
+                     '{uid_str}' could not be destroyed: {e}. \
+                     Destroy it manually before proceeding."
+                )));
+            }
+        }
+    }
+
+    Ok(CreateSplitKeyResponse {
+        unique_identifier: request.unique_identifier,
+        split_key_unique_identifiers: share_uids,
+    })
+}
+
+/// Extract raw key bytes from any supported KMIP object type.
+fn extract_key_bytes(object: &Object) -> KResult<Zeroizing<Vec<u8>>> {
+    match object {
+        Object::SymmetricKey(sk) => Ok(sk.key_block.key_bytes().map_err(|e| {
+            KmsError::InvalidRequest(format!(
+                "CreateSplitKey: cannot read symmetric key bytes: {e}"
+            ))
+        })?),
+        Object::SecretData(sd) => Ok(sd.key_block.key_bytes().map_err(|e| {
+            KmsError::InvalidRequest(format!(
+                "CreateSplitKey: cannot read secret data bytes: {e}"
+            ))
+        })?),
+        Object::OpaqueObject(oo) => Ok(Zeroizing::new(oo.opaque_data_value.clone())),
+        other => kms_bail!(KmsError::NotSupported(format!(
+            "CreateSplitKey: unsupported object type {:?}",
+            other.object_type()
+        ))),
+    }
+}

@@ -85,9 +85,17 @@ info = false
 # ```
 # default_unwrap_type = ["SecretData", "SymmetricKey"]
 
-# List of users who have the right to create and import Objects
-# and grant access rights for Create Kmip Operation.
-# privileged_users = ["<user_id_1>", "<user_id_2>"]
+# Role-based access control (RBAC) — optional user lists per role.
+#
+# crypto_officer_users: may manage key lifecycle (Create, Import, Certify, Revoke, etc.)
+#   and gains ownership bypass on all Managed Objects.
+#
+# Users not listed default to Operator (use key material only).
+# When no [roles] section is present, no role restriction is enforced (legacy behaviour).
+#
+# [roles]
+# crypto_officer_users = ["<user_id_1>", "<user_id_2>"]
+# crypto_officer_require_ceremony = false
 
 # Check the database configuration documentation pages for more information
 [db]
@@ -195,6 +203,8 @@ hostname = "0.0.0.0"
 # (scheme + hostname + port). The server bind address (`0.0.0.0`) and the server IP
 # are not equivalent to a DNS hostname. The Docker image pre-populates loopback
 # addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
+# When not set, the binary defaults to loopback origins for the configured
+# scheme (http or https) and port (e.g. http://localhost:9998, http://127.0.0.1:9998, etc.).
 # cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
 
 # If using a forward proxy for outbound JWKS requests,
@@ -216,6 +226,19 @@ hostname = "0.0.0.0"
 
 # The No Proxy exclusion list to this Proxy
 # proxy_exclusion_list = ["domain1", "domain2"]
+
+# ── Role-based access control ─────────────────────────────────────────────────
+[roles]
+# Uncomment to assign users to privileged roles:
+## crypto_officer_users = ["key-mgr@example.com"]
+
+# Enable split-key ceremony requirement (XOR n-of-n):
+## crypto_officer_require_ceremony = true
+
+# Hex-encoded 32-byte secret for ceremony record encryption (AES-256-GCM).
+# Required when any role has require_ceremony = true.
+# Generate with: openssl rand -hex 32
+## ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 # Check the Authenticating Users documentation pages for more information.
 [idp_auth]
@@ -267,18 +290,12 @@ quiet = false
 # Log to syslog
 log_to_syslog = false
 
-# The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.
-# File logging is disabled unless this option is explicitly set.
-# Suggested paths:
-#   Linux: /var/log/
+# Daily rolling logs: <rolling_log_name>.YYYY-MM-DD
+# When not set, the binary uses a platform-specific default:
+#   Linux:   /var/log/
 #   Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
-#   macOS: ~/Library/Logs/
-#
-# WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
-# expanded. Use the fully-resolved path.
+#   macOS:   ~/Library/Logs/
 # rolling_log_dir = "/var/log/"
-# The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
-# Defaults to `cosmian_kms` if not set.
 # rolling_log_name = "cosmian_kms"
 
 # Enable metering in addition to tracing when telemetry is enabled

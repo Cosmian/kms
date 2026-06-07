@@ -1,3 +1,5 @@
+# Server CLI
+
 ```text
 
 Usage: cosmian_kms [OPTIONS] [KEY_ENCRYPTION_KEY]

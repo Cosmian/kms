@@ -4,7 +4,7 @@ End-to-end tests validating the UI → WASM → KMIP → KMS pipeline.
 
 ## FIPS mode
 
-Run `mise run test:ui --variant fips` to execute the suite
+Run `bash .github/scripts/nix.sh --variant fips test ui` to execute the suite
 against a FIPS-mode KMS server. Three spec files are automatically skipped in
 FIPS mode because they exercise algorithms that are not NIST-approved:
 
@@ -573,6 +573,41 @@ graph LR
     B --> C[List access rights]
     C --> D[Revoke access]
 ```
+
+### role-management
+
+```mermaid
+graph LR
+    A[Navigate to crypto officer role page] --> B[Status loads without error]
+    B --> C[Not-configured card in dev mode]
+    C --> D[Disable button absent when no ceremony]
+```
+
+Covers the CryptoOfficer role-status page (`/ui/access-rights/crypto-officer`).
+Tests run against the dev-mode server (no RBAC configured), so the role
+reports "not configured" and no Disable button is rendered.
+
+### key-ceremony-flow
+
+```mermaid
+graph LR
+    A[CO status page loads] --> B[Status card visible]
+    B --> C[Disable button absent — not active]
+    C --> D[Refresh re-fetches status]
+    D --> E[Split Key page renders form]
+    E --> F[Create + split key — share UIDs returned]
+    F --> G[Join Split Key page renders inputs]
+    G --> H[Add / remove share inputs]
+    H --> I[Submit single fake share — server responds]
+```
+
+Covers the full UI surface of the split-key ceremony:
+
+- `GET /access/crypto_officer/status` → CO status page
+- `POST /kmip/2_1` CreateSplitKey → Split Key page
+- `POST /kmip/2_1` JoinSplitKey → Join Split Key page
+
+Non-FIPS tests are skipped when `PLAYWRIGHT_FIPS_MODE=true`.
 
 ### attributes-flow
 

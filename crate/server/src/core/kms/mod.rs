@@ -161,6 +161,7 @@ impl KMS {
             server_params.unwrapped_cache_max_ttl,
             server_params.disable_unwrapped_cache,
             db_otel_recorder,
+            server_params.ceremony_keys.clone(),
         )
         .await?;
 

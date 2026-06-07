@@ -1,6 +1,7 @@
 import { Button, Card, Form, Input, Select, Space } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import KeyIdInput from "../../components/common/KeyIdInput";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_rsa_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
@@ -102,10 +103,15 @@ const RsaEncryptForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("rsaEncrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("rsaEncrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("rsaEncrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PublicKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("rsaEncrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

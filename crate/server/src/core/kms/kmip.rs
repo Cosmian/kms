@@ -2,16 +2,17 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     kmip_2_1::kmip_operations::{
         Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify, CertifyResponse,
-        Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
-        DeleteAttribute, DeleteAttributeResponse, DeriveKey, DeriveKeyResponse, Destroy,
-        DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get, GetAttributes,
-        GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
-        LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
-        ModifyAttributeResponse, PKCS11, PKCS11Response, Query, QueryResponse, RNGRetrieve,
-        RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReCertify, ReCertifyResponse, ReKey,
-        ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
-        RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
-        SignatureVerifyResponse, Validate, ValidateResponse,
+        Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, CreateSplitKey,
+        CreateSplitKeyResponse, Decrypt, DecryptResponse, DeleteAttribute, DeleteAttributeResponse,
+        DeriveKey, DeriveKeyResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Hash, HashResponse,
+        Import, ImportResponse, JoinSplitKey, JoinSplitKeyResponse, Locate, LocateResponse, MAC,
+        MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute, ModifyAttributeResponse,
+        PKCS11, PKCS11Response, Query, QueryResponse, RNGRetrieve, RNGRetrieveResponse, RNGSeed,
+        RNGSeedResponse, ReCertify, ReCertifyResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
+        ReKeyResponse, Register, RegisterResponse, Revoke, RevokeResponse, SetAttribute,
+        SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
+        Validate, ValidateResponse,
     },
 };
 use tracing::Instrument;
@@ -126,6 +127,27 @@ impl KMS {
         Box::pin(operations::create_key_pair(self, request, user))
             .instrument(span)
             .await
+    }
+
+    /// This operation requests the server to split an existing Managed Cryptographic Object
+    /// into N parts, each stored as a `SplitKey` KMIP object.
+    /// KMIP 2.1 §4.28.
+    pub(crate) async fn create_split_key(
+        &self,
+        request: CreateSplitKey,
+        user: &UserId,
+    ) -> KResult<CreateSplitKeyResponse> {
+        operations::create_split_key(self, request, user.as_ref()).await
+    }
+
+    /// This operation reconstructs a Managed Cryptographic Object from split-key shares.
+    /// KMIP 2.1 §4.29.
+    pub(crate) async fn join_split_key(
+        &self,
+        request: JoinSplitKey,
+        user: &UserId,
+    ) -> KResult<JoinSplitKeyResponse> {
+        Box::pin(operations::join_split_key(self, request, user.as_ref())).await
     }
 
     /// This request is used by the client to determine a list of protocol versions

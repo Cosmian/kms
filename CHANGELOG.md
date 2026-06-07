@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🔒 Security
 
 - Resolve 8 Dependabot security alerts ([#1083](https://github.com/Cosmian/kms/pull/1083))
-- Upgrade `opentelemetry_sdk` 0.29.0 → 0.32.1 (SSRF via malicious OTLP endpoint, [GHSA-r74r-p7x6-m97p](https://github.com/advisories/GHSA-r74r-p7x6-m97p)) + React dependency updates ([#1073](https://github.com/Cosmian/kms/pull/1073))
+- Upgrade `opentelemetry_sdk` 0.29.0 → 0.32.1 (SSRF via malicious OTLP endpoint, GHSA-r74r-p7x6-m97p) + React dependency updates ([#1073](https://github.com/Cosmian/kms/pull/1073))
 - `AlwaysSensitive` is now server-managed: clients can no longer add/set/modify/delete it via `AddAttribute`, `SetAttribute`, `ModifyAttribute`, or `DeleteAttribute` — such requests are rejected with `Attribute_Read_Only` ([#1103](https://github.com/Cosmian/kms/pull/1103))
 - Read-only KMIP attributes could be rewritten by any client via `ModifyAttribute` (e.g. `Initial Date`, `Cryptographic Length`, `Unique Identifier`). All attributes marked "Modifiable by client: No" are now rejected with `Attribute_Read_Only`; "Deletable by client: No" attributes are rejected by `DeleteAttribute` ([#1103](https://github.com/Cosmian/kms/pull/1103))
 
@@ -39,8 +39,8 @@ All notable changes to this project will be documented in this file.
 #### Authentication Verifier integration ([#1013](https://github.com/Cosmian/kms/pull/1013))
 
 - Authentication methods delegated to the external Cosmian Authentication Verifier service:
-  - Login/password (basic auth) + TOTP 2FA: supported on Web UI and `ckms login` CLI
-  - `X-Vault-Token` (Vault AppRole, Vault Kubernetes, Vault Token)
+    - Login/password (basic auth) + TOTP 2FA: supported on Web UI and `ckms login` CLI
+    - `X-Vault-Token` (Vault AppRole, Vault Kubernetes, Vault Token)
 
 #### Other
 
@@ -774,7 +774,7 @@ PostgreSQL connections now support multi-host connection strings
 for automatic failover. Added retry logic with exponential backoff for transient
 connection errors during failover, scheme validation for PostgreSQL URLs, and
 additional retryable SQLSTATE codes (08001, 08004, 57P02, 57P03).
-See [database documentation](documentation/docs/database.md) for configuration details.
+See the database documentation for configuration details.
 
 #### HSM multi-admin support with wildcard ([#801](https://github.com/Cosmian/kms/pull/801))
 

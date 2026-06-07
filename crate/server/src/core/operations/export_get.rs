@@ -361,12 +361,9 @@ pub(crate) async fn export_get(
                 .await?;
             }
         }
-        ObjectType::OpaqueObject => {
-            // Opaque Objects are returned as-is. KMIP does not define alternate export
-            // formats for OpaqueObject; no wrapping/unwrapping semantics apply here beyond
-            // what retrieve_object_for_operation has already enforced. If future profile
-            // vectors require additional behaviors (e.g., redaction on destroyed state),
-            // they can be added analogously to SecretData above.
+        ObjectType::OpaqueObject | ObjectType::SplitKey => {
+            // Opaque Objects and SplitKey shares are returned as-is. KMIP does not define
+            // alternate export formats for these types; no wrapping/unwrapping semantics apply.
         }
         _ => {
             kms_bail!(

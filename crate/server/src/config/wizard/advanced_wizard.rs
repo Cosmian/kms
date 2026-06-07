@@ -28,7 +28,7 @@ pub struct AdvancedConfig {
     pub vendor_identification: String,
     pub key_encryption_key: Option<String>,
     pub default_unwrap_type: Option<Vec<String>>,
-    pub privileged_users: Option<Vec<String>>,
+    pub crypto_officer_users: Option<Vec<String>>,
     pub ms_dke_service_url: Option<String>,
     pub kms_public_url: Option<String>,
     pub kmip_policy: KmipPolicyConfig,
@@ -132,19 +132,19 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         )
     };
 
-    let privileged_str: String = Input::with_theme(&theme)
+    let crypto_officer_str: String = Input::with_theme(&theme)
         .with_prompt(
-            "Privileged users who can create/import objects \
-             (comma-separated, leave blank to skip)",
+            "Crypto Officer users who can create/import/certify objects \
+             (comma-separated, leave blank to skip — formerly 'privileged_users')",
         )
         .allow_empty(true)
         .interact_text()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
-    let privileged_users = if privileged_str.trim().is_empty() {
+    let crypto_officer_users = if crypto_officer_str.trim().is_empty() {
         None
     } else {
         Some(
-            privileged_str
+            crypto_officer_str
                 .split(',')
                 .map(|s| s.trim().to_owned())
                 .filter(|s| !s.is_empty())
@@ -237,7 +237,7 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         vendor_identification,
         key_encryption_key,
         default_unwrap_type,
-        privileged_users,
+        crypto_officer_users,
         ms_dke_service_url,
         kms_public_url,
         kmip_policy,

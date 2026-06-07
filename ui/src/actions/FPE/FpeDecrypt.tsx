@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/useAuth";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface FpeDecryptFormData {
     keyId?: string;
@@ -167,10 +168,15 @@ const FpeDecryptForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("fpeDecrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("fpeDecrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("fpeDecrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("fpeDecrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

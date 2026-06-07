@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier,
@@ -7,6 +7,7 @@ use cosmian_kms_client::{
         Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
     },
 };
+use serde_json;
 
 use crate::{
     actions::console,
@@ -21,6 +22,9 @@ pub enum AccessAction {
     List(ListAccessesGranted),
     Owned(ListOwnedObjects),
     Obtained(ListAccessRightsObtained),
+    /// Query or manage the Crypto Officer role
+    #[clap(subcommand)]
+    CryptoOfficer(CryptoOfficerAction),
 }
 
 impl AccessAction {
@@ -46,6 +50,7 @@ impl AccessAction {
             Self::Obtained(action) => {
                 action.run(kms_rest_client).await?;
             }
+            Self::CryptoOfficer(action) => action.run(kms_rest_client).await?,
         }
 
         Ok(())
@@ -308,5 +313,126 @@ impl ListAccessRightsObtained {
         }
 
         Ok(objects)
+    }
+}
+
+// ── CryptoOfficer role sub-commands ──────────────────────────────────────────
+
+/// Query or manage the Crypto Officer role on the KMS server.
+#[derive(Subcommand, Debug)]
+pub enum CryptoOfficerAction {
+    /// Print the current Crypto Officer role configuration and ceremony activation status.
+    Status(CryptoOfficerStatus),
+    /// Activate the Crypto Officer role via a split-key ceremony.
+    ///
+    /// Provides all n share UIDs to the server. The server reconstructs the ceremony
+    /// secret in RAM (XOR n-of-n), verifies dual-control constraints, activates the CO
+    /// role, then zeroizes the secret — the secret is **never** stored as a KMS object.
+    Activate(CryptoOfficerActivate),
+    /// Disable an active Crypto Officer ceremony (requires active Crypto Officer privileges).
+    Disable(CryptoOfficerDisable),
+}
+
+impl CryptoOfficerAction {
+    /// Processes the crypto-officer sub-command.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server request fails.
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        match self {
+            Self::Status(action) => action.run(kms_rest_client).await,
+            Self::Activate(action) => action.run(kms_rest_client).await,
+            Self::Disable(action) => action.run(kms_rest_client).await,
+        }
+    }
+}
+
+/// Print the Crypto Officer role configuration and ceremony status.
+///
+/// Any authenticated user can call this command — it returns no key material.
+#[derive(Parser, Debug, Default)]
+pub struct CryptoOfficerStatus;
+
+impl CryptoOfficerStatus {
+    /// Runs the `CryptoOfficerStatus` action.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server request fails.
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        let status = kms_rest_client
+            .crypto_officer_status()
+            .await
+            .with_context(|| "Failed to fetch crypto officer status from KMS server")?;
+        let pretty =
+            serde_json::to_string_pretty(&status).unwrap_or_else(|_| format!("{status:?}"));
+        console::Stdout::new(&pretty).write()?;
+        Ok(())
+    }
+}
+
+/// Activate the Crypto Officer role via a split-key ceremony.
+///
+/// Sends all n split-key share UIDs to the server. The server:
+///
+///   1. Retrieves each share (caller must have `Get` permission on all shares).
+///   2. Verifies all shares carry `x-cosmian-crypto-officer-ceremony`.
+///   3. Verifies all shares originate from the same source key.
+///   4. Verifies dual control — each share is owned by a different CO, and the
+///      activating user does not own any share (NIST SP 800-57 Part 2 Rev 1 §4.6).
+///   5. Reconstructs the ceremony secret via XOR in RAM.
+///   6. Persists the activation record.
+///   7. Zeroizes the secret — **never stored as a KMS object** (ADP-20).
+///
+/// **Requires**: the caller must be listed in `crypto_officer_users`.
+#[derive(Parser, Debug)]
+pub struct CryptoOfficerActivate {
+    /// UIDs of all n split-key shares (all shares from the ceremony key must be provided).
+    #[clap(required = true)]
+    pub share_ids: Vec<String>,
+}
+
+impl CryptoOfficerActivate {
+    /// Runs the `CryptoOfficerActivate` action.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server rejects the ceremony (wrong user, missing shares,
+    /// non-ceremony shares, dual-control violation, etc.).
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        let response = kms_rest_client
+            .crypto_officer_activate(&self.share_ids)
+            .await
+            .with_context(|| "Failed to activate Crypto Officer ceremony on KMS server")?;
+        console::Stdout::new(&response.success).write()?;
+        Ok(())
+    }
+}
+
+/// Disable an active Crypto Officer ceremony.
+///
+/// Sets `revoked_at` on the current ceremony activation record.
+/// Subsequent Crypto Officer ownership-bypass operations will be denied until a new ceremony
+/// is completed. In config-only mode, this command returns an error — remove the user
+/// from `crypto_officer_users` in `kms.toml` and restart the server instead.
+///
+/// **Requires**: the caller must be an active Crypto Officer.
+#[derive(Parser, Debug, Default)]
+pub struct CryptoOfficerDisable;
+
+impl CryptoOfficerDisable {
+    /// Runs the `CryptoOfficerDisable` action.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server request fails or the caller is not an active Crypto Officer.
+    pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
+        let response = kms_rest_client
+            .crypto_officer_disable()
+            .await
+            .with_context(|| "Failed to disable Crypto Officer ceremony on KMS server")?;
+        console::Stdout::new(&response.success).write()?;
+        Ok(())
     }
 }

@@ -38,6 +38,10 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
     - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
     - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
     - ...
+    - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
+    - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
+    - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
+    - ...
 - **Workplace security**:
     - [Google Workspace Client Side Encryption (CSE)](./integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md)
     - [Microsoft 365 Double Key Encryption (DKE)](./integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)

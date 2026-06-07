@@ -6,6 +6,7 @@ import { getMimeType, saveDecryptedFile, sendKmipRequest } from "../../utils/uti
 import { decrypt_cc_ttlv_request, parse_decrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CCDecryptFormData {
     inputFile: Uint8Array;
@@ -85,10 +86,14 @@ const CCDecryptForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("covercryptDecrypt.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("covercryptDecrypt.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
+                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("covercryptDecrypt.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("covercryptDecrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

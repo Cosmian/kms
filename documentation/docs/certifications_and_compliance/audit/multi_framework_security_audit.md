@@ -84,7 +84,7 @@ NIST CSF 2.0 organises controls into six functions: **Govern, Identify, Protect,
 |---------|-------------|--------|---------|
 | PR.AA-01 | Authentication | ✅ | OAuth2/OIDC via JWKS; JWT algorithm allowlist (RS256/PS256/ES256 only) |
 | PR.AA-03 | Multi-factor authentication supported | ⚠️ | MFA delegated to OIDC provider; KMS does not enforce MFA directly |
-| PR.AC-01 | Access control policy | ✅ | Per-object KMIP access control in `crate/access/`; `privileged_users` config |
+| PR.AC-01 | Access control policy | ✅ | Per-object KMIP access control in `crate/access/`; `crypto_officer_users` config |
 | PR.AC-03 | Protected remote access | ✅ | TLS mutual auth supported; JWKS HTTPS guard (startup validation) |
 | PR.DS-01 | Data-at-rest protection | ✅ | Database encrypted by wrapping keys; FIPS-grade AES-256 |
 | PR.DS-02 | Data-in-transit protection | ✅ | TLS 1.2+ required; no legacy TLS 1.0/1.1 configuration |
@@ -169,7 +169,7 @@ Relevant CIS Controls mapped to KMS implementation:
 
 | CIS Control | Description | KMS status |
 |-------------|-------------|-----------|
-| CIS 5 — Account management | Per-user KMIP object ownership; `privileged_users` whitelist | ✅ |
+| CIS 5 — Account management | Per-user KMIP object ownership; `crypto_officer_users` whitelist | ✅ |
 | CIS 6 — Access control management | Grant/Revoke KMIP operations; access-control tests (`security/access_control.rs`) | ✅ |
 | CIS 12.2 — Network traffic filtering | CORS restricted (no wildcard origin by default) | ✅ |
 | CIS 13.9 — Encrypt data in transit | TLS 1.2+ required; legacy TLS absent from config | ✅ |

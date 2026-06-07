@@ -6,6 +6,7 @@ import { create_rsa_key_pair_ttlv_request, parse_create_keypair_ttlv_response } 
 import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface RsaKeyCreateFormData {
     privateKeyId?: string;
@@ -110,13 +111,14 @@ const RsaKeyCreateForm: React.FC = () => {
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="wrappingKeyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
                             label={t("rsaKeysCreate.wrappingKeyId")}
                             help={t("rsaKeysCreate.wrappingKeyIdHelp")}
-                        >
-                            <Input placeholder={t("rsaKeysCreate.enterWrappingKeyId")} />
-                        </Form.Item>
+                            placeholder={t("rsaKeysCreate.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="sensitive" valuePropName="checked" help={t("rsaKeysCreate.sensitiveHelp")}>
                             <Checkbox>{t("rsaKeysCreate.sensitive")}</Checkbox>

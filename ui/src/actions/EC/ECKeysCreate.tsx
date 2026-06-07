@@ -5,6 +5,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ECKeyCreateFormData {
     privateKeyId?: string;
@@ -129,9 +130,14 @@ const ECKeyCreateForm: React.FC = () => {
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item name="wrappingKeyId" label={t("ecKeysCreate.wrappingKeyId")} help={t("ecKeysCreate.wrappingKeyIdHelp")}>
-                            <Input placeholder={t("ecKeysCreate.enterWrappingKeyId")} />
-                        </Form.Item>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
+                            label={t("ecKeysCreate.wrappingKeyId")}
+                            help={t("ecKeysCreate.wrappingKeyIdHelp")}
+                            placeholder={t("ecKeysCreate.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="sensitive" valuePropName="checked" help={t("ecKeysCreate.sensitiveHelp")}>
                             <Checkbox>{t("ecKeysCreate.sensitive")}</Checkbox>
