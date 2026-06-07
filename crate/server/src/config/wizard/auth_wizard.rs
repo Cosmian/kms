@@ -15,7 +15,7 @@ use crate::{
 
 pub struct AuthWizardResult {
     pub idp_auth: IdpAuthConfig,
-    /// Auth Verifier server configuration to wire into `ClapConfig.auth_verifier`.
+    #[allow(dead_code)]
     pub auth_verifier: AuthVerifierConfig,
     pub default_username: String,
     pub force_default_username: bool,

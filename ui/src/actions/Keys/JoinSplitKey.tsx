@@ -1,8 +1,6 @@
-import { Button, Card, Form, Input, InputNumber, Select, Space } from "antd";
+import { Button, Card, Form, Input, InputNumber, Space } from "antd";
 import React, { useCallback, useState } from "react";
-import { Trans, useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
-import * as wasm from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import LocateButton from "../../components/common/LocateButton";
@@ -12,6 +10,11 @@ interface JoinSplitKeyFormData {
     shareIds: { value: string }[];
     objectType: string;
 }
+
+const OBJECT_TYPES_OPTIONS = [
+    { label: "Symmetric Key", value: "SymmetricKey" },
+    { label: "Secret Data", value: "SecretData" },
+];
 
 const buildJoinSplitKeyRequest = (shareIds: string[], objectType: string) => ({
     tag: "JoinSplitKey",
@@ -28,16 +31,15 @@ const buildJoinSplitKeyRequest = (shareIds: string[], objectType: string) => ({
 });
 
 type JoinSplitKeyResponse = {
-    UniqueIdentifier: string;
+    tag: string;
+    type: string;
+    value: { tag: string; type: string; value: string }[];
 };
 
-const DEFAULT_SHARE_COUNT = 3;
-
 const JoinSplitKeyForm: React.FC = () => {
-    const { t } = useTranslation("actions");
     const [form] = Form.useForm<JoinSplitKeyFormData>();
     const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
-    const [shareCount, setShareCount] = useState<number>(DEFAULT_SHARE_COUNT);
+    const [shareCount, setShareCount] = useState<number>(3);
 
     const onLocateSelect = useCallback(
         (index: number, uid: string) => {
@@ -66,45 +68,48 @@ const JoinSplitKeyForm: React.FC = () => {
         await execute(async () => {
             const shareIds = values.shareIds.map((item) => item.value).filter((v) => v && v.trim().length > 0);
             if (shareIds.length < 2) {
-                throw new Error(t("joinSplitKey.atLeastTwoShares"));
+                throw new Error("At least 2 share UIDs are required to reconstruct a key.");
             }
-            const objectType = values.objectType ?? "SymmetricKey";
-            const request = buildJoinSplitKeyRequest(shareIds, objectType);
+            const request = buildJoinSplitKeyRequest(shareIds, values.objectType);
             const resultStr = await sendKmipRequest(request, serverUrl);
             if (resultStr) {
-                const parsed: JoinSplitKeyResponse = await wasm.parse_join_split_key_ttlv_response(resultStr);
-                if (parsed.UniqueIdentifier) {
-                    return t("joinSplitKey.result", { count: shareIds.length, uid: parsed.UniqueIdentifier });
+                const parsed: JoinSplitKeyResponse = JSON.parse(resultStr);
+                const uid = parsed.value.find((item) => item.tag === "UniqueIdentifier");
+                if (uid) {
+                    return `Key successfully reconstructed from ${shareIds.length} shares.\nReconstructed key UID: ${uid.value}`;
                 }
-                return t("joinSplitKey.resultFallback", { response: resultStr });
+                return `Join operation completed. Response: ${resultStr}`;
             }
         });
     };
 
     const initialValues = {
-        shareCount: DEFAULT_SHARE_COUNT,
         objectType: "SymmetricKey" as const,
-        shareIds: Array.from({ length: DEFAULT_SHARE_COUNT }, () => ({ value: "" })),
+        shareIds: Array.from({ length: shareCount }, () => ({ value: "" })),
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">{t("joinSplitKey.title")}</h1>
+            <h1 className="text-2xl font-bold mb-6">Join Split Key</h1>
 
             <div className="mb-8 space-y-2">
-                <p>{t("joinSplitKey.intro")}</p>
+                <p>Reconstruct a key from XOR split-key shares (n-of-n):</p>
                 <ul className="list-disc pl-5 space-y-1">
                     <li>
-                        <Trans ns="actions" i18nKey="joinSplitKey.introAllShares" components={{ strong: <strong /> }} />
+                        <strong>All n shares are required</strong> — provide every share UID from the split operation.
                     </li>
-                    <li>{t("joinSplitKey.introShareCount")}</li>
+                    <li>Set the share count to match the number of parts used when the key was split.</li>
+                    <li>
+                        To activate a <strong>Crypto Officer ceremony</strong>, use{" "}
+                        <strong>Access → Crypto Officer Role → Activate Ceremony</strong> instead.
+                    </li>
                 </ul>
             </div>
 
             <Form form={form} onFinish={onFinish} layout="vertical" initialValues={initialValues}>
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item label={t("joinSplitKey.shareCountLabel")} name="shareCount">
+                        <Form.Item label="Number of shares (n)" name="shareCount">
                             <InputNumber
                                 min={2}
                                 max={20}
@@ -117,18 +122,18 @@ const JoinSplitKeyForm: React.FC = () => {
                         <Form.List name="shareIds">
                             {(fields) => (
                                 <>
-                                    <label className="block font-medium mb-2">{t("joinSplitKey.shareIdsLabel")}</label>
+                                    <label className="block font-medium mb-2">Share Unique Identifiers</label>
                                     {fields.map((field, index) => (
                                         <Form.Item key={field.key} required>
                                             <Space align="baseline" className="w-full">
                                                 <Form.Item
                                                     {...field}
                                                     name={[field.name, "value"]}
-                                                    rules={[{ required: true, message: t("joinSplitKey.shareUidRequired") }]}
+                                                    rules={[{ required: true, message: "Share UID is required" }]}
                                                     noStyle
                                                 >
                                                     <Input
-                                                        placeholder={t("joinSplitKey.sharePlaceholder", { n: index + 1 })}
+                                                        placeholder={`Share ${index + 1} UID`}
                                                         style={{ width: 400 }}
                                                         data-testid={`join-share-id-${index}`}
                                                     />
@@ -144,18 +149,14 @@ const JoinSplitKeyForm: React.FC = () => {
                             )}
                         </Form.List>
 
-                        <Form.Item
-                            name="objectType"
-                            label={t("joinSplitKey.objectTypeLabel")}
-                            rules={[{ required: true, message: t("joinSplitKey.objectTypeRequired") }]}
-                        >
-                            <Select
-                                data-testid="join-object-type-select"
-                                options={[
-                                    { label: t("joinSplitKey.objectTypeSymmetricKey"), value: "SymmetricKey" },
-                                    { label: t("joinSplitKey.objectTypeSecretData"), value: "SecretData" },
-                                ]}
-                            />
+                        <Form.Item name="objectType" label="Reconstructed Object Type" rules={[{ required: true }]}>
+                            <select data-testid="join-object-type-select" className="ant-select-selector w-full border rounded p-2">
+                                {OBJECT_TYPES_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
                         </Form.Item>
                     </Card>
 
@@ -167,11 +168,11 @@ const JoinSplitKeyForm: React.FC = () => {
                             className="w-full text-white font-medium"
                             data-testid="join-split-key-submit-btn"
                         >
-                            {t("joinSplitKey.submit")}
+                            Join Split Key
                         </Button>
                     </Form.Item>
                 </Space>
-                <ActionResponse res={res} responseRef={responseRef} title={t("joinSplitKey.responseTitle")} />
+                <ActionResponse res={res} responseRef={responseRef} title="Join Split Key Response" />
             </Form>
         </div>
     );

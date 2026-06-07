@@ -9,41 +9,6 @@ use cosmian_kmip::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Error type for [`CryptoOfficerConfig::validate`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CryptoOfficerConfigError {
-    /// `require_ceremony = true` requires at least 3 CO users.
-    ///
-    /// With XOR n-of-n and only n = 2, the key creator knows K and S1 and can
-    /// trivially derive S2 = K ⊕ S1, defeating dual control. n ≥ 3 is required
-    /// for genuine split knowledge (NIST SP 800-57 Part 2 Rev 1 §4.6).
-    InsufficientCandidates {
-        /// Number of configured CO users.
-        count: usize,
-        /// Minimum required (3).
-        minimum: usize,
-    },
-}
-
-impl fmt::Display for CryptoOfficerConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InsufficientCandidates { count, minimum } => write!(
-                f,
-                "crypto_officer_require_ceremony = true requires at least {minimum} \
-                 crypto_officer_users (got {count}). \
-                 With XOR n-of-n split keys, the key creator knows the master key K \
-                 and their own share S1, so they can derive any other share (S_i = K ⊕ S1 ⊕ … \
-                 for n=2: S2 = K ⊕ S1) — bypassing dual control entirely. \
-                 With n ≥ {minimum}, the creator knows K and S1 but can only derive \
-                 S2 ⊕ S3 ⊕ … without knowing individual shares, preserving split knowledge."
-            ),
-        }
-    }
-}
-
-impl std::error::Error for CryptoOfficerConfigError {}
-
 /// KMS server-level roles as defined by:
 /// - **ISO/IEC 19790:2012 §7.4** (adopted by FIPS 140-3): mandates `CryptoOfficer` and `User`
 ///   as the two required module roles. "Key output" is a Crypto Officer service (§7.4.3);
@@ -86,14 +51,10 @@ pub enum Role {
 }
 
 impl Role {
-    /// Returns the set of [`KmipOperation`]s this role is permitted to invoke at dispatch level.
+    /// Returns the set of [`KmipOperation`]s this role is permitted to invoke.
     ///
-    /// **Important**: this set is NOT exhaustive of all operations the role may perform.
-    /// Operations without a [`KmipOperation`] variant in the dispatch mapping — specifically
-    /// `CreateKeyPair`, `Register`, `ReKeyKeyPair`, `CreateSplitKey`, and `JoinSplitKey` —
-    /// are gated via [`LIFECYCLE_OPERATION_TAGS`] in the dispatch layer instead, and are
-    /// therefore absent from this set by design. Callers must not assume this set is the
-    /// complete permission boundary.
+    /// The returned set depends on the variant; privileged roles include every known
+    /// operation, so callers may short-circuit without inspecting the set.
     #[must_use]
     pub fn allowed_operations(self) -> HashSet<KmipOperation> {
         match self {
@@ -111,35 +72,43 @@ impl Role {
                 KmipOperation::Validate,
             ]
             .into(),
-            Self::CryptoOfficer => {
-                // Start with all Operator operations — a CO candidate is already an Operator,
-                // so active CO must retain those rights to avoid privilege regression.
-                // New Operator operations are automatically included here.
-                let mut ops = Self::Operator.allowed_operations();
-                // Add CO-only operations (ISO/IEC 19790 §7.4 "Crypto Officer" services)
-                ops.extend([
-                    // Key generation
-                    KmipOperation::Create,
-                    KmipOperation::Certify,
-                    KmipOperation::Import,
-                    // Key output (ISO/IEC 19790 §7.4 "key output")
-                    KmipOperation::Get,
-                    KmipOperation::Export,
-                    // Rotation / re-key
-                    KmipOperation::Rekey,
-                    KmipOperation::DeriveKey,
-                    // Lifecycle transitions
-                    KmipOperation::Activate,
-                    KmipOperation::Revoke,
-                    KmipOperation::Destroy,
-                    // Attribute management
-                    KmipOperation::SetAttribute,
-                    KmipOperation::ModifyAttribute,
-                    KmipOperation::AddAttribute,
-                    KmipOperation::DeleteAttribute,
-                ]);
-                ops
-            }
+            Self::CryptoOfficer => [
+                // Key generation (ISO/IEC 19790 §7.4 "Crypto Officer" services)
+                KmipOperation::Create,
+                KmipOperation::Certify,
+                KmipOperation::Import,
+                // Key output (ISO/IEC 19790 §7.4 "key output")
+                KmipOperation::Get,
+                KmipOperation::Export,
+                // Rotation / re-key
+                KmipOperation::Rekey,
+                KmipOperation::DeriveKey,
+                // Lifecycle transitions
+                KmipOperation::Activate,
+                KmipOperation::Revoke,
+                KmipOperation::Destroy,
+                // Attribute management
+                KmipOperation::SetAttribute,
+                KmipOperation::ModifyAttribute,
+                KmipOperation::AddAttribute,
+                KmipOperation::DeleteAttribute,
+                // Observation (needed to locate objects to manage)
+                KmipOperation::GetAttributes,
+                KmipOperation::Locate,
+                // Approved security functions — CO inherits all User services.
+                // ISO/IEC 19790 §7.4 does not forbid the CO from also using crypto;
+                // NIST SP 800-57 Part 2 Rev 1 explicitly allows it when defined by policy.
+                // A dormant CO candidate already holds Operator privileges (including crypto
+                // use), so active CO must retain those to avoid privilege regression.
+                KmipOperation::Encrypt,
+                KmipOperation::Decrypt,
+                KmipOperation::Sign,
+                KmipOperation::SignatureVerify,
+                KmipOperation::MAC,
+                KmipOperation::Hash,
+                KmipOperation::Validate,
+            ]
+            .into(),
         }
     }
 }
@@ -179,15 +148,8 @@ impl fmt::Display for Access {
 /// - **Key lifecycle management**: Create, Import, Certify, Rekey, Activate, Revoke, Destroy
 /// - **Key output**: Get, Export (ISO/IEC 19790 §7.4 "key output")
 /// - **Attribute management**: Set/Modify/Add/Delete Attribute
-/// - **Ownership bypass**: can access any Managed Object regardless of ownership (non-HSM)
-/// - **Cryptographic use**: Encrypt, Decrypt, Sign, `SignatureVerify`, MAC, Hash — a CO
-///   candidate is already an Operator with full crypto-use rights on their own objects, and
-///   promotion to active CO does not reduce those rights. Note: the ownership bypass
-///   (`user_can_perform_operation`) applies to **KMIP key-lifecycle operations** only.
-///   Crypto operations (Encrypt/Decrypt/Sign/…) use a separate authorization path
-///   (`is_owm_authorized_with_get_wildcard`) that checks ownership or explicit per-object
-///   grants and does **not** include a CO bypass — an active CO can only encrypt/sign with
-///   keys they own or have been explicitly granted access to.
+/// - **Ownership bypass**: can access any Managed Object regardless of ownership
+/// - **No cryptographic use**: cannot Encrypt, Decrypt, Sign, Hash, MAC
 ///
 /// When `require_ceremony` is `true`, Crypto Officer privileges are inactive until a quorum
 /// of custodians completes a `JoinSplitKey` ceremony with CO-tagged shares.
@@ -206,25 +168,6 @@ pub struct CryptoOfficerConfig {
     /// `x-cosmian-crypto-officer-ceremony`, created via `CreateSplitKey`.
     #[serde(default)]
     pub require_ceremony: bool,
-
-    /// UID of a KMS symmetric key used to AES-KW (RFC 5649) wrap each split-key share
-    /// before it is written to the database.
-    ///
-    /// When set, `CreateSplitKey` wraps every share's raw bytes with this key, and
-    /// `JoinSplitKey` unwraps them before XOR reconstruction.  The wrapping key must be
-    /// an AES-128, AES-192, or AES-256 symmetric key already present in the KMS object
-    /// store.  The UID is stamped as the `x-cosmian-share-wrapping-key` vendor attribute
-    /// on every share object so `JoinSplitKey` can locate the correct key on reassembly.
-    ///
-    /// When the KMS itself is HSM-backed, this key can be an HSM-resident object, giving
-    /// the same hardware boundary protection as purpose-built HSM split-key solutions.
-    ///
-    /// Security note: the wrapping key must be created and made available **before**
-    /// the first `CreateSplitKey` call.  Rotate it by creating a new key, updating this
-    /// field, and re-running the ceremony (existing wrapped shares cannot be unwrapped
-    /// with a new key; re-ceremony is required on rotation).
-    #[serde(default)]
-    pub ceremony_wrapping_key_id: Option<String>,
 }
 
 impl CryptoOfficerConfig {
@@ -253,21 +196,22 @@ impl CryptoOfficerConfig {
 
     /// Validate role configuration.
     ///
-    /// Enforces NIST SP 800-57 Part 2 Rev 1 §4.6 split-knowledge minimum:
-    /// `require_ceremony = true` requires at least 3 CO users. With XOR n-of-n
-    /// and only n = 2, the key creator can derive S2 = K ⊕ S1 trivially, so
-    /// genuine dual-control requires n ≥ 3.
+    /// Currently a no-op, kept for forward compatibility.
     ///
     /// # Errors
-    /// Returns [`CryptoOfficerConfigError::InsufficientCandidates`] when
-    /// `require_ceremony = true` and `users.len() < 3`.
-    pub const fn validate(&self) -> Result<(), CryptoOfficerConfigError> {
-        const MINIMUM_CEREMONY_CANDIDATES: usize = 3;
-        if self.require_ceremony && self.users.len() < MINIMUM_CEREMONY_CANDIDATES {
-            return Err(CryptoOfficerConfigError::InsufficientCandidates {
-                count: self.users.len(),
-                minimum: MINIMUM_CEREMONY_CANDIDATES,
-            });
+    /// Returns an error if the configuration is invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.require_ceremony && self.users.len() < 3 {
+            return Err(format!(
+                "crypto_officer_require_ceremony = true requires at least 3 \
+                 crypto_officer_users (got {}). \
+                 With XOR n-of-n split keys, the key creator knows the master key K \
+                 and their own share S1, so they can derive any other share (S_i = K ⊕ S1 ⊕ … \
+                 for n=2: S2 = K ⊕ S1) — bypassing dual control entirely. \
+                 With n ≥ 3, the creator knows K and S1 but can only derive S2 ⊕ S3 ⊕ … \
+                 without knowing individual shares, preserving split knowledge.",
+                self.users.len()
+            ));
         }
         Ok(())
     }

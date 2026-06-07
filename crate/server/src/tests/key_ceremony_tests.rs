@@ -7,16 +7,6 @@
 //! 4. Per-user isolation — Alice completing ceremony does NOT activate Bob.
 //! 5. n-of-n enforcement — providing fewer than n shares is rejected.
 //! 6. Non-candidate rejection — a user not in `crypto_officer.users` cannot trigger activation.
-//!
-//! Security regression tests:
-//! - no eprintln!/debug leakage of CO identity in `create_split_key`.
-//! - CO cannot Get/Export a `sensitive=true` key without wrapping.
-//! - startup emits WARN when config-only CO mode is active.
-//! - active CO self-revokes (quorum guard removed; peer revocation enabled).
-//! - startup validation rejects `force_default_username=true` with CO configured.
-//! - dormant CO candidate can peer-revoke an active CO.
-//! - reconstructed key object intact after peer revocation.
-//! - Operator (non-candidate) cannot peer-revoke a CO.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -35,7 +25,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use crate::{
     config::{ClapConfig, MainDBConfig, ServerParams},
     core::{KMS, operations::perform_crypto_officer_ceremony_activation},
-    error::KmsError,
     middlewares::UserId,
     result::KResult,
     tests::test_utils::get_tmp_sqlite_path,
@@ -45,24 +34,8 @@ use crate::{
 const TEST_CEREMONY_SECRET: &str =
     "deadbeefcafebabe0102030405060708090a0b0c0d0e0f10deadbeefcafebabe";
 
-/// Extract the text-string from a `UniqueIdentifier`, propagating as a `KResult`.
-/// Replaces `.as_str().expect("UID must be a string")` throughout this file so
-/// a malformed server response produces a descriptive error rather than a panic.
-fn uid_string(uid: &UniqueIdentifier) -> KResult<String> {
-    uid.as_str()
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| KmsError::InvalidRequest(format!("expected TextString UID, got {uid:?}")))
-}
-
-/// Build a base `ClapConfig` for CO-related tests.
-///
-/// - `require_ceremony`: when `true`, also sets `ceremony_secret = TEST_CEREMONY_SECRET`
-/// - `wrap_key_id`: when `Some`, sets `ceremony_wrapping_key_id`
-fn base_ceremony_conf(
-    co_users: Vec<String>,
-    require_ceremony: bool,
-    wrap_key_id: Option<&str>,
-) -> ClapConfig {
+/// Build a `KMS` configured for ceremony mode with the given CO users.
+async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
     let mut conf = ClapConfig {
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),
@@ -73,52 +46,27 @@ fn base_ceremony_conf(
         ..Default::default()
     };
     conf.roles.crypto_officer_users = Some(co_users);
-    conf.roles.crypto_officer_require_ceremony = require_ceremony;
-    if require_ceremony {
-        conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
-    }
-    if let Some(id) = wrap_key_id {
-        conf.roles.ceremony_wrapping_key_id = Some(id.to_owned());
-    }
-    conf
-}
+    conf.roles.crypto_officer_require_ceremony = true;
+    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
 
-/// Build a `KMS` configured for ceremony mode with the given CO users.
-async fn ceremony_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
-    let conf = base_ceremony_conf(co_users, true, None);
     let params = ServerParams::try_from(conf)?;
     Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
 }
 
-/// Build a `KMS` configured for ceremony mode with AES-KW share wrapping enabled.
-///
-/// A fresh wrapping key is pre-created and its UID is set as `ceremony_wrapping_key_id`.
-/// The returned `Arc<KMS>` is ready for split-key operations that wrap shares at rest.
-async fn ceremony_kms_with_wrapping(co_users: Vec<String>, wrap_key_id: &str) -> KResult<Arc<KMS>> {
-    let conf = base_ceremony_conf(co_users.clone(), true, Some(wrap_key_id));
-    let params = ServerParams::try_from(conf)?;
-    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
-
-    // Pre-create the wrapping key directly in the DB as the first CO user.
-    // `create_key` is a CO-free helper that stores directly through the operations layer.
-    let owner = co_users.first().map_or("admin", String::as_str);
-    let no_tags: &[&str] = &[];
-    let req = symmetric_key_create_request(
-        VENDOR_ID_COSMIAN,
-        Some(UniqueIdentifier::TextString(wrap_key_id.to_owned())),
-        256,
-        CryptographicAlgorithm::AES,
-        no_tags,
-        false,
-        None,
-    )?;
-    kms.create(req, &UserId::from(owner)).await?;
-
-    Ok(kms)
-}
-
+/// Build a `KMS` configured for config-only CO mode (no ceremony) with the given users.
 async fn config_only_co_kms(co_users: Vec<String>) -> KResult<Arc<KMS>> {
-    let conf = base_ceremony_conf(co_users, false, None);
+    let mut conf = ClapConfig {
+        db: MainDBConfig {
+            database_type: Some("sqlite".to_owned()),
+            sqlite_path: get_tmp_sqlite_path(),
+            clear_database: false,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    conf.roles.crypto_officer_users = Some(co_users);
+    conf.roles.crypto_officer_require_ceremony = false;
+
     let params = ServerParams::try_from(conf)?;
     Ok(Arc::new(KMS::instantiate(Arc::new(params)).await?))
 }
@@ -137,7 +85,11 @@ async fn create_key(kms: &KMS, owner: &str) -> KResult<String> {
     )?;
     req.attributes.activation_date = None;
     let resp = kms.create(req, &UserId::from(owner)).await?;
-    uid_string(&resp.unique_identifier)
+    Ok(resp
+        .unique_identifier
+        .as_str()
+        .expect("UID must be a string")
+        .to_owned())
 }
 
 /// Split `key_uid` into `total_parts` XOR shares; return share UIDs.
@@ -148,19 +100,17 @@ async fn split_key(
     total_parts: i32,
 ) -> KResult<Vec<String>> {
     let req = CreateSplitKey {
-        object_type: ObjectType::SymmetricKey,
-        unique_identifier: Some(UniqueIdentifier::TextString(key_uid.to_owned())),
+        unique_identifier: UniqueIdentifier::TextString(key_uid.to_owned()),
         split_key_parts: total_parts,
         split_key_threshold: total_parts, // XOR n-of-n
         split_key_method: SplitKeyMethod::XOR,
-        attributes: None,
-        protection_storage_masks: None,
     };
     let resp = Box::pin(kms.create_split_key(req, &UserId::from(owner))).await?;
-    resp.unique_identifier
+    Ok(resp
+        .split_key_unique_identifiers
         .iter()
-        .map(uid_string)
-        .collect::<KResult<Vec<_>>>()
+        .map(|u| u.as_str().expect("UID must be a string").to_owned())
+        .collect())
 }
 
 /// Reconstruct from the given share UIDs; return the reconstructed key UID.
@@ -171,17 +121,20 @@ async fn join_shares(
     expected_type: ObjectType,
 ) -> KResult<String> {
     let req = JoinSplitKey {
-        unique_identifier: share_uids
+        split_key_unique_identifiers: share_uids
             .iter()
             .map(|u| UniqueIdentifier::TextString(u.clone()))
             .collect(),
         object_type: expected_type,
-        secret_data_type: None,
+        split_key_method: SplitKeyMethod::XOR,
         attributes: None,
-        protection_storage_masks: None,
     };
     let resp = kms.join_split_key(req, &UserId::from(user)).await?;
-    uid_string(&resp.unique_identifier)
+    Ok(resp
+        .unique_identifier
+        .as_str()
+        .expect("UID must be a string")
+        .to_owned())
 }
 
 // ─── Test 1: config-only CO ──────────────────────────────────────────────────
@@ -195,7 +148,7 @@ async fn test_config_only_co_is_immediately_active() -> KResult<()> {
     let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
 
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        kms.is_crypto_officer(alice).await?,
         "Config-only CO: alice should be an active Crypto Officer"
     );
     Ok(())
@@ -210,7 +163,7 @@ async fn test_config_only_non_co_user_is_operator() -> KResult<()> {
     let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
 
     assert!(
-        !kms.is_crypto_officer(&UserId::from(bob)).await?,
+        !kms.is_crypto_officer(bob).await?,
         "Config-only CO: bob is not in the list and should not be CO"
     );
     Ok(())
@@ -229,7 +182,7 @@ async fn test_ceremony_candidate_is_operator_before_ceremony() -> KResult<()> {
     let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
 
     assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
+        !kms.is_crypto_officer(alice).await?,
         "Ceremony mode: alice should NOT be CO before ceremony completes"
     );
     Ok(())
@@ -274,10 +227,10 @@ async fn test_ceremony_activation_makes_user_co() -> KResult<()> {
         .await?;
 
     // Alice assembles all shares — this activates the CO ceremony (not stored).
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
 
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        kms.is_crypto_officer(alice).await?,
         "After ceremony completion alice should be CO"
     );
     Ok(())
@@ -317,14 +270,14 @@ async fn test_ceremony_activates_only_assembling_user() -> KResult<()> {
         .await?;
 
     // Alice completes the ceremony via the dedicated endpoint.
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
 
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        kms.is_crypto_officer(alice).await?,
         "Alice should be CO after her ceremony"
     );
     assert!(
-        !kms.is_crypto_officer(&UserId::from(bob)).await?,
+        !kms.is_crypto_officer(bob).await?,
         "Bob should NOT be CO — he never assembled shares"
     );
     Ok(())
@@ -405,8 +358,7 @@ async fn test_non_candidate_cannot_activate_ceremony() -> KResult<()> {
     }
 
     // Eve tries to activate the ceremony — must be rejected (she is not in CO candidates).
-    let result =
-        perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(eve)).await;
+    let result = perform_crypto_officer_ceremony_activation(&kms, &share_uids, eve).await;
     assert!(
         result.is_err(),
         "Eve is not a CO candidate — ceremony activation must be rejected"
@@ -635,9 +587,9 @@ async fn test_ceremony_shares_always_assigned_to_co_candidates() -> KResult<()> 
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        kms.is_crypto_officer(alice).await?,
         "Alice must be CO after valid ceremony"
     );
     Ok(())
@@ -649,11 +601,10 @@ fn test_validate_rejects_single_co_with_ceremony() {
     let co = CryptoOfficerConfig {
         users: vec!["single@example.com".to_owned()],
         require_ceremony: true,
-        ceremony_wrapping_key_id: None,
     };
     let result = co.validate();
     assert!(result.is_err(), "Single CO + ceremony should be rejected");
-    let err = result.unwrap_err().to_string();
+    let err = result.unwrap_err();
     assert!(err.contains("at least 3"), "Error: {err}");
     assert!(
         err.contains("split knowledge") || err.contains("XOR"),
@@ -667,14 +618,13 @@ fn test_validate_rejects_two_co_with_ceremony() {
     let co = CryptoOfficerConfig {
         users: vec!["alice@example.com".to_owned(), "bob@example.com".to_owned()],
         require_ceremony: true,
-        ceremony_wrapping_key_id: None,
     };
     let result = co.validate();
     assert!(
         result.is_err(),
         "2 COs + ceremony should be rejected (minimum is 3)"
     );
-    let err = result.unwrap_err().to_string();
+    let err = result.unwrap_err();
     assert!(err.contains("at least 3"), "Error: {err}");
 }
 
@@ -688,7 +638,6 @@ fn test_validate_accepts_three_cos_with_ceremony() {
             "carol@example.com".to_owned(),
         ],
         require_ceremony: true,
-        ceremony_wrapping_key_id: None,
     };
     assert!(
         co.validate().is_ok(),
@@ -702,7 +651,6 @@ fn test_validate_accepts_single_co_without_ceremony() {
     let co = CryptoOfficerConfig {
         users: vec!["single@example.com".to_owned()],
         require_ceremony: false,
-        ceremony_wrapping_key_id: None,
     };
     assert!(
         co.validate().is_ok(),
@@ -794,9 +742,9 @@ async fn test_self_participation_analysis_creating_user_owns_share_zero() -> KRe
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        kms.is_crypto_officer(alice).await?,
         "After assembling all three shares alice must be CO"
     );
     Ok(())
@@ -833,15 +781,15 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
 
     // ── Pre-ceremony: all CO candidates are Operators ─────────────────────────
     assert!(
-        !kms.is_crypto_officer(&UserId::from(user_co)).await?,
+        !kms.is_crypto_officer(user_co).await?,
         "user_co must be Operator before ceremony"
     );
     assert!(
-        !kms.is_crypto_officer(&UserId::from(owner_co)).await?,
+        !kms.is_crypto_officer(owner_co).await?,
         "owner_co must be Operator before ceremony"
     );
     assert!(
-        !kms.is_crypto_officer(&UserId::from(operator)).await?,
+        !kms.is_crypto_officer(operator).await?,
         "kmserver is always Operator"
     );
 
@@ -868,14 +816,14 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
         )
         .await?;
 
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(user_co)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, user_co).await?;
     assert!(
-        kms.is_crypto_officer(&UserId::from(user_co)).await?,
+        kms.is_crypto_officer(user_co).await?,
         "user.client must be active CO after ceremony"
     );
     // owner.client has not run their own ceremony — still Operator.
     assert!(
-        !kms.is_crypto_officer(&UserId::from(owner_co)).await?,
+        !kms.is_crypto_officer(owner_co).await?,
         "owner.client not yet CO"
     );
 
@@ -908,11 +856,11 @@ async fn test_full_four_phase_ceremony_with_production_users() -> KResult<()> {
 
     // ── Phase 4: Disable ceremony ─────────────────────────────────────────────
     kms.database
-        .revoke_crypto_officer_activation(user_co, user_co)
+        .revoke_crypto_officer_activation(user_co)
         .await?;
 
     assert!(
-        !kms.is_crypto_officer(&UserId::from(user_co)).await?,
+        !kms.is_crypto_officer(user_co).await?,
         "CO must be Operator after ceremony disable"
     );
     Ok(())
@@ -951,18 +899,16 @@ async fn test_revoke_and_reactivate_ceremony() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        kms.is_crypto_officer(alice).await?,
         "Alice must be CO after first ceremony"
     );
 
     // ── Revoke ────────────────────────────────────────────────────────────────
-    kms.database
-        .revoke_crypto_officer_activation(alice, alice)
-        .await?;
+    kms.database.revoke_crypto_officer_activation(alice).await?;
     assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
+        !kms.is_crypto_officer(alice).await?,
         "Alice must be Operator after revoke"
     );
 
@@ -984,9 +930,9 @@ async fn test_revoke_and_reactivate_ceremony() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids2, &UserId::from(alice)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids2, alice).await?;
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
+        kms.is_crypto_officer(alice).await?,
         "Alice must be CO again after re-activation"
     );
     Ok(())
@@ -1024,178 +970,31 @@ async fn test_post_revocation_co_is_demoted_to_operator() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
-    assert!(kms.is_crypto_officer(&UserId::from(alice)).await?);
+    perform_crypto_officer_ceremony_activation(&kms, &share_uids, alice).await?;
+    assert!(kms.is_crypto_officer(alice).await?);
 
     // Revoke.
-    kms.database
-        .revoke_crypto_officer_activation(alice, alice)
-        .await?;
+    kms.database.revoke_crypto_officer_activation(alice).await?;
 
     // Alice is now Operator — must not be CO.
     assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
+        !kms.is_crypto_officer(alice).await?,
         "After revocation alice must be Operator"
     );
     Ok(())
 }
 
-// ─── Test 19: reconstructed-key storage — per activation path ─────────────────
+// ─── Test 17: 3-CO case — sequential activation (single-active-CO design) ────
 
-/// **`POST /access/crypto_officer/ceremony/activate` (UI path)**:
-/// The reconstructed key is computed in RAM to derive its hash, then zeroized.
-/// It is **never stored** in the `objects` table.  After activation the base key
-/// UID (i.e., the share root without the `#N` suffix) must be absent from the DB.
+/// The DB supports ONE global active CO at a time (the most recently activated user).
+/// With 3 CO candidates, each can activate in sequence. When B activates after A,
+/// only B is CO; A is no longer CO.  This reflects the current single-record design.
 ///
-/// **`JoinSplitKey` KMIP operation (CLI path)**:
-/// The reconstructed key IS stored as an Active managed object before the ceremony
-/// activation side-effect runs.  After `join_shares` the base UID must exist.
+/// Sequence: alice activates → alice is CO; bob activates → bob is CO, alice is not;
+/// alice revokes bob's activation and re-activates → alice is CO again.
 #[cfg(feature = "non-fips")]
 #[tokio::test]
-async fn test_activation_endpoint_does_not_store_reconstructed_key() -> KResult<()> {
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let provisioner = "admin";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // ── Create the ceremony key with a deterministic UID ──────────────────────
-    let key_uid = "ceremony-key-rest-path-test";
-    let no_tags: &[&str] = &[];
-    let mut req = symmetric_key_create_request(
-        VENDOR_ID_COSMIAN,
-        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
-        256,
-        CryptographicAlgorithm::AES,
-        no_tags,
-        false,
-        None,
-    )?;
-    req.attributes.activation_date = None;
-    kms.create(req, &UserId::from(provisioner)).await?;
-
-    let shares = Box::pin(split_key(&kms, provisioner, key_uid, n)).await?;
-
-    // ── Source key is destroyed after the split ───────────────────────────────
-    assert!(
-        kms.database.retrieve_object(key_uid).await?.is_none(),
-        "Source key must be destroyed after CreateSplitKey"
-    );
-
-    // ── Grant alice access to bob and carol's shares ──────────────────────────
-    kms.database
-        .grant_operations(
-            &shares[1],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-    kms.database
-        .grant_operations(
-            &shares[2],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-
-    // ── Activate via the REST path (perform_crypto_officer_ceremony_activation) ─
-    // This is what the UI calls — it must NOT store the reconstructed key.
-    perform_crypto_officer_ceremony_activation(&kms, &shares, &UserId::from(alice)).await?;
-
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be an active CO after the REST activation"
-    );
-
-    // The reconstructed key UID (base UID without #N suffix) must NOT be in DB.
-    let reconstructed_uid = key_uid; // base UID = source key UID = ceremony-key-rest-path-test
-    assert!(
-        kms.database
-            .retrieve_object(reconstructed_uid)
-            .await?
-            .is_none(),
-        "REST activation path must NOT store the reconstructed key in the DB"
-    );
-
-    Ok(())
-}
-
-/// **`JoinSplitKey` (CLI path)** stores the reconstructed key as a managed object.
-///
-/// This is the complementary test: the KMIP path explicitly persists the key so
-/// the caller can use it as a wrapping/encryption key after ceremony completion.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_join_split_key_stores_reconstructed_key() -> KResult<()> {
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let provisioner = "admin";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    let key_uid = "ceremony-key-kmip-path-test";
-    let no_tags: &[&str] = &[];
-    let mut req = symmetric_key_create_request(
-        VENDOR_ID_COSMIAN,
-        Some(UniqueIdentifier::TextString(key_uid.to_owned())),
-        256,
-        CryptographicAlgorithm::AES,
-        no_tags,
-        false,
-        None,
-    )?;
-    req.attributes.activation_date = None;
-    kms.create(req, &UserId::from(provisioner)).await?;
-
-    let shares = Box::pin(split_key(&kms, provisioner, key_uid, n)).await?;
-
-    kms.database
-        .grant_operations(
-            &shares[1],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-    kms.database
-        .grant_operations(
-            &shares[2],
-            &UserId::from(alice),
-            std::collections::HashSet::from([KmipOperation::Get]),
-        )
-        .await?;
-
-    // ── Activate via JoinSplitKey (KMIP / CLI path) ───────────────────────────
-    // This DOES store the reconstructed key before ceremony activation runs.
-    let reconstructed_uid = join_shares(&kms, alice, &shares, ObjectType::SymmetricKey).await?;
-
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be an active CO after JoinSplitKey"
-    );
-
-    // The reconstructed key must exist in the DB.
-    let owm = kms.database.retrieve_object(&reconstructed_uid).await?;
-    assert!(
-        owm.is_some(),
-        "KMIP JoinSplitKey path must store the reconstructed key in the DB (uid={reconstructed_uid})"
-    );
-
-    Ok(())
-}
-
-/// Per-user model: each CO candidate activates independently. Multiple CO users
-/// can be simultaneously active. When Carol activates after Alice, Alice remains
-/// an active CO — Carol's activation does NOT demote Alice.
-///
-/// Sequence: alice activates → alice is CO; carol activates → carol AND alice are
-/// both CO simultaneously; bob never activates → bob is still Operator.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_multiple_co_simultaneous_activation() -> KResult<()> {
+async fn test_three_co_sequential_activation_single_record_design() -> KResult<()> {
     let alice = "alice@example.com";
     let bob = "bob@example.com";
     let carol = "carol@example.com";
@@ -1222,17 +1021,17 @@ async fn test_multiple_co_simultaneous_activation() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &shares_a, &UserId::from(alice)).await?;
+    perform_crypto_officer_ceremony_activation(&kms, &shares_a, alice).await?;
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be CO after her activation"
+        kms.is_crypto_officer(alice).await?,
+        "Alice must be CO after first activation"
     );
     assert!(
-        !kms.is_crypto_officer(&UserId::from(carol)).await?,
-        "Carol must still be Operator before her own ceremony"
+        !kms.is_crypto_officer(carol).await?,
+        "Carol must still be Operator"
     );
 
-    // ── Carol activates her own ceremony → she becomes CO; Alice stays CO ─────
+    // ── Carol activates (new ceremony) → she becomes the active CO; alice is no longer CO ──
     let key_c = create_key(&kms, provisioner).await?;
     let shares_c = Box::pin(split_key(&kms, provisioner, &key_c, n)).await?;
     // Shares auto-assigned round-robin: shares_c[0] → alice, shares_c[1] → bob,
@@ -1251,34 +1050,21 @@ async fn test_multiple_co_simultaneous_activation() -> KResult<()> {
             std::collections::HashSet::from([KmipOperation::Get]),
         )
         .await?;
-    perform_crypto_officer_ceremony_activation(&kms, &shares_c, &UserId::from(carol)).await?;
-
-    // Per-user model: both Alice and Carol are now simultaneously active COs.
+    perform_crypto_officer_ceremony_activation(&kms, &shares_c, carol).await?;
+    // Single-record design: only carol is now CO.
     assert!(
-        kms.is_crypto_officer(&UserId::from(carol)).await?,
+        kms.is_crypto_officer(carol).await?,
         "Carol must be CO after her activation"
     );
     assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must STILL be CO — her activation was not affected by Carol's"
+        !kms.is_crypto_officer(alice).await?,
+        "Alice is NOT CO — single-record design: only the last activator is CO"
     );
 
-    // Bob never activated — still an Operator.
+    // ── Verify bob (in the CO list, but never activated) is still not CO ─────
     assert!(
-        !kms.is_crypto_officer(&UserId::from(bob)).await?,
+        !kms.is_crypto_officer(bob).await?,
         "Bob must remain Operator until he runs his own ceremony"
-    );
-
-    // Peer-revoke Carol: Alice (active CO) revokes Carol.
-    kms.disable_crypto_officer_ceremony(&UserId::from(alice), Some(&UserId::from(carol)))
-        .await?;
-    assert!(
-        !kms.is_crypto_officer(&UserId::from(carol)).await?,
-        "Carol must be demoted after Alice peer-revokes her"
-    );
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must remain CO — only Carol's record was revoked"
     );
     Ok(())
 }
@@ -1374,14 +1160,13 @@ async fn test_cross_key_share_mixing_rejected() -> KResult<()> {
     // Mixing A-1 (part 1) and B-2 (part 2): different part IDs so duplicate check
     // does not fire first; the cross-key source check must catch this.
     let mixed_req = JoinSplitKey {
-        unique_identifier: vec![
+        split_key_unique_identifiers: vec![
             UniqueIdentifier::TextString(shares_a[0].clone()),
             UniqueIdentifier::TextString(shares_b[1].clone()),
         ],
+        split_key_method: SplitKeyMethod::XOR,
         object_type: ObjectType::SymmetricKey,
-        secret_data_type: None,
         attributes: None,
-        protection_storage_masks: None,
     };
 
     let result = kms.join_split_key(mixed_req, &UserId::from(alice)).await;
@@ -1480,643 +1265,6 @@ async fn test_active_co_can_perform_crypto_operations() -> KResult<()> {
         recovered.as_slice(),
         plaintext.as_slice(),
         "Decrypted plaintext must match original"
-    );
-
-    Ok(())
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Security-fix regression tests (threat model PR #991)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ─── no debug output in create_split_key ─────────────────────────────────────
-
-/// `CreateSplitKey` must not emit any `eprintln!` / debug output.
-///
-/// This test calls `create_split_key` and verifies the operation succeeds.
-/// The fix removes two `eprintln!` calls that leaked the CO username list to
-/// stdout. The absence of those calls is a compile-time guarantee after the fix;
-/// this test provides a functional regression baseline for the operation.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_create_split_key_succeeds_without_debug_output() -> KResult<()> {
-    let provisioner = "admin";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // Create a key and split it — this is the code path that previously had eprintln!
-    let key_uid = create_key(&kms, provisioner).await?;
-    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
-
-    // If we reach here, the operation completed without panic — eprintln! calls are gone
-    assert_eq!(
-        share_uids.len(),
-        usize::try_from(n).unwrap(),
-        "Expected exactly {n} shares to be created"
-    );
-    Ok(())
-}
-
-// ─── CO cannot Get a sensitive=true key without wrapping ─────────────
-
-/// `sensitive=true` check applies to CO callers too.
-///
-/// The original threat-model finding claimed a CO could export sensitive keys
-/// without wrapping. This test proves the check in `export_get.rs:74` blocks
-/// the CO the same way it blocks any other caller — even when Alice is both
-/// the owner AND an active CO.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_co_cannot_get_sensitive_key_without_wrapping() -> KResult<()> {
-    // Alice is the only CO in config-only mode → she is immediately an active CO.
-    let alice = "alice@example.com";
-
-    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
-
-    // Alice (CO) creates a symmetric key and marks it sensitive=true.
-    // The sensitive check in export_get.rs:74 is unconditional — it applies to
-    // all callers including the key owner and active COs.
-    let no_tags: &[&str] = &[];
-    let mut req = symmetric_key_create_request(
-        VENDOR_ID_COSMIAN,
-        None,
-        256,
-        CryptographicAlgorithm::AES,
-        no_tags,
-        false,
-        None,
-    )?;
-    req.attributes.activation_date = None;
-    req.attributes.sensitive = Some(true); // mark sensitive
-    let create_resp = kms.create(req, &UserId::from(alice)).await?;
-    let key_uid = uid_string(&create_resp.unique_identifier)?;
-
-    // Alice (active CO and owner) tries to Get her own key without a wrapping specification.
-    let get_req = Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(key_uid.clone())),
-        key_format_type: None,
-        key_wrap_type: None,
-        key_compression_type: None,
-        key_wrapping_specification: None, // ← no wrapping → must be denied
-    };
-
-    let result = Box::pin(crate::core::operations::get(
-        &kms,
-        get_req,
-        &UserId::from(alice),
-    ))
-    .await;
-
-    assert!(
-        result.is_err(),
-        "CO (even as owner) must NOT be able to Get a sensitive=true key without wrapping"
-    );
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("Sensitive") || err.contains("sensitive") || err.contains("DENIED"),
-        "Error must indicate Sensitive rejection, got: {err}"
-    );
-    Ok(())
-}
-
-// ─── Active CO self-revokes ──────────────────────────────────────────
-
-/// An active CO can self-revoke in a multi-CO deployment.
-///
-/// Regression test for the peer-revocation architecture (PR #991):
-/// the quorum guard was removed; any CO candidate can now revoke an active CO,
-/// including self-revocation.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_active_co_can_self_revoke() -> KResult<()> {
-    let provisioner = "admin";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // Provision: create key, split, grant all shares to Alice, activate
-    let key_uid = create_key(&kms, provisioner).await?;
-    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
-    for share_uid in share_uids.iter().skip(1) {
-        kms.database
-            .grant_operations(
-                share_uid,
-                &UserId::from(alice),
-                std::collections::HashSet::from([KmipOperation::Get]),
-            )
-            .await?;
-    }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be active CO"
-    );
-
-    // Alice self-revokes (no target_user)
-    kms.disable_crypto_officer_ceremony(&UserId::from(alice), None)
-        .await?;
-
-    assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must no longer be CO after self-revoke"
-    );
-    Ok(())
-}
-
-// ─── Peer CO revokes active CO ───────────────────────────────────────
-
-/// A dormant CO candidate (Bob) can peer-revoke an active CO (Alice).
-///
-/// Any configured CO candidate can call `disable_crypto_officer_ceremony` with
-/// a `target_user` to revoke another CO's ceremony activation.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_peer_co_revokes_active_co() -> KResult<()> {
-    let provisioner = "admin";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // Provision: Alice activates as CO (she gets all 3 shares)
-    let key_uid = create_key(&kms, provisioner).await?;
-    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
-    for share_uid in share_uids.iter().skip(1) {
-        kms.database
-            .grant_operations(
-                share_uid,
-                &UserId::from(alice),
-                std::collections::HashSet::from([KmipOperation::Get]),
-            )
-            .await?;
-    }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be active CO"
-    );
-    assert!(
-        !kms.is_crypto_officer(&UserId::from(bob)).await?,
-        "Bob must be dormant"
-    );
-
-    // Bob (dormant CO candidate) peer-revokes Alice
-    kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
-        .await?;
-
-    assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must no longer be CO after peer revocation by Bob"
-    );
-    Ok(())
-}
-
-// ─── Reconstructed key intact after peer revocation ──────────────────
-
-/// After peer revocation, the reconstructed key stored via `JoinSplitKey`
-/// still exists and is accessible (peer revocation only revokes the activation record,
-/// never the key object).
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_reconstructed_key_intact_after_peer_revocation() -> KResult<()> {
-    let provisioner = "admin";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // Split source key; grant all shares to Alice
-    let key_uid = create_key(&kms, provisioner).await?;
-    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
-    for share_uid in share_uids.iter().skip(1) {
-        kms.database
-            .grant_operations(
-                share_uid,
-                &UserId::from(alice),
-                std::collections::HashSet::from([KmipOperation::Get]),
-            )
-            .await?;
-    }
-
-    // Activate Alice as CO (writes activation record; does NOT store a key)
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be active CO"
-    );
-
-    // Alice also reconstructs the key via JoinSplitKey (stores a key object she owns)
-    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
-
-    // Bob peer-revokes Alice — only the activation record is revoked, key is untouched
-    kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
-        .await?;
-    assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be revoked"
-    );
-
-    // Alice's reconstructed key must still be accessible (peer revocation does NOT
-    // destroy or revoke key objects — only the crypto_officer_activations row is updated)
-    let get_req = Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(reconstructed_uid.clone())),
-        ..Default::default()
-    };
-    let result = kms.get(get_req, &UserId::from(alice)).await;
-    assert!(
-        result.is_ok(),
-        "Reconstructed key must still exist after peer revocation, got: {result:?}"
-    );
-    Ok(())
-}
-
-// ─── Operator (non-candidate) cannot peer-revoke ─────────────────────
-
-/// A plain Operator (not in `crypto_officer_users`) cannot peer-revoke
-/// an active CO via `disable_crypto_officer_ceremony`.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_operator_cannot_peer_revoke() -> KResult<()> {
-    let provisioner = "admin";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-    let eve = "eve@example.com"; // pure Operator — not in crypto_officer_users
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // Alice activates as CO
-    let key_uid = create_key(&kms, provisioner).await?;
-    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
-    for share_uid in share_uids.iter().skip(1) {
-        kms.database
-            .grant_operations(
-                share_uid,
-                &UserId::from(alice),
-                std::collections::HashSet::from([KmipOperation::Get]),
-            )
-            .await?;
-    }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be active CO"
-    );
-
-    // Eve (Operator) tries to peer-revoke Alice — must be unauthorized
-    let result = kms
-        .disable_crypto_officer_ceremony(&UserId::from(eve), Some(&UserId::from(alice)))
-        .await;
-    assert!(
-        result.is_err(),
-        "Operator must not be able to peer-revoke CO"
-    );
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("Unauthorized") || err.contains("candidate"),
-        "Error must indicate authorization failure, got: {err}"
-    );
-
-    // Alice must still be active CO
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must remain active CO after unauthorized peer-revoke attempt"
-    );
-    Ok(())
-}
-
-// ─── Peer revocation revokes victim's GET on revoker's share ─────────
-
-/// When a dormant CO (Bob) peer-revokes an active CO (Alice), Alice's
-/// GET access on Bob's split-key share is automatically revoked.
-///
-/// This prevents the revoked CO from re-assembling the ceremony key using the
-/// share grants obtained during the previous activation ceremony.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_peer_revocation_revokes_share_access() -> KResult<()> {
-    let provisioner = "admin";
-    let alice = "alice@example.com"; // active CO
-    let bob = "bob@example.com"; // dormant CO — performs revocation
-    let carol = "carol@example.com";
-    let n = 3_i32;
-
-    let kms = ceremony_kms(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]).await?;
-
-    // Provision: split key — shares are round-robin: alice→0, bob→1, carol→2
-    let key_uid = create_key(&kms, provisioner).await?;
-    let share_uids = Box::pin(split_key(&kms, provisioner, &key_uid, n)).await?;
-
-    // Grant Alice GET access on Bob's share (share_uids[1]) and Carol's (share_uids[2])
-    // so she can activate the ceremony.
-    for share_uid in share_uids.iter().skip(1) {
-        kms.database
-            .grant_operations(
-                share_uid,
-                &UserId::from(alice),
-                std::collections::HashSet::from([KmipOperation::Get]),
-            )
-            .await?;
-    }
-    perform_crypto_officer_ceremony_activation(&kms, &share_uids, &UserId::from(alice)).await?;
-    assert!(
-        kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be active CO"
-    );
-
-    // Bob's share is share_uids[1] (round-robin index 1 → bob)
-    let bob_share_uid = &share_uids[1];
-
-    // Verify Alice currently has GET access on Bob's share
-    let alice_ops_before = kms
-        .database
-        .list_user_operations_on_object(bob_share_uid, &UserId::from(alice), true)
-        .await?;
-    assert!(
-        alice_ops_before.contains(&KmipOperation::Get),
-        "Alice must have GET access on Bob's share before revocation"
-    );
-
-    // Bob peer-revokes Alice
-    kms.disable_crypto_officer_ceremony(&UserId::from(bob), Some(&UserId::from(alice)))
-        .await?;
-    assert!(
-        !kms.is_crypto_officer(&UserId::from(alice)).await?,
-        "Alice must be revoked"
-    );
-
-    // Alice's GET access on Bob's share must now be gone
-    let alice_ops_after = kms
-        .database
-        .list_user_operations_on_object(bob_share_uid, &UserId::from(alice), true)
-        .await?;
-    assert!(
-        !alice_ops_after.contains(&KmipOperation::Get),
-        "Alice must NO LONGER have GET access on Bob's share after peer revocation"
-    );
-
-    Ok(())
-}
-
-// ─── `force_default_username=true` with CO is rejected at startup ───────────
-
-/// `force_default_username = true` combined with `crypto_officer_users`
-/// must be rejected at startup.
-///
-/// When `force_default_username` is set, all requests run under the same
-/// default username, making CO dual-control and ceremony audit logs meaningless.
-#[test]
-fn test_force_default_username_with_co_rejected_at_startup() {
-    let mut conf = ClapConfig {
-        db: MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            sqlite_path: get_tmp_sqlite_path(),
-            clear_database: false,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    conf.roles.crypto_officer_users = Some(vec!["alice@example.com".to_owned()]);
-    conf.force_default_username = true;
-
-    let result = ServerParams::try_from(conf);
-    assert!(
-        result.is_err(),
-        "force_default_username=true + crypto_officer_users must be rejected at startup"
-    );
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("incompatible") || err.contains("force_default_username"),
-        "Error must mention the incompatibility, got: {err}"
-    );
-}
-
-// ─── ceremony_wrapping_key_id tests ──────────────────────────────────────────
-//
-// These tests verify the AES-KW (RFC 5649) share-wrapping path activated when
-// `ceremony_wrapping_key_id` is set in the server configuration.
-//
-// WK-1  Split with a wrapping key → shares stored as wrapped ciphertext, roundtrip succeeds.
-// WK-2  Missing wrapping key → CreateSplitKey fails with ItemNotFound.
-// WK-3  CreateSplitKey without wrapping key + JoinSplitKey without wrapping key → unaffected.
-// WK-4  Wrapped shares cannot be joined without the wrapping key present.
-
-/// WK-1: `CreateSplitKey` with `ceremony_wrapping_key_id` set wraps every share at rest.
-///
-/// Verifies that the full roundtrip (split then join) succeeds when the wrapping
-/// key is present and correctly configured.  The ceremony activation step is skipped
-/// here so the test focuses solely on the wrap/unwrap path.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_ceremony_wrapping_key_split_and_join_roundtrip() -> KResult<()> {
-    const WRAP_KEY_ID: &str = "ceremony-wrap-test-1";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-
-    let kms = ceremony_kms_with_wrapping(
-        vec![alice.to_owned(), bob.to_owned(), carol.to_owned()],
-        WRAP_KEY_ID,
-    )
-    .await?;
-
-    // Create the source key as the first CO candidate.
-    let key_uid = create_key(&kms, alice).await?;
-
-    // Split (ceremony mode: source key is destroyed after split).
-    let share_uids = split_key(&kms, alice, &key_uid, 3).await?;
-    assert_eq!(share_uids.len(), 3, "expected 3 wrapped shares");
-
-    // Grant Get access so alice can read the shares owned by bob and carol.
-    for uid in &share_uids {
-        kms.database
-            .grant_operations(
-                uid,
-                &UserId::from(alice),
-                std::collections::HashSet::from([KmipOperation::Get]),
-            )
-            .await?;
-    }
-
-    // Reconstruct: JoinSplitKey must unwrap each share before XOR-joining.
-    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
-    assert!(
-        !reconstructed_uid.is_empty(),
-        "reconstructed UID must not be empty"
-    );
-
-    // Verify the reconstructed object exists and is retrievable.
-    let get_req = Get {
-        unique_identifier: Some(UniqueIdentifier::TextString(reconstructed_uid.clone())),
-        ..Default::default()
-    };
-    kms.get(get_req, &UserId::from(alice)).await?;
-
-    Ok(())
-}
-
-/// WK-2: `CreateSplitKey` with a non-existent `ceremony_wrapping_key_id` must fail with
-/// `ItemNotFound`, not a panic or an opaque server error.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_ceremony_wrapping_key_missing_returns_item_not_found() -> KResult<()> {
-    // UID that is NEVER created in the DB — must be declared before any `let` binding.
-    const MISSING_KEY_ID: &str = "ceremony-wrap-does-not-exist";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-
-    // Build the KMS with a wrapping key UID that is NEVER created in the DB.
-    let mut conf = ClapConfig {
-        db: MainDBConfig {
-            database_type: Some("sqlite".to_owned()),
-            sqlite_path: get_tmp_sqlite_path(),
-            clear_database: false,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    conf.roles.crypto_officer_users =
-        Some(vec![alice.to_owned(), bob.to_owned(), carol.to_owned()]);
-    conf.roles.crypto_officer_require_ceremony = true;
-    conf.roles.ceremony_secret = Some(TEST_CEREMONY_SECRET.to_owned());
-    conf.roles.ceremony_wrapping_key_id = Some(MISSING_KEY_ID.to_owned());
-
-    let params = ServerParams::try_from(conf)?;
-    let kms = Arc::new(KMS::instantiate(Arc::new(params)).await?);
-
-    // Create a source key and attempt to split it.
-    let key_uid = create_key(&kms, alice).await?;
-    let result = split_key(&kms, alice, &key_uid, 3).await;
-
-    assert!(result.is_err(), "split with missing wrapping key must fail");
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("not found") || err.contains("ItemNotFound") || err.contains(MISSING_KEY_ID),
-        "error must reference the missing key, got: {err}"
-    );
-
-    Ok(())
-}
-
-/// WK-3: Generic (non-ceremony) split without `ceremony_wrapping_key_id` stores shares
-/// as plaintext and the roundtrip succeeds without unwrapping.
-///
-/// Regression: the wrapping path must not activate when `ceremony_wrapping_key_id` is `None`.
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_generic_split_without_wrapping_key_roundtrip() -> KResult<()> {
-    let alice = "alice@example.com";
-    // Config-only CO (no ceremony, no wrapping key).
-    let kms = config_only_co_kms(vec![alice.to_owned()]).await?;
-
-    let key_uid = create_key(&kms, alice).await?;
-
-    // Generic split (no ceremony attribute, no wrapping).
-    let req = CreateSplitKey {
-        object_type: ObjectType::SymmetricKey,
-        unique_identifier: Some(UniqueIdentifier::TextString(key_uid.clone())),
-        split_key_parts: 2,
-        split_key_threshold: 2,
-        split_key_method: SplitKeyMethod::XOR,
-        attributes: None,
-        protection_storage_masks: None,
-    };
-    let resp = Box::pin(kms.create_split_key(req, &UserId::from(alice))).await?;
-    let share_uids: Vec<String> = resp
-        .unique_identifier
-        .iter()
-        .map(uid_string)
-        .collect::<KResult<Vec<_>>>()?;
-    assert_eq!(share_uids.len(), 2, "expected 2 unwrapped shares");
-
-    // Reconstruct — source key is still alive (no ceremony destruction).
-    let reconstructed_uid = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await?;
-    assert!(!reconstructed_uid.is_empty());
-
-    Ok(())
-}
-
-/// WK-4: Shares created WITH a wrapping key cannot be joined after the wrapping key
-/// is deleted from the DB — `JoinSplitKey` must fail, not silently produce wrong key bytes.
-///
-/// This is a security regression test: wrapped shares must remain unreadable if the
-/// wrapping key is lost (expected operational behaviour — operators must re-ceremony).
-#[cfg(feature = "non-fips")]
-#[tokio::test]
-async fn test_join_wrapped_shares_fails_after_wrapping_key_deleted() -> KResult<()> {
-    use cosmian_kms_server_database::reexport::cosmian_kmip::{
-        kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
-        kmip_2_1::kmip_operations::{Destroy, Revoke},
-    };
-
-    const WRAP_KEY_ID: &str = "ceremony-wrap-test-4";
-    let alice = "alice@example.com";
-    let bob = "bob@example.com";
-    let carol = "carol@example.com";
-
-    let kms = ceremony_kms_with_wrapping(
-        vec![alice.to_owned(), bob.to_owned(), carol.to_owned()],
-        WRAP_KEY_ID,
-    )
-    .await?;
-
-    let key_uid = create_key(&kms, alice).await?;
-    let share_uids = split_key(&kms, alice, &key_uid, 3).await?;
-    assert_eq!(share_uids.len(), 3);
-
-    // Grant alice Get on all shares.
-    for uid in &share_uids {
-        kms.database
-            .grant_operations(
-                uid,
-                &UserId::from(alice),
-                std::collections::HashSet::from([KmipOperation::Get]),
-            )
-            .await?;
-    }
-
-    // Destroy the wrapping key (revoke first, then destroy).
-    let revoke_req = Revoke {
-        unique_identifier: Some(UniqueIdentifier::TextString(WRAP_KEY_ID.to_owned())),
-        revocation_reason: RevocationReason {
-            revocation_reason_code: RevocationReasonCode::CessationOfOperation,
-            revocation_message: Some("test teardown".to_owned()),
-        },
-        compromise_occurrence_date: None,
-        cascade: false,
-    };
-    kms.revoke(revoke_req, &UserId::from(alice)).await?;
-    let destroy_req = Destroy {
-        unique_identifier: Some(UniqueIdentifier::TextString(WRAP_KEY_ID.to_owned())),
-        remove: true,
-        cascade: false,
-        expected_object_type: None,
-    };
-    kms.destroy(destroy_req, &UserId::from(alice)).await?;
-
-    // JoinSplitKey must now fail: the wrapping key is gone.
-    let result = join_shares(&kms, alice, &share_uids, ObjectType::SymmetricKey).await;
-    assert!(
-        result.is_err(),
-        "JoinSplitKey must fail when the wrapping key has been destroyed"
-    );
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("not found") || err.contains("ItemNotFound") || err.contains(WRAP_KEY_ID),
-        "error must reference the missing wrapping key, got: {err}"
     );
 
     Ok(())

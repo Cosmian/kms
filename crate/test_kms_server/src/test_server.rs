@@ -264,10 +264,10 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
-            let config_path = root_dir().join("../../test_data/configs/server/auth/cert.toml");
-            let mut config = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path).await
+            start_test_server_from_toml(
+                &root_dir().join("../../test_data/configs/server/auth/cert.toml"),
+            )
+            .await
         })
         .await
         .unwrap_or_else(|e| {
@@ -284,10 +284,10 @@ pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsCont
     trace!("Starting test server with JWT auth");
     ONCE_SERVER_WITH_JWT_AUTH
         .get_or_try_init(|| async move {
-            let config_path = root_dir().join("../../test_data/configs/server/auth/plain_jwt.toml");
-            let mut config = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
-            start_server_from_config(config, &config_path).await
+            start_test_server_from_toml(
+                &root_dir().join("../../test_data/configs/server/auth/plain_jwt.toml"),
+            )
+            .await
         })
         .await
         .unwrap_or_else(|e| {
@@ -823,7 +823,7 @@ pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static Tes
 
 /// Privileged users — two distinct identities in the list.
 ///
-/// Base configuration is loaded from `test_data/configs/server/rbac/crypto_officer_users.toml`;
+/// Base configuration is loaded from `test_data/configs/server/crypto_officer_users.toml`;
 /// the `crypto_officer_users` field is hardcoded to `["owner.client@acme.com", "user.privileged@acme.com"]`.
 ///
 /// Uses a dedicated [`ONCE_SERVER_WITH_MULTI_CRYPTO_OFFICER_USERS`] cell so that
@@ -835,7 +835,7 @@ pub async fn start_default_test_kms_server_with_multi_crypto_officer_users() -> 
     ONCE_SERVER_WITH_MULTI_CRYPTO_OFFICER_USERS
         .get_or_try_init(|| async move {
             let config_path =
-                root_dir().join("../../test_data/configs/server/rbac/crypto_officer_users.toml");
+                root_dir().join("../../test_data/configs/server/crypto_officer_users.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.roles.crypto_officer_users = Some(vec![
                 "owner.client@acme.com".to_owned(),
@@ -853,7 +853,7 @@ pub async fn start_default_test_kms_server_with_multi_crypto_officer_users() -> 
 
 /// Privileged users.
 ///
-/// Base configuration is loaded from `test_data/configs/server/rbac/crypto_officer_users.toml`;
+/// Base configuration is loaded from `test_data/configs/server/crypto_officer_users.toml`;
 /// the `crypto_officer_users` field is injected from the argument.
 pub async fn start_default_test_kms_server_with_crypto_officer_users(
     crypto_officer_users: Vec<String>,
@@ -862,10 +862,9 @@ pub async fn start_default_test_kms_server_with_crypto_officer_users(
     ONCE_SERVER_WITH_CRYPTO_OFFICER_USERS
         .get_or_try_init(|| async move {
             let config_path =
-                root_dir().join("../../test_data/configs/server/rbac/crypto_officer_users.toml");
+                root_dir().join("../../test_data/configs/server/crypto_officer_users.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.roles.crypto_officer_users = Some(crypto_officer_users);
-            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         })
         .await
@@ -888,8 +887,7 @@ pub async fn start_ceremony_test_kms_server() -> &'static TestsContext {
         .get_or_try_init(|| async move {
             let config_path =
                 root_dir().join("../../test_data/configs/server/rbac/crypto_officers.toml");
-            let mut config = load_test_config_from_toml(&config_path)?;
-            apply_test_db_override(&mut config);
+            let config = load_test_config_from_toml(&config_path)?;
             start_server_from_config(config, &config_path).await
         })
         .await

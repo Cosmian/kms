@@ -8,18 +8,17 @@
  *
  * Drop-in replacement for the common pattern:
  * ```tsx
- * <Form.Item name="keyId" label={t("common:keyId")} help="...">
- *     <Input placeholder={t("common:enterKeyId")} />
+ * <Form.Item name="keyId" label="Key ID" help="...">
+ *     <Input placeholder="Enter key ID" />
  * </Form.Item>
  * ```
  * ↓ becomes:
  * ```tsx
- * <KeyIdInput form={form} fieldName="keyId" label={t("common:keyId")} help="..." objectType="SymmetricKey" />
+ * <KeyIdInput form={form} fieldName="keyId" label="Key ID" help="..." objectType="SymmetricKey" />
  * ```
  */
 import { Form, FormInstance, Input } from "antd";
 import React from "react";
-import { useTranslation } from "react-i18next";
 import LocateButton from "./LocateButton";
 
 interface KeyIdInputProps {
@@ -54,18 +53,15 @@ const KeyIdInput: React.FC<KeyIdInputProps> = ({
     objectType,
     rules,
     "data-testid": dataTestId,
-}) => {
-    const { t } = useTranslation("common");
-    return (
-        <Form.Item label={label} help={help}>
-            <div className="flex gap-2 items-center">
-                <Form.Item noStyle name={fieldName} rules={rules}>
-                    <Input placeholder={placeholder ?? t("enterKeyId")} style={{ flex: 1 }} data-testid={dataTestId} />
-                </Form.Item>
-                <LocateButton objectType={objectType} onSelect={(uid) => form.setFieldValue(fieldName, uid)} />
-            </div>
-        </Form.Item>
-    );
-};
+}) => (
+    <Form.Item label={label} help={help}>
+        <div className="flex gap-2 items-center">
+            <Form.Item noStyle name={fieldName} rules={rules}>
+                <Input placeholder={placeholder ?? `Enter ${String(label).toLowerCase()}`} style={{ flex: 1 }} data-testid={dataTestId} />
+            </Form.Item>
+            <LocateButton objectType={objectType} onSelect={(uid) => form.setFieldValue(fieldName, uid)} />
+        </div>
+    </Form.Item>
+);
 
 export default KeyIdInput;

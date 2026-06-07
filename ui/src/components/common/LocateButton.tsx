@@ -161,10 +161,10 @@ const LocateButton: React.FC<LocateButtonProps> = ({ onSelect, buttonText, objec
             <Modal title={t("searchObjects")} open={visible} onCancel={() => setVisible(false)} footer={null} width={980}>
                 <Space direction="vertical" style={{ width: "100%" }} size="middle">
                     <Form layout="inline" style={{ flexWrap: "nowrap", gap: 8 }}>
-                        <Form.Item label={t("tags")} style={{ flex: 1 }}>
+                        <Form.Item label="Tags" style={{ flex: 1 }}>
                             <Select
                                 mode="tags"
-                                placeholder={t("enterTags")}
+                                placeholder="Enter tags"
                                 value={searchTags}
                                 onChange={setSearchTags}
                                 open={false}

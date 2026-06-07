@@ -168,7 +168,6 @@ pub fn run_configure_wizard() -> KResult<()> {
         tls,
         socket_server,
         idp_auth: auth_result.idp_auth,
-        auth_verifier: auth_result.auth_verifier,
         ui_config: advanced.ui_config,
         hsm,
         logging,
@@ -179,7 +178,6 @@ pub fn run_configure_wizard() -> KResult<()> {
         default_unwrap_type: advanced.default_unwrap_type,
         roles: crate::config::RolesConfig {
             crypto_officer_users: advanced.crypto_officer_users,
-            crypto_officer_require_ceremony: advanced.crypto_officer_require_ceremony,
             ..Default::default()
         },
         ms_dke_service_url: advanced.ms_dke_service_url,

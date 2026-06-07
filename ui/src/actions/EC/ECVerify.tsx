@@ -147,7 +147,7 @@ const ECVerifyForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("ecVerify.keyIdentification")}</h3>
+                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="keyId"
@@ -156,8 +156,8 @@ const ECVerifyForm: React.FC = () => {
                             placeholder={t("common:enterKeyId")}
                             objectType="PublicKey"
                         />
-                        <Form.Item name="tags" label={t("common:tags")} help={t("ecVerify.tagsHelp")}>
-                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
+                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
                     </Card>
                     <Card>

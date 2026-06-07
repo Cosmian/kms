@@ -95,7 +95,7 @@ const CertificateDecryptForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("certificateDecrypt.privateKeyIdentification")}</h3>
+                        <h3 className="text-m font-bold mb-4">Private Key Identification (required)</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="privateKeyId"

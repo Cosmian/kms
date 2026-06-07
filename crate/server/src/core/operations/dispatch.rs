@@ -21,6 +21,7 @@ use crate::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
             attributes::get_attribute_list, check, mac::mac_verify, query::query as query_op,
         },
+        retrieve_object_utils::user_has_permission,
     },
     error::KmsError,
     kms_bail,
@@ -74,6 +75,57 @@ macro_rules! op {
     }};
 }
 
+/// Map a TTLV operation tag string to a [`KmipOperation`] variant for role-based access control.
+///
+/// Operations not present in the [`KmipOperation`] enum (e.g. `CreateKeyPair`, `CreateSplitKey`,
+/// `JoinSplitKey`, `Register`, `ReKeyKeyPair`) return `None` here but may still be
+/// gated via [`LIFECYCLE_OPERATION_TAGS`].
+fn operation_tag_to_kmip_operation(tag: &str) -> Option<KmipOperation> {
+    match tag {
+        "Activate" => Some(KmipOperation::Activate),
+        "AddAttribute" => Some(KmipOperation::AddAttribute),
+        "Certify" => Some(KmipOperation::Certify),
+        "Create" => Some(KmipOperation::Create),
+        "Decrypt" => Some(KmipOperation::Decrypt),
+        "DeleteAttribute" => Some(KmipOperation::DeleteAttribute),
+        "DeriveKey" => Some(KmipOperation::DeriveKey),
+        "Destroy" => Some(KmipOperation::Destroy),
+        "Encrypt" => Some(KmipOperation::Encrypt),
+        "Export" => Some(KmipOperation::Export),
+        "Get" => Some(KmipOperation::Get),
+        "GetAttributes" => Some(KmipOperation::GetAttributes),
+        "Hash" => Some(KmipOperation::Hash),
+        "Import" => Some(KmipOperation::Import),
+        "Locate" => Some(KmipOperation::Locate),
+        "Mac" | "MAC" => Some(KmipOperation::MAC),
+        "ModifyAttribute" => Some(KmipOperation::ModifyAttribute),
+        "ReKey" => Some(KmipOperation::Rekey),
+        "Revoke" => Some(KmipOperation::Revoke),
+        "SetAttribute" => Some(KmipOperation::SetAttribute),
+        "Sign" => Some(KmipOperation::Sign),
+        "SignatureVerify" => Some(KmipOperation::SignatureVerify),
+        "Validate" => Some(KmipOperation::Validate),
+        _ => None,
+    }
+}
+
+/// Lifecycle operation tags that have no [`KmipOperation`] variant but must be restricted
+/// to `CryptoOfficer` when role enforcement is active.
+///
+/// `CreateKeyPair`, `Register`, and `ReKeyKeyPair` create or replace Managed Objects and
+/// are therefore lifecycle operations equivalent to `Create`/`Import`/`Rekey`.
+/// `CreateSplitKey` produces new `SplitKey` share objects and is likewise lifecycle-scoped.
+///
+/// `JoinSplitKey` is intentionally omitted: it is needed by Crypto Officer candidates (users
+/// in `crypto_officer.users` with `require_ceremony = true`) to complete the split-key
+/// ceremony before they hold an active Crypto Officer role.
+const LIFECYCLE_OPERATION_TAGS: &[&str] = &[
+    "CreateKeyPair",
+    "Register",
+    "ReKeyKeyPair",
+    "CreateSplitKey",
+];
+
 /// Enforce role-based access control before dispatching a KMIP operation.
 ///
 /// ## Design
@@ -121,7 +173,10 @@ pub(crate) async fn check_role_permission(
     // Full CO privileges (ownership bypass) still require ceremony completion.
     let is_ceremony_candidate = crypto_officer.require_ceremony
         && crypto_officer.users.iter().any(|u| u == user)
-        && KmipOperation::is_ceremony_prerequisite_tag(operation_tag);
+        && matches!(
+            operation_tag,
+            "Create" | "Import" | "CreateSplitKey" | "JoinSplitKey"
+        );
 
     if is_ceremony_candidate {
         return Ok(());
@@ -154,7 +209,7 @@ pub(crate) async fn check_role_permission(
         Role::CryptoOfficer => {
             // CryptoOfficer: enforce allowed_operations(). Ownership bypass is handled
             // at handler level (retrieve_object_utils.rs / locate.rs).
-            if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
+            if let Some(kmip_op) = operation_tag_to_kmip_operation(operation_tag) {
                 let allowed = Role::CryptoOfficer.allowed_operations();
                 if !allowed.contains(&kmip_op) {
                     kms_bail!(KmsError::Unauthorized(format!(
@@ -164,42 +219,58 @@ pub(crate) async fn check_role_permission(
                 }
                 return Ok(());
             }
-            // Lifecycle operations without a KmipOperation mapping
-            // (CreateKeyPair, Register, ReKeyKeyPair, CreateSplitKey, JoinSplitKey):
-            // route through enforce_create_permission, which handles default_username,
-            // CO-user membership, ceremony-candidate exemption, and explicit Create grants.
-            // COs always satisfy this gate (they are listed in crypto_officer.users),
-            // making this equivalent to an unconditional allow — but the explicit call
-            // ensures consistent audit and error paths instead of a silent fall-through.
-            if KmipOperation::is_restricted_lifecycle_tag(operation_tag)
-                || operation_tag == "JoinSplitKey"
-            {
-                return kms.enforce_create_permission(&UserId::from(user)).await;
-            }
+            // Lifecycle operations without KmipOperation mapping are always allowed for CO
             Ok(())
         }
         Role::Operator => {
             // Enforce allowed_operations() for Operator at dispatch.
-            if let Some(kmip_op) = KmipOperation::from_tag(operation_tag) {
+            if let Some(kmip_op) = operation_tag_to_kmip_operation(operation_tag) {
                 let allowed = Role::Operator.allowed_operations();
                 if !allowed.contains(&kmip_op) {
-                    // Lifecycle operations (Create, Import): delegate to enforce_create_permission
-                    // which correctly handles default_username, CO-user membership, and explicit grants.
+                    // Lifecycle operations (Create, Import) may be permitted if the user
+                    // holds an explicit Create grant in the database (granted by a
+                    // CryptoOfficer via /access/grant).
                     if matches!(kmip_op, KmipOperation::Create | KmipOperation::Import) {
-                        return kms.enforce_create_permission(&UserId::from(user)).await;
+                        let has_create = user_has_permission(
+                            &UserId::from(user),
+                            None,
+                            &KmipOperation::Create,
+                            kms,
+                        )
+                        .await?;
+                        if has_create {
+                            return Ok(());
+                        }
                     }
                     // Per-object operations (Get, Export, Activate, Revoke, Destroy, etc.)
-                    // are not blocked at dispatch — they rely on handler-level ownership/grant checks.
-                    return Ok(());
+                    // are not blocked at dispatch because they rely on handler-level
+                    // ownership/grant checks. A CryptoOfficer can grant any per-object
+                    // operation to an Operator via /access/grant.
+                    if !matches!(kmip_op, KmipOperation::Create | KmipOperation::Import) {
+                        return Ok(());
+                    }
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "User `{user}` (role: Operator) is not authorized to perform \
+                         operation `{operation_tag}` (not in Operator allowed operations)"
+                    )))
                 }
                 return Ok(());
             }
 
             // Lifecycle operations without KmipOperation mapping (CreateKeyPair, Register,
-            // ReKeyKeyPair, CreateSplitKey): delegate to enforce_create_permission which
-            // handles default_username, CO-user membership, and explicit grants.
-            if KmipOperation::is_restricted_lifecycle_tag(operation_tag) {
-                return kms.enforce_create_permission(&UserId::from(user)).await;
+            // ReKeyKeyPair, CreateSplitKey): block Operators unless they hold an explicit
+            // Create permission grant.
+            if LIFECYCLE_OPERATION_TAGS.contains(&operation_tag) {
+                let has_create =
+                    user_has_permission(&UserId::from(user), None, &KmipOperation::Create, kms)
+                        .await?;
+                if !has_create {
+                    kms_bail!(KmsError::Unauthorized(format!(
+                        "User `{user}` (role: Operator) is not authorized to perform \
+                         operation `{operation_tag}` (lifecycle operation requires CryptoOfficer \
+                         role or explicit Create grant)"
+                    )))
+                }
             }
             Ok(())
         }

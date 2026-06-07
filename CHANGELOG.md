@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### 🔒 Security
 
 - Resolve 8 Dependabot security alerts ([#1083](https://github.com/Cosmian/kms/pull/1083))
-- Upgrade `opentelemetry_sdk` 0.29.0 → 0.32.1 (SSRF via malicious OTLP endpoint, [GHSA-r74r-p7x6-m97p](https://github.com/advisories/GHSA-r74r-p7x6-m97p)) + React dependency updates ([#1073](https://github.com/Cosmian/kms/pull/1073))
+- Upgrade `opentelemetry_sdk` 0.29.0 → 0.32.1 (SSRF via malicious OTLP endpoint, GHSA-r74r-p7x6-m97p) + React dependency updates ([#1073](https://github.com/Cosmian/kms/pull/1073))
 - `AlwaysSensitive` is now server-managed: clients can no longer add/set/modify/delete it via `AddAttribute`, `SetAttribute`, `ModifyAttribute`, or `DeleteAttribute` — such requests are rejected with `Attribute_Read_Only` ([#1103](https://github.com/Cosmian/kms/pull/1103))
 - Read-only KMIP attributes could be rewritten by any client via `ModifyAttribute` (e.g. `Initial Date`, `Cryptographic Length`, `Unique Identifier`). All attributes marked "Modifiable by client: No" are now rejected with `Attribute_Read_Only`; "Deletable by client: No" attributes are rejected by `DeleteAttribute` ([#1103](https://github.com/Cosmian/kms/pull/1103))
 

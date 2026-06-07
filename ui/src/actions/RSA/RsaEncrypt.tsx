@@ -103,7 +103,7 @@ const RsaEncryptForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("rsaEncrypt.keyIdentification")}</h3>
+                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
                         <KeyIdInput
                             form={form}
                             fieldName="keyId"

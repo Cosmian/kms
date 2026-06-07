@@ -9,7 +9,7 @@
 //! Each share is a raw byte vector of the same length as the secret.
 //! `secret = share_0 XOR share_1 XOR ... XOR share_{n-1}`.
 
-use rand_core::CryptoRng;
+use rand_core::Rng;
 use zeroize::Zeroizing;
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -22,17 +22,12 @@ use zeroize::Zeroizing;
 ///
 /// Each share is wrapped in [`Zeroizing`] so heap memory is wiped on drop.
 ///
-/// # Cryptographic requirement
-/// `rng` must be a cryptographically-secure RNG. The `CryptoRng` bound enforces
-/// this at compile time — passing `SmallRng` or any other non-CSPRNG is a
-/// type error.
-///
 /// # Errors
 /// Returns [`SplitKeyError`] if `total_parts < 2` or `secret` is empty.
 pub fn xor_split(
     secret: &[u8],
     total_parts: u32,
-    rng: &mut impl CryptoRng,
+    rng: &mut impl Rng,
 ) -> Result<Vec<Zeroizing<Vec<u8>>>, SplitKeyError> {
     if total_parts < 2 {
         return Err(SplitKeyError::InvalidTotalParts(

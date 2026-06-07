@@ -901,12 +901,15 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
-        let sql = get_sqlite_query!("count-all-non-destroyed");
         let count = self
             .reader()
             .call(
                 |c: &mut rusqlite::Connection| -> Result<u64, rusqlite::Error> {
-                    c.query_row(sql, [], |row| row.get(0))
+                    c.query_row(
+                        "SELECT COUNT(*) FROM objects WHERE state != 'Destroyed'",
+                        [],
+                        |row| row.get(0),
+                    )
                 },
             )
             .await
@@ -915,14 +918,24 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
-        // Object JSON is stored as {"SymmetricKey": {...}} — the variant
-        // name is the top-level key.  Use json_type() to check presence.
-        let sql = get_sqlite_query!("count-non-destroyed-keys");
         let count = self
             .reader()
             .call(
                 |c: &mut rusqlite::Connection| -> Result<u64, rusqlite::Error> {
-                    c.query_row(sql, [], |row| row.get(0))
+                    // Object JSON is stored as {"SymmetricKey": {...}} — the variant
+                    // name is the top-level key.  Use json_type() to check presence.
+                    c.query_row(
+                        "SELECT COUNT(*) FROM objects \
+                         WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised') \
+                         AND ( \
+                             json_type(object, '$.SymmetricKey') IS NOT NULL OR \
+                             json_type(object, '$.PrivateKey')   IS NOT NULL OR \
+                             json_type(object, '$.PublicKey')    IS NOT NULL OR \
+                             json_type(object, '$.SplitKey')     IS NOT NULL \
+                         )",
+                        [],
+                        |row| row.get(0),
+                    )
                 },
             )
             .await
@@ -1190,29 +1203,14 @@ impl PermissionsStore for SqlitePool {
         Ok(user_perms)
     }
 
-    async fn activate_crypto_officer_ceremony(
-        &self,
-        sealed_record: &str,
-        activated_by: &str,
-        revoked_by: &str,
-    ) -> InterfaceResult<()> {
-        let revoke_sql =
-            replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
-        let insert_sql =
-            replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
+    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+        let sql = replace_dollars_with_qn(get_sqlite_query!("insert-crypto-officer-activation"));
         let sealed = sealed_record.to_owned();
-        let activated_by_s = activated_by.to_owned();
-        let revoked_by_s = revoked_by.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    // Revoke only this user's prior active record (0 rows affected is fine).
-                    tx.execute(
-                        &revoke_sql,
-                        params_from_iter([&revoked_by_s, &activated_by_s]),
-                    )?;
-                    tx.execute(&insert_sql, params_from_iter([&sealed, &activated_by_s]))?;
+                    tx.execute(&sql, params_from_iter([&sealed]))?;
                     tx.commit()?;
                     Ok(())
                 },
@@ -1222,20 +1220,14 @@ impl PermissionsStore for SqlitePool {
         Ok(())
     }
 
-    async fn get_crypto_officer_activation_by(
-        &self,
-        user: &str,
-    ) -> InterfaceResult<Option<String>> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!(
-            "select-active-crypto-officer-activation-by"
-        ));
-        let user_s = user.to_owned();
+    async fn get_crypto_officer_activation(&self) -> InterfaceResult<Option<String>> {
+        let sql =
+            replace_dollars_with_qn(get_sqlite_query!("select-active-crypto-officer-activation"));
         let result: Option<String> = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    c.query_row(&sql, params_from_iter([&user_s]), |row| row.get(0))
-                        .optional()
+                    c.query_row(&sql, [], |row| row.get(0)).optional()
                 },
             )
             .await
@@ -1243,35 +1235,14 @@ impl PermissionsStore for SqlitePool {
         Ok(result)
     }
 
-    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
-        let sql = replace_dollars_with_qn(get_sqlite_query!(
-            "select-any-active-crypto-officer-activation"
-        ));
-        let count: i64 = self
-            .reader()
-            .call(
-                move |c: &mut rusqlite::Connection| -> Result<i64, rusqlite::Error> {
-                    c.query_row(&sql, [], |row| row.get(0))
-                },
-            )
-            .await
-            .map_err(DbError::from)?;
-        Ok(count > 0)
-    }
-
-    async fn revoke_crypto_officer_activation(
-        &self,
-        revoked_by: &str,
-        activated_by: &str,
-    ) -> InterfaceResult<()> {
+    async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> InterfaceResult<()> {
         let sql = replace_dollars_with_qn(get_sqlite_query!("revoke-crypto-officer-activation"));
         let revoked_by_s = revoked_by.to_owned();
-        let activated_by_s = activated_by.to_owned();
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    tx.execute(&sql, params_from_iter([&revoked_by_s, &activated_by_s]))?;
+                    tx.execute(&sql, params_from_iter([&revoked_by_s]))?;
                     tx.commit()?;
                     Ok(())
                 },

@@ -122,9 +122,7 @@ const AccessRevokeForm: React.FC = () => {
                                             </Form.Item>
                                             <LocateButton onSelect={(uid: string) => form.setFieldValue("unique_identifier", uid)} />
                                         </div>
-                                        <div className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                                            {t("accessRevoke.objectUidHelp")}
-                                        </div>
+                                        <div className="text-gray-500 text-sm mt-1">{t("accessRevoke.objectUidHelp")}</div>
                                     </div>
                                 );
                             }}

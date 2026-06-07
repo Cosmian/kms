@@ -174,35 +174,19 @@ UPDATE objects SET wrapping_key_id = $1 WHERE id = $2;
 -- name: create-table-crypto_officer_activations
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (
         activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        activated_by VARCHAR(255),
         sealed_record TEXT NOT NULL,
         revoked_at TIMESTAMP,
         revoked_by VARCHAR(255)
 );
 
 -- name: insert-crypto-officer-activation
-INSERT INTO crypto_officer_activations (sealed_record, activated_by)
-        VALUES ($1, $2);
+INSERT INTO crypto_officer_activations (sealed_record)
+        VALUES ($1);
 
--- name: select-active-crypto-officer-activation-by
-SELECT sealed_record FROM crypto_officer_activations
-        WHERE activated_by = $1 AND revoked_at IS NULL
+-- name: select-active-crypto-officer-activation
+SELECT sealed_record FROM crypto_officer_activations WHERE revoked_at IS NULL
         ORDER BY activated_at DESC LIMIT 1;
-
--- name: select-any-active-crypto-officer-activation
-SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
 
 -- name: revoke-crypto-officer-activation
 UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = $1
-        WHERE activated_by = $2 AND revoked_at IS NULL;
-
--- name: count-all-non-destroyed
-SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
-
--- name: count-non-destroyed-keys
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (object ? 'SymmetricKey' OR
-     object ? 'PrivateKey'   OR
-     object ? 'PublicKey'    OR
-     object ? 'SplitKey');
+        WHERE revoked_at IS NULL;

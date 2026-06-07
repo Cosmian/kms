@@ -609,44 +609,6 @@ Covers the full UI surface of the split-key ceremony:
 
 Non-FIPS tests are skipped when `PLAYWRIGHT_FIPS_MODE=true`.
 
-### co-role-split-key
-
-```mermaid
-graph LR
-    A[CO Role page — ceremony server] --> B[Status card: 3 CO candidates]
-    B --> C[Create & Split Key card visible]
-    C --> D[Key ID input + preview shows keyId#1,#2,#3]
-    D --> E[Click Create & Split Key]
-    E --> F[3 share UIDs in result]
-    F --> G[Activate Ceremony form auto-populated]
-    F --> H[JoinSplitKey form auto-populated]
-    I[JoinSplitKey card] --> J[share count = 3 from server]
-    J --> K[3 share UID inputs + Locate buttons]
-```
-
-**Requires a ceremony-configured server** — tests are skipped unless
-`PLAYWRIGHT_CEREMONY_SERVER=true`.
-
-Run with:
-
-```bash
-pnpm -C ui build
-cargo run -p cosmian_kms_server --features non-fips -- \
-  -c test_data/configs/server/rbac/crypto_officers.toml &
-
-cd ui
-PLAYWRIGHT_BASE_URL=https://127.0.0.1:9998 \
-PLAYWRIGHT_CEREMONY_SERVER=true \
-  pnpm run test:e2e tests/e2e/co-role-split-key.spec.ts
-```
-
-Playwright authenticates as `owner.client@acme.com` (a CO candidate) via the
-`clientCertificates` config in `playwright.config.ts`.
-
-**Why "Failed to fetch" in a regular browser**: the server requires mTLS client
-certificates. A browser without the certificate installed fails at the TLS handshake —
-this is expected security behaviour. Playwright resolves it automatically.
-
 ### attributes-flow
 
 ```mermaid

@@ -137,7 +137,7 @@ impl KMS {
         request: CreateSplitKey,
         user: &UserId,
     ) -> KResult<CreateSplitKeyResponse> {
-        Box::pin(operations::create_split_key(self, request, user)).await
+        operations::create_split_key(self, request, user.as_ref()).await
     }
 
     /// This operation reconstructs a Managed Cryptographic Object from split-key shares.
@@ -147,7 +147,7 @@ impl KMS {
         request: JoinSplitKey,
         user: &UserId,
     ) -> KResult<JoinSplitKeyResponse> {
-        Box::pin(operations::join_split_key(self, request, user)).await
+        Box::pin(operations::join_split_key(self, request, user.as_ref())).await
     }
 
     /// This request is used by the client to determine a list of protocol versions

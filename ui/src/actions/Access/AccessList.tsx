@@ -67,7 +67,7 @@ const AccessListForm: React.FC = () => {
                                 <Form.Item
                                     name="unique_identifier"
                                     noStyle
-                                    rules={[{ required: true, message: t("common:pleaseEnter", { value: t("accessList.objectUid") }) }]}
+                                    rules={[{ required: true, message: "Please enter the object UID" }]}
                                 >
                                     <Input placeholder={t("accessList.enterObjectUid")} style={{ flex: 1 }} />
                                 </Form.Item>

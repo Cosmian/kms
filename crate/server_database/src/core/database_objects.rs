@@ -45,7 +45,7 @@ impl Database {
     /// wall-clock duration and outcome (`"success"` / `"error"`).
     ///
     /// When no recorder is present the future is awaited directly with no overhead.
-    pub(super) async fn record<T, Fut>(&self, operation: &str, fut: Fut) -> DbResult<T>
+    async fn record<T, Fut>(&self, operation: &str, fut: Fut) -> DbResult<T>
     where
         Fut: Future<Output = DbResult<T>>,
     {
@@ -190,13 +190,12 @@ impl Database {
         attributes: &Attributes,
         tags: &HashSet<String>,
     ) -> DbResult<String> {
-        self.record("create", async move {
-            let db = self
-                .get_object_store(uid.as_deref().unwrap_or_default())
-                .await?;
-            Ok(db.create(uid, owner, object, attributes, tags).await?)
-        })
-        .await
+        let db = self
+            .get_object_store(uid.as_deref().unwrap_or_default())
+            .await?;
+        let uid = db.create(uid, owner, object, attributes, tags).await?;
+        // New objects never have a cache entry; nothing to invalidate.
+        Ok(uid)
     }
 
     /// Retrieve objects from the database.
@@ -319,11 +318,8 @@ impl Database {
 
     /// Retrieve the tags of the object with the given `uid`
     pub async fn retrieve_tags(&self, uid: &str) -> DbResult<HashSet<String>> {
-        self.record("retrieve_tags", async move {
-            let db = self.get_object_store(uid).await?;
-            Ok(db.retrieve_tags(uid).await?)
-        })
-        .await
+        let db = self.get_object_store(uid).await?;
+        Ok(db.retrieve_tags(uid).await?)
     }
 
     /// This method updates the specified object identified by its `uid` in the database.
@@ -391,23 +387,17 @@ impl Database {
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
     pub async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> DbResult<bool> {
-        self.record("is_object_owned_by", async move {
-            let db = self.get_object_store(uid).await?;
-            Ok(db.is_object_owned_by(uid, owner).await?)
-        })
-        .await
+        let db = self.get_object_store(uid).await?;
+        Ok(db.is_object_owned_by(uid, owner).await?)
     }
 
     pub async fn list_uids_for_tags(&self, tags: &HashSet<String>) -> DbResult<HashSet<String>> {
-        self.record("list_uids_for_tags", async move {
-            let db_map = self.objects.read().await;
-            let mut results = HashSet::new();
-            for db in db_map.values() {
-                results.extend(db.list_uids_for_tags(tags).await?);
-            }
-            Ok(results)
-        })
-        .await
+        let db_map = self.objects.read().await;
+        let mut results = HashSet::new();
+        for db in db_map.values() {
+            results.extend(db.list_uids_for_tags(tags).await?);
+        }
+        Ok(results)
     }
 
     /// Return uid, state and attributes of the object identified by its owner,

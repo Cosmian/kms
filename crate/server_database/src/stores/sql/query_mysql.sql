@@ -234,37 +234,19 @@ CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
 CREATE TABLE IF NOT EXISTS crypto_officer_activations (
         id INTEGER PRIMARY KEY AUTO_INCREMENT,
         activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        activated_by VARCHAR(255),
         sealed_record TEXT NOT NULL,
         revoked_at TIMESTAMP NULL DEFAULT NULL,
         revoked_by VARCHAR(255)
 );
 
 -- name: insert-crypto-officer-activation
-INSERT INTO crypto_officer_activations (sealed_record, activated_by)
-        VALUES (?, ?);
+INSERT INTO crypto_officer_activations (sealed_record)
+        VALUES (?);
 
--- name: select-active-crypto-officer-activation-by
-SELECT sealed_record FROM crypto_officer_activations
-        WHERE activated_by = ? AND revoked_at IS NULL
+-- name: select-active-crypto-officer-activation
+SELECT sealed_record FROM crypto_officer_activations WHERE revoked_at IS NULL
         ORDER BY activated_at DESC LIMIT 1;
-
--- name: select-any-active-crypto-officer-activation
-SELECT COUNT(*) FROM crypto_officer_activations WHERE revoked_at IS NULL;
 
 -- name: revoke-crypto-officer-activation
 UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = ?
-        WHERE activated_by = ? AND revoked_at IS NULL;
-
--- name: count-all-non-destroyed
-SELECT COUNT(*) FROM objects WHERE state != 'Destroyed';
-
--- name: count-non-destroyed-keys
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND (
-    JSON_TYPE(JSON_EXTRACT(object, '$.SymmetricKey')) IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PrivateKey'))   IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.PublicKey'))    IS NOT NULL OR
-    JSON_TYPE(JSON_EXTRACT(object, '$.SplitKey'))     IS NOT NULL
-);
+        WHERE revoked_at IS NULL;

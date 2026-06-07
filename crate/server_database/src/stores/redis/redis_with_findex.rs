@@ -120,11 +120,8 @@ pub(crate) struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permission_db: PermissionDB,
     findex: Arc<FindexRedis>,
-    /// 32-byte key used to derive per-user obfuscated ceremony Redis key names.
-    ceremony_derivation_key: [u8; 32],
-    /// Obfuscated Redis SET key tracking the set of currently-active CO usernames.
-    /// Used for efficient `is_any_crypto_officer_activated` without scanning all keys.
-    ceremony_active_cos_key: String,
+    /// Obfuscated Redis key names for ceremony records, derived from the master key.
+    ceremony_key_crypto_officer: String,
 }
 
 impl RedisWithFindex {
@@ -163,24 +160,18 @@ impl RedisWithFindex {
             .map_err(|e| DbError::DatabaseError(format!("Failed to get Redis DB size: {e}")))?;
         trace!("Redis DB size: {count}");
 
-        // Derive ceremony key material from the master key.
-        // Per-user ceremony record keys are computed at call time using this derivation key.
-        // The `ceremony_active_cos_key` is a SET key that tracks active CO usernames.
-        let mut ceremony_derivation_key = [0_u8; 32];
-        kdf256!(
-            &mut ceremony_derivation_key,
-            &*master_key,
-            b"ceremony_key_derivation"
-        );
-        let ceremony_active_cos_key =
-            Self::derive_ceremony_key_name(&master_key, b"active_cos_set");
+        // Derive obfuscated ceremony key names from the master key.
+        // This prevents attackers from enumerating which roles have ceremony records
+        // by inspecting Redis key names.
+        let ceremony_key_crypto_officer =
+            Self::derive_ceremony_key_name(&master_key, b"crypto_officer");
+
         let redis_with_findex = Self {
             mgr,
             objects_db,
             permission_db,
             findex,
-            ceremony_derivation_key,
-            ceremony_active_cos_key,
+            ceremony_key_crypto_officer,
         };
 
         if count == 0 {
@@ -418,14 +409,6 @@ impl RedisWithFindex {
     ) -> String {
         let mut hash = [0_u8; 8]; // 8 bytes → 16 hex chars
         kdf256!(&mut hash, &**master_key, b"ceremony_key_name", role);
-        format!("c:{}", hex::encode(hash))
-    }
-
-    /// Derive an obfuscated Redis key name for a per-user ceremony record.
-    fn derive_per_user_ceremony_key_name(&self, role: &str, user: &str) -> String {
-        let mut hash = [0_u8; 8];
-        let input = format!("{role}:{user}");
-        kdf256!(&mut hash, &self.ceremony_derivation_key, input.as_bytes());
         format!("c:{}", hex::encode(hash))
     }
 
@@ -1279,66 +1262,19 @@ impl PermissionsStore for RedisWithFindex {
             .collect())
     }
 
-    async fn activate_crypto_officer_ceremony(
-        &self,
-        sealed_record: &str,
-        activated_by: &str,
-        revoked_by: &str,
-    ) -> InterfaceResult<()> {
-        // For Redis, per-user ceremony records use a per-user obfuscated key.
-        // `SET` is atomic — it replaces any prior record for this user, so the
-        // revoke of the same user's prior record and the new insert are one operation.
-        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", activated_by);
-        // Revoke any prior record for this user.
-        self.revoke_ceremony_record(&user_key, revoked_by).await?;
-        // Store the new sealed record.
-        self.store_ceremony_record(&user_key, sealed_record).await?;
-        // Add to the active-COs set.
-        redis::cmd("SADD")
-            .arg(&self.ceremony_active_cos_key)
-            .arg(activated_by)
-            .query_async::<()>(&mut self.mgr.clone())
+    async fn activate_crypto_officer_ceremony(&self, sealed_record: &str) -> InterfaceResult<()> {
+        self.store_ceremony_record(&self.ceremony_key_crypto_officer, sealed_record)
             .await
-            .map_err(|e| {
-                InterfaceError::Default(format!("Failed to add to active COs set: {e}"))
-            })?;
-        Ok(())
     }
 
-    async fn get_crypto_officer_activation_by(
-        &self,
-        user: &str,
-    ) -> InterfaceResult<Option<String>> {
-        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", user);
-        self.load_ceremony_record(&user_key).await
+    async fn get_crypto_officer_activation(&self) -> InterfaceResult<Option<String>> {
+        self.load_ceremony_record(&self.ceremony_key_crypto_officer)
+            .await
     }
 
-    async fn is_any_crypto_officer_activated(&self) -> InterfaceResult<bool> {
-        let count: i64 = redis::cmd("SCARD")
-            .arg(&self.ceremony_active_cos_key)
-            .query_async(&mut self.mgr.clone())
+    async fn revoke_crypto_officer_activation(&self, revoked_by: &str) -> InterfaceResult<()> {
+        self.revoke_ceremony_record(&self.ceremony_key_crypto_officer, revoked_by)
             .await
-            .map_err(|e| InterfaceError::Default(format!("Failed to read active COs set: {e}")))?;
-        Ok(count > 0)
-    }
-
-    async fn revoke_crypto_officer_activation(
-        &self,
-        revoked_by: &str,
-        activated_by: &str,
-    ) -> InterfaceResult<()> {
-        let user_key = self.derive_per_user_ceremony_key_name("crypto_officer", activated_by);
-        self.revoke_ceremony_record(&user_key, revoked_by).await?;
-        // Remove from the active-COs set.
-        redis::cmd("SREM")
-            .arg(&self.ceremony_active_cos_key)
-            .arg(activated_by)
-            .query_async::<()>(&mut self.mgr.clone())
-            .await
-            .map_err(|e| {
-                InterfaceError::Default(format!("Failed to remove from active COs set: {e}"))
-            })?;
-        Ok(())
     }
 }
 

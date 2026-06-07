@@ -695,22 +695,9 @@ impl KmsClient {
     /// Disable an active Crypto Officer ceremony.
     ///
     /// Requires the caller to be an active Crypto Officer.
-    pub async fn crypto_officer_disable(
-        &self,
-        target_user: Option<&str>,
-    ) -> Result<SuccessResponse, KmsClientError> {
-        // Send `{}` or `{"target_user": "..."}` — the server's `Json<DisableCryptoOfficerRequest>`
-        // extractor requires a valid JSON body; an empty body triggers a 400.
-        #[derive(serde::Serialize)]
-        struct DisableRequest<'a> {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            target_user: Option<&'a str>,
-        }
-        self.post_no_ttlv(
-            "/access/crypto_officer/disable",
-            Some(&DisableRequest { target_user }),
-        )
-        .await
+    pub async fn crypto_officer_disable(&self) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv("/access/crypto_officer/disable", None::<&()>)
+            .await
     }
 
     /// Activate the Crypto Officer role via a split-key ceremony.

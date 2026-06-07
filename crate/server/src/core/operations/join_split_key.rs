@@ -20,11 +20,11 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use openssl::hash::{MessageDigest, hash};
-use tracing::debug;
+use tracing::info;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use super::create_split_key::{CRYPTO_OFFICER_CEREMONY_ATTR, extract_key_bytes};
+use super::create_split_key::CRYPTO_OFFICER_CEREMONY_ATTR;
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
     error::KmsError,
@@ -61,12 +61,13 @@ pub(crate) struct ReconstructedShares {
 /// - All objects must be `SplitKey` objects.
 /// - All shares must declare the same `split_key_method`.
 /// - All shares must come from the same source key (cross-key mixing rejected).
+/// - The declared split method must match the request.
 /// - Exactly `total_parts` shares must be provided (n-of-n).
 /// - `key_part_identifiers` must be the complete set `{1, …, n}`.
 pub(crate) async fn retrieve_and_reconstruct_shares(
     kms: &KMS,
     share_uid_strings: &[String],
-    user: &UserId,
+    user: &str,
 ) -> KResult<ReconstructedShares> {
     if share_uid_strings.is_empty() {
         kms_bail!(KmsError::InvalidRequest(
@@ -74,13 +75,14 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
         ));
     }
 
+    let user_id = UserId::from(user);
     let mut owms: Vec<ObjectWithMetadata> = Vec::with_capacity(share_uid_strings.len());
     for uid_str in share_uid_strings {
         let owm = retrieve_object_for_operation(
             ObjectHandle::from(uid_str.as_str()),
             KmipOperation::Get,
             kms,
-            user,
+            &user_id,
         )
         .await?;
         owms.push(owm);
@@ -176,69 +178,24 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
         }
     }
 
-    // Extract raw share bytes and XOR-reconstruct the secret.
-    // If a share carries the `x-cosmian-share-wrapping-key` vendor attribute,
-    // the stored bytes are AES-KW (RFC 5649) wrapped — retrieve the wrapping key from
-    // the DB and unwrap before feeding the plaintext bytes into the XOR reconstruction.
+    // Extract raw share bytes and XOR-reconstruct the secret
     let mut raw_shares: Vec<Zeroizing<Vec<u8>>> = Vec::with_capacity(owms.len());
     for owm in &owms {
         if let Object::SplitKey(sk) = owm.object() {
-            let stored_bytes = extract_share_bytes(&sk.key_block)?;
-
-            // Check for an AES-KW wrapping key UID stamped by CreateSplitKey.
-            let share_bytes: Zeroizing<Vec<u8>> = match owm
-                .attributes()
-                .get_vendor_attribute_value(VENDOR_ID_COSMIAN, "x-cosmian-share-wrapping-key")
-            {
-                Some(VendorAttributeValue::TextString(wrap_key_id)) => {
-                    // Retrieve the wrapping key directly from the DB (server-side, no user check).
-                    let wrap_owm = kms
-                        .database
-                        .retrieve_object(wrap_key_id)
-                        .await
-                        .map_err(|e| {
-                            KmsError::ServerError(format!(
-                                "JoinSplitKey: failed to retrieve ceremony wrapping key \
-                                 '{wrap_key_id}': {e}"
-                            ))
-                        })?
-                        .ok_or_else(|| {
-                            KmsError::ServerError(format!(
-                                "JoinSplitKey: ceremony wrapping key '{wrap_key_id}' not found. \
-                                 The key must exist in the KMS object store to reconstruct \
-                                 wrapped shares."
-                            ))
-                        })?;
-                    let wkb = extract_key_bytes(wrap_owm.object())?;
-                    let unwrapped = cosmian_kms_crypto::crypto::symmetric::rfc5649::rfc5649_unwrap(
-                        &stored_bytes,
-                        &wkb,
-                    )
-                    .map_err(|e| {
-                        KmsError::CryptographicError(format!(
-                            "JoinSplitKey: AES-KW unwrap of share failed (wrapping key \
-                                 '{wrap_key_id}'): {e}"
-                        ))
-                    })?;
-                    Zeroizing::new(unwrapped.to_vec())
-                }
-                _ => Zeroizing::new(stored_bytes),
-            };
-
-            raw_shares.push(share_bytes);
+            let share_bytes = extract_share_bytes(&sk.key_block)?;
+            raw_shares.push(Zeroizing::new(share_bytes));
         }
     }
 
     let secret: Zeroizing<Vec<u8>> = match method {
-        SplitKeyMethod::XOR => cosmian_kms_crypto::crypto::split_key::xor_join(&raw_shares)
-            .map_err(|e| KmsError::InvalidRequest(format!("reconstruction error: {e}")))?,
         SplitKeyMethod::PolynomialSharingGf28
         | SplitKeyMethod::PolynomialSharingGf216
-        | SplitKeyMethod::PolynomialSharingPrimeField => {
-            kms_bail!(KmsError::NotSupported(format!(
-                "JoinSplitKey: split_key_method {method:?} (M-of-N polynomial sharing) is not \
-                 yet implemented; only XOR (n-of-n) is supported."
-            )));
+        | SplitKeyMethod::XOR => cosmian_kms_crypto::crypto::split_key::xor_join(&raw_shares)
+            .map_err(|e| KmsError::InvalidRequest(format!("reconstruction error: {e}")))?,
+        SplitKeyMethod::PolynomialSharingPrimeField => {
+            kms_bail!(KmsError::NotSupported(
+                "PolynomialSharingPrime is not supported".to_owned()
+            ));
         }
     };
 
@@ -266,25 +223,20 @@ pub(crate) async fn retrieve_and_reconstruct_shares(
 
 /// `JoinSplitKey` operation handler.
 ///
-/// Reconstructs a key from all n split-key share objects (XOR n-of-n) and **always**
-/// stores the result as a new Managed Cryptographic Object owned by the requesting user.
+/// Reconstructs a key from all n split-key share objects (XOR n-of-n) and stores the
+/// result as a new Managed Cryptographic Object owned by the requesting user.
 ///
-/// When all shares carry the `x-cosmian-crypto-officer-ceremony` vendor attribute
-/// **and** `crypto_officer_require_ceremony = true`, the operation additionally
-/// auto-triggers ceremony activation (writing to `crypto_officer_activations`).
-/// The reconstructed key is stored unconditionally before the activation side-effect —
-/// activation failure is non-fatal and leaves the stored key intact.
-///
-/// The `POST /access/crypto_officer/ceremony/activate` REST endpoint performs
-/// activation-only (no key storage) and is kept for CLI backward compatibility.
+/// This operation is purely for key reconstruction. To activate the Crypto Officer
+/// role via a split-key ceremony, use `POST /access/crypto_officer/ceremony/activate`.
 pub(crate) async fn join_split_key(
     kms: &KMS,
     request: JoinSplitKey,
-    user: &UserId,
+    user: &str,
 ) -> KResult<JoinSplitKeyResponse> {
     // Resolve share UIDs from the request
-    let mut share_uids: Vec<String> = Vec::with_capacity(request.unique_identifier.len());
-    for uid_ref in &request.unique_identifier {
+    let mut share_uids: Vec<String> =
+        Vec::with_capacity(request.split_key_unique_identifiers.len());
+    for uid_ref in &request.split_key_unique_identifiers {
         match uid_ref {
             UniqueIdentifier::TextString(s) => share_uids.push(s.clone()),
             other => {
@@ -301,34 +253,36 @@ pub(crate) async fn join_split_key(
         ));
     }
 
-    // Reconstruct the shares — the split key method is read from the stored share objects,
-    // not from the request (the spec does not include split_key_method in the request payload).
+    // Validate that the declared split method in the request matches the shares.
+    // (retrieve_and_reconstruct_shares enforces consistency across all shares;
+    //  here we just need the method from the request to compare after retrieval.)
     let reconstructed = retrieve_and_reconstruct_shares(kms, &share_uids, user).await?;
-    debug!(
-        method = ?reconstructed.split_key_method,
-        n_shares = share_uids.len(),
-        "JoinSplitKey: shares reconstructed",
-    );
+
+    if request.split_key_method != reconstructed.split_key_method {
+        kms_bail!(KmsError::InvalidRequest(format!(
+            "JoinSplitKey: request declares split key method {:?} \
+             but shares use {:?}",
+            request.split_key_method, reconstructed.split_key_method
+        )));
+    }
 
     // Enforce the same Create/Import restriction as create.rs / import.rs.
-    // A user listed in crypto_officer.users is always allowed — they are ceremony
-    // candidates regardless of whether `require_ceremony` is set, and need
-    // JoinSplitKey to reconstruct ceremony keys.
-    let is_co_user = kms
-        .params
-        .crypto_officer
-        .users
-        .iter()
-        .any(|u| u == user.as_str());
-    if !is_co_user && kms.params.crypto_officer.is_configured() {
+    // Crypto Officer ceremony candidates (users in crypto_officer.users) are exempt because
+    // they need JoinSplitKey to be usable regardless of their CO role status.
+    let user_id = UserId::from(user);
+    let is_ceremony_candidate = kms.params.crypto_officer.require_ceremony
+        && kms.params.crypto_officer.users.iter().any(|u| u == user);
+    if !is_ceremony_candidate && kms.params.crypto_officer.is_configured() {
         let has_create_permission = crate::core::retrieve_object_utils::user_has_permission(
-            user,
+            &user_id,
             None,
             &KmipOperation::Create,
             kms,
         )
         .await?;
-        if !has_create_permission {
+        let is_crypto_officer = !kms.params.crypto_officer.users.is_empty()
+            && kms.params.crypto_officer.users.iter().any(|u| u == user);
+        if !has_create_permission && !is_crypto_officer {
             kms_bail!(KmsError::Unauthorized(
                 "JoinSplitKey: user does not have permission to create objects \
                  (CryptoOfficer role or explicit Create grant required)"
@@ -337,20 +291,8 @@ pub(crate) async fn join_split_key(
         }
     }
 
-    // Build the reconstructed key object.
-    // For ceremony splits, the source key was destroyed after splitting — so we can
-    // safely reuse its UID by stripping the `#<part>` suffix from the first share UID
-    // (e.g. "ceremony-key#1" → "ceremony-key").
-    // For generic splits the source key is still alive; using the same UID would cause
-    // a "key already exists" error. In that case a fresh UUID is generated.
-    let reconstructed_uid = if reconstructed.all_ceremony_tagged {
-        share_uids
-            .first()
-            .and_then(|first| first.rfind('#').map(|pos| first[..pos].to_owned()))
-            .unwrap_or_else(|| Uuid::new_v4().to_string())
-    } else {
-        Uuid::new_v4().to_string()
-    };
+    // Build the reconstructed key object
+    let reconstructed_uid = Uuid::new_v4().to_string();
     let now = time::OffsetDateTime::now_utc();
 
     let (reconstructed_object, mut reconstructed_attrs) = build_reconstructed_object(
@@ -375,78 +317,22 @@ pub(crate) async fn join_split_key(
     let mut tags: HashSet<String> = HashSet::new();
     tags.insert("reconstructed-split-key".to_owned());
 
-    // Session ID for audit-log correlation of this JoinSplitKey invocation.
-    let join_session_id = Uuid::new_v4();
-
     kms.database
         .create(
             Some(reconstructed_uid.clone()),
-            user,
+            &user_id,
             &reconstructed_object,
             &reconstructed_attrs,
             &tags,
         )
         .await?;
 
-    tracing::error!(
-        target: "audit",
+    info!(
         uid = %reconstructed_uid,
         shares = share_uids.len(),
         user = %user,
-        session_id = %join_session_id,
         "JoinSplitKey: reconstructed key stored",
     );
-
-    // ── Auto-activate CO ceremony when all shares are ceremony-tagged ────────────
-    // When every share carries the `x-cosmian-crypto-officer-ceremony` vendor
-    // attribute, `JoinSplitKey` IS the ceremony activation: it validates all the
-    // same constraints (n-of-n, dual-control, all CO candidates) and writes the
-    // `crypto_officer_activations` record as a side-effect.
-    //
-    // This eliminates the need for a separate
-    // `POST /access/crypto_officer/ceremony/activate` call from the UI.
-    // The dedicated REST endpoint is kept for CLI backward compatibility only.
-    if reconstructed.all_ceremony_tagged && kms.params.crypto_officer.require_ceremony {
-        match perform_crypto_officer_ceremony_activation(kms, &share_uids, user).await {
-            Ok(()) => {
-                tracing::info!(
-                    uid = %reconstructed_uid,
-                    user = %user,
-                    session_id = %join_session_id,
-                    "JoinSplitKey: CO ceremony auto-activated via reconstructed key",
-                );
-            }
-            Err(e) => {
-                // Activation failure → compensating delete: the reconstructed key must
-                // not persist without a valid ceremony activation record. An orphaned
-                // key in the DB would be accessible to anyone holding a Grant on the
-                // resulting UID, bypassing the ceremony dual-control.
-                tracing::error!(
-                    target: "audit",
-                    uid = %reconstructed_uid,
-                    user = %user,
-                    session_id = %join_session_id,
-                    error = %e,
-                    "JoinSplitKey: CO ceremony activation failed — rolling back \
-                     reconstructed key from DB",
-                );
-                if let Err(del_err) = kms.database.delete(&reconstructed_uid).await {
-                    // The rollback itself failed: log explicitly so SIEM can alert on
-                    // the orphaned object and trigger manual cleanup.
-                    tracing::error!(
-                        target: "audit",
-                        uid = %reconstructed_uid,
-                        user = %user,
-                        session_id = %join_session_id,
-                        rollback_error = %del_err,
-                        "JoinSplitKey: CRITICAL — reconstructed key rollback failed; \
-                         orphaned key remains in DB, manual cleanup required",
-                    );
-                }
-                return Err(e);
-            }
-        }
-    }
 
     Ok(JoinSplitKeyResponse {
         unique_identifier: UniqueIdentifier::TextString(reconstructed_uid),
@@ -477,18 +363,16 @@ fn extract_share_bytes(key_block: &KeyBlock) -> KResult<Vec<u8>> {
 /// Validates and processes the ceremony activation:
 /// - Retrieves and validates all shares.
 /// - Verifies all shares carry `x-cosmian-crypto-officer-ceremony`.
-/// - Verifies dual-control constraints (unique owners, at least one share from a different CO candidate, all CO candidates).
-/// - Reconstructs the ceremony secret via XOR **in RAM only** (for key-hash verification).
+/// - Verifies dual-control constraints (unique owners, assembler ≠ share owner, all CO candidates).
+/// - Reconstructs the ceremony secret via XOR **in RAM only**.
 /// - Persists the `crypto_officer_activations` record.
-/// - The secret reconstructed *within this function* is zeroized before returning —
-///   this function does **not** store a key object. When called from [`join_split_key`],
-///   the key is already stored by the caller before this function runs.
+/// - The secret is zeroized when the function returns (ADP-20 — never stored).
 ///
 /// Returns `Ok(())` on successful activation.
 pub(crate) async fn perform_crypto_officer_ceremony_activation(
     kms: &KMS,
     share_ids: &[String],
-    user: &UserId,
+    user: &str,
 ) -> KResult<()> {
     let co_cfg = &kms.params.crypto_officer;
 
@@ -500,13 +384,14 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
 
     if !co_cfg.require_ceremony {
         kms_bail!(KmsError::InvalidRequest(
-            "This server uses config-only Crypto Officer mode: no ceremony is required.".to_owned()
+            "This server uses config-only Crypto Officer mode — no ceremony is required."
+                .to_owned()
         ));
     }
 
-    if !co_cfg.users.iter().any(|u| u == user.as_str()) {
+    if !co_cfg.users.iter().any(|u| u == user) {
         kms_bail!(KmsError::Unauthorized(
-            "Ceremony activation rejected: the requesting user is not listed in \
+            "Ceremony activation rejected — the requesting user is not listed in \
              `crypto_officer_users`"
                 .to_owned()
         ));
@@ -516,7 +401,7 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
 
     if !reconstructed.all_ceremony_tagged {
         kms_bail!(KmsError::Unauthorized(
-            "Ceremony activation rejected: not all shares are tagged with \
+            "Ceremony activation rejected — not all shares are tagged with \
              `x-cosmian-crypto-officer-ceremony`."
                 .to_owned()
         ));
@@ -527,14 +412,17 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
 
     if unique_participants.len() != participants.len() {
         kms_bail!(KmsError::Unauthorized(format!(
-            "Ceremony activation rejected: duplicate share owners detected. \
+            "Ceremony activation rejected — duplicate share owners detected. \
              Owners: {participants:?}"
         )));
     }
 
-    if !participants.iter().any(|p| p.as_str() != user.as_str()) {
+    // Verify that at least one share comes from a DIFFERENT CO (dual-control).
+    // This prevents the assembling user from self-activating by creating all shares alone.
+    if !participants.iter().any(|p| p.as_str() != user) {
         kms_bail!(KmsError::Unauthorized(
-            "Ceremony activation rejected: at least one share must come from a different party."
+            "Ceremony activation rejected — at least one share must come from a different \
+             Crypto Officer (NIST SP 800-57 Part 2 Rev 1 §4.6 dual control)."
                 .to_owned()
         ));
     }
@@ -542,23 +430,20 @@ pub(crate) async fn perform_crypto_officer_ceremony_activation(
     for participant in participants {
         if !co_cfg.users.iter().any(|u| u == participant) {
             kms_bail!(KmsError::Unauthorized(format!(
-                "Ceremony activation rejected: share owner '{participant}' is not in \
+                "Ceremony activation rejected — share owner '{participant}' is not in \
                  `crypto_officer_users`"
             )));
         }
     }
 
     kms.database
-        .activate_crypto_officer_ceremony(user.as_str(), participants, &reconstructed.key_hash)
+        .activate_crypto_officer_ceremony(user, participants, &reconstructed.key_hash)
         .await?;
 
-    // Log at ERROR — ceremony activation is a high-value security event that must
-    // never be suppressed by RUST_LOG=warn or RUST_LOG=info in production.
-    tracing::error!(
-        target: "audit",
+    info!(
         activated_by = %user,
         participants = ?participants,
-        "CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed",
+        "CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed"
     );
 
     // `reconstructed.secret` (Zeroizing<Vec<u8>>) is dropped here — never stored.
@@ -613,108 +498,4 @@ fn build_reconstructed_object(
     };
 
     Ok((object, attrs))
-}
-
-#[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::assertions_on_result_states
-)]
-mod tests {
-    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType},
-    };
-    use zeroize::Zeroizing;
-
-    use super::*;
-
-    fn make_split_key_block_bytes(raw: Vec<u8>) -> KeyBlock {
-        KeyBlock {
-            key_format_type: KeyFormatType::Opaque,
-            key_compression_type: None,
-            key_value: Some(KeyValue::Structure {
-                key_material: KeyMaterial::ByteString(Zeroizing::new(raw)),
-                attributes: None,
-            }),
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(256),
-            key_wrapping_data: None,
-        }
-    }
-
-    #[test]
-    fn test_extract_share_bytes_valid() {
-        let raw = vec![0xAA_u8; 16];
-        let kb = make_split_key_block_bytes(raw.clone());
-        let result = extract_share_bytes(&kb).expect("should extract share bytes");
-        assert_eq!(result, raw);
-    }
-
-    #[test]
-    fn test_extract_share_bytes_no_key_value_returns_error() {
-        let kb = KeyBlock {
-            key_format_type: KeyFormatType::Opaque,
-            key_compression_type: None,
-            key_value: None,
-            cryptographic_algorithm: None,
-            cryptographic_length: None,
-            key_wrapping_data: None,
-        };
-        let result = extract_share_bytes(&kb);
-        assert!(result.is_err(), "missing key_value should return an error");
-    }
-
-    #[test]
-    fn test_extract_share_bytes_wrapped_returns_error() {
-        let kb = KeyBlock {
-            key_format_type: KeyFormatType::Opaque,
-            key_compression_type: None,
-            key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![0_u8; 8]))),
-            cryptographic_algorithm: None,
-            cryptographic_length: None,
-            key_wrapping_data: None,
-        };
-        let result = extract_share_bytes(&kb);
-        assert!(
-            result.is_err(),
-            "ByteString (wrapped) variant should return an error"
-        );
-    }
-
-    /// Verify that the simplified `is_co_user` gate correctly allows CO users regardless
-    /// of `require_ceremony`, and blocks non-CO users who lack Create permission.
-    ///
-    /// This is a logic regression test for the fix in issue #6: the old code had a
-    /// redundant `is_crypto_officer` inner check that re-derived the same condition.
-    #[test]
-    fn test_is_co_user_logic() {
-        let co_users: Vec<String> = vec!["alice".to_owned(), "bob".to_owned()];
-
-        // CO user: always a member
-        assert!(co_users.iter().any(|u| u == "alice"));
-        assert!(co_users.iter().any(|u| u == "bob"));
-
-        // Non-CO user: not a member
-        assert!(!co_users.iter().any(|u| u == "carol"));
-
-        // The old code gated on `require_ceremony && co_users.iter().any(...)`.
-        // With require_ceremony = false, a CO user like "alice" would NOT have been
-        // exempt — they would have needed Create permission or been blocked.
-        // The new code uses `co_users.iter().any(...)` unconditionally, which is correct:
-        // CO users must always be able to join split keys regardless of ceremony mode.
-        let require_ceremony = false;
-
-        // Old (broken) logic: is_ceremony_candidate
-        let old_is_exempt = require_ceremony && co_users.iter().any(|u| u == "alice");
-        assert!(
-            !old_is_exempt,
-            "old logic incorrectly blocked alice when require_ceremony=false"
-        );
-
-        // New (fixed) logic: is_co_user
-        let new_is_exempt = co_users.iter().any(|u| u == "alice");
-        assert!(new_is_exempt, "new logic correctly exempts alice");
-    }
 }

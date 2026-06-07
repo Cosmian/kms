@@ -663,22 +663,18 @@ fn extract_all_uids(text: &str) -> Vec<String> {
     let uuid_re =
         regex::Regex::new(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
             .expect("valid UUID regex");
-    // Match share UIDs with optional `#<n>` suffix (e.g. "abc-123-...#1")
-    let share_uid_re =
-        regex::Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#\d+)?$")
-            .expect("valid share UID regex");
     text.lines()
         .filter_map(|line| {
             let trimmed = line.trim();
-            // "Unique identifier: <uid>" — single-key output
+            // "Unique identifier: <uuid>" — single-key output
             if let Some(rest) = trimmed.strip_prefix("Unique identifier:") {
                 let uid = rest.trim().to_owned();
                 if !uid.is_empty() {
                     return Some(uid);
                 }
             }
-            // Bare UID line — plain UUID or UUID#N (split-key multi-identifier output)
-            if uuid_re.is_match(trimmed) && share_uid_re.is_match(trimmed) {
+            // Bare UUID line — split-key multi-identifier output
+            if uuid_re.is_match(trimmed) && trimmed.len() == 36 {
                 return Some(trimmed.to_owned());
             }
             None
@@ -770,14 +766,7 @@ async fn test_ceremony_full_lifecycle_cli() -> CosmianResult<()> {
     // Round-robin: share0 → user.client (co2), share1 → owner.client (co1), share2 → co3.client (co3).
     let split_out = run_ckms_output(
         &co1_conf,
-        &[
-            "sym",
-            "keys",
-            "create-split-key",
-            "--key-id",
-            key_uid,
-            "--ceremony",
-        ],
+        &["sym", "keys", "create-split-key", "--key-id", key_uid],
     )
     .expect("CO candidate must be able to split a key before ceremony (exemption)");
     // NOTE: the ceremony source key is now DESTROYED automatically after successful split.
@@ -901,22 +890,112 @@ async fn test_ceremony_full_lifecycle_cli() -> CosmianResult<()> {
         "Operator must NOT export another user's key without grant"
     );
 
-    // ── Phase 4 (T_C3): Active CO self-revokes immediately ────────────────────
-    // co1 is the active CO. They call disable once → 200 OK, ceremony revoked.
-    // No second CO needed (active CO voluntarily surrenders the role).
+    // ── Phase 4 (T_C3): Disable ceremony ──────────────────────────────────────
     let disabled = run_ckms(&co1_conf, &["access-rights", "crypto-officer", "disable"]);
-    assert!(
-        disabled,
-        "Active CO must be able to self-revoke immediately (200 OK in one call)"
-    );
+    assert!(disabled, "Active CO must be able to disable the ceremony");
 
-    // Ceremony must now be dormant.
+    // Status must now show ceremony inactive.
     assert!(
         !co_status_is_active(&co1_conf),
-        "Ceremony must be dormant after active CO self-revocation"
+        "Ceremony must be inactive after disable"
     );
 
-    // Cleanup — the ceremony source key (key_uid) is auto-destroyed after split;
+    // After disable, co1 can no longer export co2's key (no longer CO).
+    let export_tmp3 = std::env::temp_dir().join(format!(
+        "ceremony_co_after_disable_{}.key",
+        std::process::id()
+    ));
+    let co1_cannot_export_after_disable = !run_ckms(
+        &co1_conf,
+        &[
+            "sym",
+            "keys",
+            "export",
+            "--key-id",
+            co2_key_uid,
+            export_tmp3.to_str().unwrap(),
+        ],
+    );
+    assert!(
+        co1_cannot_export_after_disable,
+        "co1 must NOT export co2's key after ceremony is disabled"
+    );
+
+    // ── Phase 6 (T_C6): Re-activate ───────────────────────────────────────────
+    // Run a second ceremony to re-activate co1.
+    let create2_out = run_ckms_output(
+        &co1_conf,
+        &["sym", "keys", "create", "--number-of-bits", "256"],
+    )
+    .expect("CO candidate must still be able to create (exemption)");
+    let key2_uids = extract_all_uids(&create2_out);
+    let key2_uid = key2_uids.first().expect("second create must return a UID");
+
+    let split2_out = run_ckms_output(
+        &co1_conf,
+        &["sym", "keys", "create-split-key", "--key-id", key2_uid],
+    )
+    .expect("CO candidate must be able to split again");
+    // NOTE: key2_uid is also destroyed automatically after this split.
+    let share2_uids = extract_all_uids(&split2_out);
+    assert_eq!(share2_uids.len(), 3, "Second split must produce 3 shares");
+    let share2_0 = share2_uids
+        .first()
+        .expect("second split must produce share 0");
+    let share2_1 = share2_uids
+        .get(1)
+        .expect("second split must produce share 1");
+    let share2_2 = share2_uids
+        .get(2)
+        .expect("second split must produce share 2");
+
+    // co2 grants co1 access to new share0 (co2 owns share0 — round-robin idx 0).
+    let granted2 = run_ckms(
+        &co2_conf,
+        &[
+            "access-rights",
+            "grant",
+            "owner.client@acme.com",
+            "--object-uid",
+            share2_0,
+            "get",
+        ],
+    );
+    assert!(granted2, "co2 must grant access for re-activation");
+
+    // co3 grants co1 access to new share2.
+    let granted2_2 = run_ckms(
+        &co3_conf,
+        &[
+            "access-rights",
+            "grant",
+            "owner.client@acme.com",
+            "--object-uid",
+            share2_2,
+            "get",
+        ],
+    );
+    assert!(granted2_2, "co3 must grant access for re-activation");
+
+    let reactivated = run_ckms_output(
+        &co1_conf,
+        &[
+            "access-rights",
+            "crypto-officer",
+            "activate",
+            share2_0,
+            share2_1,
+            share2_2,
+        ],
+    )
+    .expect("Re-activation must succeed");
+    assert!(!reactivated.is_empty(), "Re-activation must produce output");
+    assert!(
+        co_status_is_active(&co1_conf),
+        "Ceremony must be active after re-activation"
+    );
+
+    // Cleanup — ceremony source keys (key_uid, key2_uid) are auto-destroyed after split;
     // only co2's key (co2_key_uid) needs explicit cleanup.
     co_destroy_key(&co1_conf, co2_key_uid);
     Ok(())
@@ -972,14 +1051,7 @@ async fn test_ceremony_join_with_only_own_share_fails() -> CosmianResult<()> {
 
     let split_out = run_ckms_output(
         &co1_conf,
-        &[
-            "sym",
-            "keys",
-            "create-split-key",
-            "--key-id",
-            key_uid,
-            "--ceremony",
-        ],
+        &["sym", "keys", "create-split-key", "--key-id", key_uid],
     )
     .expect("CO candidate must split key");
     let share_uids = extract_all_uids(&split_out);
@@ -1026,14 +1098,7 @@ async fn test_operator_cannot_activate_ceremony() -> CosmianResult<()> {
 
     let split_out = run_ckms_output(
         &co1_conf,
-        &[
-            "sym",
-            "keys",
-            "create-split-key",
-            "--key-id",
-            key_uid,
-            "--ceremony",
-        ],
+        &["sym", "keys", "create-split-key", "--key-id", key_uid],
     )
     .expect("CO candidate must split key");
     let share_uids = extract_all_uids(&split_out);

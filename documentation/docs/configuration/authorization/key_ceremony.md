@@ -1,42 +1,74 @@
 # Role Management and Key Ceremony
 
-Cosmian KMS supports two built-in roles, **Operator** and **CryptoOfficer**, so that
-day-to-day cryptographic use (encrypt, sign, decrypt) can be kept separate from
-key-lifecycle administration (create, activate, destroy, cross-user access). For
-deployments that want extra assurance around who can become a CryptoOfficer, the role
-can optionally require a **split-key ceremony**: instead of one person activating the
-role alone, the key that grants it is split across several people, and all of them must
-cooperate to activate it.
+Cosmian KMS implements a two-role **Role-Based Access Control** (RBAC) model drawing on
+two normative sources:
+
+- **[ISO/IEC 19790:2012](https://csrc.nist.gov/pubs/fips/140-3/final)** (adopted by [FIPS 140-3](https://csrc.nist.gov/pubs/fips/140-3/final)) —
+  defines mandatory Crypto Officer and User roles for cryptographic modules.
+- **[NIST SP 800-57 Part 2 Rev 1](https://csrc.nist.gov/pubs/sp/800/57/pt2/r1/final)** —
+  prescribes split knowledge and dual control for key management.
+
+The **CryptoOfficer** role can optionally require a *split-key ceremony* for activation
+under the principle of *split knowledge*
+([NIST SP 800-57 Part 2 Rev 1 §4.6](https://csrc.nist.gov/pubs/sp/800/57/pt2/r1/final)).
+Without a ceremony, users in the `crypto_officer_users` list are immediately active.
+With a ceremony, the role is **dormant** until a quorum of custodians assembles
+all key shares — making a single compromised account insufficient to
+gain the privileged role.
 
 ---
 
-## Table of Contents
+## Normative foundations
 
-- [The Officer/Operator two roles model](#the-officeroperator-two-roles-model)
-- [Turning on CryptoOfficer](#turning-on-cryptoofficer)
-    - [Mode 1: Config-only (no ceremony)](#mode-1-config-only-no-ceremony)
-    - [Mode 2: Split-key ceremony required](#mode-2-split-key-ceremony-required)
-- [Walkthrough: a 3-person ceremony](#walkthrough-a-3-person-ceremony)
-    - [Phase 1: Provisioning](#phase-1-provisioning)
-    - [Phase 2: Activate Crypto Officer Role (JoinSplitKey)](#phase-2-activate-crypto-officer-role-joinsplitkey)
-- [Revoking](#revoking)
-    - [Emergency revocation (config path)](#emergency-revocation-config-path)
-- [Quick reference](#quick-reference)
-    - [Permission model](#permission-model)
-    - [Configuration](#configuration)
-    - [CLI](#cli)
-        - [REST API equivalents](#rest-api-equivalents)
-    - [Role store vs. key store](#role-store-vs-key-store)
-- [Standards this design draws on](#standards-this-design-draws-on)
-- [Related pages](#related-pages)
+### XOR-based split knowledge
+
+The ceremony relies on **$n$-of-$n$ split knowledge**: the master key is split into $n$
+shares using XOR, and *all* $n$ shares are required to reconstruct the secret.
+The scheme is information-theoretically secure: any strict subset of shares reveals zero
+information about the master key.
+
+1. A dealer generates $n-1$ uniformly random byte strings, each of the same length $\ell$ as the secret $s$.
+2. The final share is the XOR of the secret with all other shares: $r_n = s \oplus r_1 \oplus \cdots \oplus r_{n-1}$.
+3. Reconstruction: $s = r_1 \oplus r_2 \oplus \cdots \oplus r_n$ — all shares are required.
+
+The constraint: $n \ge 3$ (threshold equals total parts, minimum 3 custodians required).
+
+!!! danger "Why n ≥ 3 is mandatory (not n ≥ 2)"
+    With only two custodians (Alice and Bob), the scheme provides no real dual control.
+    The dealer who creates the master key $K$ and retains share $S_1$ can trivially compute
+    Bob's share: $S_2 = K \oplus S_1$. This means Alice knows both shares from the moment of
+    creation — Bob's active cooperation is never required.
+
+    With **n ≥ 3** custodians, the dealer knows $K$ and one share $S_1$, but can only compute
+    $S_2 \oplus S_3 \oplus \cdots \oplus S_n$ — not any individual share. Genuine cooperation
+    from at least $n-1$ other custodians is always required.
+
+    This follows directly from the information-theoretic security of XOR splitting (see
+    [NIST SP 800-57 Part 2 Rev 1 §4.6](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt2r1.pdf)).
+    **The KMS rejects ceremony configuration with fewer than 3 custodians at startup.**
+
+!!! warning "Ceremony key destroyed after split"
+    When a key is split for a ceremony (`x-cosmian-crypto-officer-ceremony` attribute),
+    the server **automatically destroys** the original key after all shares are stored.
+    This is a defense-in-depth measure: even if the dealer had exported the original key
+    before splitting, destroying it removes the direct reconstruction path and forces
+    genuine custodian cooperation from the moment of the ceremony.
+
+### Design rationale
+
+| Standard | Relevant area | What it requires | How Cosmian KMS applies it |
+|---|---|---|---|
+| [NIST SP 800-57 Part 2 Rev 1](https://csrc.nist.gov/pubs/sp/800/57/pt2/r1/final) | Split knowledge (§4.6) | No single entity shall have access to the complete cryptographic key | Split-key ceremony with XOR n-of-n |
+| [NIST SP 800-57 Part 2 Rev 1](https://csrc.nist.gov/pubs/sp/800/57/pt2/r1/final) | Dual control (§4.6) | At least two authorised persons required for sensitive key-management operations | All $n$ shares required for ceremony activation |
+| [ISO/IEC 19790:2012](https://csrc.nist.gov/pubs/fips/140-3/final) ([FIPS 140-3](https://csrc.nist.gov/pubs/fips/140-3/final)) | Roles, services, and authentication (§7.4) | Mandatory Crypto Officer and User roles; separation between key management and key use | CryptoOfficer (lifecycle + ownership bypass) vs. Operator (crypto use) |
 
 ---
 
-## The Officer/Operator two roles model
+## The two roles
 
 ```mermaid
 graph TB
-    subgraph "Role model"
+    subgraph "Role model (ISO/IEC 19790 §7.4)"
         CO["🔐 CryptoOfficer<br/>Lifecycle: Create, Import, Certify,<br/>Activate, Revoke, Destroy, ReKey,<br/>Get, Export, Attribute management<br/>+ ownership bypass on all objects<br/>+ all Operator operations (incl. crypto use)"]
         Op["👤 Operator (default)<br/>Crypto use: Encrypt, Decrypt,<br/>Sign, MAC, Hash,<br/>GetAttributes, Locate, Validate"]
     end
@@ -44,27 +76,50 @@ graph TB
     CO -. "superset of" .- Op
 ```
 
-| Role              | Config key                 | Allowed KMIP operations                                                                                                                                                       | Can access other users' objects? |
-| ----------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------: |
-| **Operator**      | _(default, no config key)_ | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, GetAttributes, Locate, Validate                                                                                           |                No                |
-| **CryptoOfficer** | `crypto_officer_users`     | **All Operator operations** + Create, Certify, Import, Get, Export, ReKey, DeriveKey, Activate, Revoke, Destroy, Set/Modify/Add/DeleteAttribute, CreateSplitKey, JoinSplitKey |    **Yes, ownership bypass**     |
+| Role | Config key | Allowed KMIP operations | Can access other users' objects? |
+|---|---|---|:---:|
+| **Operator** | *(default — no config key)* | Encrypt, Decrypt, Sign, SignatureVerify, MAC, Hash, GetAttributes, Locate, Validate | No |
+| **CryptoOfficer** | `crypto_officer_users` | **All Operator operations** + Create, Certify, Import, Get, Export, ReKey, DeriveKey, Activate, Revoke, Destroy, Set/Modify/Add/DeleteAttribute | **Yes — ownership bypass** |
 
 !!! note "Fail-secure default"
     When `crypto_officer_users` is configured but a user is not in the list, the server
     assigns the **Operator** role (minimum privilege). Users are never silently promoted.
 
-!!! warning "Ownership bypass excludes HSM-backed keys"
-    The CryptoOfficer ownership bypass applies to KMS-managed objects only. Keys stored
-    in an HSM are **not** covered: access to them stays governed by the HSM's own admin
-    rules, regardless of CryptoOfficer status.
+!!! info "ISO/IEC 19790 mapping"
+    ISO/IEC 19790:2012 §7.4 defines two mandatory roles: the Crypto Officer (key management
+    and module configuration) and the User (general cryptographic operations). The Cosmian KMS
+    `CryptoOfficer` corresponds to the Crypto Officer and the `Operator` corresponds to
+    the User. ISO/IEC 19790 requires each role's services to be clearly defined and enforced,
+    but does **not** prohibit the CO from also holding User services. NIST SP 800-57 Part 2
+    Rev 1 confirms that a CO "can perform encryption, decryption, and other operations to the
+    extent defined by policy." Cosmian KMS policy grants the CO the full superset.
 
 ---
 
-## Turning on CryptoOfficer
+## CryptoOfficer role
 
-There are two ways to grant the CryptoOfficer role, chosen per deployment.
+The CryptoOfficer role enforces **key lifecycle management**, **key output**, **cryptographic use**,
+and **ownership bypass** as defined in
+[ISO/IEC 19790:2012 §7.4](https://csrc.nist.gov/pubs/fips/140-3/final) and
+[NIST SP 800-57 Part 2 Rev 1](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt2r1.pdf).
 
-### Mode 1: Config-only (no ceremony)
+CryptoOfficers may:
+
+- Create, import, certify, activate, revoke, and destroy objects
+- Access raw key material (`Get`, `Export`) — "key output" per ISO/IEC 19790 §7.4
+- Manage object attributes
+- **Use keys cryptographically** (`Encrypt`, `Decrypt`, `Sign`, `SignatureVerify`, `MAC`, `Hash`, `Validate`)
+- **Access any object** regardless of ownership (bypass per-object permission checks)
+- **Locate all objects** (bypasses user filtering in `Locate`)
+
+!!! note "Why COs can also encrypt/decrypt"
+    A dormant CO candidate is treated as an Operator and can already use keys cryptographically.
+    Removing those privileges upon CO activation would reduce permissions on promotion — contrary
+    to least-privilege semantics and operational necessity (a CO must be able to test keys they
+    manage). ISO/IEC 19790 §7.4 mandates that each role's services are *defined and enforced*;
+    it does not mandate mutual exclusion between the two role service sets.
+
+### Mode 1 — Config-only (no ceremony)
 
 ```toml
 [roles]
@@ -75,7 +130,7 @@ crypto_officer_require_ceremony = false   # default
 `key-mgr@example.com` is a CryptoOfficer on first connection. Suitable when physical security
 controls or organisational policy already enforce the required trust level.
 
-### Mode 2: Split-key ceremony required
+### Mode 2 — Split-key ceremony required
 
 ```toml
 [roles]
@@ -85,171 +140,203 @@ crypto_officer_users = [
     "co-auditor@example.com",
 ]
 crypto_officer_require_ceremony = true
-ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 ```
 
 CryptoOfficer privileges are **inactive** at startup. At least **3** users must be listed
 in `crypto_officer_users` when `require_ceremony = true` (the server rejects fewer).
-Each configured CO candidate activates **independently** by running their own ceremony
-(`JoinSplitKey` with a fresh set of shares). Multiple COs can be simultaneously active
-at any time — activating your own ceremony does **not** revoke any other currently active
-CO.
+The role becomes active only after the ceremony completes with all shares tagged
+`x-cosmian-crypto-officer-ceremony` (XOR n-of-n).
 
 ---
 
-## Walkthrough: a 3-person ceremony
+## Ceremony lifecycle
 
-The diagram below follows a ceremony with three custodians, Alice, Bob, and Carol,
-(which is also the minimum the KMS accepts).
+### Phase 1 — Provisioning
 
-![Split-key ceremony overview](crypto_officer_ceremony.png)
+The CO candidate creates an AES key, splits it into $n$ shares, and distributes them
+to custodians. The number of shares is auto-determined by the server from the
+`crypto_officer_users` count, and each share is auto-assigned to a different CO
+candidate (dual-control enforcement).
 
-Alice creates the master key and splits it into three shares; the KMS destroys the
-original immediately, so from that point on not even Alice can recover it alone. Bob and
-Carol each hold a share Alice does not have. To activate the CryptoOfficer role, Alice
-needs her own share plus at least one of theirs, which means Bob or Carol must actively
-grant her access first, so Alice cannot silently activate on her own.
-
-!!! info "Why not just two people?"
-    With two custodians, whoever creates the key can always compute the other person's
-    share from the key and their own share, so no real cooperation is required. Three is
-    the minimum where that shortcut disappears, which is why the KMS rejects fewer than
-    3 custodians at startup.
-
-### Phase 1: Provisioning
-
-The number of shares is auto-determined from the `crypto_officer_users` count, and each
-share is auto-assigned to a different CO candidate. No server restart is needed: the
-ceremony candidate exemption lets a CO candidate call `Create`, `CreateSplitKey`, and
-`JoinSplitKey` even before the ceremony completes, which is what breaks the
-chicken-and-egg problem of needing the role to set up the role.
+No restart is required — the ceremony candidate exemption allows
+`Create`, `Import`, `CreateSplitKey`, and `JoinSplitKey` even before the ceremony
+completes, breaking the chicken-and-egg problem.
 
 ```mermaid
 sequenceDiagram
-    actor Candidate as CO candidate
+    actor Candidate as CO candidate<br/>(ceremony mode active)
     participant KMS
 
-    Candidate->>KMS: Create(AES-256) → key_id
-    Candidate->>KMS: SetAttribute(key_id, ceremony=true)
-    Candidate->>KMS: CreateSplitKey(key_id)
-    KMS-->>Candidate: share_1, share_2, ..., share_n
+    Note over Candidate,KMS: Phase 1 — Ceremony provisioning
 
-    Note over Candidate: Distribute shares out-of-band,<br/>ask each CO to grant GET access
+    Candidate->>KMS: Create(AES-256) → ceremony_key_id
+    Candidate->>KMS: CreateSplitKey(ceremony_key_id)
+    Note right of KMS: Server auto-determines share count<br/>from crypto_officer_users.len()<br/>Shares auto-assigned to different CO candidates
+
+    KMS-->>Candidate: [share_1_id, share_2_id, ..., share_n_id]
+
+    Note right of KMS: Shares auto-tagged with<br/>x-cosmian-crypto-officer-ceremony
+
+    loop For each custodian i
+        Candidate->>KMS: GrantAccess(share_i_id → custodian_i, Get)
+    end
+
+    Note over Candidate: Share IDs distributed out-of-band to custodians
 ```
 
-### Phase 2: Activate Crypto Officer Role (JoinSplitKey)
+!!! note "Source key is destroyed"
+    The server destroys the ceremony source key immediately after all shares are stored,
+    as a defense-in-depth measure (see note in the XOR scheme section above).
 
-The CO candidate assembles all $n$ share UIDs (after each other CO grants GET access to
-their share), then activates via one of two mechanisms, both reachable from the CLI and
-the Web UI:
+### Phase 2 — Activation ceremony
 
-- **KMIP `JoinSplitKey`** (`ckms sym keys join-split-key`, or the Web UI's Join Split Key
-  page): stores the reconstructed key as an Active managed object in `objects`, owned by
-  the caller.
-- **`POST /access/crypto_officer/ceremony/activate`** (`ckms access-rights crypto-officer
-  activate`, or the Web UI's Crypto Officer Role page): reconstructs the secret in RAM
-  only to verify its SHA-256 fingerprint, then zeroizes it. No key object is stored.
+**One candidate — one ceremony.** A single person in `crypto_officer_users` calls
+`POST /access/crypto_officer/ceremony/activate`. Only that person becomes an active
+CryptoOfficer; other users in the list remain Operators until they complete their own
+ceremony.
 
-Both run the same checks first:
+The candidate assembles all $n$ custodians who each grant access to their share, then
+calls the ceremony activation endpoint with all share UIDs. The server:
 
-1. Retrieves each share (the candidate must have `Get` on each) and validates them: same
-   ceremony tag, same source key, correct count, and the candidate listed in
-   `crypto_officer_users`.
-2. Checks that at least one share belongs to a **different** CO: the activating candidate
-   may own shares, but not all of them. This is what prevents solo self-activation.
+1. Retrieves each share — the candidate must have `Get` on each.
+2. Verifies all shares carry the `x-cosmian-crypto-officer-ceremony` attribute.
+3. Verifies all shares originate from the same source key.
+4. Verifies the share count equals the threshold.
+5. Verifies the candidate is in `crypto_officer_users`.
+6. Verifies the candidate does **not** own any of the shares (strict dual-control).
+7. Reconstructs the secret via XOR **in server RAM only** — never stored as a KMS object.
+8. Persists a `crypto_officer_activations` record (activated-by user, SHA-256 key
+   fingerprint, participant list, timestamp).
+9. Zeroizes the reconstructed secret (ADP-20).
 
-Either way, the server persists the `crypto_officer_activations` record and the candidate
-is now an **active CryptoOfficer**.
+**The activation is bound to the activating user**: only the user named in
+`activated_by` of the sealed record is granted CryptoOfficer status.
 
-!!! warning "Key storage difference between the two mechanisms"
-    `JoinSplitKey` stores the reconstructed key as a usable KMS object; `ceremony/activate`
-    does not — the secret is RAM-only and zeroized immediately after the activation record
-    is written. Pick based on whether you need the reconstructed key as a managed object
-    afterward.
+!!! info "Ceremony activation is separate from JoinSplitKey"
+    `JoinSplitKey` (KMIP operation) is a key reconstruction tool — it produces a usable
+    cryptographic object. The ceremony activation uses a dedicated REST endpoint
+    (`POST /access/crypto_officer/ceremony/activate`) that reconstructs the secret in
+    RAM and zeroizes it immediately, never creating a managed KMS object. This
+    separation implements ADP-20 and keeps key management operations distinct from
+    access-control operations.
 
 ```mermaid
 sequenceDiagram
-    actor Alice as Alice (CO candidate)
-    actor Bob as Bob
-    actor Carol as Carol
+    actor CO as CryptoOfficer<br/>(candidate)
+    actor Custodian1
+    actor Custodian2
+    actor Custodian3
     participant KMS
 
-    Bob->>KMS: GrantAccess(share_1 → Alice, Get)
-    Carol->>KMS: GrantAccess(share_3 → Alice, Get)
-    Alice->>KMS: JoinSplitKey([share_1, share_2, share_3])
-    KMS-->>Alice: Activated, CryptoOfficer role is now ACTIVE
+    Note over CO,KMS: Phase 2 — Activation ceremony (n=3)
+
+    Custodian1->>KMS: GrantAccess(share_1_id → CO, Get)
+    Custodian2->>KMS: GrantAccess(share_2_id → CO, Get)
+    Custodian3->>KMS: GrantAccess(share_3_id → CO, Get)
+
+    CO->>KMS: POST /access/crypto_officer/ceremony/activate<br/>{share_ids: [share_1_id, share_2_id, share_3_id]}
+    Note right of KMS: • Verify x-cosmian-crypto-officer-ceremony attr<br/>• Verify all shares from same source key<br/>• Verify count = n<br/>• Verify user ∈ crypto_officer_users<br/>• Verify CO does not own any share<br/>• XOR reconstruction in RAM<br/>• Persist crypto_officer_activations row<br/>• Zeroize secret (ADP-20)
+    KMS-->>CO: {success: "Crypto Officer ceremony activated..."}
+
+    Note over CO,KMS: CryptoOfficer role is now ACTIVE
+    CO->>KMS: GET /access/crypto_officer/status → {enabled: true, ceremony_activated: true}
 ```
 
-## Revoking
+### Phase 3 — Active use
 
-Any configured CO candidate may revoke the active CO's ceremony:
+While the ceremony is active, the CryptoOfficer can manage all keys in the KMS:
 
-| Who calls                                                                    | Outcome                                                    |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Active CO** (currently holds the ceremony)                                 | Immediate self-revoke: 200 OK.                             |
-| **Any other CO candidate** (in `crypto_officer_users`, not currently active) | Peer revocation: revokes the active CO's role immediately. |
-| Any other user                                                               | 401 Unauthorized.                                          |
+```mermaid
+sequenceDiagram
+    actor CO as CryptoOfficer (active)
+    actor Bob as Bob (object owner)
+    participant KMS
 
-The reconstructed key is **NOT revoked**; only the `crypto_officer_activations` row
-is updated. The demoted CO retains their reconstructed key as an Operator.
+    Note over CO,KMS: Phase 3 — CryptoOfficer in use
 
-### Emergency revocation (config path)
+    Bob->>KMS: Create(AES-256) → bob_key_id
+    Note right of KMS: object owner = Bob
 
-When all CO candidates are unavailable:
+    CO->>KMS: Get(bob_key_id)
+    Note right of KMS: is_crypto_officer(CO) = true<br/>→ ownership bypass granted<br/>CRYPTO_OFFICER_ACCESS logged
+    KMS-->>CO: SymmetricKey (bob_key_id)
 
-1. **Remove** the user from `crypto_officer_users` in `kms.toml`.
-2. **Restart** the KMS server.
+    CO->>KMS: Locate(any_attributes)
+    Note right of KMS: find_all() bypasses user filter<br/>returns ALL objects in KMS
+    KMS-->>CO: [bob_key_id, ...]
+```
 
----
+### Phase 4 — Revocation
 
-## Quick reference
+Any active CryptoOfficer can disable the ceremony (self-disable). The role becomes
+dormant until a new `JoinSplitKey` ceremony completes.
 
-### Permission model
+```mermaid
+sequenceDiagram
+    actor CO as CryptoOfficer (active)
+    participant KMS
 
-```text
-Request: operation OP by user U
-│
-├─ crypto_officer_users not configured
-│  └─ Standard owner/grant check (no role restrictions)
-│
-└─ crypto_officer_users configured
-   │
-   ├─ U not in crypto_officer_users
-   │  └─ role = Operator (fail-secure default)
-   │
-   └─ U in crypto_officer_users
-      │
-      ├─ require_ceremony = false
-      │  └─ role = CryptoOfficer: GRANTED
-      │           (lifecycle + key output + ownership bypass)
-      │
-      └─ require_ceremony = true
-         │
-         ├─ no active row in crypto_officer_activations
-         │  └─ role = Operator (dormant until ceremony completes)
-         │
-         └─ active row in crypto_officer_activations
-            └─ role = CryptoOfficer: GRANTED
+    Note over CO,KMS: Phase 4 — Ceremony revocation
 
-Once a role is assigned (CryptoOfficer or Operator):
-│
-└─ OP in the role's allowed operations?
-   │
-   ├─ No  → DENIED (Unauthorized)
-   │
-   └─ Yes → handler-level ownership/grant check
-      │
-      ├─ Denied  → DENIED (Unauthorized)
-      └─ Granted → GRANTED
+    CO->>KMS: POST /access/crypto_officer/disable
+    Note right of KMS: caller must be active CryptoOfficer<br/>UPDATE crypto_officer_activations<br/>SET revoked_at = NOW()
+    KMS-->>CO: 200 OK
+
+    CO->>KMS: GET /access/crypto_officer/status
+    KMS-->>CO: {enabled: true, ceremony_activated: false}
+
+    Note over CO,KMS: CryptoOfficer role is DORMANT<br/>Must run ceremony/activate again to reactivate
 ```
 
 ---
 
-### Configuration
+## Security properties
+
+| Property | Guarantee |
+|---|---|
+| **Information-theoretic secrecy** | $< n$ shares reveal zero bits about the secret |
+| **Single-point-of-failure elimination** | No single custodian can activate the role alone |
+| **Insider threat mitigation** | A user in `crypto_officer_users` cannot escalate without all custodians cooperating (n ≥ 3 prevents dealer computing other shares) |
+| **Dealer-colluder resistance** | With n ≥ 3, the key creator knows one share; deriving any other individual share is impossible without that custodian's cooperation |
+| **Audit trail** | Every activation records: activator, participant list, SHA-256 key fingerprint, timestamp |
+| **Self-revocability** | Any active CryptoOfficer can immediately revoke the ceremony |
+| **Dual-control enforcement** | Assembling user must not own any share — all shares must come from other CO candidates |
+| **Replay prevention** | Re-activation requires re-running the full ceremony activation endpoint |
+| **RAM-only reconstruction** | The ceremony secret is reconstructed in server process RAM only during `/ceremony/activate`; zeroized immediately after — never stored as a KMS object (ADP-20) |
+| **Ceremony key destruction** | The source key is automatically destroyed after all shares are stored, removing any direct reconstruction path |
+| **HSM key exclusion** | Ownership bypass does not apply to HSM-backed keys (governed by HSM admin rules) |
+
+---
+
+## Permission model
+
+```mermaid
+flowchart TD
+    A([Request: OP by user U]) --> B{crypto_officer_users<br/>configured?}
+    B -- No --> C[Standard owner/grant check<br/>no role restrictions]
+    B -- Yes --> CO{U in<br/>crypto_officer_users?}
+    CO -- Yes --> COC{require_ceremony?}
+    COC -- No --> COA[CryptoOfficer — GRANTED<br/>lifecycle + key output + ownership bypass]
+    COC -- Yes --> COD{crypto_officer_activations<br/>has active row?}
+    COD -- No --> K[Assign Operator<br/>role dormant]
+    COD -- Yes --> COA
+    CO -- No --> G[Assign Operator<br/>fail-secure]
+    COA --> M{OP in<br/>allowed_ops?}
+    G --> M
+    K --> M
+    M -- Yes --> N[Handler-level<br/>ownership/grant check]
+    M -- No --> O[DENIED — Unauthorized]
+    N -- Granted --> P[GRANTED]
+    N -- Denied --> O
+```
+
+---
+
+## Configuration reference
 
 ```toml
 [roles]
-# ── CryptoOfficer role: key lifecycle management + ownership bypass ─────────
+# ── CryptoOfficer role — key lifecycle management + ownership bypass ─────────
 crypto_officer_users = ["key-mgr@example.com"]
 
 # Set to true to require a JoinSplitKey ceremony before the role becomes active.
@@ -259,105 +346,83 @@ crypto_officer_require_ceremony = true
 # Required when crypto_officer_require_ceremony = true.
 # Generate with: openssl rand -hex 32
 ceremony_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-
-# (ADP-26, planned) UID of a KMS symmetric key to use as the ceremony sealing key.
-# When set, takes precedence over ceremony_secret. Enables key rotation and HSM backing.
-# The key must be created before enabling require_ceremony (use config-only mode first).
-# ceremony_key_id = "ceremony-seal-2026"
 ```
 
 !!! note "Operator is the default"
-    Users not listed in `crypto_officer_users` automatically receive Operator privileges.
-    There is no `operator_users` config key; the Operator role is the implicit
+    Users not listed in `crypto_officer_users` automatically receive Operator privileges
+    (crypto use only, no lifecycle operations, no ownership bypass).
+    There is no `operator_users` config key — the Operator role is the implicit
     fail-secure default.
+
+!!! warning "TOML scoping"
+    All role keys must appear under the `[roles]` section header.
+    Placing them at root level or inside another section (e.g. `[http]`, `[db]`)
+    causes them to be silently ignored.
 
 ---
 
-### CLI
+## CLI quick reference
 
 ```bash
-# 1. Create ceremony key (as CO candidate, before ceremony)
-ckms sym keys create --id ceremony-key-2026 --number-of-bits 256
+# 1. Create and split the ceremony key (no restart needed — ceremony candidates
+#    are exempted from Create/CreateSplitKey permission checks)
+ckms sym keys create --size 256
+ckms sym keys create-split-key --key-id <co_key_id>
+# Share count is auto-determined from crypto_officer_users (minimum 3)
 
-# 2. Stamp ceremony marker (using the Crypto Officer Role Web UI page
-#    or directly via CLI):
-ckms attributes set-attribute ceremony-key-2026 \
-  --vendor-id cosmian \
-  --attr-name x-cosmian-crypto-officer-ceremony \
-  --attr-value true
+# 2. Grant shares to custodians (each share is auto-assigned to a different CO candidate)
+#    The source key is automatically destroyed after all shares are stored.
+ckms access-rights grant custodian1@example.com -i <share_1_id> get
+ckms access-rights grant custodian2@example.com -i <share_2_id> get
+ckms access-rights grant custodian3@example.com -i <share_3_id> get
 
-# 3. Split the key (server auto-assigns shares to CO candidates)
-ckms sym keys create-split-key --key-id ceremony-key-2026 --ceremony
-# Share count = crypto_officer_users.len() (auto-determined)
-# Source key auto-destroyed after split
+# 3. Custodians grant the CryptoOfficer candidate access at ceremony time
+ckms access-rights grant key-mgr@example.com -i <share_1_id> get  # run as custodian1
+ckms access-rights grant key-mgr@example.com -i <share_2_id> get  # run as custodian2
+ckms access-rights grant key-mgr@example.com -i <share_3_id> get  # run as custodian3
 
-# 4. Each other CO grants you GET access to their share
-#    (run as each other CO candidate):
-ckms access-rights grant <your-identity> -i <their-share-uid> get
+# 4. CryptoOfficer candidate activates the role (dedicated ceremony endpoint — not JoinSplitKey)
+#    The server reconstructs the secret in RAM and zeroizes it — no key stored.
+ckms access-rights crypto-officer activate <share_1_id> <share_2_id> <share_3_id>
 
-# 5. Activate: JoinSplitKey IS the activation (no separate step needed)
-ckms sym keys join-split-key <share_1_uid> <share_2_uid> <share_3_uid>
-# → CO role activated; reconstructed key stored
-
-# 6. Check status
+# 5. Check status
 ckms access-rights crypto-officer status
 
-# 7. Revoke (self or peer)
+# 6. Revoke the ceremony (self-disable)
 ckms access-rights crypto-officer disable
 ```
 
-#### REST API equivalents
+!!! note "JoinSplitKey is for key reconstruction, not ceremony activation"
+    `ckms sym keys join-split-key` (KMIP `JoinSplitKey`) reconstructs a split key into
+    a usable managed KMS object — use it when you need the raw key material for
+    cryptographic operations. To activate the Crypto Officer ceremony role, use
+    `ckms access-rights crypto-officer activate` or the Web UI **Crypto Officer Role**
+    page instead.
+
+### REST API equivalents
 
 ```bash
-# Status
+# Status (any authenticated user)
 curl -s https://<kms>/access/crypto_officer/status
 
-# Activate (via JoinSplitKey)
-curl -s -X POST https://<kms>/kmip/2_1 \
+# Activate ceremony (CO candidate; secret reconstructed in RAM, then zeroized)
+curl -s -X POST https://<kms>/access/crypto_officer/ceremony/activate \
   -H 'Content-Type: application/json' \
-  -d '{"tag":"JoinSplitKey","type":"Structure","value":[
-    {"tag":"ObjectType","type":"Enumeration","value":"SymmetricKey"},
-    {"tag":"PrivateKeyUniqueIdentifier","type":"TextString","value":"<share_1_uid>"},
-    {"tag":"PrivateKeyUniqueIdentifier","type":"TextString","value":"<share_2_uid>"},
-    {"tag":"PrivateKeyUniqueIdentifier","type":"TextString","value":"<share_3_uid>"},
-    {"tag":"SplitKeyMethod","type":"Enumeration","value":"XOR"}
-  ]}'
+  -d '{"share_ids": ["<share_1_id>", "<share_2_id>", "<share_3_id>"]}'
 
-# Revoke (self or peer)
+# Disable (requires active CryptoOfficer)
 curl -s -X POST https://<kms>/access/crypto_officer/disable
 ```
 
 ---
 
-### Role store vs. key store
+## References
 
-**Important security boundary:**
-
-| Store                                 | Written by                                                                            | Purpose                                                                                                                                                                     |
-| ------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `crypto_officer_activations` DB table | `JoinSplitKey` on ceremony shares, or `POST /access/crypto_officer/ceremony/activate` | **Sole source of truth** for CO role status. Sealed with AES-256-GCM under `ceremony_secret`.                                                                               |
-| `objects` DB table                    | Every `JoinSplitKey` call (ceremony and non-ceremony)                                 | Stores the reconstructed key as a managed KMS object owned by the caller. For ceremony shares the key is stored **unconditionally** before the activation side-effect runs. |
-
-!!! info "Two ceremony completion paths"
-    - **`JoinSplitKey` KMIP operation**: stores the reconstructed key in `objects` **and** writes the CO activation record. Suitable when you need the reconstructed key as a usable KMS object.
-    - **`POST /access/crypto_officer/ceremony/activate`**: reconstructs the secret in RAM only (for hash verification), writes the CO activation record, and **does not store a key object**.
-
-The `x-cosmian-crypto-officer-ceremony` tag on shares identifies which shares belong to
-a ceremony split. **It does NOT grant any privilege.** The server checks this tag only
-during ceremony activation validation, never for privilege checks. This prevents an
-attacker calling `Create(key)` + `SetAttribute(x-cosmian-crypto-officer-ceremony=true)`
-from escalating to CO role.
-
----
-
-## Standards this design draws on
-
-This design is inspired by two publications:
-[FIPS 140-3](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.140-3.pdf) (cryptographic
-module role separation) and
-[NIST SP 800-57 Part 2 Rev 1](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt2r1.pdf)
-(split knowledge and dual control as organizational practices to document). Neither
-standard mandates a specific implementation.
+| # | Standard | Full title | Link |
+|---|---|---|---|
+| 1 | FIPS 140-3 | NIST FIPS PUB 140-3, *Security Requirements for Cryptographic Modules*, March 2019. Adopts ISO/IEC 19790:2012(E). | [PDF](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.140-3.pdf) |
+| 2 | FIPS 140-3 IG | NIST, *FIPS 140-3 Implementation Guidance*, April 2026. | [PDF](https://csrc.nist.gov/csrc/media/Projects/cryptographic-module-validation-program/documents/fips%20140-3/FIPS%20140-3%20IG.pdf) |
+| 3 | SP 800-57 Part 2 Rev 1 | NIST SP 800-57 Part 2 Rev 1, *Recommendation for Key Management: Part 2 — Best Practices for Key Management Organizations*, May 2019. | [PDF](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt2r1.pdf) |
 
 ---
 
