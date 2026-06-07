@@ -138,6 +138,21 @@ services:
   # Minimal OTEL stack for integration tests:
   # KMS -> otel-collector -> scrape collector Prometheus endpoint
 
+  opa:
+    image: openpolicyagent/opa:edge-static-debug
+    ports:
+      - 8181:8181
+    volumes:
+      # Policy file (package kms)
+      # Roles are carried in the JWT `roles` claim (RFC 9068) and domain in `as_domain`.
+      - ./test_data/opa/kms.rego:/policies/kms.rego:ro
+    command:
+      - run
+      - --server
+      - --log-level=info
+      - --addr=0.0.0.0:8181
+      - /policies/kms.rego
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.144.0
     command: [--config=/etc/otel-collector-config.yaml]

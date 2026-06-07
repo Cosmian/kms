@@ -450,6 +450,6 @@ curl -s -X POST https://<kms>/access/crypto_officer/disable
 
 ## Related pages
 
-- [Authorization and access rights](../authorization.md)
+- [Authorization and access rights](./index.md)
 - [Configuration file reference](../server_configuration_file.md)
 - [FIPS 140-3 compliance](../../certifications_and_compliance/fips.md)

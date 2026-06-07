@@ -94,23 +94,31 @@ pub(super) async fn handle_jwt(
     }
 
     // Process the validation result and extract the email claim
-    match private_claim.map(|user_claim| user_claim.email) {
-        Ok(Some(email)) => {
-            // Authentication successful with valid email
-            debug!("JWT Access granted to {email}!");
-            Ok(AuthenticatedUser {
-                username: UserId::from(email),
-                auth_method: AuthMethod::OidcJwt,
-            })
-        }
-        Ok(None) => {
-            // JWT is valid but missing the required email claim — log as WARN for audit trail
-            warn!(
-                "{:?} {} 401 unauthorized, no email in JWT",
-                req.method(),
-                req.path()
-            );
-            Err(KmsError::InvalidRequest("No email in JWT".to_owned()))
+    match private_claim {
+        Ok(user_claim) => {
+            // Accept `email` (Google/Auth0 style) or fall back to `sub` (standard JWT subject,
+            // used by the Cosmian auth server and other issuer-agnostic IdPs).
+            let username = user_claim.email.or(user_claim.sub);
+            if let Some(username) = username {
+                // Authentication successful
+                debug!("JWT Access granted to {username}!");
+                Ok(AuthenticatedUser {
+                    username: UserId::from(username),
+                    auth_method: AuthMethod::OidcJwt,
+                    roles: user_claim.roles.unwrap_or_default(),
+                    domain: user_claim.domain,
+                })
+            } else {
+                // JWT is valid but missing both email and sub claims
+                warn!(
+                    "{:?} {} 401 unauthorized, no email or sub in JWT",
+                    req.method(),
+                    req.path()
+                );
+                Err(KmsError::InvalidRequest(
+                    "No email or sub in JWT".to_owned(),
+                ))
+            }
         }
         Err(jwt_log_errors) => {
             // JWT validation failed — log at WARN so auth failures appear in production logs

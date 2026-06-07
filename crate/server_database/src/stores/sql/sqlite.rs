@@ -141,6 +141,7 @@ impl SqlitePool {
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
+        let add_column_domain = pool.get_query("add-column-domain")?.to_owned();
         pool.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
@@ -156,7 +157,11 @@ impl SqlitePool {
                         &replace_dollars_with_qn(&create_crypto_officer_activations),
                         [],
                     )?;
-                    tx.execute(&replace_dollars_with_qn(&create_crls), [])?;
+                    // Migration: add domain column if missing (existing databases)
+                    let has_domain: bool = tx.prepare("SELECT domain FROM objects LIMIT 0").is_ok();
+                    if !has_domain {
+                        tx.execute(&add_column_domain, [])?;
+                    }
                     if clear_database {
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
@@ -395,13 +400,14 @@ fn sqlite_row_to_owm(row: &Row<'_>) -> Result<ObjectWithMetadata, DbError> {
     let attributes_json: String = row.get(2)?;
     let owner: String = row.get(3)?;
     let state_str: String = row.get(4)?;
+    let domain: String = row.get::<_, String>(5).unwrap_or_default();
     let object: Object = serde_json::from_str(&object_json)?;
     let object = migrate_block_cipher_mode_if_needed(object);
     let attributes: Attributes = serde_json::from_str(&attributes_json)?;
     let state =
         State::try_from(state_str.as_str()).map_err(|e| DbError::DatabaseError(e.to_string()))?;
     Ok(ObjectWithMetadata::new(
-        id, object, owner, state, attributes,
+        id, object, owner, state, attributes, domain,
     ))
 }
 
@@ -414,6 +420,7 @@ impl ObjectsStore for SqlitePool {
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
+        domain: &str,
     ) -> InterfaceResult<String> {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         // If an explicit UID already exists, return a clear error matching CLI expectations
@@ -441,6 +448,7 @@ impl ObjectsStore for SqlitePool {
         let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
         let owner_s: String = owner.as_str().to_owned();
         let wrapping_key_id = object.wrapping_key_uid();
+        let domain_s = domain.to_owned();
 
         let insert_object = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
         let insert_tag = replace_dollars_with_qn(get_sqlite_query!("insert-tags"));
@@ -460,6 +468,7 @@ impl ObjectsStore for SqlitePool {
                             state_s,
                             owner_s,
                             wrapping_key_id,
+                            &domain_s,
                         ],
                     )?;
                     for tag in &tags_owned {
@@ -1379,6 +1388,7 @@ fn create_sqlite(
     let sql = replace_dollars_with_qn(get_sqlite_query!("insert-objects"));
     let state_s = attributes.state.unwrap_or(State::PreActive).to_string();
     let owner_s: String = owner.to_owned();
+    let domain_s = String::new();
     tx.execute(
         &sql,
         rusqlite::params![
@@ -1387,7 +1397,8 @@ fn create_sqlite(
             attributes_json,
             state_s,
             owner_s,
-            wrapping_key_id
+            wrapping_key_id,
+            domain_s
         ],
     )?;
 

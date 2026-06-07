@@ -133,7 +133,12 @@ nav:
       - Object & Unwrapped Caches: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
-      - Authorizing users with access rights: configuration/authorization.md
+      - Authorization:
+          - Overview: configuration/authorization/index.md
+          - Mode 1 — Native KMS permissions: configuration/authorization/mode1.md
+          - Mode 2 — Exclusive OPA (RBAC): configuration/authorization/mode2.md
+          - Mode 3 — Enforcing (OPA + KMS): configuration/authorization/mode3.md
+          - RBAC, OPA, JWT and IdP Setup: configuration/authorization/rbac-opa-jwt-setup.md
       - Administrator key ceremony: configuration/authorization/key_ceremony.md
       - Enabling TLS: configuration/tls.md
       - Obtaining TLS Certificates: configuration/certificates.md

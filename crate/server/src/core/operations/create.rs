@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use super::key_ops::ObjectLifecycleExt;
 use crate::{
-    core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
+    core::{KMS, opa::get_opa_user_context, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     middlewares::UserId,
@@ -99,6 +99,10 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
     );
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(kms, owner, &unique_identifier, &mut object)).await?;
+
+    // Stamp the object with the creator's domain (from OPA user context) so that
+    // domain-scoped role checks (e.g. Auditor, DomainAdmin) can be evaluated later.
+    let creator_domain = get_opa_user_context().domain.unwrap_or_default();
     // If the object was wrapped, record the WrappingKeyLink in the stored attributes
     // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
     object.copy_wrapping_key_link_to(&mut attributes);
@@ -112,6 +116,7 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResul
             &object,
             &attributes,
             &tags,
+            &creator_domain,
         )
         .await?;
     info!(

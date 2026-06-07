@@ -41,6 +41,7 @@ pub(super) async fn owner<DB: ObjectsStore + PermissionsStore>(db: &DB) -> DbRes
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
+        "",
     )
     .await?;
 

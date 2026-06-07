@@ -106,12 +106,19 @@ pub(crate) struct UserClaim {
     pub email: Option<String>,
     pub iss: Option<String>,
     pub sub: Option<String>,
-    #[serde(deserialize_with = "deserialize_aud")]
+    #[serde(default, deserialize_with = "deserialize_aud")]
     pub aud: Option<Vec<String>>,
     pub iat: Option<usize>,
     pub exp: Option<usize>,
     pub nbf: Option<usize>,
     pub jti: Option<String>,
+    // OPA RBAC: roles claim emitted by auth server
+    pub roles: Option<Vec<String>>,
+    // OPA RBAC: domain claim — read from `as_rid` (auth server realm ID).
+    // `as_domain` is accepted as a legacy alias for tokens issued before the
+    // domain field was removed from AuthPrivateClaims.
+    #[serde(alias = "as_domain", alias = "as_rid")]
+    pub domain: Option<String>,
     // Google CSE
     pub role: Option<String>,
     // Google CSE

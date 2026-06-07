@@ -81,12 +81,6 @@ const JoinSplitKeyForm: React.FC = () => {
         });
     };
 
-    const initialValues = {
-        shareCount: DEFAULT_SHARE_COUNT,
-        objectType: "SymmetricKey" as const,
-        shareIds: Array.from({ length: DEFAULT_SHARE_COUNT }, () => ({ value: "" })),
-    };
-
     return (
         <div className="p-6">
             <h1 className="text-2xl font-bold mb-6">{t("joinSplitKey.title")}</h1>
@@ -101,7 +95,16 @@ const JoinSplitKeyForm: React.FC = () => {
                 </ul>
             </div>
 
-            <Form form={form} onFinish={onFinish} layout="vertical" initialValues={initialValues}>
+            <Form
+                form={form}
+                onFinish={onFinish}
+                layout="vertical"
+                initialValues={{
+                    method: "XOR",
+                    objectType: "SymmetricKey",
+                    shareIds: [{ value: "" }, { value: "" }],
+                }}
+            >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
                         <Form.Item label={t("joinSplitKey.shareCountLabel")} name="shareCount">

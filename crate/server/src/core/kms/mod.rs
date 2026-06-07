@@ -94,6 +94,9 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// Optional OPA client for RBAC evaluation (Phases 7-8).
+    pub(crate) opa_client: Option<Arc<super::opa::OpaClient>>,
 }
 
 impl KMS {
@@ -193,6 +196,14 @@ impl KMS {
             }
         }
 
+        // Instantiate OPA client if configured
+        let opa_client = server_params
+            .opa_params
+            .as_ref()
+            .map(|opa| super::opa::OpaClient::new(&opa.url))
+            .transpose()?
+            .map(Arc::new);
+
         Ok(Self {
             params: server_params.clone(),
             database,
@@ -200,6 +211,7 @@ impl KMS {
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
             metrics,
+            opa_client,
         })
     }
 

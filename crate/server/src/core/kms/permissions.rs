@@ -12,6 +12,7 @@ use cosmian_kms_server_database::reexport::{
 use crate::{
     core::{
         KMS,
+        opa::{OpaMode, OpaUserContext},
         retrieve_object_utils::user_has_permission,
         uid_utils::{ObjectHandle, from_request},
     },
@@ -268,9 +269,35 @@ impl KMS {
     /// intentional: Rekey has creation semantics that warrant the same lifecycle gate as `Create`.
     pub(crate) async fn enforce_create_permission(&self, user: &UserId) -> KResult<()> {
         let co_users = &self.params.crypto_officer.users;
+
+        // The `default_username` (unauthenticated / local access) and users
+        // explicitly listed as KMS-native CryptoOfficers always retain the
+        // `Create` right. CryptoOfficers are a server-level role (e.g. split-key
+        // ceremony participants) that must be able to create keys regardless of
+        // the OPA RBAC roles carried in the request's JWT.
+        let is_privileged =
+            *user == self.params.default_username || co_users.iter().any(|u| u == user.as_str());
+
+        // When OPA is active (enforcing or exclusive mode), OPA is the
+        // authoritative gatekeeper for Create for every non-privileged user.
+        // This ensures that roles like Auditor, User, or no-role are denied by
+        // the OPA policy even when no explicit crypto-officer list is set.
+        let opa_mode = self
+            .params
+            .opa_params
+            .as_ref()
+            .map_or(OpaMode::Disabled, |p| p.mode);
+        if self.opa_client.is_some() && opa_mode != OpaMode::Disabled && !is_privileged {
+            if user_has_permission(user, None, &KmipOperation::Create, self).await? {
+                return Ok(());
+            }
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
+
         if !co_users.is_empty() {
-            if *user == self.params.default_username
-                || co_users.iter().any(|u| u == user.as_str())
+            if is_privileged
                 || user_has_permission(user, None, &KmipOperation::Create, self).await?
             {
                 return Ok(());
@@ -478,6 +505,22 @@ impl KMS {
         }
 
         Ok(())
+    }
+
+    /// Extract the per-request OPA user context (roles + domain) from the request.
+    /// Call this in route handlers that perform OPA-guarded operations and wrap the
+    /// async work in `OPA_USER_CONTEXT.scope(ctx, fut).await`.
+    pub(crate) fn extract_opa_context(&self, req_http: &HttpRequest) -> OpaUserContext {
+        if self.params.force_default_username {
+            return OpaUserContext::default();
+        }
+        req_http
+            .extensions()
+            .get::<AuthenticatedUser>()
+            .map_or_else(OpaUserContext::default, |au| OpaUserContext {
+                roles: au.roles.clone(),
+                domain: au.domain.clone(),
+            })
     }
 
     /// Return the `UserId` of the first active Crypto Officer, or `None`.
