@@ -30,15 +30,16 @@ impl KMS {
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            if let Some(ref users) = self.params.privileged_users {
-                if !users.iter().any(|u| u.as_str() == owner.as_str()) {
+            let co_users = &self.params.crypto_officer.users;
+            if !co_users.is_empty() {
+                if !co_users.iter().any(|u| u.as_str() == owner.as_str()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."
                             .to_owned()
                     ))
                 }
                 let user_id = &access.user_id;
-                if users.contains(user_id) {
+                if co_users.contains(user_id) {
                     kms_bail!(KmsError::Unauthorized(format!(
                         "User `{user_id}` is a privileged user - create access right can't be \
                          granted or revoked."
@@ -116,15 +117,16 @@ impl KMS {
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            if let Some(ref users) = self.params.privileged_users {
-                if !users.iter().any(|u| u.as_str() == owner.as_str()) {
+            let co_users = &self.params.crypto_officer.users;
+            if !co_users.is_empty() {
+                if !co_users.iter().any(|u| u.as_str() == owner.as_str()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."
                             .to_owned()
                     ))
                 }
                 let user_id = &access.user_id;
-                if users.contains(user_id) {
+                if co_users.contains(user_id) {
                     kms_bail!(KmsError::Unauthorized(format!(
                         "User `{user_id}` is a privileged user - create access right can't be \
                          granted or revoked."
@@ -248,9 +250,10 @@ impl KMS {
     ///
     /// This check applies uniformly to `Create`, `CreateKeyPair`, `Import`, and `Register`.
     pub(crate) async fn enforce_create_permission(&self, user: &UserId) -> KResult<()> {
-        if let Some(ref users) = self.params.privileged_users {
+        let co_users = &self.params.crypto_officer.users;
+        if !co_users.is_empty() {
             if *user == self.params.default_username
-                || users.iter().any(|u| u == user.as_str())
+                || co_users.iter().any(|u| u == user.as_str())
                 || user_has_permission(user, None, &KmipOperation::Create, self).await?
             {
                 return Ok(());
@@ -288,6 +291,19 @@ impl KMS {
         if user == owm.owner() {
             return Ok(true);
         }
+
+        // CryptoOfficer bypass: active COs can perform any lifecycle operation on any
+        // non-HSM object regardless of ownership (ISO/IEC 19790:2012 §7.4 / NIST SP
+        // 800-57 Part 2 Rev 1 §4.3). HSM-backed keys are excluded — they are governed
+        // by the HSM admin rules.
+        if !ObjectHandle::from(owm.id()).is_hsm() && self.is_crypto_officer(user.as_str()).await? {
+            tracing::warn!(
+                "CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed ownership check on {} for {operation:?}",
+                owm.id()
+            );
+            return Ok(true);
+        }
+
         let permissions = self
             .database
             .list_user_operations_on_object(owm.id(), user, false)
@@ -321,5 +337,26 @@ impl KMS {
             .extensions()
             .get::<AuthenticatedUser>()
             .map(|au| au.auth_method)
+    }
+
+    /// Returns `true` when `user` currently holds the Crypto Officer role.
+    ///
+    /// - If `crypto_officer.users` is empty → `false`.
+    /// - If `user` is not in `crypto_officer.users` → `false`.
+    /// - If `crypto_officer.require_ceremony = true` → checks DB for an active activation record.
+    /// - Otherwise → `true` (config-only mode).
+    pub(crate) async fn is_crypto_officer(&self, user: &str) -> KResult<bool> {
+        let cfg = &self.params.crypto_officer;
+        if cfg.users.is_empty() {
+            return Ok(false);
+        }
+        if !cfg.users.iter().any(|u| u == user) {
+            return Ok(false);
+        }
+        if cfg.require_ceremony {
+            Ok(self.database.is_crypto_officer_activated_by(user).await?)
+        } else {
+            Ok(true)
+        }
     }
 }

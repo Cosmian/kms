@@ -81,7 +81,7 @@ RUST_LOG="${RUST_LOG:-warn}" COSMIAN_KMS_CONF="${KMS_CONF}" \
   "${REPO_ROOT}/target/debug/cosmian_kms" &
 KMS_PID=$!
 
-# shellcheck disable=SC2317
+# shellcheck disable=SC2329
 cleanup() {
   set +e
   if ps -p "${KMS_PID}" >/dev/null 2>&1; then

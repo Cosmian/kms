@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { getNoTTLVRequest, postNoTTLVRequest } from "../../utils/utils";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import LocateButton from "../../components/common/LocateButton";
 import * as wasm from "../../wasm/pkg";
 
 interface AccessGrantFormData {
@@ -102,18 +103,28 @@ const AccessGrantForm: React.FC = () => {
                             {({ getFieldValue }) => {
                                 const ops = getFieldValue("operation_types") || [];
                                 return (
-                                    <Form.Item
-                                        name="unique_identifier"
-                                        rules={[
-                                            {
-                                                required: ops.length > 0,
-                                                message: t("accessGrant.pleaseEnterObjectUid"),
-                                            },
-                                        ]}
-                                        help={t("accessGrant.objectUidHelp")}
-                                    >
-                                        <Input placeholder={t("accessGrant.enterObjectUid")} disabled={ops.length === 0} />
-                                    </Form.Item>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <Form.Item
+                                                name="unique_identifier"
+                                                noStyle
+                                                rules={[
+                                                    {
+                                                        required: ops.length > 0,
+                                                        message: t("accessGrant.pleaseEnterObjectUid"),
+                                                    },
+                                                ]}
+                                            >
+                                                <Input
+                                                    placeholder={t("accessGrant.enterObjectUid")}
+                                                    disabled={ops.length === 0}
+                                                    style={{ flex: 1 }}
+                                                />
+                                            </Form.Item>
+                                            <LocateButton onSelect={(uid: string) => form.setFieldValue("unique_identifier", uid)} />
+                                        </div>
+                                        <div className="text-gray-500 text-sm mt-1">{t("accessGrant.objectUidHelp")}</div>
+                                    </div>
                                 );
                             }}
                         </Form.Item>

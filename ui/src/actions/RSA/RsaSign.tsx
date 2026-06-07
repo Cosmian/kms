@@ -1,6 +1,7 @@
 import { Button, Card, Form, Input, Select, Space, Switch } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import KeyIdInput from "../../components/common/KeyIdInput";
 import { FormUploadDragger } from "../../components/common/FormUpload";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { parse_sign_ttlv_response, sign_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
@@ -89,12 +90,17 @@ const RsaSignForm: React.FC = () => {
                         </Form.Item>
                     </Card>
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("rsaSign.keyIdentification")}</h3>
-                        <Form.Item name="keyId" label={t("common:keyId")} help={t("rsaSign.keyIdHelp")}>
-                            <Input placeholder={t("common:enterKeyId")} />
-                        </Form.Item>
-                        <Form.Item name="tags" label={t("common:tags")} help={t("rsaSign.tagsHelp")}>
-                            <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
+                        <h3 className="text-m font-bold mb-4">Key Identification (required)</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
+                            label={t("common:keyId")}
+                            help={t("rsaSign.keyIdHelp")}
+                            placeholder={t("common:enterKeyId")}
+                            objectType="PrivateKey"
+                        />
+                        <Form.Item name="tags" label="Tags" help="Alternative to Key ID: specify tags to identify the key">
+                            <Select mode="tags" placeholder="Enter tags" open={false} />
                         </Form.Item>
                     </Card>
                     <Card>

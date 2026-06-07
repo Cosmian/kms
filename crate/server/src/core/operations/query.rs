@@ -90,6 +90,7 @@ pub(crate) async fn query(request: Query, vendor_identification: &str) -> KResul
                         ObjectType::PrivateKey,
                         ObjectType::PublicKey,
                         ObjectType::SecretData,
+                        ObjectType::SplitKey,
                         ObjectType::OpaqueObject,
                     ]);
                 }

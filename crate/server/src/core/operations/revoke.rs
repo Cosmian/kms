@@ -173,6 +173,7 @@ pub(crate) async fn recursively_revoke_key(
                 | ObjectType::PublicKey
                 | ObjectType::SecretData
                 | ObjectType::OpaqueObject
+                | ObjectType::SplitKey
         ) {
             continue;
         }
@@ -189,7 +190,8 @@ pub(crate) async fn recursively_revoke_key(
             ObjectType::SymmetricKey
             | ObjectType::Certificate
             | ObjectType::SecretData
-            | ObjectType::OpaqueObject => {
+            | ObjectType::OpaqueObject
+            | ObjectType::SplitKey => {
                 // revoke the key
                 Box::pin(revoke_key_core(
                     owm,

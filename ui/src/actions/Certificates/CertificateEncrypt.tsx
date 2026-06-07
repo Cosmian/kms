@@ -6,6 +6,7 @@ import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { encrypt_certificate_ttlv_request, parse_encrypt_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CertificateEncryptFormData {
     inputFile: Uint8Array;
@@ -98,14 +99,15 @@ const CertificateEncryptForm: React.FC = () => {
                     </Card>
 
                     <Card>
-                        <h3 className="text-m font-bold mb-4">{t("certificateEncrypt.certificateIdentification")}</h3>
-                        <Form.Item
-                            name="certificateId"
+                        <h3 className="text-m font-bold mb-4">Certificate Identification (required)</h3>
+                        <KeyIdInput
+                            form={form}
+                            fieldName="certificateId"
                             label={t("certificateEncrypt.certificateId")}
                             help={t("certificateEncrypt.certificateIdHelp")}
-                        >
-                            <Input placeholder={t("certificateEncrypt.enterCertificateId")} />
-                        </Form.Item>
+                            placeholder={t("certificateEncrypt.enterCertificateId")}
+                            objectType="Certificate"
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("certificateEncrypt.tagsHelp")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

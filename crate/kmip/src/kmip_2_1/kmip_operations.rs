@@ -20,7 +20,7 @@ use super::{
     kmip_types::{
         AttributeReference, CertificateRequestType, CryptographicParameters, DerivationMethod,
         KeyCompressionType, KeyFormatType, ObjectGroupMember, OperationEnumeration,
-        ProtectionStorageMasks, QueryFunction, StorageStatusMask, UniqueIdentifier,
+        ProtectionStorageMasks, QueryFunction, SplitKeyMethod, StorageStatusMask, UniqueIdentifier,
         ValidityIndicator,
     },
 };
@@ -151,6 +151,8 @@ pub enum Operation {
     CreateKeyPair(Box<CreateKeyPair>),
     CreateKeyPairResponse(CreateKeyPairResponse),
     CreateResponse(CreateResponse),
+    CreateSplitKey(CreateSplitKey),
+    CreateSplitKeyResponse(CreateSplitKeyResponse),
     Decrypt(Box<Decrypt>),
     DecryptResponse(DecryptResponse),
     DeleteAttribute(DeleteAttribute),
@@ -179,6 +181,8 @@ pub enum Operation {
     Interop(Interop),
     #[cfg(feature = "interop")]
     InteropResponse(InteropResponse),
+    JoinSplitKey(JoinSplitKey),
+    JoinSplitKeyResponse(JoinSplitKeyResponse),
     Locate(Box<Locate>),
     LocateResponse(LocateResponse),
     Log(Log),
@@ -233,6 +237,8 @@ impl Display for Operation {
             Self::CreateKeyPair(op) => write!(f, "{op}")?,
             Self::CreateKeyPairResponse(op) => write!(f, "{op}")?,
             Self::CreateResponse(op) => write!(f, "{op}")?,
+            Self::CreateSplitKey(op) => write!(f, "{op}")?,
+            Self::CreateSplitKeyResponse(op) => write!(f, "{op}")?,
             Self::Decrypt(op) => write!(f, "{op}")?,
             Self::DecryptResponse(op) => write!(f, "{op}")?,
             Self::DeleteAttribute(op) => write!(f, "{op}")?,
@@ -265,6 +271,8 @@ impl Display for Operation {
             Self::Interop(op) => write!(f, "{op}")?,
             #[cfg(feature = "interop")]
             Self::InteropResponse(op) => write!(f, "{op}")?,
+            Self::JoinSplitKey(op) => write!(f, "{op}")?,
+            Self::JoinSplitKeyResponse(op) => write!(f, "{op}")?,
             Self::Locate(op) => write!(f, "{op}")?,
             Self::LocateResponse(op) => write!(f, "{op}")?,
             Self::Log(op) => write!(f, "{op}")?,
@@ -318,6 +326,7 @@ impl Operation {
             | Self::CheckResponse(_)
             | Self::CreateKeyPairResponse(_)
             | Self::CreateResponse(_)
+            | Self::CreateSplitKeyResponse(_)
             | Self::DecryptResponse(_)
             | Self::DeleteAttributeResponse(_)
             | Self::DeriveKeyResponse(_)
@@ -330,6 +339,7 @@ impl Operation {
             | Self::GetResponse(_)
             | Self::HashResponse(_)
             | Self::ImportResponse(_)
+            | Self::JoinSplitKeyResponse(_)
             | Self::LocateResponse(_)
             | Self::LogResponse(_)
             | Self::MACResponse(_)
@@ -369,6 +379,9 @@ impl Operation {
             Self::CreateKeyPair(_) | Self::CreateKeyPairResponse(_) => {
                 OperationEnumeration::CreateKeyPair
             }
+            Self::CreateSplitKey(_) | Self::CreateSplitKeyResponse(_) => {
+                OperationEnumeration::CreateSplitKey
+            }
             Self::Decrypt(_) | Self::DecryptResponse(_) => OperationEnumeration::Decrypt,
             Self::DeleteAttribute(_) | Self::DeleteAttributeResponse(_) => {
                 OperationEnumeration::DeleteAttribute
@@ -389,6 +402,9 @@ impl Operation {
             }
             Self::Hash(_) | Self::HashResponse(_) => OperationEnumeration::Hash,
             Self::Import(_) | Self::ImportResponse(_) => OperationEnumeration::Import,
+            Self::JoinSplitKey(_) | Self::JoinSplitKeyResponse(_) => {
+                OperationEnumeration::JoinSplitKey
+            }
             Self::Locate(_) | Self::LocateResponse(_) => OperationEnumeration::Locate,
             Self::Log(_) | Self::LogResponse(_) => OperationEnumeration::Log,
             Self::MAC(_) | Self::MACResponse(_) => OperationEnumeration::MAC,
@@ -1995,6 +2011,92 @@ impl_display!(HashResponse, "HashResponse", {
     opt_b64 data,
     opt_b64 correlation_value,
 });
+
+/// `CreateSplitKey`
+///
+/// This operation requests the server to split an existing Managed Cryptographic Object
+/// into a number of parts, each of which MAY be stored as a managed Split Key object.
+/// The Split Key object SHALL contain the key value for one part of the split key.
+///
+/// KMIP 2.1 specification §4.28
+/// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html`
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct CreateSplitKey {
+    /// Unique identifier of the Managed Cryptographic Object to be split.
+    pub unique_identifier: UniqueIdentifier,
+    /// The number of parts the key is to be split into.
+    pub split_key_parts: i32,
+    /// The minimum number of parts needed to reconstruct the key.
+    pub split_key_threshold: i32,
+    /// The method to be used to split the key.
+    pub split_key_method: SplitKeyMethod,
+}
+
+impl_display!(CreateSplitKey, "CreateSplitKey", {
+    req unique_identifier,
+    req split_key_parts,
+    req split_key_threshold,
+    req split_key_method,
+});
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct CreateSplitKeyResponse {
+    /// The Unique Identifier of the original key being split.
+    pub unique_identifier: UniqueIdentifier,
+    /// The Unique Identifiers of the split key share objects created.
+    #[serde(
+        rename = "PrivateKeyUniqueIdentifier",
+        skip_serializing_if = "Vec::is_empty",
+        default
+    )]
+    pub split_key_unique_identifiers: Vec<UniqueIdentifier>,
+}
+
+impl_display!(CreateSplitKeyResponse, "CreateSplitKeyResponse", {
+    req unique_identifier,
+});
+
+/// `JoinSplitKey`
+///
+/// This operation requests the server to join a number of Managed Split Key objects to
+/// reconstruct the original Managed Cryptographic Object.
+///
+/// KMIP 2.1 specification §4.29
+/// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html`
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct JoinSplitKey {
+    /// The type of object to construct from the parts.
+    pub object_type: ObjectType,
+    /// Unique identifiers of the split key share objects to join.
+    #[serde(
+        rename = "PrivateKeyUniqueIdentifier",
+        skip_serializing_if = "Vec::is_empty",
+        default
+    )]
+    pub split_key_unique_identifiers: Vec<UniqueIdentifier>,
+    /// The split key method that was used when the key was split.
+    pub split_key_method: SplitKeyMethod,
+    /// Optional attributes for the reconstructed key object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
+}
+
+impl_display!(JoinSplitKey, "JoinSplitKey", {
+    req object_type,
+    req split_key_method,
+});
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub struct JoinSplitKeyResponse {
+    /// The Unique Identifier of the reconstructed object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+impl_display!(JoinSplitKeyResponse, "JoinSplitKeyResponse", { req unique_identifier });
 
 /// Import
 ///

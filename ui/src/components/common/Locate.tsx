@@ -18,6 +18,31 @@ type LocateResult = { kind: "located"; count: number } | { kind: "message"; text
  *  Lazily initialised on first access so the WASM module is guaranteed to be
  *  ready (eager module-level evaluation can race with async WASM loading). */
 let _enrichAttributeKeysCache: string[] | null = null;
+
+/** Hardcoded fallback for enrich attribute keys when WASM is not available.
+ *  Must stay in sync with `LOCATE_ENRICH_ATTRIBUTE_KEYS` in
+ *  `crate/clients/client_utils/src/attributes_utils.rs`. */
+const ENRICH_ATTRIBUTE_KEYS_FALLBACK: string[] = [
+    "object_type",
+    "state",
+    "tags",
+    "user_tags",
+    "cryptographic_algorithm",
+    "cryptographic_length",
+    "key_format_type",
+    "public_key_id",
+    "private_key_id",
+    "certificate_id",
+    "initial_date",
+    "activation_date",
+    "original_creation_date",
+    "rotate_date",
+    "rotate_name",
+    "rotate_interval",
+    "rotate_offset",
+    "rotate_generation",
+];
+
 function getEnrichAttributeKeys(): string[] {
     if (_enrichAttributeKeysCache === null || _enrichAttributeKeysCache.length === 0) {
         try {
@@ -29,7 +54,7 @@ function getEnrichAttributeKeys(): string[] {
             // WASM not ready yet; will retry on next call
         }
     }
-    return _enrichAttributeKeysCache ?? [];
+    return _enrichAttributeKeysCache && _enrichAttributeKeysCache.length > 0 ? _enrichAttributeKeysCache : ENRICH_ATTRIBUTE_KEYS_FALLBACK;
 }
 
 interface LocateObjectRow {
@@ -147,6 +172,17 @@ const LocateForm: React.FC = () => {
             if (Array.isArray(os)) setObjectStates(os);
         } catch {
             /* ignore if WASM not ready */
+        }
+        // Eagerly populate the enrich-attribute-keys cache so the Locate results
+        // table can resolve Type, Algorithm, Length, and Format columns on the
+        // first search without racing with WASM initialisation.
+        try {
+            const keys = wasm.get_locate_enrich_attribute_keys();
+            if (Array.isArray(keys) && keys.length > 0) {
+                _enrichAttributeKeysCache = keys as string[];
+            }
+        } catch {
+            /* ignore if WASM not ready; fallback constant will be used */
         }
     }, [serverUrl]);
 
@@ -634,15 +670,10 @@ const LocateForm: React.FC = () => {
         if (!ok) return;
         setActionLoadingId(uid);
         try {
-            const w: any = wasm as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-            if (typeof w.revoke_ttlv_request === "function") {
-                const req = w.revoke_ttlv_request(uid, "User-initiated revoke");
-                await sendKmipRequest(req, serverUrl);
-                await handleRefreshRow(uid);
-                setResult({ kind: "message", text: t("actionCompleted") });
-            } else {
-                console.warn("revoke_ttlv_request not available in WASM package");
-            }
+            const req = wasm.revoke_ttlv_request(uid, "User-initiated revoke", "unspecified");
+            await sendKmipRequest(req, serverUrl);
+            await handleRefreshRow(uid);
+            setResult({ kind: "message", text: t("actionCompleted") });
         } catch {
             /* ignore */
         } finally {
@@ -656,15 +687,10 @@ const LocateForm: React.FC = () => {
         if (!ok) return;
         setActionLoadingId(uid);
         try {
-            const w: any = wasm as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-            if (typeof w.destroy_ttlv_request === "function") {
-                const req = w.destroy_ttlv_request(uid, true);
-                await sendKmipRequest(req, serverUrl);
-                setObjects((prev) => (prev ? prev.filter((r) => r.object_id !== uid) : prev));
-                setResult({ kind: "message", text: t("objectDestroyed") });
-            } else {
-                /* destroy_ttlv_request not available in WASM package */
-            }
+            const req = wasm.destroy_ttlv_request(uid, true);
+            await sendKmipRequest(req, serverUrl);
+            setObjects((prev) => (prev ? prev.filter((r) => r.object_id !== uid) : prev));
+            setResult({ kind: "message", text: t("objectDestroyed") });
         } catch {
             /* ignore */
         } finally {

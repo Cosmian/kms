@@ -75,26 +75,6 @@ DELETE
 FROM tags;
 
 
--- name: count-non-destroyed-objects
--- Privileged metrics-only query: counts ALL objects regardless of owner.
--- Called exclusively by the OTEL metrics layer for kms.objects.total.
--- State strings correspond to Rust enum variant names via strum::Display:
---   Destroyed           = the object was explicitly destroyed
---   Destroyed_Compromised = the object was destroyed after being compromised
--- All other states (PreActive, Active, Deactivated, Compromised) are live objects.
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
-
--- name: count-non-destroyed-keys
--- Privileged metrics-only query: counts non-destroyed key objects (MySQL).
--- ObjectType is stored as a JSON field inside the 'attributes' column
--- (serialised via serde with rename_all = "PascalCase").
--- Key object types: SymmetricKey, PrivateKey, PublicKey, SplitKey.
--- All states except Destroyed / Destroyed_Compromised are counted.
-SELECT COUNT(*) FROM objects
-WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
-AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
-
 -- name: insert-objects
 INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
 VALUES (?, ?, ?, ?, ?, ?);
@@ -243,3 +223,24 @@ CREATE INDEX idx_read_access_userid ON read_access (userid);
 
 -- name: create-index-objects-wrapping-key-id
 CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
+
+-- name: create-table-crypto_officer_activations
+CREATE TABLE IF NOT EXISTS crypto_officer_activations (
+        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+        activated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        sealed_record TEXT NOT NULL,
+        revoked_at TIMESTAMP NULL DEFAULT NULL,
+        revoked_by VARCHAR(255)
+);
+
+-- name: insert-crypto-officer-activation
+INSERT INTO crypto_officer_activations (sealed_record)
+        VALUES (?);
+
+-- name: select-active-crypto-officer-activation
+SELECT sealed_record FROM crypto_officer_activations WHERE revoked_at IS NULL
+        ORDER BY activated_at DESC LIMIT 1;
+
+-- name: revoke-crypto-officer-activation
+UPDATE crypto_officer_activations SET revoked_at = CURRENT_TIMESTAMP, revoked_by = ?
+        WHERE revoked_at IS NULL;

@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, time::Duration};
+use std::{collections::HashMap, fmt, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
+use cosmian_kms_access::access::CryptoOfficerConfig;
 use cosmian_kms_server_database::{
-    MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
+    CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
 
@@ -148,9 +149,15 @@ pub struct ServerParams {
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
-    /// Users who have initial rights to create and grant access rights for Create Kmip Operation
-    /// If None, all users can create and grant create access rights.
-    pub privileged_users: Option<Vec<String>>,
+    /// Crypto Officer role configuration (role-based access control).
+    pub crypto_officer: CryptoOfficerConfig,
+
+    /// Ceremony record encryption keys.
+    ///
+    /// Derived from `ceremony_secret` at startup. `None` when no role requires a ceremony.
+    /// When `Some`, all ceremony activation records are AES-256-GCM sealed before storage
+    /// and verified on read — preventing forgery and protecting participant identities.
+    pub ceremony_keys: Option<Arc<CeremonyKeys>>,
 
     /// AWS XKS parameters, if any
     pub aws_xks_params: Option<AwsXksParams>,
@@ -170,8 +177,8 @@ pub struct ServerParams {
     pub http_workers: Option<usize>,
 
     /// Extra origins allowed to make cross-origin requests to the KMIP API.
-    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]` in
-    /// UI E2E tests where the Vite dev server runs on a different port.
+    /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]`
+    /// in UI E2E tests where the Vite dev server runs on port 5173.
     pub cors_allowed_origins: Vec<String>,
 
     /// Maximum number of objects returned by a single Locate operation.
@@ -389,7 +396,70 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
-            privileged_users: conf.privileged_users,
+            crypto_officer: {
+                // Backward compat: if the deprecated `privileged_users` field is set and
+                // `[roles] crypto_officer_users` is not configured, promote those users to
+                // the CryptoOfficer role automatically.
+                let co_users = match (conf.roles.crypto_officer_users, conf.privileged_users) {
+                    (Some(co), _) => co,
+                    (None, Some(priv_users)) => {
+                        tracing::warn!(
+                            "`privileged_users` is deprecated; please migrate to \
+                             `[roles] crypto_officer_users` in kms.toml"
+                        );
+                        priv_users
+                    }
+                    (None, None) => vec![],
+                };
+                let co = CryptoOfficerConfig {
+                    users: co_users,
+                    require_ceremony: conf.roles.crypto_officer_require_ceremony,
+                };
+                co.validate()
+                    .map_err(|e| KmsError::ServerError(format!("Role configuration error: {e}")))?;
+                co
+            },
+            ceremony_keys: {
+                let any_ceremony_required = conf.roles.crypto_officer_require_ceremony;
+                match (&conf.roles.ceremony_secret, any_ceremony_required) {
+                    (Some(hex_secret), _) => {
+                        let bytes = hex::decode(hex_secret).map_err(|e| {
+                            KmsError::ServerError(format!(
+                                "ceremony_secret: invalid hex encoding: {e}"
+                            ))
+                        })?;
+                        if bytes.len() != cosmian_kms_server_database::CEREMONY_SECRET_LENGTH {
+                            return Err(KmsError::ServerError(format!(
+                                "ceremony_secret must be exactly {} bytes ({} hex chars), got {} bytes",
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH,
+                                cosmian_kms_server_database::CEREMONY_SECRET_LENGTH * 2,
+                                bytes.len(),
+                            )));
+                        }
+                        let mut secret =
+                            [0_u8; cosmian_kms_server_database::CEREMONY_SECRET_LENGTH];
+                        secret.copy_from_slice(&bytes);
+                        let keys = CeremonyKeys::derive(&secret);
+                        // Zeroize the local copy
+                        secret.fill(0);
+                        tracing::warn!(
+                            "ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment \
+                             variable is used in production to avoid persisting the secret to disk. \
+                             If loaded from a config file, ensure it has restrictive permissions \
+                             (0600) and is not committed to version control."
+                        );
+                        Some(Arc::new(keys))
+                    }
+                    (None, true) => {
+                        return Err(KmsError::ServerError(
+                            "ceremony_secret is required when any role has require_ceremony = true. \
+                             Generate one with: openssl rand -hex 32"
+                                .to_owned(),
+                        ));
+                    }
+                    (None, false) => None,
+                }
+            },
             ui_session_salt: conf.ui_config.ui_session_salt,
             proxy_params: ProxyParams::try_from(&conf.proxy)
                 .context("failed to create ProxyParams")?,
@@ -459,11 +529,7 @@ impl ServerParams {
             vault_pki_mount: conf.vault.vault_pki_mount,
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
-            auth_verifier_config: if conf.auth_verifier.is_enabled() {
-                Some(conf.auth_verifier)
-            } else {
-                None
-            },
+            auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
         };
 
         debug!("{res:#?}");
@@ -775,8 +841,8 @@ impl fmt::Debug for ServerParams {
             ),
         );
 
-        if let Some(ref users) = self.privileged_users {
-            debug_struct.field("privileged_users", users);
+        if !self.crypto_officer.users.is_empty() {
+            debug_struct.field("crypto_officer_users", &self.crypto_officer.users);
         }
 
         // Mask the session salt for security (it's a secret)
@@ -852,6 +918,11 @@ impl fmt::Debug for ServerParams {
                 debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
             }
         }
+
+        debug_struct.field(
+            "ceremony_keys",
+            &self.ceremony_keys.as_ref().map(|_| "<configured>"),
+        );
 
         debug_struct.finish()
     }

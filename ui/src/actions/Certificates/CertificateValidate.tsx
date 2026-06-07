@@ -1,10 +1,11 @@
-import { Button, Card, DatePicker, Form, Input, Space } from "antd";
+import { Button, Card, DatePicker, Form, Space } from "antd";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { sendKmipRequest } from "../../utils/utils";
 import { parse_validate_ttlv_response, validate_certificate_ttlv_request } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface ValidateCertificateFormData {
     uniqueIdentifier?: string;
@@ -42,14 +43,15 @@ const CertificateValidateForm: React.FC = () => {
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("certificateValidate.certificateInput")}</h3>
 
-                        <Form.Item
-                            name="uniqueIdentifier"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="uniqueIdentifier"
                             label={t("certificateValidate.certificateUniqueIdentifier")}
                             help={t("certificateValidate.certificateIdHelp")}
                             rules={[{ required: true }]}
-                        >
-                            <Input placeholder={t("certificateValidate.enterCertificateId")} />
-                        </Form.Item>
+                            placeholder={t("certificateValidate.enterCertificateId")}
+                            objectType="Certificate"
+                        />
                     </Card>
 
                     <Card>

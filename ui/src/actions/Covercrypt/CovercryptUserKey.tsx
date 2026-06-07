@@ -5,6 +5,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import { create_cc_user_key_ttlv_request, parse_create_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CovercryptUserKeyFormData {
     masterPrivateKeyId: string;
@@ -64,14 +65,15 @@ const CovercryptUserKeyForm: React.FC = () => {
                         <div className="p-4 rounded-lg space-y-4">
                             <h3 className="text-m font-bold mb-4">{t("covercryptUserKey.keyConfiguration")}</h3>
 
-                            <Form.Item
-                                name="masterPrivateKeyId"
+                            <KeyIdInput
+                                form={form}
+                                fieldName="masterPrivateKeyId"
                                 label={t("covercryptUserKey.masterPrivateKeyId")}
                                 help={t("covercryptUserKey.masterPrivateKeyIdHelp")}
                                 rules={[{ required: true, message: t("covercryptUserKey.pleaseEnterMasterPrivateKeyId") }]}
-                            >
-                                <Input placeholder={t("covercryptUserKey.enterMasterPrivateKeyId")} />
-                            </Form.Item>
+                                placeholder={t("covercryptUserKey.enterMasterPrivateKeyId")}
+                                objectType="PrivateKey"
+                            />
 
                             <Form.Item
                                 name="accessPolicy"
@@ -112,13 +114,14 @@ const CovercryptUserKeyForm: React.FC = () => {
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="wrappingKeyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
                             label={t("covercryptUserKey.wrappingKeyId")}
                             help={t("covercryptUserKey.wrappingKeyIdHelp")}
-                        >
-                            <Input placeholder={t("covercryptUserKey.enterWrappingKeyId")} />
-                        </Form.Item>
+                            placeholder={t("covercryptUserKey.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="sensitive" valuePropName="checked" help={t("covercryptUserKey.sensitiveHelp")}>
                             <Checkbox>

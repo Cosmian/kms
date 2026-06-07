@@ -1650,6 +1650,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::revoke_access)
             .service(access::get_create_access)
             .service(access::get_privileged_access)
+            .service(access::get_crypto_officer_status)
+            .service(access::disable_crypto_officer)
+            .service(access::activate_crypto_officer_ceremony)
             .service(
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))

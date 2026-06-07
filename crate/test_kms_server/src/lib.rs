@@ -6,11 +6,12 @@ pub use test_jwt::AUTH0_TOKEN;
 #[cfg(feature = "non-fips")]
 pub use test_server::start_test_kms_server_with_pqc_tls;
 pub use test_server::{
-    TestClientOptions, TestsContext, hsm_config_path, start_default_test_kms_server,
-    start_default_test_kms_server_with_cert_auth, start_default_test_kms_server_with_jwt_auth,
-    start_default_test_kms_server_with_multi_privileged_users,
+    TestClientOptions, TestsContext, hsm_config_path, start_ceremony_test_kms_server,
+    start_default_test_kms_server, start_default_test_kms_server_with_cert_auth,
+    start_default_test_kms_server_with_crypto_officer_users,
+    start_default_test_kms_server_with_jwt_auth,
+    start_default_test_kms_server_with_multi_crypto_officer_users,
     start_default_test_kms_server_with_non_revocable_key_ids,
-    start_default_test_kms_server_with_privileged_users,
     start_default_test_kms_server_with_softhsm2_and_kek,
     start_default_test_kms_server_with_softhsm2_and_kek_for_vectors,
     start_default_test_kms_server_with_softhsm2_for_vectors,

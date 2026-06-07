@@ -168,7 +168,6 @@ pub fn run_configure_wizard() -> KResult<()> {
         tls,
         socket_server,
         idp_auth: auth_result.idp_auth,
-        auth_verifier: auth_result.auth_verifier,
         ui_config: advanced.ui_config,
         hsm,
         logging,
@@ -177,7 +176,10 @@ pub fn run_configure_wizard() -> KResult<()> {
         vendor_identification: advanced.vendor_identification,
         key_encryption_key: advanced.key_encryption_key,
         default_unwrap_type: advanced.default_unwrap_type,
-        privileged_users: advanced.privileged_users,
+        roles: crate::config::RolesConfig {
+            crypto_officer_users: advanced.crypto_officer_users,
+            ..Default::default()
+        },
         ms_dke_service_url: advanced.ms_dke_service_url,
         kms_public_url: advanced.kms_public_url,
         kmip_policy: advanced.kmip_policy,

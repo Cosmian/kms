@@ -5,6 +5,7 @@ import AccessGrantForm from "./actions/Access/AccessGrant";
 import AccessListForm from "./actions/Access/AccessList";
 import AccessObtainedList from "./actions/Access/AccessObtained";
 import AccessRevokeForm from "./actions/Access/AccessRevoke";
+import CryptoOfficerRole from "./actions/Access/CryptoOfficerRole";
 import AttributeDeleteForm from "./actions/Attributes/AttributeDelete";
 import AttributeGetForm from "./actions/Attributes/AttributeGet";
 import AttributeModifyForm from "./actions/Attributes/AttributeModify";
@@ -36,6 +37,8 @@ import CseInfo from "./actions/Keys/CseInfo";
 import DeriveKeyForm from "./actions/Keys/DeriveKey";
 import KeyExportForm from "./actions/Keys/KeysExport";
 import KeyImportForm from "./actions/Keys/KeysImport";
+import JoinSplitKeyForm from "./actions/Keys/JoinSplitKey";
+import SplitKeyForm from "./actions/Keys/SplitKey";
 import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
@@ -306,6 +309,8 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         <Route path="locate" element={<LocateForm />} />
                         <Route path="sym">
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
+                            <Route path="keys/split" element={<SplitKeyForm />} />
+                            <Route path="keys/join" element={<JoinSplitKeyForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
                             <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="symmetric" />} />
@@ -415,6 +420,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="list" element={<AccessListForm />} />
                             <Route path="owned" element={<ObjectsOwnedList />} />
                             <Route path="obtained" element={<AccessObtainedList />} />
+                            <Route path="crypto-officer" element={<CryptoOfficerRole />} />
                         </Route>
                         <Route path="hsm-status" element={<HsmStatus />} />
                         <Route path="certificates">

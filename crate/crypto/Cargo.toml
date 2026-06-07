@@ -44,8 +44,8 @@ non-fips = [
 [dependencies]
 aes-gcm-siv = { version = "0.11.1", optional = true }
 argon2 = { version = "0.5", optional = true }
-base64 = { workspace = true }
 chrono = { workspace = true, optional = true }
+base64 = { workspace = true }
 cosmian_cover_crypt = { version = "16.0.0", optional = true }
 cosmian_crypto_core = { workspace = true, features = ["aes", "sha3"] }
 cosmian_kmip = { path = "../kmip", version = "5.26.0" }
@@ -60,13 +60,14 @@ num-bigint-dig = { workspace = true, features = [
   "serde",
   "zeroize",
 ] }
-num-traits = { workspace = true, optional = true }
 openssl = { workspace = true }
 openssl-sys = "0.9"
 p256 = { version = "0.13", features = ["ecdsa"], optional = true }
+num-traits = { workspace = true, optional = true }
+rand_distr = { version = "0.6", optional = true }
 rand = { workspace = true, optional = true }
 rand_chacha = { version = "0.10", optional = true }
-rand_distr = { version = "0.6", optional = true }
+rand_core = { version = "0.10", optional = false }
 regex = { workspace = true, optional = true, features = ["unicode-perl"] }
 rust-ini = "0.21"
 serde = { workspace = true }

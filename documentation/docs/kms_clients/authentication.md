@@ -45,7 +45,7 @@ server_url = "https://kms.example.com:9998"
 access_token = "<JWT_BEARER_TOKEN>"
 ```
 
-> See [`test_data/configs/ckms_jwt.toml`](https://github.com/Cosmian/test_data/blob/main/configs/ckms_jwt.toml)
+> See [`test_data/configs/client/jwt.toml`](https://github.com/Cosmian/test_data/blob/main/configs/client/jwt.toml)
 > for a full example combining `access_token`, `oauth2_conf`, and `database_secret`.
 
 When the server enforces an API token (a symmetric key registered server-side via

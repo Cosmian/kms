@@ -600,17 +600,22 @@ Crate path: `crate/server`
 | `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
+| `warn` | `CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed normal permission check on {id} for {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `user`, `id`, `operation_type` | - |
+| `warn` | `CRYPTO_OFFICER_DISABLED: Crypto Officer ceremony activation revoked by {user}` | `src/routes/access.rs` | `user` | - |
+| `info` | `CreateSplitKey: stored share` | `src/core/operations/create_split_key.rs` | - | - |
+| `info` | `CRYPTO_OFFICER_CEREMONY_ACTIVATED: Crypto Officer ceremony completed` | `src/core/operations/join_split_key.rs` | - | - |
+| `info` | `GET /access/crypto_officer/status {user}` | `src/routes/access.rs` | `user` | - |
+| `info` | `JoinSplitKey: reconstructed key stored` | `src/core/operations/join_split_key.rs` | - | - |
+| `info` | `POST /access/crypto_officer/disable {user}` | `src/routes/access.rs` | `user` | - |
+| `trace` | `{request}` | `src/core/operations/create_split_key.rs` | `request` | - |
 | `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip.rs` | `e` | - |
-| `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
-| `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
-| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
-| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
-| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
 | `warn` | `JOSE CEK cache insert error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
 | `warn` | `JOSE CEK cache peek error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
 | `warn` | `JOSE CEK cache: failed to construct KMIP SymmetricKey: {e}` | `src/routes/jose/cek_cache.rs` | `e` | - |
 | `warn` | `JOSE CEK cache: unexpected CEK length {other} bytes — not an AES-128/192/256 key` | `src/routes/jose/cek_cache.rs` | `other` | - |
 | `warn` | `JOSE CEK cache: unexpected object type for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
+| `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
 | `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `TLS: an authenticated user was already present; skipping certificate check` | `src/middlewares/tls_auth.rs` | - | - |
@@ -672,6 +677,17 @@ Crate path: `crate/server`
 | `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `warn` | `` `privileged_users` is deprecated; please migrate to                              `[roles] crypto_officer_users` in kms.toml `` | `src/config/params/server_params.rs` | - | - |
+| `warn` | `ceremony check DB error for user {user}: {e};                      falling back to Operator role` | `src/core/operations/dispatch.rs` | `user`, `e` | - |
+| `warn` | `ceremony_secret loaded — ensure the KMS_CEREMONY_SECRET environment                              variable is used in production to avoid persisting the secret to disk.                              If loaded from a config file, ensure it has restrictive permissions                              (0600) and is not committed to version control.` | `src/config/params/server_params.rs` | - | - |
+| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `warn` | `CreateSplitKey: partial failure — {} share(s) already stored                          but remaining shares could not be created. Manual cleanup required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `trace` | `CreateSplitKey: overriding total_parts from {total_parts} to {n_co_i32}                  (matches crypto_officer_users count)` | `src/core/operations/create_split_key.rs` | `total_parts`, `n_co_i32` | - |
+| `warn` | `CreateSplitKey: ceremony source key could not be destroyed after split                      — key material may still be accessible. Manual destruction required.` | `src/core/operations/create_split_key.rs` | - | - |
+| `info` | `CreateSplitKey: ceremony source key destroyed after successful split` | `src/core/operations/create_split_key.rs` | - | - |
+| `warn` | `CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed ownership check on {} for {operation:?}` | `src/core/kms/permissions.rs` | `user`, `operation` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -707,6 +723,9 @@ Crate path: `crate/server_database`
 | `warn` | `PostgreSQL pool error — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `warn` | `PostgreSQL retryable error — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `warn` | `PostgreSQL transaction body failed — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
+| `debug` | `[redis-scan-all] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
+| `debug` | `PG find_all query: {}` | `src/stores/sql/pgsql.rs` | - | - |
+| `trace` | `find_all_: {:?}` | `src/stores/sql/mysql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to                                      deserialize` | `src/stores/sql/sqlite.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | - | - |
 | `warn` | `wrapping_key_id backfill: skipping object {id} that failed to                          deserialize: {e}` | `src/stores/sql/mysql.rs` | `id`, `e` | - |
@@ -1291,7 +1310,6 @@ Crate path: `ui/src/`
 
 | Level   | Message                                                  | File                                              | Variables                                                     | Notes           |
 | ------- | -------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- | --------------- |
-| `warn`  | `revoke_ttlv_request not available in WASM package`      | `components/common/Locate.tsx`                    | -                                                             | -               |
 | `info`  | `[KMS] vendor_id set to "{vendorId}"`                    | `App.tsx`                                         | `vendorId`: vendor identifier string received from the server | -               |
 | `error` | `Aggregate date error:`                                  | `actions/Tokenize/TokenizeAggregateDate.tsx`      | —                                                             | —               |
 | `error` | `Aggregate number error:`                                | `actions/Tokenize/TokenizeAggregateNumber.tsx`    | —                                                             | —               |
