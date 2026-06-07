@@ -5,6 +5,7 @@
     - [Severity Rating](#severity-rating)
     - [Known Vulnerabilities](#known-vulnerabilities)
         - [2026](#2026)
+            - [COSMIAN-2026-020 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import](#cosmian-2026-020--ssrf-via-attacker-controlled-crl-distribution-points-in-kmip-validateimport)
             - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
             - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
             - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
@@ -76,6 +77,32 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-020 — SSRF via attacker-controlled CRL Distribution Points in KMIP Validate/Import
+
+| Field      | Value                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | High                                                                                                                                                                            |
+| Published  | 17 August 2026                                                                                                                                                                  |
+| Affected   | from 5.0.0 before 5.27.0                                                                                                                                                        |
+| Fixed in   | 5.27.0                                                                                                                                                                          |
+| Found by   | External reporter (GHSA-rwc8-xwm6-52xc)                                                                                                                                        |
+| References | [GHSA-rwc8-xwm6-52xc](https://github.com/Cosmian/kms/security/advisories/GHSA-rwc8-xwm6-52xc), [COSMIAN-2026-009](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url) |
+
+**Summary:** Cosmian KMS fetched CRLs from URLs embedded in X.509 CRL Distribution Points (CDPs) during KMIP `Validate` and `Import` operations without applying any SSRF mitigations. The `get_crl_bytes()` function in `crate/server/src/core/operations/validate.rs` accepted arbitrary `http://` URLs (including loopback, private RFC-1918, and link-local addresses), followed HTTP redirects unconditionally, read the full response body without a size cap, and treated non-URL CDP values as local filesystem paths — allowing arbitrary file reads. A secondary vector existed via `file://` scheme URLs, which were explicitly converted to filesystem paths.
+
+This is a separate code path from COSMIAN-2026-009 (Google CSE `original_kacls_url` SSRF); the fix for that advisory did not cover CRL Distribution Point fetches.
+
+**Impact:** A post-authentication attacker with `Validate` or `Import` permission could:
+
+- Probe internal HTTP services reachable from the KMS host (confirmed blind SSRF via PoC on v5.26.0).
+- Access cloud metadata endpoints (e.g. `169.254.169.254`) from cloud-hosted deployments.
+- Read arbitrary local files readable by the KMS process via bare filesystem paths or `file://` URIs.
+- Cause denial of service via a slow or unbounded HTTP response body (no size cap, no timeout).
+
+**Mitigation:** Upgrade to 5.27.0. The fix adds `validate_crl_url()` in `crate/server/src/core/certificate/mod.rs` (HTTPS and HTTP allowed; private, loopback, link-local IPs and internal hostnames rejected), applies `reqwest::redirect::Policy::none()` and a 30-second timeout to the CRL-fetch client, caps responses at 10 MiB, and removes filesystem-path and `file://` CRL resolution in production builds (`file://` remains available in `#[cfg(test)]` only). Ten regression tests (SR-CRL-01 through SR-CRL-10) cover all mitigations.
+
+---
 
 #### COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`
 
@@ -653,6 +680,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
+| COSMIAN-2026-020 | High     | 5.0.0 – 5.26.x          | 5.27.0   | SSRF via CRL Distribution Points in KMIP Validate/Import     |
 | COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |
 | COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check           |
 | COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                     |

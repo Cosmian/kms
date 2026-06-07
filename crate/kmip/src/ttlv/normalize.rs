@@ -126,29 +126,34 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                     && ttlv.tag == "AttributeValue"
                     && !items_mut.is_empty()
                 {
+                    const TYPE_TAGS: &[&str] = &[
+                        "TextString",
+                        "Integer",
+                        "LongInteger",
+                        "BigInteger",
+                        "ByteString",
+                        "Boolean",
+                        "DateTime",
+                        "Interval",
+                        "DateTimeExtended",
+                    ];
                     if items_mut.len() == 1 {
+                        // Only unwrap a single-child AttributeValue if the child
+                        // has a primitive type-indicator tag. Structured values
+                        // (e.g. RevocationReason with a single RevocationReasonCode
+                        // child) must keep their structural wrapper so the
+                        // deserializer can reconstruct the original type.
                         if let Some(first) = items_mut.first() {
-                            pending_replacement = Some(first.value.clone());
-                        }
-                    } else {
-                        const TYPE_TAGS: &[&str] = &[
-                            "TextString",
-                            "Integer",
-                            "LongInteger",
-                            "BigInteger",
-                            "ByteString",
-                            "Boolean",
-                            "DateTime",
-                            "Interval",
-                            "DateTimeExtended",
-                        ];
-                        if let Some(idx) = items_mut
-                            .iter()
-                            .position(|c| TYPE_TAGS.contains(&c.tag.as_str()))
-                        {
-                            if let Some(el) = items_mut.get(idx) {
-                                pending_replacement = Some(el.value.clone());
+                            if TYPE_TAGS.contains(&first.tag.as_str()) {
+                                pending_replacement = Some(first.value.clone());
                             }
+                        }
+                    } else if let Some(idx) = items_mut
+                        .iter()
+                        .position(|c| TYPE_TAGS.contains(&c.tag.as_str()))
+                    {
+                        if let Some(el) = items_mut.get(idx) {
+                            pending_replacement = Some(el.value.clone());
                         }
                     }
                 }
@@ -961,8 +966,7 @@ pub(crate) fn normalize_ttlv(ttlv: &mut TTLV) {
                             pending_replacement = Some(TTLValue::ByteString(bytes));
                         }
                     }
-                    let is_type_wrapper = (ttlv.tag == child.tag || ttlv.tag == "AttributeValue")
-                        && ttlv.tag != "[ARRAY]";
+                    let is_type_wrapper = ttlv.tag == child.tag && ttlv.tag != "[ARRAY]";
                     if pending_replacement.is_none() && is_type_wrapper {
                         if ttlv.tag == child.tag && ttlv.tag == "ByteString" {
                             if let TTLValue::Structure(ref inner) = child.value {
@@ -1433,5 +1437,37 @@ mod tests {
         );
         normalize_ttlv(&mut root);
         assert_eq!(root.value, TTLValue::ByteString(vec![1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn revocation_reason_roundtrip() {
+        use crate::{
+            kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+            kmip_1_4::kmip_attributes::Attribute,
+            ttlv::{from_ttlv, to_ttlv},
+        };
+
+        let rr = RevocationReason {
+            revocation_reason_code: RevocationReasonCode::KeyCompromise,
+            revocation_message: None,
+        };
+
+        // Test 1: Direct roundtrip of RevocationReason
+        let ttlv = to_ttlv(&rr).unwrap();
+        let json = serde_json::to_string(&ttlv).unwrap();
+        let ttlv2: TTLV = serde_json::from_str(&json).unwrap();
+        let rr2: RevocationReason = from_ttlv(ttlv2).unwrap();
+        assert_eq!(
+            rr2.revocation_reason_code,
+            RevocationReasonCode::KeyCompromise
+        );
+
+        // Test 2: Roundtrip as KMIP 1.4 Attribute (which wraps in AttributeValue)
+        let attr = Attribute::RevocationReason(rr.clone());
+        let ttlv = to_ttlv(&attr).unwrap();
+        let json = serde_json::to_string_pretty(&ttlv).unwrap();
+        let ttlv2: TTLV = serde_json::from_str(&json).unwrap();
+        let attr2: Attribute = from_ttlv(ttlv2).unwrap();
+        assert_eq!(attr2, Attribute::RevocationReason(rr));
     }
 }

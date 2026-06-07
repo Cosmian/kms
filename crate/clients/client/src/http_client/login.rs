@@ -227,6 +227,17 @@ impl LoginState {
     fn receive_authorization_parameters(
         port: u16,
     ) -> HttpClientResult<(HashMap<String, String>, ServerHandle)> {
+        // Pre-bind the port *synchronously* before spawning the server thread.
+        // This ensures the OS TCP stack is ready to accept incoming connections
+        // immediately, even before the actix worker threads have started.
+        // Without this, `spawn_browser_simulation`'s fixed-delay heuristic can
+        // race against slow thread startup under heavy parallel-test CPU load,
+        // causing the browser simulation to connect to the wrong server or fail
+        // to connect at all.
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| {
+            HttpClientError::Default(format!("cannot bind port {port} for OAuth2 callback: {e}"))
+        })?;
+
         let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
         let (server_handle_tx, server_handle_rx) = mpsc::sync_channel::<ServerHandle>(1);
         // Spawn the server into a runtime
@@ -251,7 +262,7 @@ impl LoginState {
                         .app_data(Data::new(auth_params_tx.clone()))
                         .service(authorization_handler)
                 })
-                .bind(("127.0.0.1", port))?
+                .listen(listener)?
                 .run();
                 // Send the handle before awaiting so the outer thread can stop
                 // the server once the first callback has been received.

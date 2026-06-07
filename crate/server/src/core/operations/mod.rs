@@ -15,6 +15,7 @@ mod dispatch;
 mod encrypt;
 mod export;
 mod export_get;
+pub(crate) mod generate_crl;
 mod get;
 mod hash;
 mod import;

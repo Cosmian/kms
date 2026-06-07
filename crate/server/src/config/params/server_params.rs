@@ -250,6 +250,26 @@ pub struct ServerParams {
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    // ── CRL lifecycle ─────────────────────────────────────────────────────────
+    /// Default CRL validity period in days.
+    ///
+    /// Applied when a CRL is generated without an explicit `validity_days` override.
+    /// Valid range: 1–365. Default: 7.
+    pub crl_default_validity_days: u32,
+
+    /// Background CRL refresh check interval in hours. 0 = disabled.
+    ///
+    /// When non-zero, the CRL scheduler wakes up every N hours and regenerates any
+    /// stored CRL whose `nextUpdate` is within `crl_refresh_overlap_hours` of the
+    /// current time.
+    pub crl_refresh_check_hours: u32,
+
+    /// CRL overlap window in hours.
+    ///
+    /// The scheduler pre-generates a new CRL this many hours before the current one
+    /// expires, preventing relying parties from seeing a stale CRL.
+    pub crl_refresh_overlap_hours: u32,
 }
 
 /// Represents the server parameters.
@@ -323,6 +343,10 @@ impl ServerParams {
         } else {
             "http"
         };
+
+        // Capture kms_public_url before the struct literal moves it, so we can also
+        // include it in the CORS allow-list when cors_allowed_origins is not configured.
+        let public_url_for_cors = conf.kms_public_url.clone();
 
         // Determine whether CO users will come from the deprecated `privileged_users` path.
         // Used after `res` is built to preserve v5.26.0 behaviour: if the operator had
@@ -527,7 +551,17 @@ impl ServerParams {
             rate_limit_per_second: conf.http.rate_limit_per_second,
             http_workers: conf.http.http_workers,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_else(|| {
-                crate::config::default_cors_origins(cors_scheme, conf.http.port)
+                let mut origins = crate::config::default_cors_origins(cors_scheme, conf.http.port);
+                // When kms_public_url is set and cors_allowed_origins was not explicitly
+                // configured, include the public URL automatically so that browsers
+                // accessing the KMS via its canonical address can reach the API without
+                // an explicit cors_allowed_origins configuration entry.
+                if let Some(ref url) = public_url_for_cors {
+                    if !origins.iter().any(|o| o == url) {
+                        origins.push(url.clone());
+                    }
+                }
+                origins
             }),
             max_locate_items: 1000,
             auto_rotation_check_interval_secs: {
@@ -567,6 +601,9 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            crl_default_validity_days: conf.crl.crl_default_validity_days,
+            crl_refresh_check_hours: conf.crl.crl_refresh_check_hours,
+            crl_refresh_overlap_hours: conf.crl.crl_refresh_overlap_hours,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
@@ -989,6 +1026,117 @@ impl fmt::Debug for ServerParams {
         );
         debug_struct.field("ceremony_key_id", &self.ceremony_key_id);
 
+        debug_struct.field("crl_default_validity_days", &self.crl_default_validity_days);
+        if self.crl_refresh_check_hours > 0 {
+            debug_struct.field("crl_refresh_check_hours", &self.crl_refresh_check_hours);
+            debug_struct.field("crl_refresh_overlap_hours", &self.crl_refresh_overlap_hours);
+        }
+
         debug_struct.finish()
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use tempfile::TempDir;
+
+    use crate::config::{ClapConfig, HttpConfig, command_line::MainDBConfig};
+
+    /// Build a minimal [`ClapConfig`] that uses a `SQLite` database in `tmp_dir`.
+    fn minimal_config(tmp_dir: &TempDir) -> ClapConfig {
+        ClapConfig {
+            db: MainDBConfig {
+                sqlite_path: tmp_dir.path().to_path_buf(),
+                ..MainDBConfig::default()
+            },
+            http: HttpConfig {
+                cors_allowed_origins: None,
+                ..HttpConfig::default()
+            },
+            ..ClapConfig::default()
+        }
+    }
+
+    /// When `kms_public_url` is set and `cors_allowed_origins` is absent, the
+    /// resolved `ServerParams::cors_allowed_origins` must include `kms_public_url`.
+    #[test]
+    fn cors_includes_public_url_when_not_explicitly_configured() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        assert!(
+            params
+                .cors_allowed_origins
+                .contains(&"https://kms.example.com".to_owned()),
+            "cors_allowed_origins should contain kms_public_url when not explicitly set; got: {:?}",
+            params.cors_allowed_origins
+        );
+    }
+
+    /// When `cors_allowed_origins` is explicitly set, `kms_public_url` must
+    /// **not** be injected — the explicit list is used verbatim.
+    #[test]
+    fn cors_explicit_list_not_augmented_with_public_url() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+        conf.http.cors_allowed_origins = Some(vec!["https://explicit.example.com".to_owned()]);
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        assert_eq!(
+            params.cors_allowed_origins,
+            vec!["https://explicit.example.com".to_owned()],
+            "explicit cors_allowed_origins must be used verbatim; kms_public_url must not be appended"
+        );
+    }
+
+    /// When `kms_public_url` is absent and `cors_allowed_origins` is unset, the
+    /// defaults must be the standard loopback origins only (no phantom entry).
+    #[test]
+    fn cors_defaults_when_no_public_url() {
+        let tmp = TempDir::new().unwrap();
+        let conf = minimal_config(&tmp);
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        // No kms_public_url → defaults should not contain any non-loopback origin.
+        for origin in &params.cors_allowed_origins {
+            assert!(
+                origin.contains("localhost")
+                    || origin.contains("127.0.0.1")
+                    || origin.contains("0.0.0.0")
+                    || origin.contains("[::1]")
+                    || origin.contains("[::]"),
+                "default cors_allowed_origins should only contain loopback addresses; found unexpected: {origin}"
+            );
+        }
+    }
+
+    /// `kms_public_url` that already appears in the explicit list must not be
+    /// duplicated (dedup guard inside the `unwrap_or_else` closure).
+    #[test]
+    fn cors_public_url_not_duplicated_in_defaults() {
+        let tmp = TempDir::new().unwrap();
+        let mut conf = minimal_config(&tmp);
+        conf.kms_public_url = Some("https://kms.example.com".to_owned());
+        // Do NOT set cors_allowed_origins — rely on the auto-default path
+
+        let params = super::ServerParams::try_from(conf).unwrap();
+
+        let count = params
+            .cors_allowed_origins
+            .iter()
+            .filter(|o| o.as_str() == "https://kms.example.com")
+            .count();
+        assert_eq!(
+            count, 1,
+            "kms_public_url must appear exactly once; got: {:?}",
+            params.cors_allowed_origins
+        );
     }
 }

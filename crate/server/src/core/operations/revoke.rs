@@ -16,7 +16,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata},
 };
-use cosmian_logger::{debug, info, trace};
+use cosmian_logger::{debug, info, trace, warn};
 use time::OffsetDateTime;
 
 #[cfg(feature = "non-fips")]
@@ -44,7 +44,6 @@ pub(crate) async fn revoke_operation(
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    // TODO   Reasons should be kept in the database
     let revocation_reason = request.revocation_reason.clone();
     let compromise_occurrence_date = request.compromise_occurrence_date;
 
@@ -187,8 +186,36 @@ pub(crate) async fn recursively_revoke_key(
         count += 1;
         // Perform the chain of revoke operations depending on the type of object
         match object_type {
+            ObjectType::Certificate => {
+                // Read the issuer link before the object is mutated, so we can
+                // trigger background CRL regeneration after the state change.
+                let issuer_id = owm
+                    .object()
+                    .attributes()
+                    .ok()
+                    .or_else(|| Some(owm.attributes()))
+                    .and_then(|attrs| attrs.get_link(LinkType::CertificateLink))
+                    .map(|l| l.to_string());
+
+                Box::pin(revoke_key_core(
+                    owm,
+                    revocation_reason.clone(),
+                    compromise_occurrence_date,
+                    kms,
+                ))
+                .await?;
+
+                // Fire-and-forget CRL regeneration: when the server knows its own
+                // public URL, immediately refresh the CRL so the CDP endpoint serves
+                // an up-to-date list without requiring a manual generate-crl call.
+                // Errors here must never fail the Revoke operation.
+                if kms.params.kms_public_url.is_some() {
+                    if let Some(issuer_id) = issuer_id {
+                        trigger_crl_regeneration(kms, &issuer_id).await;
+                    }
+                }
+            }
             ObjectType::SymmetricKey
-            | ObjectType::Certificate
             | ObjectType::SecretData
             | ObjectType::OpaqueObject
             | ObjectType::SplitKey => {
@@ -298,6 +325,8 @@ async fn revoke_key_core(
         if let Some(date) = compromise_occurrence_date {
             object_attributes.compromise_occurrence_date = Some(date);
         }
+        // persist the revocation reason (needed for CRL generation per RFC 5280 §5.3.1)
+        object_attributes.revocation_reason = Some(revocation_reason.clone());
     }
     // Update the state in the "external" attributes
     owm.attributes_mut().state = Some(state);
@@ -307,6 +336,8 @@ async fn revoke_key_core(
     if let Some(date) = compromise_occurrence_date {
         owm.attributes_mut().compromise_occurrence_date = Some(date);
     }
+    // Persist the revocation reason in the "external" attributes
+    owm.attributes_mut().revocation_reason = Some(revocation_reason);
 
     kms.database
         .atomic(
@@ -338,5 +369,32 @@ const fn revocation_target_state(reason: &RevocationReason) -> State {
             State::Compromised
         }
         _ => State::Deactivated,
+    }
+}
+
+/// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
+/// Trigger CRL regeneration for `issuer_id` after a certificate revocation.
+///
+/// CRL content is public information (RFC 5280 §3) so no special role is required.
+/// Uses `default_username` as the signer identity so the function can always run,
+/// regardless of CO configuration.
+///
+/// Errors are logged at `warn` level and never propagated — this must not fail
+/// the parent `Revoke` operation.
+async fn trigger_crl_regeneration(kms: &KMS, issuer_id: &str) {
+    let signer = UserId::from(kms.params.default_username.as_str());
+
+    info!(
+        issuer_id = issuer_id,
+        "Auto-CRL: triggered CRL regeneration for issuer '{issuer_id}' after certificate revocation"
+    );
+
+    if let Err(e) =
+        crate::core::operations::generate_crl::generate_crl(kms, issuer_id, None, &signer).await
+    {
+        warn!(
+            issuer_id = issuer_id,
+            "Auto-CRL: CRL regeneration failed for issuer '{issuer_id}': {e}"
+        );
     }
 }

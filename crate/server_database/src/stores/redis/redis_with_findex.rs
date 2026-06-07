@@ -1279,6 +1279,134 @@ impl PermissionsStore for RedisWithFindex {
             .collect())
     }
 
+    async fn upsert_crl(
+        &self,
+        issuer_id: &str,
+        crl_der: &[u8],
+        crl_number: u64,
+        generated_at: &str,
+        next_update: &str,
+    ) -> InterfaceResult<()> {
+        // Store as a JSON blob keyed by "crl:<issuer_id>".
+        let key = format!("crl:{issuer_id}");
+        let json = serde_json::json!({
+            "crl_der": crl_der,
+            "crl_number": crl_number,
+            "generated_at": generated_at,
+            "next_update": next_update,
+        });
+        let value = serde_json::to_string(&json).map_err(|e| {
+            InterfaceError::Default(format!("Failed to serialize CRL for Redis: {e}"))
+        })?;
+        redis::cmd("SET")
+            .arg(&key)
+            .arg(value)
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to store CRL in Redis: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_crl(&self, issuer_id: &str) -> InterfaceResult<Option<(Vec<u8>, String)>> {
+        let key = format!("crl:{issuer_id}");
+        let raw: Option<String> = redis::cmd("GET")
+            .arg(&key)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| InterfaceError::Default(format!("Failed to read CRL from Redis: {e}")))?;
+        let Some(json_str) = raw else {
+            return Ok(None);
+        };
+        let v: serde_json::Value = serde_json::from_str(&json_str)
+            .map_err(|e| InterfaceError::Default(format!("Failed to parse CRL from Redis: {e}")))?;
+        let der = v
+            .get("crl_der")
+            .and_then(|v| serde_json::from_value::<Vec<u8>>(v.clone()).ok());
+        let generated_at = v
+            .get("generated_at")
+            .and_then(|s| s.as_str())
+            .map(String::from);
+        match (der, generated_at) {
+            (Some(der), Some(generated_at)) => Ok(Some((der, generated_at))),
+            _ => Ok(None),
+        }
+    }
+
+    async fn list_crl_issuers(&self) -> InterfaceResult<Vec<(String, String)>> {
+        // Scan for all keys matching the `crl:*` pattern.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!("Failed to list CRL keys from Redis: {e}"))
+            })?;
+
+        let mut result = Vec::with_capacity(keys.len());
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(next_update) = v
+                .get("next_update")
+                .and_then(|s| s.as_str())
+                .map(String::from)
+            else {
+                continue;
+            };
+            // Strip the "crl:" prefix to get the issuer_id.
+            let issuer_id = key.strip_prefix("crl:").unwrap_or(&key).to_owned();
+            result.push((issuer_id, next_update));
+        }
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(result)
+    }
+
+    async fn get_max_crl_number(&self) -> InterfaceResult<Option<u64>> {
+        // Scan all CRL keys and return the maximum stored crl_number.
+        let keys: Vec<String> = redis::cmd("KEYS")
+            .arg("crl:*")
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                InterfaceError::Default(format!(
+                    "Failed to list CRL keys from Redis for max_crl_number: {e}"
+                ))
+            })?;
+
+        let mut max_number: Option<u64> = None;
+        for key in keys {
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(&key)
+                .query_async(&mut self.mgr.clone())
+                .await
+                .map_err(|e| {
+                    InterfaceError::Default(format!("Failed to read CRL key '{key}': {e}"))
+                })?;
+            let Some(json_str) = raw else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) else {
+                continue;
+            };
+            let Some(n) = v.get("crl_number").and_then(serde_json::Value::as_u64) else {
+                continue;
+            };
+            max_number = Some(max_number.map_or(n, |prev| prev.max(n)));
+        }
+        Ok(max_number)
+    }
+
     async fn activate_crypto_officer_ceremony(
         &self,
         sealed_record: &str,
