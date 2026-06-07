@@ -89,6 +89,8 @@ where
                 req.extensions_mut().insert(AuthenticatedUser {
                     username: user_id.into(),
                     auth_method: AuthMethod::Session,
+                    domain: None,
+                    roles: vec![],
                 });
             }
             Ok(None) => {

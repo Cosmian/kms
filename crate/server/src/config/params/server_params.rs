@@ -149,6 +149,10 @@ pub struct ServerParams {
     /// The non-revocable key ID used for demo purposes
     pub non_revocable_key_id: Option<Vec<String>>,
 
+    /// OPA (Open Policy Agent) RBAC evaluation parameters.
+    /// When set, the KMS calls OPA before (or instead of) its internal permission check.
+    pub(crate) opa_params: Option<crate::core::opa::OpaParams>,
+
     /// Crypto Officer role configuration (role-based access control).
     pub crypto_officer: CryptoOfficerConfig,
 
@@ -427,6 +431,16 @@ impl ServerParams {
                 None
             },
             non_revocable_key_id: conf.non_revocable_key_id,
+            opa_params: conf.opa.opa_url.map(|url| -> KResult<_> {
+                let mode = conf
+                    .opa
+                    .opa_mode
+                    .parse::<crate::core::opa::OpaMode>()
+                    .map_err(|_e| KmsError::InvalidRequest(
+                        "invalid `opa_mode` value; expected one of: disabled, exclusive, enforcing".to_owned()
+                    ))?;
+                Ok(crate::core::opa::OpaParams { url, mode })
+            }).transpose()?,
             crypto_officer: {
                 // Backward compat: if the deprecated `privileged_users` field is set and
                 // `[roles] crypto_officer_users` is not configured, promote those users to
@@ -1002,6 +1016,12 @@ impl fmt::Debug for ServerParams {
                 debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
             }
         }
+
+        debug_struct.field(
+            "ceremony_keys",
+            &self.ceremony_keys.as_ref().map(|_| "<configured>"),
+        );
+        debug_struct.field("opa_params", &self.opa_params);
 
         debug_struct.field(
             "ceremony_keys",

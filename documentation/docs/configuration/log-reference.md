@@ -58,7 +58,6 @@ Crate path: `crate/server`
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
-| `warn` | `{:?} {} 401 unauthorized, no email in JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
@@ -199,7 +198,6 @@ Crate path: `crate/server`
 | `debug` | `Imported object with uid: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing leaf certificate with attributes: {}` | `src/core/operations/import.rs` | - | - |
 | `debug` | `Importing PKCS12: private_key_id={:?}, leaf_certificate_id={:?}, chain={:?}` | `src/core/operations/import.rs` | - | - |
-| `debug` | `JWT Access granted to {email}!` | `src/middlewares/jwt/jwt_token_auth.rs` | `email`: user email address | - |
 | `debug` | `JWT authentication failed: {e:?}` | `src/middlewares/jwt/jwt_middleware.rs` | `e`: caught error | - |
 | `debug` | `Key successfully unwrapped with wrapping key: {}` | `src/core/wrapping/unwrap.rs` | - | - |
 | `debug` | `Key wrap type: {:?}` | `src/core/operations/export_get.rs` | - | - |

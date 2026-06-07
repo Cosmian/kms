@@ -112,6 +112,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
             &sym_key_object,
             sym_key_object.attributes()?,
             &HashSet::new(),
+            "",
         )
         .await?;
 

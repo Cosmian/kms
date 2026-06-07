@@ -22,6 +22,9 @@ enable = true
 enable = true
 level = 1
 
+[preprocessor.tabs]
+command = "python3 ./theme/scripts/mdbook_tabs.py"
+
 [preprocessor.admonish_compat]
 command = "python3 ./theme/scripts/mdbook_admonish_compat.py"
 before = ["admonish"]

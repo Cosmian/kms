@@ -384,6 +384,7 @@ pub(crate) async fn join_split_key(
             &reconstructed_object,
             &reconstructed_attrs,
             &tags,
+            "",
         )
         .await?;
 

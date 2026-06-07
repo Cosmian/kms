@@ -9,7 +9,7 @@ This API is documented in the [KMIP section](../kmip_support/json_ttlv_api.md) o
 
 ### Calling the authorization API
 
-This API is documented in the [authorization section](../configuration/authorization.md) of this manual.
+This API is documented in the [authorization section](../configuration/authorization/index.md) of this manual.
 
 ## Authentication
 

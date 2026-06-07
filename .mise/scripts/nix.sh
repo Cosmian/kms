@@ -36,6 +36,7 @@ usage() {
       pykmip                 Run all PyKMIP operations + Synology DSM simulation (non-FIPS)
       openssh                Run OpenSSH PKCS#11 integration tests (non-FIPS)
       luks                   Run LUKS disk-encryption PKCS#11 integration tests
+      opa_rbac               Run OPA RBAC end-to-end tests (requires Docker for OPA)
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
       iris                   Run IRIS ↔ KMS mTLS integration tests (requires Docker + IRIS image)
@@ -491,6 +492,9 @@ test_command() {
     jose)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_jose.sh"
       ;;
+    opa_rbac)
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_opa_rbac.sh"
+      ;;
     iris)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_iris.sh"
       ;;
@@ -587,7 +591,7 @@ test_command() {
       ;;
     *)
       echo "Error: Unknown test type '$TEST_TYPE'" >&2
-      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, iris, jose, hsm [softhsm2|utimaco|proteccio|all], ui, secret_vault, secret_aws, secret_azure, secret_cosmian_kms" >&2
+      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, iris, opa_rbac, jose, hsm [softhsm2|utimaco|proteccio|all], ui, secret_vault, secret_aws, secret_azure, secret_cosmian_kms" >&2
       usage
       ;;
   esac
@@ -632,7 +636,7 @@ test_command() {
   fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
-  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ] || [ "$TEST_TYPE" = "jose" ]; then
+  if [ "$TEST_TYPE" = "azure_ekm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ] || [ "$TEST_TYPE" = "gcp_cmek" ] || [ "$TEST_TYPE" = "openssh" ] || [ "$TEST_TYPE" = "luks" ] || [ "$TEST_TYPE" = "jose" ] || [ "$TEST_TYPE" = "opa_rbac" ]; then
     export WITH_CURL=1
   fi
 
@@ -1306,6 +1310,21 @@ run_in_nix_shell() {
     fi
 
     CMD="export VARIANT='$VARIANT' LINK='$LINK' RELEASE_FLAG='$RELEASE_FLAG' BUILD_PROFILE='$BUILD_PROFILE'; bash '$SCRIPT' --variant '$VARIANT' --link '$LINK'"
+
+    # opa_rbac runs inside a pure nix-shell but needs the system docker binary to
+    # start the OPA container and system curl (for plain HTTP OPA queries).  Resolve
+    # docker's parent directory here (before entering the pure shell that strips
+    # system PATH), then APPEND it AFTER the Nix PATH.  Appending keeps all Nix
+    # binaries (cargo, rustc, gcc, …) at higher priority while still making docker
+    # and curl available as fallbacks — avoiding the shadow problem where a prepended
+    # /usr/bin/cargo (system Rust 1.85) would override the Nix cargo (1.93.1).
+    if [ "${TEST_TYPE:-}" = "opa_rbac" ]; then
+      DOCKER_BIN="$(command -v docker 2>/dev/null || true)"
+      if [ -n "$DOCKER_BIN" ]; then
+        DOCKER_DIR="$(dirname "$DOCKER_BIN")"
+        CMD="export PATH=\"\${PATH}:${DOCKER_DIR}\"; ${CMD}"
+      fi
+    fi
 
     ARGSTR_VARIANT=""
     if [ "$SHELL_PATH" = "$REPO_ROOT/shell.nix" ]; then
