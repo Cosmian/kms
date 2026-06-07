@@ -25,6 +25,27 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+        shell: pwsh
+        run: |
+          # VS 2022 ships Ninja under the CMake integration path.
+          # If we add it to PATH now, vcpkg_find_acquire_program(NINJA)
+          # will find it there instead of attempting a network download.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          # Fallback: install via chocolatey (fast, <5 MB binary)
+          choco install ninja -y --no-progress
+
       - name: Build static OpenSSL
         shell: pwsh
         env:
@@ -71,6 +92,23 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          choco install ninja -y --no-progress
+
       - name: Build static OpenSSL
         shell: pwsh
         env:
@@ -114,6 +152,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
+
+      - name: Add VS Ninja to PATH (avoid vcpkg downloading from GitHub)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products '*' `
+            -requires 'Microsoft.VisualStudio.Component.VC.CMake.Project' `
+            -property installationPath 2>$null
+          if ($vsInstall) {
+            $ninjaDir = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja'
+            if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+              Add-Content $env:GITHUB_PATH $ninjaDir
+              Write-Host "Added VS Ninja to PATH: $ninjaDir"
+              return
+            }
+          }
+          choco install ninja -y --no-progress
 
       - name: Build static OpenSSL
         shell: pwsh

@@ -412,7 +412,7 @@ regex-syntax@0.8.11 (2): MIT, Apache-2.0
 reqwest@0.12.28 (2): MIT, Apache-2.0
 reqwest@0.13.4 (2): MIT, Apache-2.0
 rfc6979@0.4.0 (2): Apache-2.0, MIT
-ring@0.16.20 (0): 
+ring@0.16.20 (0):
 ring@0.17.14 (2): Apache-2.0, ISC
 rsa@0.9.10 (2): MIT, Apache-2.0
 rusqlite@0.37.0 (1): MIT

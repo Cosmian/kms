@@ -8,6 +8,8 @@ use std::{
     ops::Deref,
 };
 
+use serde::{Deserialize, Serialize};
+
 /// A typed user/owner identity (typically an e-mail address or certificate CN).
 ///
 /// Wraps a `String` so that user identity strings are distinct from object UIDs
@@ -17,14 +19,32 @@ use std::{
 /// `UserId` implements `Deref<Target = str>` so a `&UserId` coerces to `&str`
 /// automatically wherever a plain string slice is required (e.g. SQL query
 /// parameters, tracing spans), keeping call-site boilerplate minimal.
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UserId(String);
 
 impl UserId {
     /// Wrap any `Into<String>` value as a `UserId`.
+    ///
+    /// # Panics
+    /// Panics in debug mode if the string is empty. Use [`try_new`](Self::try_new)
+    /// for validated construction.
     #[must_use]
     pub fn new(s: impl Into<String>) -> Self {
-        Self(s.into())
+        let s = s.into();
+        debug_assert!(!s.is_empty(), "UserId must not be empty");
+        Self(s)
+    }
+
+    /// Try to wrap a string as a `UserId`, rejecting empty strings.
+    ///
+    /// # Errors
+    /// Returns an error if the string is empty.
+    pub fn try_new(s: impl Into<String>) -> Result<Self, String> {
+        let s = s.into();
+        if s.is_empty() {
+            return Err("UserId must not be empty".to_owned());
+        }
+        Ok(Self(s))
     }
 
     /// Return a borrowed `&str` view of the user ID.

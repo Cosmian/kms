@@ -239,4 +239,16 @@ pub trait ObjectsStore {
     async fn reconcile_counts(&self) -> InterfaceResult<()> {
         Ok(())
     }
+
+    /// Return uid, state and attributes of ALL objects (bypasses all user filtering).
+    ///
+    /// This method is **only** called from the Administrator Locate path.
+    /// Callers are responsible for ensuring the requesting user is an Administrator
+    /// before invoking this method.
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
 }

@@ -29,16 +29,22 @@ pub(crate) async fn locate(
     // Determine the effective state filter: prefer explicit parameter, else Attributes.state
     let effective_state = state.or(request.attributes.state);
     // Find all the objects that match the attributes
-    let uids_attrs = kms
-        .database
-        .find(
-            Some(&request.attributes),
-            effective_state,
-            user,
-            false,
-            kms.vendor_id(),
-        )
-        .await?;
+    let uids_attrs = if kms.is_crypto_officer(user).await? {
+        // CryptoOfficer: bypass user filtering and return all matching objects
+        kms.database
+            .find_all(Some(&request.attributes), effective_state, kms.vendor_id())
+            .await?
+    } else {
+        kms.database
+            .find(
+                Some(&request.attributes),
+                effective_state,
+                user,
+                false,
+                kms.vendor_id(),
+            )
+            .await?
+    };
     for (uid, _, attributes) in &uids_attrs {
         trace!("Found uid: {}, attributes: {}", uid, attributes);
     }

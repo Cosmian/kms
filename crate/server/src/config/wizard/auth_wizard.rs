@@ -17,6 +17,7 @@ pub struct AuthWizardResult {
     #[allow(dead_code)]
     pub http_api_token: Option<String>,
     pub idp_auth: IdpAuthConfig,
+    #[allow(dead_code)]
     pub auth_verifier: AuthVerifierConfig,
     #[allow(dead_code)]
     pub ui_config_oidc: OidcConfig,

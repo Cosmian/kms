@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { getObjectLabel, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { destroy_ttlv_request, parse_destroy_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
+import LocateButton from "../../components/common/LocateButton";
 
 interface DestroyFormData {
     objectId?: string;
@@ -105,11 +106,19 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
                         <h3 className="text-m font-bold mb-4">{t("objectsDestroy.identification", { labelCap })}</h3>
 
                         <Form.Item
-                            name="objectId"
                             label={t("objectsDestroy.objectIdLabel", { labelCap })}
                             help={t("objectsDestroy.objectIdHelp", { label })}
                         >
-                            <Input placeholder={t("objectsDestroy.enterObjectId", { label })} />
+                            <div className="flex items-center gap-2">
+                                <Form.Item
+                                    noStyle
+                                    name="objectId"
+                                    rules={[{ required: true, message: t("objectsDestroy.pleaseEnterObjectId", { label }) }]}
+                                >
+                                    <Input placeholder={t("objectsDestroy.enterObjectId", { label })} style={{ flex: 1 }} />
+                                </Form.Item>
+                                <LocateButton onSelect={(uid: string) => form.setFieldValue("objectId", uid)} />
+                            </div>
                         </Form.Item>
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("objectsDestroy.tagsHelp", { labelCap, label })}>

@@ -39,6 +39,8 @@ pub use core::{
     AdditionalObjectStoresParams, CachedObject, Database, DbMetricsRecorder, MainDbKind,
     MainDbParams, ObjectCache, UnwrappedCache,
 };
+pub mod ceremony_keys;
+pub use ceremony_keys::{CEREMONY_SECRET_LENGTH, CeremonyKeys, CeremonyPayload};
 mod error;
 pub use error::DbError;
 mod stores;

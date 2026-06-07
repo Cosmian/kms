@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { downloadFile, sendKmipRequest } from "../../utils/utils";
 import { export_ttlv_request, parse_export_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface KeyExportFormData {
     keyId?: string;
@@ -165,8 +166,9 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                         <h3 className="text-m font-bold mb-4">
                             {isDataLike ? t("keysExport.identificationObject") : t("keysExport.identificationKey")}
                         </h3>
-                        <Form.Item
-                            name="keyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
                             label={
                                 isSecretData
                                     ? t("keysExport.secretDataIdLabel")
@@ -174,17 +176,14 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                                       ? t("keysExport.opaqueObjectIdLabel")
                                       : t("keysExport.keyIdLabel")
                             }
-                        >
-                            <Input
-                                placeholder={
-                                    isSecretData
-                                        ? t("keysExport.enterSecretDataId")
-                                        : isOpaqueObject
-                                          ? t("keysExport.enterOpaqueObjectId")
-                                          : t("keysExport.enterKeyId")
-                                }
-                            />
-                        </Form.Item>
+                            placeholder={
+                                isSecretData
+                                    ? t("keysExport.enterSecretDataId")
+                                    : isOpaqueObject
+                                      ? t("keysExport.enterOpaqueObjectId")
+                                      : t("keysExport.enterKeyId")
+                            }
+                        />
 
                         <Form.Item name="tags" label={t("common:tags")}>
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />

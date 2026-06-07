@@ -5,6 +5,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { getObjectLabel, ObjectType, sendKmipRequest } from "../../utils/utils";
 import { parse_revoke_ttlv_response, revoke_ttlv_request } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
+import LocateButton from "../../components/common/LocateButton";
 
 interface RevokeFormData {
     revocationReasonMessage: string;
@@ -124,12 +125,17 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
                     <Card>
                         <h3 className="text-m font-bold mb-4">{t("objectsRevoke.identification", { labelCap })}</h3>
 
-                        <Form.Item
-                            name="objectId"
-                            label={t("objectsRevoke.objectIdLabel", { labelCap })}
-                            help={t("objectsRevoke.objectIdHelp", { label })}
-                        >
-                            <Input placeholder={t("objectsRevoke.enterObjectId", { label })} />
+                        <Form.Item label={t("objectsRevoke.objectIdLabel", { labelCap })} help={t("objectsRevoke.objectIdHelp", { label })}>
+                            <div className="flex items-center gap-2">
+                                <Form.Item
+                                    noStyle
+                                    name="objectId"
+                                    rules={[{ required: true, message: t("objectsRevoke.pleaseEnterObjectId", { label }) }]}
+                                >
+                                    <Input placeholder={t("objectsRevoke.enterObjectId", { label })} style={{ flex: 1 }} />
+                                </Form.Item>
+                                <LocateButton onSelect={(uid: string) => form.setFieldValue("objectId", uid)} />
+                            </div>
                         </Form.Item>
 
                         <Form.Item name="tags" label={t("common:tags")} help={t("objectsRevoke.tagsHelp", { labelCap, label })}>

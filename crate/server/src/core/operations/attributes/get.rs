@@ -5,7 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         extra::tagging::VENDOR_ATTR_TAG,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyMaterial, KeyValue},
-        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
+        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SplitKey, SymmetricKey},
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
             AttributeReference, CryptographicAlgorithm, KeyFormatType, LinkType,
@@ -161,7 +161,35 @@ pub(crate) async fn get_attributes(
                 a
             }
         }
-        Object::CertificateRequest { .. } | Object::PGPKey { .. } | Object::SplitKey { .. } => {
+        // SplitKey objects carry crypto metadata in the key_block (algorithm,
+        // length, format) that is NOT duplicated into the stored Attributes.
+        // Synthesise a merged view: start from stored attrs then overlay the
+        // key_block fields so the UI GetAttributes call returns useful data.
+        Object::SplitKey(SplitKey { key_block, .. }) => {
+            let mut a = owm.attributes().to_owned();
+            // Overlay key_block crypto metadata if not already in stored attrs.
+            if a.cryptographic_algorithm.is_none() {
+                a.cryptographic_algorithm = key_block.cryptographic_algorithm;
+            }
+            if a.cryptographic_length.is_none() {
+                a.cryptographic_length = key_block.cryptographic_length;
+            }
+            if a.key_format_type.is_none() {
+                a.key_format_type = Some(key_block.key_format_type);
+            }
+            // Strip internal tag vendor attribute before returning.
+            if let Some(vendor_attributes) = a.vendor_attributes.as_mut() {
+                vendor_attributes.retain(|va| {
+                    !(va.vendor_identification == kms.vendor_id()
+                        && va.attribute_name == VENDOR_ATTR_TAG)
+                });
+                if vendor_attributes.is_empty() {
+                    a.vendor_attributes = None;
+                }
+            }
+            a
+        }
+        Object::CertificateRequest { .. } | Object::PGPKey { .. } => {
             return Err(KmsError::InvalidRequest(format!(
                 "get: unsupported object type for {object_handle}"
             )));

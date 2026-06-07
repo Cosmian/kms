@@ -157,7 +157,8 @@ pub(crate) async fn recursively_destroy_object(
                 && object_type != ObjectType::Certificate
                 && object_type != ObjectType::SecretData
                 && object_type != ObjectType::PublicKey
-                && object_type != ObjectType::OpaqueObject)
+                && object_type != ObjectType::OpaqueObject
+                && object_type != ObjectType::SplitKey)
         {
             continue;
         }
@@ -188,6 +189,7 @@ pub(crate) async fn recursively_destroy_object(
                     | ObjectType::Certificate
                     | ObjectType::PrivateKey
                     | ObjectType::PublicKey
+                    | ObjectType::SplitKey
             )
             // Only objects that were explicitly activated (Create -> Activate flow) require revocation
             // Objects that were registered (Register -> already Active) can be destroyed directly
@@ -220,7 +222,8 @@ pub(crate) async fn recursively_destroy_object(
             ObjectType::SymmetricKey
             | ObjectType::Certificate
             | ObjectType::SecretData
-            | ObjectType::OpaqueObject => {
+            | ObjectType::OpaqueObject
+            | ObjectType::SplitKey => {
                 // destroy the key
                 let id = owm.id().to_owned();
                 let state = effective_state;

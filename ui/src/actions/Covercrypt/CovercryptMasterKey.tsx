@@ -6,6 +6,7 @@ import { sendKmipRequest } from "../../utils/utils";
 import { create_cc_master_keypair_ttlv_request, parse_create_keypair_ttlv_response } from "../../wasm/pkg";
 import { useActionState } from "../../hooks/useActionState";
 import { ActionResponse } from "../../components/common/ActionResponse";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CovercryptMasterKeyFormData {
     specification: string;
@@ -174,13 +175,14 @@ const CovercryptMasterKeyForm: React.FC = () => {
                             <Select mode="tags" placeholder={t("common:enterTags")} open={false} />
                         </Form.Item>
 
-                        <Form.Item
-                            name="wrappingKeyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="wrappingKeyId"
                             label={t("covercryptMasterKey.wrappingKeyId")}
                             help={t("covercryptMasterKey.wrappingKeyIdHelp")}
-                        >
-                            <Input placeholder={t("covercryptMasterKey.enterWrappingKeyId")} />
-                        </Form.Item>
+                            placeholder={t("covercryptMasterKey.enterWrappingKeyId")}
+                            objectType="SymmetricKey"
+                        />
 
                         <Form.Item name="sensitive" valuePropName="checked" help={t("covercryptMasterKey.sensitiveHelp")}>
                             <Checkbox>

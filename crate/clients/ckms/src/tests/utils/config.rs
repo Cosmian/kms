@@ -84,14 +84,14 @@ pub(crate) fn load_client_config(template: &str, ctx: &TestsContext) -> String {
     tmp_path
 }
 
-/// Convenience: load `auth_plain_owner.toml` patched with ctx port.
+/// Convenience: load `plain_owner.toml` patched with ctx port.
 pub(crate) fn owner_config(ctx: &TestsContext) -> String {
-    load_client_config("auth_plain_owner.toml", ctx)
+    load_client_config("plain_owner.toml", ctx)
 }
 
-/// Convenience: load `auth_plain_user.toml` patched with ctx port.
+/// Convenience: load `plain_user.toml` patched with ctx port.
 pub(crate) fn user_config(ctx: &TestsContext) -> String {
-    load_client_config("auth_plain_user.toml", ctx)
+    load_client_config("plain_user.toml", ctx)
 }
 
 /// Replace the port in a URL string, preserving scheme/host/path.

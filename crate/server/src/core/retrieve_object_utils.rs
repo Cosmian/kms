@@ -280,6 +280,16 @@ pub(crate) async fn user_has_permission(
         None => "*",
     };
 
+    // CryptoOfficer bypass: if the user is an active CryptoOfficer, grant access to
+    // all non-HSM objects. HSM-backed keys are governed by the HSM admin rules below
+    // and are therefore excluded from this bypass.
+    if !ObjectHandle::from(id).is_hsm() && kms.is_crypto_officer(user).await? {
+        warn!(
+            "CRYPTO_OFFICER_ACCESS: crypto officer {user} bypassed normal permission check on {id} for {operation_type:?}"
+        );
+        return Ok(true);
+    }
+
     // HSM keys: admins have full access to all keys in their HSM instance(s).
     if ObjectHandle::from(id).is_hsm() {
         let is_hsm_admin = kms

@@ -1,10 +1,11 @@
-import { Button, Card, Descriptions, Form, Input, Space } from "antd";
+import { Button, Card, Descriptions, Form, Space } from "antd";
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface GetRotationPolicyFormData {
     keyId: string;
@@ -51,13 +52,14 @@ const GetRotationPolicyForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item
-                            name="keyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="keyId"
                             label={t("common:keyId")}
                             rules={[{ required: true, message: t("getRotationPolicy.pleaseEnterKeyId") }]}
-                        >
-                            <Input placeholder={t("getRotationPolicy.keyIdPlaceholder")} data-testid="get-rotation-key-id" />
-                        </Form.Item>
+                            placeholder={t("getRotationPolicy.keyIdPlaceholder")}
+                            data-testid="get-rotation-key-id"
+                        />
                     </Card>
 
                     <Form.Item>

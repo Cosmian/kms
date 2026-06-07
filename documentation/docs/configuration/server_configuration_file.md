@@ -74,10 +74,10 @@ Examples:
 
 ```bash
 # Explicit configuration file
-./cosmian-kms -c ./test_data/configs/server/jwt_auth.toml
+./cosmian-kms -c ./test_data/configs/server/auth/jwt.toml
 
 # Using an environment variable
-export COSMIAN_KMS_CONF=./test_data/configs/server/jwt_auth.toml
+export COSMIAN_KMS_CONF=./test_data/configs/server/auth/jwt.toml
 ./cosmian-kms
 ```
 
@@ -171,9 +171,17 @@ info = false
 # ```
 # default_unwrap_type = ["SecretData", "SymmetricKey"]
 
-# List of users who have the right to create and import Objects
-# and grant access rights for Create Kmip Operation.
-# privileged_users = ["<user_id_1>", "<user_id_2>"]
+# Role-based access control (RBAC) — optional user lists per role.
+#
+# crypto_officer_users: may manage key lifecycle (Create, Import, Certify, Revoke, etc.)
+#   and gains ownership bypass on all Managed Objects.
+#
+# Users not listed default to Operator (use key material only).
+# When no [roles] section is present, no role restriction is enforced (legacy behaviour).
+#
+# [roles]
+# crypto_officer_users = ["<user_id_1>", "<user_id_2>"]
+# crypto_officer_require_ceremony = false
 
 # Check the database configuration documentation pages for more information
 [db]
@@ -281,7 +289,9 @@ hostname = "0.0.0.0"
 # (scheme + hostname + port). The server bind address (`0.0.0.0`) and the server IP
 # are not equivalent to a DNS hostname. The Docker image pre-populates loopback
 # addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
-# cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
+# cors_allowed_origins = ["<origin-1>", "<origin-2>"]
+# When not set, the binary defaults to loopback origins for the configured
+# scheme and port (e.g. http://localhost:9998, http://127.0.0.1:9998, etc.).
 
 # If using a forward proxy for outbound JWKS requests,
 # set the proxy parameters here.
@@ -363,8 +373,9 @@ log_to_syslog = false
 # WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
 # expanded. Use the fully-resolved path.
 # rolling_log_dir = "/var/log/"
+
 # The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
-# Defaults to `cosmian_kms` if not set.
+# Defaults to "cosmian_kms" if not set.
 # rolling_log_name = "cosmian_kms"
 
 # Enable metering in addition to tracing when telemetry is enabled
@@ -381,7 +392,7 @@ ansi_colors = false
 # To use the Web UI, ensure the `kms_public_url` is set to the correct public URL above.
 [ui_config]
 # The UI distribution folder
-# ui_index_html_folder = "/usr/local/cosmian/ui/dist"
+ui_index_html_folder = "/usr/local/cosmian/ui/dist"
 
 # Configuration for the handling of authentication with OIDC from the KMS UI.
 # This is used to authenticate users when they access the KMS UI.

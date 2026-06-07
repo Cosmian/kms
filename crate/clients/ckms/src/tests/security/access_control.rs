@@ -31,8 +31,8 @@ const USER_ID: &str = "user.client@acme.com";
 #[serial]
 async fn p01_user_cannot_export_ungranted_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_conf = load_client_config("cert_auth_owner.toml", ctx);
-    let user_conf = load_client_config("cert_auth_user.toml", ctx);
+    let owner_conf = load_client_config("cert_owner.toml", ctx);
+    let user_conf = load_client_config("cert_user.toml", ctx);
 
     // Owner creates a key
     let stdout = run_ckms(&owner_conf, &["sym", "keys", "create"])?;
@@ -58,8 +58,8 @@ async fn p01_user_cannot_export_ungranted_key() -> CosmianResult<()> {
 #[serial]
 async fn p02_user_cannot_revoke_unowned_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_conf = load_client_config("cert_auth_owner.toml", ctx);
-    let user_conf = load_client_config("cert_auth_user.toml", ctx);
+    let owner_conf = load_client_config("cert_owner.toml", ctx);
+    let user_conf = load_client_config("cert_user.toml", ctx);
 
     let stdout = run_ckms(&owner_conf, &["sym", "keys", "create"])?;
     let key_id =
@@ -81,8 +81,8 @@ async fn p02_user_cannot_revoke_unowned_key() -> CosmianResult<()> {
 #[serial]
 async fn p03_user_cannot_destroy_unowned_key() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_conf = load_client_config("cert_auth_owner.toml", ctx);
-    let user_conf = load_client_config("cert_auth_user.toml", ctx);
+    let owner_conf = load_client_config("cert_owner.toml", ctx);
+    let user_conf = load_client_config("cert_user.toml", ctx);
 
     let stdout = run_ckms(&owner_conf, &["sym", "keys", "create"])?;
     let key_id =
@@ -111,8 +111,8 @@ async fn p03_user_cannot_destroy_unowned_key() -> CosmianResult<()> {
 #[serial]
 async fn p04_grant_allows_user_export() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_conf = load_client_config("cert_auth_owner.toml", ctx);
-    let user_conf = load_client_config("cert_auth_user.toml", ctx);
+    let owner_conf = load_client_config("cert_owner.toml", ctx);
+    let user_conf = load_client_config("cert_user.toml", ctx);
 
     let stdout = run_ckms(&owner_conf, &["sym", "keys", "create"])?;
     let key_id =
@@ -139,8 +139,8 @@ async fn p04_grant_allows_user_export() -> CosmianResult<()> {
 #[serial]
 async fn p05_revoke_grant_removes_access() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_conf = load_client_config("cert_auth_owner.toml", ctx);
-    let user_conf = load_client_config("cert_auth_user.toml", ctx);
+    let owner_conf = load_client_config("cert_owner.toml", ctx);
+    let user_conf = load_client_config("cert_user.toml", ctx);
 
     let stdout = run_ckms(&owner_conf, &["sym", "keys", "create"])?;
     let key_id =
@@ -182,8 +182,8 @@ async fn p05_revoke_grant_removes_access() -> CosmianResult<()> {
 #[serial]
 async fn p06_user_cannot_self_grant() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let owner_conf = load_client_config("cert_auth_owner.toml", ctx);
-    let user_conf = load_client_config("cert_auth_user.toml", ctx);
+    let owner_conf = load_client_config("cert_owner.toml", ctx);
+    let user_conf = load_client_config("cert_user.toml", ctx);
 
     let stdout = run_ckms(&owner_conf, &["sym", "keys", "create"])?;
     let key_id =

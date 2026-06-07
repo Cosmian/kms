@@ -563,6 +563,19 @@ impl ObjectsStore for HsmStore {
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
         Ok(vec![])
     }
+
+    async fn find_all(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<State>,
+        vendor_id: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // HSM objects have no concept of user ownership — delegate to `find` with the HSM admin
+        // user, which will return all HSM objects that match the filter.
+        let owner = UserId::from(self.owner_name());
+        self.find(researched_attributes, state, &owner, false, vendor_id)
+            .await
+    }
 }
 
 #[async_trait]

@@ -481,6 +481,7 @@ if [ -f "$ENRICH_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
   SBOM_API_LIMIT="${SBOM_API_LIMIT:-0}"
   # Use --in-place to overwrite bom.*.json directly so downstream consumers
   # always get enriched files at the canonical paths.
+  # $ENRICH_OPTS is intentionally word-split into separate argv elements
   # shellcheck disable=SC2086
   python3 "$ENRICH_SCRIPT" $ENRICH_OPTS --in-place --api-limit "$SBOM_API_LIMIT"
   echo ""

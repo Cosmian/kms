@@ -6,6 +6,7 @@ import { FormUploadDragger } from "../../components/common/FormUpload";
 import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import KeyIdInput from "../../components/common/KeyIdInput";
 
 interface CertificateCertifyFormData {
     certificateId?: string;
@@ -221,13 +222,14 @@ const CertificateCertifyForm: React.FC = () => {
 
                         {certifyMethod === "publicKey" && (
                             <div className="mt-4">
-                                <Form.Item
-                                    name="publicKeyIdToCertify"
+                                <KeyIdInput
+                                    form={form}
+                                    fieldName="publicKeyIdToCertify"
                                     label={t("certificateCertify.publicKeyIdToCertify")}
                                     rules={[{ required: true, message: t("certificateCertify.pleaseEnterPublicKeyId") }]}
-                                >
-                                    <Input placeholder={t("certificateCertify.enterPublicKeyId")} />
-                                </Form.Item>
+                                    placeholder={t("certificateCertify.enterPublicKeyId")}
+                                    objectType="PublicKey"
+                                />
 
                                 <Form.Item
                                     name="subjectName"
@@ -282,21 +284,23 @@ const CertificateCertifyForm: React.FC = () => {
                         <h3 className="text-m font-bold mb-4">{t("certificateCertify.issuerInformation")}</h3>
                         <p className="text-sm mb-4">{t("certificateCertify.issuerHint")}</p>
 
-                        <Form.Item
-                            name="issuerPrivateKeyId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="issuerPrivateKeyId"
                             label={t("certificateCertify.issuerPrivateKeyId")}
                             help={t("certificateCertify.issuerPrivateKeyIdHelp")}
-                        >
-                            <Input placeholder={t("certificateCertify.enterIssuerPrivateKeyId")} />
-                        </Form.Item>
+                            placeholder={t("certificateCertify.enterIssuerPrivateKeyId")}
+                            objectType="PrivateKey"
+                        />
 
-                        <Form.Item
-                            name="issuerCertificateId"
+                        <KeyIdInput
+                            form={form}
+                            fieldName="issuerCertificateId"
                             label={t("certificateCertify.issuerCertificateId")}
                             help={t("certificateCertify.issuerCertificateIdHelp")}
-                        >
-                            <Input placeholder={t("certificateCertify.enterIssuerCertificateId")} />
-                        </Form.Item>
+                            placeholder={t("certificateCertify.enterIssuerCertificateId")}
+                            objectType="Certificate"
+                        />
                     </Card>
 
                     <Card>
