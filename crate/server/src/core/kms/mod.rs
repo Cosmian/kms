@@ -94,12 +94,24 @@ pub struct KMS {
     /// Optional HSM instance for PKCS#11 operations.
     /// This is used for KMIP PKCS#11 operations like `C_Initialize`, `C_GetInfo`, `C_Finalize`.
     pub(crate) hsm: Option<Arc<dyn HSM + Send + Sync>>,
+
+    /// RBAC/OPA policy evaluator (always initialized — algorithm-only when RBAC disabled).
+    #[allow(dead_code)]
+    pub(crate) rbac_evaluator: Option<Arc<super::rbac::evaluator::PolicyEvaluator>>,
 }
 
 impl KMS {
     /// Returns the vendor identification string used for KMIP `VendorAttribute` operations.
     pub(crate) fn vendor_id(&self) -> &str {
         &self.params.vendor_identification
+    }
+
+    /// Returns the RBAC policy evaluator, if configured.
+    #[allow(dead_code)]
+    pub(crate) const fn rbac_evaluator(
+        &self,
+    ) -> Option<&Arc<super::rbac::evaluator::PolicyEvaluator>> {
+        self.rbac_evaluator.as_ref()
     }
 
     /// Instantiate a new KMS instance with the given server parameters.
@@ -154,6 +166,7 @@ impl KMS {
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
             metrics: Self::create_otel_metrics(&server_params)?,
+            rbac_evaluator: Self::create_rbac_evaluator(&server_params)?,
         })
     }
 
@@ -231,6 +244,51 @@ impl KMS {
 
             Ok(Some(Arc::new(OtelMetrics::new(meter_provider)?)))
         } else {
+            Ok(None)
+        }
+    }
+
+    /// Initialize the RBAC policy evaluator.
+    ///
+    /// - If RBAC is fully enabled: loads the external bundle from the configured path.
+    /// - If RBAC is disabled but algorithm policy is configured: loads the embedded
+    ///   algorithm-only policy with the allowlists from server config.
+    /// - Otherwise: returns `None` (no policy evaluation at all).
+    fn create_rbac_evaluator(
+        server_params: &ServerParams,
+    ) -> KResult<Option<Arc<super::rbac::evaluator::PolicyEvaluator>>> {
+        use super::rbac::{
+            bundle_manager::{compute_bundle_hash, load_bundle_from_directory, validate_bundle},
+            default_policies::algorithm_only_bundle,
+            evaluator::PolicyEvaluator,
+        };
+
+        // Serialize allowlists to JSON for OPA data
+        let allowlists_json = if server_params.kmip_policy.policy_id.is_some() {
+            serde_json::to_string(&server_params.kmip_policy.allowlists).unwrap_or_default()
+        } else {
+            "{}".to_owned()
+        };
+
+        if server_params.rbac.enabled {
+            // Full RBAC mode: load external bundle
+            let bundle_path = server_params.rbac.bundle_path.as_ref().ok_or_else(|| {
+                KmsError::ServerError("RBAC enabled but no bundle_path configured".to_owned())
+            })?;
+
+            let metadata = load_bundle_from_directory(bundle_path)?;
+            validate_bundle(&metadata.files)?;
+
+            let evaluator = PolicyEvaluator::new(&metadata.files, &allowlists_json, metadata.hash)?;
+            Ok(Some(Arc::new(evaluator)))
+        } else if server_params.kmip_policy.policy_id.is_some() {
+            // Non-RBAC mode with algorithm policy: use embedded algorithm-only bundle
+            let bundle = algorithm_only_bundle();
+            let hash = compute_bundle_hash(&bundle);
+            let evaluator = PolicyEvaluator::new(&bundle, &allowlists_json, hash)?;
+            Ok(Some(Arc::new(evaluator)))
+        } else {
+            // No policy enforcement at all
             Ok(None)
         }
     }

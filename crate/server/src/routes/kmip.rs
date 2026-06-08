@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use actix_web::{
-    HttpRequest, HttpResponse,
+    HttpMessage, HttpRequest, HttpResponse,
     http::header::CONTENT_TYPE,
     post,
     web::{Bytes, Data, Json},
@@ -31,8 +31,23 @@ use crate::{
         operations::{dispatch, message},
     },
     error::KmsError,
+    middlewares::UserClaim,
     result::KResult,
 };
+
+/// Extract RBAC roles and `tenant_id` from the request's JWT `UserClaim` extension.
+/// Returns empty roles and None tenant if no claim is available.
+fn extract_rbac_from_request(req_http: &HttpRequest, kms: &KMS) -> (Vec<String>, Option<String>) {
+    let extensions = req_http.extensions();
+    extensions.get::<UserClaim>().map_or_else(
+        || (Vec::new(), None),
+        |user_claim| {
+            let roles = user_claim.extract_roles(&kms.params.rbac.role_claim);
+            let tenant_id = user_claim.extract_tenant_id(&kms.params.rbac.tenant_claim);
+            (roles, tenant_id)
+        },
+    )
+}
 
 /// When an Error occurs and generating an Error Response message fails, this message is sent
 /// with "Unknown Error" as the error message
@@ -158,10 +173,19 @@ pub(crate) async fn kmip_2_1_json(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
+    let (roles, tenant_id) = extract_rbac_from_request(&req_http, &kms);
     let span = tracing::info_span!("kmip_2_1", user = user.as_str(), tag = ttlv.tag.as_str());
-    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
-        .instrument(span)
-        .await?;
+    let ttlv = Box::pin(handle_ttlv(
+        &kms,
+        ttlv,
+        &user,
+        2,
+        1,
+        &roles,
+        tenant_id.as_deref(),
+    ))
+    .instrument(span)
+    .await?;
 
     Ok(Json(ttlv))
 }
@@ -173,7 +197,15 @@ pub(crate) async fn kmip_2_1_json(
 ///
 /// The input request could be either a single KMIP `Operation` or
 /// multiple KMIP `Operation` serialized in a single KMIP `Message`
-async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) -> KResult<TTLV> {
+async fn handle_ttlv(
+    kms: &KMS,
+    ttlv: TTLV,
+    user: &str,
+    major: i32,
+    minor: i32,
+    roles: &[String],
+    tenant_id: Option<&str>,
+) -> KResult<TTLV> {
     if ttlv.tag.as_str() == "RequestMessage" {
         let req = match from_ttlv::<RequestMessage>(ttlv) {
             Ok(req) => req,
@@ -191,7 +223,7 @@ async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) 
             error_response_ttlv(major, minor, e.to_string().as_str())
         }))
     } else {
-        let operation = Box::pin(dispatch(kms, ttlv, user)).await?;
+        let operation = Box::pin(dispatch(kms, ttlv, user, roles, tenant_id)).await?;
         Ok(to_ttlv(&operation)?)
     }
 }
@@ -256,10 +288,19 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     );
 
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
+        let (roles, tenant_id) = extract_rbac_from_request(&req_http, &kms);
         let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
-        Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
-            .instrument(span)
-            .await
+        Box::pin(handle_ttlv(
+            &kms,
+            ttlv,
+            &user,
+            major,
+            minor,
+            &roles,
+            tenant_id.as_deref(),
+        ))
+        .instrument(span)
+        .await
     } else {
         Err(KmsError::InvalidRequest(
             "The /kmip endpoint only accepts KMIP 2.1 or 1.4 requests".to_owned(),
@@ -275,9 +316,11 @@ pub(crate) async fn kmip_binary(
 ) -> HttpResponse {
     // Recover the user from the request
     let user = kms.get_user(&req_http);
+    let (roles, tenant_id) = extract_rbac_from_request(&req_http, &kms);
 
     // Handle the TTLV bytes request
-    let response_bytes = handle_ttlv_bytes(&user, body.as_ref(), &kms).await;
+    let response_bytes =
+        handle_ttlv_bytes(&user, body.as_ref(), &kms, &roles, tenant_id.as_deref()).await;
 
     // Send the response
     HttpResponse::Ok()
@@ -286,7 +329,13 @@ pub(crate) async fn kmip_binary(
 }
 
 /// Handle KMIP requests in TTLV binary format
-pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<KMS>) -> Vec<u8> {
+pub(crate) async fn handle_ttlv_bytes(
+    user: &str,
+    ttlv_bytes: &[u8],
+    kms: &Arc<KMS>,
+    _roles: &[String],
+    _tenant_id: Option<&str>,
+) -> Vec<u8> {
     let Ok((major, minor)) = TTLV::find_version(ttlv_bytes) else {
         error!(target: "kmip", "Failed to find KMIP version");
         return vec![];

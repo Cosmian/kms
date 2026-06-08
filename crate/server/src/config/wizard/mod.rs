@@ -10,11 +10,12 @@
 //! 3. TLS / certificates  (optionally generates a self-signed PKI)
 //! 4. KMIP socket server
 //! 5. Authentication (API key, JWT/OIDC, client certificates)
-//! 6. HSM
-//! 7. Logging
-//! 8. Proxy
-//! 9. Advanced (workspace, key management, MS DKE, KMIP policy, Google CSE,
-//!    Azure EKM, AWS XKS, UI)
+//! 6. RBAC / OPA authorization
+//! 7. HSM
+//! 8. Logging
+//! 9. Proxy
+//! 10. Advanced (workspace, key management, MS DKE, KMIP policy, Google CSE,
+//!     Azure EKM, AWS XKS, UI)
 
 #![allow(clippy::print_stdout)]
 
@@ -26,6 +27,7 @@ mod hsm_wizard;
 mod http_wizard;
 mod logging_wizard;
 mod proxy_wizard;
+mod rbac_wizard;
 mod socket_wizard;
 #[cfg(test)]
 mod tests;
@@ -70,20 +72,20 @@ pub fn run_configure_wizard() -> KResult<()> {
     println!("The resulting configuration will be written to: {output_path}");
     println!();
 
-    // ── [1/9] Database ────────────────────────────────────────────────────────
-    println!("[1/9] Database configuration");
+    // ── [1/10] Database ────────────────────────────────────────────────────────
+    println!("[1/10] Database configuration");
     println!("──────────────────────────────");
     let db = db_wizard::configure_db()?;
     println!();
 
-    // ── [2/9] HTTP server ─────────────────────────────────────────────────────
-    println!("[2/9] HTTP server configuration");
+    // ── [2/10] HTTP server ─────────────────────────────────────────────────────
+    println!("[2/10] HTTP server configuration");
     println!("──────────────────────────────");
     let mut http = http_wizard::configure_http()?;
     println!();
 
-    // ── [3/9] TLS / certificates ──────────────────────────────────────────────
-    println!("[3/9] TLS / Certificate configuration");
+    // ── [3/10] TLS / certificates ──────────────────────────────────────────────
+    println!("[3/10] TLS / Certificate configuration");
     println!("──────────────────────────────────────");
     let tls_result = tls_wizard::configure_tls()?;
     let mut tls = tls_result.tls;
@@ -93,8 +95,8 @@ pub fn run_configure_wizard() -> KResult<()> {
     http.cors_allowed_origins = Some(http_wizard::default_cors_origins(scheme, http.port));
     println!();
 
-    // ── [4/9] KMIP socket server ──────────────────────────────────────────────
-    println!("[4/9] KMIP socket server configuration");
+    // ── [4/10] KMIP socket server ──────────────────────────────────────────────
+    println!("[4/10] KMIP socket server configuration");
     println!("───────────────────────────────────────");
     let socket_server = socket_wizard::configure_socket_server(has_clients_ca)?;
 
@@ -120,32 +122,38 @@ pub fn run_configure_wizard() -> KResult<()> {
     println!();
 
     // ── [5/9] Authentication ──────────────────────────────────────────────────
-    println!("[5/9] Authentication configuration");
+    println!("[5/10] Authentication configuration");
     println!("───────────────────────────────────");
     let mut ui_config = UiConfig::default();
     let auth_result = auth_wizard::configure_auth(&mut http, &mut ui_config)?;
     println!();
 
-    // ── [6/9] HSM ─────────────────────────────────────────────────────────────
-    println!("[6/9] Hardware Security Module (HSM) configuration");
+    // ── [6/10] RBAC / OPA ─────────────────────────────────────────────────────
+    println!("[6/10] RBAC / OPA Authorization");
+    println!("────────────────────────────────");
+    let rbac = rbac_wizard::configure_rbac()?;
+    println!();
+
+    // ── [7/10] HSM ────────────────────────────────────────────────────────────
+    println!("[7/10] Hardware Security Module (HSM) configuration");
     println!("───────────────────────────────────────────────────");
     let hsm = hsm_wizard::configure_hsm()?;
     println!();
 
-    // ── [7/9] Logging ─────────────────────────────────────────────────────────
-    println!("[7/9] Logging configuration");
+    // ── [8/10] Logging ────────────────────────────────────────────────────────
+    println!("[8/10] Logging configuration");
     println!("────────────────────────────");
     let logging = logging_wizard::configure_logging()?;
     println!();
 
-    // ── [8/9] Proxy ───────────────────────────────────────────────────────────
-    println!("[8/9] Proxy configuration");
+    // ── [9/10] Proxy ──────────────────────────────────────────────────────────
+    println!("[9/10] Proxy configuration");
     println!("──────────────────────────");
     let proxy = proxy_wizard::configure_proxy()?;
     println!();
 
-    // ── [9/9] Advanced ────────────────────────────────────────────────────────
-    println!("[9/9] Advanced / miscellaneous configuration");
+    // ── [10/10] Advanced ──────────────────────────────────────────────────────
+    println!("[10/10] Advanced / miscellaneous configuration");
     println!("─────────────────────────────────────────────");
     let advanced = advanced_wizard::configure_advanced(ui_config)?;
     println!();
@@ -185,6 +193,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         aws_xks_config: advanced.aws_xks_config,
         default_username: auth_result.default_username,
         force_default_username: auth_result.force_default_username,
+        rbac,
         ..ClapConfig::default()
     };
 

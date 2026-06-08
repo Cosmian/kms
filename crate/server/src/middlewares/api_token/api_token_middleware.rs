@@ -129,6 +129,7 @@ where
                         // and proceed with the request
                         req.extensions_mut().insert(AuthenticatedUser {
                             username: kms_server.params.default_username.clone(),
+                            rbac_context: None,
                         });
                     }
                     Err(e) => {

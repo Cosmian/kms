@@ -186,6 +186,8 @@ pub(super) async fn get_subject(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
+            &[],
+            None,
         )
         .await?;
 

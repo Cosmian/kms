@@ -19,6 +19,7 @@ const CLI_ARCHIVE_FOLDER: &str = "./resources";
 const CLI_ARCHIVE_FILE_NAME: &str = "cli.zip";
 
 pub mod access;
+pub(crate) mod admin;
 pub mod aws_xks;
 pub(crate) mod azure_ekm;
 pub(crate) mod crypto;

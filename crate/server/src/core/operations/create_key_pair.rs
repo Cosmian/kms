@@ -56,6 +56,8 @@ pub(crate) async fn create_key_pair(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
+            &[],
+            None,
         )
         .await?;
 

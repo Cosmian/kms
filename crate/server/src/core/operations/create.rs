@@ -35,6 +35,8 @@ pub(crate) async fn create(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
+            &[],
+            None,
         )
         .await?;
 

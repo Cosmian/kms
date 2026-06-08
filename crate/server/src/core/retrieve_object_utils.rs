@@ -9,7 +9,16 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{trace, warn};
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{
+        KMS,
+        rbac::{
+            audit::emit_rbac_audit,
+            input_builder::{
+                AclContext, OperationContext, PolicyInput, RequestContext, ResourceContext, Subject,
+            },
+        },
+        uid_utils::has_prefix,
+    },
     error::KmsError,
     result::KResult,
 };
@@ -84,7 +93,7 @@ pub(crate) async fn retrieve_object_for_operation(
             continue;
         }
 
-        if user_has_permission(user, Some(owm), &operation_type, kms).await? {
+        if user_has_permission(user, Some(owm), &operation_type, kms, &[], None).await? {
             trace!(
                 "User {user} has permission for operation {operation_type:?} on object {}",
                 owm.id()
@@ -197,18 +206,52 @@ pub(crate) async fn retrieve_object_for_operation(
 }
 
 /// Check if a user has permission to perform an operation on an object.
-///  If the user is the owner of the object, it will always return true.
-///  For non-HSM objects, having the `Get` permission implies all other operations.
-///  For HSM objects, each operation must be explicitly granted (no `Get` wildcard).
+///
+/// When RBAC mode is active, delegates to the Regorus policy evaluator.
+/// When RBAC is disabled, uses the legacy ownership + ACL grant model:
+///  - If the user is the owner of the object, it will always return true.
+///  - For non-HSM objects, having the `Get` permission implies all other operations.
+///  - For HSM objects, each operation must be explicitly granted (no `Get` wildcard).
+///
 ///  # Arguments
 ///  * `user` - The user to check the permission for.
 ///  * `owm` - The object to check the permission on.
 ///  * `operation_type` - The operation to check the permission for.
 ///  * `kms` - The KMS instance.
+///  * `roles` - RBAC roles extracted from JWT (empty when RBAC disabled).
+///  * `tenant_id` - Tenant ID extracted from JWT (None when RBAC disabled).
 ///  # Returns
 ///  * `Ok(true)` if the user has permission to perform the operation on the object.
 ///  * `Ok(false)` if the user does not have permission to perform the operation on the object.
 pub(crate) async fn user_has_permission(
+    user: &str,
+    owm: Option<&ObjectWithMetadata>,
+    operation_type: &KmipOperation,
+    kms: &KMS,
+    roles: &[String],
+    tenant_id: Option<&str>,
+) -> KResult<bool> {
+    // When RBAC is fully enabled, delegate to the policy evaluator
+    if kms.params.rbac.enabled {
+        if let Some(evaluator) = kms.rbac_evaluator() {
+            return rbac_check_object_access(
+                user,
+                owm,
+                operation_type,
+                kms,
+                evaluator,
+                roles,
+                tenant_id,
+            );
+        }
+    }
+
+    // Legacy path (RBAC disabled)
+    legacy_user_has_permission(user, owm, operation_type, kms).await
+}
+
+/// Legacy ACL-based permission check (used when RBAC is disabled).
+async fn legacy_user_has_permission(
     user: &str,
     owm: Option<&ObjectWithMetadata>,
     operation_type: &KmipOperation,
@@ -260,4 +303,95 @@ pub(crate) async fn user_has_permission(
     }
 
     Ok(permissions.contains(operation_type) || permissions.contains(&KmipOperation::Get))
+}
+
+/// RBAC policy-based object access check (Tier 2).
+///
+/// Builds a full `PolicyInput` with resource context and ACL state,
+/// then evaluates the Regorus policy.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn rbac_check_object_access(
+    user: &str,
+    owm: Option<&ObjectWithMetadata>,
+    operation_type: &KmipOperation,
+    kms: &KMS,
+    evaluator: &crate::core::rbac::evaluator::PolicyEvaluator,
+    roles: &[String],
+    tenant_id: Option<&str>,
+) -> KResult<bool> {
+    // Determine if user is privileged or super-admin
+    let is_privileged = kms
+        .params
+        .privileged_users
+        .as_ref()
+        .is_some_and(|pu| pu.iter().any(|p| p == user));
+    let is_super_admin = kms.params.rbac.super_admins.iter().any(|sa| sa == user);
+
+    let mut effective_roles = roles.to_vec();
+    if is_super_admin && !effective_roles.contains(&"super-admin".to_owned()) {
+        effective_roles.push("super-admin".to_owned());
+    }
+
+    let subject = Subject {
+        user_id: user.to_owned(),
+        roles: effective_roles,
+        tenant_id: tenant_id.map(String::from),
+        is_privileged,
+    };
+
+    // Build resource + ACL context from ObjectWithMetadata
+    let (resource, acl) = owm.map_or((None, None), |obj| {
+        let is_owner = user == obj.owner();
+        let tags: Vec<String> = obj
+            .attributes()
+            .get_tags(&kms.params.vendor_identification)
+            .into_iter()
+            .collect();
+
+        let resource = ResourceContext {
+            id: obj.id().to_owned(),
+            owner: obj.owner().to_owned(),
+            object_type: format!("{:?}", obj.object().object_type()),
+            state: format!("{:?}", obj.state()),
+            tags,
+            tenant_id: None, // TODO: read from tenant_id column once DB layer exposes it
+        };
+
+        let acl = AclContext {
+            is_owner,
+            granted_ops: Vec::new(),
+        };
+
+        (Some(resource), Some(acl))
+    });
+
+    let input = PolicyInput {
+        subject,
+        request: RequestContext {
+            ip: None,
+            tls_subject: None,
+            user_agent: None,
+        },
+        operation: OperationContext {
+            kmip_op: format!("{operation_type:?}"),
+            algorithm: None,
+            mode: None,
+            padding: None,
+            target_user: None,
+            grant_ops: None,
+        },
+        resource,
+        acl,
+    };
+
+    let regorus_input = input
+        .to_regorus_value()
+        .map_err(|e| KmsError::ServerError(format!("Failed to build RBAC input: {e}")))?;
+
+    let decision = evaluator.evaluate(&regorus_input);
+    let bundle_hash = evaluator.bundle_hash();
+
+    emit_rbac_audit(&input, &decision, &bundle_hash);
+
+    Ok(decision.allowed)
 }

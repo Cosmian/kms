@@ -21,4 +21,20 @@ pub(crate) use rate_limiter::{RateLimiterConfig, RateLimiterMiddleware};
 pub(crate) struct AuthenticatedUser {
     /// The authenticated username
     pub username: String,
+    /// RBAC context extracted from JWT claims (populated when RBAC is configured).
+    #[allow(dead_code)]
+    pub rbac_context: Option<RbacUserContext>,
+}
+
+/// RBAC-specific user context extracted from JWT claims.
+///
+/// Populated during JWT authentication when RBAC config is present.
+/// Carried through the request lifecycle for policy evaluation.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(crate) struct RbacUserContext {
+    /// Roles extracted from the configured claim path.
+    pub roles: Vec<String>,
+    /// Tenant ID extracted from the configured claim path.
+    pub tenant_id: Option<String>,
 }

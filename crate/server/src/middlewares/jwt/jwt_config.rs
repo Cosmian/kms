@@ -130,6 +130,57 @@ pub(crate) struct UserClaim {
     pub email_type: Option<String>,
     // Google CSE
     pub google_email: Option<String>,
+    /// All additional claims not captured by explicit fields above.
+    /// Used for dynamic RBAC claim extraction (roles, `tenant_id`, etc.)
+    #[serde(flatten)]
+    pub extra_claims: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+impl UserClaim {
+    /// Extract a value at a dot-notation path from the JWT claims.
+    ///
+    /// Supports nested paths like `realm_access.roles` or simple top-level like `roles`.
+    /// Returns `None` if the path doesn't exist or the claim map is not present.
+    #[allow(dead_code)]
+    pub(crate) fn get_claim_at_path(&self, path: &str) -> Option<&serde_json::Value> {
+        let claims = self.extra_claims.as_ref()?;
+        let segments: Vec<&str> = path.split('.').collect();
+
+        let mut current: &serde_json::Value = claims.get(*segments.first()?)?;
+
+        for segment in segments.get(1..).unwrap_or_default() {
+            current = current.as_object()?.get(*segment)?;
+        }
+
+        Some(current)
+    }
+
+    /// Extract roles from the configured claim path.
+    ///
+    /// Expects the claim value to be a JSON array of strings.
+    /// Returns an empty Vec if the claim is missing or not an array.
+    #[allow(dead_code)]
+    pub(crate) fn extract_roles(&self, claim_path: &str) -> Vec<String> {
+        self.get_claim_at_path(claim_path)
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Extract tenant ID from the configured claim path.
+    ///
+    /// Expects the claim value to be a string.
+    /// Returns `None` if the claim is missing or not a string.
+    #[allow(dead_code)]
+    pub(crate) fn extract_tenant_id(&self, claim_path: &str) -> Option<String> {
+        self.get_claim_at_path(claim_path)
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -2,6 +2,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{BlockCipherMode, HashingAlgorithm, MaskGenerator, PaddingMethod},
     kmip_2_1::kmip_types::{CryptographicAlgorithm, DigitalSignatureAlgorithm, RecommendedCurve},
 };
+use serde::Serialize;
 
 use crate::config::{AesKeySize, RsaKeySize};
 
@@ -22,7 +23,7 @@ pub struct KmipPolicyParams {
     pub allowlists: KmipAllowlistsParams,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct KmipAllowlistsParams {
     pub algorithms: Option<Vec<CryptographicAlgorithm>>,
     pub hashes: Option<Vec<HashingAlgorithm>>,

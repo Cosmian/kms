@@ -146,6 +146,7 @@ where
         // Insert the default username as the authenticated user
         req.extensions_mut().insert(AuthenticatedUser {
             username: self.kms_server.params.default_username.clone(),
+            rbac_context: None,
         });
 
         Box::pin(async move {

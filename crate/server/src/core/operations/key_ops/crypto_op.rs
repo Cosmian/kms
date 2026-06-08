@@ -401,12 +401,16 @@ pub(crate) async fn unwrap_and_enforce_policy(
     if !matches!(owm.object(), Object::Certificate { .. }) {
         owm.set_object(kms.get_unwrapped(owm.id(), owm.object(), user).await?);
     }
-    crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key(
-        &kms.params,
-        op_name,
-        owm.id(),
-        owm,
-    )
+    // Legacy algorithm policy for retrieved keys (bypassed when Rego evaluator is active).
+    if kms.rbac_evaluator().is_none() {
+        crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key(
+            &kms.params,
+            op_name,
+            owm.id(),
+            owm,
+        )?;
+    }
+    Ok(())
 }
 
 // ─── UsageLimits helpers ─────────────────────────────────────────────────────

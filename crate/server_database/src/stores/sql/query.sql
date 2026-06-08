@@ -24,12 +24,18 @@ CREATE TABLE IF NOT EXISTS objects (
         object VARCHAR NOT NULL,
         attributes jsonb NOT NULL,
         state VARCHAR(32),
-        owner VARCHAR(255)
+        owner VARCHAR(255),
+        tenant_id VARCHAR(255)
 );
 -- name: add-column-attributes
 ALTER TABLE objects ADD COLUMN attributes json;
 -- name: has-column-attributes
 SELECT attributes from objects;
+
+-- name: add-column-tenant_id
+ALTER TABLE objects ADD COLUMN tenant_id VARCHAR(255);
+-- name: has-column-tenant_id
+SELECT tenant_id from objects;
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (

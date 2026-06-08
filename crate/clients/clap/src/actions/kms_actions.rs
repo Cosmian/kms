@@ -19,9 +19,10 @@ use crate::{
         azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
         cng::CngCommands, console::Stdout, derive_key::DeriveKeyAction,
         elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
-        login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands,
-        pkcs11::Pkcs11Commands, rng::RngAction, rsa::RsaCommands, secret_data::SecretDataCommands,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
+        login::LoginAction, mac::MacCommands, migrate_tenants::MigrateTenantsAction,
+        opaque_object::OpaqueObjectCommands, pkcs11::Pkcs11Commands, rng::RngAction,
+        rsa::RsaCommands, secret_data::SecretDataCommands, shared::LocateObjectsAction,
+        symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -68,6 +69,8 @@ pub enum ServerCommands {
     DiscoverVersions,
     /// Query server capabilities and metadata (KMIP Query).
     Query,
+    /// Migrate existing objects to assign `tenant_id` (required before enabling RBAC).
+    MigrateTenants(MigrateTenantsAction),
 }
 
 #[derive(Subcommand)]
@@ -292,6 +295,9 @@ impl KmsActions {
                         Ok::<(), crate::error::KmsCliError>(())
                     })
                     .await?;
+                }
+                ServerCommands::MigrateTenants(action) => {
+                    Box::pin(action.run(&kms_rest_client)).await?;
                 }
             },
             Self::Rsa(action) => Box::pin(action.process(kms_rest_client)).await?,

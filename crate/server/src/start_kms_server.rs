@@ -423,7 +423,7 @@ fn start_socket_server(
             // tokio: run async code in the current thread
             tokio_handle.block_on(async {
                 // Handle the TTLV bytes
-                handle_ttlv_bytes(username, request, &kms_server).await
+                handle_ttlv_bytes(username, request, &kms_server, &[], None).await
             })
         },
         command_receiver,

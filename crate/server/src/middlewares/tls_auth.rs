@@ -164,7 +164,10 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
                     );
                 }
                 trace!("Client certificate common name: {}", username);
-                Ok(AuthenticatedUser { username })
+                Ok(AuthenticatedUser {
+                    username,
+                    rbac_context: None,
+                })
             }
             Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
         },

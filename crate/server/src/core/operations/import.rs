@@ -77,6 +77,8 @@ pub(crate) async fn import(
             None,
             &cosmian_kmip::kmip_2_1::KmipOperation::Create,
             kms,
+            &[],
+            None,
         )
         .await?;
 

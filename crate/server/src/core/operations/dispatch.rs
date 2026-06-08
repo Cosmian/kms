@@ -16,6 +16,7 @@ use crate::{
             algorithm_policy::enforce_kmip_algorithm_policy_for_operation,
             attributes::get_attribute_list, check, mac::mac_verify, query::query as query_op,
         },
+        rbac::enforcement::enforce_rbac_pre_dispatch,
     },
     error::KmsError,
     kms_bail,
@@ -76,11 +77,17 @@ macro_rules! op {
 }
 
 /// Dispatch operation depending on the TTLV tag
-pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<Operation> {
+pub(crate) async fn dispatch(
+    kms: &KMS,
+    ttlv: TTLV,
+    user: &str,
+    roles: &[String],
+    tenant_id: Option<&str>,
+) -> KResult<Operation> {
     let operation_tag = ttlv.tag.clone();
     let start_time = std::time::Instant::now();
 
-    let result = dispatch_inner(kms, ttlv, user, &operation_tag).await;
+    let result = dispatch_inner(kms, ttlv, user, &operation_tag, roles, tenant_id).await;
 
     // Record metrics if enabled
     if let Some(ref metrics) = kms.metrics {
@@ -102,10 +109,17 @@ async fn dispatch_inner(
     ttlv: TTLV,
     user: &str,
     operation_tag: &str,
+    roles: &[String],
+    tenant_id: Option<&str>,
 ) -> KResult<Operation> {
-    // For operations where the request carries algorithm choices, validate them
-    // before executing any cryptographic action.
-    enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+    // RBAC pre-dispatch enforcement (Tier 1): check role/tenant policy for non-object ops.
+    enforce_rbac_pre_dispatch(kms, operation_tag, user, roles, tenant_id)?;
+
+    // Legacy algorithm policy enforcement (bypassed when Rego evaluator is active,
+    // since algorithm checks are delegated to the policy engine).
+    if kms.rbac_evaluator().is_none() {
+        enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+    }
 
     Ok(match operation_tag {
         "Activate" => op!(ttlv, kms, user, Activate, activate, ActivateResponse),

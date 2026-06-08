@@ -55,12 +55,12 @@ fn extract_user_claim(configs: &[JwtConfig], token: &str) -> Result<UserClaim, V
 /// * `req` - The incoming HTTP request
 ///
 /// # Returns
-/// * `Ok(AuthenticatedUser)` - Authentication successful with user email
+/// * `Ok((AuthenticatedUser, Option<UserClaim>))` - Auth successful; claim may be attached for RBAC
 /// * `Err(KmsError)` - Authentication failed
 pub(super) async fn handle_jwt(
     configs: Arc<Vec<JwtConfig>>,
     req: &ServiceRequest,
-) -> KResult<AuthenticatedUser> {
+) -> KResult<(AuthenticatedUser, Option<UserClaim>)> {
     trace!("JWT Authentication...");
 
     // Extract identity from either the Identity service or the Authorization header
@@ -94,20 +94,25 @@ pub(super) async fn handle_jwt(
     }
 
     // Process the validation result and extract the email claim
-    match private_claim.map(|user_claim| user_claim.email) {
-        Ok(Some(email)) => {
-            // Authentication successful with valid email
-            debug!("JWT Access granted to {email}!");
-            Ok(AuthenticatedUser { username: email })
-        }
-        Ok(None) => {
-            // JWT is valid but missing the required email claim — log as WARN for audit trail
-            warn!(
-                "{:?} {} 401 unauthorized, no email in JWT",
-                req.method(),
-                req.path()
-            );
-            Err(KmsError::InvalidRequest("No email in JWT".to_owned()))
+    match private_claim {
+        Ok(user_claim) => {
+            if let Some(ref email) = user_claim.email {
+                // Authentication successful with valid email
+                debug!("JWT Access granted to {email}!");
+                let auth_user = AuthenticatedUser {
+                    username: email.clone(),
+                    rbac_context: None, // Populated later by RBAC enforcement layer
+                };
+                Ok((auth_user, Some(user_claim)))
+            } else {
+                // JWT is valid but missing the required email claim — log as WARN for audit trail
+                warn!(
+                    "{:?} {} 401 unauthorized, no email in JWT",
+                    req.method(),
+                    req.path()
+                );
+                Err(KmsError::InvalidRequest("No email in JWT".to_owned()))
+            }
         }
         Err(jwt_log_errors) => {
             // JWT validation failed — log at WARN so auth failures appear in production logs

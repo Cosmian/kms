@@ -90,8 +90,15 @@ pub(crate) async fn derive_key(
     };
 
     // Check that the user has permission to derive from the base key
-    let has_permission =
-        user_has_permission(user, Some(&base_key_owm), &KmipOperation::DeriveKey, kms).await?;
+    let has_permission = user_has_permission(
+        user,
+        Some(&base_key_owm),
+        &KmipOperation::DeriveKey,
+        kms,
+        &[],
+        None,
+    )
+    .await?;
 
     if !has_permission {
         kms_bail!(KmsError::Unauthorized(format!(

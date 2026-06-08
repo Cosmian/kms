@@ -169,10 +169,12 @@ graph LR
 
 ```mermaid
 graph TD
-    A["🛡️ **admin**<br/>All KMIP operations · Grant Create<br/>Cross-tenant scope via config"]
+    SA["🌐 **super-admin**<br/>All KMIP operations · Cross-tenant scope<br/>Granted via server config, not IdP claims"]
+    A["🛡️ **admin**<br/>All KMIP operations · Grant Create<br/>Tenant-scoped"]
     O["⚙️ **operator**<br/>Create · Import · Register<br/>Encrypt · Decrypt · Sign<br/>Destroy · Revoke · Activate"]
     Au["🔍 **auditor**<br/>Locate · GetAttributes<br/>GetAttributeList · DiscoverVersions<br/>_(no key material)_"]
 
+    SA -- inherits --> A
     A -- inherits --> O
     O -- inherits --> Au
 ```
@@ -252,33 +254,40 @@ flowchart TD
 - Build/modify six modules: Policy Input Builder, Policy Evaluator, Policy Bundle Manager, RBAC Enforcement Layer, Audit Logger, and Config & Claim Mapping.
 - RBAC/OPA is opt-in; legacy ACL behavior remains default when disabled.
 - **Rego Engine**: Regorus (pure-Rust Rego evaluator, `regorus` crate) is the sole policy evaluation engine; no OPA WASM, no wasmtime, no external OPA service dependency.
-- **Enforcement insertion points**: two-tier — `dispatch.rs` for non-object operations (Create, DiscoverVersions, etc.); a `retrieve_and_authorize` wrapper around `retrieve_object_utils.rs` for object-targeting operations. No extra DB round-trip for object metadata.
+- **Enforcement insertion points**: three-tier — (1) `dispatch.rs` for KMIP non-object operations (Create, DiscoverVersions, etc.); (2) a `retrieve_and_authorize` wrapper around `retrieve_object_utils.rs` for KMIP object-targeting operations; (3) an Actix middleware (or extractor) for REST access-management endpoints (`/access/grant`, `/access/revoke`, `/access/list`) that builds the RBAC input from route context and evaluates Regorus before the handler executes. No extra DB round-trip for object metadata in tier (2).
 - **ACL semantics in RBAC mode**: OPA/Regorus is the single gatekeeper. DB ACL state (owner, per-object grants) is passed as input fields to the policy; existing DB-level ACL enforcement code is bypassed when RBAC mode is active. Legacy DB ACL enforcement is preserved unchanged when RBAC is disabled.
+- **Tenant storage**: A `tenant_id` column is added to the `objects` table via schema migration. It is populated at object creation time from the creator's JWT tenant claim. For Locate queries, `WHERE tenant_id = ?` is applied at the SQL level. The server refuses to start in RBAC mode if any objects have `NULL` tenant_id. A CLI migration tool (`ckms server migrate-tenants`) assigns tenant_id to existing objects based on an admin-provided owner-to-tenant mapping file.
 - External OPA calls support configurable mTLS, bearer token, or no auth, with a short configurable timeout and fail-closed behavior. (**Not in scope — Regorus only.**)
-- Authorization Surface includes KMIP operations and access-management endpoints; enterprise integration routes are excluded.
+- Authorization Surface includes KMIP operations and access-management endpoints; enterprise integration routes (AWS XKS, Azure EKM, Google CSE, MS DKE) are fully excluded. Their internal KMIP calls bypass Regorus entirely — they are trusted paths that rely solely on their own authentication (XKS signatures, mTLS, OAuth). No synthetic subject is injected. Additionally, `DiscoverVersions` and `Query` are exempt from RBAC enforcement — they are protocol-level informational operations that always succeed regardless of policy, as they expose no key material and are needed for KMIP handshake.
 - Authorization decisions use the OPA Decision Path `data.kms.authz.allow` and Reason Path `data.kms.authz.reason`.
-- OPA Decision Output is allow/deny with optional reason; reasons are logged/audited only and not returned to clients.
-- Policy Bundle Loading supports local bundles with hot-reload and remote bundles via polling; invalid bundles are rejected and prevent startup when RBAC is enabled.
-- Default Policy Bundle ships with baseline roles (admin/operator/auditor), default hierarchy (admin > operator > auditor), and conservative NIST/ANSSI allowlists; separate bundles for FIPS and non-FIPS.
-- Policy Precedence: when RBAC/OPA is enabled, OPA policy replaces KMIP algorithm allowlists.
+- OPA Decision Output is allow/deny with optional reason; reasons are logged/audited only and not returned to clients. On deny, the server returns KMIP `ErrorReason::Permission_Denied` with a generic message ("authorization denied") — no policy details leak to the client.
+- Policy Bundle Loading supports local bundles with hot-reload and remote bundles via polling; invalid bundles are rejected and prevent startup when RBAC is enabled. On sustained remote unavailability after startup, the server continues with the last-known-good cached bundle and logs a warning on each failed poll. No automatic expiry or deny-all — the operator is responsible for monitoring staleness.
+- Default Policy Bundle ships with baseline roles (super-admin/admin/operator/auditor), default hierarchy (super-admin > admin > operator > auditor), and conservative NIST/ANSSI allowlists; separate bundles for FIPS and non-FIPS.
+- **Algorithm enforcement always via Rego**: The legacy Rust-level `enforce_kmip_algorithm_policy_for_operation` is removed. Algorithm allowlist enforcement is always delegated to the Regorus engine, regardless of whether full RBAC (roles, tenants, ACL bypass) is enabled. When RBAC is disabled, an embedded default algorithm-only policy (`include_str!` compiled into the binary) is loaded — no external bundle path required. Full RBAC mode still requires an explicit external bundle path. This ensures a single source of truth for algorithm policy and eliminates the dual-enforcement path.
 - Role Assignment Source is IdP JWT role/group claims; Role Claim Mapping and Tenant Claim Mapping are configurable claim paths; Role Expansion is performed in policy.
-- Tenant Boundary is enforced in all decisions; Admin Tenant Scope is tenant-scoped by default.
+- Tenant Boundary is enforced in all decisions; admin is tenant-scoped by default. A distinct `super-admin` role (above admin in the hierarchy) skips the tenant filter — Locate queries for super-admin have no `WHERE tenant_id` clause. Super-admin is granted via server config (`privileged_users` or a dedicated `super_admins` config field), not IdP claims.
 - Operation Authorization Rule requires explicit authorization per KMIP operation; Get does not imply other operations.
-- Owner Role is automatic but policy can still deny; Owner ACL Management and Owner ACL Visibility are allowed for owners.
-- ACL Semantics are additive allows; Wildcard ACL Grants are deprecated under RBAC.
+- **Owner Role**: Ownership is passed as `input.acl.is_owner = true` but confers no server-side guarantee. In the default policy, ownership grants access only *within* the context of a role (e.g., operator + is_owner → accessible). A user with no roles has no access, even to objects they own. This is an intentional departure from legacy behavior where ownership always implied full access.
+- **ACL Semantics**: ACL grants (`input.acl.granted_ops`) are advisory input to the Rego policy — they carry no server-side guarantee. The default bundle honors them as additive allows, but custom policies may ignore or override them. Wildcard ACL grants are deprecated under RBAC.
 - Global Operation Resource model is used for Create and server-wide operations, with requested attributes supplied via a configurable allowlist.
 - OPA Resource Input for object operations includes object id, owner, type, state, and tags; Operation Parameter Input includes algorithm/mode/padding for crypto ops; Attribute Operation Input includes attribute names; Locate Query Input includes query filters.
 - Access-Management Input includes target user, object id, and operation list; Endpoint Input includes route identifiers.
-- **Locate/List in RBAC mode**: DB-level user filter (`find()`) is parameterized; when OPA grants a Locate query for a role with global read scope (admin/auditor), the caller passes a wildcard user to `find()` to bypass the per-user DB filter. User-scoped Locate (operators, object owners) retains the normal user filter.
-- Authorization Audit records allow and deny decisions with the policy bundle hash.
-- Privileged Users Mapping treats privileged users as implicit admin role membership.
+- **Locate/List in RBAC mode**: DB-level user filter (`find()`) is parameterized; when OPA grants a Locate query for a role with global read scope (admin/auditor), the caller passes a wildcard user to `find()` to bypass the per-user DB filter. User-scoped Locate (operators, object owners) retains the normal user filter. Tenant boundary is enforced at the DB query level (`WHERE tenant_id = ?`), not via per-object post-filtering through Regorus. The policy evaluation for Locate determines *scope parameters* (user, tenant) that are baked into the SQL query. No per-object Regorus evaluation occurs for Locate results.
+- **Authorization Audit**: Allow and deny decisions are emitted as structured `tracing::info!` events with typed fields (`user`, `operation`, `decision`, `reason`, `bundle_hash`, `resource_id`, `tenant_id`). These are exported via the existing OTEL tracing pipeline. No separate audit log file or database table — compliance queries are handled by the log aggregation backend (e.g., Grafana Loki).
+- **Privileged Users Mapping**: `privileged_users` from server config is passed as `input.subject.is_privileged` (boolean) to the Rego policy. The policy is authoritative — the default bundle grants admin-equivalent access to privileged users, but custom policies can override or restrict this. No server-side role injection.
 - Self Access Views and Self Permission Checks are permitted for users.
 - **Missing tenant claim**: when the configured JWT tenant-claim path is absent, `input.subject.tenant_id` is `null`. Policy is authoritative — the default bundle denies on null tenant; custom bundles can override (e.g. for service accounts). No server-level fallback.
-- **Auditor role operations**: Locate, GetAttributes, GetAttributeList, DiscoverVersions only — no KMIP `Get` (returns key material), no Export. User story 15's "get" refers to GetAttributes, not the KMIP Get operation. `KmipAllowlistsConfig` is loaded as OPA data (engine-level, not per-request) at engine initialization, accessible as `data.kms.config.allowlists.*` in Rego. The default bundle replicates the current ANSSI/NIST/FIPS conservative allowlists.
+- **Auditor role operations**: Locate, GetAttributes, GetAttributeList, DiscoverVersions only — no KMIP `Get` (returns key material), no Export. User story 15's "get" refers to GetAttributes, not the KMIP Get operation.
+- **Allowlists as OPA data**: `KmipAllowlistsConfig` from `kms.toml` is always serialized to JSON and loaded into Regorus as engine-level static data (`data.kms.config.allowlists.*`), regardless of RBAC mode. This is the single source for algorithm/hash/curve/key-size restrictions. In full RBAC mode with an external bundle, the bundle may include its own data file that overrides the server config allowlists.
 - **Create-grant privilege invariant**: The default policy bundle must explicitly encode that only admins can grant the `Create` operation to others, replicating the `privileged_users` guard that is bypassed in RBAC mode. A test vector confirms a non-admin cannot delegate `Create` grants.
-- **Policy bundle format**: a directory of `.rego` files; the entry point must be `authz.rego` defining `data.kms.authz.allow`. Hot-reload watches the directory with `inotify`; remote polling downloads an archive and unpacks to a local temp directory. Bundle hash for audit is SHA-256 over sorted `filename:content` concatenation of all `.rego` files in the bundle.
-- **Multi-object operations**: one Regorus evaluation call per involved object; input schema is consistent across all operations. All involved objects must be individually authorized (all must allow).
+- **Policy bundle format**: a directory of `.rego` files; the entry point must be `authz.rego` defining `data.kms.authz.allow`. Hot-reload watches the directory using the `notify` crate (cross-platform: inotify on Linux, kqueue on macOS, ReadDirectoryChanges on Windows); remote polling downloads an archive and unpacks to a local temp directory. Bundle hash for audit is SHA-256 over sorted per-file content hashes (filenames excluded) — renaming files without changing logic preserves the hash for audit trail continuity.
+- **Strict bundle validation**: On load/reload, all `.rego` files are compiled with Regorus. If any file references an unsupported built-in function, the bundle is rejected. This catches OPA-only built-ins (`http.send`, `opa.runtime`, `io.jwt.decode_verify`, etc.) at load time rather than failing-closed at runtime. The supported built-in surface should be documented for policy authors.
+- **Hot-reload atomicity**: The Regorus engine is held behind `ArcSwap`. On reload, a new engine is built and validated in the background; if valid, the pointer is atomically swapped. In-flight evaluations hold a clone of the old `Arc` and finish cleanly against the previous policy version. No request ever sees a partially-loaded engine.
+- **Multi-object operations**: one Regorus evaluation call per involved object; input schema is consistent across all operations. All involved objects must be individually authorized (all must allow). A per-request evaluation cache keyed by `(subject.user_id, resource.id, operation.kmip_op)` prevents redundant evaluations for the same object within recursive/composite operations (e.g., Certify touching issuer chain).
+- **Composite operation authorization**: `CreateKeyPair` is authorized as a Create-class operation via tier 1 (non-object). `DeriveKey` is authorized twice: first as Create-class (tier 1 — can the user create?), then against the parent key via tier 2 (`retrieve_and_authorize` — can the user use this parent key for derivation?). Both checks must pass.
 - **RBAC code is always compiled in** — no feature flag; runtime opt-in via config (`--rbac-enabled` / `kms.toml`).
+- **Migration is an intentional break**: Enabling RBAC mode removes the legacy `Get`-implies-all-operations shortcut. Admins must reconfigure ACL grants before enabling RBAC. A migration guide documents the required steps; no automatic ACL expansion is performed.
+- **Startup cross-validation**: All RBAC config consistency checks happen during `ServerParams` construction. Invalid combinations produce a clear error message and prevent startup. Checks include: RBAC requires IdP auth configured, RBAC requires `bundle_path` or `bundle_url`, `role_claim`/`tenant_claim` must be non-empty strings, no `NULL` tenant_id objects in DB when RBAC enabled, policy bundle must load and validate successfully.
 
 ## OPA Input Contract (stable API)
 
@@ -287,9 +296,10 @@ The input document passed to `data.kms.authz.allow` on every authorization call:
 ```json
 {
   "subject": {
-    "user_id":   "alice@example.com",
-    "roles":     ["operator"],
-    "tenant_id": "acme-corp"
+    "user_id":       "alice@example.com",
+    "roles":         ["operator"],
+    "tenant_id":     "acme-corp",
+    "is_privileged": false
   },
   "request": {
     "ip":          "192.168.1.1",
@@ -337,10 +347,11 @@ package kms.authz
 
 import rego.v1
 
-# Role hierarchy: admin inherits all operator permissions; operator inherits auditor
+# Role hierarchy: super-admin > admin > operator > auditor
 role_inherits := {
-    "admin":    {"operator", "auditor"},
-    "operator": {"auditor"},
+    "super-admin": {"admin", "operator", "auditor"},
+    "admin":       {"operator", "auditor"},
+    "operator":    {"auditor"},
 }
 
 # Expand roles transitively
@@ -373,6 +384,12 @@ algorithm_allowed if {
 same_tenant if { input.resource == null }
 same_tenant if { input.resource.tenant_id == input.subject.tenant_id }
 
+# Super-admin: all operations, no tenant boundary
+allow if {
+    "super-admin" in roles
+    algorithm_allowed
+}
+
 # Main allow rule
 allow if {
     "admin" in roles
@@ -393,6 +410,13 @@ allow if {
     same_tenant
 }
 
+# Privileged users: treated as admin by default policy
+allow if {
+    input.subject.is_privileged
+    same_tenant
+    algorithm_allowed
+}
+
 object_accessible if { input.resource == null }
 object_accessible if { input.acl.is_owner }
 object_accessible if { input.operation.kmip_op in input.acl.granted_ops }
@@ -410,6 +434,7 @@ reason := "allowed by role policy"
 
 
 - Good tests assert observable authorization behavior (allow/deny outcomes, audit entries, and error paths) without relying on internal policy evaluation details.
+- **Two-layer testing strategy**: (1) **Rego unit tests** — load the default policy bundle into Regorus with synthetic JSON inputs, assert allow/deny outcomes directly. Fast feedback for policy TDD. (2) **Server integration tests** — boot with the default bundle, make real KMIP requests, verify end-to-end enforcement (correct HTTP error codes, audit entries emitted, tenant isolation).
 - All modules above should have tests, with emphasis on input construction, policy evaluation modes, bundle validation/reload, enforcement across KMIP and access endpoints, and audit logging.
 - Prior art includes existing KMIP policy and access control test suites, plus database permission tests; new tests should mirror their style and focus on end-to-end authorization behavior.
 

@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS objects
     object     LONGTEXT NOT NULL,
     attributes json NOT NULL,
     state      VARCHAR(32),
-    owner      VARCHAR(255)
+    owner      VARCHAR(255),
+    tenant_id  VARCHAR(255)
 );
 
 -- name: add-column-attributes
@@ -37,6 +38,13 @@ ALTER TABLE objects
 
 -- name: has-column-attributes
 SHOW COLUMNS FROM objects LIKE 'attributes';
+
+-- name: add-column-tenant_id
+ALTER TABLE objects
+    ADD COLUMN tenant_id VARCHAR(255);
+
+-- name: has-column-tenant_id
+SHOW COLUMNS FROM objects LIKE 'tenant_id';
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access

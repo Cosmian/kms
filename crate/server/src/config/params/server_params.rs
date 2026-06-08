@@ -11,7 +11,7 @@ use crate::{
         AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
-            proxy_params::ProxyParams,
+            proxy_params::ProxyParams, rbac_params::RbacParams,
         },
     },
     error::KmsError,
@@ -164,6 +164,9 @@ pub struct ServerParams {
     /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
     /// applied automatically. Prevents unbounded DB queries and large response payloads.
     pub max_locate_items: u32,
+
+    /// RBAC/OPA authorization parameters.
+    pub rbac: RbacParams,
 }
 
 /// Represents the server parameters.
@@ -422,7 +425,44 @@ impl ServerParams {
                 crate::config::default_cors_origins(cors_scheme, conf.http.port)
             }),
             max_locate_items: 1000,
+            rbac: RbacParams {
+                enabled: conf.rbac.rbac_enabled,
+                bundle_path: conf.rbac.rbac_bundle_path,
+                bundle_url: conf.rbac.rbac_bundle_url,
+                bundle_poll_interval_secs: conf.rbac.rbac_bundle_poll_interval_secs,
+                role_claim: conf.rbac.rbac_role_claim,
+                tenant_claim: conf.rbac.rbac_tenant_claim,
+                super_admins: conf.rbac.rbac_super_admins.unwrap_or_default(),
+            },
         };
+
+        // RBAC cross-validation: ensure all required config is present when enabled.
+        if res.rbac.enabled {
+            if res.identity_provider_configurations.is_none() {
+                return Err(KmsError::ServerError(
+                    "RBAC mode requires IdP authentication to be configured \
+                     (--jwt-auth-provider). Roles and tenant ID are extracted from JWT claims."
+                        .to_owned(),
+                ));
+            }
+            if res.rbac.bundle_path.is_none() && res.rbac.bundle_url.is_none() {
+                return Err(KmsError::ServerError(
+                    "RBAC mode requires a policy bundle: set --rbac-bundle-path (local directory) \
+                     or --rbac-bundle-url (remote archive URL)."
+                        .to_owned(),
+                ));
+            }
+            if res.rbac.role_claim.is_empty() {
+                return Err(KmsError::ServerError(
+                    "RBAC mode requires a non-empty --rbac-role-claim.".to_owned(),
+                ));
+            }
+            if res.rbac.tenant_claim.is_empty() {
+                return Err(KmsError::ServerError(
+                    "RBAC mode requires a non-empty --rbac-tenant-claim.".to_owned(),
+                ));
+            }
+        }
 
         debug!("{res:#?}");
 
@@ -645,6 +685,17 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
+
+        // RBAC
+        debug_struct.field("rbac_enabled", &self.rbac.enabled);
+        if self.rbac.enabled {
+            debug_struct
+                .field("rbac_bundle_path", &self.rbac.bundle_path)
+                .field("rbac_bundle_url", &self.rbac.bundle_url)
+                .field("rbac_role_claim", &self.rbac.role_claim)
+                .field("rbac_tenant_claim", &self.rbac.tenant_claim)
+                .field("rbac_super_admins", &self.rbac.super_admins);
+        }
 
         debug_struct.finish()
     }

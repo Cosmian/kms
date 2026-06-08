@@ -52,6 +52,7 @@ interop = ["cosmian_kms_server_database/interop"]
 [dependencies]
 actix-cors = { workspace = true }
 actix-files = { workspace = true }
+arc-swap = { workspace = true }
 governor = { version = "0.10", features = ["std"] }
 actix-identity = { workspace = true }
 actix-rt = { workspace = true }
@@ -81,6 +82,7 @@ futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
+notify = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",
@@ -94,6 +96,7 @@ opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 pem = { workspace = true }
 proteccio_pkcs11_loader = { path = "../hsm/proteccio", version = "5.23.0" }
+regorus = { workspace = true }
 reqwest = { workspace = true, features = [ # Remove "default" which includes rustls
   "json",
   "native-tls",
@@ -102,6 +105,7 @@ reqwest = { workspace = true, features = [ # Remove "default" which includes rus
 scratchstack-aws-signature = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.23.0" }
 softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.23.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }

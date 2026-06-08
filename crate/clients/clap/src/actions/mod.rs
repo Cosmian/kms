@@ -17,6 +17,7 @@ pub mod kms_actions;
 pub(crate) mod labels;
 pub mod login;
 pub mod mac;
+pub mod migrate_tenants;
 pub mod opaque_object;
 pub mod pkcs11;
 pub(crate) mod pkcs11_verify;

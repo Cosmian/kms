@@ -68,7 +68,8 @@ pub(crate) async fn rekey_keypair(
 
     // ReKeyKeyPair creates a replacement key pair — enforce privileged-user restriction
     if let Some(ref users) = privileged_users {
-        let has_permission = user_has_permission(user, None, &KmipOperation::Create, kms).await?;
+        let has_permission =
+            user_has_permission(user, None, &KmipOperation::Create, kms, &[], None).await?;
 
         if !has_permission && !users.iter().any(|u| u == user) {
             kms_bail!(KmsError::Unauthorized(

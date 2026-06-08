@@ -133,10 +133,13 @@ where
                 );
             } else {
                 match handle_jwt(jwt_configurations, &req).await {
-                    Ok(auth_claim) => {
+                    Ok((auth_user, user_claim)) => {
                         // Authentication successful, insert the claim into request extensions
-                        // and proceed with the request
-                        req.extensions_mut().insert(auth_claim);
+                        req.extensions_mut().insert(auth_user);
+                        // Attach full UserClaim for downstream RBAC claim extraction
+                        if let Some(claim) = user_claim {
+                            req.extensions_mut().insert(claim);
+                        }
                     }
                     Err(e) => {
                         debug!("JWT authentication failed: {e:?}");
