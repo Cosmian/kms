@@ -454,8 +454,8 @@ impl OtelMetrics {
         self.hsm_operations_total.add(
             1,
             &[
-                KeyValue::new("operation", operation.to_owned()),
                 KeyValue::new("hsm_model", hsm_model.to_owned()),
+                KeyValue::new("operation", operation.to_owned()),
             ],
         );
     }

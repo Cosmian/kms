@@ -62,11 +62,17 @@ impl KMS {
         // check if we have it in the cache
         if let Some(u) = self.database.unwrapped_cache().peek(uid, object).await? {
             debug!("Unwrapped cache hit");
+            if let Some(ref metrics) = self.metrics {
+                metrics.record_cache_operation("get", "hit");
+            }
             return Ok(u);
         }
 
         // cache miss, try to unwrap
         debug!("Unwrapped cache miss. Calling unwrap");
+        if let Some(ref metrics) = self.metrics {
+            metrics.record_cache_operation("get", "miss");
+        }
         let unwrapped_object = {
             let mut unwrapped_object = object.clone();
             unwrap_object(&mut unwrapped_object, self, user).await?;
@@ -78,6 +84,9 @@ impl KMS {
             .unwrapped_cache()
             .insert(uid.to_owned(), object, unwrapped_object.clone())
             .await?;
+        if let Some(ref metrics) = self.metrics {
+            metrics.record_cache_operation("insert", "ok");
+        }
 
         Ok(unwrapped_object)
     }

@@ -203,6 +203,11 @@ async fn unwrap_using_crypto_oracle(
     let plaintext = crypto_oracle
         .decrypt(&unwrapping_key_uid, wrapped_key, None, None)
         .await?;
+    if let Some(ref metrics) = kms.metrics {
+        let model =
+            crate::core::uid_utils::hsm_model_from_prefix(&kms.params.hsm_instances, prefix);
+        metrics.record_hsm_operation("Unwrap", model);
+    }
 
     // decode the unwrapped key
     let key_value = decode_unwrapped_key(

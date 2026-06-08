@@ -163,7 +163,15 @@ pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
 
     match resolve_key_for_operation::<Op>(unique_identifier, kms, user).await? {
         ResolvedKey::Oracle { uid, prefix } => {
-            Op::execute_oracle(kms, &request, &uid, &prefix).await
+            let result = Op::execute_oracle(kms, &request, &uid, &prefix).await;
+            if let Some(ref metrics) = kms.metrics {
+                let model = crate::core::uid_utils::hsm_model_from_prefix(
+                    &kms.params.hsm_instances,
+                    &prefix,
+                );
+                metrics.record_hsm_operation(Op::OP_NAME, model);
+            }
+            result
         }
         ResolvedKey::Local(owm) => {
             let mut owm = *owm;

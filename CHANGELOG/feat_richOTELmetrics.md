@@ -2,7 +2,7 @@
 
 ## Features
 
-### Database Metrics Wiring (Step 1)
+### Database Metrics Wiring — `kms.database.operations.total`, `kms.database.operation.duration` (Step 1)
 
 - Wire `kms.database.operations.total` (counter) and `kms.database.operation.duration`
   (histogram) at the `Database` facade layer with `operation`, `backend`, and `outcome`
@@ -15,7 +15,7 @@
 - `MainDbKind::as_str()` provides canonical backend labels
   (`"sqlite"`, `"postgresql"`, `"mysql"`, `"redis"`).
 
-### HTTP Metrics Wiring (Step 2)
+### HTTP Metrics Wiring — `kms.http.requests.total`, `kms.http.request.duration`, `kms.active.connections` (Step 2)
 
 - Add `OtelHttpMetrics` Actix-web middleware (`crate/server/src/middlewares/otel_http_middleware.rs`)
   that records `kms.http.requests.total` (counter with `method`, `path`, `status`
@@ -54,7 +54,7 @@
 - Add `Database::count_all_non_destroyed_objects()` facade that sums counts across all
   registered stores with `saturating_add`, tolerating partial failures.
 
-### Object Count Metric — Redis-findex backend (Step 3, continued)
+### Object Count Metric — `kms.objects.total`, Redis-findex backend (Step 3, continued)
 
 - Implement `count_all_non_destroyed` for the `RedisWithFindex` backend using an
   O(1) counter key (`kms::metrics::live_object_count`) instead of a full key scan.
@@ -121,6 +121,36 @@ state is not `Destroyed` or `Destroyed_Compromised`.
   `count_all_non_destroyed` returns 5 and equals `count_non_destroyed_keys`.
   Runs without any hardware.  Added `tokio` as a dev-dependency to
   `cosmian_kms_interfaces`.
+
+
+### Cache and HSM Operation Metrics — `kms.cache.operations.total`, `kms.hsm.operations.total` (Step 4)
+
+
+- Add `hsm_model_from_prefix(hsm_instances, prefix) -> &str` to
+  `crate/server/src/core/uid_utils.rs`.  Looks up the human-readable HSM model
+  label (e.g. `"softhsm2"`, `"utimaco"`) from the configured `hsm_instances`
+  slice and falls back to the prefix string itself when no matching instance is
+  found, ensuring the metric label is always non-empty.
+- Export `HsmInstanceParams` from `crate/server/src/config/mod.rs` (re-exported
+  through `params/mod.rs`) so that `uid_utils` and future callers can reference
+  it without reaching into private sub-modules.
+- Wire `kms.cache.operations.total` in `get_unwrapped()`
+  (`crate/server/src/core/kms/other_kms_methods.rs`): emit `record_cache_operation("get", "hit")`
+  on a cache hit, `record_cache_operation("get", "miss")` on a miss, and
+  `record_cache_operation("insert", "ok")` after a successful cache population.
+- Wire `kms.hsm.operations.total` at three dispatch points:
+  - `perform_crypto_operation()` in `key_ops/crypto_op.rs` — covers all six
+    oracle-routed operations (Encrypt, Decrypt, Sign, SignatureVerify, MAC,
+    MACVerify) via the `ResolvedKey::Oracle` arm.  Uses `Op::OP_NAME` as the
+    operation label and `hsm_model_from_prefix` for the model label.
+  - `wrap_using_crypto_oracle()` in `core/wrapping/wrap.rs` — emits
+    `record_hsm_operation("Wrap", model)` after the oracle `encrypt` call.
+  - `unwrap_using_crypto_oracle()` in `core/wrapping/unwrap.rs` — emits
+    `record_hsm_operation("Unwrap", model)` after the oracle `decrypt` call.
+- Add 4 unit tests in `core::uid_utils::tests` covering legacy `"hsm"` prefix,
+  new `"hsm::softhsm2"` format, multi-instance selection, and unknown-prefix
+  fallback.  All tests are sync, require no async runtime, and pass without
+  hardware.
 
 ## Testing
 
