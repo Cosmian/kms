@@ -447,9 +447,12 @@ impl Database {
     /// yet implemented `count_all_non_destroyed` return `0` via the trait default,
     /// which is acceptable — the sum will still be a valid lower bound.
     pub async fn count_all_non_destroyed_objects(&self) -> DbResult<u64> {
-        let map = self.objects.read().await;
+        let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
+            let map = self.objects.read().await;
+            map.values().cloned().collect()
+        }; // read guard dropped before any async I/O
         let mut total: u64 = 0;
-        for store in map.values() {
+        for store in &stores {
             let n = store.count_all_non_destroyed().await.unwrap_or(0); // A single backend failure must not block the aggregate
             total = total.saturating_add(n);
         }
@@ -463,9 +466,12 @@ impl Database {
     /// Backends that have not yet implemented `count_non_destroyed_keys` return `0` via
     /// the trait default — the sum remains a valid lower bound.
     pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
-        let map = self.objects.read().await;
+        let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
+            let map = self.objects.read().await;
+            map.values().cloned().collect()
+        }; // read guard dropped before any async I/O
         let mut total: u64 = 0;
-        for store in map.values() {
+        for store in &stores {
             let n = store.count_non_destroyed_keys().await.unwrap_or(0); // A single backend failure must not block the aggregate
             total = total.saturating_add(n);
         }
@@ -479,8 +485,11 @@ impl Database {
     /// Redis backends recompute counts from a full SCAN and overwrite cached keys.
     /// Called by the slow-path cron loop (every 5 minutes) to prevent counter drift.
     pub async fn reconcile_all_object_counts(&self) -> DbResult<()> {
-        let map = self.objects.read().await;
-        for store in map.values() {
+        let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
+            let map = self.objects.read().await;
+            map.values().cloned().collect()
+        }; // read guard dropped before any async I/O
+        for store in &stores {
             if let Err(e) = store.reconcile_counts().await {
                 // Non-fatal: log and continue so one failing backend does not block others.
                 cosmian_logger::warn!("[database] reconcile_counts failed for a store: {e}");

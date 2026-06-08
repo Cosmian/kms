@@ -19,7 +19,7 @@ use std::{
 use cosmian_kms_server_database::{DbMetricsRecorder, MainDbKind};
 use opentelemetry::{
     KeyValue,
-    metrics::{Counter, Gauge, Histogram, Meter, MeterProvider, UpDownCounter},
+    metrics::{Counter, Histogram, Meter, MeterProvider, UpDownCounter},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 
@@ -78,11 +78,17 @@ pub struct OtelMetrics {
     /// Current number of active connections
     pub active_connections: UpDownCounter<i64>,
 
-    /// Total number of objects in the KMS (gauge — records absolute count directly)
-    pub kms_objects_total: Gauge<i64>,
+    /// Total number of objects in the KMS
+    pub kms_objects_total: UpDownCounter<i64>,
 
-    /// Current number of active keys in Active state (gauge — records absolute count directly)
-    pub active_keys_count: Gauge<i64>,
+    /// Mirror of `kms_objects_total` for tracking the last set value
+    objects_total_value: Arc<RwLock<i64>>,
+
+    /// Current number of active keys (absolute count from DB)
+    pub active_keys_count: UpDownCounter<i64>,
+
+    /// Mirror of `active_keys_count` for tracking the last set value
+    active_keys_count_value: Arc<RwLock<i64>>,
 
     /// Cache hit/miss statistics
     pub cache_operations_total: Counter<u64>,
@@ -222,25 +228,27 @@ impl OtelMetrics {
             .with_unit("{connection}")
             .build();
 
-        // KMS objects — gauge records the current absolute count directly
+        // KMS objects total (UpDownCounter with delta tracking)
         let kms_objects_total = meter
-            .i64_gauge("kms.objects.total")
+            .i64_up_down_counter("kms.objects.total")
             .with_description("Total number of objects in the KMS")
             .with_unit("{object}")
             .build();
+        // Force the time series to exist even when the count is 0.
+        kms_objects_total.add(0, &[]);
 
-        // Active keys count — gauge records the current absolute count directly
+        // Active keys count (UpDownCounter with delta tracking)
         let active_keys_count = meter
-            .i64_gauge("kms.keys.active.count")
+            .i64_up_down_counter("kms.keys.active.count")
             .with_description(
                 "Number of non-destroyed key objects (SymmetricKey, PrivateKey, PublicKey, \
-                 SplitKey) across all backends. Counts keys in all non-terminal states: \
-                 PreActive, Active, Deactivated, Compromised.",
+                 SplitKey) across all backends. Counts keys in all non-terminal \
+                 states: PreActive, Active, Deactivated, Compromised.",
             )
             .with_unit("{key}")
             .build();
-        // Seed the time series so it is visible in the backend from server start.
-        active_keys_count.record(0, &[]);
+        // Force the time series to exist even when the count is 0.
+        active_keys_count.add(0, &[]);
 
         // Cache operations
         let cache_operations_total = meter
@@ -275,7 +283,9 @@ impl OtelMetrics {
             errors_total,
             active_connections,
             kms_objects_total,
+            objects_total_value: Arc::new(RwLock::new(0)),
             active_keys_count,
+            active_keys_count_value: Arc::new(RwLock::new(0)),
             cache_operations_total,
             hsm_operations_total,
         })
@@ -425,17 +435,32 @@ impl OtelMetrics {
         self.active_connections.add(-1, &[]);
     }
 
-    /// Set the current active keys count from an absolute Locate response.
+    /// Set the current active keys count from an absolute DB count.
+    ///
+    /// Uses delta encoding so the `UpDownCounter` always reflects the
+    /// correct absolute value without resetting to zero.
     pub fn update_active_keys_count(&self, absolute_count: i64) {
-        self.active_keys_count.record(absolute_count, &[]);
+        if let Ok(mut last) = self.active_keys_count_value.write() {
+            let delta = absolute_count - *last;
+            if delta != 0 {
+                self.active_keys_count.add(delta, &[]);
+                *last = absolute_count;
+            }
+        }
     }
 
     /// Set `kms.objects.total` to the current absolute object count.
     ///
-    /// Called once at server startup (seeding from the real DB count) and
-    /// every 30 s by the metrics cron task.
+    /// Uses delta encoding so the `UpDownCounter` always reflects the
+    /// correct absolute value without resetting to zero.
     pub fn update_objects_total(&self, absolute_count: i64) {
-        self.kms_objects_total.record(absolute_count, &[]);
+        if let Ok(mut last) = self.objects_total_value.write() {
+            let delta = absolute_count - *last;
+            if delta != 0 {
+                self.kms_objects_total.add(delta, &[]);
+                *last = absolute_count;
+            }
+        }
     }
 
     /// Record cache operation
@@ -454,8 +479,8 @@ impl OtelMetrics {
         self.hsm_operations_total.add(
             1,
             &[
-                KeyValue::new("hsm_model", hsm_model.to_owned()),
                 KeyValue::new("operation", operation.to_owned()),
+                KeyValue::new("hsm_model", hsm_model.to_owned()),
             ],
         );
     }
