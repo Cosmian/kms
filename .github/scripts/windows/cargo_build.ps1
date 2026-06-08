@@ -41,12 +41,21 @@ function BuildProject {
 
     # -------------------------------------------------------------------------
     # OpenSSL (static, from vcpkg)
-    # CI sets VCPKG_INSTALLATION_ROOT; local dev sets VCPKG_ROOT
+    # vcpkg manifest mode (vcpkg.json in repo root) installs packages under
+    #   vcpkg_installed\<triplet>\ (relative to the project, e.g. D:\a\kms\kms)
+    # vcpkg classic mode installs under
+    #   %VCPKG_INSTALLATION_ROOT%\packages\<port>_<triplet>\ (e.g. C:\vcpkg)
+    # Prefer manifest-mode path; fall back to classic-mode path.
     # -------------------------------------------------------------------------
-    $vcpkgRoot = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } `
-        elseif ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } `
-        else { throw "Neither VCPKG_INSTALLATION_ROOT nor VCPKG_ROOT is set" }
-    $env:OPENSSL_DIR = "$vcpkgRoot\packages\openssl_x64-windows-static"
+    $manifestDir = Join-Path (Get-Location) "vcpkg_installed\x64-windows-static"
+    if (Test-Path $manifestDir) {
+        $env:OPENSSL_DIR = $manifestDir
+    } else {
+        $vcpkgRoot = if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } `
+            elseif ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } `
+            else { throw "Neither VCPKG_INSTALLATION_ROOT nor VCPKG_ROOT is set" }
+        $env:OPENSSL_DIR = "$vcpkgRoot\packages\openssl_x64-windows-static"
+    }
     Write-Host "OPENSSL_DIR=$env:OPENSSL_DIR"
     if (-not (Test-Path $env:OPENSSL_DIR)) {
         throw "OPENSSL_DIR not found: $env:OPENSSL_DIR"

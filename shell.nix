@@ -3,7 +3,9 @@
     let
       rustOverlay = import (
         builtins.fetchTarball {
-          url = "https://github.com/oxalica/rust-overlay/archive/refs/heads/stable.tar.gz";
+          # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
+          url = "https://package.cosmian.com/nixpkgs/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
+          sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
         }
       );
       pinned =

@@ -8,7 +8,14 @@ function TestProject
     # Add target
     rustup target add x86_64-pc-windows-msvc
 
-    $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
+    # vcpkg manifest mode installs to vcpkg_installed\<triplet> (project-relative);
+    # classic mode installs to %VCPKG_INSTALLATION_ROOT%\packages\<port>_<triplet>.
+    $manifestDir = Join-Path (Get-Location) "vcpkg_installed\x64-windows-static"
+    if (Test-Path $manifestDir) {
+        $env:OPENSSL_DIR = $manifestDir
+    } else {
+        $env:OPENSSL_DIR = "$env:VCPKG_INSTALLATION_ROOT\packages\openssl_x64-windows-static"
+    }
 
     # Tests are always run in debug mode (no --release flag)
 
