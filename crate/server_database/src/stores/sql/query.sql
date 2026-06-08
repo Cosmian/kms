@@ -79,31 +79,15 @@ INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $
         WHERE objects.owner=$5;
 
 -- name: count-non-destroyed-objects
--- Privileged metrics-only query: counts ALL objects regardless of owner.
--- Called exclusively by the OTEL metrics layer for kms.objects.total.
--- State strings correspond to Rust enum variant names via strum::Display:
---   Destroyed           = the object was explicitly destroyed
---   Destroyed_Compromised = the object was destroyed after being compromised
--- All other states (PreActive, Active, Deactivated, Compromised) are live objects.
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
 
 -- name: count-non-destroyed-keys-sqlite
--- Privileged metrics-only query: counts non-destroyed key objects (SQLite).
--- ObjectType is stored as a JSON field inside the 'attributes' column
--- (serialised via serde with rename_all = "PascalCase").
--- Key object types: SymmetricKey, PrivateKey, PublicKey, SplitKey.
--- All states except Destroyed / Destroyed_Compromised are counted.
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
 AND json_extract(attributes, '$.ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- name: count-non-destroyed-keys-pg
--- Privileged metrics-only query: counts non-destroyed key objects (PostgreSQL).
--- ObjectType is stored as a JSONB field inside the 'attributes' column
--- (serialised via serde with rename_all = "PascalCase").
--- Key object types: SymmetricKey, PrivateKey, PublicKey, SplitKey.
--- All states except Destroyed / Destroyed_Compromised are counted.
 SELECT COUNT(*) FROM objects
 WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
 AND attributes->>'ObjectType' IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
