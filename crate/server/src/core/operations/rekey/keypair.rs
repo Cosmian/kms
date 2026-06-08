@@ -253,10 +253,45 @@ impl RekeyOperation for KeypairRekey {
         let new_sk_uid = compute_rotation_uid(&sk_candidate.uid);
         let new_pk_uid = compute_rotation_uid(&pk_candidate.uid);
 
+        // Propagate the CryptographicUsageMask from the old keys so that
+        // FIPS-mode key-pair generators receive the required mask value.
+        let sk_mask = sk_candidate
+            .owm
+            .attributes()
+            .cryptographic_usage_mask
+            .or_else(|| {
+                sk_candidate
+                    .owm
+                    .object()
+                    .attributes()
+                    .ok()
+                    .and_then(|a| a.cryptographic_usage_mask)
+            });
+        let pk_mask = pk_candidate
+            .owm
+            .attributes()
+            .cryptographic_usage_mask
+            .or_else(|| {
+                pk_candidate
+                    .owm
+                    .object()
+                    .attributes()
+                    .ok()
+                    .and_then(|a| a.cryptographic_usage_mask)
+            });
+        let private_key_attributes = sk_mask.map(|m| Attributes {
+            cryptographic_usage_mask: Some(m),
+            ..Attributes::default()
+        });
+        let public_key_attributes = pk_mask.map(|m| Attributes {
+            cryptographic_usage_mask: Some(m),
+            ..Attributes::default()
+        });
+
         let create_kp_request = CreateKeyPair {
             common_attributes: Some(common_attrs),
-            private_key_attributes: None,
-            public_key_attributes: None,
+            private_key_attributes,
+            public_key_attributes,
             common_protection_storage_masks: None,
             private_protection_storage_masks: None,
             public_protection_storage_masks: None,

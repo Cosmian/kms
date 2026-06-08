@@ -340,6 +340,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Create wrapping key + wrapped key, Revoke wrapped, ReKey → succeeds (KMIP §6.1.46) | 10 |
 | Negative / ReKey | `negative/rekey_preactive_fails` | Create (no ActivationDate → PreActive), ReKey → fails (not Active or Deactivated) | 4 |
 | Negative / ReKeyKeyPair | `negative/rekey_keypair_preactive_fails` | CreateKeyPair (no ActivationDate → PreActive), ReKeyKeyPair → fails (not Active or Deactivated) | 5 |
+| Negative / ReKeyKeyPair | `negative/rekey_keypair_non_latest` | CreateKeyPair (EC P-256), SetAttribute(RotateName), ReKeyKeyPair (gen-0→gen-1), ReKeyKeyPair(gen-0 again) → "not the latest" error | 8 |
 | **non-FIPS CryptographicParameters** | | | |
 | non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_explicit_nonce` | Create (AES-128), Encrypt (client 12-B nonce), Decrypt | 3 |
 | non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_explicit_nonce` | Create (AES-256), Encrypt (client 12-B nonce), Decrypt | 3 |

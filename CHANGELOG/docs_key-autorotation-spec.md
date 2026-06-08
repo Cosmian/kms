@@ -29,6 +29,9 @@
 
 ## Bug Fixes
 
+- Fix `ReKeyKeyPair` not propagating `CryptographicUsageMask` from old key pair to the new `CreateKeyPair` request — causes FIPS-mode rejection (`got None but expected among 0x00103A01`) when rotating EC or RSA key pairs in a keyset
+- Add non-regression test vector `negative/rekey_keypair_non_latest`: CreateKeyPair (EC P-256, FIPS masks), SetAttribute(RotateName), ReKeyKeyPair (gen-0→gen-1 succeeds), ReKeyKeyPair (gen-0 again) → "not the latest" error
+
 - Fix KMIP lifecycle semantics: restore correct `setup_object_lifecycle` behavior — past `activation_date` → Active, `None` → PreActive ([#968](https://github.com/Cosmian/kms/pull/968))
 - Add explicit `activation_date: Some(now)` to all request builders and test helpers requiring immediate Active state ([#968](https://github.com/Cosmian/kms/pull/968))
 - Fix KMIP spec reference: `§4.7` → `§4.8` in `rekey/common.rs` ([#968](https://github.com/Cosmian/kms/pull/968))
