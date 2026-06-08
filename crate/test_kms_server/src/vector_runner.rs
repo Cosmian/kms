@@ -3441,6 +3441,12 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/negative/rekey_non_latest_hsm").await
     }
 
+    #[tokio::test]
+    async fn test_neg_rekey_keypair_non_latest() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_keypair_non_latest").await
+    }
+
     // ── KMIP operations: ReKeyKeyPair (non-FIPS only) ────────────────────
     // These vectors do not supply PrivateKeyAttributes/PublicKeyAttributes with
     // FIPS-compliant CryptographicUsageMask values, and some use PQC algorithms
