@@ -1149,6 +1149,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     // Apply configured worker count; None → actix default (one thread per logical CPU).
     let server = if let Some(n) = server_workers {
+        if n == 0 {
+            return Err(KmsError::ServerError(
+                "server_workers must be greater than 0".to_owned(),
+            ));
+        }
         info!("KMS HTTP server configured with {n} worker thread(s)");
         server.workers(n)
     } else {
