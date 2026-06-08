@@ -16,9 +16,9 @@
 - Added `[profile.bench]` to `Cargo.toml` with `strip = "none"`, `debug = 1`, `lto = "thin"` so
   `cargo flamegraph` produces readable flamegraphs with resolved function names across all crates.
 
-  the `http_throughput` Criterion bench across all worker counts and generates per-worker
-  flamegraph SVGs via `cargo-flamegraph` / Linux `perf`, then writes an updated
-  `cpu_scaling.md` documentation page.
+- Added `.github/scripts/benchmarks/bench_run_flamegraph.sh`: runs the `http_throughput`
+  Criterion bench across all worker counts and generates per-worker flamegraph SVGs via
+  `cargo-flamegraph` / Linux `perf`, then writes an updated `cpu_scaling.md` documentation page.
 
 ### Performance
 - `[profile.bench]`: override `opt-level` from `"z"` (size) to `3` (speed) — release profile
