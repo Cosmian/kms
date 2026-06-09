@@ -731,6 +731,20 @@ fn backend_available(backend: &str) -> bool {
 
 /// Get or initialize a singleton test server for the given backend.
 async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContext, KmsClientError> {
+    // When `KMS_TEST_DB` names the same backend as the requested vector backend,
+    // reuse the shared default server (`ONCE`) rather than starting a second
+    // server against the same database.  Two independent servers each configured
+    // with `clear_database = true` pointing at the same DB would race: whichever
+    // initialises second wipes out objects that the other has already written,
+    // causing non-deterministic "object not found" failures in the certify tests.
+    let effective_kms_db = std::env::var("KMS_TEST_DB").ok().map(|v| match v.as_str() {
+        "redis" => "redis-findex".to_owned(),
+        other => other.to_owned(),
+    });
+    if effective_kms_db.as_deref() == Some(backend) {
+        return Ok(crate::start_default_test_kms_server().await);
+    }
+
     let root = repo_root()?;
     let (cell, toml, env_var) = match backend {
         "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml", "KMS_POSTGRES_URL"),
