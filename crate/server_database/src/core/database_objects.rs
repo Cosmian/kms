@@ -137,7 +137,7 @@ impl Database {
     ///
     /// Every new operation added to the `Database` facade must be wrapped with
     /// this method to be accounted for by the metrics recorder.
-    async fn record<T>(
+    pub(crate) async fn record<T>(
         &self,
         operation: &str,
         fut: impl Future<Output = DbResult<T>>,
@@ -453,7 +453,10 @@ impl Database {
         }; // read guard dropped before any async I/O
         let mut total: u64 = 0;
         for store in &stores {
-            let n = store.count_all_non_destroyed().await.unwrap_or(0); // A single backend failure must not block the aggregate
+            let n = store.count_all_non_destroyed().await.unwrap_or_else(|e| {
+                cosmian_logger::warn!("[database] count_all_non_destroyed failed: {e}");
+                0
+            });
             total = total.saturating_add(n);
         }
         Ok(total)
@@ -472,7 +475,10 @@ impl Database {
         }; // read guard dropped before any async I/O
         let mut total: u64 = 0;
         for store in &stores {
-            let n = store.count_non_destroyed_keys().await.unwrap_or(0); // A single backend failure must not block the aggregate
+            let n = store.count_non_destroyed_keys().await.unwrap_or_else(|e| {
+                cosmian_logger::warn!("[database] count_non_destroyed_keys failed: {e}");
+                0
+            });
             total = total.saturating_add(n);
         }
         Ok(total)

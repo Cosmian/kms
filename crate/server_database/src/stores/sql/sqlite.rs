@@ -1065,8 +1065,16 @@ mod tests {
     /// End-to-end: insert rows directly via SQL and verify both count methods
     /// return the expected value. Uses raw SQL to avoid pulling in the full KMIP
     /// object-construction machinery.
+    ///
+    /// `assert_eq!` is the appropriate tool for test assertions; `Result` return
+    /// is required to propagate setup errors via `?`. The combination is intentional.
     #[tokio::test]
-    async fn test_count_non_destroyed_returns_correct_value() -> Result<(), Box<dyn std::error::Error>> {
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "assertions are the test mechanism; Result return propagates async setup errors via ?"
+    )]
+    async fn test_count_non_destroyed_returns_correct_value()
+    -> Result<(), Box<dyn std::error::Error>> {
         let dir = TempDir::new()?;
         let db_path = dir.path().join("test.db");
         let pool = SqlitePool::instantiate(&db_path, true, None).await?;

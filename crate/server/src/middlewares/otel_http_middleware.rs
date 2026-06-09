@@ -100,7 +100,7 @@ where
 
                 let duration = start.elapsed().as_secs_f64();
                 let status = result.as_ref().map_or_else(
-                    |_| "500".to_owned(),
+                    |err| err.as_response_error().status_code().as_str().to_owned(),
                     |resp| resp.status().as_str().to_owned(),
                 );
 
