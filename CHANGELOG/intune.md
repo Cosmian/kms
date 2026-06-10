@@ -1,3 +1,65 @@
+## Bug Fixes
+
+### CNG KSP — `ckms cng register` is now idempotent
+
+`BCryptRegisterProvider` returns `STATUS_OBJECT_NAME_COLLISION` (`0xC0000035`) when
+the provider is already registered. The register command now treats this NTSTATUS as
+success instead of an error, so running `ckms cng register` a second time (or after
+an NSIS installer has already registered the DLL) no longer aborts with:
+
+```
+ERROR: BCryptRegisterProvider failed with NTSTATUS 0xc0000035
+```
+
+**Files changed**: `crate/clients/cng/src/registry.rs`, `crate/clients/clap/src/actions/cng.rs`
+
+### CNG KSP — BCrypt blob magic constants corrected (Intune connector incompatibility)
+
+Six `BCRYPT_*_MAGIC` constants in `crate/clients/cng/src/blob.rs` had their bytes scrambled,
+causing the exported RSA public-key blob to begin with `"RAS1"` instead of the required `"RSA1"`
+(`BCRYPT_RSAPUBLIC_BLOB`). The Intune Java connector rejects any blob whose first four bytes are
+not exactly `RSA1`, producing:
+
+```
+java.lang.IllegalArgumentException: Key is not a RSA key of BCrypt format
+```
+
+Similarly, the ECDSA P-256/P-384/P-521 constants mapped to `"ES61/63/65"` instead of `"ECS1/3/5"`.
+
+**Root cause**: hex literals were written as big-endian representations of the mnemonic string
+instead of as the little-endian `u32` value that `to_le_bytes()` emits.
+
+| Name | Wrong | Correct | Bytes (LE) |
+|------|-------|---------|------------|
+| `BCRYPT_RSAPUBLIC_MAGIC` | `0x3153_4152` | `0x3141_5352` | `RSA1` |
+| `BCRYPT_RSAPRIVATE_MAGIC` | `0x3253_4152` | `0x3241_5352` | `RSA2` |
+| `BCRYPT_RSAFULLPRIVATE_MAGIC` | `0x3352_5341` | `0x3341_5352` | `RSA3` |
+| `BCRYPT_ECDSA_PUBLIC_P256_MAGIC` | `0x3136_5345` | `0x3153_4345` | `ECS1` |
+| `BCRYPT_ECDSA_PUBLIC_P384_MAGIC` | `0x3336_5345` | `0x3353_4345` | `ECS3` |
+| `BCRYPT_ECDSA_PUBLIC_P521_MAGIC` | `0x3536_5345` | `0x3553_4345` | `ECS5` |
+
+Also fixed the same wrong local constants in `crate/clients/clap/src/actions/cng_verify.rs`
+and hardened the PS1 test to assert the exported blob starts with `"RSA1"` and to test
+`Export-IntunePublicKey -FileFormat PEM`.
+
+### CI — `test_cng_ksp.ps1` runs under Windows PowerShell 5.1
+
+The `IntunePfxImport` PowerShell module uses `System.Security.AccessControl.CryptoKeySecurity`
+from `mscorlib`, a .NET Framework 4.x type absent in .NET 6+ (PowerShell 7). When `test_cng_ksp.ps1`
+was invoked via `pwsh.exe` (PowerShell 7), `Add-IntuneKspKey` failed with:
+```
+Could not load type 'System.Security.AccessControl.CryptoKeySecurity' from assembly 'mscorlib'
+```
+Added a self-re-launch block at the top of the script: when PowerShell 6+ is detected the script
+transparently re-invokes itself under `powershell.exe` (Windows PowerShell 5.1 / .NET Framework).
+
+**Files changed**: `.github/scripts/windows/test_cng_ksp.ps1`
+
+### CI — `cargo fmt` format fixes
+
+Corrected `rustfmt` formatting in `MoveFileExW` extern declarations
+(`crate/clients/cng/src/registry.rs`, `crate/clients/clap/src/actions/cng.rs`).
+
 ## Features
 
 ### CNG KSP

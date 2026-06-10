@@ -26,6 +26,7 @@ jobs:
           - google_cse
           - redis
           - pykmip
+          - edb_tde
           - wasm
           - aws_xks
           - azure_ekm
@@ -41,6 +42,9 @@ jobs:
             features: fips
           # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
           - type: pykmip
+            features: fips
+          # edb_tde is exclusively for non-fips (uses PyKMIP which requires ssl.wrap_socket)
+          - type: edb_tde
             features: fips
           # aws_xks relies on curl SigV4 + non-FIPS build flags
           - type: aws_xks
@@ -115,6 +119,17 @@ jobs:
         run: |
           docker compose up -d ${{ matrix.docker }}
 
+      - name: Login to EDB Docker registry and pre-build image
+        if: matrix.type == 'edb_tde' && env.EDB_SUBSCRIPTION_TOKEN != ''
+        env:
+          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
+        run: |
+          # Authenticate and pre-pull the EDB image so the nix wrapper's
+          # docker compose up edb-tde only needs to create and start the container.
+          echo "$EDB_SUBSCRIPTION_TOKEN" | \
+            docker login --username k8s --password-stdin docker.enterprisedb.com
+          docker compose pull edb-tde
+
       - name: Test
         env:
           POSTGRES_USER: kms
@@ -150,9 +165,23 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+
+          # EDB Postgres Advanced Server TDE variables.
+          # When EDB_SUBSCRIPTION_TOKEN is set the test suite starts the real
+          # EDB Postgres 17 container (edb-tde service in docker-compose.yml)
+          # and runs a live end-to-end TDE scenario.  Without it the Docker
+          # test is skipped and only the PyKMIP/Thales KMIP simulations run.
+          # Register for a free token: https://www.enterprisedb.com/accounts/register
+          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
         run: |
           set -ex
           bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}
+
+      - name: Stop EDB container
+        if: always() && matrix.type == 'edb_tde'
+        run: |
+          docker compose stop edb-tde 2>/dev/null || true
+          docker compose rm -f edb-tde 2>/dev/null || true
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}

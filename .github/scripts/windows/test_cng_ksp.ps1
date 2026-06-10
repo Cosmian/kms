@@ -29,6 +29,15 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+# The IntunePfxImport module requires .NET Framework (mscorlib) and must run
+# under Windows PowerShell 5.1 (powershell.exe), not PowerShell 7 (pwsh.exe).
+# When invoked from pwsh, re-launch transparently under Windows PowerShell 5.1.
+if ($PSVersionTable.PSVersion.Major -ge 6) {
+    Write-Host "PowerShell $($PSVersionTable.PSVersion) detected; re-invoking under Windows PowerShell 5.1 for .NET Framework compatibility..."
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath
+    exit $LASTEXITCODE
+}
+
 # -- Configuration ------------------------------------------------------------
 
 $KMS_PORT = 9998
@@ -284,110 +293,153 @@ server_url = "$KMS_URL"
     if ($IsAdmin) {
         Write-Step "Testing Intune PFX Import workflow (Add-IntuneKspKey + Export-IntunePublicKey)"
 
-        # Locate IntunePfxImport module: check INTUNE_PFX_MODULE_PATH env var,
-        # then well-known CI path, then skip if unavailable.
+        # Locate IntunePfxImport module.
+        # Override with INTUNE_PFX_MODULE_PATH env var, otherwise use the copy
+        # committed to test_data/intune/ (hard dependency — test FAILS if absent).
         $intuneModulePath = $null
         if ($env:INTUNE_PFX_MODULE_PATH -and (Test-Path $env:INTUNE_PFX_MODULE_PATH)) {
             $intuneModulePath = $env:INTUNE_PFX_MODULE_PATH
-        } elseif (Test-Path "$PSScriptRoot\..\..\..\test_data\intune\IntunePfxImport.psd1") {
-            $intuneModulePath = Resolve-Path "$PSScriptRoot\..\..\..\test_data\intune\IntunePfxImport.psd1"
+        } else {
+            $defaultPath = (Resolve-Path "$PSScriptRoot\..\..\..\test_data\intune\IntunePfxImport.psd1" -ErrorAction SilentlyContinue)
+            if ($defaultPath) {
+                $intuneModulePath = $defaultPath.Path
+            }
         }
 
-        if ($intuneModulePath) {
-            Import-Module $intuneModulePath -Force
-            Write-Ok "IntunePfxImport module loaded from $intuneModulePath"
+        if (-not $intuneModulePath) {
+            Write-Fail "IntunePfxImport module not found at test_data\intune\IntunePfxImport.psd1"
+            Write-Fail "The module must be committed to the test_data submodule."
+            exit 1
+        }
 
-            # Create an encryption key pair via Add-IntuneKspKey.
-            # This calls NCryptCreatePersistedKey → NCryptSetProperty → NCryptFinalizeKey
-            # on the Cosmian KSP. The RSA key pair is created in the KMS.
-            $intuneKeyName = "intune-pfx-test-key"
-            try {
-                Add-IntuneKspKey `
-                    -ProviderName "Cosmian KMS Key Storage Provider" `
-                    -KeyName $intuneKeyName `
-                    -MakeExportable
-                Write-Ok "Add-IntuneKspKey created key '$intuneKeyName' in Cosmian KMS"
-            } catch {
-                Write-Fail "Add-IntuneKspKey failed: $($_.Exception.Message)"
-                exit 1
-            }
+        Import-Module $intuneModulePath -Force
+        Write-Ok "IntunePfxImport module loaded from $intuneModulePath"
 
-            # Verify the key exists via ckms list-keys (output shows UIDs, not names)
-            $listOutput = & $ckmsExe cng list-keys 2>&1 | Out-String
-            if ($listOutput -match "No CNG KSP keys found") {
-                Write-Fail "Key '$intuneKeyName' NOT found in ckms cng list-keys (no keys listed)"
-                exit 1
-            } elseif ($listOutput -match "CNG KSP keys in the KMS:") {
-                Write-Ok "Key '$intuneKeyName' visible in ckms cng list-keys"
-            } else {
-                Write-Fail "ckms cng list-keys returned unexpected output: $listOutput"
-                exit 1
-            }
-
-            # Export the public key via Export-IntunePublicKey.
-            # This calls NCryptOpenKey → NCryptExportKey (BCRYPT_RSAPUBLIC_BLOB)
-            # and writes the CNG blob to a file.
-            $exportPath = Join-Path $env:TEMP "intune-pfx-test-key.pfx"
-            if (Test-Path $exportPath) { Remove-Item -Force $exportPath }
-            try {
-                Export-IntunePublicKey `
-                    -ProviderName "Cosmian KMS Key Storage Provider" `
-                    -KeyName $intuneKeyName `
-                    -FilePath $exportPath
-            } catch {
-                Write-Fail "Export-IntunePublicKey failed: $($_.Exception.Message)"
-                exit 1
-            }
-            if (Test-Path $exportPath) {
-                $fileSize = (Get-Item $exportPath).Length
-                if ($fileSize -lt 100) {
-                    Write-Fail "Export-IntunePublicKey file too small ($fileSize bytes)"
-                    exit 1
-                }
-                Write-Ok "Export-IntunePublicKey wrote $fileSize bytes to $exportPath"
-            } else {
-                Write-Fail "Export-IntunePublicKey did not create output file"
-                exit 1
-            }
-
-            # Clean up the exported public key file
-            Remove-Item -Force $exportPath -ErrorAction SilentlyContinue
-
-            # Export the private key via Export-IntunePrivateKey.
-            # This calls NCryptOpenKey → NCryptExportKey with PKCS8_PRIVATEKEY blob type.
-            $privExportPath = Join-Path $env:TEMP "intune-pfx-test-key-priv.pfx"
-            if (Test-Path $privExportPath) { Remove-Item -Force $privExportPath }
-            Export-IntunePrivateKey `
+        # Use a unique key name per run to avoid collisions from leftover KMS state.
+        $intuneKeyName = "intune-pfx-test-$(Get-Date -Format 'yyyyMMddHHmmss')"
+        try {
+            Add-IntuneKspKey `
                 -ProviderName "Cosmian KMS Key Storage Provider" `
                 -KeyName $intuneKeyName `
-                -FilePath $privExportPath
-            if (-not (Test-Path $privExportPath)) {
-                throw "Export-IntunePrivateKey did not produce output file"
-            }
-            $privFileSize = (Get-Item $privExportPath).Length
-            if ($privFileSize -eq 0) {
-                throw "Export-IntunePrivateKey produced empty file"
-            }
-            Write-Ok "Export-IntunePrivateKey wrote $privFileSize bytes"
-
-            # Import a private key via Import-IntunePrivateKey.
-            # This calls NCryptImportKey with RSAFULLPRIVATEBLOB blob type.
-            $importKeyName = "intune-pfx-import-test-key"
-            Import-IntunePrivateKey `
-                -ProviderName "Cosmian KMS Key Storage Provider" `
-                -KeyName $importKeyName `
-                -FilePath $privExportPath `
                 -MakeExportable
-            Write-Ok "Import-IntunePrivateKey succeeded"
-
-            # Clean up
-            Remove-Item -Force $privExportPath -ErrorAction SilentlyContinue
-
-            Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublic + ExportPrivate + Import)"
-        } else {
-            Write-Host "  [SKIP] IntunePfxImport module not found (set INTUNE_PFX_MODULE_PATH)" -ForegroundColor Yellow
-            Write-Host "         To enable: download IntunePfxImportUtilities and set the env var" -ForegroundColor Yellow
+            Write-Ok "Add-IntuneKspKey created key '$intuneKeyName' in Cosmian KMS"
+        } catch {
+            Write-Fail "Add-IntuneKspKey failed: $($_.Exception.Message)"
+            exit 1
         }
+
+        # Verify the key exists via ckms list-keys (output shows UIDs, not names)
+        $listOutput = & $ckmsExe cng list-keys 2>&1 | Out-String
+        if ($listOutput -match "No CNG KSP keys found") {
+            Write-Fail "Key '$intuneKeyName' NOT found in ckms cng list-keys (no keys listed)"
+            exit 1
+        } elseif ($listOutput -match "CNG KSP keys in the KMS:") {
+            Write-Ok "Key '$intuneKeyName' visible in ckms cng list-keys"
+        } else {
+            Write-Fail "ckms cng list-keys returned unexpected output: $listOutput"
+            exit 1
+        }
+
+        # Export the public key via Export-IntunePublicKey.
+        # This calls NCryptOpenKey → NCryptExportKey (BCRYPT_RSAPUBLIC_BLOB)
+        # and writes the CNG blob to a file.
+        $exportPath = Join-Path $env:TEMP "intune-pfx-test-key.pfx"
+        if (Test-Path $exportPath) { Remove-Item -Force $exportPath }
+        try {
+            Export-IntunePublicKey `
+                -ProviderName "Cosmian KMS Key Storage Provider" `
+                -KeyName $intuneKeyName `
+                -FilePath $exportPath
+        } catch {
+            Write-Fail "Export-IntunePublicKey failed: $($_.Exception.Message)"
+            exit 1
+        }
+        if (Test-Path $exportPath) {
+            $fileSize = (Get-Item $exportPath).Length
+            if ($fileSize -lt 100) {
+                Write-Fail "Export-IntunePublicKey file too small ($fileSize bytes)"
+                exit 1
+            }
+            Write-Ok "Export-IntunePublicKey wrote $fileSize bytes to $exportPath"
+
+            # Validate the BCrypt blob magic: first 4 bytes must be "RSA1"
+            # (0x52 0x53 0x41 0x31 in little-endian).  A wrong magic such as
+            # "RAS1" causes the Intune connector to reject the key with
+            # "Key is not a RSA key of BCrypt format".
+            $blobBytes = [System.IO.File]::ReadAllBytes($exportPath)
+            $magic = [System.Text.Encoding]::ASCII.GetString($blobBytes, 0, 4)
+            if ($magic -ne "RSA1") {
+                Write-Fail "BCrypt blob has wrong magic '$magic' (expected 'RSA1'). Check BCRYPT_RSAPUBLIC_MAGIC constant."
+                exit 1
+            }
+            Write-Ok "BCrypt blob magic is 'RSA1' (correct)"
+        } else {
+            Write-Fail "Export-IntunePublicKey did not create output file"
+            exit 1
+        }
+
+        # Export the public key in PEM format.
+        # This exercises the -FileFormat PEM path of NCryptExportKey, which
+        # requires a valid "RSA1" magic to succeed.
+        $pemExportPath = Join-Path $env:TEMP "intune-pfx-test-key.pempub"
+        if (Test-Path $pemExportPath) { Remove-Item -Force $pemExportPath }
+        try {
+            Export-IntunePublicKey `
+                -ProviderName "Cosmian KMS Key Storage Provider" `
+                -KeyName $intuneKeyName `
+                -FilePath $pemExportPath `
+                -FileFormat PEM
+            if (Test-Path $pemExportPath) {
+                $pemContent = Get-Content $pemExportPath -Raw
+                if ($pemContent -notmatch "-----BEGIN PUBLIC KEY-----") {
+                    Write-Fail "PEM export does not contain expected header"
+                    exit 1
+                }
+                Write-Ok "Export-IntunePublicKey PEM export succeeded"
+            } else {
+                Write-Fail "Export-IntunePublicKey -FileFormat PEM did not create output file"
+                exit 1
+            }
+        } catch {
+            Write-Fail "Export-IntunePublicKey -FileFormat PEM failed: $($_.Exception.Message)"
+            exit 1
+        }
+
+        # Clean up exported public key files
+        Remove-Item -Force $exportPath -ErrorAction SilentlyContinue
+        Remove-Item -Force $pemExportPath -ErrorAction SilentlyContinue
+
+        # Export the private key via Export-IntunePrivateKey.
+        # This calls NCryptOpenKey → NCryptExportKey with PKCS8_PRIVATEKEY blob type.
+        $privExportPath = Join-Path $env:TEMP "intune-pfx-test-key-priv.pfx"
+        if (Test-Path $privExportPath) { Remove-Item -Force $privExportPath }
+        Export-IntunePrivateKey `
+            -ProviderName "Cosmian KMS Key Storage Provider" `
+            -KeyName $intuneKeyName `
+            -FilePath $privExportPath
+        if (-not (Test-Path $privExportPath)) {
+            throw "Export-IntunePrivateKey did not produce output file"
+        }
+        $privFileSize = (Get-Item $privExportPath).Length
+        if ($privFileSize -eq 0) {
+            throw "Export-IntunePrivateKey produced empty file"
+        }
+        Write-Ok "Export-IntunePrivateKey wrote $privFileSize bytes"
+
+        # Import a private key via Import-IntunePrivateKey.
+        # This calls NCryptImportKey with RSAFULLPRIVATEBLOB blob type.
+        $importKeyName = "intune-pfx-import-$($intuneKeyName.Substring($intuneKeyName.LastIndexOf('-') + 1))"
+        Import-IntunePrivateKey `
+            -ProviderName "Cosmian KMS Key Storage Provider" `
+            -KeyName $importKeyName `
+            -FilePath $privExportPath `
+            -MakeExportable
+        Write-Ok "Import-IntunePrivateKey succeeded"
+
+        # Clean up
+        Remove-Item -Force $privExportPath -ErrorAction SilentlyContinue
+
+        Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublicBcrypt + ExportPublicPEM + ExportPrivate + Import)"
     } else {
         Write-Step "Skipping Intune PFX Import test (not Administrator)"
         Write-Host "  [SKIP] Add-IntuneKspKey requires a registered KSP (Administrator)" -ForegroundColor Yellow

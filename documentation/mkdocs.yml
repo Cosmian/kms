@@ -107,6 +107,7 @@ nav:
           - PostgreSQL Percona Database: integrations/databases/percona.md
           - Microsoft SQL Server External (EKM): integrations/databases/ms_sql_server.md
           - Oracle Database TDE: integrations/databases/oracle_tde.md
+          - EDB Postgres Advanced Server TDE: integrations/databases/edb_postgres_tde.md
       - Disk encryption:
           - Veracrypt: integrations/disk_encryption/veracrypt.md
           - LUKS: integrations/disk_encryption/luks.md

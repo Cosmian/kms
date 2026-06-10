@@ -121,3 +121,60 @@ services:
       - 4317:4317 # OTLP gRPC receiver (host)
       - 4318:4318 # OTLP HTTP receiver (host)
       - 8889:8889 # Prometheus metrics endpoint (host)
+
+  # ── EDB Postgres Advanced Server 17 with Transparent Data Encryption ──────
+  #
+  # Requires:
+  #   - EDB subscription token (free): https://www.enterprisedb.com/accounts/register
+  #   - Login before use:
+  #       echo "$EDB_SUBSCRIPTION_TOKEN" | docker login --username k8s --password-stdin docker.enterprisedb.com
+  #   - Cosmian KMS running with KMIP port 15696
+  #   - EDB_MASTER_KEY_UID exported (UID of an Active AES-256 key in the KMS)
+  #
+  # Used automatically by:  bash .github/scripts/nix.sh --variant non-fips test edb_tde
+  # (when EDB_SUBSCRIPTION_TOKEN is set; the test script handles login and lifecycle)
+  edb-tde:
+    # Build locally to install PyKMIP (not shipped in the base image).
+    build:
+      context: .github/scripts/edb_tde
+      dockerfile: Dockerfile.edb
+    # Base image is x86_64-only.
+    platform: linux/amd64
+    ports:
+      - 5444:5444
+    environment:
+      PGPASSWORD: ${EDB_PGPASSWORD:-kms_test}
+
+      # Called by initdb --data-encryption to seal the cluster DEK.
+      # Wire format: [16-byte IV][ciphertext]  (AES-256-CBC + PKCS5)
+      PGDATAKEYWRAPCMD: >-
+        python3 /usr/edb/kmip/client/edb_tde_kmip_client.py encrypt
+        --pykmip-config-file=/kmip-certs/pykmip.conf
+        --key-uid=${EDB_MASTER_KEY_UID:-}
+        --variant=pykmip
+        --out-file=%p
+
+      # Called by pg_ctl start to unseal the DEK on every restart.
+      PGDATAKEYUNWRAPCMD: >-
+        python3 /usr/edb/kmip/client/edb_tde_kmip_client.py decrypt
+        --pykmip-config-file=/kmip-certs/pykmip.conf
+        --key-uid=${EDB_MASTER_KEY_UID:-}
+        --variant=pykmip
+        --in-file=%p
+
+    # Startup script: runs initdb with TDE (calls the real edb_tde_kmip_client.py
+    # to wrap the cluster DEK) then starts postgres in the foreground.
+    command: [/bin/bash, /startup/edb_startup.sh]
+
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/kmip-certs/client.key:ro
+      - ./.github/scripts/edb_tde/pykmip_docker.conf:/kmip-certs/pykmip.conf:ro
+      - ./.github/scripts/edb_tde/edb_startup.sh:/startup/edb_startup.sh:ro
+
+    extra_hosts:
+      # Resolves to the Docker host (host.docker.internal is natively available
+      # on macOS/Windows Docker Desktop; on Linux Docker the special value
+      # "host-gateway" maps to the host IP).
+      - host.docker.internal:host-gateway

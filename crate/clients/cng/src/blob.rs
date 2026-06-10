@@ -13,9 +13,15 @@ use crate::error::{KspError, KspResult};
 // ─── RSA ─────────────────────────────────────────────────────────────────────
 
 /// CNG magic numbers for RSA key blobs.
-pub const BCRYPT_RSAPUBLIC_MAGIC: u32 = 0x3153_4152; // "RSA1"
-pub const BCRYPT_RSAPRIVATE_MAGIC: u32 = 0x3253_4152; // "RSA2"
-pub const BCRYPT_RSAFULLPRIVATE_MAGIC: u32 = 0x3352_5341; // "RSA3" (little-endian "RSA3")
+///
+/// These are the raw `DWORD` values from `bcrypt.h`.  When written with
+/// `u32::to_le_bytes()` the four bytes read as their ASCII mnemonic:
+/// - `0x3141_5352` → `[0x52, 0x53, 0x41, 0x31]` = "RSA1"
+/// - `0x3241_5352` → `[0x52, 0x53, 0x41, 0x32]` = "RSA2"
+/// - `0x3341_5352` → `[0x52, 0x53, 0x41, 0x33]` = "RSA3"
+pub const BCRYPT_RSAPUBLIC_MAGIC: u32 = 0x3141_5352; // "RSA1"
+pub const BCRYPT_RSAPRIVATE_MAGIC: u32 = 0x3241_5352; // "RSA2"
+pub const BCRYPT_RSAFULLPRIVATE_MAGIC: u32 = 0x3341_5352; // "RSA3"
 
 /// Serialises an RSA public key (modulus + public exponent) into a
 /// `BCRYPT_RSAKEY_BLOB` as expected by Windows CNG `BCryptImportKeyPair`.
@@ -71,9 +77,19 @@ pub fn rsa_public_blob_from_spki_der(spki_der: &[u8]) -> KspResult<Vec<u8>> {
 // ─── EC ──────────────────────────────────────────────────────────────────────
 
 /// CNG magic numbers for EC key blobs.
-pub const BCRYPT_ECDSA_PUBLIC_P256_MAGIC: u32 = 0x3136_5345; // "ES61"
-pub const BCRYPT_ECDSA_PUBLIC_P384_MAGIC: u32 = 0x3336_5345; // "ES63"
-pub const BCRYPT_ECDSA_PUBLIC_P521_MAGIC: u32 = 0x3536_5345; // "ES65"
+///
+/// ECDSA public blob mnemonics (bytes in little-endian order):
+/// - `0x3153_4345` → `[0x45, 0x43, 0x53, 0x31]` = "ECS1"
+/// - `0x3353_4345` → `[0x45, 0x43, 0x53, 0x33]` = "ECS3"
+/// - `0x3553_4345` → `[0x45, 0x43, 0x53, 0x35]` = "ECS5"
+///
+/// ECDH public blob mnemonics:
+/// - `0x314B_4345` → `[0x45, 0x43, 0x4B, 0x31]` = "ECK1"
+/// - `0x334B_4345` → `[0x45, 0x43, 0x4B, 0x33]` = "ECK3"
+/// - `0x354B_4345` → `[0x45, 0x43, 0x4B, 0x35]` = "ECK5"
+pub const BCRYPT_ECDSA_PUBLIC_P256_MAGIC: u32 = 0x3153_4345; // "ECS1"
+pub const BCRYPT_ECDSA_PUBLIC_P384_MAGIC: u32 = 0x3353_4345; // "ECS3"
+pub const BCRYPT_ECDSA_PUBLIC_P521_MAGIC: u32 = 0x3553_4345; // "ECS5"
 pub const BCRYPT_ECDH_PUBLIC_P256_MAGIC: u32 = 0x314B_4345; // "ECK1"
 pub const BCRYPT_ECDH_PUBLIC_P384_MAGIC: u32 = 0x334B_4345; // "ECK3"
 pub const BCRYPT_ECDH_PUBLIC_P521_MAGIC: u32 = 0x354B_4345; // "ECK5"
@@ -546,6 +562,60 @@ fn encode_pkcs8_rsa(pkcs1_der: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    /// Verify that RSA magic constants encode as their ASCII mnemonics.
+    /// These byte-level assertions catch any future copy-paste error in the
+    /// constant definitions — checking against the constant itself would miss
+    /// a wrong value.
+    #[test]
+    fn rsa_magic_bytes() {
+        // "RSA1" = [0x52, 0x53, 0x41, 0x31]
+        assert_eq!(
+            BCRYPT_RSAPUBLIC_MAGIC.to_le_bytes(),
+            [0x52, 0x53, 0x41, 0x31]
+        );
+        // "RSA2" = [0x52, 0x53, 0x41, 0x32]
+        assert_eq!(
+            BCRYPT_RSAPRIVATE_MAGIC.to_le_bytes(),
+            [0x52, 0x53, 0x41, 0x32]
+        );
+        // "RSA3" = [0x52, 0x53, 0x41, 0x33]
+        assert_eq!(
+            BCRYPT_RSAFULLPRIVATE_MAGIC.to_le_bytes(),
+            [0x52, 0x53, 0x41, 0x33]
+        );
+    }
+
+    /// Verify that EC magic constants encode as their ASCII mnemonics.
+    #[test]
+    fn ec_magic_bytes() {
+        // ECDSA: "ECS1/3/5"
+        assert_eq!(
+            BCRYPT_ECDSA_PUBLIC_P256_MAGIC.to_le_bytes(),
+            [0x45, 0x43, 0x53, 0x31]
+        );
+        assert_eq!(
+            BCRYPT_ECDSA_PUBLIC_P384_MAGIC.to_le_bytes(),
+            [0x45, 0x43, 0x53, 0x33]
+        );
+        assert_eq!(
+            BCRYPT_ECDSA_PUBLIC_P521_MAGIC.to_le_bytes(),
+            [0x45, 0x43, 0x53, 0x35]
+        );
+        // ECDH: "ECK1/3/5"
+        assert_eq!(
+            BCRYPT_ECDH_PUBLIC_P256_MAGIC.to_le_bytes(),
+            [0x45, 0x43, 0x4B, 0x31]
+        );
+        assert_eq!(
+            BCRYPT_ECDH_PUBLIC_P384_MAGIC.to_le_bytes(),
+            [0x45, 0x43, 0x4B, 0x33]
+        );
+        assert_eq!(
+            BCRYPT_ECDH_PUBLIC_P521_MAGIC.to_le_bytes(),
+            [0x45, 0x43, 0x4B, 0x35]
+        );
+    }
+
     #[test]
     fn rsa_public_blob_round_trip() {
         // Minimal sanity: check blob header fields are correct.
@@ -553,7 +623,8 @@ mod tests {
         let modulus = vec![0xAB_u8; 256]; // 2048-bit key
         let blob = rsa_public_blob(&exponent, &modulus);
 
-        assert_eq!(&blob[0..4], &BCRYPT_RSAPUBLIC_MAGIC.to_le_bytes());
+        // Magic must be "RSA1" as raw bytes
+        assert_eq!(&blob[0..4], &[0x52_u8, 0x53, 0x41, 0x31]);
         let bit_len = u32::from_le_bytes([blob[4], blob[5], blob[6], blob[7]]);
         assert_eq!(bit_len, 2048);
         let cb_exp = u32::from_le_bytes([blob[8], blob[9], blob[10], blob[11]]);
@@ -568,7 +639,8 @@ mod tests {
         let y = vec![0x02_u8; 32];
         let blob = ec_public_blob(EcCurve::P256, &x, &y, true);
 
-        assert_eq!(&blob[0..4], &BCRYPT_ECDSA_PUBLIC_P256_MAGIC.to_le_bytes());
+        // Magic must be "ECS1" as raw bytes
+        assert_eq!(&blob[0..4], &[0x45_u8, 0x43, 0x53, 0x31]);
         let cb_key = u32::from_le_bytes([blob[4], blob[5], blob[6], blob[7]]);
         assert_eq!(cb_key, 32);
         assert_eq!(&blob[8..40], x.as_slice());
