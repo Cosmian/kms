@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**329 vectors** across 8 categories:
+**353 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -265,6 +265,9 @@ replays the steps sequentially.
 | Integrations | `fips/integrations/kmip_1_3_asymmetric` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.3) | 5 |
 | Integrations | `non-fips/integrations/mongodb` | Create, Locate, Get, Destroy (binary TTLV / KMIP 1.0) | 4 |
 | Integrations | `non-fips/integrations/pykmip` | DiscoverVersions, Create, CreateKeyPair, GetAttributes, Locate, Activate, Revoke, Destroy ×3 (binary TTLV / KMIP 1.2) | 11 |
+| Integrations | `non-fips/integrations/edb_tde_pykmip_variant` | Create, Activate, Encrypt (DEK wrap), Decrypt (DEK unwrap), Revoke, Destroy — EDB TDE pykmip variant | 6 |
+| Integrations | `non-fips/integrations/edb_tde_thales_variant` | Create, Activate, Locate, Get (key export), Revoke, Destroy — EDB TDE thales variant | 6 |
+| Integrations | `non-fips/integrations/edb_tde_key_rotation` | Create ×2, Activate ×2, Encrypt, Decrypt, Encrypt (re-wrap), Decrypt (verify), Revoke ×2, Destroy ×2 — EDB TDE key rotation | 12 |
 | **TLS Transport** | | | |
 | TLS | `tls/server_tls` | Create, Revoke, Destroy (HTTPS server TLS) | 3 |
 | TLS | `tls/mtls` | Create, Revoke, Destroy (mTLS client certificate auth) | 3 |

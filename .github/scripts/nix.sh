@@ -506,6 +506,9 @@ test_command() {
     pykmip)
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_pykmip.sh"
       ;;
+    edb_tde)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_edb_tde.sh"
+      ;;
     openssh)
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_openssh.sh"
       ;;
@@ -560,8 +563,8 @@ test_command() {
   if [ "$TEST_TYPE" = "wasm" ] || [ "$TEST_TYPE" = "ui" ] || [ "$TEST_TYPE" = "all" ]; then
     export WITH_WASM=1
   fi
-  # For PyKMIP/Synology DSM tests and JOSE interop, ensure Python tooling is present inside the Nix shell
-  if [ "$TEST_TYPE" = "pykmip" ] || [ "$TEST_TYPE" = "jose" ]; then
+  # For PyKMIP/Synology DSM tests, JOSE interop, and EDB TDE tests, ensure Python tooling is present inside the Nix shell
+  if [ "$TEST_TYPE" = "pykmip" ] || [ "$TEST_TYPE" = "jose" ] || [ "$TEST_TYPE" = "edb_tde" ]; then
     export WITH_PYTHON=1
   fi
   # For OpenSSH PKCS#11 tests, ensure openssh (ssh-keygen) is present on Linux CI
@@ -611,7 +614,10 @@ test_command() {
         --keep LINK \
         --keep RELEASE_FLAG \
         --keep BUILD_PROFILE \
-        --keep PLAYWRIGHT_WORKERS"
+        --keep PLAYWRIGHT_WORKERS \
+        --keep EDB_SUBSCRIPTION_TOKEN \
+        --keep EDB_PGPASSWORD \
+        --keep EDB_MASTER_KEY_UID"
 }
 
 # Download pre-generated SBOMs from package.cosmian.com.
@@ -1218,6 +1224,10 @@ run_in_nix_shell() {
         EXTRA_PKGS=""
         SHELL_PATH="$REPO_ROOT/shell.nix"
       elif [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "otel_export" ]; then
+        PURE_FLAG=""
+      elif [ "$COMMAND" = "test" ] && [ "$TEST_TYPE" = "edb_tde" ]; then
+        # edb_tde needs docker from the system PATH (not in the Nix store);
+        # disable pure mode so docker compose can be found.
         PURE_FLAG=""
       else
         if [ "$USE_PURE" = true ]; then

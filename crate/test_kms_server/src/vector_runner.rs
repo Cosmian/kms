@@ -2538,6 +2538,27 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/non-fips/integrations/pykmip").await
     }
 
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_integration_edb_tde_pykmip_variant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/integrations/edb_tde_pykmip_variant").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_integration_edb_tde_thales_variant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/integrations/edb_tde_thales_variant").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_integration_edb_tde_key_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/integrations/edb_tde_key_rotation").await
+    }
+
     // ── KAT vectors: non-FIPS symmetric ──────────────────────────────────
 
     #[cfg(feature = "non-fips")]
