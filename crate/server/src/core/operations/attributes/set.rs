@@ -130,8 +130,8 @@ pub(crate) async fn set_attribute(
             }
             Attribute::State(_state) => {
                 return Err(KmsError::InvalidRequest(
-                    "Set Attribute: State cannot be set. Use Revoke and Destroy to change the \
-                     object state"
+                    "Set Attribute: State is server-managed and cannot be set directly. Use \
+                     Revoke and Destroy to change the object state"
                         .to_owned(),
                 ));
             }
