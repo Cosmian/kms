@@ -150,7 +150,7 @@ services:
       PGDATAKEYWRAPCMD: >-
         python3 /usr/edb/kmip/client/edb_tde_kmip_client.py encrypt
         --pykmip-config-file=/kmip-certs/pykmip.conf
-        --key-uid=${EDB_MASTER_KEY_UID}
+        --key-uid=${EDB_MASTER_KEY_UID:-}
         --variant=pykmip
         --out-file=%p
 
@@ -158,7 +158,7 @@ services:
       PGDATAKEYUNWRAPCMD: >-
         python3 /usr/edb/kmip/client/edb_tde_kmip_client.py decrypt
         --pykmip-config-file=/kmip-certs/pykmip.conf
-        --key-uid=${EDB_MASTER_KEY_UID}
+        --key-uid=${EDB_MASTER_KEY_UID:-}
         --variant=pykmip
         --in-file=%p
 

@@ -25,6 +25,9 @@
 
 ## Bug Fixes
 
+- `docker-compose.yml`: add `:-` default for `EDB_MASTER_KEY_UID` in `PGDATAKEYWRAPCMD`
+  and `PGDATAKEYUNWRAPCMD` to suppress spurious Docker Compose warnings when the variable
+  is not set (e.g. when running `docker compose up -d otel-collector jaeger`)
 - `decrypt.rs`: treat missing `IVCounterNonce` as zero-IV (fixes thales KMIP
   variant where `iv+ciphertext` is sent as one blob with no separate IV field)
 - `test_edb_tde.sh`: separate `COMPOSE_SERVICE` (for compose commands) from
