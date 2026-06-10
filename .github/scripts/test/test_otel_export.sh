@@ -557,10 +557,42 @@ EOF
   # This is a hard/blocking requirement (script fails on mismatch/timeout).
   wait_for_metric_eq "kms_keys_active_count" 10 180
 
+  # ── Step 3: kms.objects.total ────────────────────────────────────────────
+  # Gauge; 10 creates on a virgin SQLite DB → exactly 10 live objects.
+  # Single label set so wait_for_metric_eq is safe here.
+  wait_for_metric_eq "kms_objects_total" 10 60
+
+  # ── Step 2: kms.http.requests.total ─────────────────────────────────────
+  # Counter split by status label ({status="200"} and {status="422"}).
+  # wait_for_metric_eq exits on the first matching Prometheus line and label
+  # ordering is non-deterministic, so == 20 would be fragile.
+  # wait_for_metric_gt scans ALL matching lines: the status=200 line carries
+  # value 20 which satisfies > 19.
+  wait_for_metric_gt "kms_http_requests_total" 19 60
+
+  # ── Step 1: kms.database.operations.total ───────────────────────────────
+  # Counter split by operation/backend/outcome labels.  Exact per-combo
+  # totals vary by internal code path; existence check is sufficient to
+  # confirm the metric is wired.
+  wait_for_metric_gt "kms_database_operations_total" 0 60
+
+  # ── Step 4: kms.cache.operations.total ──────────────────────────────────
+  # Counter; the AES Activate path exercises the unwrap-cache (miss then
+  # insert), so at least one observation is guaranteed.
+  wait_for_metric_gt "kms_cache_operations_total" 0 60
+
   # Echo what we observed to help diagnose CI flakiness.
   body=$(collector_metrics_body)
   observed_active_keys=$(metric_value_from_body "kms_keys_active_count" "${body}")
+  observed_objects=$(metric_value_from_body "kms_objects_total" "${body}")
+  observed_http=$(metric_value_from_body "kms_http_requests_total" "${body}")
+  observed_db=$(metric_value_from_body "kms_database_operations_total" "${body}")
+  observed_cache=$(metric_value_from_body "kms_cache_operations_total" "${body}")
   echo "Observed kms_keys_active_count=${observed_active_keys:-<missing>}"
+  echo "Observed kms_objects_total=${observed_objects:-<missing>}"
+  echo "Observed kms_http_requests_total=${observed_http:-<missing>}"
+  echo "Observed kms_database_operations_total=${observed_db:-<missing>}"
+  echo "Observed kms_cache_operations_total=${observed_cache:-<missing>}"
 
   echo "OTEL export integration script completed successfully."
 }
