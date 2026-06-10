@@ -1,5 +1,18 @@
 ## Bug Fixes
 
+### CNG KSP — `ckms cng register` is now idempotent
+
+`BCryptRegisterProvider` returns `STATUS_OBJECT_NAME_COLLISION` (`0xC0000035`) when
+the provider is already registered. The register command now treats this NTSTATUS as
+success instead of an error, so running `ckms cng register` a second time (or after
+an NSIS installer has already registered the DLL) no longer aborts with:
+
+```
+ERROR: BCryptRegisterProvider failed with NTSTATUS 0xc0000035
+```
+
+**Files changed**: `crate/clients/cng/src/registry.rs`, `crate/clients/clap/src/actions/cng.rs`
+
 ### CNG KSP — BCrypt blob magic constants corrected (Intune connector incompatibility)
 
 Six `BCRYPT_*_MAGIC` constants in `crate/clients/cng/src/blob.rs` had their bytes scrambled,

@@ -15,7 +15,7 @@
 /// and by the NSIS installer.
 use std::path::Path;
 
-use cosmian_logger::debug;
+use cosmian_logger::{debug, info};
 
 use crate::provider::KSP_PROVIDER_NAME;
 
@@ -31,6 +31,10 @@ type PCWSTR = *const u16;
 type PWSTR = *mut u16;
 
 const STATUS_SUCCESS: NTSTATUS = 0;
+/// `BCryptRegisterProvider` returns this NTSTATUS when the provider is already
+/// registered.  We treat it as success so that `ckms cng register` is idempotent.
+// SAFETY: 0xC000_0035 fits in an i32 when reinterpreted as two's-complement.
+const STATUS_OBJECT_NAME_COLLISION: NTSTATUS = -1_073_741_771_i32; // 0xC000_0035u32 as NTSTATUS
 
 /// BCRYPT_TABLE / CRYPT_LOCAL — operate on the local machine configuration.
 const CRYPT_LOCAL: u32 = 1;
@@ -183,7 +187,10 @@ pub fn register_ksp(dll_path: &Path) -> Result<(), String> {
             0,
             std::ptr::from_ref(&provider_reg),
         );
-        if status != STATUS_SUCCESS {
+        if status == STATUS_OBJECT_NAME_COLLISION {
+            // Provider already registered — treat as success (idempotent).
+            info!("CNG KSP provider already registered; skipping BCryptRegisterProvider");
+        } else if status != STATUS_SUCCESS {
             return Err(format!(
                 "BCryptRegisterProvider failed with NTSTATUS {status:#010x}"
             ));
@@ -302,13 +309,83 @@ fn get_system32_dll_path() -> Result<std::path::PathBuf, String> {
 fn copy_dll_to_system32(source: &Path) -> Result<(), String> {
     let dest = get_system32_dll_path()?;
     debug!("Copying {} -> {}", source.display(), dest.display());
-    std::fs::copy(source, &dest).map_err(|e| {
+
+    // Fast path: simple copy (works when the file is not yet in System32 or
+    // when no process has the old DLL mapped).
+    if std::fs::copy(source, &dest).is_ok() {
+        return Ok(());
+    }
+
+    // The destination file exists and is locked (ERROR_SHARING_VIOLATION /
+    // os error 32): another process has the DLL mapped.  Windows will not let
+    // us overwrite a mapped image directly, but it *will* let us rename the
+    // existing file out of the way (the in-memory mapping remains valid) and
+    // then copy the new file into place.
+    //
+    // Strategy:
+    //   1. Rename the locked System32 DLL to a temp name (same directory, so
+    //      the rename is atomic and stays on the same volume).
+    //   2. Copy the new DLL to the correct name.
+    //   3. Schedule the temp file for deletion on next reboot via
+    //      MoveFileExW(NULL, MOVEFILE_DELAY_UNTIL_REBOOT).
+    let tmp = dest.with_extension("dll.old");
+    std::fs::rename(&dest, &tmp).map_err(|e| {
         format!(
-            "Failed to copy DLL to '{}': {e} — run as Administrator?",
+            "DLL '{}' is locked and cannot be replaced: {e}. \
+             Unregister the provider first (`ckms cng unregister`), \
+             close any process that loaded it, then retry.",
             dest.display()
         )
     })?;
-    Ok(())
+
+    match std::fs::copy(source, &dest) {
+        Ok(_) => {
+            // Schedule the old copy for deletion on next reboot.
+            schedule_delete_on_reboot(&tmp);
+            info!(
+                "DLL was locked; old copy renamed to '{}' and scheduled for deletion on reboot.",
+                tmp.display()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            // Copy failed after the rename; try to restore the original so the
+            // provider stays functional.
+            drop(std::fs::rename(&tmp, &dest));
+            Err(format!(
+                "Failed to copy DLL to '{}': {e} — run as Administrator?",
+                dest.display()
+            ))
+        }
+    }
+}
+
+/// Schedule `path` for deletion on the next system reboot using
+/// `MoveFileExW(path, NULL, MOVEFILE_DELAY_UNTIL_REBOOT)`.
+/// Failure is non-fatal — the leftover `.dll.old` file is harmless.
+fn schedule_delete_on_reboot(path: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn MoveFileExW(lpExistingFileName: *const u16, lpNewFileName: *const u16, dwFlags: u32)
+            -> i32;
+    }
+    const MOVEFILE_DELAY_UNTIL_REBOOT: u32 = 0x0000_0004;
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: wide is a valid null-terminated UTF-16 path.
+    let ok = unsafe { MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) };
+    if ok == 0 {
+        debug!(
+            "MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.",
+            path.display()
+        );
+    }
 }
 
 fn remove_dll_from_system32() {

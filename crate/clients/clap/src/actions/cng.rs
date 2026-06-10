@@ -303,18 +303,37 @@ fn bcrypt_register_ksp(dll: &std::path::Path) -> Result<(), String> {
         .canonicalize()
         .map_err(|e| format!("Failed to canonicalize DLL path '{}': {e}", dll.display()))?;
 
-    // CNG resolves provider DLLs from System32 — copy there first
+    // CNG resolves provider DLLs from System32 — copy there first.
+    // If the destination is locked (os error 32 / ERROR_SHARING_VIOLATION),
+    // rename the old file out of the way and copy the new one into place; the
+    // old mapping stays valid for running processes until they unload it.
     let sys_dir = std::env::var("SystemRoot")
         .map_err(|_e| "SystemRoot environment variable not set".to_owned())?;
     let dest = std::path::PathBuf::from(&sys_dir)
         .join("System32")
         .join("cosmian_cng.dll");
-    std::fs::copy(&dll_abs, &dest).map_err(|e| {
-        format!(
-            "Failed to copy DLL to '{}': {e} — run as Administrator?",
-            dest.display()
-        )
-    })?;
+
+    if std::fs::copy(&dll_abs, &dest).is_err() {
+        // Locked: rename the existing DLL out of the way, then copy.
+        let tmp = dest.with_extension("dll.old");
+        std::fs::rename(&dest, &tmp).map_err(|e| {
+            format!(
+                "DLL '{}' is locked and cannot be replaced: {e}. \
+                 Unregister the provider first (`ckms cng unregister`), \
+                 close any process that loaded it, then retry.",
+                dest.display()
+            )
+        })?;
+        if let Err(e) = std::fs::copy(&dll_abs, &dest) {
+            drop(std::fs::rename(&tmp, &dest)); // restore on failure
+            return Err(format!(
+                "Failed to copy DLL to '{}': {e} — run as Administrator?",
+                dest.display()
+            ));
+        }
+        // Schedule the renamed leftover for deletion on next reboot.
+        schedule_delete_on_reboot_cng(&tmp);
+    }
 
     let provider_name_w = to_wide(KSP_PROVIDER_NAME);
     let mut dll_filename_w = to_wide("cosmian_cng.dll");
@@ -345,12 +364,16 @@ fn bcrypt_register_ksp(dll: &std::path::Path) -> Result<(), String> {
     };
 
     unsafe {
+        // STATUS_OBJECT_NAME_COLLISION (0xC0000035) means the provider is
+        // already registered.  Treat it as success so `register` is idempotent.
+        // SAFETY: 0xC000_0035 fits in an i32 when reinterpreted as two's-complement.
+        const STATUS_OBJECT_NAME_COLLISION: i32 = -1_073_741_771_i32; // 0xC000_0035u32 as i32
         let status = BCryptRegisterProvider(
             provider_name_w.as_ptr(),
             0,
             std::ptr::from_ref(&provider_reg),
         );
-        if status != 0 {
+        if status != 0 && status != STATUS_OBJECT_NAME_COLLISION {
             return Err(format!(
                 "BCryptRegisterProvider failed with NTSTATUS {status:#010x}"
             ));
@@ -442,4 +465,39 @@ fn bcrypt_is_ksp_registered() -> bool {
 #[cfg(windows)]
 fn to_wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Schedule `path` for deletion on the next system reboot via
+/// `MoveFileExW(path, NULL, MOVEFILE_DELAY_UNTIL_REBOOT)`.
+/// Failure is non-fatal — the leftover `.dll.old` is harmless.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn schedule_delete_on_reboot_cng(path: &std::path::Path) {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    #[allow(unsafe_code)]
+    unsafe extern "system" {
+        fn MoveFileExW(
+            lpExistingFileName: *const u16,
+            lpNewFileName: *const u16,
+            dwFlags: u32,
+        ) -> i32;
+    }
+    const MOVEFILE_DELAY_UNTIL_REBOOT: u32 = 0x0000_0004;
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: `wide` is a valid null-terminated UTF-16 path.
+    let ok =
+        unsafe { MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) };
+    if ok == 0 {
+        cosmian_logger::debug!(
+            "MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.",
+            path.display()
+        );
+    }
 }
