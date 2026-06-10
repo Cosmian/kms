@@ -492,8 +492,7 @@ fn schedule_delete_on_reboot_cng(path: &std::path::Path) {
         .chain(std::iter::once(0))
         .collect();
     // SAFETY: `wide` is a valid null-terminated UTF-16 path.
-    let ok =
-        unsafe { MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) };
+    let ok = unsafe { MoveFileExW(wide.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) };
     if ok == 0 {
         cosmian_logger::debug!(
             "MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.",

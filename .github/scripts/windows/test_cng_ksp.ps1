@@ -29,6 +29,15 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+# The IntunePfxImport module requires .NET Framework (mscorlib) and must run
+# under Windows PowerShell 5.1 (powershell.exe), not PowerShell 7 (pwsh.exe).
+# When invoked from pwsh, re-launch transparently under Windows PowerShell 5.1.
+if ($PSVersionTable.PSVersion.Major -ge 6) {
+    Write-Host "PowerShell $($PSVersionTable.PSVersion) detected; re-invoking under Windows PowerShell 5.1 for .NET Framework compatibility..."
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath
+    exit $LASTEXITCODE
+}
+
 # -- Configuration ------------------------------------------------------------
 
 $KMS_PORT = 9998

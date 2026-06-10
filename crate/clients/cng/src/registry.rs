@@ -368,8 +368,11 @@ fn schedule_delete_on_reboot(path: &Path) {
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
-        fn MoveFileExW(lpExistingFileName: *const u16, lpNewFileName: *const u16, dwFlags: u32)
-            -> i32;
+        fn MoveFileExW(
+            lpExistingFileName: *const u16,
+            lpNewFileName: *const u16,
+            dwFlags: u32,
+        ) -> i32;
     }
     const MOVEFILE_DELAY_UNTIL_REBOOT: u32 = 0x0000_0004;
 

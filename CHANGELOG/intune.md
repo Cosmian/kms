@@ -42,6 +42,24 @@ Also fixed the same wrong local constants in `crate/clients/clap/src/actions/cng
 and hardened the PS1 test to assert the exported blob starts with `"RSA1"` and to test
 `Export-IntunePublicKey -FileFormat PEM`.
 
+### CI — `test_cng_ksp.ps1` runs under Windows PowerShell 5.1
+
+The `IntunePfxImport` PowerShell module uses `System.Security.AccessControl.CryptoKeySecurity`
+from `mscorlib`, a .NET Framework 4.x type absent in .NET 6+ (PowerShell 7). When `test_cng_ksp.ps1`
+was invoked via `pwsh.exe` (PowerShell 7), `Add-IntuneKspKey` failed with:
+```
+Could not load type 'System.Security.AccessControl.CryptoKeySecurity' from assembly 'mscorlib'
+```
+Added a self-re-launch block at the top of the script: when PowerShell 6+ is detected the script
+transparently re-invokes itself under `powershell.exe` (Windows PowerShell 5.1 / .NET Framework).
+
+**Files changed**: `.github/scripts/windows/test_cng_ksp.ps1`
+
+### CI — `cargo fmt` format fixes
+
+Corrected `rustfmt` formatting in `MoveFileExW` extern declarations
+(`crate/clients/cng/src/registry.rs`, `crate/clients/clap/src/actions/cng.rs`).
+
 ## Features
 
 ### CNG KSP
