@@ -9,7 +9,7 @@
 #   1. server-docs     — server --help → server_cli.md
 #                        server --print-default-config → server_configuration_file.md
 #                        kms_template.toml, pkg/kms.toml
-#   2. ckms-docs       — ckms markdown → cli_documentation/docs/cli/main_commands.md
+#   2. ckms-docs       — ckms markdown → documentation/docs/kms_clients/cli/main_commands.md
 #                        ckms --help   → cli_documentation/docs/usage.md
 #   3. kmip-tables     — scan KMIP operations, update README.md KMIP table
 #   4. crypto-inventory— scan Rust source → crypto_inventory.md (CBOM sensor)

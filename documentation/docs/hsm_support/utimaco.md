@@ -1,7 +1,8 @@
+# Utimaco General Purpose
 
 This solution works on Linux (x86_64) and has been validated against the Utimaco client library version 6.0.
 
-### Utimaco library setup
+## Utimaco library setup
 
 This solution works on Linux (x64_86) and has been validated against the Utimaco `libcs_pkcs11_R3.so` library version 6.0.
 
@@ -22,7 +23,7 @@ installation with the `p11tool2` utility, by running, for instance,
 ./p11tool2 Slot=0 GetSlotInfo
 ```
 
-### KMS configuration
+## KMS configuration
 
 At least one slot and its corresponding password must be configured. Any slot and any number of slots may be used.
 
@@ -62,7 +63,7 @@ and delegate other operations to other users.
 The `hsm-slot` and `hsm-password` parameters are the slot number and user password of the HSM slots used by the KMS.
 These arguments can be repeated multiple times to specify various slots.
 
-### Using the simulator
+## Using the simulator
 
 Utimaco provides a simulator that can be used instead of a physical HSM to test your installation.
 The simulator is a 32-bit Linux i386 library (it also exists as a Windows binary).

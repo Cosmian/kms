@@ -7,14 +7,12 @@ The KMS offers a high-performance, scalable solution with unique features such a
 
 Beyond the CLI interface, Cosmian also provides a **PKCS#11 library** (`libcosmian_pkcs11.so`) that enables seamless integration with existing cryptographic infrastructure. This library acts as a bridge between applications requiring PKCS#11 interfaces and the Eviden KMS, providing:
 
-- **Database Encryption Support**: Integration with Oracle Database Transparent Data Encryption ([TDE](https://docs.cosmian.com/integrations/databases/oracle_tde/)) for automatic encryption of data at rest, either through Oracle Key Vault or direct HSM communication
-- **Disk Encryption Support**: Compatible with popular disk encryption solutions including [VeraCrypt](https://docs.cosmian.com/integrations/disk_encryption/veracrypt/), [LUKS](https://docs.cosmian.com/integrations/disk_encryption/luks/), and [Cryhod](https://docs.cosmian.com/integrations/disk_encryption/cryhod/) for protecting data on storage devices
+- **Database Encryption Support**: Integration with Oracle Database Transparent Data Encryption ([TDE](../integrations/databases/oracle_tde.md)) for automatic encryption of data at rest, either through Oracle Key Vault or direct HSM communication
+- **Disk Encryption Support**: Compatible with popular disk encryption solutions including [VeraCrypt](../integrations/disk_encryption/veracrypt.md), [LUKS](../integrations/disk_encryption/luks.md), and [Cryhod](../integrations/disk_encryption/cryhod.md) for protecting data on storage devices
 
 The PKCS#11 library enables organizations to leverage Cosmian's advanced cryptographic capabilities while maintaining compatibility with their existing security infrastructure and workflows.
 
 By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic functionalities and secure search capabilities into their applications, enhancing data security and privacy.
-
-[TOC]
 
 !!! info Download cosmian
 
@@ -24,6 +22,8 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
 {!kms_clients/installation.md!}
+
+[TOC]
 
 ## Configuration
 
@@ -48,4 +48,4 @@ No installation is required — the UI is served directly by the KMS server.
 - **mTLS (client certificate)**: the browser negotiates the TLS handshake using a certificate installed in the system or browser store. No extra configuration is needed on the client side.
 - **No authentication**: direct access, with a warning banner indicating that the server is unsecured.
 
-For server-side configuration and browser certificate installation steps, see the [KMS User Interface configuration guide](https://docs.cosmian.com/kms/configuration/ui/).
+For server-side configuration and browser certificate installation steps, see the [KMS User Interface configuration guide](../configuration/ui.md).

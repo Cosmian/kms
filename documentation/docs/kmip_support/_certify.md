@@ -1,4 +1,6 @@
-#### Specifications
+# Certify
+
+## Specifications
 
 This request is used to generate a Certificate object for a public key. This request supports the
 certification of a new
@@ -35,7 +37,7 @@ If the information in the Certificate Request conflicts with the attributes spec
 Attributes, then the
 information in the Certificate Request takes precedence.
 
-#### Implementation
+## Implementation
 
 The KMIP implementation does not:
 
@@ -65,7 +67,7 @@ the original certificate id will be used and the original certificate will
 be replaced by the new one. In all other cases, a random certificate id
 will be generated.
 
-#### Post-quantum (PQC) certificates
+## Post-quantum (PQC) certificates
 
 The Eviden KMS generates fully standards-compliant X.509 v3 certificates for all
 NIST-standardized post-quantum algorithms:
@@ -82,9 +84,9 @@ NIST-standardized post-quantum algorithms:
 See [Post-Quantum X.509 Certificates](../use_cases/pki.md) for
 detailed usage instructions, OID tables, CLI examples, and cross-algorithm PKI guidance.
 
-#### Supply X509 extensions (optional)
+## Supply X509 extensions (optional)
 
-Specify X509 extensions for a `Certify` operation is possible using the [KMS CLI](../../kms_clients/index.md).
+Specify X509 extensions for a `Certify` operation is possible using the [KMS CLI](../kms_clients/index.md).
 
 The `--certificate-extensions` arg (short version `-e`) expects a path to a configuration file
 written in `ini` format (roughly the same format
@@ -104,7 +106,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
 
 These extensions are embedded in the `Certify` request within the vendor attributes.
 
-Example of the corresponding [KMS CLI](../../kms_clients/index.md) command:
+Example of the corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
 ckms certificates certify \
@@ -112,19 +114,19 @@ ckms certificates certify \
   -e /some/path/to/ext.cnf
 ```
 
-#### Example - PKCS#10 Certificate Signing Request
+## Example - PKCS#10 Certificate Signing Request
 
 Certify a PKCS#10 Certificate Signing Request (CSR) with the issuer private key unique identifier
 `854d7914-3b1d-461a-a2dd-7aad27043b56`, and set the certificate requested validity to 365 days and
 the tag to `MyCert`.
 
-The corresponding [KMS CLI](../../kms_clients/index.md) command is:
+The corresponding [KMS CLI](../kms_clients/index.md) command is:
 
 ```shell
 ckms certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
 ```
 
-Note: the [KMS CLI](../../kms_clients/index.md)ent converts the CSR from PEM TO DER before creating the JSON TTLV and sending
+Note: the [KMS CLI](../kms_clients/index.md)ent converts the CSR from PEM TO DER before creating the JSON TTLV and sending
 it to the
 server.
 
@@ -246,7 +248,7 @@ server.
     }
     ```
 
-#### Example - Public key
+## Example - Public key
 
 Certify a public key with unique id `45e56e67-d813-468f-9116-4d1e611a1828` using the issuer private
 key
@@ -255,7 +257,7 @@ Set the Subject Name of the certificate to `C=FR, ST=IdF, L=Paris, O=AcmeTest, C
 tag to `Bob` and
 the certificate requested validity to 365 days.
 
-The corresponding [KMS CLI](../../kms_clients/index.md) command is
+The corresponding [KMS CLI](../kms_clients/index.md) command is
 
 ```shell
 ckms certificates certify -p 45e56e67-d813-468f-9116-4d1e611a1828 -k 854d7914-3b1d-461a-a2dd-7aad27043b56 \

@@ -1,3 +1,5 @@
+# BYOK (Bring Your Own Key)
+
 Eviden KMS provides a `azure byok` command in its CLI to facilitate the import of an Azure wrapping key (KEK) in
 Eviden KMS, and the export of the wrapped keys in the `.byok` format for easy import in Azure Key Vault.
 
@@ -6,8 +8,6 @@ description of Bring Your Own Key (BYOK) in Azure Key Vault,
 
 The vault must be a `premium` Azure Key Vault, and the user performing the operations
 must have the role of `Crypto Officer`.
-
-## Table of Contents
 
 [TOC]
 
@@ -59,7 +59,7 @@ az keyvault key create --kty RSA-HSM --size 4096 --name KEK-BYOK --ops import --
 ```
 
 In the `az`output, the key identifier (kid) will be something like:
-"<https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8>"
+`https://mypremiumkeyvault.vault.azure.net/keys/KEK-BYOK/664f5aa2797a4075b8e36ca4500636d8`
 
 Please take note of the `kid` for next steps.
 

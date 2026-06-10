@@ -1,10 +1,12 @@
+# Microsoft SQL Server External (EKM)
+
 Eviden KMS integrates with Microsoft SQL Server External key management using a Windows DLL implementing the [SQL Server Extensible Key Management (EKM)](https://learn.microsoft.com/en-us/sql/relational-databases/security/encryption/extensible-key-management-ekm?view=sql-server-ver17).
 
 The Windows DLL is a SQL Server EKM provider that forwards key operations to the Eviden KMS over mutual TLS.  This allows SQL Server features like column-level encryption and Transparent Data Encryption (TDE) to use keys managed by the Eviden KMS, without exposing key material to the SQL Server host.
 
 The Windows DLL is available in a separate project on [GitHub](https://github.com/Cosmian/ekm_sql_server); pre-built signed DLLs are available for [download](https://package.cosmian.com).
 
-# Deployment Guide
+## Deployment Guide
 
 This document explains how to install and configure the Cosmian EKM SQL Server provider, starting from a signed DLL. Follow the steps in order.
 

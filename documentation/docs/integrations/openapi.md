@@ -74,7 +74,7 @@ The `frame-ancestors 'none'` directive prevents the page from being embedded in 
 
 The OpenAPI spec documents the HTTP transport layer of the KMS API. The KMIP operations
 themselves are sent as JSON TTLV payloads in the body of `POST /kmip/2_1` or `POST /kmip/1_4`.
-See [The JSON TTLV KMIP API](./json_ttlv_api.md) for the full description of the KMIP message format.
+See [The JSON TTLV KMIP API](../kmip_support/json_ttlv_api.md) for the full description of the KMIP message format.
 
 ## Spec version and server URL
 

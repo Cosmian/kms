@@ -1,6 +1,7 @@
 # UI Routes & Action Modules Reference
 
 ## Contents
+
 - [UI routes](#ui-routes)
 - [Action modules](#action-modules)
 - [Testing with Chrome DevTools MCP](#testing-with-chrome-devtools-mcp)
@@ -77,6 +78,7 @@ Useful tools (fully qualified):
 | `io.github.ChromeDevTools:list_console_messages` | Check browser console for errors |
 
 **Interaction conventions:**
+
 - Ant Design `<Select>` portals into `document.body` — click the trigger, then click the option in the popup.
 - Form submissions trigger WASM → KMIP → server roundtrip. Use `io.github.ChromeDevTools:wait_for` before reading the response panel.
 - Target elements by `data-testid` attribute.

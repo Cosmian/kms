@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Build the KMS documentation book (mdBook)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Building KMS documentation"
+
+REPO_ROOT="$(get_repo_root)"
+
+# Ensure mdbook toolchain is available
+if ! command -v mdbook &>/dev/null; then
+  print_info "Installing mdBook toolchain..."
+  curl -fsSL https://raw.githubusercontent.com/Cosmian/doc-theme/main/scripts/setup-mdbook.sh | sh
+fi
+
+cd "${REPO_ROOT}/documentation"
+mdbook build
+
+print_success "Documentation built → documentation/book/html/"

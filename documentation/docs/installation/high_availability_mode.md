@@ -1,3 +1,5 @@
+# High-availability
+
 This mode offers high availability through redundancy and load-balancing.
 
 The KMS servers are stateless, so they can be scaled horizontally from a single node up to any number of nodes,

@@ -1,4 +1,6 @@
-### Specification
+# Modify
+
+## Specification
 
 This operation requests the server to modify an attribute value associated with a Managed Object. The request contains
 the Unique Identifier of the Managed Object whose attribute is to be modified, along with the attribute and its new
@@ -7,11 +9,11 @@ not create the attribute if it is absent.
 
 Read-Only attributes SHALL NOT be modified using this operation.
 
-### Implementation
+## Implementation
 
 This operation can be applied to all [supported objects](../objects.md).
 
-#### Supported attributes
+### Supported attributes
 
 The following KMIP attributes can be modified:
 
@@ -32,7 +34,7 @@ The following KMIP attributes can be modified:
 | `UniqueIdentifier` | Replaces the unique identifier attribute. |
 | `VendorAttribute` | Replaces a vendor attribute value identified by vendor ID + attribute name. |
 
-#### Read-only attributes
+### Read-only attributes
 
 The following attributes are **read-only** and SHALL NOT be modified. Any attempt returns an
 `Attribute_Read_Only` error:
@@ -40,9 +42,9 @@ The following attributes are **read-only** and SHALL NOT be modified. Any attemp
 - `State`
 - `CertificateLength`
 
-### Example - Modify the cryptographic length of a symmetric key
+## Example - Modify the cryptographic length of a symmetric key
 
-Corresponding [KMS CLI](../../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
   ckms sym keys create my_symmetric_key
@@ -100,7 +102,7 @@ Attribute modified successfully
     }
     ```
 
-### Example - Modify the cryptographic algorithm
+## Example - Modify the cryptographic algorithm
 
 ```bash
   ckms attributes modify -i my_symmetric_key --cryptographic-algorithm chacha20
@@ -149,7 +151,7 @@ Attribute modified successfully
     }
     ```
 
-### Example - Modify the activation date on a Pre-Active key
+## Example - Modify the activation date on a Pre-Active key
 
 `ActivationDate` can only be modified on **Pre-Active** objects. Setting a date that is in the past or equal to the
 current time will automatically transition the object to the **Active** state.
@@ -201,7 +203,7 @@ current time will automatically transition the object to the **Active** state.
     }
     ```
 
-### Example - Read-only attribute rejection
+## Example - Read-only attribute rejection
 
 Attempting to modify a read-only attribute such as `State` will return an `Attribute_Read_Only` error:
 

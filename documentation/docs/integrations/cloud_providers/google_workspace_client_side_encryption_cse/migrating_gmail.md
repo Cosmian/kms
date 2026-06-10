@@ -31,7 +31,7 @@ Head to the GCP console and follow the Google Documentation on creating a
 
 ### Create a service account
 
-![service account creation](./google_migration_utility/GCP-console%20Create%20service%20account.png)
+![service account creation](./google_migration_utility/GCP-console-Create-service-account.png)
 
 ### Create a key in JSON format
 

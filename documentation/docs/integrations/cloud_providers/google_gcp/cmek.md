@@ -1,5 +1,7 @@
+# CMEK (Customer Managed Encryption Keys)
+
 To import a Customer Managed Encryption Key in the Google KMS, follow the
-instructions [on Google documentation](https://cloud.google.com/kms/docs/key-import) related to importing
+instructions [on Google documentation](https://docs.cloud.google.com/kms/docs/importing-a-key) related to importing
 a manually wrapped key.
 
 [TOC]

@@ -1,4 +1,6 @@
-#### Specification
+# Mac
+
+## Specification
 
 This operation requests the server to perform a Message Authentication Code (MAC) operation on provided data using a specified MAC key and algorithm.
 The operation can be performed in a single request or as a series of requests for long data streams or by-parts cryptographic operations.
@@ -13,7 +15,7 @@ When a stream or by-parts operation is requested:
 - The server SHALL use the Correlation Value for subsequent MAC requests.
 - The server SHALL close the stream or by-parts operation when Final Indicator is True.
 
-#### Implementation
+## Implementation
 
 The Eviden KMS server supports the following MAC algorithms:
 
@@ -25,11 +27,11 @@ The Eviden KMS server supports the following MAC algorithms:
 
 For the complete list of supported MAC algorithms, please check the [algorithms page](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
-#### Example - Simple MAC
+## Example - Simple MAC
 
 Computing MAC with SHA3-512 using a MAC key.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
 ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 --data 0011223344556677889900
@@ -88,11 +90,11 @@ ckms mac --mac-key-id 027cced1-ff2b-4bd3-a200-db1041583bdc --algorithm sha3-512 
     }
     ```
 
-#### Example - Stream MAC
+## Example - Stream MAC
 
 Computing MAC for a large file in multiple parts using SHA3-512.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) commands:
+Corresponding [KMS CLI](../kms_clients/index.md) commands:
 
 ```bash
 # First part with init indicator

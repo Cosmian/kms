@@ -92,7 +92,7 @@ tls_client_pem_key_path = "/path/to/client.key"
 access_token = "<JWT_BEARER_TOKEN>"
 ```
 
-> Full example: [`test_data/configs/client/pem_cert_and_token_auth.toml`](https://github.com/Cosmian/test_data/blob/main/configs/client/pem_cert_and_token_auth.toml)
+> Full example: `test_data/configs/client/pem_cert_and_token_auth.toml`
 
 ### PKCS#12 format (non-FIPS only)
 
@@ -111,7 +111,7 @@ tls_client_pkcs12_path = "/path/to/client.p12"
 tls_client_pkcs12_password = "changeit"
 ```
 
-> Full example: [`test_data/configs/client/pkcs12_cert_auth.toml`](https://github.com/Cosmian/test_data/blob/main/configs/client/pkcs12_cert_auth.toml)
+> Full example: `test_data/configs/client/pkcs12_cert_auth.toml`
 
 ### Using the `ckms configure` wizard
 
@@ -334,4 +334,4 @@ exclusion_list = ["kms-host"]
 - **Redirect Errors**: Check that your identity provider allows the redirect URL
 - **Missing Email Claim**: Verify your identity provider includes the email claim in tokens
 
-For more details about PKCE authentication, see the [PKCE Authentication Guide](../key_management_system/configuration/pkce_authentication.md).
+For more details about PKCE authentication, see the [PKCE Authentication Guide](../configuration/pkce_authentication.md).

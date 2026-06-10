@@ -1,4 +1,6 @@
-#### Specification
+# Re-Key
+
+## Specification
 
 This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
 
@@ -10,13 +12,13 @@ For the existing key, the server SHALL create a Link attribute of Link Type Repl
 
 An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key. If Offset is set and dates exist for the existing key, then the dates of the replacement key SHALL be set based on the dates of the existing key as follows.
 
-#### Implementation
+## Implementation
 
 The `Re-Key` Operation refreshes Symmetric keys.
 
-### Example - Refresh a Symmetric Key
+## Example - Refresh a Symmetric Key
 
-Corresponding [KMS CLI](../../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
 ckms sym keys re-key -k 64c60363-6660-4fd4-9f30-c965a0f72fc3

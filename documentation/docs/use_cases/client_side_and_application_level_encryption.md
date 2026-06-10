@@ -1,3 +1,5 @@
+# Client-side and application-level encryption
+
 The Eviden KMS is particularly suited for application-level and client-side encryption scenarios, which may require
 high-performance encryption and decryption.
 
@@ -104,9 +106,9 @@ Hence, to encrypt 5 million messages on 10 core machines, 50 requests of 100,000
 should be sent in parallel. On a standard server CPU, the total processing time should be around 8
 seconds, excluding network latency.
 
-## Using the [KMS CLI](../../kms_clients/index.md) client
+## Using the [KMS CLI](../kms_clients/index.md) client
 
-The [KMS CLI](../../kms_clients/index.md) client can be used to encrypt and decrypt data locally, including large
+The [KMS CLI](../kms_clients/index.md) client can be used to encrypt and decrypt data locally, including large
 files.
 
 Encryption can be performed in two modes:
@@ -120,7 +122,7 @@ Encryption can be performed in two modes:
 ### Server-side encryption and decryption
 
 The file content is sent to the server when using server-side encryption or decryption. To use
-This method uses the `encrypt` or `decrypt` command of the [KMS CLI](../../kms_clients/index.md) client WITHOUT
+This method uses the `encrypt` or `decrypt` command of the [KMS CLI](../kms_clients/index.md) client WITHOUT
 specifying a
 `--key-encryption-algorithm` option.
 

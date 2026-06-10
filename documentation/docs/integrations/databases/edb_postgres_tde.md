@@ -4,6 +4,8 @@ This guide demonstrates how to configure **EDB Postgres Advanced Server 17
 Transparent Data Encryption (TDE)** to use Cosmian KMS as its key management
 server via KMIP over mTLS.
 
+[TOC]
+
 ## Overview
 
 | Item | Details |
@@ -14,8 +16,6 @@ server via KMIP over mTLS.
 | **EDB version** | EDB Postgres Advanced Server 15.2+ and 17.x |
 | **Client** | `edb_tde_kmip_client.py` (shipped inside the EDB image) |
 | **Cosmian KMS feature** | Works in **non-FIPS** mode (PyKMIP uses `ssl.wrap_socket`) |
-
-[TOC]
 
 ---
 
@@ -95,7 +95,7 @@ server_port = 15696
 ```
 
 Generate or reuse mTLS certificates for the KMS and the EDB client.
-See [Certificates](../pki/certificates.md) for details.
+See [Certificates](../../configuration/tls.md) for details.
 
 ### 2. Create the Master Key
 

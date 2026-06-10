@@ -54,7 +54,7 @@ The Eviden KMS server needs to be started with the `--ms-dke-service-url <MS_DKE
 The `<MS_DKE_SERVICE_URL>`should contain the external URL of this server as configured in [Azure App Registrations
 for the DKE Service](https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
 
-The URL should be something like <https://kms.my_domain.com/ms_dke>
+The URL should be something like `https://kms.my_domain.com/ms_dke`
 
 Alternatively, you can set the `KMS_MS_DKE_SERVICE_URL` environment variable to the same value, or set the
 corresponding entry in the server TOML configuration file.
@@ -72,7 +72,7 @@ particularly if running on Azure.
 
 ### Create an RSA key with tag `dke_key`
 
-Using the [KMS CLI](../../../../kms_clients/index.md), create a 2048-bit RSA key with the tag `dke_key`:
+Using the [KMS CLI](../../../kms_clients/index.md), create a 2048-bit RSA key with the tag `dke_key`:
 
 ```shell
 ckms rsa keys create --tag dke_key --size_in_bits 2048
@@ -84,7 +84,7 @@ details.
 
 #### Rotate the DKE key
 
-If later on you need to rotate the DKE key, you can use the [KMS CLI](../../../../kms_clients/index.md) to create a new
+If later on you need to rotate the DKE key, you can use the [KMS CLI](../../../kms_clients/index.md) to create a new
 key with a new tag.
 You must then create a new sensitivity label where the Double Key Encryption URL ends with the new tag value.
 See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.

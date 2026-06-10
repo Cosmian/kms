@@ -23,8 +23,7 @@ Express Mode  | PoC, demos, quick testing
     - Elastic Load Balancing
 - A VPC with at least two subnets
 - Docker image: `ghcr.io/cosmian/kms:latest`
-- KMS CLI installed
-  <https://docs.cosmian.com/kms_clients/installation/>
+- [KMS CLI installed](../../../kms_clients/installation.md)
 
 ---
 
@@ -114,7 +113,7 @@ Health Check
 
 ## 3. Client Setup (KMS CLI)
 
-[install KMS CLI](https://docs.cosmian.com/kms_clients/installation/)
+[install KMS CLI](../../../kms_clients/installation.md)
 
 Run: ckms configure
 
@@ -214,7 +213,7 @@ Wait until service status is Active.
 
 ## Express Mode Client Setup
 
-[install KMS CLI](https://docs.cosmian.com/kms_clients/installation/)
+[install KMS CLI](../../../kms_clients/installation.md)
 
 Run:
 

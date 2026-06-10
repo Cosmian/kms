@@ -1,6 +1,7 @@
 # HTTP Endpoints Reference
 
 ## Contents
+
 - [Core endpoints](#core-endpoints)
 - [Access control](#access-control)
 - [Enterprise integrations](#enterprise-integrations)

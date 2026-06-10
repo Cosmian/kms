@@ -1,3 +1,4 @@
+# EKM (External Key Management)
 
 Eviden KMS implements the Azure External Key Manager (EKM) Proxy API, enabling it to serve as an external key management service for an Azure Managed HSM.
 
@@ -75,7 +76,7 @@ All requests and responses for Azure EKM APIs are sent as JSON objects over HTTP
 The URI format for EKM Proxy API calls is:
 
 ```text
-https://{public-KMS-URI}/azureekm/[path-prefix]/{api-specific-paths}?api-version={client-api-version}
+https://{public-KMS-URI}/azureekm/{path-prefix}/{api-specific-paths}?api-version={client-api-version}
 ```
 
 The parameters between brackets {} can be edited on the KMS configuration and must follow the following constraints :
@@ -95,10 +96,10 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 
 | Endpoint         | Method | Path                                             | Description                                       |
 | ---------------- | ------ | ------------------------------------------------ | ------------------------------------------------- |
-| Get Proxy Info   | POST   | /azureekm/[path-prefix]/info                     | Health check and proxy details                    |
-| Get Key Metadata | POST   | /azureekm/[path-prefix]/{key-name}/metadata      | Retrieve key type, size, and supported operations |
-| Wrap Key         | POST   | /azureekm/[path-prefix]/{key-name}/wrapkey       | Wrap (encrypt) a DEK with a KEK                   |
-| Unwrap Key       | POST   | /azureekm/[path-prefix]/{key-name}/unwrapkey     | Unwrap (decrypt) a previously wrapped DEK         |
+| Get Proxy Info   | POST   | /azureekm/{path-prefix}/info                     | Health check and proxy details                    |
+| Get Key Metadata | POST   | /azureekm/{path-prefix}/{key-name}/metadata      | Retrieve key type, size, and supported operations |
+| Wrap Key         | POST   | /azureekm/{path-prefix}/{key-name}/wrapkey       | Wrap (encrypt) a DEK with a KEK                   |
+| Unwrap Key       | POST   | /azureekm/{path-prefix}/{key-name}/unwrapkey     | Unwrap (decrypt) a previously wrapped DEK         |
 
 ### Supported algorithms
 
@@ -217,7 +218,7 @@ az keyvault ekm-connection create \
 ```
 
 > **⚠️ Port 443 is required.** The `--host` argument's own help text states: *"EKM proxy host (FQDN or FQDN:port). If port is omitted, 443 is assumed."* In practice, the Managed HSM EKM proxy calls have been observed to require port 443 — make sure your Eviden KMS is reachable on port 443 (in addition to any other port you use for KMIP/administrative access), even if `[http] port` in your KMS configuration is set to a different value.
-
+>
 > **`--path-prefix` must match `azure_ekm_path_prefix`.** If you configured `azure_ekm_path_prefix = "cosmian0"` on the KMS side, the Azure-side `--path-prefix` must be the corresponding path (e.g. `/azureekm/cosmian0`). A mismatch here causes requests to fail to route, without necessarily producing an obvious error on the Azure side.
 
 Verify the connection:
