@@ -60,6 +60,18 @@ Start backends with `docker compose up -d`, then set:
 > MySQL tests are currently disabled in CI.
 > Redis-findex tests are skipped in FIPS mode.
 
+### Pre-commit hooks
+
+Never commit without using pre-commit hooks enabled:
+
+```
+pip install pre-commit conventional-pre-commit
+pre-commit install
+pre-commit install --install-hooks -t commit-msg
+```
+
+Do not ever commit without fixing pre-commit hook errors. Do not use git commit --no-verify or the SKIP environment variable to bypass hooks.
+
 ---
 
 ## 3. Repository map
