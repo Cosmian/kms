@@ -119,6 +119,17 @@ jobs:
         run: |
           docker compose up -d ${{ matrix.docker }}
 
+      - name: Login to EDB Docker registry and pre-build image
+        if: matrix.type == 'edb_tde' && env.EDB_SUBSCRIPTION_TOKEN != ''
+        env:
+          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
+        run: |
+          # Authenticate and pre-pull the EDB image so the nix wrapper's
+          # docker compose up edb-tde only needs to create and start the container.
+          echo "$EDB_SUBSCRIPTION_TOKEN" | \
+            docker login --username k8s --password-stdin docker.enterprisedb.com
+          docker compose pull edb-tde
+
       - name: Test
         env:
           POSTGRES_USER: kms
@@ -165,6 +176,12 @@ jobs:
         run: |
           set -ex
           bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}
+
+      - name: Stop EDB container
+        if: always() && matrix.type == 'edb_tde'
+        run: |
+          docker compose stop edb-tde 2>/dev/null || true
+          docker compose rm -f edb-tde 2>/dev/null || true
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}

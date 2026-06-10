@@ -126,18 +126,67 @@ cleanup() {
       kill -9 "$KMS_PID" >/dev/null 2>&1 || true
     fi
   fi
+  # Stop EDB container — no-op if not started yet.
+  docker compose --project-directory "$REPO_ROOT" stop edb-tde 2>/dev/null || true
+  docker compose --project-directory "$REPO_ROOT" rm -f edb-tde 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 # Wait for ports
 if _wait_for_port 127.0.0.1 "$KMS_PORT" 20 && _wait_for_port 127.0.0.1 "$KMIP_PORT" 20; then
-  echo "KMS is up on ports $KMS_PORT (HTTP) and $KMIP_PORT (KMIP). Running EDB TDE tests…"
+  echo "KMS is up on ports $KMS_PORT (HTTP) and $KMIP_PORT (KMIP)."
 else
   echo "Error: KMS did not start on required ports in time." >&2
   exit 1
 fi
 
-# Run the EDB TDE test suite
+# ── EDB container lifecycle ────────────────────────────────────────────────────
+# Login to the EDB registry.  In CI, test_all.yml does this before the Test step;
+# here we repeat it so the test also works when run locally.
+if [ -z "${EDB_SUBSCRIPTION_TOKEN:-}" ]; then
+  echo "Error: EDB_SUBSCRIPTION_TOKEN is not set." >&2
+  echo "Set it to your EDB registry token to run this test suite." >&2
+  exit 1
+fi
+echo "${EDB_SUBSCRIPTION_TOKEN}" |
+  docker login --username k8s --password-stdin docker.enterprisedb.com 2>/dev/null || {
+  echo "Error: docker login to docker.enterprisedb.com failed." >&2
+  exit 1
+}
+
+# Create the AES-256 master key (the official edb_tde_kmip_client.py has no
+# key-creation command; create_master_key.py fills that gap).
+EDB_MASTER_KEY_UID=$(env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+  python "$REPO_ROOT/.github/scripts/edb_tde/create_master_key.py" \
+  --pykmip-config-file="$REPO_ROOT/.github/scripts/edb_tde/pykmip.conf" 2>/dev/null)
+if [ -z "$EDB_MASTER_KEY_UID" ]; then
+  echo "Error: Failed to create EDB master key (empty UID)." >&2
+  exit 1
+fi
+export EDB_MASTER_KEY_UID
+echo "EDB master key UID: $EDB_MASTER_KEY_UID"
+
+# Stop and remove any existing container to guarantee a clean PGDATA.
+docker compose --project-directory "$REPO_ROOT" stop edb-tde 2>/dev/null || true
+docker compose --project-directory "$REPO_ROOT" rm -f edb-tde 2>/dev/null || true
+
+# Start the EDB Postgres TDE container.  initdb runs inside the container and
+# calls PGDATAKEYWRAPCMD (edb_tde_kmip_client.py encrypt) to seal the cluster DEK.
+echo "Starting EDB Postgres TDE container (initdb will wrap the cluster DEK)…"
+docker compose --project-directory "$REPO_ROOT" up -d edb-tde || {
+  echo "Error: docker compose up edb-tde failed." >&2
+  exit 1
+}
+
+# Resolve the actual container name (docker compose prefixes the project name,
+# e.g. the repo directory "kms" → "kms-edb-tde-1").
+CONTAINER_NAME=$(docker compose --project-directory "$REPO_ROOT" ps \
+  --format "{{.Name}}" edb-tde 2>/dev/null | head -1)
+export CONTAINER_NAME="${CONTAINER_NAME:-edb-tde}"
+echo "EDB container: $CONTAINER_NAME"
+
+# Run the EDB TDE test suite (container is up; CONTAINER_NAME + EDB_MASTER_KEY_UID exported).
+echo "Running EDB TDE tests…"
 export PYTHON_CMD="python"
 env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
   bash "$REPO_ROOT/.github/scripts/edb_tde/test_edb_tde.sh" all

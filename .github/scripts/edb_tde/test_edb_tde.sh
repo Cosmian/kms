@@ -2,10 +2,12 @@
 # EDB TDE KMIP Integration Test Runner
 # Tests Cosmian KMS compatibility with EDB Postgres Advanced Server TDE.
 #
-# Requires EDB_SUBSCRIPTION_TOKEN to be set (fails immediately otherwise).
+# Expects the EDB container to already be running (lifecycle owned by the nix
+# wrapper .github/scripts/test/test_edb_tde.sh and test_all.yml in CI).
+# Requires CONTAINER_NAME and EDB_MASTER_KEY_UID to be exported by the caller.
 #
 # Flow:
-#   1. Logs in to docker.enterprisedb.com, starts the edb-tde container.
+#   1. Connects to the running edb-tde container (started by nix wrapper).
 #   2. EDB Postgres initialises with TDE — initdb calls the REAL
 #      /usr/edb/kmip/client/edb_tde_kmip_client.py (wrap command) to seal
 #      the cluster DEK against the Cosmian KMS.
@@ -32,7 +34,6 @@ print_fail() { echo -e "${RED}[FAIL]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(realpath "$SCRIPT_DIR/../../..")
 
 # ── Clients ──────────────────────────────────────────────────────────────────
 # Key-creation helper — the official edb_tde_kmip_client.py (shipped inside the
@@ -53,25 +54,14 @@ EDB_REAL_CLIENT="/usr/edb/kmip/client/edb_tde_kmip_client.py"
 EDB_PYKMIP_CONF="/kmip-certs/pykmip.conf"
 
 # Fail immediately if the required token is absent.
-if [ -z "${EDB_SUBSCRIPTION_TOKEN:-}" ]; then
-  echo "Error: EDB_SUBSCRIPTION_TOKEN is not set." >&2
-  echo "Set it to your EDB registry token to run this test suite." >&2
-  exit 1
-fi
 if ! command -v docker >/dev/null 2>&1; then
   echo "Error: docker is not available." >&2
   exit 1
 fi
 
 # ── Container constants ───────────────────────────────────────────────────────
-# Docker Compose service name — used with `docker compose` subcommands.
-COMPOSE_SERVICE="edb-tde"
-# Actual container name used by bare `docker exec`.
-# docker compose prefixes the project name (typically the repo directory name,
-# e.g. "kms"), producing names like "kms-edb-tde-1".
-# Resolved to the real name in setup_edb_container(); bare COMPOSE_SERVICE is
-# the fallback for environments where the project name is unknown.
-CONTAINER_NAME="$COMPOSE_SERVICE"
+# CONTAINER_NAME is exported by the nix wrapper (test_edb_tde.sh) which owns
+# the docker compose lifecycle.  If not set (standalone), discovered via docker ps.
 EDB_PORT=5444
 # Temp directory used for wrapped-key files inside the running container.
 CONTAINER_TMP="/tmp/edb_tde"
@@ -81,14 +71,14 @@ TESTS_PASSED=0
 TESTS_FAILED=0
 TMPDIR="${TMPDIR:-/tmp}"
 TEST_WORKDIR=$(mktemp -d "$TMPDIR/edb_tde_test.XXXXXX")
-EDB_CONTAINER_RUNNING=0
-CONTAINER_NAME="$COMPOSE_SERVICE"
+# Resolve container name: nix wrapper exports CONTAINER_NAME; fall back to
+# docker ps discovery when running standalone.
+if [ -z "${CONTAINER_NAME:-}" ]; then
+  CONTAINER_NAME=$(docker ps --filter "name=edb-tde" --format "{{.Names}}" | head -1)
+  CONTAINER_NAME="${CONTAINER_NAME:-edb-tde}"
+fi
 
 cleanup() {
-  if [ "$EDB_CONTAINER_RUNNING" = "1" ]; then
-    docker compose --project-directory "$REPO_ROOT" stop "$COMPOSE_SERVICE" 2>/dev/null || true
-    docker compose --project-directory "$REPO_ROOT" rm -f "$COMPOSE_SERVICE" 2>/dev/null || true
-  fi
   rm -rf "$TEST_WORKDIR"
 }
 trap cleanup EXIT
@@ -145,58 +135,33 @@ wrapped_path() {
 
 # ─── Setup: login + start EDB Postgres TDE container ─────────────────────────
 setup_edb_container() {
-  # 1. Login to EDB Docker registry.
-  print_status "  Logging in to docker.enterprisedb.com (username: k8s)…"
-  if ! echo "${EDB_SUBSCRIPTION_TOKEN}" |
-    docker login --username k8s --password-stdin docker.enterprisedb.com 2>/dev/null; then
-    print_error "  docker login failed — verify EDB_SUBSCRIPTION_TOKEN is valid"
-    return 1
-  fi
-
-  # 2. Create the AES-256 master key via create_master_key.py.
-  #    The official edb_tde_kmip_client.py has no key-creation command; this
-  #    minimal helper issues KMIP Create + Activate directly via PyKMIP.
-  print_status "  Creating AES-256 master key in Cosmian KMS…"
-  local uid
-  uid=$(env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
-    "$PYTHON_CMD" "$CREATE_KEY_SCRIPT" \
-    --pykmip-config-file="$PYKMIP_CONF_HOST" 2>/dev/null)
-  if [ -z "$uid" ]; then
-    print_error "  Failed to create master key (empty UID returned)"
-    return 1
+  # 1. Master key UID — provided by nix wrapper via env, or create one now.
+  local uid="${EDB_MASTER_KEY_UID:-}"
+  if [ -n "$uid" ]; then
+    print_status "  Using pre-created master key: $uid"
+  else
+    print_status "  Creating AES-256 master key in Cosmian KMS…"
+    uid=$(env -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES \
+      "$PYTHON_CMD" "$CREATE_KEY_SCRIPT" \
+      --pykmip-config-file="$PYKMIP_CONF_HOST" 2>/dev/null)
+    if [ -z "$uid" ]; then
+      print_error "  Failed to create master key (empty UID returned)"
+      return 1
+    fi
+    print_status "  Master key UID: $uid"
   fi
   echo "$uid" >"$TEST_WORKDIR/master_key_uid.txt"
-  print_status "  Master key UID: $uid"
 
-  # 3. Start EDB Postgres with TDE.
-  #    During initdb, Postgres calls PGDATAKEYWRAPCMD which invokes the real
-  #    edb_tde_kmip_client.py encrypt inside the container — this is the core
-  #    end-to-end integration path.
-  print_status "  Starting EDB Postgres TDE container…"
-  print_status "  (initdb will call the real edb_tde_kmip_client.py to wrap the cluster DEK)"
-  EDB_MASTER_KEY_UID="$uid" \
-    docker compose --project-directory "$REPO_ROOT" up -d "$COMPOSE_SERVICE" || {
-    print_error "  docker compose up failed"
+  # 2. Verify the container is running.
+  if ! docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+    print_error "  Container '$CONTAINER_NAME' is not running."
+    print_error "  Run via: bash .github/scripts/nix.sh --variant non-fips test edb_tde"
     return 1
-  }
-  EDB_CONTAINER_RUNNING=1
-
-  # Resolve the actual container name created by docker compose.
-  # docker compose prefixes the project name (derived from the directory), e.g.
-  # "kms-edb-tde-1".  Bare `docker exec` requires the real container name, not
-  # the service name.
-  local resolved
-  resolved=$(docker compose --project-directory "$REPO_ROOT" ps \
-    --format "{{.Name}}" "$COMPOSE_SERVICE" 2>/dev/null | head -1)
-  if [ -n "$resolved" ]; then
-    CONTAINER_NAME="$resolved"
-    print_status "  Container name resolved: $CONTAINER_NAME"
-  else
-    print_warning "  Could not resolve container name; falling back to service name '$COMPOSE_SERVICE'"
   fi
+  print_status "  Container: $CONTAINER_NAME"
 
-  # 4. Wait for Postgres to accept connections.
-  # initdb with TDE (KMIP key wrap) can take up to 2 minutes on first start.
+  # 3. Wait for Postgres to accept connections.
+  #    initdb with TDE (KMIP key wrap) can take up to 2 minutes on first start.
   local retries=90
   local count=0
   print_status "  Waiting for EDB Postgres to be ready on port ${EDB_PORT}..."
@@ -205,14 +170,14 @@ setup_edb_container() {
     count=$((count + 1))
     if [ "$count" -ge "$retries" ]; then
       print_error "  EDB Postgres not ready after $retries attempts"
-      docker compose --project-directory "$REPO_ROOT" logs "$COMPOSE_SERVICE" | tail -40
+      docker logs "$CONTAINER_NAME" 2>&1 | tail -40
       return 1
     fi
     sleep 2
   done
   print_status "  EDB Postgres is ready — cluster DEK was sealed by the real KMIP client"
 
-  # 5. Create temp dir inside container for test artefacts.
+  # 4. Create temp dir inside container for test artefacts.
   docker exec "$CONTAINER_NAME" mkdir -p "$CONTAINER_TMP" 2>/dev/null || true
 
   return 0
@@ -413,8 +378,8 @@ test_multiple_dek_sizes() {
 test_postgres_tde_verify() {
   print_status "  Verifying TDE: querying data_encryption_version…"
   local tde_version
-  tde_version=$(docker compose --project-directory "$REPO_ROOT" exec -T \
-    -e PGPASSWORD="${EDB_PGPASSWORD:-kms_test}" "$COMPOSE_SERVICE" \
+  tde_version=$(docker exec -i \
+    -e PGPASSWORD="${EDB_PGPASSWORD:-kms_test}" "$CONTAINER_NAME" \
     psql -U enterprisedb -d postgres -p "$EDB_PORT" -At \
     -c "SELECT data_encryption_version FROM pg_control_init();" 2>&1)
   local psql_exit=$?
@@ -425,27 +390,27 @@ test_postgres_tde_verify() {
 
   if [ "$psql_exit" != "0" ] || [ -z "$tde_int" ]; then
     print_error "  psql query failed (exit $psql_exit): $tde_version"
-    docker compose --project-directory "$REPO_ROOT" logs "$COMPOSE_SERVICE" | tail -20
+    docker logs "$CONTAINER_NAME" 2>&1 | tail -20
     return 1
   fi
 
   if [ "$tde_int" != "1" ]; then
     print_error "  TDE not active: data_encryption_version=${tde_int} (expected 1)"
-    docker compose --project-directory "$REPO_ROOT" logs "$COMPOSE_SERVICE" | tail -20
+    docker logs "$CONTAINER_NAME" 2>&1 | tail -20
     return 1
   fi
   print_status "  TDE active: data_encryption_version=$tde_int"
 
   print_status "  Creating and querying encrypted test table…"
-  docker compose --project-directory "$REPO_ROOT" exec -T \
-    -e PGPASSWORD="${EDB_PGPASSWORD:-kms_test}" "$COMPOSE_SERVICE" \
+  docker exec -i \
+    -e PGPASSWORD="${EDB_PGPASSWORD:-kms_test}" "$CONTAINER_NAME" \
     psql -U enterprisedb -d postgres -p "$EDB_PORT" -At \
     -c "CREATE TABLE tde_test (id int, secret text);
         INSERT INTO tde_test VALUES (1, 'kmip_secret_data');" 2>/dev/null
 
   local row_count
-  row_count=$(docker compose --project-directory "$REPO_ROOT" exec -T \
-    -e PGPASSWORD="${EDB_PGPASSWORD:-kms_test}" "$COMPOSE_SERVICE" \
+  row_count=$(docker exec -i \
+    -e PGPASSWORD="${EDB_PGPASSWORD:-kms_test}" "$CONTAINER_NAME" \
     psql -U enterprisedb -d postgres -p "$EDB_PORT" -At \
     -c "SELECT count(*) FROM tde_test WHERE secret='kmip_secret_data';" 2>/dev/null ||
     echo "0")

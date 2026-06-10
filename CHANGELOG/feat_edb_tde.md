@@ -33,6 +33,15 @@
   test script could authenticate with `docker.enterprisedb.com`, causing an immediate
   build failure. The `test_edb_tde.sh` script manages the full container lifecycle
   (login → build → start → stop) internally, so no pre-start from CI is needed.
+
+## Refactor
+
+- Move EDB container lifecycle (docker login, `docker compose up/rm`, master key creation)
+  out of the inner test script and into the nix wrapper (`test/test_edb_tde.sh`) and CI
+  (`test_all.yml`). The inner script (`edb_tde/test_edb_tde.sh`) now simply connects to the
+  already-running container via `CONTAINER_NAME` and `EDB_MASTER_KEY_UID` exported by the caller.
+  CI gets two new steps: "Login to EDB Docker registry and pre-build image" (before Test) and
+  "Stop EDB container" (always, after Test).
 - `decrypt.rs`: treat missing `IVCounterNonce` as zero-IV (fixes thales KMIP
   variant where `iv+ciphertext` is sent as one blob with no separate IV field)
 - `test_edb_tde.sh`: separate `COMPOSE_SERVICE` (for compose commands) from
