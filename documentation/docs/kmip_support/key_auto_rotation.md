@@ -53,7 +53,7 @@ CLI command) to configure the mutable attributes on an existing key.
 ckms sym keys set-rotation-policy \
     --key-id  <KEY_UID> \
     --interval 3600 \
-    --name    "hourly"
+    --name    "my-key-set"
 ```
 
 ---
@@ -594,7 +594,7 @@ Setting a rotation policy on a wrapped key is identical to a plain key:
 ckms sym keys set-rotation-policy \
     --key-id <KEY_UID> \
     --interval 3600 \
-    --name "hourly"
+    --name "my-key-set"
 ```
 
 The `SetAttribute` call succeeds even when the target key is wrapped (the
@@ -636,7 +636,7 @@ ckms sym keys set-rotation-policy \
     --key-id  <KEY_UID>   \
     --interval 3600       \
     --offset   60         \
-    --name     "hourly"
+    --name     "my-key-set"
 ```
 
 ### Step 2 — Enable the server scheduler
@@ -759,65 +759,5 @@ rotation policy for the new key rather than blindly inheriting the old schedule.
 ckms sym keys set-rotation-policy \
     --key-id  <NEW_KEY_UID> \
     --interval 3600 \
-    --name    "hourly"
+    --name    "my-key-set"
 ```
-
----
-
-## Implementation roadmap
-
-This feature is delivered as a cascade of four stacked pull requests, each
-building on the previous one:
-
-```text
-develop ← PR 1 ← PR 2 ← PR 3 ← PR 4
-```
-
-### PR 1 — Specification + manual rotation for all key types (#968)
-
-Publish the complete key auto-rotation specification and implement all
-manual-rotation flows:
-
-- Standardise terminology: **Key Rotation** for symmetric/asymmetric
-  re-keying, **Certificate Renewal** for certificate operations
-- `Re-Key` implementation for all six symmetric/asymmetric scenarios
-- `Re-Key Key Pair` for all curve types (RSA, EC, ML-KEM, ML-DSA, SLH-DSA,
-  X25519, secp256k1, Covercrypt)
-- `ReCertify` (KMIP §6.1.45) for self-signed and CA-signed certificate renewal
-- Offset-based `PreActive` state for keys/certificates with future activation
-  dates
-- 344 test vectors (non-regression coverage for all flows)
-
-### PR 2 — Auto-rotation scheduler + deadline detection (#970)
-
-Background cron that finds due keys and rotates them automatically:
-
-- `find_due_for_rotation()` DB query → dispatch to the appropriate flow
-- Rotation-policy inheritance (interval, name, offset → new key;
-  `x-rotate-interval = 0` on old key)
-- `--auto-rotation-check-interval-secs` server config flag + wizard step
-- Approaching-deadline detection (30 / 7 / 1 days before next scheduled
-  rotation) emitting events via a `Notifier` trait (no-op stub until PR 3)
-- OTel counter `kms.key.auto_rotation` on every successful rotation
-
-### PR 3 — Notification system (SMTP email) (#971)
-
-First concrete `Notifier` implementation — sends HTML/plain-text emails
-via SMTP (`lettre` 0.11):
-
-- **Events**: `rotation_success`, `rotation_failure`, `approaching_deadline`
-- Threshold-based dedup: warning emitted once per threshold per key
-- Failures are logged at `warn!` level and never block rotation
-- `NotificationsStore` trait backed by SQLite, PostgreSQL, and MySQL
-- HTTP API for reading notifications from the UI
-- `SmtpConfig` wizard step for notification endpoint setup
-
-### PR 4 — UI and CLI features (#973)
-
-Mirror rotation features in the Web UI and `ckms` CLI:
-
-- `set-rotation-policy` and `get-rotation-policy` subcommands under
-  `ckms sym keys`
-- Re-Key, Set/Get Rotation Policy pages in the Web UI (Symmetric Keys section)
-- `NotificationsBell` component with unread count badge and drawer
-- Playwright E2E tests for all rotation UI flows
