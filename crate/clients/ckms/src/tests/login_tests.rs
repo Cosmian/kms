@@ -38,7 +38,7 @@ server_url = "http://127.0.0.1:9998"
     .expect("failed to write test config");
 
     let mut cmd = ckms_bin();
-    cmd.env(CKMS_CONF_ENV, &conf_path).arg("login");
+    cmd.env(CKMS_CONF_ENV, &conf_path).arg("login").arg("oauth");
 
     let output = recover_cmd_logs(&mut cmd);
     assert!(
