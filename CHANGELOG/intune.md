@@ -1,3 +1,34 @@
+## Bug Fixes
+
+### CNG KSP — BCrypt blob magic constants corrected (Intune connector incompatibility)
+
+Six `BCRYPT_*_MAGIC` constants in `crate/clients/cng/src/blob.rs` had their bytes scrambled,
+causing the exported RSA public-key blob to begin with `"RAS1"` instead of the required `"RSA1"`
+(`BCRYPT_RSAPUBLIC_BLOB`). The Intune Java connector rejects any blob whose first four bytes are
+not exactly `RSA1`, producing:
+
+```
+java.lang.IllegalArgumentException: Key is not a RSA key of BCrypt format
+```
+
+Similarly, the ECDSA P-256/P-384/P-521 constants mapped to `"ES61/63/65"` instead of `"ECS1/3/5"`.
+
+**Root cause**: hex literals were written as big-endian representations of the mnemonic string
+instead of as the little-endian `u32` value that `to_le_bytes()` emits.
+
+| Name | Wrong | Correct | Bytes (LE) |
+|------|-------|---------|------------|
+| `BCRYPT_RSAPUBLIC_MAGIC` | `0x3153_4152` | `0x3141_5352` | `RSA1` |
+| `BCRYPT_RSAPRIVATE_MAGIC` | `0x3253_4152` | `0x3241_5352` | `RSA2` |
+| `BCRYPT_RSAFULLPRIVATE_MAGIC` | `0x3352_5341` | `0x3341_5352` | `RSA3` |
+| `BCRYPT_ECDSA_PUBLIC_P256_MAGIC` | `0x3136_5345` | `0x3153_4345` | `ECS1` |
+| `BCRYPT_ECDSA_PUBLIC_P384_MAGIC` | `0x3336_5345` | `0x3353_4345` | `ECS3` |
+| `BCRYPT_ECDSA_PUBLIC_P521_MAGIC` | `0x3536_5345` | `0x3553_4345` | `ECS5` |
+
+Also fixed the same wrong local constants in `crate/clients/clap/src/actions/cng_verify.rs`
+and hardened the PS1 test to assert the exported blob starts with `"RSA1"` and to test
+`Export-IntunePublicKey -FileFormat PEM`.
+
 ## Features
 
 ### CNG KSP

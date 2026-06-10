@@ -345,13 +345,53 @@ server_url = "$KMS_URL"
                     exit 1
                 }
                 Write-Ok "Export-IntunePublicKey wrote $fileSize bytes to $exportPath"
+
+                # Validate the BCrypt blob magic: first 4 bytes must be "RSA1"
+                # (0x52 0x53 0x41 0x31 in little-endian).  A wrong magic such as
+                # "RAS1" causes the Intune connector to reject the key with
+                # "Key is not a RSA key of BCrypt format".
+                $blobBytes = [System.IO.File]::ReadAllBytes($exportPath)
+                $magic = [System.Text.Encoding]::ASCII.GetString($blobBytes, 0, 4)
+                if ($magic -ne "RSA1") {
+                    Write-Fail "BCrypt blob has wrong magic '$magic' (expected 'RSA1'). Check BCRYPT_RSAPUBLIC_MAGIC constant."
+                    exit 1
+                }
+                Write-Ok "BCrypt blob magic is 'RSA1' (correct)"
             } else {
                 Write-Fail "Export-IntunePublicKey did not create output file"
                 exit 1
             }
 
-            # Clean up the exported public key file
+            # Export the public key in PEM format.
+            # This exercises the -FileFormat PEM path of NCryptExportKey, which
+            # requires a valid "RSA1" magic to succeed.
+            $pemExportPath = Join-Path $env:TEMP "intune-pfx-test-key.pempub"
+            if (Test-Path $pemExportPath) { Remove-Item -Force $pemExportPath }
+            try {
+                Export-IntunePublicKey `
+                    -ProviderName "Cosmian KMS Key Storage Provider" `
+                    -KeyName $intuneKeyName `
+                    -FilePath $pemExportPath `
+                    -FileFormat PEM
+                if (Test-Path $pemExportPath) {
+                    $pemContent = Get-Content $pemExportPath -Raw
+                    if ($pemContent -notmatch "-----BEGIN PUBLIC KEY-----") {
+                        Write-Fail "PEM export does not contain expected header"
+                        exit 1
+                    }
+                    Write-Ok "Export-IntunePublicKey PEM export succeeded"
+                } else {
+                    Write-Fail "Export-IntunePublicKey -FileFormat PEM did not create output file"
+                    exit 1
+                }
+            } catch {
+                Write-Fail "Export-IntunePublicKey -FileFormat PEM failed: $($_.Exception.Message)"
+                exit 1
+            }
+
+            # Clean up exported public key files
             Remove-Item -Force $exportPath -ErrorAction SilentlyContinue
+            Remove-Item -Force $pemExportPath -ErrorAction SilentlyContinue
 
             # Export the private key via Export-IntunePrivateKey.
             # This calls NCryptOpenKey → NCryptExportKey with PKCS8_PRIVATEKEY blob type.
@@ -383,7 +423,7 @@ server_url = "$KMS_URL"
             # Clean up
             Remove-Item -Force $privExportPath -ErrorAction SilentlyContinue
 
-            Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublic + ExportPrivate + Import)"
+            Write-Ok "Intune PFX Import workflow: PASSED (Add + ExportPublicBcrypt + ExportPublicPEM + ExportPrivate + Import)"
         } else {
             Write-Host "  [SKIP] IntunePfxImport module not found (set INTUNE_PFX_MODULE_PATH)" -ForegroundColor Yellow
             Write-Host "         To enable: download IntunePfxImportUtilities and set the env var" -ForegroundColor Yellow

@@ -28,8 +28,10 @@ pub(crate) mod win {
     use crate::error::{KmsCliError, result::KmsCliResult};
 
     // Per-curve ECDSA public-key blob magic constants.
-    const BCRYPT_ECDSA_PUBLIC_P256_MAGIC: u32 = 0x3136_5345;
-    const KSP_RSAPUBLIC_MAGIC: u32 = 0x3153_4152;
+    // "ECS1" = [0x45, 0x43, 0x53, 0x31] → LE u32 = 0x3153_4345
+    const BCRYPT_ECDSA_PUBLIC_P256_MAGIC: u32 = 0x3153_4345;
+    // "RSA1" = [0x52, 0x53, 0x41, 0x31] → LE u32 = 0x3141_5352
+    const KSP_RSAPUBLIC_MAGIC: u32 = 0x3141_5352;
 
     const ERROR_SUCCESS: i32 = 0;
     #[allow(clippy::cast_possible_wrap)]
