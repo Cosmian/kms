@@ -28,6 +28,11 @@
 - `docker-compose.yml`: add `:-` default for `EDB_MASTER_KEY_UID` in `PGDATAKEYWRAPCMD`
   and `PGDATAKEYUNWRAPCMD` to suppress spurious Docker Compose warnings when the variable
   is not set (e.g. when running `docker compose up -d otel-collector jaeger`)
+- `test_all.yml`: remove `docker: edb-tde` from the `edb_tde` matrix include — the
+  `Run docker containers` CI step ran `docker compose up -d edb-tde` **before** the
+  test script could authenticate with `docker.enterprisedb.com`, causing an immediate
+  build failure. The `test_edb_tde.sh` script manages the full container lifecycle
+  (login → build → start → stop) internally, so no pre-start from CI is needed.
 - `decrypt.rs`: treat missing `IVCounterNonce` as zero-IV (fixes thales KMIP
   variant where `iv+ciphertext` is sent as one blob with no separate IV field)
 - `test_edb_tde.sh`: separate `COMPOSE_SERVICE` (for compose commands) from

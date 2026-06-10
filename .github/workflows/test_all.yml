@@ -71,8 +71,6 @@ jobs:
             docker: percona
           - type: mariadb
             docker: mariadb
-          - type: edb_tde
-            docker: edb-tde
           - type: redis
             docker: redis
           - type: otel_export
