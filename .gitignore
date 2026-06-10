@@ -50,6 +50,7 @@ ui/test-results
 .agent/
 .agents/
 .qwen/tmp/
+.github/agents/
 
 # Misc
 TODO.md

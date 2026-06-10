@@ -363,3 +363,97 @@ pub(crate) async fn request_token(
         HttpClientError::Default(format!("failed parsing token exchange response: {e:?}"))
     })
 }
+
+/// Configuration for the Cosmian authentication server login.
+///
+/// Used by the `ckms login cosmian` subcommand.  Set the corresponding
+/// `cosmian_conf` section in the KMS client configuration file:
+///
+/// ```toml
+/// [http_config.cosmian_conf]
+/// server_url = "https://auth.example.com"
+/// realm      = "kms"
+/// ```
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+pub struct CosmianLoginConfig {
+    /// Base URL of the Cosmian authentication server (no trailing slash).
+    pub server_url: String,
+    /// Realm to authenticate against (e.g. `"kms"`).
+    pub realm: String,
+}
+
+/// Login to a Cosmian authentication server using HTTP Basic credentials.
+///
+/// Sends `POST {server_url}/login?realm={realm}` with an
+/// `Authorization: Basic <base64(username:password)>` header and returns the
+/// JWT value from the `_ea_` session cookie set in the response.
+///
+/// The server sets a `Set-Cookie: _ea_=<JWT>; HttpOnly; Secure; ...` header.
+/// The JWT is extracted and returned as a plain string, matching the same
+/// token-storage mechanism used by the `login oauth` subcommand: the caller
+/// stores it in `http_config.access_token` and it is forwarded as a Bearer
+/// token on every subsequent request.
+///
+/// # Errors
+///
+/// Returns [`HttpClientError`] if the HTTP request fails, the server responds
+/// with a non-2xx status, or the `_ea_` cookie is absent from the response.
+pub async fn cosmian_login(
+    config: &CosmianLoginConfig,
+    username: &str,
+    password: &str,
+) -> HttpClientResult<String> {
+    /// Name of the session cookie set by the Cosmian authentication server.
+    const COSMIAN_SESSION_COOKIE: &str = "_ea_";
+
+    let url = format!(
+        "{}/login?realm={}",
+        config.server_url.trim_end_matches('/'),
+        config.realm
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .basic_auth(username, Some(password))
+        .send()
+        .await
+        .map_err(|e| {
+            HttpClientError::Default(format!("Cosmian login request failed: {e:?}"))
+        })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read response>".to_owned());
+        return Err(HttpClientError::Default(format!(
+            "Cosmian login failed ({status}): {error_text}"
+        )));
+    }
+
+    // The access token is delivered via `Set-Cookie: _ea_=<JWT>; ...`.
+    // There may be multiple Set-Cookie headers; find the first one whose
+    // cookie name is exactly `_ea_`.
+    for header_value in response.headers().get_all(reqwest::header::SET_COOKIE) {
+        let raw = header_value
+            .to_str()
+            .map_err(|e| HttpClientError::Default(format!("invalid Set-Cookie header: {e}")))?;
+
+        // Each Set-Cookie value has the form:
+        //   name=value[; attribute[=value]]*
+        // Split at the first ';' to isolate the name=value pair, then split
+        // at the first '=' to separate name from value.
+        let name_value = raw.split(';').next().unwrap_or(raw);
+        if let Some((name, value)) = name_value.split_once('=') {
+            if name.trim() == COSMIAN_SESSION_COOKIE {
+                return Ok(value.trim().to_owned());
+            }
+        }
+    }
+
+    Err(HttpClientError::Default(format!(
+        "Cosmian login response did not set the `{COSMIAN_SESSION_COOKIE}` session cookie"
+    )))
+}
