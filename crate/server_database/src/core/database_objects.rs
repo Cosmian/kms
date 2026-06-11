@@ -592,17 +592,42 @@ mod tests {
         // list_user_operations_granted: exercises the permissions facade path.
         drop(db.list_user_operations_granted("test_user").await);
 
+        // retrieve_object on a non-existent uid → Ok(None) → outcome "success"
+        drop(db.retrieve_object("non-existent-uid-xyz").await);
+
+        // find with no filters → Ok([]) → outcome "success"
+        drop(db.find(None, None, "test_user", false, "").await);
+
         let recorded = calls.lock().expect("mutex poisoned").clone();
+
+        // At least 3 calls recorded (one per method above)
         assert!(
-            !recorded.is_empty(),
-            "Expected the mock recorder to be called but got zero calls"
+            recorded.len() >= 3,
+            "Expected ≥ 3 recorded calls, got {}",
+            recorded.len()
         );
-        // Every recorded call must use "sqlite" as the backend.
-        for (op, backend, _outcome) in &recorded {
+
+        // All outcomes must be "success" — these operations cannot fail on an empty DB.
+        for (op, backend, outcome) in &recorded {
             assert_eq!(
                 backend, "sqlite",
-                "Expected backend 'sqlite' for operation '{op}', got '{backend}'"
+                "Expected backend 'sqlite' for op '{op}', got '{backend}'"
+            );
+            assert_eq!(
+                outcome, "success",
+                "Expected outcome 'success' for op '{op}', got '{outcome}'"
             );
         }
+
+        // Operation names present in the recorded set.
+        let op_names: Vec<&str> = recorded.iter().map(|(op, _, _)| op.as_str()).collect();
+        assert!(
+            op_names.contains(&"retrieve"),
+            "recorder missing 'retrieve' op; got: {op_names:?}"
+        );
+        assert!(
+            op_names.contains(&"find"),
+            "recorder missing 'find' op; got: {op_names:?}"
+        );
     }
 }

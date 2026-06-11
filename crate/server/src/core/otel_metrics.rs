@@ -500,50 +500,98 @@ impl DbMetricsRecorder for OtelMetrics {
 )]
 mod tests {
     use super::*;
+    use opentelemetry_sdk::{
+        metrics::{PeriodicReader, data::Gauge as GaugeData, data::Sum},
+        runtime,
+        testing::metrics::InMemoryMetricExporter,
+    };
+
+    // ── No-op provider — cheap, used only where value assertions aren't needed ──
 
     fn create_test_meter_provider() -> SdkMeterProvider {
-        // Create a simple no-op meter provider for testing
-        // We don't need to actually export metrics in tests
-        opentelemetry_sdk::metrics::SdkMeterProvider::builder().build()
+        SdkMeterProvider::builder().build()
     }
+
+    // ── Observing setup: real exporter, values assertable after force_flush() ──
+
+    fn setup_observing_metrics() -> (OtelMetrics, SdkMeterProvider, InMemoryMetricExporter) {
+        let exporter = InMemoryMetricExporter::default();
+        let reader = PeriodicReader::builder(exporter.clone(), runtime::Tokio).build();
+        let provider = SdkMeterProvider::builder().with_reader(reader).build();
+        let provider_ref = provider.clone();
+        let metrics = OtelMetrics::new(provider).expect("metrics init");
+        (metrics, provider_ref, exporter)
+    }
+
+    // ── Value-reading helpers ─────────────────────────────────────────────────
+
+    /// Sum of all data-point values for a u64 counter metric in the last exported batch.
+    fn last_counter_u64(exporter: &InMemoryMetricExporter, name: &str) -> u64 {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return 0;
+        };
+        for sm in &last.scope_metrics {
+            for metric in &sm.metrics {
+                if metric.name.as_ref() == name {
+                    if let Some(sum) = metric.data.as_any().downcast_ref::<Sum<u64>>() {
+                        return sum.data_points.iter().map(|dp| dp.value).sum();
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Net value of an i64 `UpDownCounter` (`Sum<i64>`) in the last exported batch.
+    fn last_updown_i64(exporter: &InMemoryMetricExporter, name: &str) -> i64 {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return 0;
+        };
+        for sm in &last.scope_metrics {
+            for metric in &sm.metrics {
+                if metric.name.as_ref() == name {
+                    if let Some(sum) = metric.data.as_any().downcast_ref::<Sum<i64>>() {
+                        return sum.data_points.iter().map(|dp| dp.value).sum();
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    /// Last recorded value of an i64 Gauge in the last exported batch.
+    fn last_gauge_i64(exporter: &InMemoryMetricExporter, name: &str) -> i64 {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return 0;
+        };
+        for sm in &last.scope_metrics {
+            for metric in &sm.metrics {
+                if metric.name.as_ref() == name {
+                    if let Some(g) = metric.data.as_any().downcast_ref::<GaugeData<i64>>() {
+                        return g.data_points.last().map_or(0, |dp| dp.value);
+                    }
+                }
+            }
+        }
+        0
+    }
+
+    // ── Smoke tests (construction + no-panic; no value assertions needed) ─────
 
     #[test]
     fn test_metrics_creation() {
-        let meter_provider = create_test_meter_provider();
-        let _metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-    }
-
-    #[test]
-    fn test_kmip_operation_recording() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-
-        metrics.record_kmip_operation("Create", "user1");
-        metrics.record_kmip_operation("Get", "user1");
-        metrics.record_kmip_operation("Create", "user2");
-
-        // Metrics are recorded, actual verification would require checking the exporter
-    }
-
-    #[test]
-    fn test_permission_recording() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-
-        metrics.record_permission_grant("user1", "read");
-        metrics.record_permission_grant("user1", "write");
-        metrics.record_permission_grant("user2", "read");
+        let _metrics = OtelMetrics::new(create_test_meter_provider()).expect("creation");
     }
 
     #[test]
     fn test_active_users_tracking() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
-
+        let metrics = OtelMetrics::new(create_test_meter_provider()).expect("creation");
         metrics.update_active_user("user1");
         metrics.update_active_user("user2");
         metrics.update_active_user("user3");
-
         assert_eq!(
             metrics
                 .active_users_tracker
@@ -554,12 +602,110 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_operation_duration() {
-        let meter_provider = create_test_meter_provider();
-        let metrics = OtelMetrics::new(meter_provider).expect("Failed to create metrics");
+    // ── Tests with value assertions ───────────────────────────────────────────
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_kmip_operation_recording() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_kmip_operation("Create", "user1");
+        metrics.record_kmip_operation("Get", "user1");
+        metrics.record_kmip_operation("Create", "user2");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.kmip.operations.total"), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_permission_recording() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_permission_grant("user1", "read");
+        metrics.record_permission_grant("user1", "write");
+        metrics.record_permission_grant("user2", "read");
+        provider.force_flush().expect("flush");
+        assert_eq!(
+            last_counter_u64(&exporter, "kms.permissions.granted.total"),
+            3
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_operation_duration_exports_histogram_names() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
         metrics.record_kmip_operation_duration("Create", 0.123);
         metrics.record_database_operation("insert", MainDbKind::Sqlite, "success", 0.045);
+        provider.force_flush().expect("flush");
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let names: Vec<&str> = batches.last().map_or(vec![], |rm| {
+            rm.scope_metrics
+                .iter()
+                .flat_map(|sm| &sm.metrics)
+                .map(|m| m.name.as_ref())
+                .collect()
+        });
+        assert!(
+            names.contains(&"kms.kmip.operation.duration"),
+            "kmip histogram not exported"
+        );
+        assert!(
+            names.contains(&"kms.database.operation.duration"),
+            "db histogram not exported"
+        );
+    }
+
+    // ── New tests for previously-untested methods ─────────────────────────────
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_record_http_request_increments_counter() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_http_request("POST", "/kmip/2_1", "200");
+        metrics.record_http_request("GET", "/health", "200");
+        metrics.record_http_request("POST", "/kmip/2_1", "422");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.http.requests.total"), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_record_cache_operation_increments_counter() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_cache_operation("get", "miss");
+        metrics.record_cache_operation("insert", "ok");
+        metrics.record_cache_operation("get", "hit");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.cache.operations.total"), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_record_hsm_operation_increments_counter() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.record_hsm_operation("Encrypt", "softhsm2");
+        metrics.record_hsm_operation("Decrypt", "softhsm2");
+        provider.force_flush().expect("flush");
+        assert_eq!(last_counter_u64(&exporter, "kms.hsm.operations.total"), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_objects_total_sets_gauge() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.update_objects_total(42);
+        provider.force_flush().expect("flush");
+        assert_eq!(last_gauge_i64(&exporter, "kms.objects.total"), 42);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_active_connections_up_down() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        metrics.increment_active_connections();
+        metrics.increment_active_connections();
+        metrics.decrement_active_connections();
+        provider.force_flush().expect("flush");
+        assert_eq!(last_updown_i64(&exporter, "kms.active.connections"), 1);
+    }
+
+    // ── MainDbKind::as_str correctness ────────────────────────────────────────
+
+    #[test]
+    fn test_main_db_kind_as_str() {
+        assert_eq!(MainDbKind::Sqlite.as_str(), "sqlite");
+        assert_eq!(MainDbKind::Postgres.as_str(), "postgresql");
+        assert_eq!(MainDbKind::Mysql.as_str(), "mysql");
     }
 }

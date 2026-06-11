@@ -277,6 +277,24 @@ extract_uid() {
   perl -0777 -ne 'if (m/"tag"\s*:\s*"UniqueIdentifier".*?"value"\s*:\s*"([^"]+)"/s) { print "$1\n"; }'
 }
 
+encrypt_with_key() {
+  local uid="$1"
+  # Encrypt a short plaintext with the given AES-256 key.
+  # This forces the server to call get_unwrapped_object, which records
+  # cache hits/misses in kms.cache.operations.total.
+  kmip_post "{\"tag\":\"Encrypt\",\"type\":\"Structure\",\"value\":[{\"tag\":\"UniqueIdentifier\",\"type\":\"TextString\",\"value\":\"${uid}\"},{\"tag\":\"Data\",\"type\":\"ByteString\",\"value\":\"48656c6c6f20576f726c6421\"}]}"
+}
+
+# ── Wrapped-key helper (for kms.cache.operations.total) ──────────────────────
+# Creates an AES-256 key that the server stores wrapped by kek_uid via the
+# cosmian vendor attribute "wrapping_key_id".  The key material is stored
+# encrypted in the DB, so every Encrypt call triggers get_unwrapped() →
+# cache miss/hit → kms.cache.operations.total increments.
+create_aes_key_wrapped_by() {
+  local kek_uid="$1"
+  kmip_post "{\"tag\":\"Create\",\"type\":\"Structure\",\"value\":[{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"Attributes\",\"value\":[{\"tag\":\"CryptographicAlgorithm\",\"type\":\"Enumeration\",\"value\":\"AES\"},{\"tag\":\"CryptographicLength\",\"type\":\"Integer\",\"value\":256},{\"tag\":\"CryptographicUsageMask\",\"type\":\"Integer\",\"value\":12},{\"tag\":\"KeyFormatType\",\"type\":\"Enumeration\",\"value\":\"TransparentSymmetricKey\"},{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"Attribute\",\"value\":[{\"tag\":\"VendorIdentification\",\"type\":\"TextString\",\"value\":\"cosmian\"},{\"tag\":\"AttributeName\",\"type\":\"TextString\",\"value\":\"wrapping_key_id\"},{\"tag\":\"AttributeValue\",\"type\":\"TextString\",\"value\":\"${kek_uid}\"}]}]}]}"
+}
+
 wait_for_metric_gt() {
   local metric_name="$1"
   local min="$2"
@@ -545,6 +563,15 @@ EOF
     activate_key "${uid}" >/dev/null
   done
 
+  # Trigger unwrap-cache path: first Encrypt → cache miss + insert,
+  # second Encrypt on same key → cache hit.
+  # NOTE: plain transparent keys skip get_unwrapped() (is_wrapped()==false),
+  # so these calls do NOT produce cache metrics.  The actual cache coverage
+  # is in Step 4 below using a key stored with wrapped material.
+  echo "Triggering two Encrypt calls on key ${uid}..."
+  encrypt_with_key "${uid}" >/dev/null
+  encrypt_with_key "${uid}" >/dev/null
+
   echo "Waiting for exported metrics (uptime + active keys)..."
 
   # Prefer an explicit uptime metric if present, otherwise fall back
@@ -577,8 +604,35 @@ EOF
   wait_for_metric_gt "kms_database_operations_total" 0 60
 
   # ── Step 4: kms.cache.operations.total ──────────────────────────────────
-  # Counter; the AES Activate path exercises the unwrap-cache (miss then
-  # insert), so at least one observation is guaranteed.
+  # Plain transparent keys bypass get_unwrapped() (is_wrapped() == false).
+  # Create a key stored wrapped by a KEK via cosmian vendor attribute
+  # "wrapping_key_id": the server encrypts its material at rest with the KEK,
+  # so every subsequent Encrypt call triggers get_unwrapped() → cache metrics.
+  echo "Building wrapped-key scenario for kms.cache.operations.total..."
+  cache_kek_uid=$(create_aes_key | extract_uid)
+  if [ -z "${cache_kek_uid}" ]; then
+    echo "ERROR: failed to create KEK for cache scenario" >&2
+    exit 1
+  fi
+  activate_key "${cache_kek_uid}" >/dev/null
+  cache_data_uid=$(create_aes_key_wrapped_by "${cache_kek_uid}" | extract_uid)
+  if [ -z "${cache_data_uid}" ]; then
+    echo "ERROR: failed to create wrapped data key for cache scenario" >&2
+    exit 1
+  fi
+  activate_key "${cache_data_uid}" >/dev/null
+  # First Encrypt: get_unwrapped() → cache miss + insert.
+  enc1_resp=$(encrypt_with_key "${cache_data_uid}")
+  if ! printf '%s' "${enc1_resp}" | grep -q '"tag"[[:space:]]*:[[:space:]]*"EncryptResponse"'; then
+    echo "ERROR: first Encrypt on wrapped key failed: ${enc1_resp}" >&2
+    exit 1
+  fi
+  # Second Encrypt: get_unwrapped() → cache hit.
+  enc2_resp=$(encrypt_with_key "${cache_data_uid}")
+  if ! printf '%s' "${enc2_resp}" | grep -q '"tag"[[:space:]]*:[[:space:]]*"EncryptResponse"'; then
+    echo "ERROR: second Encrypt on wrapped key failed: ${enc2_resp}" >&2
+    exit 1
+  fi
   wait_for_metric_gt "kms_cache_operations_total" 0 60
 
   # Echo what we observed to help diagnose CI flakiness.
