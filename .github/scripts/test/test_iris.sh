@@ -339,6 +339,7 @@ set tls.Name = "CosmianKMSTLS"
 set tls.Enabled = 1
 set tls.Type = 1
 set tls.CertificateFile = "/iris-kmip-certs/client.crt"
+set tls.PrivateKeyFile  = "/iris-kmip-certs/client.key"
 set tls.CAFile          = "/iris-kmip-certs/ca.crt"
 set tls.VerifyPeer = 1
 set sc = tls.%Save()
