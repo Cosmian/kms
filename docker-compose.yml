@@ -178,3 +178,31 @@ services:
       # on macOS/Windows Docker Desktop; on Linux Docker the special value
       # "host-gateway" maps to the host IP).
       - host.docker.internal:host-gateway
+
+  # InterSystems IRIS — mTLS integration test
+  # Started on demand with: docker compose up -d iris
+  # The profile keeps it out of the default `docker compose up -d` that runs
+  iris:
+    image: ${IRIS_DOCKER_IMAGE:-intersystemsdc/iris-community:latest}
+    container_name: ${IRIS_CONTAINER_NAME:-iris-kmip-test}
+    # The Community image is amd64-only; Rosetta handles this on Apple Silicon.
+    platform: linux/amd64
+    pull_policy: always
+    profiles:
+      - iris
+    ports:
+      - "52773:52773" # IRIS Management Portal
+      - "1972:1972"   # IRIS SuperServer
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/iris-kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/iris-kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/iris-kmip-certs/client.key:ro
+    environment:
+      # Inject an ISC license key when provided (optional; Community image has a built-in key).
+      - ISC_PACKAGE_LICENSEKEY=${IRIS_LICENSE_KEY:-}
+    extra_hosts:
+      # Allow IRIS to reach the KMS running on the Docker host.
+      # The KMS server certificate CN is kmserver.acme.com, so IRIS TLS
+      # hostname verification requires this alias to resolve to the host.
+      - "host.docker.internal:host-gateway"
+      - "kmserver.acme.com:host-gateway"

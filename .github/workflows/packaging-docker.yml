@@ -20,10 +20,6 @@ jobs:
   nix-docker-image:
     name: docker-${{ matrix.features }}-${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
-    concurrency:
-      group: docker-test-${{ matrix.features }}-${{ matrix.runner }}
-      cancel-in-progress: false
-      queue: max
     permissions:
       contents: read
       packages: write
