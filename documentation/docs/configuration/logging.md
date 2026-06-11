@@ -139,6 +139,9 @@ Enable the feature with:
 - the `--enable-metering` command line argument,
 - or the equivalent TOML key in the `[logging]` section.
 
+For the full list of emitted metrics, their types, and label sets, see the
+[Metrics reference](./otlp-metrics.md).
+
 ---
 
 ## Observability stack (OTel Collector + VictoriaMetrics + Grafana)
