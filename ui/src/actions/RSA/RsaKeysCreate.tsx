@@ -139,11 +139,7 @@ const RsaKeyCreateForm: React.FC = () => {
                             <InputNumber className="w-[200px]" min={0} placeholder="e.g. 86400" data-testid="rsa-rotation-interval" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="rotateOffset"
-                            label="Rotation Offset (seconds)"
-                            help="Delay before the first rotation occurs."
-                        >
+                        <Form.Item name="rotateOffset" label="Rotation Offset (seconds)" help="Delay before the first rotation occurs.">
                             <InputNumber className="w-[200px]" min={0} placeholder="e.g. 3600" data-testid="rsa-rotation-offset" />
                         </Form.Item>
                     </Card>
