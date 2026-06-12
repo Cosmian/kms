@@ -90,6 +90,8 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 | `kms.kmip.operations.per_user.total` | counter | `operation`, `user` |
 | `kms.kmip.operation.duration` | histogram (s) | `operation` |
 
+> **Note:** The `user` label in `kms.kmip.operations.per_user.total` and `kms.permissions.granted.per_user.total` carries whatever string the authentication middleware extracts (e.g. an OAuth subject, email address, or service-account identifier); operators connecting these metrics to a cloud OTLP backend should be aware that this value will be stored in the backend.
+
 ### Users & Permissions
 
 | Metric | Type | Labels |
@@ -112,7 +114,7 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 | Metric | Type | Labels |
 |--------|------|--------|
 | `kms.http.requests.total` | counter | `method`, `path`, `status` |
-| `kms.http.request.duration` | histogram (s) | `method`, `path` |
+| `kms.http.request.duration` | histogram (s) | `method`, `path`, `status` |
 
 ### Server Health
 
@@ -127,8 +129,8 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 
 | Metric | Type | Labels |
 |--------|------|--------|
-| `kms.objects.total` | up-down counter | — |
-| `kms.keys.active.count` | up-down counter | — |
+| `kms.objects.total` | gauge | — |
+| `kms.keys.active.count` | gauge | — |
 
 `kms.keys.active.count` counts all **non-destroyed** key objects (SymmetricKey, PrivateKey,
 PublicKey, SplitKey) across all non-terminal states: PreActive, Active, Deactivated, Compromised.

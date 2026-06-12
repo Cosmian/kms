@@ -40,7 +40,7 @@ To enable the feature, see [Telemetry & Observability](./logging.md).
 | Metric | Type | Description | Labels |
 |--------|------|-------------|--------|
 | `kms.http.requests.total` | counter | Incoming HTTP requests | `method`, `path`, `status` |
-| `kms.http.request.duration` | histogram (s) | HTTP request latency | `method`, `path` |
+| `kms.http.request.duration` | histogram (s) | HTTP request latency | `method`, `path`, `status` |
 
 `path` is normalised (e.g. `/kmip/2_1`, `/google_cse/...`) to avoid high cardinality from
 object identifiers.
@@ -58,8 +58,8 @@ object identifiers.
 
 | Metric | Type | Description | Labels |
 |--------|------|-------------|--------|
-| `kms.objects.total` | up-down counter | Total non-destroyed objects in the KMS | — |
-| `kms.keys.active.count` | up-down counter | Non-destroyed key objects (SymmetricKey, PrivateKey, PublicKey, SplitKey) across all states: PreActive, Active, Deactivated, Compromised | — |
+| `kms.objects.total` | gauge | Total non-destroyed objects in the KMS | — |
+| `kms.keys.active.count` | gauge | Non-destroyed key objects (SymmetricKey, PrivateKey, PublicKey, SplitKey) across all states: PreActive, Active, Deactivated, Compromised | — |
 
 Both metrics are refreshed every 30 s by the metrics cron task and seeded at server startup.
 

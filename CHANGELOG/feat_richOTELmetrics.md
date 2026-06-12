@@ -19,7 +19,7 @@
 
 - Add `OtelHttpMetrics` Actix-web middleware (`crate/server/src/middlewares/otel_http_middleware.rs`)
   that records `kms.http.requests.total` (counter with `method`, `path`, `status`
-  attributes), `kms.http.request.duration` (histogram with `method`, `path`), and
+  attributes), `kms.http.request.duration` (histogram with `method`, `path`, `status`), and
   `kms.active.connections` (in-flight up-down counter) for every HTTP request.
 - Middleware is installed as the outermost `App`-level wrap to measure true
   client-perceived latency including all inner middleware.

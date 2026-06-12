@@ -25,6 +25,21 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 
 use crate::{error::KmsError, result::KResult};
 
+/// Maximum number of distinct user identities tracked in the active-users window.
+///
+/// If this limit is reached, new users are not inserted into the tracker and the
+/// per-user metric label for the current operation is substituted with
+/// `"__overflow__"`.  This limits Prometheus timeseries cardinality for the
+/// `kms.kmip.operations.per_user.total` and
+/// `kms.permissions.granted.per_user.total` metrics.
+///
+/// Raise this constant if your deployment legitimately has more than `10_000`
+/// distinct users active within any 1-hour window.
+pub(crate) const MAX_TRACKED_CARDINALITY: usize = 10_000;
+
+/// Sentinel label value emitted when the cardinality cap is reached.
+const OVERFLOW_USER_LABEL: &str = "__overflow__";
+
 /// OpenTelemetry metrics for KMS operations
 pub struct OtelMetrics {
     /// The meter used to create instruments
@@ -285,10 +300,11 @@ impl OtelMetrics {
     pub fn record_kmip_operation(&self, operation: &str, user: &str) {
         self.kmip_operations_total
             .add(1, &[KeyValue::new("operation", operation.to_owned())]);
+        let effective_user = self.bounded_user_label(user);
         self.kmip_operations_per_user.add(
             1,
             &[
-                KeyValue::new("user", user.to_owned()),
+                KeyValue::new("user", effective_user),
                 KeyValue::new("operation", operation.to_owned()),
             ],
         );
@@ -305,39 +321,66 @@ impl OtelMetrics {
 
     /// Record a permission grant
     pub fn record_permission_grant(&self, user: &str, permission_type: &str) {
+        let effective_user = self.bounded_user_label(user);
         self.permissions_granted_per_user.add(
             1,
             &[
-                KeyValue::new("user", user.to_owned()),
+                KeyValue::new("user", effective_user),
                 KeyValue::new("permission_type", permission_type.to_owned()),
             ],
         );
         self.permissions_granted_total.add(1, &[]);
     }
 
-    /// Update active user tracking
+    /// Returns the user label to use for per-user metrics.
+    ///
+    /// Returns the real user string if the cardinality cap has not been reached,
+    /// or `"__overflow__"` when it has.
+    fn bounded_user_label(&self, user: &str) -> String {
+        let tracker = self
+            .active_users_tracker
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if tracker.contains_key(user) || tracker.len() < MAX_TRACKED_CARDINALITY {
+            user.to_owned()
+        } else {
+            OVERFLOW_USER_LABEL.to_owned()
+        }
+    }
+
+    /// Update active user tracking.
+    ///
+    /// Metric recording is best-effort: if the lock is poisoned (a previous
+    /// writer panicked), the poisoned value is recovered and tracking continues
+    /// rather than propagating a panic into the KMIP hot path.
     ///
     /// # Panics
     ///
-    /// Panics if system time is before `UNIX_EPOCH` or lock is poisoned
-    #[allow(
-        clippy::cast_possible_wrap,
-        clippy::expect_used,
-        clippy::as_conversions
-    )]
+    /// Panics if system time is before `UNIX_EPOCH` (only possible on systems
+    /// with a misconfigured clock; safe to treat as unrecoverable).
+    #[allow(clippy::expect_used)]
     pub fn update_active_user(&self, user: &str) {
-        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("System time before UNIX_EPOCH")
-            .as_secs() as i64;
+        let now = i64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("System time before UNIX_EPOCH")
+                .as_secs(),
+        )
+        .unwrap_or(i64::MAX);
 
         let mut tracker = self
             .active_users_tracker
             .write()
-            .expect("Active users tracker lock poisoned");
+            // SAFETY: recover the inner value on lock poisoning so that a
+            // previous writer panic does not permanently break metric recording.
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        let previous_len = tracker.len() as i64;
+        // Enforce cardinality cap: do not track new users beyond the limit.
+        if !tracker.contains_key(user) && tracker.len() >= MAX_TRACKED_CARDINALITY {
+            return;
+        }
+
+        let previous_len = i64::try_from(tracker.len()).unwrap_or(i64::MAX);
         tracker.insert(user.to_owned(), now);
 
         // Clean up users inactive for more than 1 hour
@@ -345,7 +388,7 @@ impl OtelMetrics {
         tracker.retain(|_, &mut last_seen| last_seen > cutoff);
 
         // Update gauge - calculate the delta
-        let current_len = tracker.len() as i64;
+        let current_len = i64::try_from(tracker.len()).unwrap_or(i64::MAX);
         let delta = current_len - previous_len;
         if delta != 0 {
             self.active_users.add(delta, &[]);
@@ -399,12 +442,19 @@ impl OtelMetrics {
     }
 
     /// Record HTTP request duration
-    pub fn record_http_request_duration(&self, method: &str, path: &str, duration_seconds: f64) {
+    pub fn record_http_request_duration(
+        &self,
+        method: &str,
+        path: &str,
+        status: &str,
+        duration_seconds: f64,
+    ) {
         self.http_request_duration.record(
             duration_seconds,
             &[
                 KeyValue::new("method", method.to_owned()),
                 KeyValue::new("path", path.to_owned()),
+                KeyValue::new("status", status.to_owned()),
             ],
         );
     }
@@ -500,10 +550,8 @@ impl DbMetricsRecorder for OtelMetrics {
 )]
 mod tests {
     use super::*;
-    use opentelemetry_sdk::{
-        metrics::{PeriodicReader, data::Gauge as GaugeData, data::Sum},
-        runtime,
-        testing::metrics::InMemoryMetricExporter,
+    use opentelemetry_sdk::metrics::{
+        InMemoryMetricExporter, PeriodicReader, data::Gauge as GaugeData, data::Sum,
     };
 
     // ── No-op provider — cheap, used only where value assertions aren't needed ──
@@ -516,7 +564,7 @@ mod tests {
 
     fn setup_observing_metrics() -> (OtelMetrics, SdkMeterProvider, InMemoryMetricExporter) {
         let exporter = InMemoryMetricExporter::default();
-        let reader = PeriodicReader::builder(exporter.clone(), runtime::Tokio).build();
+        let reader = PeriodicReader::builder(exporter.clone()).build();
         let provider = SdkMeterProvider::builder().with_reader(reader).build();
         let provider_ref = provider.clone();
         let metrics = OtelMetrics::new(provider).expect("metrics init");
@@ -707,5 +755,7 @@ mod tests {
         assert_eq!(MainDbKind::Sqlite.as_str(), "sqlite");
         assert_eq!(MainDbKind::Postgres.as_str(), "postgresql");
         assert_eq!(MainDbKind::Mysql.as_str(), "mysql");
+        #[cfg(feature = "non-fips")]
+        assert_eq!(MainDbKind::RedisFindex.as_str(), "redis");
     }
 }

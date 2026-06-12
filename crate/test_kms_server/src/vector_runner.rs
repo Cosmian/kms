@@ -3309,6 +3309,9 @@ ObjectType = "SymmetricKey"
     }
 
     // ── Negative tests: ReCertify ───────────────────────────────────────
+    // ReCertify is not yet implemented (KMIP 1.4 only); these tests verify the
+    // server correctly rejects the operation. Enable positive recertify tests
+    // above once the operation is dispatched.
 
     #[tokio::test]
     async fn test_neg_recertify_missing_uid() -> Result<(), KmsClientError> {

@@ -235,10 +235,11 @@ impl KMS {
                     KmsError::ServerError(format!("Failed to create OTLP metrics exporter: {e}"))
                 })?;
 
-            // Create periodic reader that sends metrics every 30 seconds
-            let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio)
+            // Create periodic reader that sends metrics every 30 seconds.
+            // otel_sdk 0.29: builder takes only the exporter (no runtime arg);
+            // export timeout is configured on the exporter, not the reader.
+            let reader = PeriodicReader::builder(exporter)
                 .with_interval(std::time::Duration::from_secs(30))
-                .with_timeout(std::time::Duration::from_secs(10))
                 .build();
 
             // Create meter provider
@@ -261,7 +262,7 @@ impl KMS {
             }
 
             let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
-                .with_resource(Resource::new(resource_kvs))
+                .with_resource(Resource::builder().with_attributes(resource_kvs).build())
                 .with_reader(reader)
                 .build();
 

@@ -603,6 +603,23 @@ EOF
   # confirm the metric is wired.
   wait_for_metric_gt "kms_database_operations_total" 0 60
 
+  # ── Step 1b: kms.database.operation.duration (histogram) ────────────────
+  # OTel appends the unit suffix: kms.database.operation.duration[seconds] →
+  # kms_database_operation_duration_seconds_{bucket,count,sum}.
+  wait_for_metric_gt "kms_database_operation_duration_seconds_count" 0 60
+
+  # ── Step 2b: kms.http.request.duration (histogram) ──────────────────────
+  wait_for_metric_gt "kms_http_request_duration_seconds_count" 0 60
+
+  # ── Step 2c: label correctness ──────────────────────────────────────────
+  # Spot-check that at least one DB operation was recorded with backend="sqlite".
+  body=$(collector_metrics_body)
+  if ! printf '%s' "${body}" | grep -q 'kms_database_operations_total{.*backend="sqlite"'; then
+    echo "ERROR: kms_database_operations_total missing backend=\"sqlite\" label" >&2
+    printf '%s\n' "${body}" | grep "kms_database" >&2
+    exit 1
+  fi
+
   # ── Step 4: kms.cache.operations.total ──────────────────────────────────
   # Plain transparent keys bypass get_unwrapped() (is_wrapped() == false).
   # Create a key stored wrapped by a KEK via cosmian vendor attribute
@@ -640,12 +657,16 @@ EOF
   observed_active_keys=$(metric_value_from_body "kms_keys_active_count" "${body}")
   observed_objects=$(metric_value_from_body "kms_objects_total" "${body}")
   observed_http=$(metric_value_from_body "kms_http_requests_total" "${body}")
+  observed_http_dur=$(metric_value_from_body "kms_http_request_duration_seconds_count" "${body}")
   observed_db=$(metric_value_from_body "kms_database_operations_total" "${body}")
+  observed_db_dur=$(metric_value_from_body "kms_database_operation_duration_seconds_count" "${body}")
   observed_cache=$(metric_value_from_body "kms_cache_operations_total" "${body}")
   echo "Observed kms_keys_active_count=${observed_active_keys:-<missing>}"
   echo "Observed kms_objects_total=${observed_objects:-<missing>}"
   echo "Observed kms_http_requests_total=${observed_http:-<missing>}"
+  echo "Observed kms_http_request_duration_seconds_count=${observed_http_dur:-<missing>}"
   echo "Observed kms_database_operations_total=${observed_db:-<missing>}"
+  echo "Observed kms_database_operation_duration_seconds_count=${observed_db_dur:-<missing>}"
   echo "Observed kms_cache_operations_total=${observed_cache:-<missing>}"
 
   echo "OTEL export integration script completed successfully."

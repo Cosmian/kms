@@ -105,7 +105,7 @@ where
                 );
 
                 m.record_http_request(&method, &path, &status);
-                m.record_http_request_duration(&method, &path, duration);
+                m.record_http_request_duration(&method, &path, &status, duration);
             }
 
             result
@@ -157,6 +157,11 @@ fn normalize_path(path: &str) -> &'static str {
     if path.starts_with("/download-cli") {
         return "/download-cli";
     }
+    // Some older KMIP clients use dot-notation (/kmip/2.1) instead of underscore.
+    // Map to the same label so metrics are not silently bucketed as /other.
+    if path.starts_with("/kmip/2.1") || path.starts_with("/kmip/1.") {
+        return "/kmip/2_1";
+    }
 
     "/other"
 }
@@ -207,6 +212,13 @@ mod tests {
     fn test_normalize_swagger() {
         assert_eq!(normalize_path("/swagger/ui"), "/swagger/{...}");
         assert_eq!(normalize_path("/openapi/kms.yaml"), "/swagger/{...}");
+    }
+
+    #[test]
+    fn test_normalize_kmip_dot_notation() {
+        // Older clients may use /kmip/2.1 (dot) instead of /kmip/2_1 (underscore).
+        assert_eq!(normalize_path("/kmip/2.1"), "/kmip/2_1");
+        assert_eq!(normalize_path("/kmip/1.4"), "/kmip/2_1");
     }
 
     #[test]
