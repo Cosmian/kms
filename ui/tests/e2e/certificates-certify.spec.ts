@@ -184,14 +184,17 @@ test.describe("Certificate certify – re-certify", () => {
         // Create a base certificate first
         const originalId = await createCertificate(page, "NIST P-256");
 
-        // Re-certify it
+        // Re-certify it — calls the dedicated KMIP ReCertify operation (Option 3),
+        // which issues a brand-new certificate with a fresh UID.
         await gotoAndWait(page, "/ui/certificates/certs/certify");
         await page.getByText("3. Certificate ID to Re-certify").click();
         await page.fill('input[placeholder="Enter certificate ID to re-certify"]', originalId);
         const text = await submitAndWaitForResponse(page);
-        expect(text).toMatch(/certificate successfully created/i);
+        expect(text).toMatch(/certificate successfully re-certified/i);
         const newId = extractUuid(text);
         expect(newId).not.toBeNull();
+        // ReCertify must produce a new UID, not overwrite the original.
+        expect(newId).not.toBe(originalId);
     });
 });
 

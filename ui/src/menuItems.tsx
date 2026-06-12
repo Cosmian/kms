@@ -13,6 +13,7 @@ import {
     SafetyCertificateOutlined,
     SearchOutlined,
     SolutionOutlined,
+    SyncOutlined,
     TeamOutlined,
     ToolOutlined,
     UsbOutlined,
@@ -52,8 +53,6 @@ const baseMenu: MenuItem[] = [
                     { key: "sym/keys/export", label: "Export" },
                     { key: "sym/keys/import", label: "Import" },
                     { key: "sym/keys/rekey", label: "Re-Key" },
-                    { key: "sym/keys/set-rotation-policy", label: "Set Rotation Policy" },
-                    { key: "sym/keys/get-rotation-policy", label: "Get Rotation Policy" },
                     { key: "sym/keys/revoke", label: "Revoke" },
                     { key: "sym/keys/destroy", label: "Destroy" },
                 ],
@@ -76,6 +75,7 @@ const baseMenu: MenuItem[] = [
                     { key: "rsa/keys/create", label: "Create" },
                     { key: "rsa/keys/export", label: "Export" },
                     { key: "rsa/keys/import", label: "Import" },
+                    { key: "rsa/keys/rekey", label: "Re-Key" },
                     { key: "rsa/keys/revoke", label: "Revoke" },
                     { key: "rsa/keys/destroy", label: "Destroy" },
                 ],
@@ -99,6 +99,7 @@ const baseMenu: MenuItem[] = [
                     { key: "ec/keys/create", label: "Create" },
                     { key: "ec/keys/export", label: "Export" },
                     { key: "ec/keys/import", label: "Import" },
+                    { key: "ec/keys/rekey", label: "Re-Key" },
                     { key: "ec/keys/revoke", label: "Revoke" },
                     { key: "ec/keys/destroy", label: "Destroy" },
                 ],
@@ -123,6 +124,7 @@ const baseMenu: MenuItem[] = [
                     { key: "pqc/keys/create", label: "Create" },
                     { key: "pqc/keys/export", label: "Export" },
                     { key: "pqc/keys/import", label: "Import" },
+                    { key: "pqc/keys/rekey", label: "Re-Key" },
                     { key: "pqc/keys/revoke", label: "Revoke" },
                     { key: "pqc/keys/destroy", label: "Destroy" },
                 ],
@@ -131,6 +133,46 @@ const baseMenu: MenuItem[] = [
             { key: "pqc/decapsulate", label: "Decapsulate" },
             { key: "pqc/sign", label: "Sign" },
             { key: "pqc/verify", label: "Verify" },
+        ],
+    },
+    {
+        key: "rotation-policy",
+        label: "Rotation Policy",
+        icon: <SyncOutlined />,
+        collapsedlabel: "ROT",
+        children: [
+            {
+                key: "rotation-policy/sym",
+                label: "Symmetric",
+                children: [
+                    { key: "rotation-policy/sym/set", label: "Set Policy" },
+                    { key: "rotation-policy/sym/get", label: "Get Policy" },
+                ],
+            },
+            {
+                key: "rotation-policy/rsa",
+                label: "RSA",
+                children: [
+                    { key: "rotation-policy/rsa/set", label: "Set Policy" },
+                    { key: "rotation-policy/rsa/get", label: "Get Policy" },
+                ],
+            },
+            {
+                key: "rotation-policy/ec",
+                label: "Elliptic Curve",
+                children: [
+                    { key: "rotation-policy/ec/set", label: "Set Policy" },
+                    { key: "rotation-policy/ec/get", label: "Get Policy" },
+                ],
+            },
+            {
+                key: "rotation-policy/pqc",
+                label: "__PQC_ROTATION_LABEL__",
+                children: [
+                    { key: "rotation-policy/pqc/set", label: "Set Policy" },
+                    { key: "rotation-policy/pqc/get", label: "Get Policy" },
+                ],
+            },
         ],
     },
     {
@@ -326,11 +368,32 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
     const pqcLabel = options?.pqcLabel ?? "PQC";
     const isFips = options?.isFips ?? false;
 
-    let menu = baseMenu.map((item) => (item.key === "pqc" ? { ...item, label: pqcLabel } : item));
+    let menu = baseMenu.map((item) => {
+        if (item.key === "pqc") return { ...item, label: pqcLabel };
+        if (item.key === "rotation-policy") {
+            // Replace the PQC child label placeholder with the real pqcLabel
+            return {
+                ...item,
+                children: item.children?.map((child) => (child.key === "rotation-policy/pqc" ? { ...child, label: pqcLabel } : child)),
+            };
+        }
+        return item;
+    });
 
     // Hide PQC, MAC, FPE, and Tokenize/Anonymize in FIPS mode (not approved / not available in FIPS build)
+    // For rotation-policy, keep the menu but hide the PQC child.
     if (isFips) {
-        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize");
+        menu = menu
+            .filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize")
+            .map((item) => {
+                if (item.key === "rotation-policy") {
+                    return {
+                        ...item,
+                        children: item.children?.filter((child) => child.key !== "rotation-policy/pqc"),
+                    };
+                }
+                return item;
+            });
     }
 
     // Insert Covercrypt immediately after PQC so Hyperscalers stays last

@@ -49,11 +49,7 @@ const GetRotationPolicyForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item
-                            name="keyId"
-                            label="Key ID"
-                            rules={[{ required: true, message: "Please enter the key ID" }]}
-                        >
+                        <Form.Item name="keyId" label="Key ID" rules={[{ required: true, message: "Please enter the key ID" }]}>
                             <Input placeholder="Enter the unique identifier of the key" data-testid="get-rotation-key-id" />
                         </Form.Item>
                     </Card>
@@ -76,21 +72,11 @@ const GetRotationPolicyForm: React.FC = () => {
             {policy && (policy.interval || policy.name || policy.generation) && (
                 <Card className="mt-6" title="Rotation Policy Details" data-testid="rotation-policy-details">
                     <Descriptions bordered column={1}>
-                        <Descriptions.Item label="Interval (seconds)">
-                            {policy.interval ?? "Not set"}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Offset (seconds)">
-                            {policy.offset ?? "Not set"}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Keyset Name">
-                            {policy.name ?? "Not set"}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Generation">
-                            {policy.generation ?? "Not set"}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Last Rotation Date">
-                            {policy.date ?? "Never"}
-                        </Descriptions.Item>
+                        <Descriptions.Item label="Interval (seconds)">{policy.interval ?? "Not set"}</Descriptions.Item>
+                        <Descriptions.Item label="Offset (seconds)">{policy.offset ?? "Not set"}</Descriptions.Item>
+                        <Descriptions.Item label="Keyset Name">{policy.name ?? "Not set"}</Descriptions.Item>
+                        <Descriptions.Item label="Generation">{policy.generation ?? "Not set"}</Descriptions.Item>
+                        <Descriptions.Item label="Last Rotation Date">{policy.date ?? "Never"}</Descriptions.Item>
                     </Descriptions>
                 </Card>
             )}

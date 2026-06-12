@@ -7,7 +7,7 @@ import * as wasm from "../../wasm/pkg";
 
 interface SetRotationPolicyFormData {
     keyId: string;
-    interval: number;
+    interval?: number;
     offset?: number;
     name?: string;
 }
@@ -18,13 +18,13 @@ const SetRotationPolicyForm: React.FC = () => {
 
     const onFinish = async (values: SetRotationPolicyFormData) => {
         await execute(async () => {
-            // Set the rotation interval (required)
-            const intervalRequest = wasm.set_rotate_interval_ttlv_request(values.keyId, BigInt(values.interval));
-            const intervalResult = await sendKmipRequest(intervalRequest, idToken, serverUrl);
-            if (!intervalResult) return;
-            wasm.parse_set_attribute_ttlv_response(intervalResult);
+            if (values.interval !== undefined && values.interval !== null) {
+                const intervalRequest = wasm.set_rotate_interval_ttlv_request(values.keyId, BigInt(values.interval));
+                const intervalResult = await sendKmipRequest(intervalRequest, idToken, serverUrl);
+                if (!intervalResult) return;
+                wasm.parse_set_attribute_ttlv_response(intervalResult);
+            }
 
-            // Set the rotation offset (optional)
             if (values.offset !== undefined && values.offset !== null) {
                 const offsetRequest = wasm.set_rotate_offset_ttlv_request(values.keyId, BigInt(values.offset));
                 const offsetResult = await sendKmipRequest(offsetRequest, idToken, serverUrl);
@@ -32,7 +32,6 @@ const SetRotationPolicyForm: React.FC = () => {
                 wasm.parse_set_attribute_ttlv_response(offsetResult);
             }
 
-            // Set the rotation name (optional)
             if (values.name) {
                 const nameRequest = wasm.set_rotate_name_ttlv_request(values.keyId, values.name);
                 const nameResult = await sendKmipRequest(nameRequest, idToken, serverUrl);
@@ -49,7 +48,7 @@ const SetRotationPolicyForm: React.FC = () => {
             <h1 className="text-2xl font-bold mb-6">Set Rotation Policy</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Configure an automatic periodic rotation policy on a symmetric key.</p>
+                <p>Configure an automatic periodic rotation policy on a key.</p>
                 <ul className="list-disc pl-5 space-y-1">
                     <li>The interval defines how often (in seconds) the key is automatically rotated.</li>
                     <li>The offset defines the delay (in seconds) before activation of a newly rotated key.</li>
@@ -60,28 +59,15 @@ const SetRotationPolicyForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item
-                            name="keyId"
-                            label="Key ID"
-                            rules={[{ required: true, message: "Please enter the key ID" }]}
-                        >
+                        <Form.Item name="keyId" label="Key ID" rules={[{ required: true, message: "Please enter the key ID" }]}>
                             <Input placeholder="Enter the unique identifier of the key" data-testid="rotation-key-id" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="interval"
-                            label="Interval (seconds)"
-                            rules={[{ required: true, message: "Please enter the rotation interval" }]}
-                            help="How often the key should be automatically rotated"
-                        >
-                            <InputNumber className="w-[200px]" min={1} placeholder="e.g. 86400 (1 day)" data-testid="rotation-interval" />
+                        <Form.Item name="interval" label="Interval (seconds)" help="How often the key should be automatically rotated">
+                            <InputNumber className="w-[200px]" min={0} placeholder="e.g. 86400 (1 day)" data-testid="rotation-interval" />
                         </Form.Item>
 
-                        <Form.Item
-                            name="offset"
-                            label="Offset (seconds)"
-                            help="Optional: delay before new key activation after rotation"
-                        >
+                        <Form.Item name="offset" label="Offset (seconds)" help="Optional: delay before new key activation after rotation">
                             <InputNumber className="w-[200px]" min={0} placeholder="e.g. 3600 (1 hour)" data-testid="rotation-offset" />
                         </Form.Item>
 
@@ -90,7 +76,7 @@ const SetRotationPolicyForm: React.FC = () => {
                             label="Keyset Name"
                             help="Optional: a name for addressing key generations (name@latest, name@first, name@N)"
                         >
-                            <Input placeholder="e.g. my-encryption-key" data-testid="rotation-name" />
+                            <Input placeholder="e.g. my-key" data-testid="rotation-name" />
                         </Form.Item>
                     </Card>
 

@@ -9,33 +9,35 @@ interface ReKeyFormData {
     keyId: string;
 }
 
-type ReKeyResponse = {
-    UniqueIdentifier: string;
+type ReKeyKeyPairResponse = {
+    PrivateKeyUniqueIdentifier: string;
+    PublicKeyUniqueIdentifier: string;
 };
 
-const KeysReKeyForm: React.FC = () => {
+const RsaReKeyForm: React.FC = () => {
     const [form] = Form.useForm<ReKeyFormData>();
     const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ReKeyFormData) => {
         await execute(async () => {
-            const request = wasm.rekey_ttlv_request(values.keyId);
+            const request = wasm.rekey_keypair_ttlv_request(values.keyId);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
-                const result: ReKeyResponse = await wasm.parse_rekey_ttlv_response(result_str);
-                return `The symmetric key was successfully refreshed. New key: ${result.UniqueIdentifier}`;
+                const result: ReKeyKeyPairResponse = await wasm.parse_rekey_keypair_ttlv_response(result_str);
+                return `The RSA key pair was successfully rotated.\nNew private key: ${result.PrivateKeyUniqueIdentifier}\nNew public key: ${result.PublicKeyUniqueIdentifier}`;
             }
         });
     };
 
     return (
         <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6">Re-Key a symmetric key</h1>
+            <h1 className="text-2xl font-bold mb-6">Re-Key an RSA key pair</h1>
 
             <div className="mb-8 space-y-2">
-                <p>Refresh an existing symmetric key, generating a new key value.</p>
+                <p>Rotate an existing RSA key pair, generating new key material.</p>
                 <ul className="list-disc pl-5 space-y-1">
-                    <li>The old key is deactivated and a new key is created as its replacement.</li>
+                    <li>A new private key and public key are created with the same algorithm and key size.</li>
+                    <li>The old key pair is linked to the new one via replacement links.</li>
                     <li>The rotation generation counter is incremented on the new key.</li>
                 </ul>
             </div>
@@ -43,8 +45,12 @@ const KeysReKeyForm: React.FC = () => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
-                        <Form.Item name="keyId" label="Key ID" rules={[{ required: true, message: "Please enter the key ID" }]}>
-                            <Input placeholder="Enter the unique identifier of the key to re-key" data-testid="rekey-key-id" />
+                        <Form.Item
+                            name="keyId"
+                            label="Private Key ID"
+                            rules={[{ required: true, message: "Please enter the private key ID" }]}
+                        >
+                            <Input placeholder="Enter the unique identifier of the private key to re-key" data-testid="rekey-key-id" />
                         </Form.Item>
                     </Card>
 
@@ -66,4 +72,4 @@ const KeysReKeyForm: React.FC = () => {
     );
 };
 
-export default KeysReKeyForm;
+export default RsaReKeyForm;

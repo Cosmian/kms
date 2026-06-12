@@ -5,7 +5,7 @@ use cosmian_kmip::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::Certify,
+        kmip_operations::{Certify, ReCertify},
         kmip_types::{
             CertificateAttributes, CertificateRequestType, CryptographicAlgorithm,
             CryptographicDomainParameters, KeyFormatType, LinkType, LinkedObjectIdentifier,
@@ -422,6 +422,65 @@ pub fn build_certify_request(
         certificate_request_value,
         certificate_request_type,
         ..Certify::default()
+    })
+}
+
+/// Build a KMIP `ReCertify` request — certificate rotation with a fresh UID.
+///
+/// Unlike `Certify` with an existing cert UID (which upserts in-place),
+/// `ReCertify` creates a **new certificate** and links old ↔ new via
+/// `ReplacedObjectLink` / `ReplacementObjectLink`.
+///
+/// # Parameters
+/// - `vendor_id` — vendor identifier string for `VendorAttribute` operations
+/// - `certificate_id_to_re_certify` — UID of the certificate to renew (required)
+/// - `issuer_private_key_id` — optional UID of the issuer's private key
+/// - `issuer_certificate_id` — optional UID of the issuer's certificate
+/// - `number_of_days` — requested validity period for the new certificate
+/// - `tags` — tags to associate with the new certificate
+pub fn build_re_certify_request(
+    vendor_id: &str,
+    certificate_id_to_re_certify: &str,
+    issuer_private_key_id: &Option<String>,
+    issuer_certificate_id: &Option<String>,
+    number_of_days: usize,
+    tags: &[String],
+) -> Result<ReCertify, UtilsError> {
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::Certificate),
+        ..Attributes::default()
+    };
+
+    if let Some(issuer_certificate_id) = issuer_certificate_id {
+        attributes.set_link(
+            LinkType::CertificateLink,
+            LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
+        );
+    }
+
+    if let Some(issuer_private_key_id) = issuer_private_key_id {
+        attributes.set_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(issuer_private_key_id.clone()),
+        );
+    }
+
+    attributes.set_requested_validity_days(
+        vendor_id,
+        i32::try_from(number_of_days).map_err(|_e| {
+            UtilsError::Default("number of days must be a positive integer".to_owned())
+        })?,
+    );
+
+    attributes.activation_date = Some(time_normalize()?);
+    attributes.set_tags(vendor_id, tags)?;
+
+    Ok(ReCertify {
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            certificate_id_to_re_certify.to_owned(),
+        )),
+        attributes: Some(attributes),
+        ..ReCertify::default()
     })
 }
 
