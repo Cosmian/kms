@@ -36,6 +36,10 @@ jobs:
           - luks
           - jose
           - iris
+          - secret_vault
+          - secret_aws
+          - secret_azure
+          - secret_cosmian_kms
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -64,6 +68,14 @@ jobs:
             features: fips
           # iris requires non-fips (PKCS#12 + full TLS stack)
           - type: iris
+            features: fips
+          # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
+          # secret_vault, secret_aws, secret_azure require external services — run non-fips only
+          - type: secret_vault
+            features: fips
+          - type: secret_aws
+            features: fips
+          - type: secret_azure
             features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)
@@ -182,6 +194,17 @@ jobs:
           # InterSystems IRIS mTLS integration test
           IRIS_DOCKER_IMAGE: ${{ vars.IRIS_DOCKER_IMAGE || 'intersystemsdc/iris-community:latest' }}
           IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
+
+          # AWS secret backend variables (secret_aws test type)
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+
+          # Azure Key Vault secret backend variables (secret_azure test type)
+          AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+          AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
         run: |
           set -ex
           bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}

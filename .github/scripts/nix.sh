@@ -526,6 +526,32 @@ test_command() {
     luks)
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_luks.sh"
       ;;
+    secret_vault)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_vault.sh"
+      ;;
+    secret_aws)
+      for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION; do
+        if [ -z "${!var:-}" ]; then
+          echo "Error: Required environment variable $var is not set" >&2
+          echo "AWS SSM secret backend tests require AWS credentials." >&2
+          exit 1
+        fi
+      done
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_aws.sh"
+      ;;
+    secret_azure)
+      for var in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KV_NAME; do
+        if [ -z "${!var:-}" ]; then
+          echo "Error: Required environment variable $var is not set" >&2
+          echo "Azure KV secret backend tests require Azure credentials." >&2
+          exit 1
+        fi
+      done
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_azure.sh"
+      ;;
+    secret_cosmian_kms)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_cosmian_kms.sh"
+      ;;
     ui)
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_ui.sh"
       ;;
@@ -561,7 +587,7 @@ test_command() {
       ;;
     *)
       echo "Error: Unknown test type '$TEST_TYPE'" >&2
-      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, iris, jose, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, iris, jose, hsm [softhsm2|utimaco|proteccio|all], ui, secret_vault, secret_aws, secret_azure, secret_cosmian_kms" >&2
       usage
       ;;
   esac
@@ -585,6 +611,24 @@ test_command() {
   # For LUKS disk-encryption PKCS#11 tests, ensure opensc (pkcs11-tool) is present on Linux CI
   if [ "$TEST_TYPE" = "luks" ]; then
     export WITH_LUKS=1
+  fi
+  # Cosmian KMS secret backend test: python3 is used for HTTP calls and JSON parsing (no curl needed)
+  if [ "$TEST_TYPE" = "secret_cosmian_kms" ]; then
+    export WITH_PYTHON=1
+  fi
+  # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
+  if [ "$TEST_TYPE" = "secret_aws" ]; then
+    export WITH_AWS=1
+  fi
+  # Vault secret backend test: Docker is needed to start the Vault dev container; curl for readiness checks
+  if [ "$TEST_TYPE" = "secret_vault" ]; then
+    export WITH_DOCKER=1
+    export WITH_CURL=1
+  fi
+  # Azure KV secret backend test: curl + python3 are needed for REST API calls and JSON parsing
+  if [ "$TEST_TYPE" = "secret_azure" ]; then
+    export WITH_CURL=1
+    export WITH_PYTHON=1
   fi
   # Ensure curl is present for test types that use HTTP readiness probes
   # or curl-based integration helpers inside the nix-shell.
@@ -621,6 +665,14 @@ test_command() {
         --keep WITH_PYTHON \
         --keep WITH_OPENSSH \
         --keep WITH_LUKS \
+        --keep WITH_AWS \
+        --keep AWS_ACCESS_KEY_ID \
+        --keep AWS_SECRET_ACCESS_KEY \
+        --keep AWS_REGION \
+        --keep AZURE_TENANT_ID \
+        --keep AZURE_CLIENT_ID \
+        --keep AZURE_CLIENT_SECRET \
+        --keep AZURE_KV_NAME \
         --keep IRIS_DOCKER_IMAGE \
         --keep IRIS_LICENSE_KEY \
         --keep VARIANT \

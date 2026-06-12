@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 #[cfg(target_os = "linux")]
@@ -33,7 +34,7 @@ pub fn get_default_rolling_log_dir() -> PathBuf {
 }
 
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct LoggingConfig {
     /// An alternative to setting the `RUST_LOG` environment variable.

@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 use super::tls_config::TlsConfig;
@@ -11,7 +12,7 @@ const DEFAULT_HOSTNAME: &str = "127.0.0.1";
 #[cfg(not(target_os = "windows"))]
 const DEFAULT_HOSTNAME: &str = "0.0.0.0";
 
-#[derive(Args, Clone, Deserialize, Serialize)]
+#[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct HttpConfig {
     /// The KMS HTTP server port

@@ -346,6 +346,7 @@ mod tests {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             print_default_config: false,
         };
 

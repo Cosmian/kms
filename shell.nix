@@ -44,7 +44,9 @@ let
   withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
   # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
-  # IRIS mTLS test: Docker CLI must be available inside the nix-shell to pull and run the IRIS container
+  # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
+  withAws = (builtins.getEnv "WITH_AWS") == "1";
+  # IRIS mTLS test / Vault secret backend test: Docker CLI must be available inside the nix-shell to pull and run containers
   withDocker = (builtins.getEnv "WITH_DOCKER") == "1";
 
   rustToolchain =
@@ -180,7 +182,9 @@ pkgs.mkShell {
   ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
   ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
-  # IRIS mTLS test: include docker CLI so the nix-shell pure environment can pull and run containers
+  # AWS secret backend test: include awscli2 for SSM parameter management
+  ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ]
+  # IRIS mTLS test + Vault secret backend test: include docker CLI
   ++ pkgs.lib.optionals withDocker [ pkgs.docker ];
 
   shellHook = ''

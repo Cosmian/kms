@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 use crate::{config::IdpConfig as IdpConfigStruct, error::KmsError};
@@ -8,7 +9,7 @@ use crate::{config::IdpConfig as IdpConfigStruct, error::KmsError};
 // Support for JWT token inspired by the doc at : https://cloud.google.com/api-gateway/docs/authenticating-users-jwt
 // and following pages
 
-#[derive(Debug, Default, Args, Deserialize, Serialize)]
+#[derive(Debug, Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct IdpAuthConfig {
     /// JWT authentication provider configuration.
