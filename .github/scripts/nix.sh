@@ -38,6 +38,7 @@ usage() {
       luks                   Run LUKS disk-encryption PKCS#11 integration tests
       otel_export            Run OTEL export tests (requires Docker)
                              Alias: 'otel' (backward-compatible)
+      iris                   Run IRIS ↔ KMS mTLS integration tests (requires Docker + IRIS image)
       hsm [backend]          Run HSM tests (Linux + macOS for softhsm2)
                              backend: softhsm2 | utimaco | proteccio | all (default)
       ui                     Run UI E2E tests with Playwright (non-FIPS only)
@@ -287,6 +288,13 @@ resolve_command_args() {
     export WITH_CURL=1
   fi
 
+  # IRIS tests need Docker (to pull and run the IRIS container) and curl
+  # (for the KMS HTTP readiness probe).
+  if [ "$COMMAND" = "test" ] && [ "${TEST_TYPE:-}" = "iris" ]; then
+    export WITH_CURL=1
+    export WITH_DOCKER=1
+  fi
+
   # In strict mode (`set -u`), expanding an unset array triggers an error.
   # Use the nounset-safe idiom so CI invocations without trailing args work.
   COMMAND_ARGS=("${args[@]+"${args[@]}"}")
@@ -483,6 +491,9 @@ test_command() {
     jose)
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_jose.sh"
       ;;
+    iris)
+      SCRIPT="$REPO_ROOT/.github/scripts/test/test_iris.sh"
+      ;;
     gcp_cmek)
       SCRIPT="$REPO_ROOT/.github/scripts/test/test_gcp_cmek.sh"
       ;;
@@ -550,7 +561,7 @@ test_command() {
       ;;
     *)
       echo "Error: Unknown test type '$TEST_TYPE'" >&2
-      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, jose, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
+      echo "Valid types: aws_xks, sqlite, mysql, percona, mariadb, psql, redis, google_cse, gcp_cmek, pykmip, openssh, luks, otel_export, iris, jose, hsm [softhsm2|utimaco|proteccio|all], ui" >&2
       usage
       ;;
   esac
@@ -610,6 +621,8 @@ test_command() {
         --keep WITH_PYTHON \
         --keep WITH_OPENSSH \
         --keep WITH_LUKS \
+        --keep IRIS_DOCKER_IMAGE \
+        --keep IRIS_LICENSE_KEY \
         --keep VARIANT \
         --keep LINK \
         --keep RELEASE_FLAG \
