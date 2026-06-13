@@ -286,9 +286,8 @@ fn fetch_certificate(
             .next()
             .unwrap()
             .data()
-            .as_utf8()
-            .unwrap()
             .to_string()
+            .unwrap()
     );
     let ttlv: TTLV = read_from_json_file(&tmp_path.join("new_cert.attributes.json")).unwrap();
     let cert_attributes: Attributes = from_ttlv(ttlv).unwrap();

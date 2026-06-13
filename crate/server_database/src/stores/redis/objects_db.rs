@@ -262,33 +262,27 @@ impl ObjectsDB {
     }
 
     pub(crate) async fn atomic(&self, operations: &[RedisOperation]) -> DbResult<Vec<String>> {
-        // first check if all created objects do not already exist, watching them
-        // will lock them until the end of the transaction
-        let mut pipeline = pipe();
-        for operation in operations {
-            if let RedisOperation::Create(uid, _) = operation {
-                let key = Self::object_key(uid);
-                pipeline.cmd("WATCH").arg(&key).ignore();
-                pipeline.exists(&key);
-            }
-        }
-        let res: Vec<bool> = pipeline.query_async(&mut self.mgr.clone()).await?;
-        // if any exists, abort
-        if res.iter().any(|exists| *exists) {
-            // unwatch all keys
-            pipe()
-                .cmd("UNWATCH")
-                .ignore()
-                .query_async::<()>(&mut self.mgr.clone())
-                .await?;
-            db_bail!("one or more objects already exist")
-        }
+        // For Create operations, use SET_NX (set-if-not-exists) to atomically
+        // check-and-set without WATCH.  WATCH + MULTI/EXEC is unsafe with a
+        // shared ConnectionManager: any concurrent write on the same connection
+        // between WATCH and EXEC aborts the transaction silently.
+        //
+        // For Upsert/Delete, a plain SET/DEL pipeline suffices (idempotent).
 
         let mut res = Vec::with_capacity(operations.len());
         let mut pipeline = pipe();
-        pipeline.atomic();
+
         for operation in operations {
             match operation {
+                RedisOperation::Create(uid, redis_db_object) => {
+                    // SET key value NX — fails if key already exists
+                    pipeline
+                        .cmd("SET")
+                        .arg(Self::object_key(uid))
+                        .arg(self.encrypt_object(uid, redis_db_object)?)
+                        .arg("NX");
+                    res.push(uid.clone());
+                }
                 RedisOperation::Upsert(uid, redis_db_object) => {
                     pipeline.set(
                         Self::object_key(uid),
@@ -300,16 +294,24 @@ impl ObjectsDB {
                     pipeline.del(Self::object_key(uid));
                     res.push(uid.clone());
                 }
-                RedisOperation::Create(uid, redis_dn_object) => {
-                    pipeline.set(
-                        Self::object_key(uid),
-                        self.encrypt_object(uid, redis_dn_object)?,
-                    );
-                    res.push(uid.clone());
-                }
             }
         }
-        pipeline.query_async::<()>(&mut self.mgr.clone()).await?;
+
+        // Execute the pipeline.  For SET ... NX commands, Redis returns nil when
+        // the key already exists.  We parse as Vec<Value> to detect failures.
+        let results: Vec<redis::Value> = pipeline.query_async(&mut self.mgr.clone()).await?;
+
+        // Verify that Create operations succeeded (non-nil response)
+        let mut result_idx = 0;
+        for operation in operations {
+            if let RedisOperation::Create(uid, _) = operation {
+                if let Some(redis::Value::Nil) = results.get(result_idx) {
+                    db_bail!("object {uid} already exists");
+                }
+            }
+            result_idx += 1;
+        }
+
         Ok(res)
     }
 }

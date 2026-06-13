@@ -389,21 +389,19 @@ fn client_username(tls_stream: &SslStream<&mut TcpStream>) -> Result<String, Kms
 
     // The certificate is already an X509 object with OpenSSL
     let x509 = client_certificate;
-    Ok(x509
-        .subject_name()
+    x509.subject_name()
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
         .ok_or_else(|| {
             KmsError::Certificate("socket server: failed to get common name".to_owned())
         })?
         .data()
-        .as_utf8()
+        .to_string()
         .map_err(|_e| {
             KmsError::Certificate(
                 "socket server: failed to convert common name to UTF-8".to_owned(),
             )
-        })?
-        .to_string())
+        })
 }
 
 // Client Certificate Authentication

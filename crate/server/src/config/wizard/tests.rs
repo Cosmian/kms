@@ -93,9 +93,8 @@ fn test_generated_certs_have_correct_common_names() {
             .next()
             .unwrap()
             .data()
-            .as_utf8()
-            .unwrap()
             .to_string()
+            .unwrap()
     };
 
     assert_eq!(cn_of(&ca_cert), "My Test CA");
@@ -130,9 +129,8 @@ fn test_generated_cert_chain_is_valid() {
             .next()
             .unwrap()
             .data()
-            .as_utf8()
-            .unwrap()
             .to_string()
+            .unwrap()
     };
 
     // CA must be self-signed: issuer CN == subject CN

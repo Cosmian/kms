@@ -149,9 +149,8 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
         .next()
     {
         None => kms_bail!("Client certificate has no common name"),
-        Some(cn) => match cn.data().as_utf8() {
-            Ok(cn) => {
-                let username = cn.to_string();
+        Some(cn) => match cn.data().to_string() {
+            Ok(username) => {
                 let trimmed = username.trim();
                 if trimmed.is_empty() {
                     kms_bail!("Client certificate CN is empty; access denied");

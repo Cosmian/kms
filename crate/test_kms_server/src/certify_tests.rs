@@ -1,5 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use std::sync::OnceLock;
+
 #[cfg(feature = "non-fips")]
 use cosmian_kms_client::kmip_2_1::requests::create_pqc_key_pair_request;
 use cosmian_kms_client::{
@@ -16,6 +18,17 @@ use cosmian_kms_client::{
 use openssl::x509::X509;
 
 use crate::{init_test_logging, start_default_test_kms_server};
+
+// ---------------------------------------------------------------------------
+// Serialisation lock for certify tests
+// ---------------------------------------------------------------------------
+// The redis-findex Findex index is not safe for concurrent writes from multiple
+// parallel tests. All certify tests acquire this lock so that they execute
+// sequentially against the shared server, preventing "Item not found" races.
+static CERTIFY_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+fn certify_lock() -> &'static tokio::sync::Mutex<()> {
+    CERTIFY_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -119,8 +132,8 @@ fn assert_baseline(x509: &X509, expected_subject_cn: &str, expected_issuer_cn: &
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
         .expect("Certificate must have a subject CN");
-    let cn = cn_entry.data().as_utf8().unwrap();
-    assert_eq!(cn.to_string(), expected_subject_cn, "Subject CN mismatch");
+    let cn = cn_entry.data().to_string().unwrap();
+    assert_eq!(cn, expected_subject_cn, "Subject CN mismatch");
 
     // Issuer CN
     let issuer = x509.issuer_name();
@@ -128,12 +141,8 @@ fn assert_baseline(x509: &X509, expected_subject_cn: &str, expected_issuer_cn: &
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
         .expect("Certificate must have an issuer CN");
-    let issuer_cn = issuer_cn_entry.data().as_utf8().unwrap();
-    assert_eq!(
-        issuer_cn.to_string(),
-        expected_issuer_cn,
-        "Issuer CN mismatch"
-    );
+    let issuer_cn = issuer_cn_entry.data().to_string().unwrap();
+    assert_eq!(issuer_cn, expected_issuer_cn, "Issuer CN mismatch");
 
     // Validity: not_before ≤ now ≤ not_after
     let not_before = x509.not_before();
@@ -240,6 +249,7 @@ async fn certify_keypair(
 #[tokio::test]
 async fn test_certify_keypair_self_signed_rsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -257,6 +267,7 @@ async fn test_certify_keypair_self_signed_rsa() {
 #[tokio::test]
 async fn test_certify_keypair_self_signed_ec() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -275,6 +286,7 @@ async fn test_certify_keypair_self_signed_ec() {
 #[tokio::test]
 async fn test_certify_keypair_self_signed_ed25519() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -300,6 +312,7 @@ async fn test_certify_keypair_self_signed_ed25519() {
 #[tokio::test]
 async fn test_certify_keypair_self_signed_mldsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -328,6 +341,7 @@ async fn test_certify_keypair_self_signed_mldsa() {
 #[tokio::test]
 async fn test_certify_keypair_self_signed_slhdsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -356,6 +370,7 @@ async fn test_certify_keypair_self_signed_slhdsa() {
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_rsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -381,6 +396,7 @@ async fn test_certify_keypair_ca_signed_rsa() {
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_ec() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -407,6 +423,7 @@ async fn test_certify_keypair_ca_signed_ec() {
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_ed25519() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -433,6 +450,7 @@ async fn test_certify_keypair_ca_signed_ed25519() {
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_mldsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -461,6 +479,7 @@ async fn test_certify_keypair_ca_signed_mldsa() {
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_slhdsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -490,6 +509,7 @@ async fn test_certify_keypair_ca_signed_slhdsa() {
 #[tokio::test]
 async fn test_certify_keypair_ca_signed_mlkem() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -600,6 +620,7 @@ async fn certify_pubkey(
 #[tokio::test]
 async fn test_certify_pubkey_self_signed_rsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -624,6 +645,7 @@ async fn test_certify_pubkey_self_signed_rsa() {
 #[tokio::test]
 async fn test_certify_pubkey_self_signed_ec() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -649,6 +671,7 @@ async fn test_certify_pubkey_self_signed_ec() {
 #[tokio::test]
 async fn test_certify_pubkey_self_signed_ed25519() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -675,6 +698,7 @@ async fn test_certify_pubkey_self_signed_ed25519() {
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_rsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -700,6 +724,7 @@ async fn test_certify_pubkey_ca_signed_rsa() {
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_ec() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -726,6 +751,7 @@ async fn test_certify_pubkey_ca_signed_ec() {
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_ed25519() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -752,6 +778,7 @@ async fn test_certify_pubkey_ca_signed_ed25519() {
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_mldsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -808,6 +835,7 @@ async fn test_certify_pubkey_ca_signed_mldsa() {
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_slhdsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -864,6 +892,7 @@ async fn test_certify_pubkey_ca_signed_slhdsa() {
 #[tokio::test]
 async fn test_certify_pubkey_ca_signed_mlkem() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -970,6 +999,7 @@ async fn certify_renewal(
 #[tokio::test]
 async fn test_certify_renewal_self_signed_rsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -994,6 +1024,7 @@ async fn test_certify_renewal_self_signed_rsa() {
 #[tokio::test]
 async fn test_certify_renewal_self_signed_ec() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1019,6 +1050,7 @@ async fn test_certify_renewal_self_signed_ec() {
 #[tokio::test]
 async fn test_certify_renewal_self_signed_ed25519() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1045,6 +1077,7 @@ async fn test_certify_renewal_self_signed_ed25519() {
 #[tokio::test]
 async fn test_certify_renewal_ca_signed_rsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1070,6 +1103,7 @@ async fn test_certify_renewal_ca_signed_rsa() {
 #[tokio::test]
 async fn test_certify_renewal_ca_signed_ec() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1096,6 +1130,7 @@ async fn test_certify_renewal_ca_signed_ec() {
 #[tokio::test]
 async fn test_certify_renewal_ca_signed_ed25519() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1158,6 +1193,7 @@ async fn certify_csr(
 #[tokio::test]
 async fn test_certify_csr_ca_signed_rsa() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1187,6 +1223,7 @@ async fn test_certify_csr_ca_signed_rsa() {
 #[tokio::test]
 async fn test_certify_csr_ca_signed_ec() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1216,6 +1253,7 @@ async fn test_certify_csr_ca_signed_ec() {
 #[tokio::test]
 async fn test_certify_csr_ca_signed_ed25519() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
     let mut res = TestResources::new();
@@ -1249,6 +1287,7 @@ async fn test_certify_csr_ca_signed_ed25519() {
 #[tokio::test]
 async fn test_negative_kem_self_sign_rejected() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
 
@@ -1283,6 +1322,7 @@ async fn test_negative_kem_self_sign_rejected() {
 #[tokio::test]
 async fn test_negative_csr_without_issuer() {
     init_test_logging();
+    let _guard = certify_lock().lock().await;
     let ctx = start_default_test_kms_server().await;
     let client = ctx.get_owner_client();
 

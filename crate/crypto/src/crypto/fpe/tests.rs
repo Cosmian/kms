@@ -287,6 +287,12 @@ fn fpe_ff1_string_same_alphabet() -> Result<(), FPEError> {
             .map(char::from)
             .collect();
         let alphabet = Alphabet::try_from(&plaintext)?;
+        // Skip inputs that don't satisfy the FF1 minimum-length constraint for
+        // the derived alphabet. This can happen when the random string has few
+        // unique characters (e.g. 5 unique chars require length ≥ 9).
+        if plaintext.chars().count() < alphabet.minimum_plaintext_length() {
+            continue;
+        }
         alphabet_check(&plaintext, &alphabet, "");
     }
     Ok(())
