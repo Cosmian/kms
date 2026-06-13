@@ -119,8 +119,8 @@ fn assert_baseline(x509: &X509, expected_subject_cn: &str, expected_issuer_cn: &
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
         .expect("Certificate must have a subject CN");
-    let cn = cn_entry.data().as_utf8().unwrap();
-    assert_eq!(cn.to_string(), expected_subject_cn, "Subject CN mismatch");
+    let cn = cn_entry.data().to_string().unwrap();
+    assert_eq!(cn, expected_subject_cn, "Subject CN mismatch");
 
     // Issuer CN
     let issuer = x509.issuer_name();
@@ -128,12 +128,8 @@ fn assert_baseline(x509: &X509, expected_subject_cn: &str, expected_issuer_cn: &
         .entries_by_nid(openssl::nid::Nid::COMMONNAME)
         .next()
         .expect("Certificate must have an issuer CN");
-    let issuer_cn = issuer_cn_entry.data().as_utf8().unwrap();
-    assert_eq!(
-        issuer_cn.to_string(),
-        expected_issuer_cn,
-        "Issuer CN mismatch"
-    );
+    let issuer_cn = issuer_cn_entry.data().to_string().unwrap();
+    assert_eq!(issuer_cn, expected_issuer_cn, "Issuer CN mismatch");
 
     // Validity: not_before ≤ now ≤ not_after
     let not_before = x509.not_before();

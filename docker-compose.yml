@@ -134,6 +134,8 @@ services:
   # Used automatically by:  bash .github/scripts/nix.sh --variant non-fips test edb_tde
   # (when EDB_SUBSCRIPTION_TOKEN is set; the test script handles login and lifecycle)
   edb-tde:
+    profiles:
+      - edb-tde
     # Build locally to install PyKMIP (not shipped in the base image).
     build:
       context: .github/scripts/edb_tde
@@ -191,8 +193,8 @@ services:
     profiles:
       - iris
     ports:
-      - "52773:52773" # IRIS Management Portal
-      - "1972:1972"   # IRIS SuperServer
+      - 52773:52773   # IRIS Management Portal
+      - 1972:1972     # IRIS SuperServer
     volumes:
       - ./test_data/certificates/client_server/ca/ca.crt:/iris-kmip-certs/ca.crt:ro
       - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/iris-kmip-certs/client.crt:ro
@@ -204,5 +206,5 @@ services:
       # Allow IRIS to reach the KMS running on the Docker host.
       # The KMS server certificate CN is kmserver.acme.com, so IRIS TLS
       # hostname verification requires this alias to resolve to the host.
-      - "host.docker.internal:host-gateway"
-      - "kmserver.acme.com:host-gateway"
+      - host.docker.internal:host-gateway
+      - kmserver.acme.com:host-gateway

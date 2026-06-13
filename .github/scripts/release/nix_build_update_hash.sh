@@ -52,7 +52,7 @@ drv_to_hash_file() {
   local attr="$2"
 
   if [[ "$drv_name" =~ ui-deps.*(fips|non-fips).*pnpm-deps ]]; then
-    echo "$EXPECTED_DIR/ui.pnpm.${OS}.sha256"
+    echo "$EXPECTED_DIR/ui.pnpm.${OS,,}.sha256"
     return
   fi
   if [[ "$drv_name" =~ ui-wasm-non-fips.*vendor ]]; then
