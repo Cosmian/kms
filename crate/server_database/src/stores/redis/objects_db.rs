@@ -302,14 +302,12 @@ impl ObjectsDB {
         let results: Vec<redis::Value> = pipeline.query_async(&mut self.mgr.clone()).await?;
 
         // Verify that Create operations succeeded (non-nil response)
-        let mut result_idx = 0;
-        for operation in operations {
+        for (result_idx, operation) in operations.iter().enumerate() {
             if let RedisOperation::Create(uid, _) = operation {
-                if let Some(redis::Value::Nil) = results.get(result_idx) {
+                if matches!(results.get(result_idx), Some(redis::Value::Nil)) {
                     db_bail!("object {uid} already exists");
                 }
             }
-            result_idx += 1;
         }
 
         Ok(res)
