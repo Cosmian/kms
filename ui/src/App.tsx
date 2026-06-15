@@ -194,7 +194,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                                 setLoginError(undefined);
                             }
                         } catch (error) {
-                            console.log("JWT fallback failed:", error);
+                            console.error("JWT fallback failed:", error);
                             setIsAuthenticated(false);
                         }
                     } else {
