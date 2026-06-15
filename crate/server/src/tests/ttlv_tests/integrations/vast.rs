@@ -1146,3 +1146,676 @@ fn test_vast_workflow_create_locate_get_attributes() {
     // Cleanup
     destroy_key(&client, &key_uid);
 }
+
+/// Non-regression: `AddAttribute(OperationPolicyName)` must be stored (not dropped).
+/// Before the fix, `add.rs` silently ignored `OperationPolicyName`, causing VAST's
+/// upgraded appliance to fail when it checks `GetAttributes` after key creation.
+#[test]
+fn test_vast_opn_add_attribute_persistence() {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::{
+        kmip_attributes::State,
+        kmip_operations::{AddAttribute, GetAttributes},
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+
+    // 1. Create an AES-256 key (no OPN in template — simulates old VAST).
+    let key_uid = create_aes_256_key(&client);
+    info!("Created key: {key_uid}");
+
+    // 2. AddAttribute(OperationPolicyName) — the bug was that this was silently dropped.
+    let add_opn_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::AddAttribute,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::AddAttribute(AddAttribute {
+                    unique_identifier: key_uid.clone(),
+                    attribute: Attribute::OperationPolicyName("default".to_owned()),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let add_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_opn_request)
+        .expect("AddAttribute(OPN): request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(add_item)) = add_response.batch_item.first()
+    else {
+        panic!("AddAttribute(OPN): expected V14 batch item");
+    };
+
+    assert_eq!(
+        add_item.result_status,
+        ResultStatusEnumeration::Success,
+        "AddAttribute(OPN): expected Success, got {:?}: {:?}",
+        add_item.result_status,
+        add_item.result_message
+    );
+
+    // 3. Activate the key (required for VAST workflow).
+    activate_key(&client, &key_uid);
+
+    // 4. GetAttributes — verify OperationPolicyName is returned.
+    let get_attrs_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::GetAttributes,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::GetAttributes(GetAttributes {
+                    unique_identifier: Some(key_uid.clone()),
+                    attribute_name: Some(vec![
+                        "State".to_owned(),
+                        "Operation Policy Name".to_owned(),
+                    ]),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let attrs_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &get_attrs_request)
+        .expect("GetAttributes: request failed");
+
+    let Some(ResponseMessageBatchItemVersioned::V14(attrs_item)) =
+        attrs_response.batch_item.first()
+    else {
+        panic!("GetAttributes: expected V14 batch item");
+    };
+
+    assert_eq!(
+        attrs_item.result_status,
+        ResultStatusEnumeration::Success,
+        "GetAttributes: expected Success, got {:?}: {:?}",
+        attrs_item.result_status,
+        attrs_item.result_message
+    );
+
+    let Some(Operation::GetAttributesResponse(attrs_resp)) = &attrs_item.response_payload else {
+        panic!("GetAttributes: expected GetAttributesResponse payload");
+    };
+
+    let attributes = attrs_resp.attribute.as_deref().unwrap_or(&[]);
+
+    let state = attributes.iter().find_map(|a| {
+        if let Attribute::State(s) = a {
+            Some(*s)
+        } else {
+            None
+        }
+    });
+    assert_eq!(
+        state,
+        Some(State::Active),
+        "GetAttributes: expected State=Active, got {state:?}"
+    );
+
+    let opn = attributes.iter().find_map(|a| {
+        if let Attribute::OperationPolicyName(v) = a {
+            Some(v.as_str())
+        } else {
+            None
+        }
+    });
+    assert_eq!(
+        opn,
+        Some("default"),
+        "GetAttributes: expected OperationPolicyName='default', got {opn:?}. \
+         This is the VAST regression: AddAttribute(OPN) was silently dropped."
+    );
+
+    info!(
+        "OPN persistence verified: State=Active, OperationPolicyName='default' for key {key_uid}"
+    );
+
+    // Cleanup
+    destroy_key(&client, &key_uid);
+}
+
+/// Non-regression: `OperationPolicyName` must survive `ReKey` (transferred to new key).
+/// VAST's new version checks `GetAttributes` on the rotated key and expects OPN present.
+#[test]
+fn test_vast_opn_survives_rekey() {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::{
+        kmip_operations::{AddAttribute, GetAttributes},
+        kmip_types::{Name, NameType},
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+
+    let vast_key_name = "VAST_EKM_KEY_2_b1234567-aaaa-bbbb-cccc-dddddddddddd_0".to_owned();
+
+    // 1. Create key, add Name, add OPN, activate — full VAST workflow.
+    let key_uid = create_aes_256_key(&client);
+
+    // AddAttribute(Name)
+    let add_name_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::AddAttribute,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::AddAttribute(AddAttribute {
+                    unique_identifier: key_uid.clone(),
+                    attribute: Attribute::Name(Name {
+                        name_value: vast_key_name.clone(),
+                        name_type: NameType::UninterpretedTextString,
+                    }),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+    let resp = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_name_request)
+        .expect("AddAttribute(Name): request failed");
+    assert_eq!(
+        resp.batch_item.first().and_then(|b| match b {
+            ResponseMessageBatchItemVersioned::V14(item) => Some(item.result_status),
+            ResponseMessageBatchItemVersioned::V21(_) => None,
+        }),
+        Some(ResultStatusEnumeration::Success),
+        "AddAttribute(Name) failed"
+    );
+
+    // AddAttribute(OperationPolicyName)
+    let add_opn_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::AddAttribute,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::AddAttribute(AddAttribute {
+                    unique_identifier: key_uid.clone(),
+                    attribute: Attribute::OperationPolicyName("default".to_owned()),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+    let resp = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_opn_request)
+        .expect("AddAttribute(OPN): request failed");
+    assert_eq!(
+        resp.batch_item.first().and_then(|b| match b {
+            ResponseMessageBatchItemVersioned::V14(item) => Some(item.result_status),
+            ResponseMessageBatchItemVersioned::V21(_) => None,
+        }),
+        Some(ResultStatusEnumeration::Success),
+        "AddAttribute(OPN) failed"
+    );
+
+    activate_key(&client, &key_uid);
+    info!("Created, named, OPN'd, activated key: {key_uid}");
+
+    // 2. ReKey
+    let rekey_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::ReKey,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::ReKey(ReKey {
+                    unique_identifier: key_uid.clone(),
+                    offset: None,
+                    template_attribute: None,
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let rekey_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &rekey_request)
+        .expect("ReKey: request failed");
+    let Some(ResponseMessageBatchItemVersioned::V14(rekey_item)) =
+        rekey_response.batch_item.first()
+    else {
+        panic!("ReKey: expected V14 batch item");
+    };
+    assert_eq!(
+        rekey_item.result_status,
+        ResultStatusEnumeration::Success,
+        "ReKey: expected Success, got {:?}: {:?}",
+        rekey_item.result_status,
+        rekey_item.result_message
+    );
+    let Some(Operation::ReKeyResponse(rekey_resp)) = &rekey_item.response_payload else {
+        panic!("ReKey: expected ReKeyResponse payload");
+    };
+    let new_key_uid = &rekey_resp.unique_identifier;
+    assert_ne!(new_key_uid, &key_uid, "ReKey must return a new UID");
+    info!("ReKey succeeded: old={key_uid} → new={new_key_uid}");
+
+    // 3. GetAttributes on NEW key — verify OPN is preserved after rotation.
+    let get_attrs_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::GetAttributes,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::GetAttributes(GetAttributes {
+                    unique_identifier: Some(new_key_uid.clone()),
+                    attribute_name: Some(vec![
+                        "State".to_owned(),
+                        "Operation Policy Name".to_owned(),
+                        "Name".to_owned(),
+                    ]),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let attrs_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &get_attrs_request)
+        .expect("GetAttributes (new key): request failed");
+    let Some(ResponseMessageBatchItemVersioned::V14(attrs_item)) =
+        attrs_response.batch_item.first()
+    else {
+        panic!("GetAttributes (new key): expected V14 batch item");
+    };
+    assert_eq!(
+        attrs_item.result_status,
+        ResultStatusEnumeration::Success,
+        "GetAttributes (new key): expected Success, got {:?}: {:?}",
+        attrs_item.result_status,
+        attrs_item.result_message
+    );
+    let Some(Operation::GetAttributesResponse(attrs_resp)) = &attrs_item.response_payload else {
+        panic!("GetAttributes (new key): expected GetAttributesResponse payload");
+    };
+
+    let attributes = attrs_resp.attribute.as_deref().unwrap_or(&[]);
+
+    // Verify OPN transferred
+    let opn = attributes.iter().find_map(|a| {
+        if let Attribute::OperationPolicyName(v) = a {
+            Some(v.as_str())
+        } else {
+            None
+        }
+    });
+    assert_eq!(
+        opn,
+        Some("default"),
+        "GetAttributes (new key): OperationPolicyName must survive ReKey. Got {opn:?}. \
+         This is the VAST regression: rotated key lost OPN."
+    );
+
+    // Verify Name transferred
+    let name = attributes.iter().find_map(|a| {
+        if let Attribute::Name(n) = a {
+            Some(n.name_value.as_str())
+        } else {
+            None
+        }
+    });
+    assert_eq!(
+        name,
+        Some(vast_key_name.as_str()),
+        "GetAttributes (new key): Name must be transferred by ReKey"
+    );
+
+    info!("OPN survives ReKey: new key {new_key_uid} has OPN='default' and Name='{vast_key_name}'");
+
+    // Cleanup
+    revoke_key(&client, new_key_uid);
+    destroy_key(&client, new_key_uid);
+    revoke_key(&client, &key_uid);
+    destroy_key(&client, &key_uid);
+}
+
+/// Non-regression: `Locate` finds the correct (new) key after `ReKey` in a multi-key path.
+/// VAST manages 2+ keys per encryption group (indices _0, _1, ...) and after `ReKey`
+/// of one key, `Locate` by its name must return the rotated key's new UID.
+#[test]
+fn test_vast_multi_key_locate_after_rekey() {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::{
+        kmip_operations::{AddAttribute, Locate},
+        kmip_types::{Name, NameType},
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+
+    let group_uuid = "e1234567-ffff-aaaa-bbbb-cccccccccccc";
+    let key_names: Vec<String> = (0..3)
+        .map(|i| format!("VAST_EKM_KEY_2_{group_uuid}_{i}"))
+        .collect();
+
+    // 1. Create 3 keys, each with its own Name.
+    let mut key_uids = Vec::new();
+    for name in &key_names {
+        let uid = create_aes_256_key(&client);
+
+        let add_name_request = RequestMessage {
+            request_header: RequestMessageHeader {
+                protocol_version: ProtocolVersion {
+                    protocol_version_major: 1,
+                    protocol_version_minor: 4,
+                },
+                batch_count: 1,
+                ..Default::default()
+            },
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+                RequestMessageBatchItem {
+                    operation: OperationEnumeration::AddAttribute,
+                    ephemeral: None,
+                    unique_batch_item_id: None,
+                    request_payload: Operation::AddAttribute(AddAttribute {
+                        unique_identifier: uid.clone(),
+                        attribute: Attribute::Name(Name {
+                            name_value: name.clone(),
+                            name_type: NameType::UninterpretedTextString,
+                        }),
+                    }),
+                    message_extension: None,
+                },
+            )],
+        };
+        let resp = client
+            .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_name_request)
+            .expect("AddAttribute(Name): request failed");
+        assert_eq!(
+            resp.batch_item.first().and_then(|b| match b {
+                ResponseMessageBatchItemVersioned::V14(item) => Some(item.result_status),
+                ResponseMessageBatchItemVersioned::V21(_) => None,
+            }),
+            Some(ResultStatusEnumeration::Success),
+        );
+
+        activate_key(&client, &uid);
+        key_uids.push(uid);
+    }
+    info!("Created 3 keys: {key_uids:?}");
+
+    // 2. ReKey key _0
+    let rekey_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::ReKey,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::ReKey(ReKey {
+                    unique_identifier: key_uids[0].clone(),
+                    offset: None,
+                    template_attribute: None,
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+    let rekey_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &rekey_request)
+        .expect("ReKey _0: request failed");
+    let Some(ResponseMessageBatchItemVersioned::V14(rekey_item)) =
+        rekey_response.batch_item.first()
+    else {
+        panic!("ReKey _0: expected V14 batch item");
+    };
+    assert_eq!(rekey_item.result_status, ResultStatusEnumeration::Success);
+    let Some(Operation::ReKeyResponse(rekey_resp)) = &rekey_item.response_payload else {
+        panic!("ReKey _0: expected ReKeyResponse");
+    };
+    let new_uid_0 = rekey_resp.unique_identifier.clone();
+    info!("ReKey _0: old={} → new={new_uid_0}", key_uids[0]);
+
+    // 3. Locate each key by name — _0 must return the NEW uid, _1 and _2 unchanged.
+    for (i, name) in key_names.iter().enumerate() {
+        let locate_request = RequestMessage {
+            request_header: RequestMessageHeader {
+                protocol_version: ProtocolVersion {
+                    protocol_version_major: 1,
+                    protocol_version_minor: 4,
+                },
+                batch_count: 1,
+                ..Default::default()
+            },
+            batch_item: vec![RequestMessageBatchItemVersioned::V14(
+                RequestMessageBatchItem {
+                    operation: OperationEnumeration::Locate,
+                    ephemeral: None,
+                    unique_batch_item_id: None,
+                    request_payload: Operation::Locate(Locate {
+                        maximum_items: None,
+                        storage_status_mask: None,
+                        object_group_member: None,
+                        attribute: Some(vec![Attribute::Name(Name {
+                            name_value: name.clone(),
+                            name_type: NameType::UninterpretedTextString,
+                        })]),
+                        template_attribute: None,
+                    }),
+                    message_extension: None,
+                },
+            )],
+        };
+
+        let locate_response = client
+            .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &locate_request)
+            .expect("Locate: request failed");
+        let Some(ResponseMessageBatchItemVersioned::V14(locate_item)) =
+            locate_response.batch_item.first()
+        else {
+            panic!("Locate _{i}: expected V14 batch item");
+        };
+        assert_eq!(
+            locate_item.result_status,
+            ResultStatusEnumeration::Success,
+            "Locate _{i}: expected Success"
+        );
+        let Some(Operation::LocateResponse(locate_resp)) = &locate_item.response_payload else {
+            panic!("Locate _{i}: expected LocateResponse");
+        };
+
+        let located_ids = locate_resp.unique_identifier.as_deref().unwrap_or(&[]);
+        let expected_uid = if i == 0 { &new_uid_0 } else { &key_uids[i] };
+        assert!(
+            located_ids.contains(expected_uid),
+            "Locate _{i} (name={name}): expected {expected_uid} in results {located_ids:?}"
+        );
+        // After ReKey, the OLD key must NOT appear for the rotated name
+        if i == 0 {
+            assert!(
+                !located_ids.contains(&key_uids[0]),
+                "Locate _0: old key {} must NOT be found by name after ReKey (name transferred)",
+                key_uids[0]
+            );
+        }
+        info!("Locate _{i}: found {expected_uid} ✓");
+    }
+
+    // Cleanup
+    revoke_key(&client, &new_uid_0);
+    destroy_key(&client, &new_uid_0);
+    for uid in &key_uids {
+        revoke_key(&client, uid);
+        destroy_key(&client, uid);
+    }
+}
+
+/// Non-regression: `GetAttributes` without explicit attribute names must return OPN.
+/// Before the fix, `shape_kmip1_get_attributes_response` in `message.rs` filtered
+/// vendor attributes to `vendor_identification == "x"`, silently dropping OPN
+/// (stored as `KMIP1:__Operation Policy Name__`) from default responses.
+/// VAST's monitoring loop sends `GetAttributes`; if it uses the default-all form,
+/// OPN was lost and VAST reported key rotation failure.
+#[test]
+fn test_vast_opn_returned_in_default_get_attributes() {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_1_4::kmip_operations::{
+        AddAttribute, GetAttributes,
+    };
+
+    log_init(option_env!("RUST_LOG"));
+    let client = get_client();
+
+    // 1. Create an AES-256 key and add OPN via AddAttribute.
+    let key_uid = create_aes_256_key(&client);
+
+    let add_opn_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::AddAttribute,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::AddAttribute(AddAttribute {
+                    unique_identifier: key_uid.clone(),
+                    attribute: Attribute::OperationPolicyName("default".to_owned()),
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+    let resp = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &add_opn_request)
+        .expect("AddAttribute(OPN): request failed");
+    assert_eq!(
+        resp.batch_item.first().and_then(|b| match b {
+            ResponseMessageBatchItemVersioned::V14(item) => Some(item.result_status),
+            ResponseMessageBatchItemVersioned::V21(_) => None,
+        }),
+        Some(ResultStatusEnumeration::Success),
+        "AddAttribute(OPN) failed"
+    );
+
+    activate_key(&client, &key_uid);
+
+    // 2. GetAttributes WITHOUT explicit attribute names (None → default all).
+    //    This is the code path that was filtering out OPN via `vendor_identification == "x"`.
+    let get_attrs_request = RequestMessage {
+        request_header: RequestMessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 4,
+            },
+            batch_count: 1,
+            ..Default::default()
+        },
+        batch_item: vec![RequestMessageBatchItemVersioned::V14(
+            RequestMessageBatchItem {
+                operation: OperationEnumeration::GetAttributes,
+                ephemeral: None,
+                unique_batch_item_id: None,
+                request_payload: Operation::GetAttributes(GetAttributes {
+                    unique_identifier: Some(key_uid.clone()),
+                    attribute_name: None, // <-- DEFAULT ALL: triggers the buggy filter path
+                }),
+                message_extension: None,
+            },
+        )],
+    };
+
+    let attrs_response = client
+        .send_request::<RequestMessage, ResponseMessage>(KmipFlavor::Kmip1, &get_attrs_request)
+        .expect("GetAttributes (default all): request failed");
+    let Some(ResponseMessageBatchItemVersioned::V14(attrs_item)) =
+        attrs_response.batch_item.first()
+    else {
+        panic!("GetAttributes (default all): expected V14 batch item");
+    };
+    assert_eq!(
+        attrs_item.result_status,
+        ResultStatusEnumeration::Success,
+        "GetAttributes (default all): expected Success, got {:?}: {:?}",
+        attrs_item.result_status,
+        attrs_item.result_message
+    );
+    let Some(Operation::GetAttributesResponse(attrs_resp)) = &attrs_item.response_payload else {
+        panic!("GetAttributes (default all): expected GetAttributesResponse payload");
+    };
+
+    let attributes = attrs_resp.attribute.as_deref().unwrap_or(&[]);
+
+    // OPN must be present even though we did NOT explicitly request it.
+    let opn = attributes.iter().find_map(|a| {
+        if let Attribute::OperationPolicyName(v) = a {
+            Some(v.as_str())
+        } else {
+            None
+        }
+    });
+    assert_eq!(
+        opn,
+        Some("default"),
+        "GetAttributes (default all): OperationPolicyName MUST be returned in default response. \
+         Got {opn:?}. This is the VAST monitoring regression: the old filter \
+         `vendor_identification == \"x\"` silently dropped KMIP1 vendor attributes."
+    );
+
+    info!("Default GetAttributes returns OPN='default' for key {key_uid} ✓");
+
+    // Cleanup
+    destroy_key(&client, &key_uid);
+}

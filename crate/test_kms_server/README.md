@@ -260,7 +260,7 @@ replays the steps sequentially.
 | Integrations | `fips/integrations/fortigate_credential_type` | Create, Activate, Locate with numeric CredentialType enum, Revoke, Destroy (binary TTLV / KMIP 1.0) | 5 |
 | Integrations | `fips/integrations/fortigate_locate_filter` | Register ×2, Activate ×2, Locate by name ×2 (assert distinct IDs), Revoke ×2, Destroy ×2 (binary TTLV / KMIP 1.0) | 10 |
 | Integrations | `fips/integrations/fortigate_locate_get` | Register ×2, Activate ×2, Batch Locate ×2, Batch Get ×2 (full IPsec key retrieval), Revoke ×2, Destroy ×2 (binary TTLV / KMIP 1.0) | 10 |
-| Integrations | `fips/integrations/vast_data` | DiscoverVersions, Create, AddAttribute ×2, Activate, Locate, Get, GetAttributes, ReKey, Locate, Get, GetAttributes, Revoke, Destroy, Revoke, Destroy (JSON TTLV / KMIP 1.4) | 16 |
+| Integrations | `fips/integrations/vast_data` | DiscoverVersions, Create (with OPN), AddAttribute ×3 (Name, ObjectGroup, OPN), Activate, Locate, Get, GetAttributes, ReKey, Locate, Get, GetAttributes (with OPN), Revoke, Destroy, Revoke, Destroy (JSON TTLV / KMIP 1.4) | 17 |
 | Integrations | `fips/integrations/kmip_1_3_symmetric` | Create, Activate, Get, Locate, Revoke, Destroy (binary TTLV / KMIP 1.3) | 6 |
 | Integrations | `fips/integrations/kmip_1_3_asymmetric` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.3) | 5 |
 | Integrations | `non-fips/integrations/mongodb` | Create, Locate, Get, Destroy (binary TTLV / KMIP 1.0) | 4 |
