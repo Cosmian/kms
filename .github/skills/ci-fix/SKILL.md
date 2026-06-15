@@ -105,7 +105,7 @@ Classify each failure into one of these categories (in priority order):
 | **Compile error** | `error[E...]` / `could not compile` | Read error, fix source |
 | **Test failure** | `test ... FAILED` / `assertion failed` / `panicked` | Read test output, fix logic |
 | **Dependency audit** | `cargo deny` / `cargo machete` / `cargo audit` | Update `Cargo.toml`, add `deny.toml` exception if justified |
-| **Nix hash mismatch** | `hash mismatch` / `got: sha256-` | Update `nix/expected-hashes/` with value from log |
+| **Nix hash mismatch** | `hash mismatch` / `got: sha256-` | Run `.github/scripts/release/update_hashes.sh` with failed job link, or update `nix/expected-hashes/` manually |
 | **Docker/packaging** | build failures in packaging jobs | Check `Dockerfile`, packaging scripts |
 | **Flaky test** | intermittent, not reproducible locally | Re-run first; if persistent, investigate |
 
@@ -150,6 +150,11 @@ cargo clippy-all 2>&1
 
 - Extract the correct hash from the log line: `got: sha256-XXXX`
 - Update the matching file in `nix/expected-hashes/`
+- Alternatively, run the automated script:
+
+  ```bash
+  bash .github/scripts/release/update_hashes.sh <failed-job-link>
+  ```
 
 ### Dependency audit (`cargo deny`)
 
@@ -165,10 +170,13 @@ cargo clippy-all 2>&1
 **After every fix, verify locally before committing:**
 
 ```bash
-cargo clippy-all
-cargo fmt --all
-cargo test -p <affected_crate> 2>&1 | tail -20
+cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo fmt --all
+cargo test -p <affected_crate> <test_name> 2>&1 | tail -20
 ```
+
+> **Important**: For sanity checks, only run the tests that directly exercise the changed
+> code. When changes affect only a certain scope, target that scope. Do not run the full
+> test suite unless the change is cross-cutting.
 
 ---
 

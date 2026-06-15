@@ -65,6 +65,7 @@ From these candidates, keep only those supported by audit evidence AND passing a
 4. **Matrix reduction** — Run expensive test variants (hsm, cloud providers) only on push to `develop`/`main`, not on every PR
 5. **Job parallelism** — Identify jobs currently running sequentially that could run in parallel
 6. **Duplicate workflow removal** — Merge overlapping jobs between `pr.yml` and `main.yml`
+7. **Redundant test detection** — Identify tests that exercise the same or near-identical code paths under different names (e.g. two test-vector tests that execute similar flows). Redundancy is not limited to textual repetition — look for semantic overlap in test logic
 
 ## Step 4 — Verify
 

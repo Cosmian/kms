@@ -138,9 +138,6 @@ If `crate/crypto/build.rs` was changed (OpenSSL version update):
 
 ### Findings
 [Severity + description + file + line + fix for each issue]
-
-### Clean Areas
-[List areas with no issues]
 ```
 
 **Never auto-apply fixes — present for review.**

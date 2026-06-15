@@ -7,6 +7,12 @@ description: React 19 + Ant Design 5 + Tailwind 4 + Vite 7 patterns for the KMS 
 
 Reference for KMS UI-specific patterns. Stack: **React 19 + Vite 7 + Ant Design 5 + Tailwind CSS 4 + pnpm**.
 
+## AI-Assisted Development Resources
+
+- **Ant Design LLM context**: Fetch `https://ant.design/llms.txt` for up-to-date component API reference when coding AntD components.
+- **Ant Design MCP server**: <https://ant-design.antgroup.com/docs/react/mcp> — provides structured component documentation to AI agents.
+- **Context7 MCP** (`io.github.upstash/context7`): Generic library documentation fetcher — use when AntD or other JS library APIs seem outdated in the agent's training data. See <https://context7.com/>.
+
 ## Project Structure
 
 ```text
