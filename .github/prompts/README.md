@@ -1,8 +1,15 @@
 # Copilot Skills — Cosmian KMS
 
-Team-wide GitHub Copilot skills for the KMS repository. Invoke any skill by typing `/skill-name` in Copilot Chat.
+Team-wide GitHub Copilot skills for the KMS repository.
 
-All skills are stored as `.prompt.md` files in this directory and load automatically in VS Code.
+## Where skills live
+
+| Surface | Location | How to invoke |
+|---------|----------|---------------|
+| **VS Code Copilot Chat** | `.github/prompts/*.prompt.md` (thin wrappers) | Type `/skill-name` in Chat |
+| **Copilot CLI** (`copilot` terminal) | `.github/skills/<name>/SKILL.md` (canonical content) | `/skill-name` in CLI session or auto-invoked by description match |
+
+**No duplication**: the `.prompt.md` files are thin wrappers that reference the corresponding `SKILL.md` file. All instruction content lives once in `.github/skills/`.
 
 ---
 

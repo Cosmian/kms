@@ -12,8 +12,8 @@ Complete 10-step workflow for performing a STRIDE-A threat model analysis of the
 6. **CWE mapping**: Every finding must have at least one CWE identifier.
 7. **OWASP mapping**: Map findings to OWASP Top 10:2025 where applicable.
 8. **No auto-remediation**: Propose fixes for review; do not apply them.
-9. **Diagrams**: All Mermaid diagrams must follow `.github/prompts/references/threat-model-diagrams.md` conventions.
-10. **Output format**: Follow `.github/prompts/references/threat-model-output-formats.md` templates exactly.
+9. **Diagrams**: All Mermaid diagrams must follow `.github/skills/threat-model/references/threat-model-diagrams.md` conventions.
+10. **Output format**: Follow `.github/skills/threat-model/references/threat-model-output-formats.md` templates exactly.
 
 ## Incremental Mode Trigger
 
@@ -57,7 +57,7 @@ For each component in the trust boundary map (from `threat-model.prompt.md`), id
 
 ### Step 4 — Data Flow Diagram (DFD)
 
-Generate a DFD using Mermaid. Load `.github/prompts/references/threat-model-diagrams.md` for shape and color conventions.
+Generate a DFD using Mermaid. Load `.github/skills/threat-model/references/threat-model-diagrams.md` for shape and color conventions.
 
 Save as `threat-model-YYYYMMDD/1-dfd.md`.
 
@@ -141,7 +141,7 @@ Generate the following files in `threat-model-YYYYMMDD-HHMMSS/`:
 5. `0-assessment.md` — executive summary (1 page)
 6. `threat-inventory.json` — machine-readable finding list for incremental updates
 
-Load `.github/prompts/references/threat-model-output-formats.md` for exact templates before writing each file.
+Load `.github/skills/threat-model/references/threat-model-output-formats.md` for exact templates before writing each file.
 
 ## Incremental Workflow (Delta Analysis)
 
