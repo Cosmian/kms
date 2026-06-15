@@ -1,0 +1,101 @@
+---
+mode: 'agent'
+description: 'Create an Architectural Decision Record (ADR) for this repository under documentation/docs/adr/. Use: /adr'
+---
+
+# Architectural Decision Record Generator
+
+Create an ADR document for the Cosmian KMS repository.
+
+## ADR Storage
+
+Save ADRs at: `documentation/docs/adr/adr-NNNN-[title-slug].md`
+
+Where `NNNN` is the next sequential 4-digit number. Check existing files to determine the next number:
+
+```bash
+ls documentation/docs/adr/ 2>/dev/null | sort | tail -5
+```
+
+If the `documentation/docs/adr/` directory doesn't exist yet, create it and add a nav entry in `documentation/mkdocs.yml`.
+
+## Required Inputs
+
+Ask the user for:
+
+1. **Decision Title** — short, imperative phrase (e.g. "Use SQLite as default database backend")
+2. **Context** — problem statement, constraints, and why a decision was needed
+3. **Decision** — the chosen solution
+4. **Alternatives** — other options considered and why they were rejected
+5. **Stakeholders** — roles affected (e.g. "operators, security auditors, contributors")
+
+If any required input is missing, ask before proceeding.
+
+## ADR Template
+
+```markdown
+---
+title: "ADR-NNNN: [Decision Title]"
+status: "Proposed"
+date: "YYYY-MM-DD"
+authors: "[Stakeholder Names/Roles]"
+tags: ["architecture", "decision"]
+supersedes: ""
+superseded_by: ""
+---
+
+# ADR-NNNN: [Decision Title]
+
+## Status
+
+**Proposed** | Accepted | Rejected | Superseded | Deprecated
+
+## Context
+
+[Problem statement, technical constraints, business requirements, and environmental factors requiring this decision.]
+
+## Decision
+
+[Chosen solution with clear rationale for selection.]
+
+## Consequences
+
+### Positive
+
+- **POS-001**: [Beneficial outcome]
+- **POS-002**: [Performance, maintainability, or security improvement]
+
+### Negative
+
+- **NEG-001**: [Trade-off or limitation]
+- **NEG-002**: [Technical debt or complexity introduced]
+
+## Alternatives Considered
+
+### [Alternative 1 Name]
+
+- **ALT-001 Description**: [Brief technical description]
+- **ALT-002 Rejection Reason**: [Why this option was not selected]
+
+### [Alternative 2 Name]
+
+- **ALT-003 Description**: [Brief technical description]
+- **ALT-004 Rejection Reason**: [Why this option was not selected]
+
+## Implementation Notes
+
+- **IMP-001**: [Key implementation consideration]
+- **IMP-002**: [Migration or rollout strategy if applicable]
+- **IMP-003**: [Monitoring and success criteria]
+
+## References
+
+- **REF-001**: [Related ADRs or prior decisions]
+- **REF-002**: [External documentation, RFCs, specifications]
+- **REF-003**: [Relevant codebase files: e.g. `crate/server_database/src/`, `crate/server/src/config/`]
+```
+
+## After Writing
+
+1. Update `documentation/mkdocs.yml` to include the new ADR under the `ADRs` nav section (create the section if it doesn't exist).
+2. Commit with message: `docs(adr): add ADR-NNNN [title]`
