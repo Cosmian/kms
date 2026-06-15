@@ -1,5 +1,5 @@
 ---
-mode: 'agent'
+agent: agent
 description: 'Plan a multi-file Rust refactor safely: investigate → plan → confirm → implement. Use: /refactor-plan'
 ---
 
