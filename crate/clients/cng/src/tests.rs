@@ -48,7 +48,7 @@ fn cleanup_key_pair(client: &KmsClient, priv_id: &str, pub_id: &str) {
 fn test_create_rsa_key_pair() {
     let client = test_client();
     let (priv_id, pub_id) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-rsa-2048", 2048, true)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-rsa-2048", 2048)
             .expect("create_rsa_key_pair failed");
     assert!(!priv_id.is_empty(), "private key UUID must not be empty");
     assert!(!pub_id.is_empty(), "public key UUID must not be empty");
@@ -66,7 +66,7 @@ fn test_sign_with_rsa_key() {
 
     let client = test_client();
     let (priv_id, pub_id) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-rsa-sign", 2048, true)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-rsa-sign", 2048)
             .expect("create_rsa_key_pair failed");
 
     // SHA-256 of "hello"
@@ -119,7 +119,7 @@ fn test_create_ec_key_pair() {
 fn test_locate_key_by_name() {
     let client = test_client();
     let (priv_id, pub_id) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-locate", 2048, true)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-locate", 2048)
             .expect("create_rsa_key_pair failed");
 
     let found_id = backend::locate_key_by_name(&client, TEST_VENDOR_ID, "test-locate")
@@ -139,10 +139,10 @@ fn test_list_cng_keys() {
 
     // Create two keys
     let (priv1, pub1) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "list-test-key-1", 2048, true)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "list-test-key-1", 2048)
             .expect("create key 1 failed");
     let (priv2, pub2) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "list-test-key-2", 2048, false)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "list-test-key-2", 2048)
             .expect("create key 2 failed");
 
     let keys = backend::list_cng_keys(&client, TEST_VENDOR_ID).expect("list_cng_keys failed");
@@ -168,7 +168,7 @@ fn test_list_cng_keys() {
 fn test_export_public_key_spki() {
     let client = test_client();
     let (priv_id, pub_id) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-export-pub", 2048, true)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-export-pub", 2048)
             .expect("create_rsa_key_pair failed");
 
     let spki =
@@ -249,7 +249,7 @@ fn test_sign_rsa_pss() {
 
     let client = test_client();
     let (priv_id, pub_id) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-rsa-pss", 2048, true)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-rsa-pss", 2048)
             .expect("create_rsa_key_pair failed");
 
     let hash: [u8; 32] = [0x42; 32];
@@ -279,7 +279,7 @@ fn test_verify_rsa_pkcs1v15() {
 
     let client = test_client();
     let (priv_id, pub_id) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-verify-rsa", 2048, true)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-verify-rsa", 2048)
             .expect("create_rsa_key_pair failed");
 
     let hash: [u8; 32] = [0x55; 32];
@@ -379,7 +379,7 @@ fn test_rsa_encrypt_decrypt_oaep() {
 
     let client = test_client();
     let (priv_id, pub_id) =
-        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-enc-oaep", 2048, false)
+        backend::create_rsa_key_pair(&client, TEST_VENDOR_ID, "test-enc-oaep", 2048)
             .expect("create_rsa_key_pair failed");
 
     let plaintext = b"CNG KSP OAEP round-trip test";
