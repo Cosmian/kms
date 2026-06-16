@@ -1,0 +1,67 @@
+# Cosmian KMS — Copilot Chat Instructions
+
+Cosmian KMS is a high-performance, source-available **FIPS 140-3** Key Management System
+written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS (Actix-web) and
+supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
+
+For autonomous agent work, full instructions are in `AGENTS.md`.
+For the skills index, see `.github/skills/README.md`. Skills live in `.github/skills/`.
+
+---
+
+## Key directories
+
+| Path | Contents |
+|------|----------|
+| `crate/server/` | Server binary and library (main codebase) |
+| `crate/kmip/` | KMIP 2.1 protocol types |
+| `crate/crypto/` | Crypto primitives; `build.rs` builds OpenSSL 3.6.0 |
+| `crate/clients/clap/` | CLI actions (clap commands) |
+| `crate/clients/ckms/` | CLI binary entry point |
+| `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
+| `ui/src/` | React 19 + Vite 7 + Ant Design 5 + Tailwind 4 web UI |
+| `ui/tests/e2e/` | Playwright E2E tests |
+| `.github/skills/` | Team-wide Copilot skills (slash commands) |
+
+---
+
+## Build and test
+
+```bash
+cargo build                          # FIPS mode (default)
+cargo build --features non-fips      # non-FIPS: PQC, Covercrypt, AES-XTS
+cargo clippy-all                     # zero warnings required
+cargo fmt --all                      # apply formatting
+cargo test -p <crate>                # targeted test (preferred)
+cargo test-fips                      # full FIPS workspace test suite
+cargo test-non-fips                  # full non-FIPS workspace test suite
+```
+
+No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds OpenSSL 3.6.0.
+
+---
+
+## Cardinal coding rules
+
+- No `.unwrap()` in production code — use `?` propagation.
+- `#[cfg(feature = "non-fips")]` at function/module level only, never inside a function body.
+- Every `unsafe` block requires a `// SAFETY:` comment.
+- Zero Clippy warnings — fix warnings; never suppress with `#[allow]` without an inline justification.
+- Unit tests go in a `#[cfg(test)]` submodule in the same file.
+- All public items require `///` doc comments.
+- Minimal, focused commits — never refactor unrelated code alongside a bug fix.
+
+---
+
+## Skills (slash commands in Copilot Chat)
+
+| Command | When to use |
+|---------|-------------|
+| `/kms-sync-rules` | After every code change — auto-detects changed files |
+| `/security-review` | Before any PR |
+| `/fips-audit` | When touching `crate/crypto/` or algorithm selection |
+| `/kmip-compliance` | When adding/modifying a KMIP operation |
+| `/rust-patterns` | Rust design patterns for this codebase |
+| `/react-ant-patterns` | UI coding conventions |
+| `/kms-changelog` | Writing the branch CHANGELOG entry |
+| `/threat-model` | STRIDE-A threat model |
