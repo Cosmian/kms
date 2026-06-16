@@ -80,7 +80,6 @@ dialoguer = { workspace = true }
 dotenvy = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true, features = ["serde"] }
-hmac = { workspace = true }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
@@ -118,7 +117,6 @@ utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.23.0" }
 uuid = { workspace = true, features = ["v4"] }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
-sha2.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"
@@ -134,10 +132,6 @@ tempfile = { workspace = true }
 [build-dependencies]
 actix-http = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
-sha2 = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = ["sha2"]
 
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING

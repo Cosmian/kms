@@ -2,7 +2,7 @@
 set -euo pipefail
 set -x
 
-# Secret backend integration test — HashiCorp Vault KV-v2
+# Secret backend integration test — HashCorp Vault KV-v2
 #
 # Starts a dev-mode Vault container, creates a test secret, runs the Rust
 # #[ignore] integration test, then cleans up.
@@ -21,7 +21,7 @@ require_cmd docker "Docker is required to run the Vault container."
 require_cmd curl "curl is required for Vault readiness checks."
 
 echo "========================================="
-echo "Running secret backend test: HashiCorp Vault"
+echo "Running secret backend test: HashCorp Vault"
 echo "Variant: ${VARIANT_NAME}"
 echo "========================================="
 
@@ -73,7 +73,7 @@ echo "Enabling KV-v2 secrets engine at mount '${VAULT_MOUNT}'..."
 curl -sf -X POST \
   -H "X-Vault-Token: ${VAULT_TOKEN}" \
   -d '{"type":"kv","options":{"version":"2"}}' \
-  "${VAULT_ADDR}/v1/sys/mounts/${VAULT_MOUNT}" || true  # may already exist in dev mode
+  "${VAULT_ADDR}/v1/sys/mounts/${VAULT_MOUNT}" || true # may already exist in dev mode
 
 echo "Writing test secret ${VAULT_MOUNT}/${VAULT_PATH}#${VAULT_FIELD}..."
 curl -sf -X POST \
@@ -82,15 +82,15 @@ curl -sf -X POST \
   -d "{\"data\":{\"${VAULT_FIELD}\":\"${SECRET_VALUE}\"}}" \
   "${VAULT_ADDR}/v1/${VAULT_MOUNT}/data/${VAULT_PATH}"
 
-echo "Building cosmian_kms_server with secret-vault feature..."
-cargo build -p cosmian_kms_server
+echo "Building cosmian_kms_server..."
+cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server
 
 echo "Running Vault integration test..."
 VAULT_ADDR="${VAULT_ADDR}" \
-VAULT_TOKEN="${VAULT_TOKEN}" \
-KMS_TEST_VAULT_URI="vault://${VAULT_MOUNT}/${VAULT_PATH}#${VAULT_FIELD}" \
-KMS_TEST_VAULT_EXPECTED="${SECRET_VALUE}" \
-cargo test -p cosmian_kms_server --lib -- \
+  VAULT_TOKEN="${VAULT_TOKEN}" \
+  KMS_TEST_VAULT_URI="vault://${VAULT_MOUNT}/${VAULT_PATH}#${VAULT_FIELD}" \
+  KMS_TEST_VAULT_EXPECTED="${SECRET_VALUE}" \
+  cargo test ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server --lib -- \
   --ignored --nocapture test_secret_vault
 
 echo "Vault secret backend test completed successfully."

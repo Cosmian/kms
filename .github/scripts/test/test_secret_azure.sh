@@ -13,8 +13,6 @@ set -x
 #   AZURE_CLIENT_ID      — service-principal application (client) ID
 #   AZURE_CLIENT_SECRET  — service-principal secret
 #   AZURE_KV_NAME        — Key Vault name (e.g. keyvault-workload-v3)
-#   AZURE_KV_SP_OBJECT_ID — Object ID of the service principal in Enterprise
-#                           Applications (for role assignment)
 #
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -48,8 +46,8 @@ get_kv_token() {
     -d "grant_type=client_credentials" \
     -d "client_id=${AZURE_CLIENT_ID}" \
     -d "client_secret=${AZURE_CLIENT_SECRET}" \
-    -d "scope=https://vault.azure.net/.default" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
+    -d "scope=https://vault.azure.net/.default" |
+    python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
 }
 
 cleanup() {
@@ -92,16 +90,16 @@ if [ "${PUT_STATUS}" -lt 200 ] || [ "${PUT_STATUS}" -ge 300 ]; then
 fi
 echo "Secret created (HTTP ${PUT_STATUS})"
 
-echo "Building cosmian_kms_server with secret-azure feature..."
-cargo build -p cosmian_kms_server
+echo "Building cosmian_kms_server..."
+cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server
 
 echo "Running Azure KV integration test..."
 AZURE_TENANT_ID="${AZURE_TENANT_ID}" \
-AZURE_CLIENT_ID="${AZURE_CLIENT_ID}" \
-AZURE_CLIENT_SECRET="${AZURE_CLIENT_SECRET}" \
-KMS_TEST_AZURE_KV_URI="azure-kv://${AZURE_KV_NAME}/secrets/${SECRET_NAME}" \
-KMS_TEST_AZURE_KV_EXPECTED="${SECRET_VALUE}" \
-cargo test -p cosmian_kms_server --lib -- \
+  AZURE_CLIENT_ID="${AZURE_CLIENT_ID}" \
+  AZURE_CLIENT_SECRET="${AZURE_CLIENT_SECRET}" \
+  KMS_TEST_AZURE_KV_URI="azure-kv://${AZURE_KV_NAME}/secrets/${SECRET_NAME}" \
+  KMS_TEST_AZURE_KV_EXPECTED="${SECRET_VALUE}" \
+  cargo test ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server --lib -- \
   --ignored --nocapture test_secret_azure_kv
 
 echo "Azure Key Vault secret backend test completed successfully."

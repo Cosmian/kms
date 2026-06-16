@@ -461,8 +461,10 @@ pub fn build_selected_attribute(
 ) -> Result<Attribute, UtilsError> {
     let attribute = match attribute_name {
         "activation_date" => {
-            let format = format_description::parse_borrowed::<2>("[year]-[month]-[day]T[hour]:[minute]:[second]Z")
-                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            let format = format_description::parse_borrowed::<2>(
+                "[year]-[month]-[day]T[hour]:[minute]:[second]Z",
+            )
+            .map_err(|e| UtilsError::Default(e.to_string()))?;
             let activation_date = OffsetDateTime::parse(&attribute_value, &format)
                 .map_err(|e| UtilsError::Default(e.to_string()))?;
             Attribute::ActivationDate(activation_date)

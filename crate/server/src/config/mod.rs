@@ -1,6 +1,5 @@
 mod command_line;
 mod params;
-mod secret_resolver;
 pub mod wizard;
 
 pub use command_line::*;

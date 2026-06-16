@@ -5,14 +5,13 @@ use std::{
 };
 
 use clap::{CommandFactory, Parser};
-
-use super::secret_backends::SecretBackendConfig;
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN;
 use serde::{Deserialize, Serialize};
 
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    ui_config::UiConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -450,7 +449,7 @@ impl ClapConfig {
                 ))
             })?;
 
-            crate::config::secret_resolver::resolve_config(
+            super::secret_backends::resolve_config(
                 &mut config_value,
                 &preliminary.secret_backends,
             )?;
@@ -547,6 +546,8 @@ impl ClapConfig {
     }
 }
 
+// `secret_backends` is intentionally excluded to avoid leaking credentials in logs.
+#[allow(clippy::missing_fields_in_debug)]
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");

@@ -51,14 +51,13 @@ aws ssm put-parameter \
   --region "${AWS_REGION}" \
   --overwrite
 
-echo "Building cosmian_kms_server with secret-aws feature..."
-cargo build -p cosmian_kms_server
+echo "Building cosmian_kms_server..."
+cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server
 
 echo "Running AWS SSM integration test..."
-AWS_REGION="${AWS_REGION}" \
 KMS_TEST_AWS_SSM_URI="aws-ssm://${AWS_REGION}${PARAM_NAME}" \
-KMS_TEST_AWS_SSM_EXPECTED="${SECRET_VALUE}" \
-cargo test -p cosmian_kms_server --lib -- \
+  KMS_TEST_AWS_SSM_EXPECTED="${SECRET_VALUE}" \
+  cargo test ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server --lib -- \
   --ignored --nocapture test_secret_aws_ssm
 
 echo "AWS SSM secret backend test completed successfully."
