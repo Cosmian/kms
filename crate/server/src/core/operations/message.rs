@@ -173,7 +173,7 @@ pub(crate) async fn message(
         // KMIP 1.x specific response shaping for GetAttributes defaults:
         // - Remove AlwaysSensitive, Extractable, Sensitive, NeverExtractable,
         //   ShortUniqueIdentifier, KeyFormatType from default responses (when client did not explicitly request them)
-        // - Filter vendor attributes to only include vendor_identification == "x" and remove internal Cosmian tag
+        // - Remove internal Cosmian tag vendor attribute; preserve all user-facing vendor attributes
         // 4) Apply KMIP 1.x response shaping for GetAttributes
         shape_kmip1_get_attributes_response(
             kmip_version,
@@ -712,12 +712,11 @@ fn shape_kmip1_get_attributes_response(
             attrs.short_unique_identifier = None;
             attrs.key_format_type = None;
 
-            // Filter vendor attributes to those intended for TL profiles.
+            // Remove only the internal Cosmian tag attribute; preserve all
+            // user-facing vendor attributes (e.g. KMIP1:__Operation Policy Name__).
             if let Some(vas) = attrs.vendor_attributes.as_mut() {
                 vas.retain(|va| {
-                    va.vendor_identification == "x"
-                        && !(va.vendor_identification == vendor_id
-                            && va.attribute_name == VENDOR_ATTR_TAG)
+                    !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
                 });
                 if vas.is_empty() {
                     attrs.vendor_attributes = None;

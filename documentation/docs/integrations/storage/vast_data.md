@@ -40,7 +40,7 @@ lifecycle management:
 ### Key lifecycle workflow
 
 The following sequence diagram shows the complete lifecycle as observed in
-production logs (May 2026):
+production logs (June 2026):
 
 ```mermaid
 sequenceDiagram
@@ -185,15 +185,19 @@ connectivity. A successful test performs a `Create` + `Get` + `Destroy` cycle.
 ### KMIP 1.x attributes
 
 VAST sends the `OperationPolicyName("default")` attribute via `AddAttribute`
-after key creation. This is a KMIP 1.x attribute that was deprecated in KMIP 1.3
-and removed in KMIP 2.0. The Eviden KMS silently ignores this attribute with a
-log warning:
+after key creation (or inline in the `Create` template, depending on VAST version).
+This is a KMIP 1.x attribute that was deprecated in KMIP 1.3 and removed in KMIP 2.0.
+The Eviden KMS stores this attribute as a vendor extension and returns it in
+`GetAttributes` responses to KMIP 1.4 clients. A log warning is emitted during
+deserialization:
 
 ```text
 WARN KMIP 2.1 does not support the KMIP 1 attribute OperationPolicyName("default")
 ```
 
-This warning is informational and does not affect functionality.
+This warning is informational and does not affect functionality. The attribute is
+preserved across `ReKey` rotations (transferred to the replacement key along with
+Name and other attributes).
 
 ### `ReKey` behavior
 
@@ -226,6 +230,7 @@ normal health-check behavior and produces high-volume but lightweight traffic.
 | Symptom                                                | Cause                                                            | Fix                                                                         |
 | ------------------------------------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `unsupported KMIP 1 operation: ReKey`                  | KMS version < 5.22.0 missing ReKey support                       | Upgrade Eviden KMS to 5.22.0+                                               |
+| Rotate key fails / cannot create new encrypted path    | KMS < 5.23.0 dropped `OperationPolicyName` via `AddAttribute`   | Upgrade to 5.23.0+; re-apply OPN on affected keys with `AddAttribute`      |
 | `OperationPolicyName` warnings in KMS logs             | Normal — VAST sends this deprecated KMIP 1.x attribute           | No action required; informational warning only                              |
 | TLS handshake failure                                  | Certificate mismatch or missing CA                               | Verify `clients_ca_cert_file` matches the CA that signed VAST's client cert |
 | `tlsv1 alert decrypt error` (SSL alert 51) in KMS logs | VAST background reconnection attempt with stale connection state | Transient; no action required — the KMIP workflow itself is unaffected      |
@@ -236,7 +241,7 @@ normal health-check behavior and produces high-volume but lightweight traffic.
 ## Verified Operations
 
 The following KMIP operations have been validated with VAST Data production
-environments (logs from May 2026):
+environments (logs from June 2026):
 
 | Operation          | Status | Notes                                                        |
 | ------------------ | ------ | ------------------------------------------------------------ |
