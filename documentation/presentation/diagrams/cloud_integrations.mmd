@@ -1,0 +1,25 @@
+flowchart LR
+    subgraph AWS
+        S3["S3 / EBS / RDS\nDynamoDB…"]
+        XKS["AWS KMS\n(External Key Store)"]
+    end
+    subgraph GCP
+        GSvc["Cloud Storage\nBigQuery\nCloud SQL…"]
+        EKM["GCP EKM\n(Cloud KMS)"]
+        CSE["Google Workspace\nCSE"]
+    end
+    subgraph Azure
+        M365["Microsoft 365\nPurview"]
+        DKE["Double Key\nEncryption (DKE)"]
+        AEKM["Azure EKM\n(live proxy)"]
+    end
+
+    KMS["🔐 Eviden KMS\n(key material never\nleaves your KMS)"]
+
+    S3 --> XKS --> KMS
+    GSvc --> EKM --> KMS
+    CSE --> KMS
+    M365 --> DKE --> KMS
+    Azure --> AEKM --> KMS
+
+    style KMS fill:#F37021,color:#fff,stroke:#c8560f,stroke-width:2px

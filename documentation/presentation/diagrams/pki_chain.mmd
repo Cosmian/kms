@@ -1,0 +1,17 @@
+flowchart TD
+    RootCA["🏛️ Root CA\n(RSA 4096 / EC P-521\nML-DSA-87)"]
+    IntCA1["🏢 Intermediate CA 1\n(RSA 3072 / EC P-384\nML-DSA-65)"]
+    IntCA2["🏢 Intermediate CA 2\n(EC P-256 / ML-DSA-44)"]
+    Leaf1["📄 TLS Leaf Cert\n(server.example.com)"]
+    Leaf2["📧 S/MIME Cert\n(user@example.com)"]
+    Leaf3["🔑 Code-Signing Cert\n(release-bot)"]
+
+    RootCA --> IntCA1
+    RootCA --> IntCA2
+    IntCA1 --> Leaf1
+    IntCA1 --> Leaf2
+    IntCA2 --> Leaf3
+
+    style RootCA fill:#1C1C1C,color:#fff,stroke:#444
+    style IntCA1 fill:#2d2d2d,color:#fff,stroke:#555
+    style IntCA2 fill:#2d2d2d,color:#fff,stroke:#555

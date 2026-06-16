@@ -1,0 +1,6 @@
+flowchart LR
+    DB["Oracle · SQL Server\nMongoDB · MySQL\nPostgreSQL"] -->|"KMIP / PKCS#11"| KMS["🔐 Eviden KMS"]
+    KMS <-->|"wrap / unwrap\nPKCS#11"| HSM["🔒 HSM"]
+    KMS -.->|"key never in plaintext in DB"| DB
+    style KMS fill:#FF6D43,color:#fff
+    style HSM fill:#001F2B,color:#fff,stroke:#FF6D43

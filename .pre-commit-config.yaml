@@ -30,7 +30,7 @@ repos:
             --disable=MD046,
             --fix,
           ]
-        exclude: cli_documentation/docs/cli/main_commands.md|documentation/docs/certifications_and_compliance/audit/crypto_inventory\.md
+        exclude: cli_documentation/docs/cli/main_commands.md|documentation/docs/certifications_and_compliance/audit/crypto_inventory\.md|documentation/presentation/
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.3

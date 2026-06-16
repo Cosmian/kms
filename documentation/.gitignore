@@ -1,3 +1,5 @@
-*.pd*
+/*.pd*
 /site
 /venv
+presentation/kms-presentation.pdf
+presentation/kms-presentation.html

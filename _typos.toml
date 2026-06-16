@@ -16,3 +16,8 @@ Fo = "Fo"
 ot = "ot"
 # ISO/IEC 27034 term: Application Normative Framework
 ANF = "ANF"
+# Mermaid SVG CSS class name for composite states
+composit = "composit"
+
+[files]
+extend-exclude = ["documentation/presentation/slides_desc.md", "documentation/presentation/diagrams/*.svg"]

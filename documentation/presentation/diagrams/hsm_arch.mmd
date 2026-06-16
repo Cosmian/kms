@@ -1,0 +1,29 @@
+flowchart TB
+    subgraph clients["Client Applications"]
+        App1["App 1"]
+        App2["App 2"]
+        AppN["App N"]
+    end
+
+    subgraph kms_cluster["Eviden KMS Cluster (stateless nodes)"]
+        KMS1["KMS Node 1"]
+        KMS2["KMS Node 2"]
+        KMS3["KMS Node 3"]
+    end
+
+    subgraph storage["Encrypted Storage"]
+        DB[("Database\n(encrypted app keys)")]
+    end
+
+    subgraph hsm_box["Hardware Security Module"]
+        HSM["🔒 HSM\n(Utimaco / Proteccio\n/ Nitrokey HSM 2\n/ Crypt2Pay)"]
+        MK["Master Wrapping Keys\n(never leave HSM)"]
+    end
+
+    App1 & App2 & AppN --> KMS1 & KMS2 & KMS3
+    KMS1 & KMS2 & KMS3 <--> DB
+    KMS1 & KMS2 & KMS3 <-->|"wrap / unwrap\n(PKCS#11)"| HSM
+    HSM --- MK
+
+    style HSM fill:#1C1C1C,color:#fff,stroke:#F37021,stroke-width:2px
+    style MK fill:#F37021,color:#fff,stroke:none
