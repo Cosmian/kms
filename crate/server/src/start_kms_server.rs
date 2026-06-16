@@ -671,10 +671,37 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         .tls_params
         .as_ref()
         .is_some_and(|tls_params| tls_params.clients_ca_cert_pem.is_some());
-    // Determine if API Token Auth should be used for authentication.
+    // Determine if JWT Auth should be used for authentication.
     let use_jwt_auth = !jwt_configurations.is_empty();
     // Determine if API Token Auth should be used for authentication.
     let use_api_token_auth = kms_server.params.api_token_id.is_some();
+    // Determine if Cosmian Auth Server should be used for authentication.
+    let (use_cosmian_auth, cosmian_auth_jwks_manager) = if let Some(ref cosmian_cfg) =
+        kms_server.params.cosmian_auth_config
+    {
+        let jwks_uri = cosmian_cfg.jwks_uri().ok_or_else(|| {
+            KmsError::ServerError(
+                "Cosmian auth is enabled but no server URL is configured".to_owned(),
+            )
+        })?;
+        let proxy_params = kms_server.params.proxy_params.clone();
+        let mgr = Arc::new(
+            JwksManager::new_with_options(
+                vec![jwks_uri],
+                proxy_params.as_ref(),
+                cosmian_cfg.cosmian_auth_accept_invalid_certs,
+            )
+            .await
+            .map_err(|e| {
+                KmsError::ServerError(format!(
+                    "Failed to initialise Cosmian auth JWKS manager: {e}"
+                ))
+            })?,
+        );
+        (true, Some(mgr))
+    } else {
+        (false, None)
+    };
 
     // Determine the address to bind the server to.
     let address = format!(
@@ -929,7 +956,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
-                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth,
+                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -1018,7 +1045,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         #[cfg(feature = "non-fips")]
         {
             // Middleware registration order: LAST registered = runs FIRST.
-            // Cors must run first to handle OPTIONS preflights before auth checks.
+            // Cors must run first to handle OPTIONS preflight before auth checks.
             // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
             // AuthenticatedUser before EnsureAuth verifies it.
             //
@@ -1026,7 +1053,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // request identity when `X-Vault-Token` is present but does NOT mandate that a
             // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
             // the endpoint actually require authentication.
-            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth;
+            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth;
             let tokenize_scope = web::scope("/tokenize")
                 .app_data(web::JsonConfig::default().limit(65_536))
                 .wrap(Condition::new(
@@ -1036,6 +1063,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .wrap(Condition::new(
                     use_api_token_auth,
                     api_token_middleware(kms_server_for_http.clone()),
+                ))
+                .wrap(Condition::new(
+                    use_cosmian_auth,
+                    CosmianAuth::new(cosmian_auth_jwks_manager.clone()),
                 ))
                 .wrap(Condition::new(
                     use_jwt_auth,
@@ -1258,11 +1289,15 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             )
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth,
+                use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
                 api_token_middleware(kms_server_for_http.clone()),
+            ))
+            .wrap(Condition::new(
+                use_cosmian_auth,
+                CosmianAuth::new(cosmian_auth_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
@@ -1298,11 +1333,15 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth,
+                use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
                 api_token_middleware(kms_server_for_http.clone()),
+            ))
+            .wrap(Condition::new(
+                use_cosmian_auth,
+                CosmianAuth::new(cosmian_auth_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,

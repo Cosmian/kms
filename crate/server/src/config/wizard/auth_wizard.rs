@@ -8,7 +8,7 @@
 use dialoguer::{Confirm, Input, MultiSelect, theme::ColorfulTheme};
 
 use crate::{
-    config::{HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
+    config::{CosmianAuthConfig, HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
     error::KmsError,
     result::KResult,
 };
@@ -17,6 +17,7 @@ pub struct AuthWizardResult {
     #[allow(dead_code)]
     pub http_api_token: Option<String>,
     pub idp_auth: IdpAuthConfig,
+    pub cosmian_auth: CosmianAuthConfig,
     #[allow(dead_code)]
     pub ui_config_oidc: OidcConfig,
     pub default_username: String,
@@ -29,6 +30,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     let auth_choices = &[
         "API Key (static token)",
         "JWT / OIDC (for programmatic clients)",
+        "Cosmian authentication server",
         "Client Certificate (mTLS – configure in TLS section)",
     ];
 
@@ -56,6 +58,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     // JWT / OIDC
     let mut jwt_providers: Vec<String> = Vec::new();
     let mut ui_oidc = OidcConfig::default();
+    let mut cosmian_auth = CosmianAuthConfig::default();
 
     if selected.contains(&1) {
         println!("  Configure JWT/OIDC providers.");
@@ -121,6 +124,37 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
 
     if selected.contains(&2) {
         println!(
+            "  Configure the Cosmian authentication server."
+        );
+        let server_url: String = Input::with_theme(&theme)
+            .with_prompt("Cosmian auth server URL (e.g. https://auth.example.com)")
+            .interact_text()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let jwks_uri: String = Input::with_theme(&theme)
+            .with_prompt(
+                "JWKS URI (leave blank to use <server_url>/.well-known/jwks.json)",
+            )
+            .allow_empty(true)
+            .interact_text()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let accept_invalid_certs: bool = Confirm::with_theme(&theme)
+            .with_prompt("Accept invalid TLS certificates when fetching the JWKS? (dev/test only)")
+            .default(false)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        cosmian_auth = CosmianAuthConfig {
+            cosmian_auth_server_url: Some(server_url),
+            cosmian_auth_jwks_uri: if jwks_uri.trim().is_empty() {
+                None
+            } else {
+                Some(jwks_uri)
+            },
+            cosmian_auth_accept_invalid_certs: accept_invalid_certs,
+        };
+    }
+
+    if selected.contains(&3) {
+        println!(
             "  Client certificate (mTLS) authentication is controlled by the \
              '--clients-ca-cert-file' option configured in the TLS section."
         );
@@ -150,6 +184,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 Some(jwt_providers)
             },
         },
+        cosmian_auth,
         ui_config_oidc: ui_oidc,
         default_username,
         force_default_username,
