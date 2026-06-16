@@ -35,7 +35,7 @@ echo "========================================="
 : "${AZURE_CLIENT_SECRET:?AZURE_CLIENT_SECRET must be set}"
 : "${AZURE_KV_NAME:?AZURE_KV_NAME must be set}"
 
-SECRET_NAME="kms-ci-secret-$$"
+SECRET_NAME="kms-ci-secret-$(date +%s)-${RANDOM}"
 SECRET_VALUE="ci-secret-value"
 KV_BASE_URL="https://${AZURE_KV_NAME}.vault.azure.net"
 
@@ -57,6 +57,10 @@ cleanup() {
   if [ -n "${token:-}" ]; then
     curl -sf -X DELETE \
       "${KV_BASE_URL}/secrets/${SECRET_NAME}?api-version=7.4" \
+      -H "Authorization: Bearer ${token}" 2>/dev/null || true
+    # Purge immediately so the name is not stuck in soft-delete state
+    curl -sf -X DELETE \
+      "${KV_BASE_URL}/deletedsecrets/${SECRET_NAME}?api-version=7.4" \
       -H "Authorization: Bearer ${token}" 2>/dev/null || true
   fi
 }
