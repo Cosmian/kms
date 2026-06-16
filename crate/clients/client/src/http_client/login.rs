@@ -402,6 +402,7 @@ pub async fn cosmian_login(
     config: &CosmianLoginConfig,
     username: &str,
     password: &str,
+    accept_invalid_certs: bool,
 ) -> HttpClientResult<String> {
     /// Name of the session cookie set by the Cosmian authentication server.
     const COSMIAN_SESSION_COOKIE: &str = "_ea_";
@@ -412,10 +413,16 @@ pub async fn cosmian_login(
         config.realm
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(accept_invalid_certs)
+        .build()
+        .map_err(|e| HttpClientError::Default(format!("Failed to build reqwest client: {e:?}")))?
+        ;
     let response = client
         .post(&url)
         .basic_auth(username, Some(password))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body("{}")
         .send()
         .await
         .map_err(|e| {

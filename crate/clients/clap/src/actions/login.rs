@@ -82,7 +82,13 @@ impl LoginAction {
                         )
                     })?;
 
-                let access_token = cosmian_login(cosmian_conf, username, password).await?;
+                let access_token = cosmian_login(
+                    cosmian_conf,
+                    username,
+                    password,
+                    config.http_config.accept_invalid_certs,
+                )
+                .await?;
 
                 println!("\nSuccess! The access token was saved in the KMS configuration (in memory)");
 

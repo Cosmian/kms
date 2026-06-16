@@ -4,6 +4,9 @@ pub(crate) use tls_auth::{extract_peer_certificate, tls_auth_fn};
 mod api_token;
 pub(crate) use api_token::api_token_middleware;
 
+mod cosmian_auth;
+pub(crate) use cosmian_auth::CosmianAuth;
+
 mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;
 

@@ -22,15 +22,31 @@ pub struct JwksManager {
     pub(crate) jwks: RwLock<HashMap<String, JwkSet>>,
     pub(crate) last_update: RwLock<Option<DateTime<Utc>>>,
     pub(crate) proxy_params: Option<ProxyParams>,
+    /// When `true`, the JWKS fetch client skips TLS certificate verification.
+    /// Only set this for development/test environments (e.g. self-signed certs).
+    pub(crate) accept_invalid_certs: bool,
 }
 
 impl JwksManager {
     pub async fn new(uris: Vec<String>, server_params: Option<&ProxyParams>) -> KResult<Self> {
+        Self::new_with_options(uris, server_params, false).await
+    }
+
+    /// Create a new `JwksManager` with an explicit `accept_invalid_certs` flag.
+    ///
+    /// Set `accept_invalid_certs = true` only in development/test when the JWKS server
+    /// uses a self-signed certificate.
+    pub async fn new_with_options(
+        uris: Vec<String>,
+        server_params: Option<&ProxyParams>,
+        accept_invalid_certs: bool,
+    ) -> KResult<Self> {
         let jwks_manager = Self {
             uris,
             jwks: HashMap::new().into(),
             last_update: None.into(),
             proxy_params: server_params.cloned(),
+            accept_invalid_certs,
         };
         jwks_manager.refresh().await?;
 
@@ -61,6 +77,21 @@ impl JwksManager {
             .cloned())
     }
 
+    /// Return all JWKs from all registered JWKS sets, regardless of `kid`.
+    ///
+    /// Used by the Cosmian auth middleware where tokens are issued without a `kid`
+    /// header field and the verifier must try every available public key until one
+    /// validates the signature.
+    pub fn find_any(&self) -> KResult<Vec<Jwk>> {
+        Ok(self
+            .jwks
+            .read()
+            .map_err(|e| KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}")))?
+            .values()
+            .flat_map(|jwks| jwks.keys.iter().cloned())
+            .collect())
+    }
+
     /// Fetch again all JWKS using the `uris`.
     ///
     /// The threshold to refresh JWKS is set to `REFRESH_INTERVAL`.
@@ -81,7 +112,8 @@ impl JwksManager {
 
         if refresh_is_allowed {
             tracing::info!("Refreshing JWKS");
-            let refreshed_jwks = Self::fetch_all(&self.uris, &self.proxy_params).await;
+            let refreshed_jwks =
+                Self::fetch_all(&self.uris, &self.proxy_params, self.accept_invalid_certs).await;
             self.set_jwks(refreshed_jwks)?;
         }
 
@@ -95,11 +127,12 @@ impl JwksManager {
     async fn fetch_all(
         uris: &[String],
         proxy_params: &Option<ProxyParams>,
+        accept_invalid_certs: bool,
     ) -> HashMap<String, JwkSet> {
         // Create a vector of futures to fetch JWKS from each URI
         let jwks_downloads: Vec<_> = uris
             .iter()
-            .map(|uri| parse_jwks(uri, proxy_params))
+            .map(|uri| parse_jwks(uri, proxy_params, accept_invalid_certs))
             .collect();
         // Use `join_all` to fetch all JWKS in parallel
         futures::future::join_all(jwks_downloads)
@@ -126,13 +159,15 @@ impl JwksManager {
 async fn parse_jwks(
     jwks_uri: &String,
     proxy_params: &Option<ProxyParams>,
+    accept_invalid_certs: bool,
 ) -> KResult<(String, JwkSet)> {
     tracing::debug!("fetching {jwks_uri}");
     // Fetch the JWKS from the provided URI,
     // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-2).
     let mut client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::none());
+        .redirect(reqwest::redirect::Policy::none())
+        .danger_accept_invalid_certs(accept_invalid_certs);
 
     // Configure the client with proxy settings if available
     if let Some(proxy_params) = proxy_params {

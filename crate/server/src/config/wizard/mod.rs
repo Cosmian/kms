@@ -168,6 +168,7 @@ pub fn run_configure_wizard() -> KResult<()> {
         tls,
         socket_server,
         idp_auth: auth_result.idp_auth,
+        cosmian_auth: auth_result.cosmian_auth,
         ui_config: advanced.ui_config,
         hsm,
         logging,

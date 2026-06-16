@@ -52,6 +52,7 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             idp_auth: IdpAuthConfig::default(),
+            cosmian_auth: CosmianAuthConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -178,6 +179,9 @@ pub struct ClapConfig {
 
     #[command(flatten)]
     pub idp_auth: IdpAuthConfig,
+
+    #[clap(flatten)]
+    pub cosmian_auth: CosmianAuthConfig,
 
     #[command(flatten)]
     pub ui_config: UiConfig,
@@ -729,6 +733,11 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = if self.cosmian_auth.is_enabled() {
+            x.field("cosmian_auth_server_url", &self.cosmian_auth.cosmian_auth_server_url)
+        } else {
+            x
+        };
 
         x.finish()
     }
