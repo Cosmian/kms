@@ -70,6 +70,7 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
+clap-config-fallback = { workspace = true }
 cosmian_kms_access = { path = "../access", version = "5.23.0" }
 cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.23.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.23.0" }
@@ -131,10 +132,6 @@ tempfile = { workspace = true }
 [build-dependencies]
 actix-http = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
-sha2 = { workspace = true }
-
-[package.metadata.cargo-machete]
-ignored = ["sha2"]
 
 # ------------------------------------------------------------------------------
 # START DEBIAN PACKAGING

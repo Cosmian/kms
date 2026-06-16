@@ -1,9 +1,13 @@
+[default.extend-identifiers]
+HashiCorp = "HashiCorp"
+
 [default.extend-words]
 Veeam = "Veeam"
 GOST = "GOST"
 vas = "vas"
 passin = "passin"
 typ = "typ"
+Hashi = "Hashi"
 # Unicode hex code points inside SVG font unicode-range (e.g. U+1F6BA)
 BA = "BA"
 # Common standards acronym in cryptographic references.

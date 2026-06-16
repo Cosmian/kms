@@ -1,9 +1,10 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
-#[derive(Args, Clone, Deserialize, Serialize)]
+#[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
 #[serde(default)]
 #[derive(Default)]
 pub struct TlsConfig {

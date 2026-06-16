@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, ui_config::UiConfig,
+    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    ui_config::UiConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -70,6 +71,7 @@ impl Default for ClapConfig {
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
+            secret_backends: SecretBackendConfig::default(),
         }
     }
 }
@@ -120,7 +122,7 @@ pub struct ClapConfig {
     /// Legacy single-HSM configuration (flat CLI flags / top-level TOML fields).
     /// Keys use the old prefix convention: `hsm::<slot_id>::<key_id>`.
     /// Kept for backward compatibility; prefer `[[hsm_instances]]` for new deployments.
-    #[clap(flatten)]
+    #[command(flatten)]
     #[serde(flatten)]
     pub hsm: HsmConfig,
 
@@ -155,37 +157,37 @@ pub struct ClapConfig {
     #[clap(verbatim_doc_comment, long, env = "KMS_PUBLIC_URL")]
     pub kms_public_url: Option<String>,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub db: MainDBConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub socket_server: SocketServerConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub tls: TlsConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub http: HttpConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub proxy: ProxyConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub idp_auth: IdpAuthConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub ui_config: UiConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub google_cse_config: GoogleCseConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub azure_ekm_config: AzureEkmConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub workspace: WorkspaceConfig,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub logging: LoggingConfig,
 
     /// The non-revocable key ID used for demo purposes
@@ -197,7 +199,7 @@ pub struct ClapConfig {
     #[clap(long, verbatim_doc_comment)]
     pub privileged_users: Option<Vec<String>>,
 
-    #[clap(flatten)]
+    #[command(flatten)]
     pub aws_xks_config: AwsXksConfig,
 
     /// KMIP algorithm policy.
@@ -210,9 +212,17 @@ pub struct ClapConfig {
     ///
     /// The `DEFAULT` policy enforces built-in conservative allowlists (aligned with ANSSI/NIST/FIPS
     /// recommendations).
-    #[clap(flatten)]
+    #[command(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+
+    /// Authentication credentials for secret URI resolution backends.
+    ///
+    /// These are provided via CLI flags or environment variables only —
+    /// never stored in the TOML config file.
+    #[command(flatten)]
+    #[serde(skip)]
+    pub secret_backends: SecretBackendConfig,
 }
 
 impl ClapConfig {
@@ -418,7 +428,13 @@ impl ClapConfig {
         let env_path = std::env::var("COSMIAN_KMS_CONF").ok().map(PathBuf::from);
         let default_path = PathBuf::from(get_default_config_path());
 
-        // Helper to load a TOML file into ClapConfig
+        // Helper to load a TOML file into ClapConfig.
+        //
+        // Steps:
+        //  1. Read the file.
+        //  2. Parse into a `toml::Value`.
+        //  3. Resolve `secret://` URIs in string leaves via the selected backend.
+        //  4. Deserialize into `ClapConfig`.
         let load_file = |p: &PathBuf| -> KResult<Self> {
             let conf_content = std::fs::read_to_string(p).map_err(|e| {
                 KmsError::ServerError(format!(
@@ -426,9 +442,21 @@ impl ClapConfig {
                     p.display()
                 ))
             })?;
-            toml::from_str(&conf_content).map_err(|e| {
+            let mut config_value: toml::Value = toml::from_str(&conf_content).map_err(|e| {
                 KmsError::ServerError(format!(
                     "Cannot parse kms server config at: {} - {e:?}",
+                    p.display()
+                ))
+            })?;
+
+            super::secret_backends::resolve_config(
+                &mut config_value,
+                &preliminary.secret_backends,
+            )?;
+
+            config_value.try_into().map_err(|e| {
+                KmsError::ServerError(format!(
+                    "Cannot deserialize KMS server config at: {} - {e:?}",
                     p.display()
                 ))
             })
@@ -518,6 +546,8 @@ impl ClapConfig {
     }
 }
 
+// `secret_backends` is intentionally excluded to avoid leaking credentials in logs.
+#[allow(clippy::missing_fields_in_debug)]
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");

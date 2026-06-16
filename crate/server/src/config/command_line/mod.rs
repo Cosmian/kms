@@ -8,6 +8,7 @@ mod idp_auth_config;
 mod kmip_policy_config;
 mod logging;
 mod proxy_config;
+pub mod secret_backends;
 mod socket_server_config;
 mod tls_config;
 mod ui_config;
@@ -27,6 +28,10 @@ pub use kmip_policy_config::{
 };
 pub use logging::{LoggingConfig, get_default_rolling_log_dir};
 pub use proxy_config::ProxyConfig;
+pub use secret_backends::{
+    AwsSsmBackendConfig, AzureKvBackendConfig, CosmianKmsSecretConfig, SecretBackendConfig,
+    SecretBackendKind, VaultBackendConfig,
+};
 pub use socket_server_config::SocketServerConfig;
 pub use tls_config::TlsConfig;
 pub use ui_config::{OidcConfig, UiConfig, get_default_ui_dist_path};

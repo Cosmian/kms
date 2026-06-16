@@ -1,6 +1,14 @@
+// `collection_is_never_read`: the `ConfigArgs` derive generates intermediate
+// Vec collections used only as building blocks in the arg-merge logic; clippy
+// cannot see through the macro boundary.
+// `struct_field_names`: `ui_oidc_*` fields share a prefix because they are
+// flattened into the CLI namespace and serde keys.
+#![allow(clippy::collection_is_never_read, clippy::struct_field_names)]
+
 use std::fmt;
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 /// Default UI distribution folder path on Linux.
@@ -36,7 +44,7 @@ pub fn get_default_ui_dist_path() -> String {
     "/Applications/Cosmian KMS Server.app/Contents/Resources/ui/".to_owned()
 }
 
-#[derive(Default, Debug, Args, Deserialize, Serialize, Clone)]
+#[derive(Default, Debug, Args, ConfigArgs, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct UiConfig {
     /// Disable the embedded web UI. When set to false, the UI HTML assets are
@@ -55,7 +63,15 @@ pub struct UiConfig {
     #[clap(verbatim_doc_comment, long, env = "KMS_SESSION_SALT")]
     pub ui_session_salt: Option<String>,
 
-    #[clap(flatten)]
+    // `#[config(no_flatten)]` tells `clap_config_fallback` NOT to flatten this
+    // nested struct into the parent TOML table: the KMS config file must use a
+    // `[ui_config.ui_oidc_auth]` sub-table.
+    // `#[command(flatten)]` is a clap directive that inlines CLI flags from
+    // `OidcConfig` into the parent struct; it is unrelated to TOML layout.
+    // The two attributes operate at different layers (config file vs CLI) and
+    // are intentionally used together.
+    #[config(no_flatten)]
+    #[command(flatten)]
     pub ui_oidc_auth: OidcConfig,
 }
 
@@ -72,7 +88,7 @@ const fn default_true() -> bool {
     true
 }
 
-#[derive(Default, Args, Deserialize, Serialize, Clone)]
+#[derive(Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct OidcConfig {
     /// The client ID of the configured OIDC tenant for UI Auth
