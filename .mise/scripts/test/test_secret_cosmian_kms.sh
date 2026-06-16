@@ -84,7 +84,8 @@ echo "KMS server ready."
 # Build a KMIP Register request carrying a SecretData (Password type) whose
 # key material is the UTF-8 bytes of SECRET_VALUE.
 echo "Registering SecretData object with value '${SECRET_VALUE}'..."
-REGISTER_PAYLOAD=$(cat <<EOF
+REGISTER_PAYLOAD=$(
+  cat <<EOF
 {
   "tag": "Register",
   "value": [
@@ -138,7 +139,8 @@ EOF
 )
 
 export REGISTER_PAYLOAD KMS_URL
-REGISTER_RESPONSE=$(python3 - <<'PYEOF'
+REGISTER_RESPONSE=$(
+  python3 - <<'PYEOF'
 import json, os, urllib.request
 url = os.environ["KMS_URL"] + "/kmip/2_1"
 payload = os.environ["REGISTER_PAYLOAD"].encode()
@@ -151,7 +153,8 @@ PYEOF
 echo "Register response: ${REGISTER_RESPONSE}"
 
 # Extract the UniqueIdentifier from the TTLV JSON response
-OBJECT_ID=$(REGISTER_RESPONSE="${REGISTER_RESPONSE}" python3 - <<'PYEOF'
+OBJECT_ID=$(
+  REGISTER_RESPONSE="${REGISTER_RESPONSE}" python3 - <<'PYEOF'
 import sys, json, os
 
 def find_unique_id(node):
@@ -189,8 +192,8 @@ echo "Registered SecretData with ID: ${OBJECT_ID}"
 echo "Running Cosmian KMS secret backend integration test..."
 # shellcheck disable=SC2068
 KMS_TEST_COSMIAN_KMS_URI="cosmian-kms://${KMS_HOST}:${KMS_PORT}/${OBJECT_ID}" \
-KMS_TEST_COSMIAN_KMS_EXPECTED="${SECRET_VALUE}" \
-cargo test ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server --lib -- \
+  KMS_TEST_COSMIAN_KMS_EXPECTED="${SECRET_VALUE}" \
+  cargo test ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} -p cosmian_kms_server --lib -- \
   --ignored --nocapture test_secret_cosmian_kms
 
 echo "Cosmian KMS secret backend test completed successfully."

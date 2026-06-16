@@ -20,6 +20,7 @@ for var in TEST_GOOGLE_OAUTH_CLIENT_ID TEST_GOOGLE_OAUTH_CLIENT_SECRET \
   fi
 done
 
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
 
 print_header "Running Google CSE tests (${VARIANT_NAME})"

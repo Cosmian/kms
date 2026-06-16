@@ -17,6 +17,7 @@ kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_db_env "${usage_db:-sqlite}"
 setup_test_logging
 export WITH_HSM=1
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
 
 print_header "Running SoftHSM2 HSM tests (${VARIANT_NAME})"

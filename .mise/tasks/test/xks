@@ -18,6 +18,7 @@ if [ "$VARIANT" != "non-fips" ]; then
 fi
 
 export WITH_XKS=1 WITH_CURL=1
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
 
 print_header "Running AWS XKS tests"

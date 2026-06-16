@@ -7,7 +7,7 @@ the provider is already registered. The register command now treats this NTSTATU
 success instead of an error, so running `ckms cng register` a second time (or after
 an NSIS installer has already registered the DLL) no longer aborts with:
 
-```
+```text
 ERROR: BCryptRegisterProvider failed with NTSTATUS 0xc0000035
 ```
 
@@ -20,7 +20,7 @@ causing the exported RSA public-key blob to begin with `"RAS1"` instead of the r
 (`BCRYPT_RSAPUBLIC_BLOB`). The Intune Java connector rejects any blob whose first four bytes are
 not exactly `RSA1`, producing:
 
-```
+```text
 java.lang.IllegalArgumentException: Key is not a RSA key of BCrypt format
 ```
 
@@ -47,9 +47,11 @@ and hardened the PS1 test to assert the exported blob starts with `"RSA1"` and t
 The `IntunePfxImport` PowerShell module uses `System.Security.AccessControl.CryptoKeySecurity`
 from `mscorlib`, a .NET Framework 4.x type absent in .NET 6+ (PowerShell 7). When `test_cng_ksp.ps1`
 was invoked via `pwsh.exe` (PowerShell 7), `Add-IntuneKspKey` failed with:
-```
+
+```text
 Could not load type 'System.Security.AccessControl.CryptoKeySecurity' from assembly 'mscorlib'
 ```
+
 Added a self-re-launch block at the top of the script: when PowerShell 6+ is detected the script
 transparently re-invokes itself under `powershell.exe` (Windows PowerShell 5.1 / .NET Framework).
 
@@ -130,7 +132,7 @@ Corrected `rustfmt` formatting in `MoveFileExW` extern declarations
 - Remove `cosmian_pkcs11_verify` binary from deb/rpm/NSIS packages; the functionality is now
   available via `ckms pkcs11 verify`. ([#924](https://github.com/Cosmian/kms/pull/924))
 
-## Bug Fixes
+## Additional Bug Fixes
 
 ### CI
 

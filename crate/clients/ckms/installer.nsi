@@ -130,18 +130,18 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 
 ; 4. Custom page to ask user if he wants to reinstall/uninstall
-;    only if a previous installtion was detected
+;    only if a previous installation was detected
 Var ReinstallPageCheck
 Page custom PageReinstall PageLeaveReinstall
 Function PageReinstall
   ; Uninstall previous WiX installation if exists.
   ;
-  ; A WiX installer stores the isntallation info in registry
+  ; A WiX installer stores the installation info in registry
   ; using a UUID and so we have to loop through all keys under
   ; `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`
   ; and check if `DisplayName` and `Publisher` keys match ${PRODUCTNAME} and ${MANUFACTURER}
   ;
-  ; This has a potentional issue that there maybe another installation that matches
+  ; This has a potential issue that there maybe another installation that matches
   ; our ${PRODUCTNAME} and ${MANUFACTURER} but wasn't installed by our WiX installer,
   ; however, this should be fine since the user will have to confirm the uninstallation
   ; and they can chose to abort it if doesn't make sense.
@@ -297,7 +297,7 @@ Function PageLeaveReinstall
   reinst_done:
 FunctionEnd
 
-; 5. Choose install directoy page
+; 5. Choose install directory page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_DIRECTORY
 
