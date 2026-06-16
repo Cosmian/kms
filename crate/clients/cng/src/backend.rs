@@ -553,39 +553,57 @@ pub fn encrypt_data(
 
 /// Create an RSA key pair in the KMS with the given bit length and name tag,
 /// and return `(private_uuid, public_uuid)`.
+///
+/// The private key is created with `Sign | Decrypt | UnwrapKey` usage mask and
+/// the public key with `Verify | Encrypt | WrapKey`, allowing the key pair to
+/// be used for all standard RSA operations.
 pub fn create_rsa_key_pair(
     client: &KmsClient,
     vendor_id: &str,
     key_name: &str,
     bit_length: u32,
-    use_for_sign: bool,
 ) -> KspResult<(String, String)> {
     debug!("CNG KSP: create_rsa_key_pair name={key_name} bits={bit_length}");
 
     let tag = cng_key_tag(key_name);
-    let usage = if use_for_sign {
-        CryptographicUsageMask::Sign | CryptographicUsageMask::Verify
-    } else {
-        CryptographicUsageMask::Decrypt | CryptographicUsageMask::Encrypt
-    };
 
     RUNTIME.block_on(async {
-        let attrs = Attributes {
+        let activation_date = Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?);
+
+        let mut common_attrs = Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             cryptographic_length: Some(i32::try_from(bit_length).unwrap_or(2048)),
-            cryptographic_usage_mask: Some(usage),
-            // Set activation_date to the past so the key is created in Active state
-            // (without it the server creates keys in PreActive state, which cannot be used).
-            activation_date: Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?),
+            activation_date,
             ..Default::default()
         };
-        let mut attrs = attrs;
-        attrs
+        common_attrs
             .set_tags(vendor_id, [CNG_KSP_TAG, tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
 
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Sign
+                    | CryptographicUsageMask::Decrypt
+                    | CryptographicUsageMask::UnwrapKey,
+            ),
+            activation_date,
+            ..Default::default()
+        };
+
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Verify
+                    | CryptographicUsageMask::Encrypt
+                    | CryptographicUsageMask::WrapKey,
+            ),
+            activation_date,
+            ..Default::default()
+        };
+
         let op = CreateKeyPair {
-            common_attributes: Some(attrs),
+            common_attributes: Some(common_attrs),
+            private_key_attributes: Some(private_key_attributes),
+            public_key_attributes: Some(public_key_attributes),
             ..Default::default()
         };
         let resp = client
@@ -600,6 +618,10 @@ pub fn create_rsa_key_pair(
 }
 
 /// Create an EC key pair in the KMS with the given curve and name tag.
+///
+/// The private key is created with `Sign | DeriveKey | KeyAgreement` usage mask
+/// and the public key with `Verify | DeriveKey | KeyAgreement`, supporting both
+/// ECDSA signing and ECDH key agreement.
 pub fn create_ec_key_pair(
     client: &KmsClient,
     vendor_id: &str,
@@ -611,27 +633,45 @@ pub fn create_ec_key_pair(
     let tag = cng_key_tag(key_name);
 
     RUNTIME.block_on(async {
-        let attrs = Attributes {
+        let activation_date = Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?);
+
+        let mut common_attrs = Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
             cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                 recommended_curve: Some(curve),
                 ..Default::default()
             }),
-            cryptographic_usage_mask: Some(
-                CryptographicUsageMask::Sign | CryptographicUsageMask::Verify,
-            ),
-            // Set activation_date to the past so the key is created in Active state
-            // (without it the server creates keys in PreActive state, which cannot be used).
-            activation_date: Some(time_normalize().map_err(|e| KspError::Backend(e.to_string()))?),
+            activation_date,
             ..Default::default()
         };
-        let mut attrs = attrs;
-        attrs
+        common_attrs
             .set_tags(vendor_id, [CNG_KSP_TAG, tag.as_str()])
             .map_err(|e| KspError::Backend(e.to_string()))?;
 
+        let private_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Sign
+                    | CryptographicUsageMask::DeriveKey
+                    | CryptographicUsageMask::KeyAgreement,
+            ),
+            activation_date,
+            ..Default::default()
+        };
+
+        let public_key_attributes = Attributes {
+            cryptographic_usage_mask: Some(
+                CryptographicUsageMask::Verify
+                    | CryptographicUsageMask::DeriveKey
+                    | CryptographicUsageMask::KeyAgreement,
+            ),
+            activation_date,
+            ..Default::default()
+        };
+
         let op = CreateKeyPair {
-            common_attributes: Some(attrs),
+            common_attributes: Some(common_attrs),
+            private_key_attributes: Some(private_key_attributes),
+            public_key_attributes: Some(public_key_attributes),
             ..Default::default()
         };
         let resp = client

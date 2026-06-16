@@ -311,16 +311,12 @@ impl CngKeyCtx {
         } else {
             // Generate a new key pair in the KMS
             match &pending.algorithm {
-                KeyAlgorithm::Rsa { bits } => {
-                    let use_sign = pending.usage.contains(KeyUsage::SIGN);
-                    backend::create_rsa_key_pair(
-                        &self.client,
-                        &self.vendor_id,
-                        &pending.key_name,
-                        *bits,
-                        use_sign,
-                    )?
-                }
+                KeyAlgorithm::Rsa { bits } => backend::create_rsa_key_pair(
+                    &self.client,
+                    &self.vendor_id,
+                    &pending.key_name,
+                    *bits,
+                )?,
                 KeyAlgorithm::Ec { curve } => {
                     use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::kmip_types::RecommendedCurve;
                     let kms_curve = match curve {
