@@ -263,7 +263,7 @@ struct CryptProviderReg {
 }
 
 #[cfg(windows)]
-#[link(name = "bcrypt")]
+#[link(name = "bcrypt", kind = "raw-dylib")]
 #[allow(unsafe_code)]
 unsafe extern "system" {
     fn BCryptRegisterProvider(
