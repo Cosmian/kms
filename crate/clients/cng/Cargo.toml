@@ -35,11 +35,11 @@ zeroize = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
-    "Win32_Foundation",
-    "Win32_Security",
-    "Win32_Security_Cryptography",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Registry",
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Cryptography",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Registry",
 ] }
 
 [dev-dependencies]

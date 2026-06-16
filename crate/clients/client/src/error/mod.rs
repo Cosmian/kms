@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::{
     cosmian_kmip::{kmip_0::kmip_types::ErrorReason, ttlv::TtlvError},
-    http_client::{HttpClientError, reexport::reqwest},
+    http_client::HttpClientError,
 };
 
 pub(crate) mod result;
@@ -79,14 +79,8 @@ impl From<TtlvError> for KmsClientError {
     }
 }
 
-impl From<reqwest::Error> for KmsClientError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Default(format!("{e}: Details: {e:?}"))
-    }
-}
-
-impl From<reqwest::header::InvalidHeaderValue> for KmsClientError {
-    fn from(e: reqwest::header::InvalidHeaderValue) -> Self {
+impl From<http::header::InvalidHeaderValue> for KmsClientError {
+    fn from(e: http::header::InvalidHeaderValue) -> Self {
         Self::Default(e.to_string())
     }
 }

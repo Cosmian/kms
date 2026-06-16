@@ -711,17 +711,99 @@ pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();
     trace!("Starting test server with PQC (ML-DSA-44) TLS certificate");
     ONCE_PQC_TLS
-        .get_or_try_init(|| async move {
-            start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/test/pqc_tls.toml"),
-            )
-            .await
-        })
+        .get_or_try_init(|| async move { start_pqc_tls_server().await })
         .await
         .unwrap_or_else(|e| {
+            eprintln!("FATAL: failed to start test server with PQC TLS cert: {e}");
             error!("failed to start test server with PQC TLS cert: {e}");
             std::process::abort();
         })
+}
+
+/// Start a test KMS server with PQC TLS and use an OpenSSL-based health check.
+///
+/// The [`HttpClient`](cosmian_kms_client::http_client::HttpClient) now uses
+/// OpenSSL 3.6.2 for TLS, which natively supports ML-DSA and other PQC algorithms.
+#[cfg(feature = "non-fips")]
+async fn start_pqc_tls_server() -> Result<TestsContext, KmsClientError> {
+    use cosmian_kms_client::http_client::{HttpClient, HttpClientConfig};
+
+    ensure_no_proxy_for_localhost();
+    disable_proxies_for_tests();
+
+    let config_path = root_dir().join("../../test_data/configs/server/test/pqc_tls.toml");
+    let config = load_test_config_from_toml(&config_path)?;
+
+    let server_params = ServerParams::try_from(config).map_err(|e| {
+        KmsClientError::UnexpectedError(format!(
+            "Failed to create ServerParams from ClapConfig in start_pqc_tls_server: {e}",
+        ))
+    })?;
+
+    let server_port = server_params.http_port;
+    let server_url = format!("https://localhost:{server_port}");
+
+    // Generate client configs
+    let opts = TestClientOptions::default();
+    let owner_client_config = generate_owner_conf_from_opts(&server_params, &opts)?;
+    let use_jwt_token = server_params.identity_provider_configurations.is_some();
+    let user_client_config =
+        generate_user_conf_from_opts(&owner_client_config, use_jwt_token, &opts)?;
+
+    let (server_handle, thread_handle) = start_test_kms_server(server_params)?;
+
+    // Health check using the standard HttpClient (OpenSSL-backed, supports PQC TLS)
+    let health_client = HttpClient::instantiate(&HttpClientConfig {
+        server_url: server_url.clone(),
+        accept_invalid_certs: true,
+        ..Default::default()
+    })
+    .map_err(|e| {
+        KmsClientError::UnexpectedError(format!("Failed to create health check client: {e}"))
+    })?;
+
+    let mut retry = true;
+    let mut timeout = 5;
+    let mut waiting = 1;
+    while retry {
+        info!("...checking if PQC TLS server is up...");
+        let health_url = format!("{server_url}/version");
+        let result = health_client.get(&health_url).await;
+        match &result {
+            Ok(resp) if resp.status.is_success() || resp.status.as_u16() == 401 => {
+                info!("PQC TLS server is UP (status={})!", resp.status);
+                retry = false;
+            }
+            Ok(resp) => {
+                info!(
+                    "PQC TLS server responded with unexpected status {}",
+                    resp.status
+                );
+                retry = false;
+            }
+            Err(e) => {
+                timeout -= 1;
+                retry = timeout >= 0;
+                if retry {
+                    info!("PQC TLS server not up yet, retrying in {waiting}s... ({e})");
+                    tokio::time::sleep(Duration::from_secs(waiting)).await;
+                    waiting *= 2;
+                } else {
+                    return Err(KmsClientError::UnexpectedError(format!(
+                        "PQC TLS server failed to start: {e}"
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(TestsContext {
+        server_port,
+        owner_client_config,
+        user_client_config,
+        server_handle,
+        thread_handle,
+    })
 }
 
 #[derive(Debug)]

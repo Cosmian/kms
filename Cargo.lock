@@ -1238,18 +1238,27 @@ name = "cosmian_kms_client"
 version = "5.23.0"
 dependencies = [
  "actix-web",
+ "base64 0.22.1",
+ "bytes",
  "cosmian_crypto_core",
  "cosmian_kms_client_utils",
  "cosmian_logger",
  "der",
+ "http 1.4.2",
+ "http-body-util",
+ "hyper",
+ "hyper-openssl",
+ "hyper-util",
  "oauth2",
+ "openssl",
  "pem",
- "reqwest",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "thiserror 2.0.18",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
+ "tower-service",
  "tracing",
  "url",
 ]
@@ -2748,6 +2757,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-openssl"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "527d4d619ca2c2aafa31ec139a3d1d60bf557bf7578a1f20f743637eccd9ca19"
+dependencies = [
+ "http 1.4.2",
+ "hyper",
+ "hyper-util",
+ "linked_hash_set",
+ "once_cell",
+ "openssl",
+ "openssl-sys",
+ "parking_lot",
+ "pin-project",
+ "tower-layer",
+ "tower-service",
+]
+
+[[package]]
 name = "hyper-rustls"
 version = "0.27.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3210,6 +3238,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+
+[[package]]
+name = "linked_hash_set"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "984fb35d06508d1e69fc91050cceba9c0b748f983e6739fa2c7a9237154c52c8"
+dependencies = [
+ "linked-hash-map",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3581,7 +3624,6 @@ dependencies = [
  "getrandom 0.2.17",
  "http 1.4.2",
  "rand 0.8.6",
- "reqwest",
  "serde",
  "serde_json",
  "serde_path_to_error",
@@ -4465,7 +4507,6 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2 0.4.14",
  "http 1.4.2",
  "http-body",
  "http-body-util",

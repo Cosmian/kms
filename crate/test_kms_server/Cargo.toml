@@ -36,8 +36,8 @@ openssl = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 time = { workspace = true }
-toml = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+toml = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

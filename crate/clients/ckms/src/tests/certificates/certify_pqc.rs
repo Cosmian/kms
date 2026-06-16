@@ -3,13 +3,17 @@
 //! Tests ML-DSA, SLH-DSA, ML-KEM certificate creation and X.509 compliance
 //! (RFC 9881, RFC 9935, RFC 9608).
 
-use cosmian_kms_cli_actions::reexport::cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::{kmip_objects::Object, kmip_types::LinkType},
-    kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Certificate},
-    read_from_json_file, read_object_from_json_ttlv_file,
-    reexport::cosmian_kms_client_utils::{
-        certificate_utils::Algorithm, export_utils::CertificateExportFormat},
-    ttlv::{TTLV, from_ttlv}};
+use cosmian_kms_cli_actions::reexport::{
+    cosmian_kmip::ttlv::{TTLV, from_ttlv},
+    cosmian_kms_client::{
+        cosmian_kmip::kmip_2_1::{kmip_objects::Object, kmip_types::LinkType},
+        kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Certificate},
+        read_from_json_file, read_object_from_json_ttlv_file,
+        reexport::cosmian_kms_client_utils::{
+            certificate_utils::Algorithm, export_utils::CertificateExportFormat,
+        },
+    },
+};
 use openssl::x509::X509;
 use tempfile::TempDir;
 use test_kms_server::start_default_test_kms_server;
@@ -21,11 +25,13 @@ use crate::{
         certificates::{
             certify::{CertifyOp, certify},
             export::export_certificate,
-            validate::validate_certificate},
-        utils::run::run_ckms_expect_error}};
-use crate::tests::utils::{owner_config};
+            validate::validate_certificate,
+        },
+        utils::{owner_config, run_ckms_expect_error},
+    },
+};
 
-/// Export a PQC certificate and parse it with x509_parser.
+/// Export a PQC certificate and parse it with `x509_parser`.
 /// Returns (Object, Attributes, DER bytes).
 fn fetch_pqc_certificate(
     cli_conf_path: &str,
@@ -51,7 +57,8 @@ fn fetch_pqc_certificate(
         Object::Certificate(Certificate {
             certificate_value, ..
         }) => certificate_value,
-        _ => panic!("wrong object type")}
+        _ => panic!("wrong object type"),
+    }
     .clone();
 
     let (_, parsed) =
@@ -109,7 +116,7 @@ fn certify_pqc_self_signed(
     Ok(())
 }
 
-/// Create an ML-DSA-44 CA and return (cert_id, private_key_id).
+/// Create an ML-DSA-44 CA and return (`cert_id`, `private_key_id`).
 fn create_ml_dsa_ca(cli_conf_path: &str) -> CosmianResult<(String, String)> {
     let ca_cert_id = certify(
         cli_conf_path,
@@ -157,26 +164,44 @@ fn certify_ml_kem_ca_issued(
 // PQC TLS server connectivity test
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/// Prove the KMS server correctly serves HTTPS with an ML-DSA-44 TLS certificate
+/// and that `ckms` (using OpenSSL 3.6.2) can natively perform KMIP operations
+/// over the PQC TLS connection — no special client needed.
 #[tokio::test]
 async fn test_server_with_pqc_tls_cert() -> CosmianResult<()> {
     use test_kms_server::start_test_kms_server_with_pqc_tls;
-    let ctx = start_test_kms_server_with_pqc_tls().await;
-    let owner_conf = owner_config(ctx);
 
-    // Perform a KMIP Certify operation over the PQC TLS connection.
-    let cert_id = certify(
-        &owner_conf,
-        CertifyOp {
-            generate_keypair: true,
-            algorithm: Some(Algorithm::MlDsa44),
-            subject_name: Some(
-                "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = PQC TLS Test Cert".to_owned(),
-            ),
-            tags: Some(vec!["pqc_tls_test".to_owned()]),
-            ..CertifyOp::default()
-        },
+    use crate::tests::utils::{load_client_config, run_ckms};
+
+    let ctx = start_test_kms_server_with_pqc_tls().await;
+    let conf = load_client_config("pqc_tls_owner.toml", ctx);
+
+    // 1. Verify basic connectivity over PQC TLS: ckms server version
+    let version_output = run_ckms(&conf, &["server", "version"])?;
+    assert!(
+        !version_output.is_empty(),
+        "Expected non-empty version output over PQC TLS"
+    );
+
+    // 2. Perform a KMIP Create (SymmetricKey) over PQC TLS via ckms
+    let create_output = run_ckms(
+        &conf,
+        &[
+            "sym",
+            "keys",
+            "create",
+            "--algorithm",
+            "aes",
+            "--number-of-bits",
+            "256",
+        ],
     )?;
-    assert!(!cert_id.is_empty());
+    // Output should contain a UUID-style unique identifier
+    assert!(
+        create_output.contains('-'),
+        "KMIP Create over PQC TLS should return a unique ID: {create_output}"
+    );
+
     Ok(())
 }
 
@@ -1054,7 +1079,7 @@ async fn test_certify_with_aia_extension() -> CosmianResult<()> {
                 "C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = AIA Test Leaf".to_owned(),
             ),
             issuer_private_key_id: Some(ca_sk_id.to_string()),
-            issuer_certificate_id: Some(ca_cert_id.clone()),
+            issuer_certificate_id: Some(ca_cert_id),
             certificate_extensions: Some(ext_file),
             ..CertifyOp::default()
         },
