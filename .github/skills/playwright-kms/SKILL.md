@@ -1,6 +1,6 @@
 ---
 name: playwright-kms
-description: Create Playwright E2E tests for the KMS Web UI following project conventions: data-testid, Ant Design Select helpers, regex assertions, FIPS skips. Use when adding E2E tests.
+description: 'Create Playwright E2E tests for the KMS Web UI following project conventions: data-testid, Ant Design Select helpers, regex assertions, FIPS skips. Use when adding E2E tests.'
 ---
 
 # Playwright KMS Test Generator

@@ -267,7 +267,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 | OpenSSL upgrade | 4.17 |
 | `Cargo.lock` or `pnpm-lock.yaml` change | 4.11 |
 
-> **Full sub-rule checklists** (4.1–4.17) are in `.github/prompts/kms-sync-rules.prompt.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
+> **Full sub-rule checklists** (4.1–4.17) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
@@ -309,7 +309,7 @@ Key rules:
 
 ## 7. Copilot Skills
 
-All team-wide skills are in `.github/prompts/`. See `.github/prompts/README.md` for the full index.
+All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` for the full index.
 
 | Invoke | When |
 |--------|------|

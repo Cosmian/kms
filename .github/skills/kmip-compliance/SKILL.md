@@ -1,6 +1,6 @@
 ---
 name: kmip-compliance
-description: Validate a KMIP operation against the KMIP 2.1 spec, dispatch table, and type definitions. Use when adding or modifying a KMIP operation.
+description: 'Validate a KMIP operation against the KMIP 2.1 spec, dispatch table, and type definitions. Use when adding or modifying a KMIP operation.'
 ---
 
 # KMIP Compliance Validator

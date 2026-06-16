@@ -1,6 +1,6 @@
 ---
 name: kms-test-vector
-description: Walk through the full KMS test vector creation workflow: directory, manifest.toml, TTLV steps, vector_runner.rs registration, README count. Use when creating test vectors.
+description: 'Walk through the full KMS test vector creation workflow: directory, manifest.toml, TTLV steps, vector_runner.rs registration, README count. Use when creating test vectors.'
 ---
 
 # KMS Test Vector Creator

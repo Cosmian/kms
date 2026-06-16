@@ -1,6 +1,6 @@
 ---
 name: kms-release-notes
-description: Aggregate all CHANGELOG/*.md files into a single release note for a given version. Use when preparing release notes.
+description: 'Aggregate all CHANGELOG/*.md files into a single release note for a given version. Use when preparing release notes.'
 ---
 
 # KMS Release Notes Generator

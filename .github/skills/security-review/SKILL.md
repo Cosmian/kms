@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: AI-powered security scanner — OWASP Top 10, KMIP authorization, FIPS gating. Use when asked to review code security, audit KMIP access control, or scan for vulnerabilities.
+description: 'AI-powered security scanner — OWASP Top 10, KMIP authorization, FIPS gating. Use when asked to review code security, audit KMIP access control, or scan for vulnerabilities.'
 ---
 
 # Security Review

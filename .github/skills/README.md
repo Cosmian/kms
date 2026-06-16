@@ -6,10 +6,11 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 | Surface | Location | How to invoke |
 |---------|----------|---------------|
-| **VS Code Copilot Chat** | `.github/prompts/*.prompt.md` (thin wrappers) | Type `/skill-name` in Chat |
-| **Copilot CLI** (`copilot` terminal) | `.github/skills/<name>/SKILL.md` (canonical content) | `/skill-name` in CLI session or auto-invoked by description match |
+| **VS Code Copilot Chat** | `.github/skills/<name>/SKILL.md` | Type `/skill-name` in Chat |
+| **Copilot CLI** (`copilot` terminal) | `.github/skills/<name>/SKILL.md` | `/skill-name` in CLI session or auto-invoked by description match |
+| **Copilot Cloud Agent** | `.github/skills/<name>/SKILL.md` | Auto-invoked by description match |
 
-**No duplication**: the `.prompt.md` files are thin wrappers that reference the corresponding `SKILL.md` file. All instruction content lives once in `.github/skills/`.
+**Single source**: all skill content lives in `.github/skills/`. Skills are an [open standard](https://agentskills.io/) that works across VS Code, Copilot CLI, and cloud agents — no wrapper files needed.
 
 ---
 
@@ -45,7 +46,6 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | KMS Test Vector | `/kms-test-vector` | Walk through the full test vector workflow: directory, `manifest.toml`, TTLV steps, `vector_runner.rs` registration, README count update. |
 | KMS Changelog | `/kms-changelog` | Create or update `CHANGELOG/<branch>.md` with correct sections, component grouping, and PR/issue links. |
 | OpenAPI Endpoint | `/openapi-endpoint` | Implement a new REST endpoint: handler → `routes/mod.rs` → `start_kms_server.rs` (LIFO middleware) → `openapi.yaml` → validation tests. |
-| Conventional Commit | `/conventional-commit` | Analyze `git diff`, determine type/scope, generate a conventional commit message. Includes pre-commit hook reminder. |
 
 ### Code Quality
 
@@ -112,7 +112,8 @@ The `/threat-model` skill loads detailed guidance from the `references/` subdire
 
 ## Adding a New Skill
 
-1. Create `.github/prompts/<skill-name>.prompt.md`
-2. Add YAML frontmatter: `mode: 'agent'` and `description: '...'`
-3. Add a row to this README's index table
-4. The skill appears immediately as `/<skill-name>` in VS Code Copilot Chat
+1. Create `.github/skills/<skill-name>/SKILL.md`
+2. Add YAML frontmatter: `name: '<skill-name>'` and `description: '...'`
+3. Optionally add resources (scripts, templates, examples) in the same directory
+4. Add a row to this README's index table
+5. The skill appears immediately as `/<skill-name>` in VS Code Chat, Copilot CLI, and cloud agent

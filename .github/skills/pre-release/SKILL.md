@@ -1,6 +1,6 @@
 ---
 name: pre-release
-description: Release readiness gate: runs all AI audit skills in sequence and produces a go/no-go report. Use before triggering the release workflow.
+description: 'Release readiness gate: runs all AI audit skills in sequence and produces a go/no-go report. Use before triggering the release workflow.'
 ---
 
 # Pre-Release Readiness Gate

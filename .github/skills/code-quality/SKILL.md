@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: Comprehensive code quality audit: duplication, design patterns, Clippy hygiene, CI efficiency. Use when asked to audit code quality or before a PR.
+description: 'Run a comprehensive code quality audit on Rust code: find duplication, check design patterns, enforce Clippy zero-warnings, and review CI efficiency. Use before a PR or when you want to improve code quality.'
 ---
 
 # Code Quality Audit

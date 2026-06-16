@@ -1,6 +1,6 @@
 ---
 name: ci-efficiency
-description: Audit GitHub Actions workflows for efficiency and recommend fixes to reduce CI minutes and costs. Use when asked to improve CI performance.
+description: 'Audit GitHub Actions workflows for efficiency and recommend fixes to reduce CI minutes and costs. Use when asked to improve CI performance.'
 ---
 
 # CI Efficiency Audit

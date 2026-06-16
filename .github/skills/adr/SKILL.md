@@ -1,6 +1,6 @@
 ---
 name: adr
-description: Create an Architectural Decision Record (ADR) under documentation/docs/adr/. Use when making or documenting an architectural decision.
+description: 'Create an Architectural Decision Record (ADR) under documentation/docs/adr/. Use when making or documenting an architectural decision.'
 ---
 
 # Architectural Decision Record Generator

@@ -5,7 +5,7 @@ written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS (Actix-web
 supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 
 For autonomous agent work, full instructions are in `AGENTS.md`.
-For the skills index, see `.github/prompts/README.md`.
+For the skills index, see `.github/skills/README.md`. Skills live in `.github/skills/`.
 
 ---
 
@@ -21,7 +21,7 @@ For the skills index, see `.github/prompts/README.md`.
 | `crate/server_database/` | DB backends (SQLite, PostgreSQL, Redis-findex) |
 | `ui/src/` | React 19 + Vite 7 + Ant Design 5 + Tailwind 4 web UI |
 | `ui/tests/e2e/` | Playwright E2E tests |
-| `.github/prompts/` | Team-wide Copilot skills (slash commands) |
+| `.github/skills/` | Team-wide Copilot skills (slash commands) |
 
 ---
 

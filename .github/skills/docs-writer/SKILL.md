@@ -1,6 +1,6 @@
 ---
 name: docs-writer
-description: Diátaxis documentation expert for the KMS docs site. Creates tutorials, how-to guides, reference pages, and explanations. Use when writing or updating documentation.
+description: 'Diátaxis documentation expert for the KMS docs site. Creates tutorials, how-to guides, reference pages, and explanations. Use when writing or updating documentation.'
 ---
 
 # Documentation Writer (Diátaxis Expert)

@@ -142,11 +142,11 @@ These rules are non-negotiable and apply to every contribution:
 | **Commit scope** | Minimal, focused changes — don't refactor unrelated code alongside a bug fix |
 
 For detailed Rust design patterns and idiomatic conventions specific to this codebase, see
-[`.github/prompts/rust-patterns.prompt.md`](.github/prompts/rust-patterns.prompt.md).
+[`.github/skills/rust-patterns/SKILL.md`](.github/skills/rust-patterns/SKILL.md).
 For FIPS gating rules and the algorithm allow-list, see
-[`.github/prompts/fips-audit.prompt.md`](.github/prompts/fips-audit.prompt.md).
+[`.github/skills/fips-audit/SKILL.md`](.github/skills/fips-audit/SKILL.md).
 For React/TypeScript/WASM conventions, see
-[`.github/prompts/react-ant-patterns.prompt.md`](.github/prompts/react-ant-patterns.prompt.md).
+[`.github/skills/react-ant-patterns/SKILL.md`](.github/skills/react-ant-patterns/SKILL.md).
 
 ---
 

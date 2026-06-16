@@ -1,6 +1,6 @@
 ---
 name: refactor-plan
-description: Plan a multi-file Rust refactor safely: investigate, plan, confirm, implement. Use before any multi-file refactor.
+description: 'Plan a multi-file Rust refactor safely: investigate, plan, confirm, implement. Use before any multi-file refactor.'
 ---
 
 # Refactor Plan

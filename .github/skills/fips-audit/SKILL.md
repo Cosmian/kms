@@ -1,6 +1,6 @@
 ---
 name: fips-audit
-description: Review Rust crypto code for FIPS 140-3 compliance: approved algorithms, key sizes, non-fips gating discipline, and OpenSSL provider init. Use when touching crate/crypto/ or algorithm selection.
+description: 'Review Rust crypto code for FIPS 140-3 compliance: approved algorithms, key sizes, non-fips gating discipline, and OpenSSL provider init. Use when touching crate/crypto/ or algorithm selection.'
 ---
 
 # FIPS 140-3 Compliance Audit

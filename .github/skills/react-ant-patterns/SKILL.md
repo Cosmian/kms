@@ -1,6 +1,6 @@
 ---
 name: react-ant-patterns
-description: React 19 + Ant Design 5 + Tailwind 4 + Vite 7 patterns for the KMS Web UI: WASM integration, FIPS guards, data-testid placement, Playwright companion. Use as a reference for UI development patterns.
+description: 'React 19 + Ant Design 5 + Tailwind 4 + Vite 7 patterns for the KMS Web UI: WASM integration, FIPS guards, data-testid placement, Playwright companion. Use as a reference for UI development patterns.'
 ---
 
 # React + Ant Design Patterns for the KMS UI

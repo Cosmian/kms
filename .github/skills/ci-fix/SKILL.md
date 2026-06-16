@@ -1,6 +1,6 @@
 ---
 name: ci-fix
-description: Fix CI failures in a loop until all GitHub workflow runs on the current branch are green. Use when CI is failing and needs automated repair.
+description: 'Fix CI failures in a loop until all GitHub workflow runs on the current branch are green. Use when CI is failing and needs automated repair.'
 ---
 
 # CI Fix Loop

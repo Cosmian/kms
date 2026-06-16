@@ -1,6 +1,6 @@
 ---
 name: openapi-endpoint
-description: Implement a new REST endpoint following sync rule 4.2: handler, routes/mod.rs, start_kms_server.rs with LIFO middleware, openapi.yaml, validation tests. Use when adding a new REST endpoint.
+description: 'Implement a new REST endpoint following sync rule 4.2: handler, routes/mod.rs, start_kms_server.rs with LIFO middleware, openapi.yaml, validation tests. Use when adding a new REST endpoint.'
 ---
 
 # REST Endpoint Implementation (Rule 4.2)

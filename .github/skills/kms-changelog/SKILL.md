@@ -1,6 +1,6 @@
 ---
 name: kms-changelog
-description: Create or update the branch CHANGELOG entry. Use when writing a changelog entry for this branch.
+description: 'Create or update the branch CHANGELOG entry. Use when writing a changelog entry for this branch.'
 ---
 
 # KMS Changelog Entry

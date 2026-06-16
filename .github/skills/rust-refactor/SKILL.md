@@ -1,6 +1,6 @@
 ---
 name: rust-refactor
-description: Find duplication in Rust code and consolidate it using Traits, Generics, shared functions, and macros. Use when asked to reduce Rust code duplication.
+description: 'Find duplication in Rust code and consolidate it using Traits, Generics, shared functions, and macros. Use when asked to reduce Rust code duplication.'
 ---
 
 # Rust Refactor
