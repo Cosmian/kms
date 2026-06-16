@@ -214,7 +214,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 
 For full Rust design patterns, naming, function-length rules, and idiomatic Rust → run `/rust-patterns`.
 For TypeScript/React/Tailwind/WASM conventions → run `/react-ant-patterns`.
-For FIPS feature-flag gating discipline and algorithm allow-list → run `/fips-audit`.
+For FIPS feature-flag gating discipline, multi-standard algorithm compliance, and key lifecycle → run `/cryptography-review`.
 
 ---
 
@@ -317,8 +317,10 @@ All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` f
 | `/kms-release-notes <version>` | Aggregate `CHANGELOG/*.md` into a compact release note |
 | `/ci-fix` | Fix all CI failures in a loop until the branch is green |
 | `/kms-sync-rules` | After every code change — auto-detects changed files and emits the applicable checklist |
-| `/security-review [path]` | Before any PR — OWASP + KMIP authorization + FIPS gating audit |
-| `/fips-audit [path]` | When touching `crate/crypto/` or algorithm selection |
+| `/meta-security [path]` | **Comprehensive security audit** — orchestrates all 4 security skills |
+| `/security-review [path]` | Before any PR — OWASP, CWE Top 25, 20 vulnerability families, KMIP auth |
+| `/cryptography-review [path]` | When touching `crate/crypto/` or algorithm selection — FIPS + BSI + ANSSI |
+| `/standards-review [path]` | Verify code against exact text of applicable standards (FIPS, RFC, KMIP, BSI) |
 | `/kmip-compliance [op]` | When adding or modifying a KMIP operation |
 | `/kms-test-vector` | When creating test vectors (guided workflow) |
 | `/kms-changelog` | When writing the branch CHANGELOG entry |

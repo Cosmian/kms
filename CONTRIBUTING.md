@@ -143,8 +143,8 @@ These rules are non-negotiable and apply to every contribution:
 
 For detailed Rust design patterns and idiomatic conventions specific to this codebase, see
 [`.github/skills/rust-patterns/SKILL.md`](.github/skills/rust-patterns/SKILL.md).
-For FIPS gating rules and the algorithm allow-list, see
-[`.github/skills/fips-audit/SKILL.md`](.github/skills/fips-audit/SKILL.md).
+For FIPS gating rules, multi-standard algorithm compliance, and key lifecycle, see
+[`.github/skills/cryptography-review/SKILL.md`](.github/skills/cryptography-review/SKILL.md).
 For React/TypeScript/WASM conventions, see
 [`.github/skills/react-ant-patterns/SKILL.md`](.github/skills/react-ant-patterns/SKILL.md).
 

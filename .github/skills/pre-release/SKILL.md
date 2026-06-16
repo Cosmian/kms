@@ -39,14 +39,22 @@ Invoke `/security-review` on each changed area:
 
 Block on any HIGH or CRITICAL finding.
 
-## Step 3 — FIPS audit (if crypto or algorithm selection changed)
+## Step 3 — Cryptographic review (if crypto or algorithm selection changed)
 
-Invoke `/fips-audit` on `crate/crypto/src/`.
+Invoke `/cryptography-review` on `crate/crypto/src/`.
 
 Skip if no file under `crate/crypto/` or `crate/server/src/openssl_providers.rs` changed.
 
 Block on: disallowed algorithm added, missing `#[cfg(feature = "non-fips")]` gate,
-incorrect key size, OpenSSL provider init bypassed.
+incorrect key size, OpenSSL provider init bypassed, multi-standard compliance divergence.
+
+## Step 3b — Standards review (if spec-level conformance is affected)
+
+Invoke `/standards-review` on the changed areas.
+
+Skip if the change is purely internal refactoring with no spec-level behavioral difference.
+
+Block on: any 🔴 Violation (contradicts a MUST/SHALL requirement in a governing standard).
 
 ## Step 4 — KMIP compliance (if any KMIP operation added or modified)
 

@@ -40,4 +40,4 @@ cargo test -p cosmian_kms_crypto              # FIPS mode
 cargo test -p cosmian_kms_crypto --features non-fips  # non-FIPS mode
 ```
 
-> For a full FIPS compliance audit, run `/fips-audit`.
+> For a full cryptographic compliance audit (FIPS + BSI + ANSSI), run `/cryptography-review`.

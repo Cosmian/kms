@@ -31,14 +31,47 @@ Organize content into four types:
 
 ## Specification references
 
-Always verify spec citations against authoritative sources:
+Always verify spec citations against authoritative sources before writing them.
+Load `.github/skills/shared/anti-hallucination.md` rules when writing documentation
+that cites standards.
 
-| Domain | Source |
-|--------|--------|
-| IETF RFCs | rfc-editor.org |
-| KMIP | OASIS KMIP spec (HTML files in `kmip/`) |
-| FIPS/NIST | csrc.nist.gov |
-| ASN.1 OIDs | oidref.com |
+| Domain | Source | Verification method |
+|--------|--------|---------------------|
+| IETF RFCs | rfc-editor.org | Fetch `https://www.rfc-editor.org/rfc/rfcNNNN` and confirm the section heading exists |
+| KMIP | OASIS KMIP spec (HTML files in `kmip/`) | Read `kmip/v2.1/kmip-spec-v2.1-os.html` locally; grep for the exact section heading |
+| FIPS/NIST | csrc.nist.gov | Fetch the canonical `csrc.nist.gov/pubs/` URL and verify the section |
+| ASN.1 OIDs | oidref.com | Verify OID value before writing — never recall from training data |
+| BSI | bsi.bund.de | Cite document + section only if the PDF was fetched |
+| ANSSI | cyber.gouv.fr | Cite document + section only if the page was fetched |
+| PKCS | See RFC mappings | PKCS#1→RFC 8017, PKCS#5→RFC 8018, PKCS#8→RFC 5958, PKCS#12→RFC 7292 |
+| Academic papers | `documentation/pandoc/cryptobib/crypto.bib` | Grep for the exact bib key before citing |
+
+### Citation format
+
+Use this format for inline standard references:
+
+```text
+[Standard-ID], Section N.N.N, "Exact Section Heading"
+```
+
+Examples:
+
+- `[RFC 5280], Section 4.2.1.2, "Subject Key Identifier"`
+- `[FIPS 197], Section 5, "Algorithm Specification"`
+- `[KMIP 2.1], Section 4.3, "Create"`
+
+### Anti-hallucination rules for documentation
+
+1. **Never write a section number** without verifying it via local file read or URL fetch in this session.
+2. **Never paraphrase a standard as a quote** — use explicit `[Paraphrase]` label or quote verbatim with attribution.
+3. **When a section cannot be verified** (fetch failed, PDF not parseable): cite at document level only (`[FIPS 203]` not `[FIPS 203, §4.1]`).
+4. **Never invent OID values** — verify against oidref.com or the governing RFC before writing.
+5. **Never invent algorithm parameters** (key sizes, iteration counts, salt lengths) — verify against the governing standard.
+6. **Academic paper citations** must use bib keys found via grep in `documentation/pandoc/cryptobib/crypto.bib` — never invent a citation key.
+
+> For the full standards index (FIPS, NIST SP, RFC, KMIP, BSI, ANSSI, OWASP, PKCS, SEC/SECG),
+> see `.github/skills/standards-review/references/standards-index.md`.
+> For the full citation discipline, see `.github/skills/standards-review/references/citation-rules.md`.
 
 Do not rely on training-data recall for spec section numbers or OID values.
 

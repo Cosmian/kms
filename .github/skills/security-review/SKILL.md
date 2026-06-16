@@ -1,11 +1,11 @@
 ---
 name: security-review
-description: 'AI-powered security scanner — OWASP Top 10, KMIP authorization, FIPS gating. Use when asked to review code security, audit KMIP access control, or scan for vulnerabilities.'
+description: 'AI-powered security scanner — OWASP Top 10, CWE Top 25, KMIP authorization, FIPS gating, memory safety, side-channel, supply chain, and 20 vulnerability families. Use when asked to review code security, audit KMIP access control, or scan for vulnerabilities.'
 ---
 
 # Security Review
 
-An AI-powered security scanner that reasons about code the way a security researcher would — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matching tools miss.
+An AI-powered security scanner that reasons about code the way a security researcher would — tracing data flows, understanding component interactions, and catching vulnerabilities that pattern-matching tools miss. Covers all major software vulnerability families relevant to a Rust + TypeScript KMS with FFI to OpenSSL and PKCS#11 HSMs.
 
 ## When to use
 
@@ -13,11 +13,17 @@ An AI-powered security scanner that reasons about code the way a security resear
 - Check for SQL injection, command injection, secrets exposure, auth bypass
 - Review KMIP operation authorization (missing `is_allowed()` calls, unauthorized key material access)
 - Audit FIPS feature flag gating consistency
+- Audit memory safety (FFI, `unsafe` blocks), side-channel resistance, supply chain integrity
 - Any request like "is my code secure?", "audit this codebase", "review for vulnerabilities"
 
 ## Execution
 
 Follow these steps **in order**:
+
+### Step 0 — Load Anti-Hallucination Discipline
+
+Read `.github/skills/shared/anti-hallucination.md` **before any analysis**. All rules in
+that file are mandatory for this skill. Do not proceed to Step 1 until you have read it.
 
 ### Step 1 — Scope Resolution
 
@@ -102,6 +108,90 @@ Review each file in `crate/server/src/core/operations/`:
 - XSS: `dangerouslySetInnerHTML`, unescaped user content in React components
 - Insecure WASM call error handling — errors containing sensitive server info surfaced to UI
 - Hard-coded CSE/EKM keys in `ui/src/`
+
+#### Memory & Type Safety (CWE-119, CWE-125, CWE-416, CWE-843)
+
+Critical for Rust `unsafe` blocks and FFI to OpenSSL / PKCS#11 / HSM libraries:
+
+- Buffer overflow / underflow in FFI call sites (`crate/hsm/*/src/`, `crate/crypto/src/`)
+- Integer overflow / underflow / truncation in key-size arithmetic, TTLV length fields (`crate/kmip/src/`)
+- Use-after-free, double-free in `unsafe` blocks — require `// SAFETY:` comment; flag every `unsafe` without one
+- Type confusion in TTLV deserialization — mismatched tag/type casting
+- Uninitialized memory reads that could leak secrets via FFI return buffers
+
+#### Deserialization & Protocol Parsing (CWE-502, CWE-400)
+
+- TTLV parsing: unbounded length fields that trigger OOM, malformed tag handling, integer overflow in length math
+- JSON deserialization (serde): missing field validation, type coercion attacks, missing `#[serde(deny_unknown_fields)]` on security-critical structs
+- HTTP request smuggling (Actix-web) — Transfer-Encoding / Content-Length conflict handling
+- Prototype pollution in TypeScript (`ui/src/`) — `Object.assign` or spread with user-controlled keys
+
+#### Race Conditions & TOCTOU (CWE-362, CWE-367)
+
+- TOCTOU in key lifecycle state transitions — gap between `is_allowed()` check and state mutation
+- Database access patterns without serializable isolation for key ownership changes or grant/revoke operations
+- Shared state in `OnceLock` / `Mutex` / `RwLock` — deadlock potential or poisoned lock propagation in error paths
+- Concurrent `Create` + `Destroy` on the same UID — race to key existence
+
+#### Denial of Service (CWE-400, CWE-1333, CWE-770)
+
+- **ReDoS**: scan all regex patterns in Rust (`regex::Regex::new(...)`) and TypeScript for catastrophic backtracking
+- Algorithmic complexity attacks — unbounded loops or quadratic operations triggered by user-controlled input size
+- Resource exhaustion: unbounded memory allocation from KMIP request fields, unlimited DB query result sets, no cap on concurrent HSM sessions
+- Amplification: single KMIP request triggering many sub-operations (e.g., `ReKey` across large object sets)
+
+#### Side-Channel Attacks (CWE-208, CWE-385)
+
+- **Timing attacks**: non-constant-time comparisons of secrets, MACs, or password hashes — search for `==` on `&[u8]` secrets instead of `constant_time_eq`
+- **Marvin Attack / ROBOT Attack**: RSA PKCS#1 v1.5 decryption with observable error differences (see `RUSTSEC-2023-0071` in `SECURITY.md`)
+- **Lucky13 / CBC padding oracle**: any CBC-mode decryption path where error messages distinguish "bad padding" from "bad MAC"
+- **Cache-timing**: AES table-lookup implementations (should use OpenSSL/AES-NI, not pure-Rust table-based AES)
+- **Speculative execution**: sensitive operations in FFI-boundary code without speculation barriers
+
+#### OAuth / OIDC & Token-Based Auth Attacks (CWE-287, CWE-346)
+
+- JWT `alg:none` / algorithm substitution — `alg` header not validated against server-side expected algorithm list
+- JWT `kid` injection — path traversal or SQL injection via the `kid` header field
+- JWT `jku` / `x5u` injection — SSRF via header-specified key URL (server fetches attacker-controlled URL)
+- Missing JWT expiry (`exp`) validation — check `insecure` feature gate does not disable it in production builds
+- OAuth redirect URI manipulation — wildcard or open redirector patterns in callback validation
+- PKCE bypass — if PKCE flow is used, verify `code_verifier` is actually validated server-side
+- mTLS certificate validation bypass — missing hostname verification or incomplete CA chain validation
+
+#### HTTP-Level & Web Security (CWE-352, CWE-1021, CWE-601)
+
+- **CSRF**: missing `SameSite` cookie attribute, absent CSRF tokens on state-changing endpoints
+- **Clickjacking**: missing `X-Frame-Options` or `frame-ancestors` CSP directive
+- **Open redirect**: unvalidated `return_url`, `redirect`, `next` parameters in auth flows
+- **HTTP parameter pollution**: duplicate parameter handling in Actix-web query/form parsing
+- **Rate limiting**: no throttling on authentication endpoints, no per-IP or per-user limits
+- **Security response headers**: missing `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`
+- **CORS misconfiguration**: wildcard `Access-Control-Allow-Origin` combined with `Access-Control-Allow-Credentials: true`
+
+#### Supply Chain & Dependency Integrity (CWE-1104, CWE-829)
+
+- Dependencies with known CVEs — extend current `Cargo.toml` audit with `cargo deny check advisories`
+- Dependency confusion / typosquatting — private crate names (e.g., `cosmian_*`) potentially claimable on crates.io
+- Unpinned / wildcard version ranges (`*`, `>=`) that could admit malicious patch releases
+- Git submodule integrity — verify `test_data` submodule points to the expected Cosmian repo and branch
+- Lockfile tampering — `Cargo.lock` and `ui/pnpm-lock.yaml` integrity (unexpected changes without corresponding `Cargo.toml` / `package.json` changes)
+
+#### Security Logging, Monitoring & Forensics (CWE-778, CWE-532)
+
+- **Missing audit events**: failed authentication, key destruction (`Destroy`), privilege grants/revokes, key export — all must be logged
+- **Insufficient log detail**: security events missing principal identity, source IP, object UID, or operation result
+- **Sensitive data in logs**: key material, plaintext, tokens, or passwords in `debug!` / `trace!` / `info!` calls
+- **Log injection**: user-controlled content passed to log macros without sanitization (newline injection to forge log entries)
+- **No audit trail for irrecoverable operations**: `Destroy` operations are irrecoverable — must produce a durable audit log entry
+
+#### Business Logic & KMIP-Specific (CWE-840, CWE-863)
+
+- **Key lifecycle state machine bypass**: can `Destroy` be called on an `Active` key without first calling `Revoke`/`Deactivate`?
+- **Wrap/Unwrap dual authorization**: both the wrapping key UID and the wrapped key UID must be access-checked independently — missing either is a privilege escalation
+- **Attribute manipulation without ownership**: can a non-owner set `Activation Date`, `Deactivation Date`, `Sensitive`, or `Extractable` attributes?
+- **Non-exportable key export**: keys with the `Non-Exportable` attribute must be blocked in `Export` / `Get` operations
+- **`Locate` information disclosure**: `Locate` returning objects owned by other principals (even metadata without key material is information leakage)
+- **Re-registration attacks**: can a `Register` / `Import` overwrite an existing object UID owned by a different user?
 
 ### Step 5 — Cross-File Data Flow Analysis
 

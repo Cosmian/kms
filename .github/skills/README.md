@@ -20,8 +20,10 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
-| Security Review | `/security-review [path]` | OWASP Top 10 + KMIP authorization audit + FIPS gating check. Full data-flow analysis, produces structured report with patches. |
-| FIPS Audit | `/fips-audit [path]` | FIPS 140-3 compliance review: algorithm allow-list, key sizes, `#[cfg(non-fips)]` gating discipline, OpenSSL provider init. |
+| **Meta-Security** | `/meta-security [path]` | **Comprehensive security audit orchestrator.** Invokes `/security-review`, `/cryptography-review`, `/threat-model`, and `/standards-review` in sequence. Produces a unified go/no-go report. |
+| Security Review | `/security-review [path]` | OWASP Top 10, CWE Top 25, 20 vulnerability families (injection, memory safety, side-channel, supply chain, business logic, etc.), KMIP authorization, FIPS gating. Full data-flow analysis with patches. |
+| Cryptographic Review | `/cryptography-review [path]` | Multi-standard cryptographic audit: FIPS 140-3, BSI TR-02102, ANSSI, NIST SP 800-series. Algorithm allow-list, key sizes, feature-flag gating, OpenSSL provider init, key lifecycle (SP 800-57), multi-standard compliance matrix, academic cryptanalysis cross-check. |
+| Standards Review | `/standards-review [path]` | Verify code against exact text of applicable standards (FIPS, NIST SP, RFC, KMIP, PKCS, BSI, ANSSI, OWASP). Every citation is URL-verified — no hallucinated section numbers. Includes per-algorithm compliance checklist. |
 | Threat Model | `/threat-model` | STRIDE-A full threat model or incremental update. Pre-seeded with KMS trust boundaries (client → KMIP → HSM/DB). |
 
 ### KMIP / Protocol
@@ -87,7 +89,13 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 # Security review before PR:
 # /security-review crate/server/src/core/operations/
-# /fips-audit crate/crypto/src/
+# /cryptography-review crate/crypto/src/
+
+# Full security audit (orchestrates all 4 security skills):
+# /meta-security
+
+# Standards compliance check:
+# /standards-review crate/server/src/core/operations/create.rs
 
 # UI feature workflow:
 # /react-ant-patterns    ← coding conventions
@@ -97,9 +105,11 @@ Team-wide GitHub Copilot skills for the KMS repository.
 
 ---
 
-## Threat Model References
+## Skill Reference Files
 
-The `/threat-model` skill loads detailed guidance from the `references/` subdirectory:
+Several skills load detailed guidance from `references/` subdirectories:
+
+### `/threat-model` references
 
 | File | Purpose |
 |------|---------|
@@ -107,6 +117,20 @@ The `/threat-model` skill loads detailed guidance from the `references/` subdire
 | `references/threat-model-output-formats.md` | Templates for all output files |
 | `references/threat-model-diagrams.md` | Mermaid DFD shape/color/arrow conventions |
 | `references/threat-model-analysis-principles.md` | STRIDE-A, OWASP Top 10, exploitability tiers, false-positive avoidance |
+
+### `/standards-review` references
+
+| File | Purpose |
+|------|---------|
+| `references/standards-index.md` | Curated index of ~50 standards (FIPS, NIST SP, RFC, KMIP, BSI, ANSSI, OWASP) with canonical URLs |
+| `references/citation-rules.md` | 8-rule anti-hallucination citation discipline |
+| `references/compliance-checklist.md` | Per-algorithm cross-standard compliance matrix |
+
+### Shared references
+
+| File | Purpose |
+|------|---------|
+| `shared/anti-hallucination.md` | 8-rule anti-hallucination discipline loaded by every security skill before analysis |
 
 ---
 

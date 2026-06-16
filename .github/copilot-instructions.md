@@ -58,8 +58,10 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | Command | When to use |
 |---------|-------------|
 | `/kms-sync-rules` | After every code change — auto-detects changed files |
+| `/meta-security` | **Comprehensive security audit** — orchestrates all 4 security skills |
 | `/security-review` | Before any PR |
-| `/fips-audit` | When touching `crate/crypto/` or algorithm selection |
+| `/cryptography-review` | When touching `crate/crypto/` or algorithm selection |
+| `/standards-review` | Verify code against exact text of applicable standards |
 | `/kmip-compliance` | When adding/modifying a KMIP operation |
 | `/rust-patterns` | Rust design patterns for this codebase |
 | `/react-ant-patterns` | UI coding conventions |
