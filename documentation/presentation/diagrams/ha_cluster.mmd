@@ -1,0 +1,7 @@
+flowchart TB
+    Clients -->|"KMIP / TLS"| VIP["VIP VRRP\n(Keepalived + HAProxy)"]
+    VIP --> N1["KMS Node 1"]
+    VIP --> N2["KMS Node 2"]
+    VIP --> NN["KMS Node N"]
+    N1 & N2 & NN <-->|"stateless"| DB[("Shared DB\nPostgreSQL · SQLite\nRedis-findex")]
+    style VIP fill:#FF6D43,color:#fff

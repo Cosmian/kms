@@ -24,3 +24,8 @@ ANF = "ANF"
 tme = "tme"
 # Plural of PNG (image format)
 PNGs = "PNGs"
+# Mermaid SVG CSS class name for composite states
+composit = "composit"
+
+[files]
+extend-exclude = ["documentation/presentation/slides_desc.md", "documentation/presentation/diagrams/*.svg"]

@@ -1,0 +1,16 @@
+stateDiagram-v2
+    direction LR
+    [*] --> PreActive : Create / Import
+    PreActive --> Active : Activate
+    Active --> Deactivated : Revoke
+    Deactivated --> Compromised : Compromise event
+    Active --> Compromised : Compromise event
+    Deactivated --> Destroyed : Destroy
+    Compromised --> Destroyed : Destroy
+    Destroyed --> [*]
+
+    PreActive : Pre-Active\n(key exists, not yet usable)
+    Active : Active\n(encrypt / decrypt / sign)
+    Deactivated : Deactivated\n(decrypt only, no new encryption)
+    Compromised : Compromised\n(decrypt legacy data only)
+    Destroyed : Destroyed\n(key material securely zeroized)

@@ -1,0 +1,61 @@
+block-beta
+  columns 4
+
+  block:L1["① Entry Points"]:4
+    E1["REST\nHTTP / TLS"]
+    E2["KMIP\nTTLV"]
+    E3["PKCS#11\nmodule"]
+    E4["XKS · EKM\nCSE · DKE"]
+  end
+
+  block:L2["② Authentication & Authorization"]:4
+    A1["JWT / OIDC\n(Entra · Keycloak)"]
+    A2["mTLS\nclient cert"]
+    A3["API\nToken"]
+    A4["Access Control\nownership + grants"]
+  end
+
+  block:L3["③ KMIP Operations · HSM · Cloud Proxies"]:4
+    K1["KMIP 2.1\nCreate · Get · Wrap · Sign"]
+    K2["HSM PKCS#11\nUtimaco · Proteccio"]
+    K3["Cloud Proxies\nXKS · EKM · CSE · DKE"]
+    space:1
+  end
+
+  block:L4["④ Cryptographic Core — FIPS 140-3 Level 2"]:4
+    C1["Classical\nAES · RSA · ECDSA · EdDSA"]
+    C2["Post-Quantum\nML-KEM · ML-DSA · SLH-DSA"]
+    C3["Covercrypt\nAttr-Based Enc"]
+    C4["Findex\nEncrypted Search"]
+  end
+
+  block:L5["⑤ Database Backends"]:4
+    D1["PostgreSQL"]
+    D2["SQLite"]
+    D3["MySQL\nPercona"]
+    D4["Redis\nFindex"]
+  end
+
+  classDef entry fill:#deeef8,stroke:#4a8bb5,color:#001F2B
+  classDef authn fill:#002D3C,stroke:#001F2B,color:#ffffff
+  classDef kmipn fill:#003D50,stroke:#002D3C,color:#ffffff
+  classDef crypt fill:#FF6D43,stroke:#e05a30,color:#ffffff
+  classDef dback fill:#f0f4f5,stroke:#888,color:#333
+
+  class E1,E2,E3,E4 entry
+  class A1,A2,A3,A4 authn
+  class K1,K2,K3 kmipn
+  class C1,C2,C3,C4 crypt
+  class D1,D2,D3,D4 dback
+
+  style A1 color:#ffffff
+  style A2 color:#ffffff
+  style A3 color:#ffffff
+  style A4 color:#ffffff
+  style K1 color:#ffffff
+  style K2 color:#ffffff
+  style K3 color:#ffffff
+  style C1 color:#ffffff
+  style C2 color:#ffffff
+  style C3 color:#ffffff
+  style C4 color:#ffffff

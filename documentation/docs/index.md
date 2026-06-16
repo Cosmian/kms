@@ -50,7 +50,9 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
     - [MongoDB](./integrations/databases/mongodb.md)
     - [Mysql Enterprise](./integrations/databases/mysql.md)
     - [Microsoft SQL Server External (EKM)](./integrations/databases/ms_sql_server.md)
-    - [PostgreSQL](./integrations/databases/percona.md)
+    - [PostgreSQL (Percona)](./integrations/databases/percona.md)
+    - [EDB Postgres Advanced Server TDE](./integrations/databases/edb_postgres_tde.md)
+    - [InterSystems IRIS](./integrations/databases/intersystems_iris.md)
         - and more
 - **Disk encryption**:
     - [Veracrypt](./integrations/disk_encryption/veracrypt.md)

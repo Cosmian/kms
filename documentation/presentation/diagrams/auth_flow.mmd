@@ -1,0 +1,22 @@
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant MW as Auth Middleware
+    participant KMS as KMS Core
+    participant DB as Database
+
+    Note over MW: Supported auth methods:<br/>JWT (OIDC/Entra), mTLS, API Token
+
+    C->>+MW: HTTPS Request\n(KMIP / REST)
+    alt JWT Bearer
+        MW->>MW: Verify JWT signature\n& expiry (JWKS endpoint)
+    else mTLS Client Certificate
+        MW->>MW: Validate client cert\nagainst trust store
+    else API Token
+        MW->>MW: Hash & compare\nstored token
+    end
+    MW->>+KMS: Authenticated identity\n(owner / group / role)
+    KMS->>+DB: Check access policy\n(object ownership + grants)
+    DB-->>-KMS: Permitted
+    KMS-->>-MW: Crypto response
+    MW-->>-C: KMIP / JSON response

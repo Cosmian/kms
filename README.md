@@ -98,7 +98,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 ## 🎯 Top Use Cases
 
 - Application‑level encryption at scale (files, objects, datasets) with centralized key lifecycle.
-- Database TDE and integration (Oracle TDE, Percona PostgreSQL, MongoDB, MySQL) via KMIP/PKCS#11.
+- Database TDE and integration (Oracle TDE, Percona PostgreSQL, EDB Postgres, MongoDB, MySQL, InterSystems IRIS) via KMIP/PKCS#11.
 - Enterprise integrations: Google Workspace CSE, Microsoft DKE, Microsoft SQL Server External (EKM), AWS XKS v2, and Azure EKM.
 - HSM-backed key protection and policy‑driven access controls.
 - PKI operations: issue, sign, validate, and automate certificate lifecycles.
@@ -207,6 +207,7 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | Percona PostgreSQL   | TDE via KMIP ([docs](./documentation/docs/integrations/databases/percona.md))                                    | 1.4          | ✅      |
 | Microsoft SQL Server | External Key Management (EKM) via PKCS#11 ([docs](./documentation/docs/integrations/databases/ms_sql_server.md)) | —            | ✅      |
 | EDB Postgres Adv. Server | TDE via KMIP ([docs](./documentation/docs/integrations/databases/edb_postgres_tde.md)) | 2.1          | ✅      |
+| InterSystems IRIS    | Database encryption via KMIP ([docs](./documentation/docs/integrations/databases/intersystems_iris.md)) | 2.0          | ✅      |
 
 ### 💿 Disk Encryption
 
