@@ -797,7 +797,7 @@ certificatePolicies=2.5.29.32
 
         let cnf_path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../.github/scripts/test/certificatePolicies/v3_ca_ok.cnf"
+            "/../../.mise/scripts/test/certificatePolicies/v3_ca_ok.cnf"
         );
         let cnf_content = std::fs::read_to_string(cnf_path).unwrap();
 
@@ -825,7 +825,7 @@ certificatePolicies=2.5.29.32
 
         let cnf_path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../.github/scripts/test/certificatePolicies/v3_ca_ko.cnf"
+            "/../../.mise/scripts/test/certificatePolicies/v3_ca_ko.cnf"
         );
         let cnf_content = std::fs::read_to_string(cnf_path).unwrap();
 
@@ -977,7 +977,7 @@ certificatePolicies=2.5.29.32
         // Read the customer's CNF fixture that triggered the production bug.
         let cnf_path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../.github/scripts/test/certificatePolicies/v3_ca_ko.cnf"
+            "/../../.mise/scripts/test/certificatePolicies/v3_ca_ko.cnf"
         );
         let cnf_content =
             std::fs::read_to_string(cnf_path).expect("v3_ca_ko.cnf should be readable");

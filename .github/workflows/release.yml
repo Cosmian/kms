@@ -6,7 +6,7 @@ name: Release
 # What it does:
 #   1. Validates semver inputs and checks the release branch does not exist yet.
 #   2. Creates "release/<new_version>" from develop (matching the git-flow model).
-#   3. Runs the version-bump script (.github/scripts/release/release.sh).
+#   3. Runs the version-bump script (.mise/scripts/release/release.sh).
 #   4. Commits the bumped versions on the release branch and pushes it.
 #   5. Regenerates all documentation via generate_docs.sh (server CLI, ckms docs,
 #      KMIP tables, crypto inventory, and CBOM).
@@ -159,20 +159,30 @@ jobs:
         run: |
           git checkout -b "release/${{ inputs.new_version }}"
 
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
+
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: Run version-bump script
         run: |
           # release.sh performs sed-based substitutions across all Cargo.toml
           # and other versioned files.  The --ci flag skips the pre-commit
           # hooks section (nix-build-all, cbom, release-docker-build-ui) since
           # those are handled by dedicated jobs in this workflow.
-          bash .github/scripts/release/release.sh \
+          mise run release:bump --ci \
             "${{ inputs.old_version }}" \
-            "${{ inputs.new_version }}" \
-            --ci
-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.91.0
+            "${{ inputs.new_version }}"
 
       - name: Update Cargo.lock
         run: cargo build --workspace
@@ -186,7 +196,7 @@ jobs:
           #   4. crypto_inventory.md (cryptographic asset sensor, no network)
           #   5. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
           pip install cyclonedx-bom --quiet
-          bash .github/scripts/docs/generate_docs.sh
+          mise run docs:generate
 
       - name: Install cargo-deny
         run: cargo install --version 0.19.0 cargo-deny --locked
@@ -280,8 +290,19 @@ jobs:
             rm -f "$dest"
           done
 
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: Recompute all Nix vendor hashes
-        run: bash .github/scripts/release/nix_build_update_hash.sh
+        run: mise run release:nix-update-hashes
 
       - name: Commit updated Nix hashes
         run: |
@@ -422,11 +443,22 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: Retrieve SBOMs from package.cosmian.com
         run: |
           # The packaging CI publishes SBOMs under:
           #   last_build/release/<version>/sbom/
-          bash .github/scripts/nix.sh sbom --retrieve \
+          mise run sbom:generate --retrieve \
             --branch "last_build/${{ needs.prepare.outputs.release_branch }}"
 
       - name: Commit SBOMs

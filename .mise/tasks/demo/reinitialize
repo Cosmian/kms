@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Reinitialize demo KMS (demo-kms.cosmian.dev)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Reinitializing Demo KMS"
+
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/demo/reinitialize_demo_kms.sh"
+
+print_success "Demo KMS reinitialized"

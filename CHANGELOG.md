@@ -1,3 +1,38 @@
+## [5.23.0] - 2026-06-05
+
+### 🚀 Features
+
+- Support FPE and add anonymization endpoints (#907)
+- Intune (#924)
+- *(jwe)* Add endpoint to import wrapped key (#977)
+- *(packager)* Add cosmian_kms and ckms to PATH
+- Add JOSE import key endpoint (#979)
+- Display OpenSSL CPU hardware-acceleration feature flags at startup (#963)
+
+### 🐛 Bug Fixes
+
+- *(server)* Default logging to /var/log
+- *(server)* Set logging default to None
+
+### 🚜 Refactor
+
+- Remove duplicated clap tests in favor of ckms tests (#972)
+
+### 🧪 Testing
+
+- Add fortigate tests (#976)
+- Add JOSE interoperability tests with jwcrypto lib (#984)
+
+### ⚙️ Build
+
+- Merge release/5.23.0 into develop
+- *(deps-dev)* Bump vitest (#978)
+
+### ⚙️ Miscellaneous Tasks
+
+- Use dedicated git submodule for KMIP specs (#980)
+- Add queue:max as concurrency arg
+
 # Changelog
 
 All notable changes to this project will be documented in this file.

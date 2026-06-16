@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Build macOS DMG package"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+if [ "$(uname)" != "Darwin" ]; then
+  print_error "DMG packaging requires macOS"
+fi
+
+print_header "Building DMG package (${VARIANT_NAME}, ${LINK})"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/package/package_dmg.sh" --variant "$VARIANT" --link "$LINK"
+
+print_success "DMG package built"

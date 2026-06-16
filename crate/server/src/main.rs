@@ -129,7 +129,7 @@ async fn run() -> KResult<()> {
             .logging
             .rolling_log_name
             .clone()
-            .unwrap_or_else(|| "kms".to_owned());
+            .unwrap_or_else(|| "cosmian_kms".to_owned());
         Some((dir, name))
     });
 
@@ -360,6 +360,7 @@ hsm_model = ""
 hsm_admin = []
 hsm_slot = []
 hsm_password = []
+hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 
@@ -385,6 +386,7 @@ tls_cipher_suites = "TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256"
 [http]
 port = 443
 hostname = "[hostname]"
+rate_limit_per_second = 100
 
 [proxy]
 proxy_url = "https://proxy.example.com:8080"
@@ -420,6 +422,7 @@ tmp_path = "[tmp path]"
 [logging]
 rust_log = "info,cosmian_kms=debug"
 otlp = "http://localhost:4317"
+otlp_allow_insecure = false
 quiet = false
 log_to_syslog = false
 rolling_log_dir = "[rolling log dir]"

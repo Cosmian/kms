@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#MISE description="Run all tests sequentially"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+print_header "Running all tests (variant=${VARIANT})"
+
+FAILED=()
+
+run_step() {
+  local name="$1"
+  shift
+  print_status "Running: $name"
+  if "$@"; then
+    print_success "$name passed"
+  else
+    print_warning "$name FAILED (continuing...)"
+    FAILED+=("$name")
+  fi
+}
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+
+run_step "sqlite" bash "${TASK_DIR}/sqlite" --variant "${VARIANT}" --link "${LINK}"
+run_step "psql" bash "${TASK_DIR}/psql" --variant "${VARIANT}" --link "${LINK}"
+
+if [ "${VARIANT}" = "non-fips" ]; then
+  run_step "redis" bash "${TASK_DIR}/redis" --variant "${VARIANT}" --link "${LINK}"
+fi
+
+run_step "wasm" bash "${TASK_DIR}/wasm" --variant "${VARIANT}" --link "${LINK}"
+run_step "hsm" bash "${TASK_DIR}/hsm/_default" --variant "${VARIANT}" --link "${LINK}"
+
+if [ "${VARIANT}" = "non-fips" ]; then
+  run_step "ui" bash "${TASK_DIR}/ui" --variant "${VARIANT}" --link "${LINK}"
+fi
+
+if [ ${#FAILED[@]} -gt 0 ]; then
+  echo '' >&2
+  echo '============================================' >&2
+  echo "  FAILED steps: ${FAILED[*]}" >&2
+  echo '============================================' >&2
+  exit 1
+fi
+
+print_success "All tests passed"

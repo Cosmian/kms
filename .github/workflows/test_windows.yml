@@ -35,7 +35,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\windows\cargo_test.ps1
+          . .\.mise\scripts\windows\cargo_test.ps1
           TestProject
         env:
           # Google variables
@@ -62,7 +62,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Build static OpenSSL
         shell: pwsh
@@ -78,7 +78,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          .\.github\scripts\windows\test_ui.ps1
+          .\.mise\scripts\windows\test_ui.ps1
 
       - name: Upload logs on failure
         if: failure()
@@ -113,7 +113,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          .\.github\scripts\windows\test_cng_ksp.ps1
+          .\.mise\scripts\windows\test_cng_ksp.ps1
 
       - name: Upload logs on failure
         if: failure()

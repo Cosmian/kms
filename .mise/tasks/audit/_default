@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Run all security audits (OWASP + crypto + multi-framework)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running security audit suite"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/audit/audit.sh"
+
+print_success "Audit completed"

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate server --help documentation"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Regenerating server help documentation"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/docs/renew_server_doc.sh"
+
+print_success "Server help documentation regenerated"

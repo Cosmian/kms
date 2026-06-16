@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#MISE description="Run GCP CMEK wrapping key tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+export WITH_CURL=1
+# shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
+ensure_nix_shell
+
+print_header "Running GCP CMEK tests (${VARIANT_NAME})"
+
+trap kms_stop EXIT
+kms_start "$(kms_pick_free_port)"
+
+require_cmd cargo
+
+cargo test \
+  -p cosmian_kms_server \
+  ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} \
+  -- tests::gcp_cmek --ignored --nocapture
+
+print_success "GCP CMEK tests completed"

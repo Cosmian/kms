@@ -66,6 +66,17 @@ jobs:
             narinfo-cache-negative-ttl = 0
             http-connections = 8
 
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -98,7 +109,13 @@ jobs:
 
       - name: Package with GPG signature
         run: |
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} --link ${{ matrix.link }} package
+          if [ "$(uname)" = "Darwin" ]; then
+            mise run package:dmg --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          else
+            mise run package:deb --variant ${{ matrix.features }} --link ${{ matrix.link }}
+            mise run package:rpm --variant ${{ matrix.features }} --link ${{ matrix.link }}
+            mise run package:pkcs11-zip --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          fi
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
@@ -106,8 +123,8 @@ jobs:
       - name: Generate SBOM (server + ckms)
         if: matrix.runner == 'ubuntu-24.04'
         run: |
-          bash .github/scripts/nix.sh sbom --target server --variant ${{ matrix.features }} --link ${{ matrix.link }}
-          bash .github/scripts/nix.sh sbom --target ckms   --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          mise run sbom:generate --target server --variant ${{ matrix.features }} --link ${{ matrix.link }}
+          mise run sbom:generate --target ckms --variant ${{ matrix.features }} --link ${{ matrix.link }}
 
       - name: Upload SBOM artifact
         if: matrix.runner == 'ubuntu-24.04'

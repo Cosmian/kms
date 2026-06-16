@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#MISE description="Smoke test an .rpm package"
+#USAGE arg "<package_file>" help="Path to the .rpm file to test"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/package_smoke.sh"
+
+PACKAGE_FILE="${usage_package_file:?Package file required}"
+print_header "Smoke testing RPM package: $(basename "$PACKAGE_FILE")"
+
+require_cmd rpm2cpio "rpm2cpio is required for RPM extraction"
+require_cmd cpio
+
+TEMP_DIR="$(mktemp -d /tmp/smoke-rpm-XXXXXX)"
+# shellcheck disable=SC2064  # TEMP_DIR must expand now so the correct path is captured in the trap
+trap "rm -rf '$TEMP_DIR'" EXIT
+
+# Extract RPM
+cd "$TEMP_DIR"
+rpm2cpio "$PACKAGE_FILE" | cpio -idm
+
+detect_fips_variant "$PACKAGE_FILE"
+find_binary "$TEMP_DIR"
+verify_crypto_modules "$TEMP_DIR" "$IS_FIPS"
+check_binary_rpath "$BINARY_PATH"
+detect_linkage_type "$BINARY_PATH"
+verify_package_assets "$TEMP_DIR" "$IS_FIPS" "$IS_DYNAMIC"
+test_binary_execution "$BINARY_PATH" "$TEMP_DIR" "$IS_FIPS" "$IS_DYNAMIC"
+
+print_success "RPM smoke test passed"

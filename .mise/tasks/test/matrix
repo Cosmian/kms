@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#MISE description="Run all HSM × DB backend × variant combinations"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="Variant to test: fips, non-fips, or all (runs both)" default="all" {
+#USAGE   choices "fips" "non-fips" "all"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+LINK="${usage_link:-static}"
+INPUT_VARIANT="${usage_variant:-all}"
+
+PASS=()
+SKIP=()
+FAIL=()
+
+# ── Port probe ────────────────────────────────────────────────────────────────
+port_open() {
+  (exec 3<>"/dev/tcp/${1:-127.0.0.1}/$2") 2>/dev/null && {
+    exec 3>&- 3<&-
+    return 0
+  } || return 1
+}
+
+# ── Run one (hsm, db, variant) matrix cell ───────────────────────────────────
+run_cell() {
+  local hsm="$1" db="$2" variant="$3"
+  local label="${variant}/${hsm}/${db}"
+  print_header "Matrix: ${label}"
+  if bash "${TASK_DIR}/hsm-${hsm}" --variant "$variant" --link "$LINK" --db "$db"; then
+    PASS+=("$label")
+  else
+    FAIL+=("$label")
+  fi
+}
+
+skip_cell() {
+  local label="$1" reason="$2"
+  echo "[SKIP] ${label} — ${reason}"
+  SKIP+=("$label")
+}
+
+# ── Determine which variants to run ──────────────────────────────────────────
+if [ "$INPUT_VARIANT" = "all" ]; then
+  VARIANTS=("fips" "non-fips")
+else
+  VARIANTS=("$INPUT_VARIANT")
+fi
+
+# ── Determine available HSM models ───────────────────────────────────────────
+# softhsm2 runs on all platforms and supports both FIPS and non-FIPS.
+# Hardware HSMs (utimaco, proteccio, crypt2pay) are Linux-only.
+HSMS=("softhsm2")
+if [ "$(uname)" = "Linux" ]; then
+  HSMS+=("utimaco" "proteccio" "crypt2pay")
+fi
+
+# ── Probe which DB backends are reachable ────────────────────────────────────
+# sqlite is always available (no external service).
+# redis-findex requires non-fips variant and is skipped in fips runs.
+AVAILABLE_DBS=("sqlite")
+declare -a NON_FIPS_ONLY_DBS=()
+
+while IFS=: read -r name port non_fips_only; do
+  if port_open "127.0.0.1" "$port"; then
+    AVAILABLE_DBS+=("$name")
+    if [ "$non_fips_only" = "1" ]; then
+      NON_FIPS_ONLY_DBS+=("$name")
+    fi
+  fi
+done <<'EOF'
+postgresql:5432:0
+mysql:3306:0
+percona:3307:0
+maria:3308:0
+redis:6379:1
+EOF
+
+# ── Print matrix plan ─────────────────────────────────────────────────────────
+echo ""
+echo "════════════════════════════════════════════════════"
+echo "  Matrix test plan"
+echo "════════════════════════════════════════════════════"
+echo "  Variants : ${VARIANTS[*]}"
+echo "  HSM      : ${HSMS[*]}"
+echo "  DB       : ${AVAILABLE_DBS[*]}"
+echo ""
+
+# ── Run matrix ────────────────────────────────────────────────────────────────
+for variant in "${VARIANTS[@]}"; do
+  for hsm in "${HSMS[@]}"; do
+    for db in "${AVAILABLE_DBS[@]}"; do
+      label="${variant}/${hsm}/${db}"
+
+      # redis-findex requires the non-fips OpenSSL provider
+      is_non_fips_only=0
+      for nf_db in "${NON_FIPS_ONLY_DBS[@]+"${NON_FIPS_ONLY_DBS[@]}"}"; do
+        [ "$nf_db" = "$db" ] && is_non_fips_only=1
+      done
+      if [ "$is_non_fips_only" = "1" ] && [ "$variant" = "fips" ]; then
+        skip_cell "$label" "${db} requires non-fips variant"
+        continue
+      fi
+
+      run_cell "$hsm" "$db" "$variant"
+    done
+  done
+done
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+echo ""
+echo "════════════════════════════════════════════════════"
+echo "  Matrix test suite summary"
+echo "════════════════════════════════════════════════════"
+for l in "${PASS[@]+"${PASS[@]}"}"; do echo "  [PASS] $l"; done
+for l in "${SKIP[@]+"${SKIP[@]}"}"; do echo "  [SKIP] $l"; done
+for l in "${FAIL[@]+"${FAIL[@]}"}"; do echo "  [FAIL] $l"; done
+printf "  PASS: %d  SKIP: %d  FAIL: %d\n" "${#PASS[@]}" "${#SKIP[@]}" "${#FAIL[@]}"
+
+if [ "${#FAIL[@]}" -gt 0 ]; then
+  print_error "Some matrix cells FAILED: ${FAIL[*]}"
+fi
+print_success "Matrix test suite completed (${#PASS[@]} passed, ${#SKIP[@]} skipped)"

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Fetch correct vendor hashes from a CI run"
+#USAGE arg "[run_id]" help="GitHub Actions run ID (default: latest failed)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Updating expected hashes from CI"
+
+REPO_ROOT="$(get_repo_root)"
+
+ARGS=()
+if [ -n "${usage_run_id:-}" ]; then
+  ARGS+=("$usage_run_id")
+fi
+
+bash "${REPO_ROOT}/.mise/scripts/release/update_hashes.sh" "${ARGS[@]}"
+
+print_success "Expected hashes updated"

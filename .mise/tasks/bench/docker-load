@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Load-test benchmark against Dockerized KMS versions"
+#USAGE arg "<version_spec>" help="Version or range (e.g. 5.17, 5.14.0 5.17.0)" default="5.17"
+#USAGE flag "--compare <version>" help="Compare version (two-version diff mode)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Docker Load Benchmark (version: ${usage_version_spec:-5.17})"
+
+require_cmd docker "Docker is required to pull KMS images."
+require_cmd cargo "Cargo is required to build ckms bench."
+
+ARGS=("${usage_version_spec:-5.17}")
+[ -n "${usage_compare:-}" ] && ARGS+=("$usage_compare")
+
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/bench/docker/bench_docker_load.sh" "${ARGS[@]}"
+
+print_success "Docker load benchmark completed"
