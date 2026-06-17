@@ -76,9 +76,10 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
         return rekey_hsm_symmetric(kms, uid_or_tags, owner).await;
     }
 
-    let offset = request.offset;
     Box::pin(execute_rekey(
-        &SymmetricRekey { offset },
+        &SymmetricRekey {
+            offset: request.offset,
+        },
         kms,
         &request,
         owner,

@@ -62,9 +62,10 @@ pub(crate) async fn recertify(
     owner: &str,
 ) -> KResult<ReCertifyResponse> {
     trace!("ReCertify: {}", serde_json::to_string(&request)?);
-    let offset = request.offset;
     Box::pin(execute_rekey(
-        &CertificateRekey { offset },
+        &CertificateRekey {
+            offset: request.offset,
+        },
         kms,
         &request,
         owner,
