@@ -90,9 +90,15 @@ cp -f -v "$BIN_OUT" "crate/server/target/$HOST_TRIPLE/release/cosmian_kms"
 cp -f -v "$BIN_OUT" "crate/server/target/release/cosmian_kms"
 cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
 
-# Writable HOME/CARGO_HOME for cargo metadata
+# Preserve the real CARGO_HOME (populated registry) before overriding HOME.
+# cargo-packager internally calls `cargo metadata` which needs the registry
+# cache; pointing it at an empty temp dir causes it to attempt network fetches
+# and fail when crates are not pre-downloaded.
+REAL_CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+
+# A writable HOME is still required for cargo's lock files and temp artifacts.
 export HOME="${TMPDIR:-/tmp}"
-export CARGO_HOME="$HOME/cargo-home"
+export CARGO_HOME="$REAL_CARGO_HOME"
 mkdir -p "$CARGO_HOME"
 
 # Ensure macOS system tools are available
