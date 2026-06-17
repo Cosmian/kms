@@ -11,7 +11,7 @@ sequenceDiagram
     participant KMS Server
     participant Secret Backend
 
-    Operator->>KMS Server: cosmian_kms --secret-backend vault -c kms.toml
+    Operator->>KMS Server: cosmian_kms --backend vault -c kms.toml
     KMS Server->>KMS Server: Parse TOML, find secret:// URIs
     KMS Server->>Secret Backend: Resolve each secret:// URI
     Secret Backend-->>KMS Server: Return plaintext value
@@ -20,7 +20,7 @@ sequenceDiagram
 ```
 
 1. In your `kms.toml`, replace any sensitive value with a `secret://...` URI.
-2. Start the KMS with `--secret-backend <backend>` (or set `KMS_SECRET_BACKEND` env var).
+2. Start the KMS with `--backend <backend>` (or set `KMS_SECRET_BACKEND` env var).
 3. At startup the KMS resolves every `secret://` URI **once**, then applies the config normally.
 
 The config file never contains actual secrets — only references.
@@ -29,7 +29,7 @@ The config file never contains actual secrets — only references.
 
 ## Supported backends
 
-| Backend | `--secret-backend` | URI format | Required env vars |
+| Backend | `--backend` | URI format | Required env vars |
 |---------|-------------------|-----------|-------------------|
 | HashiCorp Vault | `vault` | `secret://<mount>/<path>[#<field>]` | `VAULT_ADDR`, `VAULT_TOKEN` |
 | AWS SSM Parameter Store | `aws-ssm` | `secret://<region>/<parameter-name>` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
@@ -70,14 +70,14 @@ postgres_url = "secret://secret/kms/postgres-url#value"
 ```bash
 export VAULT_ADDR=http://vault.internal:8200
 export VAULT_TOKEN=s.xxxxxxxx
-cosmian_kms --secret-backend vault -c /etc/cosmian/kms.toml
+cosmian_kms --backend vault -c /etc/cosmian/kms.toml
 ```
 
 ---
 
 ## AWS SSM Parameter Store
 
-Fetches a **SecureString** parameter. The URI path must include the leading `/`.
+Fetches a **SecureString** parameter. The leading `/` is prepended automatically — do not include it in the URI.
 
 ### 1. Store a secret in SSM
 
@@ -102,7 +102,7 @@ postgres_url = "secret://eu-west-1/kms/db-password"
 export AWS_ACCESS_KEY_ID=AKIA...
 export AWS_SECRET_ACCESS_KEY=...
 # Optional: export AWS_SESSION_TOKEN=...
-cosmian_kms --secret-backend aws-ssm -c /etc/cosmian/kms.toml
+cosmian_kms --backend aws-ssm -c /etc/cosmian/kms.toml
 ```
 
 ---
@@ -140,7 +140,7 @@ postgres_url = "secret://myvault/secrets/db-password/abc123def456"
 export AZURE_TENANT_ID=...
 export AZURE_CLIENT_ID=...
 export AZURE_CLIENT_SECRET=...
-cosmian_kms --secret-backend azure-kv -c /etc/cosmian/kms.toml
+cosmian_kms --backend azure-kv -c /etc/cosmian/kms.toml
 ```
 
 ---
@@ -156,7 +156,7 @@ credentials used by downstream KMS instances.
 ### 1. Import a secret into the vault KMS
 
 ```bash
-ckms secrets import --secret-data "my-db-password" --content-type "text/plain"
+ckms secret-data create --value "my-db-password" --type password
 # → UniqueIdentifier: 550e8400-e29b-41d4-a716-446655440000
 ```
 
@@ -180,7 +180,7 @@ postgres_url = "secret://localhost:9998/550e8400-e29b-41d4-a716-446655440000"
 export COSMIAN_KMS_SECRET_TOKEN=eyJhbGciOi...
 # Accept self-signed certs (dev only):
 export COSMIAN_KMS_INSECURE_CERTS=true
-cosmian_kms --secret-backend cosmian-kms -c /etc/cosmian/kms.toml
+cosmian_kms --backend cosmian-kms -c /etc/cosmian/kms.toml
 ```
 
 ---
@@ -196,5 +196,5 @@ cosmian_kms --secret-backend cosmian-kms -c /etc/cosmian/kms.toml
 | Rotation | Restart the KMS to pick up rotated secrets. There is no hot-reload. |
 
 !!! warning "Do not mix backends"
-    Only one `--secret-backend` can be active at a time. All `secret://` URIs
+    Only one `--backend` can be active at a time. All `secret://` URIs
     in the config must be resolvable by the selected backend.
