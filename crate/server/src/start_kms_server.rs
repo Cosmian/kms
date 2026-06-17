@@ -146,7 +146,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 None,
             )?;
             kms_server
-                .create_key_pair(create_request, &server_params.default_username, None)
+                .create_key_pair(create_request, &server_params.default_username)
                 .await
                 .map(|cr| {
                     (
@@ -299,7 +299,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_sk, &server_params.default_username, None)
+        kms_server.import(import_request_sk, &server_params.default_username)
     };
     let import_pk_fut = {
         // Import PublicKey
@@ -312,7 +312,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_pk, &server_params.default_username, None)
+        kms_server.import(import_request_pk, &server_params.default_username)
     };
 
     try_join!(import_sk_fut, import_pk_fut)
@@ -362,6 +362,13 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background auto-rotation cron thread and retain shutdown signal
+    let auto_rotation_shutdown_tx = if kms_server.params.auto_rotation_check_interval_secs > 0 {
+        Some(cron::spawn_auto_rotation_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -384,6 +391,10 @@ pub async fn start_kms_server(
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the auto-rotation cron thread to stop
+    if let Some(tx) = auto_rotation_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
@@ -720,8 +731,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
     }
 
-    let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
-
     // Compute the public URL first so we can use it to derive the session key
     let kms_public_url = kms_server.params.kms_public_url.clone().unwrap_or_else(|| {
         format!(
@@ -1000,6 +1009,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/aws{_:.*}",
                 "/google-cse{_:.*}",
                 "/tokenize{_:.*}",
+                "/rotation-policy{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_config))
@@ -1075,7 +1085,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
-            .app_data(Data::new(privileged_users.clone()))
             .wrap(EnsureAuth::new(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
@@ -1119,10 +1128,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::grant_access)
             .service(access::revoke_access)
             .service(access::get_create_access)
-            .service(access::get_privileged_access);
-
-        let default_scope = default_scope.service(
-            web::resource("/download-cli")
+            .service(access::get_privileged_access)
+            .service(
+                web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
             )
@@ -1232,6 +1240,7 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
 
 #[cfg(test)]
 #[expect(clippy::expect_used)]
+#[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
 
@@ -1318,7 +1327,9 @@ mod tests {
             let uris = vec!["http://idp.example.com/.well-known/jwks.json".to_owned()];
             let result = validate_jwks_uris_are_https(&uris);
             assert!(result.is_err(), "HTTP JWKS URI must be rejected");
-            let msg = result.unwrap_err().to_string();
+            let msg = result
+                .expect_err("HTTP JWKS URI must be rejected")
+                .to_string();
             assert!(
                 msg.contains("HTTPS") || msg.contains("https"),
                 "Error message must mention HTTPS, got: {msg}"
@@ -1356,7 +1367,9 @@ mod tests {
                 result.is_err(),
                 "List containing an HTTP URI must be rejected"
             );
-            let msg = result.unwrap_err().to_string();
+            let msg = result
+                .expect_err("List containing an HTTP URI must be rejected")
+                .to_string();
             assert!(
                 msg.contains("bad.example.com"),
                 "Error message must identify the offending URI, got: {msg}"

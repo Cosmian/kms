@@ -161,7 +161,7 @@ async fn generate_symmetric_key(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .create(create_req, user, None)
+        .create(create_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -210,7 +210,7 @@ async fn generate_ec_key_pair(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .create_key_pair(create_req, user, None)
+        .create_key_pair(create_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -263,7 +263,7 @@ async fn generate_rsa_key_pair(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .create_key_pair(create_req, user, None)
+        .create_key_pair(create_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -313,7 +313,7 @@ async fn generate_okp_key_pair(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .create_key_pair(create_req, user, None)
+        .create_key_pair(create_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -437,7 +437,7 @@ async fn import_symmetric_key(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .import(import_req, user, None)
+        .import(import_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -513,7 +513,7 @@ async fn import_public_key_for_private(
     )
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
-    kms.import(import_req, user, None)
+    kms.import(import_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -677,7 +677,7 @@ async fn import_ec_key(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .import(import_req, user, None)
+        .import(import_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -840,7 +840,7 @@ async fn import_rsa_key(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .import(import_req, user, None)
+        .import(import_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 
@@ -943,7 +943,7 @@ async fn import_okp_key(
     .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
-        .import(import_req, user, None)
+        .import(import_req, user)
         .await
         .map_err(CryptoApiError::from)?;
 

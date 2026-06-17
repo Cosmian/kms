@@ -675,9 +675,9 @@ fn test_vast_recertify_request_parsed() {
                 ephemeral: None,
                 unique_batch_item_id: None,
                 request_payload: Operation::ReCertify(ReCertify {
-                    unique_identifier: "non-existent-cert-id".to_owned(),
-                    certificate_request_type: CertificateRequestType::PEM,
-                    certificate_request_value: vec![],
+                    unique_identifier: Some("non-existent-cert-id".to_owned()),
+                    certificate_request_type: Some(CertificateRequestType::PEM),
+                    certificate_request_value: Some(vec![]),
                     template_attribute: None,
                 }),
                 message_extension: None,

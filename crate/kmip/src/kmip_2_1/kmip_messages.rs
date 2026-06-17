@@ -354,6 +354,9 @@ impl<'de> Deserialize<'de> for RequestMessageBatchItem {
                                 OperationEnumeration::ReKeyKeyPair => {
                                     Operation::ReKeyKeyPair(map.next_value()?)
                                 }
+                                OperationEnumeration::ReCertify => {
+                                    Operation::ReCertify(map.next_value()?)
+                                }
                                 x => {
                                     return Err(de::Error::custom(format!(
                                         "Request Message Batch Item: unsupported operation: {x:?}"
@@ -791,6 +794,9 @@ impl<'de> Deserialize<'de> for ResponseMessageBatchItem {
                                 }
                                 OperationEnumeration::ReKeyKeyPair => {
                                     Operation::ReKeyKeyPairResponse(map.next_value()?)
+                                }
+                                OperationEnumeration::ReCertify => {
+                                    Operation::ReCertifyResponse(map.next_value()?)
                                 }
                                 x => {
                                     return Err(de::Error::custom(format!(

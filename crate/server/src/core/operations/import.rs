@@ -33,11 +33,11 @@ use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
 
+use super::key_ops::enforce_create_permission;
 use crate::{
     core::{
         KMS,
         operations::validate::verify_crls,
-        retrieve_object_utils::user_has_permission,
         wrapping::{unwrap_object, wrap_and_cache},
     },
     error::KmsError,
@@ -46,12 +46,7 @@ use crate::{
 };
 
 /// Import a new object
-pub(crate) async fn import(
-    kms: &KMS,
-    request: Import,
-    user: &str,
-    privileged_users: Option<Vec<String>>,
-) -> KResult<ImportResponse> {
+pub(crate) async fn import(kms: &KMS, request: Import, user: &str) -> KResult<ImportResponse> {
     trace!(
         "Entering import KMIP operation: uid={}, object_type={}",
         request.unique_identifier, request.object_type
@@ -71,21 +66,7 @@ pub(crate) async fn import(
 
     // To import an object, ensure the user has the `Create` access right.
     // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users {
-        let has_permission = user_has_permission(
-            user,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == user) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
+    enforce_create_permission(kms, user).await?;
 
     // When replace_existing is requested with an explicit UID, verify the caller owns the
     // target object. Without this check, any user with Create rights could overwrite another

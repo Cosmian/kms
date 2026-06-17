@@ -1188,6 +1188,7 @@ dependencies = [
  "pkcs11-sys",
  "rand 0.10.1",
  "thiserror 2.0.18",
+ "time",
  "uuid",
  "zeroize",
 ]
@@ -1351,6 +1352,7 @@ dependencies = [
  "num-bigint-dig",
  "serde_json",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "zeroize",
 ]
@@ -1442,6 +1444,7 @@ dependencies = [
  "strum 0.27.2",
  "tempfile",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tokio-postgres",
  "tokio-rusqlite",

@@ -7,16 +7,19 @@ use self::{
 };
 use crate::{
     actions::shared::{
-        ActivateKeyAction, ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction,
-        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
+        ActivateKeyAction, ExportSecretDataOrKeyAction, GetRotationPolicyAction,
+        ImportSecretDataOrKeyAction, SetRotationPolicyAction, UnwrapSecretDataOrKeyAction,
+        WrapSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
 
 pub mod create_key;
 pub mod destroy_key;
+pub mod get_rotation_policy;
 pub mod rekey;
 pub mod revoke_key;
+pub mod set_rotation_policy;
 
 /// Create, destroy, import, and export symmetric keys
 #[derive(Subcommand)]
@@ -30,6 +33,8 @@ pub enum KeysCommands {
     Unwrap(UnwrapSecretDataOrKeyAction),
     Revoke(RevokeKeyAction),
     Destroy(DestroyKeyAction),
+    SetRotationPolicy(SetRotationPolicyAction),
+    GetRotationPolicy(GetRotationPolicyAction),
 }
 
 impl KeysCommands {
@@ -60,6 +65,12 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::Destroy(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::SetRotationPolicy(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::GetRotationPolicy(action) => {
                 action.run(kms_rest_client).await?;
             }
         }

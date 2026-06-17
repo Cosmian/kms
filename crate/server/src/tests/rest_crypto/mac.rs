@@ -17,7 +17,7 @@ use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn test_hs256_compute_verify() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,

@@ -80,7 +80,7 @@ fn build_protected_header(alg: &str, enc: &str, kid: &str) -> String {
 #[tokio::test]
 async fn test_unwrap_key_then_decrypt() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     // 1. Create RSA key pair via KMIP
     let (_kid_priv, kid_pub) = create_rsa_key_pair(&app).await?;
@@ -145,7 +145,7 @@ async fn test_unwrap_key_then_decrypt() -> KResult<()> {
 #[tokio::test]
 async fn test_unwrap_key_rsa_oaep_256() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let (_kid_priv, kid_pub) = create_rsa_key_pair(&app).await?;
 
@@ -200,7 +200,7 @@ async fn test_unwrap_key_rsa_oaep_256() -> KResult<()> {
 #[tokio::test]
 async fn test_unwrap_key_unsupported_alg() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let protected = build_protected_header("dir", "A256GCM", "some-kid");
     let req = actix_test::TestRequest::post()
@@ -220,7 +220,7 @@ async fn test_unwrap_key_unsupported_alg() -> KResult<()> {
 #[tokio::test]
 async fn test_unwrap_key_missing_enc() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let header = json!({"alg": "RSA-OAEP-256", "kid": "some-kid"});
     let protected = URL_SAFE_NO_PAD.encode(header.to_string().as_bytes());
@@ -241,7 +241,7 @@ async fn test_unwrap_key_missing_enc() -> KResult<()> {
 #[tokio::test]
 async fn test_unwrap_key_empty_encrypted_key() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let (kid_priv, _kid_pub) = create_rsa_key_pair(&app).await?;
     let protected = build_protected_header("RSA-OAEP-256", "A256GCM", &kid_priv);
@@ -264,7 +264,7 @@ async fn test_unwrap_key_empty_encrypted_key() -> KResult<()> {
 #[tokio::test]
 async fn test_unwrap_key_size_mismatch() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let (kid_priv, kid_pub) = create_rsa_key_pair(&app).await?;
 

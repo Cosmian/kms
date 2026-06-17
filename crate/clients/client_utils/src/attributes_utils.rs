@@ -114,7 +114,7 @@ pub fn parse_selected_attributes(
                 if let Some(v) = attributes.activation_date.as_ref() {
                     results.insert(
                         tag.to_string(),
-                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
                     );
                 }
             }
@@ -377,10 +377,59 @@ pub fn parse_selected_attributes_flatten(
                 if let Some(v) = attributes.activation_date.as_ref() {
                     results.insert(
                         selected_attribute_name.to_owned(),
-                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
                     );
                 }
             }
+            "initial_date" => {
+                if let Some(v) = attributes.initial_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "original_creation_date" => {
+                if let Some(v) = attributes.original_creation_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_date" => {
+                if let Some(v) = attributes.rotate_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_generation" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_generation.as_ref()
+            ),
+            "rotate_interval" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_interval.as_ref()
+            ),
+            "rotate_latest" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_latest.as_ref()
+            ),
+            "rotate_name" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_name.as_ref()
+            ),
+            "rotate_offset" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_offset.as_ref()
+            ),
             "cryptographic_algorithm" => insert_if_some!(
                 results,
                 selected_attribute_name,

@@ -350,6 +350,8 @@ mod tests {
             privileged_users: None,
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             print_default_config: false,
+            auto_rotation_check_interval_secs: 0,
+            keyset_warn_depth: 5,
         };
 
         let toml_string = r#"
@@ -365,6 +367,8 @@ hsm_password = []
 hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
+auto_rotation_check_interval_secs = 0
+keyset_warn_depth = 5
 
 [db]
 database_type = "[redis-findex, postgresql,...]"

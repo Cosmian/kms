@@ -64,6 +64,12 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
             }
         }
     }
+    // Index rotate_name so find_by_rotate_name can search by keyword
+    if let Some(rotate_name) = &attributes.rotate_name {
+        keywords.insert(Keyword::from(
+            format!("rotate_name::{rotate_name}").as_bytes(),
+        ));
+    }
     keywords
 }
 
@@ -124,6 +130,10 @@ impl RedisDbObject {
         }
         // index the owner
         keywords.insert(Keyword::from(self.owner.as_bytes()));
+        // index the wrapping key UID so find_wrapped_by can search by keyword
+        if let Some(wk_uid) = self.object.wrapping_key_uid() {
+            keywords.insert(Keyword::from(format!("wrapped_by::{wk_uid}").as_bytes()));
+        }
         keywords
     }
 }

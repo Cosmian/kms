@@ -21,17 +21,12 @@ impl KMS {
     /// Grant access to a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub(crate) async fn grant_access(
-        &self,
-        access: &Access,
-        owner: &str,
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<()> {
+    pub(crate) async fn grant_access(&self, access: &Access, owner: &str) -> KResult<()> {
         // if create access right is set, grant access to Create for the * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            if let Some(users) = privileged_users {
+            if let Some(ref users) = self.params.privileged_users {
                 if !users.contains(&owner.to_owned()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."
@@ -114,18 +109,12 @@ impl KMS {
     /// Remove an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub(crate) async fn revoke_access(
-        &self,
-        access: &Access,
-        owner: &str,
-
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<()> {
+    pub(crate) async fn revoke_access(&self, access: &Access, owner: &str) -> KResult<()> {
         // if create access right is set, revoke access Create for * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            if let Some(users) = privileged_users {
+            if let Some(ref users) = self.params.privileged_users {
                 if !users.contains(&owner.to_owned()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."

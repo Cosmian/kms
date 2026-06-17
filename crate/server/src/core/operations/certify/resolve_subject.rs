@@ -15,11 +15,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     },
 };
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip,
     cosmian_kmip::kmip_2_1::{
         KmipOperation,
         kmip_objects::ObjectType,
-        kmip_operations::CreateKeyPair,
+        kmip_operations::{Certify, CreateKeyPair},
         kmip_types::{CertificateRequestType, UniqueIdentifier},
     },
     cosmian_kms_crypto::openssl::{
@@ -33,8 +32,8 @@ use super::subject::{KeyPairData, Subject};
 use crate::{
     core::{
         KMS,
-        operations::create_key_pair::generate_key_pair,
-        retrieve_object_utils::{retrieve_object_for_operation, user_has_permission},
+        operations::{create_key_pair::generate_key_pair, key_ops::enforce_create_permission},
+        retrieve_object_utils::retrieve_object_for_operation,
     },
     error::KmsError,
     kms_bail,
@@ -81,12 +80,7 @@ fn cryptographic_usage_mask_public_key(
 /// - a certificate
 /// - a key pair and a subject name
 /// - a CSR
-pub(super) async fn get_subject(
-    kms: &KMS,
-    request: &cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Certify,
-    user: &str,
-    privileged_users: Option<Vec<String>>,
-) -> KResult<Subject> {
+pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &str) -> KResult<Subject> {
     // Did the user provide a CSR?
     if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
         let x509_req = match &request
@@ -180,21 +174,7 @@ pub(super) async fn get_subject(
 
     // For creation of an object, check that user has create access-right
     // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users {
-        let has_permission = user_has_permission(
-            user,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == user) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
+    enforce_create_permission(kms, user).await?;
 
     let sk_uid = UniqueIdentifier::default();
     let pk_uid = UniqueIdentifier::default();

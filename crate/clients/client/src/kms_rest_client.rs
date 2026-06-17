@@ -22,7 +22,7 @@ use cosmian_kms_client_utils::reexport::{
         UserAccessResponse,
     },
 };
-use cosmian_logger::{info, trace};
+use cosmian_logger::{info, trace, warn};
 use serde::Serialize;
 
 use crate::{
@@ -792,7 +792,20 @@ impl KmsClient {
         let response = self.client.post_json(&server_url, &ttlv).await?;
         let status_code = response.status;
         if status_code.is_success() {
-            let ttlv = response.json::<TTLV>()?;
+            // Must read headers BEFORE consuming the response body with `.json()`.
+            let keyset_depth: Option<u32> = response
+                .headers()
+                .get("x-kms-keyset-depth")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse().ok());
+            let ttlv = response.json::<TTLV>().await?;
+            if let Some(depth) = keyset_depth {
+                warn!(
+                    "Decryption succeeded at keyset chain depth {depth}. The ciphertext was \
+                     encrypted with an older key generation. Consider re-encrypting with the \
+                     current key."
+                );
+            }
             if self.print_json {
                 println!(
                     "\nKMIP Response <==\n{}\n",

@@ -37,7 +37,7 @@ use crate::{
 
 const X509_VERSION3: i32 = 2;
 
-pub(super) fn build_and_sign_certificate(
+pub(crate) fn build_and_sign_certificate(
     vendor_id: &str,
     issuer: &Issuer,
     subject: &Subject,

@@ -1,5 +1,6 @@
 mod activate;
 mod attributes;
+mod auto_rotate;
 mod certify;
 mod check;
 mod create;
@@ -16,16 +17,16 @@ mod export_get;
 mod get;
 mod hash;
 mod import;
-mod key_ops;
+pub(crate) mod key_ops;
+pub(crate) mod key_selection;
 mod locate;
 mod mac;
 mod message;
 mod pkcs11;
 mod query;
+mod recertify;
 mod register;
 mod rekey;
-mod rekey_common;
-mod rekey_keypair;
 mod revoke;
 mod rng_retrieve;
 mod rng_seed;
@@ -37,6 +38,7 @@ pub(crate) use activate::activate;
 pub(crate) use attributes::{
     add_attribute, delete_attribute, get_attributes, modify_attribute, set_attribute,
 };
+pub(crate) use auto_rotate::{dispatch_renewal_warnings, run_auto_rotation};
 pub(crate) use certify::certify;
 pub(crate) use check::check;
 pub(crate) use create::create;
@@ -61,9 +63,9 @@ pub(crate) use pkcs11::pkcs11;
 pub(crate) use query::query;
 pub(crate) use register::register;
 pub(crate) mod algorithm_policy;
-pub(crate) use key_ops::{CryptoOpSpec, has_usage_mask, perform_crypto_operation};
-pub(crate) use rekey::rekey;
-pub(crate) use rekey_keypair::rekey_keypair;
+pub(crate) use key_ops::{CryptoOpSpec, KeysetMode, has_usage_mask, perform_crypto_operation};
+pub(crate) use recertify::recertify;
+pub(crate) use rekey::{rekey, rekey_keypair};
 #[cfg(feature = "non-fips")]
 pub(crate) use revoke::recursively_revoke_key;
 pub(crate) use revoke::revoke_operation;

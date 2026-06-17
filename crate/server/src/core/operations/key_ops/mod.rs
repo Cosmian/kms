@@ -1,4 +1,4 @@
-mod crypto_op;
+pub(crate) mod crypto_op;
 
 use cosmian_kms_server_database::{
     Database,
@@ -15,21 +15,64 @@ use cosmian_kms_server_database::{
         cosmian_kms_interfaces::ObjectWithMetadata,
     },
 };
-pub(crate) use crypto_op::{CryptoOpSpec, has_usage_mask, perform_crypto_operation};
+pub(crate) use crypto_op::{CryptoOpSpec, KeysetMode, has_usage_mask, perform_crypto_operation};
 use time::OffsetDateTime;
 
 use super::digest::digest;
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, retrieve_object_utils::user_has_permission, uid_utils::has_prefix},
     error::KmsError,
+    kms_bail,
     result::KResult,
 };
 
+/// Enforce that the caller has `Create` access-right.
+///
+/// When `privileged_users` is configured, the user must either:
+/// - have been explicitly granted the `Create` operation on any object,
+/// - be listed in `privileged_users`, or
+/// - be the `default_username` (unauthenticated / local access).
+///
+/// This check applies uniformly to `Create`, `CreateKeyPair`, `Import`, and `Register`.
+pub(crate) async fn enforce_create_permission(kms: &KMS, user: &str) -> KResult<()> {
+    if let Some(ref users) = kms.params.privileged_users {
+        if user == kms.params.default_username
+            || users.iter().any(|u| u == user)
+            || user_has_permission(user, None, &KmipOperation::Create, kms).await?
+        {
+            return Ok(());
+        }
+        kms_bail!(KmsError::Unauthorized(
+            "User does not have create access-right.".to_owned()
+        ))
+    }
+    // If no privileged user was set, all users have the `Create` right.
+    Ok(())
+}
+
+/// Reject requests that specify `ProtectionStorageMasks`.
+///
+/// KMIP defines this field but the server does not implement storage-level
+/// masking.  Fail early rather than silently ignoring the field.
+#[allow(clippy::missing_const_for_fn)] // kms_bail! is not const-compatible
+pub(crate) fn reject_protection_storage_masks(has_masks: bool) -> KResult<()> {
+    if has_masks {
+        kms_bail!(KmsError::UnsupportedPlaceholder)
+    }
+    Ok(())
+}
+
 /// Initialize lifecycle attributes on a newly created or imported object.
 ///
-/// Sets state (`PreActive` or `Active` based on `requested_activation_date`), digest,
-/// `initial_date`, `original_creation_date`, `last_change_date`, `activation_date` (if `Active`),
-/// and `object_type` on the object's attributes. Returns a clone of the final attributes.
+/// - No `requested_activation_date` → state `PreActive` (requires explicit
+///   Activate call or auto-activation via `get_effective_state`).
+/// - `requested_activation_date` ≤ now → state `Active` immediately.
+/// - `requested_activation_date` > now → state `PreActive`, date stored for
+///   auto-transition by `get_effective_state`.
+///
+/// Also sets `digest`, `initial_date`, `original_creation_date`,
+/// `last_change_date`, and `object_type`. Returns a clone of the final
+/// attributes.
 pub(crate) fn setup_object_lifecycle(
     object: &mut Object,
     object_type: ObjectType,
@@ -39,6 +82,8 @@ pub(crate) fn setup_object_lifecycle(
     let digest = digest(object)?;
     let attributes = object.attributes_mut()?;
 
+    // KMIP semantics: activation_date present and ≤ now → Active,
+    // otherwise PreActive (absent or future date).
     let activation_allows_active = requested_activation_date.is_some_and(|d| d <= now);
     let state = if activation_allows_active {
         State::Active
@@ -54,6 +99,9 @@ pub(crate) fn setup_object_lifecycle(
     attributes.last_change_date = Some(now);
     if state == State::Active {
         attributes.activation_date = Some(now);
+    } else if let Some(future_date) = requested_activation_date {
+        // PreActive with future date: store it so auto-transition works
+        attributes.activation_date = Some(future_date);
     }
 
     Ok(attributes.clone())
@@ -90,30 +138,41 @@ impl ObjectWithMetadataOps for ObjectWithMetadata {
     fn get_effective_state(&self) -> KResult<State> {
         let stored_state = self.state();
 
-        // Only PreActive objects can auto-transition to Active
-        if stored_state != State::PreActive {
-            return Ok(stored_state);
-        }
-
-        // Check if there's an activation_date set
-        let activation_date = self.attributes().activation_date.or_else(|| {
-            // Fallback to object's attributes if not in metadata
-            self.object()
-                .attributes()
-                .ok()
-                .and_then(|attrs| attrs.activation_date)
-        });
-
-        if let Some(activation_date) = activation_date {
-            let now = time_normalize()?;
-            if activation_date <= now {
-                // The activation date has passed, treat as Active
-                return Ok(State::Active);
+        match stored_state {
+            State::PreActive => {
+                // KMIP §4.57 transition 4: PreActive → Active when ActivationDate is reached
+                let activation_date = self.attributes().activation_date.or_else(|| {
+                    self.object()
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.activation_date)
+                });
+                if let Some(activation_date) = activation_date {
+                    let now = time_normalize()?;
+                    if activation_date <= now {
+                        return Ok(State::Active);
+                    }
+                }
+                Ok(State::PreActive)
             }
+            State::Active => {
+                // KMIP §4.57 transition 6: Active → Deactivated when DeactivationDate is reached
+                let deactivation_date = self.attributes().deactivation_date.or_else(|| {
+                    self.object()
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.deactivation_date)
+                });
+                if let Some(deactivation_date) = deactivation_date {
+                    let now = time_normalize()?;
+                    if deactivation_date <= now {
+                        return Ok(State::Deactivated);
+                    }
+                }
+                Ok(State::Active)
+            }
+            _ => Ok(stored_state),
         }
-
-        // No activation_date or it's in the future, remain PreActive
-        Ok(State::PreActive)
     }
 
     fn check_process_window(&self) -> KResult<()> {
@@ -215,7 +274,7 @@ mod tests {
         kmip_0::kmip_types::State,
         kmip_2_1::{
             kmip_attributes::Attributes,
-            kmip_data_structures::{KeyBlock, KeyValue},
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
             kmip_objects::{Object, SymmetricKey},
             kmip_types::{CryptographicAlgorithm, KeyFormatType},
         },
@@ -229,7 +288,10 @@ mod tests {
         Object::SymmetricKey(SymmetricKey {
             key_block: KeyBlock {
                 key_format_type: KeyFormatType::Raw,
-                key_value: Some(KeyValue::ByteString(Zeroizing::new(vec![1, 2, 3, 4]))),
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![1, 2, 3, 4])),
+                    attributes: Some(Attributes::default()),
+                }),
                 key_compression_type: None,
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 cryptographic_length: Some(256),
@@ -298,9 +360,76 @@ mod tests {
     }
 
     #[test]
+    fn test_setup_object_lifecycle_past_date_gives_active() -> KResult<()> {
+        let mut obj = test_object();
+        let past = time_normalize()? - Duration::hours(1);
+        let attrs = setup_object_lifecycle(&mut obj, ObjectType::SymmetricKey, Some(past))?;
+        assert_eq!(attrs.state, Some(State::Active));
+        Ok(())
+    }
+
+    #[test]
+    fn test_setup_object_lifecycle_no_date_gives_preactive() -> KResult<()> {
+        let mut obj = test_object();
+        let attrs = setup_object_lifecycle(&mut obj, ObjectType::SymmetricKey, None)?;
+        assert_eq!(attrs.state, Some(State::PreActive));
+        Ok(())
+    }
+
+    #[test]
+    fn test_setup_object_lifecycle_future_date_gives_preactive() -> KResult<()> {
+        let mut obj = test_object();
+        let future = time_normalize()? + Duration::hours(1);
+        let attrs = setup_object_lifecycle(&mut obj, ObjectType::SymmetricKey, Some(future))?;
+        assert_eq!(attrs.state, Some(State::PreActive));
+        assert_eq!(attrs.activation_date, Some(future));
+        Ok(())
+    }
+
+    #[test]
     fn test_effective_state_active_remains_active() -> KResult<()> {
         let attrs = Attributes {
             state: Some(State::Active),
+            ..Default::default()
+        };
+
+        let owm = ObjectWithMetadata::new(
+            "test-id".to_owned(),
+            test_object(),
+            "owner".to_owned(),
+            State::Active,
+            attrs,
+        );
+
+        assert_eq!(owm.get_effective_state()?, State::Active);
+        Ok(())
+    }
+
+    #[test]
+    fn test_effective_state_active_with_past_deactivation_date() -> KResult<()> {
+        let attrs = Attributes {
+            state: Some(State::Active),
+            deactivation_date: Some(time_normalize()? - Duration::hours(1)),
+            ..Default::default()
+        };
+
+        let owm = ObjectWithMetadata::new(
+            "test-id".to_owned(),
+            test_object(),
+            "owner".to_owned(),
+            State::Active,
+            attrs,
+        );
+
+        assert_eq!(owm.get_effective_state()?, State::Deactivated);
+        Ok(())
+    }
+
+    #[test]
+    fn test_effective_state_active_with_future_deactivation_date() -> KResult<()> {
+        let attrs = Attributes {
+            state: Some(State::Active),
+            deactivation_date: Some(time_normalize()? + Duration::hours(1)),
             ..Default::default()
         };
 

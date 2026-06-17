@@ -24,11 +24,12 @@ WHERE name = ?;
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects
 (
-    id         VARCHAR(128) PRIMARY KEY,
-    object     LONGTEXT NOT NULL,
-    attributes json NOT NULL,
-    state      VARCHAR(32),
-    owner      VARCHAR(255)
+    id              VARCHAR(128) PRIMARY KEY,
+    object          LONGTEXT NOT NULL,
+    attributes      json NOT NULL,
+    state           VARCHAR(32),
+    owner           VARCHAR(255),
+    wrapping_key_id VARCHAR(128)
 );
 
 -- name: add-column-attributes
@@ -37,6 +38,12 @@ ALTER TABLE objects
 
 -- name: has-column-attributes
 SHOW COLUMNS FROM objects LIKE 'attributes';
+
+-- name: has-column-wrapping-key-id
+SHOW COLUMNS FROM objects LIKE 'wrapping_key_id';
+
+-- name: add-column-wrapping-key-id
+ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access
@@ -89,8 +96,8 @@ WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
 AND JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.ObjectType')) IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
 
 -- name: insert-objects
-INSERT INTO objects (id, object, attributes, state, owner)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: select-object
 SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
@@ -100,7 +107,8 @@ WHERE objects.id = ?;
 -- name: update-object-with-object
 UPDATE objects
 SET object=?,
-    attributes=?
+    attributes=?,
+    wrapping_key_id=?
 WHERE id = ?;
 
 -- name: update-object-with-state
@@ -114,12 +122,13 @@ FROM objects
 WHERE id = ?;
 
 -- name: upsert-object
-INSERT INTO objects (id, object, attributes, state, owner)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id)
+VALUES (?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE object=VALUES(object),
                         attributes=VALUES(attributes),
                         state=VALUES(state),
-                        owner=VALUES(owner);
+                        owner=VALUES(owner),
+                        wrapping_key_id=VALUES(wrapping_key_id);
 
 -- name: select-user-accesses-for-object
 SELECT permissions
@@ -201,3 +210,16 @@ FROM tags
 WHERE tag IN (@TAGS)
 GROUP BY id
 HAVING COUNT(DISTINCT tag) = ?;
+
+-- name: find-wrapped-by
+SELECT DISTINCT objects.id, objects.state, objects.attributes
+FROM objects
+LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = ?
+WHERE (objects.owner = ? OR read_access.userid = ?)
+  AND objects.wrapping_key_id = ?;
+
+-- name: select-objects-null-wrapping-key
+SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
+
+-- name: update-wrapping-key-id
+UPDATE objects SET wrapping_key_id = ? WHERE id = ?;

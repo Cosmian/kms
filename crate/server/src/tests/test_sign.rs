@@ -184,7 +184,7 @@ async fn test_sign_rsa() -> KResult<()> {
         false,      // sensitive
         None,       // wrapping_key_id
     )?;
-    let response = kms.create_key_pair(request, owner, None).await?;
+    let response = kms.create_key_pair(request, owner).await?;
 
     // Test single-call signature
     test_single_signature(
@@ -222,7 +222,7 @@ async fn test_sign_ec_curve(curve: RecommendedCurve, test_name: &str) -> KResult
         false,      // sensitive
         None,       // wrapping_key_id
     )?;
-    let response = kms.create_key_pair(request, owner, None).await?;
+    let response = kms.create_key_pair(request, owner).await?;
 
     // Test single-call signature
     test_single_signature(

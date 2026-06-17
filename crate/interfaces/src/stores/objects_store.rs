@@ -5,6 +5,8 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
+use time::OffsetDateTime;
+
 use cosmian_logger::warn;
 
 use crate::{InterfaceResult, ObjectWithMetadata};
@@ -103,6 +105,74 @@ pub trait ObjectsStore {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Return (uid, state, attributes) for every object whose
+    /// `key_wrapping_data.encryption_key_information.unique_identifier` equals
+    /// `wrapping_key_uid`. Used by key rotation to re-wrap all objects protected by
+    /// the rotated key.
+    ///
+    /// The default implementation returns an empty list; backends that support
+    /// JSON-based object storage should override this with an efficient query.
+    async fn find_wrapped_by(
+        &self,
+        _wrapping_key_uid: &str,
+        _user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        Ok(vec![])
+    }
+
+    /// Return UIDs of all Active objects that have a `rotate_interval > 0` and whose
+    /// next rotation instant is ≤ `now`.
+    ///
+    /// The next rotation instant is computed as:
+    /// - `rotate_date + rotate_interval`  (if `rotate_date` is set), or
+    /// - `initial_date + rotate_interval + rotate_offset` (if `rotate_date` is None)
+    ///
+    /// The default implementation returns an empty list; backends should override.
+    async fn find_due_for_rotation(&self, _now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
+        Ok(vec![])
+    }
+
+    /// Find objects by their `x-rotate-name` vendor attribute.
+    ///
+    /// Optionally filter by:
+    /// - `generation`: match `x-rotate-generation` exactly
+    /// - `latest`: match `x-rotate-latest` flag
+    /// - `owner`: match the object owner
+    ///
+    /// Returns a list of `(uid, attributes)` pairs.
+    /// The default implementation returns an empty list; backends should override.
+    async fn find_by_rotate_name(
+        &self,
+        _name: &str,
+        _generation: Option<i32>,
+        _latest: Option<bool>,
+        _owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        Ok(vec![])
+    }
+
+    /// Set the human-readable label on a key object.
+    ///
+    /// For HSM backends this writes `CKA_LABEL` via `C_SetAttributeValue`.
+    /// The SQL backends ignore this call (labels are carried in the KMIP `Name` attribute
+    /// and managed separately). Default: no-op.
+    async fn set_key_label(&self, _uid: &str, _label: &str) -> InterfaceResult<()> {
+        Ok(())
+    }
+
+    /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
+    ///
+    /// `start_date` and `end_date` are stored as `CKA_START_DATE` / `CKA_END_DATE`.
+    /// SQL backends ignore this call. Default: no-op.
+    async fn set_key_rotation_dates(
+        &self,
+        _uid: &str,
+        _start_date: Option<time::Date>,
+        _end_date: Option<time::Date>,
+    ) -> InterfaceResult<()> {
+        Ok(())
+    }
 
     /// Count all objects that are **not** in a terminal (destroyed) state.
     ///

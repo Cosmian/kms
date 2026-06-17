@@ -110,12 +110,9 @@ pub(crate) async fn retrieve_object_for_operation(
                 attributes.state = Some(effective_state);
             }
 
-            // KMIP 2.1 Auto-activation: Automatically activate PreActive objects when activation_date has passed
-            // This ensures the database state stays synchronized with the object's actual lifecycle state
+            // KMIP 2.1 Auto-activation: PreActive → Active when ActivationDate has passed (§4.57 transition 4)
             if effective_state == State::PreActive {
-                // Check if activation_date is set and has passed
                 let activation_date = owm.attributes().activation_date.or_else(|| {
-                    // Fallback to object's attributes if not in metadata
                     owm.object()
                         .attributes()
                         .ok()
@@ -125,26 +122,88 @@ pub(crate) async fn retrieve_object_for_operation(
                 if let Some(activation_date) = activation_date {
                     let now = time_normalize()?;
                     if activation_date <= now {
-                        // Activation date has passed, automatically transition to Active
                         trace!(
                             "Auto-activating object {} (activation_date {} <= now {})",
                             owm.id(),
                             activation_date,
                             now
                         );
-
-                        // Update state in both the object attributes and metadata
                         owm.attributes_mut().state = Some(State::Active);
                         if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
                             attributes.state = Some(State::Active);
                         }
-
-                        // Persist the state change to database
-                        // Note: We do this synchronously to ensure consistency, but log errors
-                        // rather than failing the retrieval if the update fails
                         if let Err(e) = kms.database.update_state(owm.id(), State::Active).await {
                             warn!(
                                 "Failed to persist auto-activation of object {}: {}",
+                                owm.id(),
+                                e
+                            );
+                        }
+                        // Re-check: the now-Active key may also need auto-deactivation
+                        let deactivation_date = owm.attributes().deactivation_date.or_else(|| {
+                            owm.object()
+                                .attributes()
+                                .ok()
+                                .and_then(|attrs| attrs.deactivation_date)
+                        });
+                        if let Some(deactivation_date) = deactivation_date {
+                            if deactivation_date <= now {
+                                trace!(
+                                    "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                                    owm.id(),
+                                    deactivation_date,
+                                    now
+                                );
+                                owm.attributes_mut().state = Some(State::Deactivated);
+                                if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                                    attributes.state = Some(State::Deactivated);
+                                }
+                                if let Err(e) = kms
+                                    .database
+                                    .update_state(owm.id(), State::Deactivated)
+                                    .await
+                                {
+                                    warn!(
+                                        "Failed to persist auto-deactivation of object {}: {}",
+                                        owm.id(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // KMIP 2.1 Auto-deactivation: Active → Deactivated when DeactivationDate has passed (§4.57 transition 6)
+            if owm.attributes().state == Some(State::Active) {
+                let deactivation_date = owm.attributes().deactivation_date.or_else(|| {
+                    owm.object()
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.deactivation_date)
+                });
+
+                if let Some(deactivation_date) = deactivation_date {
+                    let now = time_normalize()?;
+                    if deactivation_date <= now {
+                        trace!(
+                            "Auto-deactivating object {} (deactivation_date {} <= now {})",
+                            owm.id(),
+                            deactivation_date,
+                            now
+                        );
+                        owm.attributes_mut().state = Some(State::Deactivated);
+                        if let Ok(ref mut attributes) = owm.object_mut().attributes_mut() {
+                            attributes.state = Some(State::Deactivated);
+                        }
+                        if let Err(e) = kms
+                            .database
+                            .update_state(owm.id(), State::Deactivated)
+                            .await
+                        {
+                            warn!(
+                                "Failed to persist auto-deactivation of object {}: {}",
                                 owm.id(),
                                 e
                             );

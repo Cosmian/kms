@@ -19,7 +19,7 @@ static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
     GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
-    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN, time_normalize},
+    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN},
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
@@ -375,7 +375,6 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
             ),
             object_type: Some(ObjectType::SymmetricKey),
             unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-            activation_date: Some(time_normalize()?),
             ..Default::default()
         },
         protection_storage_masks: None,
@@ -496,7 +495,6 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
             ),
             object_type: Some(ObjectType::SymmetricKey),
             unique_identifier: Some(UniqueIdentifier::TextString(kek_id.clone())),
-            activation_date: Some(time_normalize()?),
             ..Default::default()
         },
         protection_storage_masks: None,
@@ -588,6 +586,52 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     config.workspace.tmp_path = workspace_dir.join("tmp");
     config.key_encryption_key = Some(kek_id);
     config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
+    start_server_from_config(config, &config_path).await
+}
+
+/// Start a `SoftHSM2` + KEK test server where the KEK has **not** been pre-created.
+///
+/// This server type is used to reproduce the self-wrap regression (PR #968):
+/// `wrap_and_cache` must not attempt to wrap an HSM-resident key with the
+/// server-wide KEK, even when the key being created IS the KEK itself.
+///
+/// Concretely, `key_encryption_key` is set to `"hsm::{slot}::kek_bootstrap"`
+/// before the server starts.  The first vector step creates that exact HSM key,
+/// which would have triggered the self-wrap error prior to the fix.
+///
+/// # Errors
+/// Returns an error if the server fails to start.
+///
+/// # Panics
+/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
+pub async fn start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+-> Result<TestsContext, KmsClientError> {
+    let slot = get_softhsm2_slot_id();
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_softhsm2_kek_bootstrap_{}_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let kek_id = format!("hsm::{slot}::kek_bootstrap_{}", std::process::id());
+    // Export for {{$HSM_BOOTSTRAP_KEK_ID}} substitution in vector steps.
+    // Called once inside OnceCell initialisation before any vector steps run.
+    crate::test_env::set("HSM_BOOTSTRAP_KEK_ID", &kek_id);
+
+    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let mut config = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_slot = vec![slot];
+    config.db.sqlite_path = workspace_dir.join("sqlite-data");
+    config.workspace.root_data_path = workspace_dir.join("workspace");
+    config.workspace.tmp_path = workspace_dir.join("tmp");
+    config.key_encryption_key = Some(kek_id);
+    config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
+    // Disable Google CSE: starting with an empty workspace means no Google CSE
+    // RSA keypair exists yet, and this test does not need that feature.
+    config.google_cse_config.google_cse_enable = false;
     start_server_from_config(config, &config_path).await
 }
 

@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
@@ -44,7 +44,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode, has_usage_mask, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -65,6 +65,17 @@ impl CryptoOpSpec for DecryptOp {
 
     fn unique_identifier(request: &Self::Request) -> Option<&UniqueIdentifier> {
         request.unique_identifier.as_ref()
+    }
+
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::TryEach
+    }
+
+    /// Decrypt accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31:
+    /// "The object SHALL NOT be used for applying cryptographic protection [...]
+    /// The object SHOULD only be used to process cryptographically-protected information."
+    fn accepted_states() -> &'static [State] {
+        &[State::Active, State::Deactivated, State::Compromised]
     }
 
     fn usage_data_len(request: &Self::Request) -> usize {

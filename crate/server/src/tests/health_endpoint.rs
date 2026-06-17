@@ -6,7 +6,7 @@ use crate::tests::test_utils;
 async fn test_health_endpoint_ok() {
     log_init(option_env!("RUST_LOG"));
 
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let response: serde_json::Value = test_utils::get_json_with_uri(&app, "/health")
         .await
@@ -24,7 +24,7 @@ async fn test_health_endpoint_ok() {
 async fn test_root_redirects_to_ui() {
     log_init(option_env!("RUST_LOG"));
 
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let response = actix_web::test::TestRequest::get()
         .uri("/")

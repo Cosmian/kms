@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**353 vectors** across 8 categories:
+**361 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -133,6 +133,10 @@ replays the steps sequentially.
 | KMIP Operations | `certify_validate` | CreateKeyPair, Certify, Validate, Destroy ×3 | 6 |
 | KMIP Operations | `certify_revoke_validate` | CreateKeyPair, Certify, Validate, Revoke, Validate (invalid) | 8 |
 | KMIP Operations | `certify_chain` | CreateKeyPair, Certify (root→intermediate→leaf), Validate chain | 17 |
+| KMIP Operations | `recertify_self_signed` | CreateKeyPair, Certify (self-signed), ReCertify, GetAttributes (state), Revoke ×2, Destroy ×4 | 10 |
+| KMIP Operations | `recertify_chain` | CreateKeyPair ×2, Certify (CA + leaf), ReCertify (leaf), GetAttributes (links), Revoke ×3, Destroy ×7 | 16 |
+| KMIP Operations | `recertify_with_links` | CreateKeyPair, Certify, ReCertify, GetAttributes (old→ReplacementObjectLink, new→ReplacedObjectLink), Revoke ×2, Destroy ×4 | 11 |
+| KMIP Operations | `recertify_with_offset` | CreateKeyPair, Certify, ReCertify (Offset=0 → Active), CreateKeyPair, Certify, ReCertify (Offset=86400 → PreActive), Revoke ×3, Destroy ×8 | 19 |
 | KMIP Operations | `check` | Create, Check, Activate, Check | 4 |
 | KMIP Operations | `derive_key_pbkdf2` | Create, DeriveKey (PBKDF2-SHA256), Get | 3 |
 | KMIP Operations | `derive_key_pbkdf2_sha512` | Create, DeriveKey (PBKDF2-SHA512), Get | 3 |
@@ -161,12 +165,17 @@ replays the steps sequentially.
 | KMIP Operations | `register_export` | Register, Get, Export, Destroy | 4 |
 | KMIP Operations | `rekey` | Create, ReKey, Encrypt | 3 |
 | KMIP Operations | `rekey_locate_by_name` | Create (named), Locate, ReKey, Locate (finds new key), GetAttributes (old=Active — ReKey does not deactivate the existing key) | 5 |
-| KMIP Operations | `rekey_deactivated_fails` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → fails) | 4 |
+| KMIP Operations | `rekey_deactivated_succeeds` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → succeeds per KMIP §6.1.46) | 9 |
 | KMIP Operations | `rekey_with_links` | Create, ReKey, GetAttributes (old has ReplacementObjectLink), GetAttributes (new has ReplacedObjectLink) | 4 |
 | KMIP Operations | `rekey_with_offset` | Create, ReKey (Offset=3600s), GetAttributes (ActivationDate = now+3600) | 4 |
+| KMIP Operations | `rekey_with_offset_state` | Create, ReKey (Offset=0 → Active), Create, ReKey (Offset=86400 → PreActive), cleanup | 13 |
 | KMIP Operations | `rekey_name_removed_from_old` | Create (named), ReKey, GetAttributes (old has no Name) | 4 |
 | KMIP Operations | `rekey_double_chain` | Create, ReKey, ReKey, GetAttributes (chain of ReplacementObjectLinks) | 5 |
 | KMIP Operations | `rekey_old_key_still_decrypts` | Create, ReKey, Encrypt (old key still works) | 3 |
+| KMIP Operations | `rekey_wrapping_key` | Create wrapping key, Create wrapped dep, ReKey wrapping key (re-wraps dep), Encrypt dep, GetAttributes | 11 |
+| KMIP Operations | `rekey_wrapped_key` | Create wrapping key, Create wrapped key, ReKey wrapped key (unwrap→new material→re-wrap), Encrypt, GetAttributes | 11 |
+| KMIP Operations | `rekey_wrapping_key_with_links` | Create wrapping key + 2 deps, ReKey, verify links + both deps encrypt | 16 |
+| KMIP Operations | `rekey_wrapping_key_double_chain` | Create wrapping key K0 + 2 deps, ReKey×2 (K0→K1→K2), verify full link chain + deps encrypt | 22 |
 | KMIP Operations | `rekey_keypair_ec` | CreateKeyPair (EC P-256), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_rsa` | CreateKeyPair (RSA-2048), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_rsa4096` | CreateKeyPair (RSA-4096), ReKeyKeyPair, Revoke+Destroy | 5 |
@@ -178,13 +187,14 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_keypair_ml_dsa_87` | CreateKeyPair (ML-DSA-87), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_slh_dsa_sha2_128f` | CreateKeyPair (SLH-DSA-SHA2-128f), ReKeyKeyPair, Revoke+Destroy | 5 |
 | KMIP Operations | `rekey_keypair_double_chain` | CreateKeyPair (EC), ReKeyKeyPair ×2, verify link chain | 7 |
-| KMIP Operations | `rekey_keypair_deactivated_fails` | CreateKeyPair (EC), Revoke SK, ReKeyKeyPair → fails | 4 |
+| KMIP Operations | `rekey_keypair_deactivated_succeeds` | CreateKeyPair (EC), Revoke SK, ReKeyKeyPair → succeeds per KMIP §6.1.47 | 10 |
 | KMIP Operations | `rekey_keypair_change_algo_fails` | CreateKeyPair (EC), ReKeyKeyPair (different algo) → fails | 3 |
 | KMIP Operations | `rekey_keypair_ec_locate_by_name` | CreateKeyPair (named), ReKeyKeyPair, Locate (finds new key) | 5 |
 | KMIP Operations | `rekey_keypair_name_removed_from_old` | CreateKeyPair (named), ReKeyKeyPair, GetAttributes (old has no Name) | 5 |
 | KMIP Operations | `rekey_keypair_old_key_still_active` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (old SK State=Active) | 5 |
 | KMIP Operations | `rekey_keypair_no_public_link_fails` | CreateKeyPair (EC), Delete PublicKeyLink, ReKeyKeyPair → fails | 4 |
 | KMIP Operations | `rekey_keypair_with_offset` | CreateKeyPair (EC), ReKeyKeyPair (Offset=3600s), verify ActivationDate | 5 |
+| KMIP Operations | `rekey_keypair_with_offset_state` | CreateKeyPair (EC), ReKeyKeyPair (Offset=0 → Active), CreateKeyPair, ReKeyKeyPair (Offset=86400 → PreActive), cleanup | 20 |
 | KMIP Operations | `rekey_keypair_ec_with_links` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (verify links) | 5 |
 | KMIP Operations | `rekey_keypair_rsa_with_links` | CreateKeyPair (RSA), ReKeyKeyPair, GetAttributes (verify links) | 5 |
 | KMIP Operations | `rekey_keypair_rsa_encrypt_decrypt` | CreateKeyPair (RSA), ReKeyKeyPair, Encrypt+Decrypt with new key | 7 |
@@ -217,6 +227,11 @@ replays the steps sequentially.
 | HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | CreateKeyPair (RSA-2048, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | CreateKeyPair (EC P-256, KEK-wrapped), Sign, Destroy ×2 | 3 |
 | HSM / KEK Create | `hsm/kek_ed25519_create_sign` | CreateKeyPair (Ed25519, KEK-wrapped), Sign, Destroy ×2 | 3 |
+| HSM / KEK ReKey | `hsm/kek_rekey_wrapped` | Create (AES-256, KEK-wrapped), Encrypt, ReKey (unwrap from KEK, new material, re-wrap), Encrypt new, GetAttributes | 9 |
+| HSM / KEK Bootstrap | `hsm/kek_bootstrap_self_create` | **Regression**: Create KEK itself (self-wrap guard bypass), Create DEK, Encrypt, Decrypt, Revoke, Destroy DEK | 6 |
+| HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Create (AES-256, HSM), SetAttribute rotate_name (writes CKA_LABEL), Encrypt by keyset name, Decrypt by UID | 4 |
+| HSM / Resident Keyset | `hsm/resident_keyset_rekey_and_decrypt` | Create, SetAttribute rotate_name, Encrypt (gen-0), ReKey, Decrypt by keyset name (chain: gen-1→gen-0) | 7 |
+| HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Create, SetAttribute rotate_name, Encrypt (gen-0), ReKey ×2, Decrypt by keyset name (chain: gen-2→gen-1→gen-0) | 9 |
 | HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | CreateKeyPair (RSA-1024, KEK-wrapped) → FIPS rejection | 1 |
 | HSM / Resident Create | `hsm/resident_aes128_create_encrypt` | Create (AES-128, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
 | HSM / Resident Create | `hsm/resident_aes256_create_encrypt` | Create (AES-256, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
@@ -319,6 +334,13 @@ replays the steps sequentially.
 | Negative / TypeMismatch | `negative/type_mismatch/import_malformed_key` | Import TransparentSymmetricKey with raw bytes → error | 1 |
 | Negative / TypeMismatch | `negative/type_mismatch/encrypt_with_secret_data` | Encrypt using SecretData object → error | 2 |
 | Negative / TypeMismatch | `negative/type_mismatch/revoke_already_destroyed` | Revoke a destroyed key → success | 3 |
+| Negative / ReCertify | `negative/recertify_missing_uid` | ReCertify without UniqueIdentifier → error | 1 |
+| Negative / ReCertify | `negative/recertify_nonexistent` | ReCertify non-existent certificate → error | 1 |
+| Negative / ReCertify | `negative/recertify_not_a_certificate` | ReCertify a symmetric key → error | 2 |
+| KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Create wrapping key + wrapped key, Revoke wrapped, ReKey → succeeds (KMIP §6.1.46) | 10 |
+| Negative / ReKey | `negative/rekey_preactive_fails` | Create (no ActivationDate → PreActive), ReKey → fails (not Active or Deactivated) | 4 |
+| Negative / ReKeyKeyPair | `negative/rekey_keypair_preactive_fails` | CreateKeyPair (no ActivationDate → PreActive), ReKeyKeyPair → fails (not Active or Deactivated) | 5 |
+| Negative / ReKeyKeyPair | `negative/rekey_keypair_non_latest` | CreateKeyPair (EC P-256), SetAttribute(RotateName), ReKeyKeyPair (gen-0→gen-1), ReKeyKeyPair(gen-0 again) → "not the latest" error | 8 |
 | **non-FIPS CryptographicParameters** | | | |
 | non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_explicit_nonce` | Create (AES-128), Encrypt (client 12-B nonce), Decrypt | 3 |
 | non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_explicit_nonce` | Create (AES-256), Encrypt (client 12-B nonce), Decrypt | 3 |
@@ -328,6 +350,17 @@ replays the steps sequentially.
 | non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Create, Encrypt (CryptographicParameters{ChaCha20} + 8-B nonce), Decrypt | 3 |
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_explicit_nonce` | Create, Encrypt (AEAD + client 12-B nonce), Decrypt | 3 |
 | non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_aad` | Create, Encrypt (AEAD + AAD + server nonce), Decrypt | 3 |
+| **Keyset Resolution** | | | |
+| Keyset / Encrypt | `keyset_encrypt_latest` | Create, SetAttribute(RotateName), Encrypt(@latest), Decrypt | 6 |
+| Keyset / Encrypt | `keyset_encrypt_bare_name` | Create, SetAttribute(RotateName), Encrypt(bare name), Decrypt | 6 |
+| Keyset / Encrypt | `keyset_encrypt_latest_after_rotation` | Create, SetAttribute, ReKey, Encrypt(bare name→latest), Decrypt(new key) | 9 |
+| Keyset / Decrypt | `keyset_decrypt_try_each` | Create, SetAttribute, Encrypt, ReKey, Decrypt(bare name→try-each) | 9 |
+| Keyset / Decrypt | `keyset_decrypt_double_rotation` | Create, SetAttribute, Encrypt, ReKey×2, Decrypt(bare name→chain walk) | 12 |
+| Keyset / Decrypt | `keyset_decrypt_at_latest` | Create, SetAttribute, ReKey, Encrypt(new key), Decrypt(@latest) | 9 |
+| Negative / Keyset | `negative/keyset_rotate_name_at_rejected` | Create, SetAttribute(RotateName with @) → error | 4 |
+| Negative / Keyset | `negative/rekey_non_latest_sql` | Create, SetAttribute(RotateName), ReKey (gen-0→gen-1), ReKey(gen-0 again) → "not the latest" error | 8 |
+| Negative / HSM Keyset | `negative/rekey_non_latest_hsm` | Create (AES-256, HSM), SetAttribute(RotateName), ReKey (gen-0→gen-1), ReKey(gen-0 again) → "not the latest" error | 6 |
+| Negative / HSM Keyset | `negative/set_attribute/hsm_rotate_offset_rejected` | Create (AES-256, HSM), SetAttribute(rotate_offset) → NotSupported | 3 |
 
 ---
 

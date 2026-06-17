@@ -1,9 +1,12 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    KmipOperation,
-    kmip_attributes::Attribute,
-    kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
-    kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
-    kmip_types::{AttributeReference, Tag, UniqueIdentifier},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::ErrorReason,
+    kmip_2_1::{
+        KmipOperation,
+        kmip_attributes::Attribute,
+        kmip_objects::{Object, PrivateKey, PublicKey, SecretData, SymmetricKey},
+        kmip_operations::{DeleteAttribute, DeleteAttributeResponse},
+        kmip_types::{AttributeReference, Tag, UniqueIdentifier},
+    },
 };
 use cosmian_logger::trace;
 
@@ -40,6 +43,17 @@ pub(crate) async fn delete_attribute(
     let mut attributes = owm.attributes().to_owned();
 
     if let Some(attribute) = request.current_attribute {
+        // Read-only guard — these attributes are server-managed.
+        match &attribute {
+            Attribute::RotateGeneration(_) | Attribute::RotateDate(_) => {
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Read_Only,
+                    "DENIED: this attribute is server-managed and cannot be deleted by the user"
+                        .to_owned(),
+                ));
+            }
+            _ => {}
+        }
         match_delete_attribute! {
             attribute, attributes,
             simple {

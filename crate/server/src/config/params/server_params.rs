@@ -171,6 +171,17 @@ pub struct ServerParams {
     /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
     /// applied automatically. Prevents unbounded DB queries and large response payloads.
     pub max_locate_items: u32,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// 0 means disabled.
+    pub auto_rotation_check_interval_secs: u64,
+
+    /// Depth at which a successful keyset chain decryption triggers a warning.
+    /// Keyset chain traversal is unbounded (stopped only by cycle detection); this
+    /// threshold lets operators know when a ciphertext required walking many
+    /// generations to decrypt — a hint that re-encryption with the latest key may
+    /// be beneficial.
+    pub keyset_warn_depth: u32,
 }
 
 /// Represents the server parameters.
@@ -437,6 +448,19 @@ impl ServerParams {
                 crate::config::default_cors_origins(cors_scheme, conf.http.port)
             }),
             max_locate_items: 1000,
+            auto_rotation_check_interval_secs: {
+                let v = conf.auto_rotation_check_interval_secs;
+                // 0 means disabled; any non-zero value must be at least 60 seconds to avoid
+                // hammering the database with high-frequency key-rotation scans.
+                if v > 0 && v < 60 {
+                    return Err(KmsError::ServerError(format!(
+                        "auto_rotation_check_interval_secs must be 0 (disabled) or at least 60 \
+                         seconds; {v} is too small and would cause excessive database churn"
+                    )));
+                }
+                v
+            },
+            keyset_warn_depth: conf.keyset_warn_depth,
         };
 
         debug!("{res:#?}");
@@ -662,6 +686,11 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("server_workers", &self.server_workers);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
+        debug_struct.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
+        debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
 
         debug_struct.finish()
     }

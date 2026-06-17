@@ -1,10 +1,10 @@
 import { Button, Card, Checkbox, Form, Input, Radio, RadioChangeEvent, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
+import { ActionResponse } from "../../components/common/ActionResponse";
 import { FormUploadDragger } from "../../components/common/FormUpload";
+import { useActionState } from "../../hooks/useActionState";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
-import { useActionState } from "../../hooks/useActionState";
-import { ActionResponse } from "../../components/common/ActionResponse";
 
 interface CertificateCertifyFormData {
     certificateId?: string;
@@ -63,6 +63,26 @@ const CertificateCertifyForm: React.FC = () => {
         // does not attempt to look up a blank identifier on the server.
         const normalize = (v?: string) => (v?.trim() ? v.trim() : undefined);
         await execute(async () => {
+            // Option 3 uses the dedicated KMIP ReCertify operation which creates a
+            // new certificate with a fresh UID and links old ↔ new via replacement links.
+            if (certifyMethod === "reCertify") {
+                const certIdToRenew = normalize(values.certificateIdToReCertify);
+                if (!certIdToRenew) throw new Error("Certificate ID to re-certify is required");
+                const request = wasm.re_certify_ttlv_request(
+                    certIdToRenew,
+                    normalize(values.issuerPrivateKeyId),
+                    normalize(values.issuerCertificateId),
+                    values.numberOfDays,
+                    values.tags,
+                );
+                const result_str = await sendKmipRequest(request, idToken, serverUrl);
+                if (result_str) {
+                    const response = await wasm.parse_re_certify_ttlv_response(result_str);
+                    return `Certificate successfully re-certified with new ID: ${response.UniqueIdentifier}`;
+                }
+                return;
+            }
+
             const request = wasm.certify_ttlv_request(
                 normalize(values.certificateId),
                 values.csrFormat,

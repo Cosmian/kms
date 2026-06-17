@@ -253,6 +253,33 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(())
     }
 
+    async fn set_key_dates(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        start_date: Option<time::Date>,
+        end_date: Option<time::Date>,
+    ) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        session.set_key_dates(handle, start_date, end_date)?;
+        Ok(())
+    }
+
+    async fn set_key_label(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        label: &str,
+    ) -> InterfaceResult<()> {
+        let slot = self.get_slot(slot_id)?;
+        let session = slot.open_session(true)?;
+        let handle = session.get_object_handle(key_id)?;
+        session.set_label(handle, label)?;
+        Ok(())
+    }
+
     fn hsm_lib(&self) -> Option<&dyn std::any::Any> {
         Some(self.hsm_lib())
     }

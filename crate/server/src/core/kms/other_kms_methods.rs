@@ -237,7 +237,6 @@ impl KMS {
         &self,
         create_request: &Create,
         _owner: &str,
-        _privileged_users: Option<Vec<String>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key (FIPS build)");
         let attributes = &create_request.attributes;
@@ -351,7 +350,6 @@ impl KMS {
         &self,
         create_request: &Create,
         owner: &str,
-        privileged_users: Option<Vec<String>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -371,7 +369,6 @@ impl KMS {
                     create_request,
                     owner,
                     create_request.attributes.sensitive.unwrap_or(false),
-                    privileged_users,
                 )
                 .await?;
                 // Update the attributes with state Active

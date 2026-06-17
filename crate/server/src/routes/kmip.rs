@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{cell::Cell, sync::Arc};
 
 use actix_web::{
     HttpRequest, HttpResponse,
     http::header::CONTENT_TYPE,
     post,
-    web::{Bytes, Data, Json},
+    web::{Bytes, Data},
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -28,7 +28,7 @@ use tracing::Instrument;
 use crate::{
     core::{
         KMS,
-        operations::{dispatch, message},
+        operations::{dispatch, key_ops::crypto_op::KEYSET_CHAIN_DEPTH, message},
     },
     error::KmsError,
     result::KResult,
@@ -152,18 +152,31 @@ pub(crate) async fn kmip_2_1_json(
     req_http: HttpRequest,
     body: String,
     kms: Data<Arc<KMS>>,
-) -> KResult<Json<TTLV>> {
+) -> KResult<HttpResponse> {
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let span = tracing::info_span!("kmip_2_1", user = user.as_str(), tag = ttlv.tag.as_str());
-    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
-        .instrument(span)
+
+    // Scope the task-local so `execute_keyset_try_each` can record the chain depth.
+    let (ttlv, depth) = KEYSET_CHAIN_DEPTH
+        .scope(std::cell::Cell::new(None), async {
+            let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
+                .instrument(span)
+                .await?;
+            let depth = KEYSET_CHAIN_DEPTH.with(Cell::get);
+            Ok::<_, KmsError>((ttlv, depth))
+        })
         .await?;
 
-    Ok(Json(ttlv))
+    let mut builder = HttpResponse::Ok();
+    builder.content_type("application/json");
+    if let Some(d) = depth {
+        builder.insert_header(("X-KMS-Keyset-Depth", d.to_string()));
+    }
+    Ok(builder.json(ttlv))
 }
 
 /// Handle input TTLV requests

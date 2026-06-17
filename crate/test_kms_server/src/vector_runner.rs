@@ -30,6 +30,10 @@ static ONCE_VECTOR_CERT_AUTH: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_AUTH_HTTPS: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring `SoftHSM2` + KEK.
 static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests where the HSM KEK is configured but **not yet created**.
+/// Used to verify that `wrap_and_cache` does not attempt to self-wrap when the first
+/// operation creates the KEK itself (regression for PR #968 self-wrap bug).
+static ONCE_VECTOR_HSM_KEK_UNCREATED: OnceCell<TestsContext> = OnceCell::const_new();
 
 /// A test vector manifest loaded from a TOML file.
 ///
@@ -430,12 +434,14 @@ fn load_request_json(
             ))
         })?;
         let var_name = &rest[..end];
-        let var_value = std::env::var(var_name).map_err(|_e| {
-            KmsClientError::UnexpectedError(format!(
-                "Environment variable '{var_name}' referenced in {} is not set",
-                path.display()
-            ))
-        })?;
+        let var_value = crate::test_env::get(var_name)
+            .or_else(|| std::env::var(var_name).ok())
+            .ok_or_else(|| {
+                KmsClientError::UnexpectedError(format!(
+                    "Environment variable '{var_name}' referenced in {} is not set",
+                    path.display()
+                ))
+            })?;
         content = format!(
             "{}{var_value}{}",
             &content[..start],
@@ -471,13 +477,15 @@ fn resolve_assertion_value(
         let rest = &result[start + 3..];
         if let Some(end) = rest.find("}}") {
             let var_name = &rest[..end];
-            let var_value = std::env::var(var_name).map_err(|_err| {
-                KmsClientError::UnexpectedError(format!(
-                    "resolve_assertion_value: environment variable '{var_name}' \
-                     referenced in assertion template '{template}' is not set — \
-                     refusing to silently use an empty string"
-                ))
-            })?;
+            let var_value = crate::test_env::get(var_name)
+                .or_else(|| std::env::var(var_name).ok())
+                .ok_or_else(|| {
+                    KmsClientError::UnexpectedError(format!(
+                        "resolve_assertion_value: environment variable '{var_name}' \
+                         referenced in assertion template '{template}' is not set — \
+                         refusing to silently use an empty string"
+                    ))
+                })?;
             result = format!("{}{}{}", &result[..start], var_value, &rest[end + 2..]);
         } else {
             break;
@@ -715,6 +723,20 @@ fn backend_available(backend: &str) -> bool {
 
 /// Get or initialize a singleton test server for the given backend.
 async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContext, KmsClientError> {
+    // When `KMS_TEST_DB` names the same backend as the requested vector backend,
+    // reuse the shared default server (`ONCE`) rather than starting a second
+    // server against the same database.  Two independent servers each configured
+    // with `clear_database = true` pointing at the same DB would race: whichever
+    // initialises second wipes out objects that the other has already written,
+    // causing non-deterministic "object not found" failures in the certify tests.
+    let effective_kms_db = std::env::var("KMS_TEST_DB").ok().map(|v| match v.as_str() {
+        "redis" => "redis-findex".to_owned(),
+        other => other.to_owned(),
+    });
+    if effective_kms_db.as_deref() == Some(backend) {
+        return Ok(crate::start_default_test_kms_server().await);
+    }
+
     let root = repo_root()?;
     let (cell, toml, env_var) = match backend {
         "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml", "KMS_POSTGRES_URL"),
@@ -781,7 +803,7 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
 
     // Check required environment variables; skip gracefully if any is missing
     for env_var in &manifest.requires_env {
-        if std::env::var(env_var).is_err() {
+        if crate::test_env::get(env_var).is_none() && std::env::var(env_var).is_err() {
             eprintln!(
                 "SKIP vector '{}': required env var '{env_var}' is not set",
                 manifest.name
@@ -802,6 +824,19 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                     .await?;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek'",
+                    manifest.name
+                );
+                return execute_steps(context, &manifest, &vector_path).await;
+            }
+            "hsm_kek_uncreated" => {
+                let context = ONCE_VECTOR_HSM_KEK_UNCREATED
+                    .get_or_try_init(|| async {
+                        crate::start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+                            .await
+                    })
+                    .await?;
+                eprintln!(
+                    "▶ Running vector '{}' on server_type 'hsm_kek_uncreated'",
                     manifest.name
                 );
                 return execute_steps(context, &manifest, &vector_path).await;
@@ -1575,9 +1610,9 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
-    async fn test_vec_rekey_deactivated_fails() -> Result<(), KmsClientError> {
+    async fn test_vec_rekey_deactivated_succeeds() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_deactivated_fails").await
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_deactivated_succeeds").await
     }
 
     #[tokio::test]
@@ -1614,6 +1649,32 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_kmip14() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_kmip14").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapping_key() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapping_key").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapped_key() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapped_key").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapping_key_with_links() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapping_key_with_links")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapping_key_double_chain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapping_key_double_chain")
+            .await
     }
 
     #[cfg(feature = "non-fips")]
@@ -3257,6 +3318,12 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_neg_hsm_rotate_offset_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/hsm_rotate_offset_rejected").await
+    }
+
+    #[tokio::test]
     async fn test_neg_spec_sign_invalid_message() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/sign/invalid_message").await
@@ -3331,34 +3398,6 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/kmip_operations/batch_hash_query").await
     }
 
-    // ── KMIP operations: ReCertify ──────────────────────────────────────
-
-    // #[tokio::test]
-    // async fn test_vec_recertify_chain() -> Result<(), KmsClientError> {
-    //     crate::init_test_logging();
-    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_chain").await
-    // }
-
-    // #[tokio::test]
-    // async fn test_vec_recertify_self_signed() -> Result<(), KmsClientError> {
-    //     crate::init_test_logging();
-    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_self_signed").await
-    // }
-
-    // #[tokio::test]
-    // async fn test_vec_recertify_with_links() -> Result<(), KmsClientError> {
-    //     crate::init_test_logging();
-    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_with_links").await
-    // }
-
-    // #[tokio::test]
-    // async fn test_vec_recertify_with_offset() -> Result<(), KmsClientError> {
-    //     crate::init_test_logging();
-    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_with_offset").await
-    // }
-
-    // ── KMIP operations: ReKey with offset/state ─────────────────────────
-
     #[cfg(feature = "non-fips")]
     #[tokio::test]
     async fn test_vec_rekey_keypair_with_offset_state() -> Result<(), KmsClientError> {
@@ -3372,6 +3411,43 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_with_offset_state() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_with_offset_state").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_wrapped_deactivated_succeeds() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_wrapped_deactivated_succeeds")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_preactive_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_preactive_fails").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_keypair_preactive_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_keypair_preactive_fails").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_non_latest_sql() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_non_latest_sql").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_non_latest_hsm() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_non_latest_hsm").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_keypair_non_latest() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_keypair_non_latest").await
     }
 
     // ── KMIP operations: ReKeyKeyPair (non-FIPS only) ────────────────────
@@ -3503,9 +3579,9 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
-    async fn test_vec_rekey_keypair_deactivated_fails() -> Result<(), KmsClientError> {
+    async fn test_vec_rekey_keypair_deactivated_succeeds() -> Result<(), KmsClientError> {
         crate::init_test_logging();
-        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_deactivated_fails")
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_deactivated_succeeds")
             .await
     }
 
@@ -3587,6 +3663,36 @@ ObjectType = "SymmetricKey"
     async fn test_vec_certify_revoke_validate() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/certify_revoke_validate").await
+    }
+
+    // ── KMIP operations: ReCertify ──────────────────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_recertify_self_signed() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/recertify_self_signed").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_recertify_chain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/recertify_chain").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_recertify_with_links() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/recertify_with_links").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_recertify_with_offset() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/recertify_with_offset").await
     }
 
     // ── KMIP operations: Locate filters ─────────────────────────────────
@@ -3723,6 +3829,41 @@ ObjectType = "SymmetricKey"
     async fn test_vec_hsm_kek_ed25519_create_sign() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/kek_ed25519_create_sign").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_kek_rekey_wrapped() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_rekey_wrapped").await
+    }
+
+    /// Regression test for the HSM self-wrap bug (PR #968):
+    /// `wrap_and_cache` must not attempt to wrap an HSM-resident key with the
+    /// server-wide KEK when the key being created IS the configured KEK UID.
+    #[tokio::test]
+    async fn test_vec_hsm_kek_bootstrap_self_create() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_bootstrap_self_create").await
+    }
+
+    // ── HSM Resident: Keyset (rotate_name / CKA_LABEL) ───────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_set_rotate_name() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_set_rotate_name").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_rekey_and_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_rekey_and_decrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_double_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_double_rotation").await
     }
 
     #[tokio::test]
@@ -3964,11 +4105,11 @@ ObjectType = "SymmetricKey"
             .await
     }
 
-    // #[tokio::test]
-    // async fn test_vec_serial_rsa_sign_verify() -> Result<(), KmsClientError> {
-    //     crate::init_test_logging();
-    //     run_test_vector("test_data/vectors/fips/serialization/rsa_sign_verify_roundtrip").await
-    // }
+    #[tokio::test]
+    async fn test_vec_serial_rsa_sign_verify() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/serialization/rsa_sign_verify_roundtrip").await
+    }
 
     #[tokio::test]
     async fn test_vec_serial_attributes_preservation() -> Result<(), KmsClientError> {
@@ -3980,5 +4121,53 @@ ObjectType = "SymmetricKey"
     async fn test_vec_serial_import_destroy_reimport() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/serialization/import_destroy_reimport").await
+    }
+
+    // ─── Keyset resolution & try-each-key vectors ────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_latest() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_encrypt_latest").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_bare_name() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_encrypt_bare_name").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_try_each() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_try_each").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_double_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_double_rotation")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_latest_after_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/fips/kmip_operations/keyset_encrypt_latest_after_rotation",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_at_latest() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_at_latest").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_rotate_name_at_rejected() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/keyset_rotate_name_at_rejected").await
     }
 }

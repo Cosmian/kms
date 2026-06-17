@@ -1,4 +1,3 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_keygen;
 #[cfg(feature = "non-fips")]
@@ -33,45 +32,27 @@ use cosmian_logger::warn;
 use cosmian_logger::{debug, info, trace};
 use uuid::Uuid;
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
+    core::{KMS, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
 };
 
+use super::key_ops::{enforce_create_permission, reject_protection_storage_masks};
+
 pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
 
-    // To create a key pair, check that the user has `Create` access right
-    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users {
-        let has_permission = user_has_permission(
-            owner,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == owner) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
-
-    if request.common_protection_storage_masks.is_some()
-        || request.private_protection_storage_masks.is_some()
-        || request.public_protection_storage_masks.is_some()
-    {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
+    reject_protection_storage_masks(
+        request.common_protection_storage_masks.is_some()
+            || request.private_protection_storage_masks.is_some()
+            || request.public_protection_storage_masks.is_some(),
+    )?;
+    enforce_create_permission(kms, owner).await?;
 
     // generate uids and create the key pair and tags
     let sk_uid = request
