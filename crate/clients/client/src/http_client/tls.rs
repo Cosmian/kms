@@ -56,13 +56,13 @@ pub(crate) fn build_ssl_connector(
         builder.set_verify(SslVerifyMode::NONE);
     }
 
-    // Add a specific CA certificate for server verification
-    if let Some(ref verified_cert_path) = http_conf.verified_cert {
-        let mut cert_file = BufReader::new(File::open(verified_cert_path)?);
-        let mut cert_bytes = vec![];
-        cert_file.read_to_end(&mut cert_bytes)?;
-        let cert = X509::from_pem(&cert_bytes)?;
-        builder.cert_store_mut().add_cert(cert)?;
+    // Add a specific CA certificate (inline PEM content, not a file path) for server verification.
+    // Supports both a single certificate and a PEM bundle (multiple certificates).
+    if let Some(ref verified_cert_pem) = http_conf.verified_cert {
+        let certs = X509::stack_from_pem(verified_cert_pem.as_bytes())?;
+        for cert in certs {
+            builder.cert_store_mut().add_cert(cert)?;
+        }
     }
 
     // Client certificate authentication (PEM or PKCS#12)

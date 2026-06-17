@@ -714,7 +714,6 @@ pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
         .get_or_try_init(|| async move { start_pqc_tls_server().await })
         .await
         .unwrap_or_else(|e| {
-            eprintln!("FATAL: failed to start test server with PQC TLS cert: {e}");
             error!("failed to start test server with PQC TLS cert: {e}");
             std::process::abort();
         })

@@ -23,7 +23,7 @@ non-fips = ["cosmian_kms_client_utils/non-fips"]
 
 [dependencies]
 actix-web = { workspace = true, features = ["macros"] }
-base64 = "0.22"
+base64 = { workspace = true }
 bytes = "1"
 cosmian_crypto_core = { workspace = true }
 cosmian_kms_client_utils = { path = "../client_utils", version = "5.23.0" }

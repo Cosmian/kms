@@ -549,10 +549,12 @@ impl DbMetricsRecorder for OtelMetrics {
     clippy::cast_sign_loss
 )]
 mod tests {
-    use super::*;
     use opentelemetry_sdk::metrics::{
-        InMemoryMetricExporter, PeriodicReader, data::Gauge as GaugeData, data::Sum,
+        InMemoryMetricExporter, PeriodicReader,
+        data::{Gauge as GaugeData, Sum},
     };
+
+    use super::*;
 
     // ── No-op provider — cheap, used only where value assertions aren't needed ──
 

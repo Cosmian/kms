@@ -116,7 +116,10 @@ async fn establish_connect_tunnel(
     target_host: &str,
     target_port: u16,
 ) -> Result<TcpStream, Box<dyn std::error::Error + Send + Sync>> {
-    let proxy_host = proxy_params.url.host_str().ok_or("proxy URL has no host")?;
+    let proxy_host = proxy_params
+        .url
+        .host_str()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "proxy URL has no host"))?;
     let proxy_port = proxy_params.url.port_or_known_default().unwrap_or(8080);
     let proxy_addr = format!("{proxy_host}:{proxy_port}");
 

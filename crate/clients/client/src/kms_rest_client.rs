@@ -884,7 +884,7 @@ fn handle_error(
             match status {
                 http::StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_owned(),
                 http::StatusCode::UNAUTHORIZED => "Bad authorization token".to_owned(),
-                _ => format!("{status} {text}"),
+                _ => status.to_string(),
             }
         } else {
             text
