@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use cosmian_kms_server::{
     config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
     core::KMS,
@@ -260,7 +263,7 @@ mod tests {
                 api_token_id: None,
                 rate_limit_per_second: Some(100),
                 cors_allowed_origins: None,
-                server_workers: None,
+                http_workers: None,
                 jwks_enabled: false,
             },
             proxy: ProxyConfig {

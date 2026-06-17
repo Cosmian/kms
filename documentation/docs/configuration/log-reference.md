@@ -147,8 +147,6 @@ Crate path: `crate/server`
 | `debug` | `algorithm: {ca:?}, ciphertext length: {}` | `src/core/operations/encrypt.rs` | `ca`: cryptographic algorithm | - |
 | `debug` | `allocation_size: {allocation_size}` | `src/routes/google_cse/operations.rs` | `allocation_size`: allocated buffer size | ×2 in this file |
 | `debug` | `API token authentication failed: {e:?}` | `src/middlewares/api_token/api_token_middleware.rs` | `e`: caught error | - |
-| `debug` | `Authenticated user: {}` | `src/core/kms/permissions.rs` | - | - |
-| `debug` | `Authenticated using forced default user: {}` | `src/core/kms/permissions.rs` | - | - |
 | `debug` | `Authentication token check: validation disabled` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Building and signing certificate` | `src/core/operations/certify/build_certificate.rs` | - | - |
 | `debug` | `check algorithm` | `src/routes/google_cse/operations.rs` | - | - |
@@ -617,6 +615,7 @@ Crate path: `crate/server`
 | `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
+| `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -648,9 +647,6 @@ Crate path: `crate/server_database`
 | `trace` | `Redis DB size: {count}` | `src/stores/redis/redis_with_findex.rs` | `count` — … | — |
 | `trace` | `Updated in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | ×2 in this file |
 | `trace` | `Upserted in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | — |
-| `warn` | `[database] count_all_non_destroyed failed: {e}` | `src/core/database_objects.rs` | `e` | — |
-| `warn` | `[database] count_non_destroyed_keys failed: {e}` | `src/core/database_objects.rs` | `e` | — |
-| `warn` | `[database] reconcile_counts failed for a store: {e}` | `src/core/database_objects.rs` | `e` | — |
 | `debug` | `[redis-bootstrap] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | ×2 in this file |
 | `debug` | `[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}` | `src/stores/redis/redis_with_findex.rs` | `live_count`, `key_count` | — |
 | `debug` | `` [redis-metrics] bootstrapped {} live object(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |

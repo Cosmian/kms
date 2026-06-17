@@ -157,6 +157,15 @@ ON objects.id = matched_tags.id;
 -- name: select-uids-from-tags
 SELECT id FROM tags WHERE tag IN (@TAGS) GROUP BY id HAVING COUNT(DISTINCT tag) = @LEN;
 
+-- name: create-index-objects-owner
+CREATE INDEX IF NOT EXISTS idx_objects_owner ON objects (owner);
+
+-- name: create-index-objects-state
+CREATE INDEX IF NOT EXISTS idx_objects_state ON objects (state);
+
+-- name: create-index-read_access-userid
+CREATE INDEX IF NOT EXISTS idx_read_access_userid ON read_access (userid);
+
 -- name: list-uids-for-tags
 SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int;
 

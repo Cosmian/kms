@@ -99,6 +99,18 @@ impl Database {
     ///
     /// This function will return an error if no object store is found for the given prefix or if no default object store is available.
     async fn get_object_store(&self, uid: &str) -> DbResult<Arc<dyn ObjectsStore + Sync + Send>> {
+        // Fast path: UIDs without "::" cannot match any registered prefix,
+        // so skip the prefix search and return the default store directly.
+        if !uid.contains("::") {
+            let map = self.objects.read().await;
+            return map
+                .get("")
+                .ok_or_else(|| {
+                    DbError::InvalidRequest("No default object store available".to_owned())
+                })
+                .map(Arc::clone);
+        }
+
         let map = self.objects.read().await;
         // Longest-prefix matching: find the registered prefix (non-empty) whose
         // "<prefix>::" string is a prefix of `uid`, preferring the longest one.
@@ -222,7 +234,7 @@ impl Database {
         &self,
         uid_or_tags: &str,
     ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
-        self.record("retrieve_objects", async move {
+        Box::pin(self.record("retrieve_objects", async move {
             let uids = if uid_or_tags.starts_with('[') {
                 // tags
                 let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
@@ -238,7 +250,7 @@ impl Database {
                 }
             }
             Ok(results)
-        })
+        }))
         .await
     }
 
@@ -261,9 +273,66 @@ impl Database {
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
     pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
-        self.record("retrieve", async move {
-            let db = self.get_object_store(uid).await?;
-            Ok(db.retrieve(uid).await?)
+        Box::pin(async move {
+            // Fast path: check the in-memory cache first (no DB round-trip, no recording).
+            // The cache returns Arc<ObjectWithMetadata> — unwrap_or_clone avoids a deep
+            // copy when the caller is the sole holder (common on the encrypt hot-path
+            // where the cache entry is read-only).
+            if let Some(owm) = self.object_cache.get(uid).await {
+                return Ok(Some(std::sync::Arc::unwrap_or_clone(owm)));
+            }
+            // Cache miss: fetch from the backing store and record the operation.
+            let result: Option<ObjectWithMetadata> = self
+                .record("retrieve", async move {
+                    let db = self.get_object_store(uid).await?;
+                    db.retrieve(uid).await.map_err(DbError::from)
+                })
+                .await?;
+            // Populate cache on successful retrieval.
+            if let Some(ref owm) = result {
+                self.object_cache.insert(uid.to_owned(), owm.clone()).await;
+            }
+            Ok(result)
+        })
+        .await
+    }
+
+    /// Retrieve a cached object as `Arc<ObjectWithMetadata>` without deep-cloning.
+    ///
+    /// On cache hit this returns a cheap `Arc` pointer bump instead of the
+    /// `~800-byte` deep clone that [`retrieve_object`] performs.  Use this on
+    /// read-only hot paths (e.g. encrypt with a non-wrapped key that has no
+    /// usage limits) where the caller never mutates the object.
+    ///
+    /// On cache miss the object is fetched from the backing store, inserted
+    /// into the cache, and returned as a fresh `Arc`.
+    pub async fn retrieve_object_arc(
+        &self,
+        uid: &str,
+    ) -> DbResult<Option<Arc<ObjectWithMetadata>>> {
+        Box::pin(async move {
+            // Fast path: cache hit — zero-copy Arc clone.
+            if let Some(owm) = self.object_cache.get(uid).await {
+                return Ok(Some(owm));
+            }
+            // Cache miss: fetch from the backing store and record the operation.
+            let result: Option<ObjectWithMetadata> = self
+                .record("retrieve", async move {
+                    let db = self.get_object_store(uid).await?;
+                    db.retrieve(uid).await.map_err(DbError::from)
+                })
+                .await?;
+            // Populate cache on successful retrieval and return the Arc.
+            match result {
+                Some(owm) => {
+                    let arc = std::sync::Arc::new(owm);
+                    self.object_cache
+                        .insert_arc(uid.to_owned(), Arc::clone(&arc))
+                        .await;
+                    Ok(Some(arc))
+                }
+                None => Ok(None),
+            }
         })
         .await
     }
@@ -305,12 +374,14 @@ impl Database {
     ) -> DbResult<()> {
         self.record("update_object", async move {
             let db = self.get_object_store(uid).await?;
-            db.update_object(uid, object, attributes, tags).await?;
-            // Key material is immutable; only attributes change via update_object.
-            // The GC clears stale unwrap-cache entries; no eager invalidation needed here.
-            Ok(())
+            Ok(db.update_object(uid, object, attributes, tags).await?)
         })
-        .await
+        .await?;
+        // Invalidate the object cache since attributes (e.g. usage limits) changed.
+        self.object_cache.invalidate(uid).await;
+        // Key material is immutable; only attributes change via update_object.
+        // The GC clears stale unwrap-cache entries; no eager invalidation needed here.
+        Ok(())
     }
 
     /// Update the state of an object in the database.
@@ -319,18 +390,21 @@ impl Database {
             let db = self.get_object_store(uid).await?;
             Ok(db.update_state(uid, state).await?)
         })
-        .await
+        .await?;
+        self.object_cache.invalidate(uid).await;
+        Ok(())
     }
 
     /// Delete an object from the database.
     pub async fn delete(&self, uid: &str) -> DbResult<()> {
         self.record("delete", async move {
             let db = self.get_object_store(uid).await?;
-            db.delete(uid).await?;
-            self.unwrapped_cache.clear_cache(uid).await;
-            Ok(())
+            Ok(db.delete(uid).await?)
         })
-        .await
+        .await?;
+        self.object_cache.invalidate(uid).await;
+        self.unwrapped_cache.clear_cache(uid).await;
+        Ok(())
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -489,99 +563,32 @@ impl Database {
         if operations.is_empty() {
             return Ok(vec![]);
         }
-
-        self.record("atomic", async move {
-            #[expect(clippy::indexing_slicing)]
-            let first_op = &operations[0];
-            let first_uid = first_op.get_object_uid();
-            let db = self.get_object_store(first_uid).await?;
-            let ids = db.atomic(user, operations).await?;
-            // invalidate or clear cache for all operations
-            for op in operations {
-                match op {
-                    AtomicOperation::Create((uid, object, ..))
-                    | AtomicOperation::UpdateObject((uid, object, ..))
-                    | AtomicOperation::Upsert((uid, object, ..)) => {
-                        self.unwrapped_cache.validate_cache(uid, object).await?;
-                    }
-                    AtomicOperation::Delete(uid) => {
-                        self.unwrapped_cache.clear_cache(uid).await;
-                    }
-                    AtomicOperation::UpdateState(_) => {}
+        #[expect(clippy::indexing_slicing)]
+        let first_op = &operations[0];
+        let first_uid = first_op.get_object_uid();
+        let db = self.get_object_store(first_uid).await?;
+        let ids = self
+            .record("atomic", async move {
+                db.atomic(user, operations).await.map_err(DbError::from)
+            })
+            .await?;
+        // invalidate of clear cache for all operations
+        for op in operations {
+            match op {
+                AtomicOperation::Create((uid, object, ..))
+                | AtomicOperation::UpdateObject((uid, object, ..))
+                | AtomicOperation::Upsert((uid, object, ..)) => {
+                    self.object_cache.invalidate(uid).await;
+                    self.unwrapped_cache.validate_cache(uid, object).await?;
                 }
-            }
-            Ok(ids)
-        })
-        .await
-    }
-
-    /// Count all live (non-destroyed) objects across every registered object store.
-    ///
-    /// This is a **metrics-only** operation that bypasses user/permission filters.
-    /// It is called:
-    ///   1. Once at server startup to seed the `kms.objects.total` gauge.
-    ///   2. Every 30 s by the metrics cron task.
-    ///
-    /// Because several stores may be registered simultaneously (e.g. one SQL store
-    /// plus one or more HSM stores), the results are summed. Backends that have not
-    /// yet provided a real implementation will log a warning and contribute 0;
-    /// the sum will still be a valid lower bound.
-    pub async fn count_all_non_destroyed_objects(&self) -> DbResult<u64> {
-        let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
-            let map = self.objects.read().await;
-            map.values().cloned().collect()
-        }; // read guard dropped before any async I/O
-        let mut total: u64 = 0;
-        for store in &stores {
-            let n = store.count_all_non_destroyed().await.unwrap_or_else(|e| {
-                cosmian_logger::warn!("[database] count_all_non_destroyed failed: {e}");
-                0
-            });
-            total = total.saturating_add(n);
-        }
-        Ok(total)
-    }
-
-    /// Return the total count of non-destroyed key objects (`SymmetricKey`, `PrivateKey`,
-    /// `PublicKey`, `SplitKey`) across all registered stores.
-    ///
-    /// Aggregates results from every registered backend (SQL stores, HSM stores, etc.).
-    /// Backends that have not yet provided a real implementation will log a warning
-    /// and contribute 0 — the sum remains a valid lower bound.
-    pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
-        let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
-            let map = self.objects.read().await;
-            map.values().cloned().collect()
-        }; // read guard dropped before any async I/O
-        let mut total: u64 = 0;
-        for store in &stores {
-            let n = store.count_non_destroyed_keys().await.unwrap_or_else(|e| {
-                cosmian_logger::warn!("[database] count_non_destroyed_keys failed: {e}");
-                0
-            });
-            total = total.saturating_add(n);
-        }
-        Ok(total)
-    }
-
-    /// Perform an authoritative reconciliation of cached object-count counters
-    /// across all registered stores.
-    ///
-    /// SQL backends are no-ops (every COUNT query is authoritative).
-    /// Redis backends recompute counts from a full SCAN and overwrite cached keys.
-    /// Called by the slow-path cron loop (every 5 minutes) to prevent counter drift.
-    pub async fn reconcile_all_object_counts(&self) -> DbResult<()> {
-        let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
-            let map = self.objects.read().await;
-            map.values().cloned().collect()
-        }; // read guard dropped before any async I/O
-        for store in &stores {
-            if let Err(e) = store.reconcile_counts().await {
-                // Non-fatal: log and continue so one failing backend does not block others.
-                cosmian_logger::warn!("[database] reconcile_counts failed for a store: {e}");
+                AtomicOperation::Delete(uid) => {
+                    self.object_cache.invalidate(uid).await;
+                    self.unwrapped_cache.clear_cache(uid).await;
+                }
+                AtomicOperation::UpdateState(_) => {}
             }
         }
-        Ok(())
+        Ok(ids)
     }
 }
 

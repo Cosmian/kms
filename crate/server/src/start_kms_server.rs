@@ -766,6 +766,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
 
+    // Extract http_workers before the closure moves kms_server
+    let http_workers = kms_server.params.http_workers;
+
     // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
     // The test-server helper leaves that field at `None` so parallel unit tests are never
     // throttled by the rate limiter. Production configs set it to 100 (req/s, burst 300).
@@ -779,9 +782,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .rate_limit_per_second
             .map_or(u32::MAX, |rps| rps.saturating_mul(3)),
     );
-
-    // Extract worker count before kms_server is moved into the HttpServer closure.
-    let server_workers = kms_server.params.server_workers;
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
@@ -1172,6 +1172,20 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         std::time::Duration::from_secs(120),
     ))
     .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
+
+    // Apply worker count if configured; otherwise actix-web defaults to num_cpus.
+    let server = if let Some(n) = http_workers {
+        if n == 0 {
+            return Err(KmsError::InvalidRequest(
+                "http_workers must be greater than 0; actix-web panics on 0 workers".to_owned(),
+            ));
+        }
+        info!("KMS HTTP server configured with {n} worker thread(s)");
+        server.workers(n)
+    } else {
+        server
+    };
+
     // The KMIP XML vector test harness keeps a single HTTP connection open across
     // many serialized requests with potentially long gaps (several seconds) while
     // preparing the next request. Actix-web's default keep-alive (~5s) was closing
@@ -1181,19 +1195,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // lets us observe true protocol-level failures instead of transport resets.
     // Additionally, actix-web has a default client_request_timeout of 5 seconds which
     // was causing "408 Request Timeout" errors during long-running test operations.
-
-    // Apply configured worker count; None → actix default (one thread per logical CPU).
-    let server = if let Some(n) = server_workers {
-        if n == 0 {
-            return Err(KmsError::ServerError(
-                "server_workers must be greater than 0".to_owned(),
-            ));
-        }
-        info!("KMS HTTP server configured with {n} worker thread(s)");
-        server.workers(n)
-    } else {
-        server
-    };
 
     // Start and return the main KMS server
     Ok(match tls_config {

@@ -75,6 +75,7 @@ cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.24.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.24.0" }
 cosmian_logger = { workspace = true, features = ["full"] }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.24.0" }
+dashmap = { workspace = true }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
 futures = { workspace = true }
@@ -82,6 +83,7 @@ governor = { version = "0.10", features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
+mimalloc = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",

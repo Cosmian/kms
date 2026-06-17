@@ -21,7 +21,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
 };
 use cosmian_logger::{debug, error, info, trace, warn};
-use serde_json::Value;
 use time::OffsetDateTime;
 use tracing::Instrument;
 
@@ -158,15 +157,15 @@ pub(crate) async fn kmip_2_1_json(
     let user = kms.get_user(&req_http);
     info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let span = tracing::info_span!("kmip_2_1", user = user.as_str(), tag = ttlv.tag.as_str());
+    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 
-    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
-        .instrument(span)
-        .await?;
-
-    let mut builder = HttpResponse::Ok();
-    builder.content_type("application/json");
-    Ok(builder.json(ttlv))
+    // Pre-allocate buffer to avoid repeated reallocations during JSON serialization.
+    // Typical KMIP responses are 300-800 bytes; 512 avoids reallocs for most responses.
+    let mut buf = Vec::with_capacity(512);
+    serde_json::to_writer(&mut buf, &ttlv)?;
+    Ok(HttpResponse::Ok()
+        .content_type("application/json")
+        .body(buf))
 }
 
 /// Handle input TTLV requests
@@ -238,9 +237,16 @@ pub(crate) async fn kmip_json(
             error!(target: "kmip", "Failed to process request: {}", e);
             error_response_ttlv(2, 1, &e.to_string())
         });
-    let mut builder = HttpResponse::Ok();
-    builder.content_type("application/json");
-    builder.json(json)
+    let mut buf = Vec::with_capacity(512);
+    if let Err(e) = serde_json::to_writer(&mut buf, &json) {
+        error!(target: "kmip", "Failed to serialize response to JSON: {e}");
+        return HttpResponse::InternalServerError()
+            .content_type("application/json")
+            .body(r#"{"error":"internal serialization failure"}"#);
+    }
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .body(buf)
 }
 
 /// Handle KMIP requests with JSON content type
@@ -248,10 +254,10 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     // Recover the user from the request
     let user = kms.get_user(&req_http);
 
-    // Deserialize the body to a TTLV
-    let body = String::from_utf8(body.to_vec())?;
-    let value: Value = serde_json::from_str(&body)?;
-    let ttlv = serde_json::from_value::<TTLV>(value)?;
+    // Deserialize the body directly to TTLV (avoiding intermediate Vec + Value allocations)
+    let body_str =
+        std::str::from_utf8(&body).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
+    let ttlv: TTLV = serde_json::from_str(body_str)?;
 
     // Check the KMIP version
     let (major, minor) = get_kmip_version(&ttlv)?;

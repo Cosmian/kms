@@ -417,26 +417,45 @@ impl KMS {
     ) -> KResult<Op::Response> {
         let mut owm = owm;
 
-        // Clone before unwrap: preserve the wrapped key for DB persistence.
-        let mut unwrapped_owm = owm.clone();
-        self.unwrap_and_enforce_policy(&mut unwrapped_owm, Op::OP_NAME, user)
-            .await
-            .with_context(|| {
-                format!(
-                    "{}: the key: {}, cannot be unwrapped.",
-                    Op::OP_NAME,
-                    owm.id()
-                )
-            })?;
+        // Fast path: if the key is not wrapped and has no usage limits,
+        // we can skip the expensive clone and operate directly on owm.
+        let has_usage_limits = owm.attributes().usage_limits.is_some();
+        let is_wrapped = owm.object().is_wrapped();
 
-        let data_len = Op::usage_data_len(request);
-        owm.enforce_usage_limits(data_len)?;
+        if is_wrapped || has_usage_limits {
+            // Clone before unwrap: preserve the wrapped key for DB persistence.
+            let mut unwrapped_owm = owm.clone();
+            self.unwrap_and_enforce_policy(&mut unwrapped_owm, Op::OP_NAME, user)
+                .await
+                .with_context(|| {
+                    format!(
+                        "{}: the key: {}, cannot be unwrapped.",
+                        Op::OP_NAME,
+                        owm.id()
+                    )
+                })?;
 
-        let res = Op::execute_local(self, &unwrapped_owm, request, user).await?;
+            let data_len = Op::usage_data_len(request);
+            owm.enforce_usage_limits(data_len)?;
 
-        self.decrement_usage_limits(&mut owm, Op::OP_NAME, data_len)
-            .await?;
-        Ok(res)
+            let res = Op::execute_local(self, &unwrapped_owm, request, user).await?;
+
+            self.decrement_usage_limits(&mut owm, Op::OP_NAME, data_len)
+                .await?;
+            Ok(res)
+        } else {
+            // Non-wrapped key without usage limits: enforce policy and execute directly.
+            self.unwrap_and_enforce_policy(&mut owm, Op::OP_NAME, user)
+                .await
+                .with_context(|| {
+                    format!(
+                        "{}: the key: {}, cannot be unwrapped.",
+                        Op::OP_NAME,
+                        owm.id()
+                    )
+                })?;
+            Op::execute_local(self, &owm, request, user).await
+        }
     }
 
     /// Try each key in a keyset chain (newest→oldest) until one succeeds.
@@ -539,7 +558,7 @@ impl KMS {
         user: &str,
     ) -> KResult<()> {
         use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
-        if !matches!(owm.object(), Object::Certificate { .. }) {
+        if !matches!(owm.object(), Object::Certificate { .. }) && owm.object().is_wrapped() {
             owm.set_object(self.get_unwrapped(owm.id(), owm.object(), user).await?);
         }
         crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key(

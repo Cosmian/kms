@@ -29,8 +29,10 @@ REPO_ROOT="$(get_repo_root)"
 # Prepare Utimaco simulator (extracted by reusable_scripts/prepare_utimaco.sh)
 require_cmd cargo
 
+# Note: tests are gated behind --features utimaco (mod tests is #[cfg(feature = "utimaco")])
 cargo test \
   -p utimaco_pkcs11_loader \
-  -- --nocapture
+  --features utimaco \
+  -- --nocapture test_hsm_utimaco_all --ignored --exact
 
 print_success "Utimaco HSM tests completed"

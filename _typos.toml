@@ -20,3 +20,7 @@ Fo = "Fo"
 ot = "ot"
 # ISO/IEC 27034 term: Application Normative Framework
 ANF = "ANF"
+# Intel CPU flag: Total Memory Encryption
+tme = "tme"
+# Plural of PNG (image format)
+PNGs = "PNGs"

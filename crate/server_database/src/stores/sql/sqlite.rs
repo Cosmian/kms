@@ -94,10 +94,10 @@ impl SqlitePool {
         clear_database: bool,
         max_connections: Option<u32>,
     ) -> DbResult<Self> {
-        // Determine reader pool size: default to 2×CPUs capped at 10,
+        // Determine reader pool size: default to 2×CPUs capped at 32,
         // matching the MySQL/PostgreSQL backend pool sizing strategy.
         // Note: total connections = num_readers + 1 (dedicated writer).
-        let default_readers: usize = num_cpus::get().saturating_mul(2).min(10);
+        let default_readers: usize = num_cpus::get().saturating_mul(2).min(32);
         let num_readers: usize = max_connections
             .and_then(|v| usize::try_from(v).ok())
             .unwrap_or(default_readers)
@@ -124,6 +124,11 @@ impl SqlitePool {
         let create_objects = pool.get_query("create-table-objects")?.to_owned();
         let create_read_access = pool.get_query("create-table-read_access")?.to_owned();
         let create_tags = pool.get_query("create-table-tags")?.to_owned();
+        let idx_objects_owner = pool.get_query("create-index-objects-owner")?.to_owned();
+        let idx_objects_state = pool.get_query("create-index-objects-state")?.to_owned();
+        let idx_read_access_userid = pool
+            .get_query("create-index-read_access-userid")?
+            .to_owned();
         let clean_objects = pool.get_query("clean-table-objects")?.to_owned();
         let clean_read_access = pool.get_query("clean-table-read_access")?.to_owned();
         let clean_tags = pool.get_query("clean-table-tags")?.to_owned();
@@ -135,6 +140,9 @@ impl SqlitePool {
                     tx.execute(&create_objects, [])?;
                     tx.execute(&create_read_access, [])?;
                     tx.execute(&create_tags, [])?;
+                    tx.execute(&idx_objects_owner, [])?;
+                    tx.execute(&idx_objects_state, [])?;
+                    tx.execute(&idx_read_access_userid, [])?;
                     if clear_database {
                         tx.execute(&clean_objects, [])?;
                         tx.execute(&clean_read_access, [])?;
@@ -298,7 +306,7 @@ impl ObjectsStore for SqlitePool {
             .call({
                 let uid_check = uid.clone();
                 move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
-                    let mut stmt = c.prepare("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
+                    let mut stmt = c.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
                     let present = stmt.exists(params_from_iter([&uid_check]))?;
                     Ok(present)
                 }
@@ -353,11 +361,11 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
-        let select_object = get_sqlite_query!("select-object").to_string();
+        let select_object: &str = get_sqlite_query!("select-object");
         let uid_s = uid.to_owned();
         let res = self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<Option<ObjectWithMetadata>, rusqlite::Error> {
-                let mut stmt = c.prepare(&select_object)?;
+                let mut stmt = c.prepare_cached(select_object)?;
                 let row = stmt
                     .query_row(params_from_iter([&uid_s]), |row| {
                             sqlite_row_to_owm(row).map_err(|_err| rusqlite::Error::InvalidQuery)
@@ -371,13 +379,13 @@ impl ObjectsStore for SqlitePool {
     }
 
     async fn retrieve_tags(&self, uid: &str) -> InterfaceResult<HashSet<String>> {
-        let sql = get_sqlite_query!("select-tags").to_string();
+        let sql: &str = get_sqlite_query!("select-tags");
         let uid_s = uid.to_owned();
         let tags = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<HashSet<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare(&sql)?;
+                    let mut stmt = c.prepare_cached(sql)?;
                     let mut rows = stmt.query(params_from_iter([&uid_s]))?;
                     let mut tags = HashSet::new();
                     while let Some(r) = rows.next()? {
@@ -505,7 +513,7 @@ impl ObjectsStore for SqlitePool {
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<bool, rusqlite::Error> {
-                    let mut stmt = c.prepare(&sql)?;
+                    let mut stmt = c.prepare_cached(&sql)?;
                     let exists = stmt.exists(params_from_iter([&uid_s, &owner_s]))?;
                     Ok(exists)
                 },
@@ -530,7 +538,7 @@ impl ObjectsStore for SqlitePool {
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<HashSet<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare(&sql)?;
+                    let mut stmt = c.prepare_cached(&sql)?;
                     // Build dynamic params: tags then len
                     let mut param_refs: Vec<&dyn rusqlite::ToSql> =
                         Vec::with_capacity(tag_list.len() + 1);
@@ -571,7 +579,7 @@ impl ObjectsStore for SqlitePool {
         let locate_params = locate.params;
         let rows = self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<Vec<(String, State, Attributes)>, rusqlite::Error> {
-                let mut stmt = c.prepare(&sql_conversion)?;
+                let mut stmt = c.prepare_cached(&sql_conversion)?;
                 let values: Vec<rusqlite::types::Value> = locate_params
                     .into_iter()
                     .map(|p| match p {
@@ -782,7 +790,7 @@ impl Migrate for SqlitePool {
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare(&select_param)?;
+                    let mut stmt = c.prepare_cached(&select_param)?;
                     let row = stmt
                         .query_row(params_from_iter([&"db_state"]), |row| {
                             row.get::<_, String>(0)
@@ -833,7 +841,7 @@ impl Migrate for SqlitePool {
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
-                    let mut stmt = c.prepare(&select_param)?;
+                    let mut stmt = c.prepare_cached(&select_param)?;
                     let row = stmt
                         .query_row(params_from_iter([&"db_version"]), |row| {
                             row.get::<_, String>(0)
@@ -887,7 +895,7 @@ impl PermissionsStore for SqlitePool {
                     HashMap<String, (String, State, HashSet<KmipOperation>)>,
                     rusqlite::Error,
                 > {
-                    let mut stmt = c.prepare(&sql)?;
+                    let mut stmt = c.prepare_cached(&sql)?;
                     let mut rows = stmt.query(params_from_iter([&user_s]))?;
                     let mut ids: HashMap<String, (String, State, HashSet<KmipOperation>)> =
                         HashMap::new();
@@ -918,7 +926,7 @@ impl PermissionsStore for SqlitePool {
         let uid_s = uid.to_owned();
         let map = self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<HashMap<String, HashSet<KmipOperation>>, rusqlite::Error> {
-                let mut stmt = c.prepare(&sql)?;
+                let mut stmt = c.prepare_cached(&sql)?;
                 let mut rows = stmt.query(params_from_iter([&uid_s]))?;
                 let mut ids: HashMap<String, HashSet<KmipOperation>> = HashMap::new();
                 while let Some(r) = rows.next()? {
@@ -948,7 +956,7 @@ impl PermissionsStore for SqlitePool {
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                    let mut stmt = c.prepare(&sql_select)?;
+                    let mut stmt = c.prepare_cached(&sql_select)?;
                     let mut perms: HashSet<KmipOperation> = stmt
                         .query_row(params_from_iter([&uid_s, &user_s]), |row| {
                             let raw: String = row.get(0)?;
@@ -989,7 +997,7 @@ impl PermissionsStore for SqlitePool {
         self.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
-                    let mut stmt = c.prepare(&sql_select)?;
+                    let mut stmt = c.prepare_cached(&sql_select)?;
                     let perms: HashSet<KmipOperation> = stmt
                         .query_row(params_from_iter([&uid_s, &user_s]), |row| {
                             let raw: String = row.get(0)?;
@@ -1037,7 +1045,7 @@ impl SqlitePool {
         let user_s = userid.to_owned();
         self.reader()
             .call(move |c: &mut rusqlite::Connection| -> Result<HashSet<KmipOperation>, rusqlite::Error> {
-                let mut stmt = c.prepare(&sql)?;
+                let mut stmt = c.prepare_cached(&sql)?;
                 let res = stmt
                     .query_row(params_from_iter([&uid_s, &user_s]), |row| {
                         let raw: String = row.get(0)?;
@@ -1063,7 +1071,7 @@ fn create_sqlite(
 ) -> DbResult<String> {
     // If an explicit UID is provided and already exists, return a clear error
     if let Some(ref explicit_uid) = uid {
-        let mut stmt = tx.prepare("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
+        let mut stmt = tx.prepare_cached("SELECT 1 FROM objects WHERE id=?1 LIMIT 1")?;
         let exists = stmt.exists(params_from_iter([explicit_uid]))?;
         if exists {
             return Err(DbError::DatabaseError(

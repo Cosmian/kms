@@ -20,8 +20,10 @@ print_header "Running Proteccio HSM tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
+# Note: tests are gated behind --features proteccio (mod tests is #[cfg(feature = "proteccio")])
 cargo test \
   -p proteccio_pkcs11_loader \
-  -- --nocapture
+  --features proteccio \
+  -- --nocapture test_hsm_proteccio_all --ignored --exact
 
 print_success "Proteccio HSM tests completed"

@@ -20,8 +20,10 @@ print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
+# Note: tests are gated behind --features crypt2pay (mod tests is #[cfg(feature = "crypt2pay")])
 cargo test \
   -p crypt2pay_pkcs11_loader \
-  -- --nocapture
+  --features crypt2pay \
+  -- --nocapture test_hsm_crypt2pay_all --ignored --exact
 
 print_success "Crypt2Pay HSM tests completed"

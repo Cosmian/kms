@@ -36,10 +36,12 @@ export HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID"
 LIB_PATH="$(softhsm2_lib_search_path)"
 
 # ── Run KMS server HSM tests ────────────────────────────────────────────────
+print_header "Running cosmian_kms_server HSM tests"
 env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="$LIB_PATH" \
   DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_MODEL="softhsm2" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
@@ -62,6 +64,7 @@ env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="$LIB_PATH" \
   DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_MODEL="softhsm2" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
@@ -80,17 +83,19 @@ env \
 print_status "HSM vector tests completed"
 
 # ── Run softhsm2 loader tests ───────────────────────────────────────────────
-# Note: softhsm2_pkcs11_loader has no feature flags — never pass --features here
+# Note: tests are gated behind --features softhsm2 (mod tests is #[cfg(feature = "softhsm2")])
 print_header "Running softhsm2_pkcs11_loader tests"
 env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="$LIB_PATH" \
   DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
   HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
   cargo test \
   -p softhsm2_pkcs11_loader \
-  -- --nocapture
+  --features softhsm2 \
+  -- --nocapture tests::test_hsm_softhsm2_all --ignored --exact
 
 print_success "SoftHSM2 tests completed"
