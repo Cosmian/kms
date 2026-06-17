@@ -363,15 +363,21 @@ impl HttpClient {
         })
     }
 
+    /// Apply the client's default headers to a request builder.
+    fn apply_default_headers(&self, mut builder: http::request::Builder) -> http::request::Builder {
+        for (name, value) in &self.default_headers {
+            builder = builder.header(name, value);
+        }
+        builder
+    }
+
     /// Send an HTTP GET request.
     ///
     /// # Errors
     /// Returns an error if the request fails.
     pub async fn get(&self, url: &str) -> HttpClientResult<HttpResponse> {
         let mut builder = http::Request::builder().method("GET").uri(url);
-        for (name, value) in &self.default_headers {
-            builder = builder.header(name, value);
-        }
+        builder = self.apply_default_headers(builder);
         let request = builder
             .body(Full::new(Bytes::new()))
             .map_err(|e| HttpClientError::Default(format!("Failed to build GET request: {e}")))?;
@@ -416,9 +422,7 @@ impl HttpClient {
             .method("POST")
             .uri(url)
             .header("Content-Type", "application/json");
-        for (name, value) in &self.default_headers {
-            builder = builder.header(name, value);
-        }
+        builder = self.apply_default_headers(builder);
         let request = builder
             .body(Full::new(Bytes::from(json_bytes)))
             .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
@@ -440,9 +444,7 @@ impl HttpClient {
             .method("POST")
             .uri(url)
             .header("Content-Type", content_type);
-        for (name, value) in &self.default_headers {
-            builder = builder.header(name, value);
-        }
+        builder = self.apply_default_headers(builder);
         let request = builder
             .body(Full::new(Bytes::from(body)))
             .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
@@ -456,9 +458,7 @@ impl HttpClient {
     /// Returns an error if the request fails.
     pub async fn post_empty(&self, url: &str) -> HttpClientResult<HttpResponse> {
         let mut builder = http::Request::builder().method("POST").uri(url);
-        for (name, value) in &self.default_headers {
-            builder = builder.header(name, value);
-        }
+        builder = self.apply_default_headers(builder);
         let request = builder
             .body(Full::new(Bytes::new()))
             .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
@@ -483,9 +483,7 @@ impl HttpClient {
             .method("DELETE")
             .uri(url)
             .header("Content-Type", "application/json");
-        for (name, value) in &self.default_headers {
-            builder = builder.header(name, value);
-        }
+        builder = self.apply_default_headers(builder);
         let request = builder
             .body(Full::new(Bytes::from(json_bytes)))
             .map_err(|e| {
@@ -509,9 +507,7 @@ impl HttpClient {
             .method("POST")
             .uri(url)
             .header("Content-Type", "application/x-www-form-urlencoded");
-        for (name, value) in &self.default_headers {
-            builder = builder.header(name, value);
-        }
+        builder = self.apply_default_headers(builder);
         for (name, value) in extra_headers {
             builder = builder.header(name, value);
         }
