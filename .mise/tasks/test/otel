@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-source "${SCRIPT_DIR}/../common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 
 # This script replaces the (ignored) Rust integration test by:
 # - starting the KMS server with `cargo run -p ...`
@@ -471,7 +470,7 @@ wait_for_server_uptime_using_start_time() {
 }
 
 main() {
-  init_build_env "$@"
+  kms_init_env "$@"
   setup_test_logging
 
   require_cmd cargo "Cargo is required to build and run tests. Install Rust (rustup) and retry."
