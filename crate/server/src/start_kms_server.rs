@@ -52,7 +52,7 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, TlsAuth,
+        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, OtelHttpMetrics, TlsAuth,
         extract_peer_certificate,
     },
     result::{KResult, KResultHelper},
@@ -775,6 +775,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
+            .wrap(OtelHttpMetrics::new(kms_server_for_http.metrics.clone()))
             .wrap(Condition::new(
                 rate_limit_enabled,
                 crate::middlewares::RateLimiterMiddleware::new(&rate_limiter_config),

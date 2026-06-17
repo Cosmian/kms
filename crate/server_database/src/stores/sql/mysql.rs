@@ -625,6 +625,45 @@ impl ObjectsStore for MySqlPool {
         )
         .await?)
     }
+
+    /// Returns the total count of live (non-destroyed) objects in this `MySQL` store.
+    ///
+    /// This is a **metrics-only** privileged query: it scans the full `objects` table
+    /// without any user or permission filter, so the result always reflects the true
+    /// server-wide inventory. It must never be used to answer client requests.
+    ///
+    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
+    /// enum variant names as serialised to the DB by `strum::Display`.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        let sql = get_mysql_query!("count-non-destroyed-objects");
+        let mut conn = self
+            .get_configured_conn()
+            .await
+            .map_err(InterfaceError::from)?;
+        // MySQL returns COUNT(*) as u64 via the mysql_async FromValue impl.
+        let count: u64 = conn
+            .exec_first(sql, ())
+            .await
+            .map_err(DbError::from)
+            .map_err(InterfaceError::from)?
+            .unwrap_or(0);
+        Ok(count)
+    }
+
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        let sql = get_mysql_query!("count-non-destroyed-keys");
+        let mut conn = self
+            .get_configured_conn()
+            .await
+            .map_err(InterfaceError::from)?;
+        let count: u64 = conn
+            .exec_first(sql, ())
+            .await
+            .map_err(DbError::from)
+            .map_err(InterfaceError::from)?
+            .unwrap_or(0);
+        Ok(count)
+    }
 }
 
 #[async_trait(?Send)]

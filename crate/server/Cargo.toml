@@ -126,6 +126,7 @@ actix-http = { workspace = true }
 cosmian_kms_client_utils = { path = "../clients/client_utils", version = "5.23.0" }
 cosmian_kms_interfaces = { path = "../interfaces", version = "5.23.0" }
 native-tls = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
 pem = { workspace = true }
 tempfile = { workspace = true }
 

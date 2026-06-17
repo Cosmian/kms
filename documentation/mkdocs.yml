@@ -140,7 +140,9 @@ nav:
       - Authorizing users with access rights: configuration/authorization.md
       - Enabling TLS: configuration/tls.md
       - Logging and telemetry: configuration/logging.md
-      - Monitoring: configuration/monitoring-setup.md
+      - Monitoring:
+          - Setup: configuration/monitoring-setup.md
+          - Metrics reference: configuration/otlp-metrics.md
       - User interface: configuration/ui.md
       - UI branding: configuration/ui_branding.md
       - Custom OpenSSL build: configuration/openssl_override.md

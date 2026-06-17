@@ -790,6 +790,42 @@ impl ObjectsStore for PgPool {
             Ok(out)
         })
     }
+
+    /// Returns the total count of live (non-destroyed) objects in this `PostgreSQL` store.
+    ///
+    /// This is a **metrics-only** privileged query: it scans the full `objects` table
+    /// without any user or permission filter, so the result always reflects the true
+    /// server-wide inventory. It must never be used to answer client requests.
+    ///
+    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
+    /// enum variant names as serialised to the DB by `strum::Display`.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        let sql = get_pgsql_query!("count-non-destroyed-objects");
+        let client = pg_get_client(&self.pool)
+            .await
+            .map_err(InterfaceError::from)?;
+        let row = client
+            .query_one(sql, &[])
+            .await
+            .map_err(DbError::from)
+            .map_err(InterfaceError::from)?;
+        let count: i64 = row.get(0);
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
+
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        let sql = get_pgsql_query!("count-non-destroyed-keys-pg");
+        let client = pg_get_client(&self.pool)
+            .await
+            .map_err(InterfaceError::from)?;
+        let row = client
+            .query_one(sql, &[])
+            .await
+            .map_err(DbError::from)
+            .map_err(InterfaceError::from)?;
+        let count: i64 = row.get(0);
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
 }
 
 #[async_trait(?Send)]

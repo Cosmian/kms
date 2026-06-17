@@ -277,6 +277,24 @@ extract_uid() {
   perl -0777 -ne 'if (m/"tag"\s*:\s*"UniqueIdentifier".*?"value"\s*:\s*"([^"]+)"/s) { print "$1\n"; }'
 }
 
+encrypt_with_key() {
+  local uid="$1"
+  # Encrypt a short plaintext with the given AES-256 key.
+  # This forces the server to call get_unwrapped_object, which records
+  # cache hits/misses in kms.cache.operations.total.
+  kmip_post "{\"tag\":\"Encrypt\",\"type\":\"Structure\",\"value\":[{\"tag\":\"UniqueIdentifier\",\"type\":\"TextString\",\"value\":\"${uid}\"},{\"tag\":\"Data\",\"type\":\"ByteString\",\"value\":\"48656c6c6f20576f726c6421\"}]}"
+}
+
+# ── Wrapped-key helper (for kms.cache.operations.total) ──────────────────────
+# Creates an AES-256 key that the server stores wrapped by kek_uid via the
+# cosmian vendor attribute "wrapping_key_id".  The key material is stored
+# encrypted in the DB, so every Encrypt call triggers get_unwrapped() →
+# cache miss/hit → kms.cache.operations.total increments.
+create_aes_key_wrapped_by() {
+  local kek_uid="$1"
+  kmip_post "{\"tag\":\"Create\",\"type\":\"Structure\",\"value\":[{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"Attributes\",\"value\":[{\"tag\":\"CryptographicAlgorithm\",\"type\":\"Enumeration\",\"value\":\"AES\"},{\"tag\":\"CryptographicLength\",\"type\":\"Integer\",\"value\":256},{\"tag\":\"CryptographicUsageMask\",\"type\":\"Integer\",\"value\":12},{\"tag\":\"KeyFormatType\",\"type\":\"Enumeration\",\"value\":\"TransparentSymmetricKey\"},{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"SymmetricKey\"},{\"tag\":\"Attribute\",\"value\":[{\"tag\":\"VendorIdentification\",\"type\":\"TextString\",\"value\":\"cosmian\"},{\"tag\":\"AttributeName\",\"type\":\"TextString\",\"value\":\"wrapping_key_id\"},{\"tag\":\"AttributeValue\",\"type\":\"TextString\",\"value\":\"${kek_uid}\"}]}]}]}"
+}
+
 wait_for_metric_gt() {
   local metric_name="$1"
   local min="$2"
@@ -545,6 +563,15 @@ EOF
     activate_key "${uid}" >/dev/null
   done
 
+  # Trigger unwrap-cache path: first Encrypt → cache miss + insert,
+  # second Encrypt on same key → cache hit.
+  # NOTE: plain transparent keys skip get_unwrapped() (is_wrapped()==false),
+  # so these calls do NOT produce cache metrics.  The actual cache coverage
+  # is in Step 4 below using a key stored with wrapped material.
+  echo "Triggering two Encrypt calls on key ${uid}..."
+  encrypt_with_key "${uid}" >/dev/null
+  encrypt_with_key "${uid}" >/dev/null
+
   echo "Waiting for exported metrics (uptime + active keys)..."
 
   # Prefer an explicit uptime metric if present, otherwise fall back
@@ -557,10 +584,90 @@ EOF
   # This is a hard/blocking requirement (script fails on mismatch/timeout).
   wait_for_metric_eq "kms_keys_active_count" 10 180
 
+  # ── Step 3: kms.objects.total ────────────────────────────────────────────
+  # Gauge; 10 creates on a virgin SQLite DB → exactly 10 live objects.
+  # Single label set so wait_for_metric_eq is safe here.
+  wait_for_metric_eq "kms_objects_total" 10 60
+
+  # ── Step 2: kms.http.requests.total ─────────────────────────────────────
+  # Counter split by status label ({status="200"} and {status="422"}).
+  # wait_for_metric_eq exits on the first matching Prometheus line and label
+  # ordering is non-deterministic, so == 20 would be fragile.
+  # wait_for_metric_gt scans ALL matching lines: the status=200 line carries
+  # value 20 which satisfies > 19.
+  wait_for_metric_gt "kms_http_requests_total" 19 60
+
+  # ── Step 1: kms.database.operations.total ───────────────────────────────
+  # Counter split by operation/backend/outcome labels.  Exact per-combo
+  # totals vary by internal code path; existence check is sufficient to
+  # confirm the metric is wired.
+  wait_for_metric_gt "kms_database_operations_total" 0 60
+
+  # ── Step 1b: kms.database.operation.duration (histogram) ────────────────
+  # OTel appends the unit suffix: kms.database.operation.duration[seconds] →
+  # kms_database_operation_duration_seconds_{bucket,count,sum}.
+  wait_for_metric_gt "kms_database_operation_duration_seconds_count" 0 60
+
+  # ── Step 2b: kms.http.request.duration (histogram) ──────────────────────
+  wait_for_metric_gt "kms_http_request_duration_seconds_count" 0 60
+
+  # ── Step 2c: label correctness ──────────────────────────────────────────
+  # Spot-check that at least one DB operation was recorded with backend="sqlite".
+  body=$(collector_metrics_body)
+  if ! printf '%s' "${body}" | grep -q 'kms_database_operations_total{.*backend="sqlite"'; then
+    echo "ERROR: kms_database_operations_total missing backend=\"sqlite\" label" >&2
+    printf '%s\n' "${body}" | grep "kms_database" >&2
+    exit 1
+  fi
+
+  # ── Step 4: kms.cache.operations.total ──────────────────────────────────
+  # Plain transparent keys bypass get_unwrapped() (is_wrapped() == false).
+  # Create a key stored wrapped by a KEK via cosmian vendor attribute
+  # "wrapping_key_id": the server encrypts its material at rest with the KEK,
+  # so every subsequent Encrypt call triggers get_unwrapped() → cache metrics.
+  echo "Building wrapped-key scenario for kms.cache.operations.total..."
+  cache_kek_uid=$(create_aes_key | extract_uid)
+  if [ -z "${cache_kek_uid}" ]; then
+    echo "ERROR: failed to create KEK for cache scenario" >&2
+    exit 1
+  fi
+  activate_key "${cache_kek_uid}" >/dev/null
+  cache_data_uid=$(create_aes_key_wrapped_by "${cache_kek_uid}" | extract_uid)
+  if [ -z "${cache_data_uid}" ]; then
+    echo "ERROR: failed to create wrapped data key for cache scenario" >&2
+    exit 1
+  fi
+  activate_key "${cache_data_uid}" >/dev/null
+  # First Encrypt: get_unwrapped() → cache miss + insert.
+  enc1_resp=$(encrypt_with_key "${cache_data_uid}")
+  if ! printf '%s' "${enc1_resp}" | grep -q '"tag"[[:space:]]*:[[:space:]]*"EncryptResponse"'; then
+    echo "ERROR: first Encrypt on wrapped key failed: ${enc1_resp}" >&2
+    exit 1
+  fi
+  # Second Encrypt: get_unwrapped() → cache hit.
+  enc2_resp=$(encrypt_with_key "${cache_data_uid}")
+  if ! printf '%s' "${enc2_resp}" | grep -q '"tag"[[:space:]]*:[[:space:]]*"EncryptResponse"'; then
+    echo "ERROR: second Encrypt on wrapped key failed: ${enc2_resp}" >&2
+    exit 1
+  fi
+  wait_for_metric_gt "kms_cache_operations_total" 0 60
+
   # Echo what we observed to help diagnose CI flakiness.
   body=$(collector_metrics_body)
   observed_active_keys=$(metric_value_from_body "kms_keys_active_count" "${body}")
+  observed_objects=$(metric_value_from_body "kms_objects_total" "${body}")
+  observed_http=$(metric_value_from_body "kms_http_requests_total" "${body}")
+  observed_http_dur=$(metric_value_from_body "kms_http_request_duration_seconds_count" "${body}")
+  observed_db=$(metric_value_from_body "kms_database_operations_total" "${body}")
+  observed_db_dur=$(metric_value_from_body "kms_database_operation_duration_seconds_count" "${body}")
+  observed_cache=$(metric_value_from_body "kms_cache_operations_total" "${body}")
   echo "Observed kms_keys_active_count=${observed_active_keys:-<missing>}"
+  echo "Observed kms_objects_total=${observed_objects:-<missing>}"
+  echo "Observed kms_http_requests_total=${observed_http:-<missing>}"
+  echo "Observed kms_http_request_duration_seconds_count=${observed_http_dur:-<missing>}"
+  echo "Observed kms_database_operations_total=${observed_db:-<missing>}"
+  echo "Observed kms_database_operation_duration_seconds_count=${observed_db_dur:-<missing>}"
+  echo "Observed kms_cache_operations_total=${observed_cache:-<missing>}"
 
   echo "OTEL export integration script completed successfully."
 }

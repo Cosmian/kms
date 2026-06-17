@@ -6,6 +6,8 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 
+use cosmian_logger::warn;
+
 use crate::{InterfaceResult, ObjectWithMetadata};
 
 /// An atomic operation on the objects database
@@ -102,4 +104,62 @@ pub trait ObjectsStore {
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
+
+    /// Count all objects that are **not** in a terminal (destroyed) state.
+    ///
+    /// # Purpose — metrics only
+    ///
+    /// This method is called exclusively by the OTEL metrics layer to feed the
+    /// `kms.objects.total` gauge. It deliberately skips all user/permission
+    /// filters so the result reflects the true server-wide object inventory,
+    /// not just the subset visible to a particular caller.
+    ///
+    /// **Never expose the result to client requests** — it bypasses access control.
+    ///
+    /// # Why a default of `Ok(0)`?
+    ///
+    /// Adding a required method to this trait would force every backend
+    /// (SQL, Redis, HSM stubs) to implement it in the same commit. The default
+    /// lets backends compile immediately; each one should replace it with a
+    /// real implementation when ready. A `TODO` comment is added at each
+    /// call site that still uses the default.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        warn!(
+            "count_all_non_destroyed not implemented for this ObjectsStore backend — \
+             kms.objects.total will read 0 until a real implementation is provided"
+        );
+        Ok(0)
+    }
+
+    /// Returns the count of non-destroyed key objects (`SymmetricKey`, `PrivateKey`,
+    /// `PublicKey`, `SplitKey`) across this store.
+    ///
+    /// "Non-destroyed" means state ∉ {`Destroyed`, `Destroyed_Compromised`}.
+    /// This covers `PreActive`, `Active`, `Deactivated`, and `Compromised` keys —
+    /// all states in which the key material is still present.
+    ///
+    /// Backends should override this with a real implementation.  The default
+    /// logs a warning and returns 0 so that the gauge shows a valid lower-bound
+    /// until a proper implementation is provided.
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        warn!(
+            "count_non_destroyed_keys not implemented for this ObjectsStore backend — \
+             kms.keys.active.count will read 0 until a real implementation is provided"
+        );
+        Ok(0)
+    }
+
+    /// Perform an authoritative reconciliation of any cached object-count
+    /// counters maintained by this store.
+    ///
+    /// For in-memory counters (e.g. Redis `INCRBY` counters) this should
+    /// recompute the true count from the authoritative data source and overwrite
+    /// the cached value.  For SQL backends this is a no-op because every COUNT(*)
+    /// query is already authoritative.
+    ///
+    /// Called by the slow-path cron loop (every 5 minutes) to prevent counter
+    /// drift from accumulating due to partial failures.
+    async fn reconcile_counts(&self) -> InterfaceResult<()> {
+        Ok(())
+    }
 }

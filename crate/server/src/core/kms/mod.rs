@@ -7,7 +7,7 @@ mod permissions;
 use std::{collections::HashMap, sync::Arc};
 
 use cosmian_kms_server_database::{
-    Database,
+    Database, DbMetricsRecorder,
     reexport::cosmian_kms_interfaces::{CryptoOracle, HSM, HsmStore, ObjectsStore},
 };
 use cosmian_logger::trace;
@@ -139,13 +139,49 @@ impl KMS {
         let main_db_params = server_params.main_db_params.as_ref().ok_or_else(|| {
             KmsError::InvalidRequest("The main database parameters are not specified".to_owned())
         })?;
+
+        let metrics = Self::create_otel_metrics(&server_params)?;
+        let db_otel_recorder: Option<Arc<dyn DbMetricsRecorder>> =
+            metrics.as_ref().map(|m| -> Arc<dyn DbMetricsRecorder> {
+                m.clone() // Arc clones are cheap
+            });
+
         let database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
             server_params.unwrapped_cache_max_age,
+            db_otel_recorder,
         )
         .await?;
+
+        // Seed the kms.objects.total gauge from the real DB count on startup.
+        //
+        // This ensures the metric starts at the correct absolute value rather
+        // than 0.  Without this seed, the gauge would only reach the right count
+        // after the first periodic cron sync (up to 30 s later), giving a
+        // misleading reading immediately after server restart.
+        if let Some(ref m) = metrics {
+            match database.count_all_non_destroyed_objects().await {
+                Ok(count) => {
+                    m.update_objects_total(i64::try_from(count).unwrap_or(i64::MAX));
+                }
+                Err(e) => {
+                    // Non-fatal: the cron will correct the value within 30 s.
+                    cosmian_logger::debug!("[kms-init] Failed to seed kms.objects.total: {e}");
+                }
+            }
+            // Seed kms.keys.active.count from the real DB count on startup.
+            match database.count_non_destroyed_key_objects().await {
+                Ok(count) => {
+                    m.update_active_keys_count(i64::try_from(count).unwrap_or(i64::MAX));
+                }
+                Err(e) => {
+                    // Non-fatal: the cron will correct the value within 30 s.
+                    cosmian_logger::debug!("[kms-init] Failed to seed kms.keys.active.count: {e}");
+                }
+            }
+        }
 
         Ok(Self {
             params: server_params.clone(),
@@ -153,7 +189,7 @@ impl KMS {
             crypto_oracles: RwLock::new(crypto_oracles),
             // Keep a reference to the first HSM for PKCS#11 C_Initialize / C_GetInfo operations.
             hsm: hsm_instances.into_iter().next(),
-            metrics: Self::create_otel_metrics(&server_params)?,
+            metrics,
         })
     }
 
@@ -199,10 +235,11 @@ impl KMS {
                     KmsError::ServerError(format!("Failed to create OTLP metrics exporter: {e}"))
                 })?;
 
-            // Create periodic reader that sends metrics every 30 seconds
-            let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio)
+            // Create periodic reader that sends metrics every 30 seconds.
+            // otel_sdk 0.29: builder takes only the exporter (no runtime arg);
+            // export timeout is configured on the exporter, not the reader.
+            let reader = PeriodicReader::builder(exporter)
                 .with_interval(std::time::Duration::from_secs(30))
-                .with_timeout(std::time::Duration::from_secs(10))
                 .build();
 
             // Create meter provider
@@ -225,7 +262,7 @@ impl KMS {
             }
 
             let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
-                .with_resource(Resource::new(resource_kvs))
+                .with_resource(Resource::builder().with_attributes(resource_kvs).build())
                 .with_reader(reader)
                 .build();
 

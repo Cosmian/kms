@@ -78,6 +78,20 @@ INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $
         DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5
         WHERE objects.owner=$5;
 
+-- name: count-non-destroyed-objects
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised');
+
+-- name: count-non-destroyed-keys-sqlite
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND json_extract(attributes, '$.ObjectType') IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
+
+-- name: count-non-destroyed-keys-pg
+SELECT COUNT(*) FROM objects
+WHERE state NOT IN ('Destroyed', 'Destroyed_Compromised')
+AND attributes->>'ObjectType' IN ('SymmetricKey', 'PrivateKey', 'PublicKey', 'SplitKey');
+
 -- name: select-user-accesses-for-object
 SELECT permissions
         FROM read_access
