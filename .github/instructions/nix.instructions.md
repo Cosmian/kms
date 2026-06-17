@@ -25,7 +25,7 @@ When CI reports a hash mismatch:
 All CI runs go through Nix:
 
 ```bash
-bash .github/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] COMMAND [args]
+mise run [--variant fips|non-fips] [--link static|dynamic] <task>
 ```
 
 ## OpenSSL bootstrap

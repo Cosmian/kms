@@ -29,7 +29,7 @@ The UI mirrors the `ckms` CLI tool feature-for-feature.
 
 - WASM builds cannot use `std::fs`, `std::net`, or `tokio::runtime`.
 - Shared code in `crate/clients/client_utils/` — must compile for both native and `wasm32-unknown-unknown`.
-- Test WASM builds with: `bash .github/scripts/nix.sh --variant fips test wasm`
+- Test WASM builds with: `mise run test:wasm --variant fips`
 
 ## Testing
 

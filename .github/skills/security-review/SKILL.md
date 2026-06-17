@@ -38,7 +38,7 @@ Identify the primary language(s): Rust (main), TypeScript (UI), Bash (scripts).
     - Flag crates with known CVEs, deprecated crypto libs, or unpinned versions.
     - Special attention: `openssl`, `ring`, `rustls`, `hyper`, `actix-web`, `serde`.
 - **Node/pnpm**: Check `ui/pnpm-lock.yaml` for vulnerable npm packages.
-- **Python** (test scripts): Check `.github/scripts/` for insecure subprocess calls.
+- **Python** (test scripts): Check `.mise/scripts/` for insecure subprocess calls.
 
 ### Step 3 — Secrets & Exposure Scan
 
@@ -57,7 +57,7 @@ Flag any `// TODO: debug — remove before shipping` markers left in the codebas
 #### Injection Flaws
 
 - SQL / NoSQL injection in `crate/server_database/src/` — raw query construction with user input
-- Command injection in shell scripts under `.github/scripts/` — `$variable` without quoting
+- Command injection in shell scripts under `.mise/scripts/` — `$variable` without quoting
 - LDAP / XPath injection (N/A for this stack)
 - Log injection — user-controlled content passed to log macros without sanitization
 

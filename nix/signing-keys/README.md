@@ -26,7 +26,7 @@ Packages are automatically signed during the packaging process if:
 
 ```bash
 export GPG_SIGNING_KEY_PASSPHRASE='your-secure-passphrase'
-bash .github/scripts/nix.sh package deb
+mise run package:deb
 ```
 
 Each package will have a corresponding `.asc` signature file:

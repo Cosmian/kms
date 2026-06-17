@@ -19,7 +19,7 @@ gh workflow run release.yml \
 1. **Validates** inputs (semver format, `old_version` matches `Cargo.toml`,
    branch/tag do not already exist).
 2. **Creates** `release/<new_version>` from `develop`.
-3. **Bumps** all version references via `.github/scripts/release/release.sh --ci`
+3. **Bumps** all version references via `.mise/scripts/release/release.sh --ci`
    (sed-based substitutions across all `Cargo.toml` files and versioned docs)
    and regenerates `Cargo.lock`.  Commits and pushes.
 4. **Updates Nix vendor hashes** by running `nix_build_update_hash.sh` on a
@@ -80,7 +80,7 @@ cargo install git-cliff
 2. Update the version X.Y.Z almost everywhere:
 
    ```sh
-   bash .github/scripts/release/release.sh <old_version> <new_version>
+   bash .mise/scripts/release/release.sh <old_version> <new_version>
    ```
 
 3. Commit the changes:

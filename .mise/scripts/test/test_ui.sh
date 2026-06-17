@@ -6,8 +6,8 @@
 # test keys are pre-created via ckms so the HSM-specific Playwright tests
 # run alongside the regular E2E suite in a single pass.
 #
-# Usage (via nix.sh):
-#   bash .github/scripts/nix.sh --variant non-fips test ui
+# Usage (via mise):
+#   mise run test:ui --variant non-fips
 # ============================================================================
 set -euo pipefail
 

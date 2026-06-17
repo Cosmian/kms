@@ -9,10 +9,10 @@ Inspect the repository's GitHub Actions workflows, identify waste sources, and r
 
 ## This Codebase's CI Structure
 
-The CI entry point is `.github/scripts/nix.sh`. All builds and tests go through it:
+The CI entry point is MISE (`mise run`). All builds and tests go through it:
 
 ```bash
-bash .github/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] COMMAND [args]
+mise run [--variant fips|non-fips] [--link static|dynamic] <task>
 ```
 
 Key workflows:

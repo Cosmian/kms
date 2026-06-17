@@ -205,12 +205,12 @@ After initial pre-warm:
 
 ```bash
 # Online phase (once)
-bash .github/scripts/nix.sh package deb
+mise run package:deb
 
 # Disconnect network
 # Later, offline phase
 export NO_PREWARM=1
-bash .github/scripts/nix.sh package deb  # ✅ Works perfectly
+mise run package:deb  # ✅ Works perfectly
 ```
 
 Critical for:
@@ -358,12 +358,12 @@ flowchart TB
     rebuild["Rebuild: nix-build -A <target> -o result"]
     copy["Copy hash from build output to expected-hashes/<br/>• Vendor: cargoHash error<br/>• Binary: installCheckPhase output"]
     script["Script performs:<br/>1. Build with Nix<br/>2. Compute SHA-256<br/>3. Update hash files"]
-    verify["Verify: bash .github/scripts/nix.sh test sqlite"]
+    verify["Verify: mise run test:sqlite"]
     commit["Commit updated hashes"]
     change --> fail --> rebuild --> copy --> script --> verify --> commit
 ```
 
-Tip: for a quick end-to-end check after updates, use `bash .github/scripts/nix.sh test sqlite` or build a package with `bash .github/scripts/nix.sh package`.
+Tip: for a quick end-to-end check after updates, use `mise run test:sqlite` or build a package with `mise run package`.
 
 Hash enforcement is configurable: some expected-hash checks are only enforced when `enforceDeterministicHash`/`--enforce-deterministic-hash true` is enabled.
 
@@ -383,7 +383,7 @@ Update an expected hash after a legitimate change:
 
 ```bash
 # Automated method (fixed-output hashes) - update from CI logs (requires `gh auth login`)
-bash .github/scripts/nix.sh update-hashes [RUN_ID]
+mise run release:update-hashes [RUN_ID]
 
 # Hash update method - Example for x86_64 Linux
 nix-build -A kms-server-fips-static-openssl -o result-server-fips
@@ -434,8 +434,8 @@ Key behaviors:
 Idempotence demo:
 
 ```bash
-bash .github/scripts/nix.sh package deb
-bash .github/scripts/nix.sh package deb    # Reuses binary; no compilation
+mise run package:deb
+mise run package:deb    # Reuses binary; no compilation
 ```
 
 ## Offline packaging flow
@@ -446,7 +446,7 @@ bash .github/scripts/nix.sh package deb    # Reuses binary; no compilation
 flowchart TB
     subgraph update["Expected Hash Update Workflow (CI-driven)"]
         trigger["CI packaging job fails with fixed-output hash mismatch"]
-        update_cmd["bash .github/scripts/nix.sh update-hashes [RUN_ID]"]
+        update_cmd["mise run release:update-hashes [RUN_ID]"]
         update_sh["update_hashes.sh<br/>• requires gh<br/>• downloads job logs<br/>• parses specified/got hashes"]
         update_files["Updates nix/expected-hashes/<br/>• ui.vendor.*.sha256<br/>• server.vendor.{static,dynamic}.sha256<br/>• cli.vendor.linux.sha256<br/>• cli.vendor.{fips,non-fips}.darwin.sha256"]
         trigger --> update_cmd --> update_sh --> update_files
@@ -476,8 +476,8 @@ Run these commands with network access to populate all caches:
 
 ```bash
 # Build and cache both FIPS and non-FIPS server binaries
-bash .github/scripts/nix.sh package deb      # Defaults to FIPS
-bash .github/scripts/nix.sh --variant non-fips package deb
+mise run package:deb      # Defaults to FIPS
+mise run package:deb --variant non-fips
 
 # Or explicitly prewarm both variants without packaging
 nix-build -A kms-server-fips-static-openssl -o result-server-fips
@@ -503,15 +503,15 @@ export CARGO_HOME=target/cargo-offline-home   # Use cached dependencies
 export CARGO_NET_OFFLINE=true                 # Prevent network access
 
 # Package FIPS variant offline
-bash .github/scripts/nix.sh package deb
-bash .github/scripts/nix.sh package rpm
+mise run package:deb
+mise run package:rpm
 
 # Package non-FIPS variant offline
-bash .github/scripts/nix.sh --variant non-fips package deb
-bash .github/scripts/nix.sh --variant non-fips package rpm
+mise run package:deb --variant non-fips
+mise run package:rpm --variant non-fips
 
 # Build DMG on macOS
-bash .github/scripts/nix.sh package dmg
+mise run package:dmg
 ```
 
 ### Step 3: Package signing (optional)
@@ -520,7 +520,7 @@ If configured, packages are automatically signed:
 
 ```bash
 export GPG_SIGNING_KEY_PASSPHRASE='your-secure-passphrase'
-bash .github/scripts/nix.sh package deb
+mise run package:deb
 # Creates: result-deb-fips/*.deb.asc signature files
 ```
 
@@ -543,7 +543,7 @@ After prewarm, these commands should work without network:
 sudo systemctl stop NetworkManager  # or equivalent
 
 # All packaging should still work
-bash .github/scripts/nix.sh package deb
+mise run package:deb
 sha256sum result-deb-fips/*.deb  # Verify reproducibility
 ```
 
@@ -572,7 +572,7 @@ Set the passphrase before packaging:
 
 ```bash
 export GPG_SIGNING_KEY_PASSPHRASE='your-secure-passphrase'
-bash .github/scripts/nix.sh package deb
+mise run package:deb
 ```
 
 Each package will have a corresponding `.asc` signature:
@@ -655,15 +655,15 @@ The prewarm steps populate the following paths so packaging can run fully offlin
 
 This section documents the low-level helper scripts in `nix/scripts/` for building, packaging, and maintaining Cosmian KMS with Nix.
 
-> **⚠️ Note for Contributors**: These scripts are internal implementation details called by `.github/scripts/nix.sh`.
-> For normal development and packaging workflows, use the unified `nix.sh` entrypoint instead of calling these scripts directly.
-> See [.github/scripts/README.md](../.github/scripts/README.md) for the complete developer workflow guide.
+> **⚠️ Note for Contributors**: These scripts are internal implementation details called by `.mise/scripts/nix.sh` (via `mise run`).
+> For normal development and packaging workflows, use `mise run <task>` instead of calling these scripts directly.
+> See [.mise/scripts/README.md](../.mise/scripts/README.md) for the complete developer workflow guide.
 
 ### Scripts Architecture
 
 ```mermaid
 flowchart TB
-    nix_sh[".github/scripts/nix.sh<br/>(Dispatcher)"]
+    nix_sh[".mise/scripts/nix.sh<br/>(Dispatcher, via `mise run`)"]
     build_sh["build.sh<br/>Core server compilation<br/>Static link OpenSSL 3.6.2<br/>Validates: hash, GLIBC ≤ 2.34, version"]
     pkg_sh["package_*.sh<br/>• package_deb.sh<br/>• package_rpm.sh<br/>• package_dmg.sh<br/>Common: package_common.sh"]
     utils_sh["Utilities<br/>• get_version.sh<br/>• update_hashes.sh<br/>• generate_sbom.sh<br/>• signing_key.sh"]
@@ -686,10 +686,10 @@ flowchart TB
 | Task                     | Recommended Command                         | Direct Command (advanced)                                    |
 | ------------------------ | ----------------------------------------- | ------------------------------------------------------------ |
 | **Build server**         | `bash nix/scripts/build.sh --variant fips`                   | `nix-build -A kms-server-fips-static-openssl`                |
-| **Package DEB**          | `bash .github/scripts/nix.sh package deb` | `bash nix/scripts/package_deb.sh --variant fips`             |
-| **Package RPM**          | `bash .github/scripts/nix.sh package rpm` | `bash nix/scripts/package_rpm.sh --variant fips`             |
-| **Package DMG**          | `bash .github/scripts/nix.sh package dmg` | `bash nix/scripts/package_dmg.sh --variant fips`             |
-| **Generate SBOM**        | `bash .github/scripts/nix.sh sbom`        | `bash nix/scripts/generate_sbom.sh --variant fips`           |
+| **Package DEB**          | `mise run package:deb`        | `bash nix/scripts/package_deb.sh --variant fips`             |
+| **Package RPM**          | `mise run package:rpm`        | `bash nix/scripts/package_rpm.sh --variant fips`             |
+| **Package DMG**          | `mise run package:dmg`        | `bash nix/scripts/package_dmg.sh --variant fips`             |
+| **Generate SBOM**        | `mise run sbom:generate`      | `bash nix/scripts/generate_sbom.sh --variant fips`           |
 | **Generate signing key** | N/A                                       | `bash nix/scripts/generate_signing_key.sh`                   |
 
 ### Script Execution Flow Diagram
@@ -764,7 +764,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    invoke["bash .github/scripts/nix.sh sbom --variant <fips|non-fips><br/>(Delegates to nix/scripts/generate_sbom.sh)"]
+    invoke["mise run sbom:generate --variant <fips|non-fips><br/>(Delegates to nix/scripts/generate_sbom.sh)"]
     check{"result-server-<variant> exists?"}
     invoke --> check
     use_existing["Use existing binary"]

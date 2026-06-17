@@ -105,7 +105,7 @@ Classify each failure into one of these categories (in priority order):
 | **Compile error** | `error[E...]` / `could not compile` | Read error, fix source |
 | **Test failure** | `test ... FAILED` / `assertion failed` / `panicked` | Read test output, fix logic |
 | **Dependency audit** | `cargo deny` / `cargo machete` / `cargo audit` | Update `Cargo.toml`, add `deny.toml` exception if justified |
-| **Nix hash mismatch** | `hash mismatch` / `got: sha256-` | Run `.github/scripts/release/update_hashes.sh` with failed job link, or update `nix/expected-hashes/` manually |
+| **Nix hash mismatch** | `hash mismatch` / `got: sha256-` | Run `mise run release:update-hashes` with failed job link, or update `nix/expected-hashes/` manually |
 | **Docker/packaging** | build failures in packaging jobs | Check `Dockerfile`, packaging scripts |
 | **Flaky test** | intermittent, not reproducible locally | Re-run first; if persistent, investigate |
 
@@ -153,7 +153,7 @@ cargo clippy-all 2>&1
 - Alternatively, run the automated script:
 
   ```bash
-  bash .github/scripts/release/update_hashes.sh <failed-job-link>
+  mise run release:update-hashes <failed-job-link>
   ```
 
 ### Dependency audit (`cargo deny`)

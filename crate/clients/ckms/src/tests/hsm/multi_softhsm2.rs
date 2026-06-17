@@ -14,7 +14,7 @@
 //!   (same model as slot 2, so the KMS disambiguates it with suffix `_1`).
 //!   Keys are addressed with `"hsm::softhsm2_1::<slot_id>::<key_id>"`.
 //!
-//! The test is invoked from `.github/scripts/test/test_hsm_softhsm2.sh` with
+//! The test is invoked from `.mise/scripts/test/test_hsm_softhsm2.sh` with
 //! the three slot IDs set as environment variables.
 
 use cosmian_logger::log_init;

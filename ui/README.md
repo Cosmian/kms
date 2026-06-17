@@ -129,7 +129,7 @@ WASM tests are particular and use Nix for a fully reproducible environment:
 
 ```bash
 # From the repo root:
-bash .github/scripts/nix.sh --variant non-fips test wasm
+mise run test:wasm --variant non-fips
 ```
 
 ### E2E tests (Playwright)
@@ -138,7 +138,7 @@ bash .github/scripts/nix.sh --variant non-fips test wasm
 
 ```bash
 # From the repo root:
-bash .github/scripts/nix.sh --variant non-fips test ui
+mise run test:ui --variant non-fips
 ```
 
 #### Manual setup

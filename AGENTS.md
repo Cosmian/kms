@@ -111,7 +111,8 @@ crate/
   server_database/  cosmian_kms_server_database — DB backends (SQLite, PostgreSQL, Redis-findex)
   test_kms_server/  test_kms_server            — in-process test server helper
 
-.github/            CI workflows (.github/workflows/) and helper scripts (.github/scripts/)
+.github/            CI workflows (.github/workflows/) and helper scripts
+.mise/              MISE tasks and scripts (single source of truth for all automation)
 cbom/               Cryptographic Bill of Materials (CBOM)
 cli_documentation/  CLI-specific MkDocs documentation (separate MkDocs site)
 documentation/      MkDocs documentation source
@@ -354,7 +355,7 @@ For E2E test creation (data-testid, Ant Design Select helpers, FIPS skip) → ru
 
 ```bash
 # Full end-to-end:
-bash .github/scripts/nix.sh --variant non-fips test ui
+mise run test:ui --variant non-fips
 
 # Manually from ui/:
 cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
@@ -383,10 +384,10 @@ Update `ui/tests/e2e/README.md` when adding or removing E2E tests.
 
 #### Entry point
 
-All CI runs go through **Nix** via:
+All CI runs go through **MISE** via:
 
 ```bash
-bash .github/scripts/nix.sh [--variant fips|non-fips] [--link static|dynamic] COMMAND [args]
+mise run [task] --variant [fips|non-fips] [args]
 ```
 
 #### Test types (`nix.sh test <type>`)

@@ -243,14 +243,14 @@ The CI job exits 0 with the KMIP steps marked as `SKIPPED` when using the Commun
 
 ```bash
 # Local run (uses Community image by default)
-bash .github/scripts/test/test_iris.sh --variant non-fips
+bash .mise/scripts/test/test_iris.sh --variant non-fips
 
 # With a licensed IRIS image (full KMIP test)
 IRIS_DOCKER_IMAGE=containers.intersystems.com/intersystems/iris:latest \
-bash .github/scripts/test/test_iris.sh --variant non-fips
+bash .mise/scripts/test/test_iris.sh --variant non-fips
 
 # Via the Nix wrapper (matches CI exactly)
-bash .github/scripts/nix.sh --variant non-fips test iris
+mise run test:iris --variant non-fips
 ```
 
 ### Environment variables
