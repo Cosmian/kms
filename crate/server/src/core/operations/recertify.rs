@@ -104,7 +104,13 @@ impl RekeyOperation for CertificateRekey {
                 )
             })?;
 
-        let owm = retrieve_object_for_operation(uid, KmipOperation::Certify, kms, user).await?;
+        let owm = Box::pin(retrieve_object_for_operation(
+            uid,
+            KmipOperation::Certify,
+            kms,
+            user,
+        ))
+        .await?;
 
         if owm.object().object_type() != ObjectType::Certificate {
             kms_bail!(KmsError::InvalidRequest(format!(

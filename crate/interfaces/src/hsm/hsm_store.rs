@@ -1403,6 +1403,19 @@ mod tests {
                 len: usize,
             ) -> InterfaceResult<Vec<u8>>;
             async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()>;
+            async fn set_key_dates(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                start_date: Option<time::Date>,
+                end_date: Option<time::Date>,
+            ) -> InterfaceResult<()>;
+            async fn set_key_label(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                label: &str,
+            ) -> InterfaceResult<()>;
             fn hsm_lib(&self) -> Option<&'static dyn std::any::Any> { None }
         }
     }

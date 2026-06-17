@@ -40,10 +40,14 @@ pub(crate) async fn sign(
     // Look up the private key's linked public key; fall back to body.kid for
     // symmetric keys and standalone keys that have no PublicKeyLink.
     let signing_kid = {
-        let owm =
-            retrieve_object_for_operation(&body.kid, KmipOperation::GetAttributes, &kms, &user)
-                .await
-                .map_err(CryptoApiError::from)?;
+        let owm = Box::pin(retrieve_object_for_operation(
+            &body.kid,
+            KmipOperation::GetAttributes,
+            &kms,
+            &user,
+        ))
+        .await
+        .map_err(CryptoApiError::from)?;
         owm.attributes()
             .get_link(LinkType::PublicKeyLink)
             .map_or_else(|| body.kid.clone(), |l| l.to_string())

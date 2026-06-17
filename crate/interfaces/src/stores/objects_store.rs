@@ -5,9 +5,8 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
-use time::OffsetDateTime;
-
 use cosmian_logger::warn;
+use time::OffsetDateTime;
 
 use crate::{InterfaceResult, ObjectWithMetadata};
 

@@ -140,9 +140,14 @@ async fn encrypt_rsa_oaep(
     aad: Option<String>,
 ) -> CryptoResult<CryptoEncryptResponse> {
     // Resolve the key — accept either private or public key UID
-    let owm = retrieve_object_for_operation(&kid, KmipOperation::Encrypt, kms, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let owm = Box::pin(retrieve_object_for_operation(
+        &kid,
+        KmipOperation::Encrypt,
+        kms,
+        user,
+    ))
+    .await
+    .map_err(CryptoApiError::from)?;
 
     // Determine if this is a private key (resolve to linked public key) or already a public key
     let (public_key, private_key_uid) = match owm.object() {
@@ -151,12 +156,12 @@ async fn encrypt_rsa_oaep(
             let pkey = if let Some(pub_key_uid) =
                 owm.attributes().get_link(LinkType::PublicKeyLink)
             {
-                let pub_owm = retrieve_object_for_operation(
+                let pub_owm = Box::pin(retrieve_object_for_operation(
                     &pub_key_uid.to_string(),
                     KmipOperation::Encrypt,
                     kms,
                     user,
-                )
+                ))
                 .await
                 .map_err(CryptoApiError::from)?;
                 kmip_public_key_to_openssl(pub_owm.object()).map_err(|e| {

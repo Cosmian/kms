@@ -1268,11 +1268,11 @@ mod tests {
     #[test]
     fn test_count_query_keys_present_in_loader() {
         assert!(
-            SQLITE_QUERIES.get("count-non-destroyed-objects").is_some(),
+            PGSQL_QUERIES.get("count-non-destroyed-objects").is_some(),
             "count-non-destroyed-objects not found – rawsql comment stripping bug recurred"
         );
         assert!(
-            SQLITE_QUERIES
+            PGSQL_QUERIES
                 .get("count-non-destroyed-keys-sqlite")
                 .is_some(),
             "count-non-destroyed-keys-sqlite not found – rawsql comment stripping bug recurred"

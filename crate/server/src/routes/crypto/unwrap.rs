@@ -104,9 +104,14 @@ pub(crate) async fn unwrap_key(
     }
 
     // Resolve the private key
-    let owm = retrieve_object_for_operation(&kid, KmipOperation::Decrypt, kms.as_ref(), &user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let owm = Box::pin(retrieve_object_for_operation(
+        &kid,
+        KmipOperation::Decrypt,
+        kms.as_ref(),
+        &user,
+    ))
+    .await
+    .map_err(CryptoApiError::from)?;
 
     let private_key_owm = match owm.object() {
         Object::PrivateKey { .. } => owm,
@@ -119,12 +124,12 @@ pub(crate) async fn unwrap_key(
                         "Key unwrap: public key has no linked private key".to_owned(),
                     )
                 })?;
-            retrieve_object_for_operation(
+            Box::pin(retrieve_object_for_operation(
                 &priv_key_uid.to_string(),
                 KmipOperation::Decrypt,
                 kms.as_ref(),
                 &user,
-            )
+            ))
             .await
             .map_err(CryptoApiError::from)?
         }

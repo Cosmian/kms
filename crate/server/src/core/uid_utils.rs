@@ -409,7 +409,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod tests {
+mod hsm_tests {
     use std::collections::HashMap;
 
     use super::*;

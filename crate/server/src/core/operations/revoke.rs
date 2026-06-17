@@ -175,12 +175,12 @@ pub(crate) async fn recursively_revoke_key(
             | ObjectType::SecretData
             | ObjectType::OpaqueObject => {
                 // revoke the key
-                revoke_key_core(
+                Box::pin(revoke_key_core(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                )
+                ))
                 .await?;
             }
             ObjectType::PrivateKey => {
@@ -223,12 +223,12 @@ pub(crate) async fn recursively_revoke_key(
                         }
                     }
                 }
-                revoke_key_core(
+                Box::pin(revoke_key_core(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                )
+                ))
                 .await?;
             }
             ObjectType::PublicKey => {
@@ -257,12 +257,12 @@ pub(crate) async fn recursively_revoke_key(
                         }
                     }
                 }
-                revoke_key_core(
+                Box::pin(revoke_key_core(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                )
+                ))
                 .await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(

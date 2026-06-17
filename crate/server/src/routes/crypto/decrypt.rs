@@ -186,9 +186,14 @@ async fn decrypt_rsa_oaep(
     let tag_bytes = b64_decode("tag", &body.tag)?;
 
     // Resolve the private key — accept either private or public key UID
-    let owm = retrieve_object_for_operation(&kid, KmipOperation::Decrypt, kms, user)
-        .await
-        .map_err(CryptoApiError::from)?;
+    let owm = Box::pin(retrieve_object_for_operation(
+        &kid,
+        KmipOperation::Decrypt,
+        kms,
+        user,
+    ))
+    .await
+    .map_err(CryptoApiError::from)?;
 
     // Determine the private key object
     let private_key_owm = match owm.object() {
@@ -203,12 +208,12 @@ async fn decrypt_rsa_oaep(
                         "RSA-OAEP decrypt: public key has no linked private key".to_owned(),
                     )
                 })?;
-            retrieve_object_for_operation(
+            Box::pin(retrieve_object_for_operation(
                 &priv_key_uid.to_string(),
                 KmipOperation::Decrypt,
                 kms,
                 user,
-            )
+            ))
             .await
             .map_err(CryptoApiError::from)?
         }
