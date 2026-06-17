@@ -240,6 +240,7 @@ mod tests {
                 #[cfg(feature = "non-fips")]
                 clear_database: false,
                 unwrapped_cache_max_age: 15,
+                unwrapped_cache_max_size: 1000,
             },
             socket_server: SocketServerConfig {
                 socket_server_start: false,
@@ -371,6 +372,7 @@ sqlite_path = "[sqlite path]"
 redis_master_password = "[redis master password]"
 clear_database = false
 unwrapped_cache_max_age = 15
+unwrapped_cache_max_size = 1000
 
 [socket_server]
 socket_server_start = false

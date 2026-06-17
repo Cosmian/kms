@@ -169,6 +169,18 @@ pub struct MainDBConfig {
         verbatim_doc_comment
     )]
     pub unwrapped_cache_max_age: u64,
+
+    /// Maximum number of entries in the unwrapped key cache.
+    /// When the cache is full, the least-recently-used entry is evicted.
+    /// Set this above the number of distinct wrapped keys in your deployment
+    /// to avoid LRU thrashing. The default is 1000.
+    #[clap(
+        long,
+        env = "KMS_UNWRAPPED_CACHE_MAX_SIZE",
+        default_value = "1000",
+        verbatim_doc_comment
+    )]
+    pub unwrapped_cache_max_size: usize,
 }
 
 impl Default for MainDBConfig {
@@ -180,6 +192,7 @@ impl Default for MainDBConfig {
             clear_database: false,
             max_connections: None,
             unwrapped_cache_max_age: 15,
+            unwrapped_cache_max_size: 1000,
             #[cfg(feature = "non-fips")]
             redis_master_password: None,
         }

@@ -79,6 +79,9 @@ pub struct ServerParams {
     /// The maximum age of unwrapped objects in the cache
     pub unwrapped_cache_max_age: Duration,
 
+    /// The maximum number of entries in the unwrapped key cache
+    pub unwrapped_cache_max_size: usize,
+
     /// Whether the socket server should be started
     pub start_socket_server: bool,
 
@@ -327,6 +330,13 @@ impl ServerParams {
             } else {
                 Duration::from_secs(conf.db.unwrapped_cache_max_age * 60)
             },
+            unwrapped_cache_max_size: if conf.db.unwrapped_cache_max_size == 0 {
+                return Err(KmsError::NotSupported(
+                    "unwrapped_cache_max_size must be greater than 0".to_owned(),
+                ));
+            } else {
+                conf.db.unwrapped_cache_max_size
+            },
             start_socket_server: conf.socket_server.socket_server_start,
             socket_server_hostname: conf.socket_server.socket_server_hostname,
             socket_server_port: conf.socket_server.socket_server_port,
@@ -450,7 +460,8 @@ impl fmt::Debug for ServerParams {
 
         debug_struct
             .field("clear_db_on_start", &self.clear_db_on_start)
-            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age);
+            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
+            .field("unwrapped_cache_max_size", &self.unwrapped_cache_max_size);
 
         if let Some(ref otel_params) = self.otel_params {
             debug_struct.field("otel_params", otel_params);

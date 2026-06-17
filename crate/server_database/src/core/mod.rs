@@ -3,7 +3,7 @@
 mod database_objects;
 mod database_permissions;
 mod db_metrics;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
@@ -91,17 +91,23 @@ impl Database {
     /// - `clear_db_on_start` indicates whether to clear the database on startup.
     /// - `object_stores` is a map of object stores with their prefixes.
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
+    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
     pub async fn instantiate(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
         recorder: Option<Arc<dyn DbMetricsRecorder>>,
     ) -> DbResult<Self> {
         // main/default database
-        let mut db =
-            Self::instantiate_main_database(main_db_params, clear_db_on_start, cache_max_age)
-                .await?;
+        let mut db = Self::instantiate_main_database(
+            main_db_params,
+            clear_db_on_start,
+            cache_max_age,
+            cache_max_size,
+        )
+        .await?;
         db.recorder = recorder;
         for (prefix, store) in object_stores {
             db.register_objects_store(&prefix, store).await;
@@ -113,6 +119,7 @@ impl Database {
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
     ) -> DbResult<Self> {
         // Permissions are stored in the same backend as objects for the main database.
         // The `SqlitePool`/`PgPool`/`MySqlPool` types implement both `ObjectsStore` and
@@ -128,6 +135,7 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
                     MainDbKind::Sqlite,
                     health,
                 ))
@@ -139,6 +147,7 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
                     MainDbKind::Postgres,
                     health,
                 ))
@@ -152,6 +161,7 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
                     MainDbKind::Mysql,
                     health,
                 ))
@@ -180,6 +190,7 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
                     MainDbKind::RedisFindex,
                     health,
                 ))
@@ -201,17 +212,19 @@ impl Database {
     /// - `default_database` is the default database for objects without a prefix
     /// - `permissions_database` is the database for permissions
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
+    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
     fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
         kind: MainDbKind,
         health: Arc<dyn DatabaseHealth + Sync + Send>,
     ) -> Self {
         Self {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
-            unwrapped_cache: UnwrappedCache::new(cache_max_age),
+            unwrapped_cache: UnwrappedCache::new(cache_max_age, cache_max_size),
             kind,
             health,
             recorder: None,

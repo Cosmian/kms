@@ -152,3 +152,6 @@ ON objects.id = matched_tags.id;
 
 -- name: select-uids-from-tags
 SELECT id FROM tags WHERE tag IN (@TAGS) GROUP BY id HAVING COUNT(DISTINCT tag) = @LEN;
+
+-- name: list-uids-for-tags
+SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int;

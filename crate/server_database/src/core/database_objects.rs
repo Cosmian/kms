@@ -512,6 +512,7 @@ impl Database {
 mod tests {
     use std::{
         collections::HashMap,
+        num::NonZeroUsize,
         sync::{Arc, Mutex},
         time::Duration,
     };
@@ -530,6 +531,7 @@ mod tests {
             false,
             HashMap::new(), // no HSM stores registered
             Duration::from_secs(1),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
             None,
         )
         .await
@@ -586,6 +588,7 @@ mod tests {
             false,
             HashMap::new(),
             Duration::from_secs(1),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
             Some(recorder_arc),
         )
         .await
