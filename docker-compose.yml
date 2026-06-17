@@ -131,14 +131,14 @@ services:
   #   - Cosmian KMS running with KMIP port 15696
   #   - EDB_MASTER_KEY_UID exported (UID of an Active AES-256 key in the KMS)
   #
-  # Used automatically by:  bash .github/scripts/nix.sh --variant non-fips test edb_tde
+  # Used automatically by:  mise run test:edb-tde --variant non-fips
   # (when EDB_SUBSCRIPTION_TOKEN is set; the test script handles login and lifecycle)
   edb-tde:
     profiles:
       - edb-tde
     # Build locally to install PyKMIP (not shipped in the base image).
     build:
-      context: .github/scripts/edb_tde
+      context: .mise/scripts/edb_tde
       dockerfile: Dockerfile.edb
     # Base image is x86_64-only.
     platform: linux/amd64
@@ -172,8 +172,8 @@ services:
       - ./test_data/certificates/client_server/ca/ca.crt:/kmip-certs/ca.crt:ro
       - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/kmip-certs/client.crt:ro
       - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/kmip-certs/client.key:ro
-      - ./.github/scripts/edb_tde/pykmip_docker.conf:/kmip-certs/pykmip.conf:ro
-      - ./.github/scripts/edb_tde/edb_startup.sh:/startup/edb_startup.sh:ro
+      - ./.mise/scripts/edb_tde/pykmip_docker.conf:/kmip-certs/pykmip.conf:ro
+      - ./.mise/scripts/edb_tde/edb_startup.sh:/startup/edb_startup.sh:ro
 
     extra_hosts:
       # Resolves to the Docker host (host.docker.internal is natively available

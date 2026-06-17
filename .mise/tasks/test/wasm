@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+#MISE description="Run WASM build + tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+# WITH_WASM=1 tells shell.nix to include wasm-pack, nodejs_23, and pnpm.
+# Must be exported before ensure_nix_shell so builtins.getEnv sees it.
+export WITH_WASM=1
+
+# WASM requires Node >= 22 and wasm-pack; enter nix-shell if not available
+if ! command -v wasm-pack >/dev/null 2>&1; then
+  ensure_nix_shell
+fi
+node_major=$(node --version 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo "0")
+if [ "$node_major" -lt 22 ]; then
+  ensure_nix_shell
+fi
+
+print_header "Running WASM tests (${VARIANT_NAME})"
+
+REPO_ROOT="$(get_repo_root)"
+WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
+
+require_cmd wasm-pack
+require_cmd pnpm
+
+# wasm32-unknown-unknown does not accept macOS framework link flags (-F ...).
+# Clear any host-specific RUSTFLAGS/LDFLAGS set by ensure_macos_frameworks_ldflags.
+# The Nix-built Node.js links against OpenSSL with compiled-in OPENSSLDIR=/usr/local/cosmian/lib/ssl.
+# Its openssl.cnf references fips.so at /usr/local/cosmian/lib/ossl-modules/fips.so.
+# Create a symlink so node can initialize OpenSSL without error.
+if [ -n "${OPENSSL_MODULES:-}" ] && [ -d "$OPENSSL_MODULES" ]; then
+  sudo mkdir -p /usr/local/cosmian/lib/ossl-modules
+  for f in "$OPENSSL_MODULES"/*.so "$OPENSSL_MODULES"/*.dylib; do
+    [ -f "$f" ] && sudo ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+  done
+  # Also link the openssl.cnf so the baked-in default works
+  if [ -f "${OPENSSL_CONF:-}" ]; then
+    sudo mkdir -p /usr/local/cosmian/lib/ssl
+    sudo ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
+  fi
+fi
+unset RUSTFLAGS LDFLAGS OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH
+
+# 1. Run Rust/wasm-bindgen unit tests via Node runner
+echo "Running wasm-bindgen tests (--node)..."
+(cd "$WASM_CRATE" && wasm-pack test --node ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"})
+
+# 2. Build web-target WASM package; remove stale pkg/ first to avoid wasm-pack
+#    re-parse errors (sequence vs string in package.json "authors" field).
+echo "Building WASM web package..."
+rm -rf "${WASM_CRATE}/pkg"
+(cd "$WASM_CRATE" && wasm-pack build --target web ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"})
+
+# 3. Copy to UI source tree
+rm -rf "${REPO_ROOT}/ui/src/wasm/pkg"
+mkdir -p "${REPO_ROOT}/ui/src/wasm"
+cp -r "${WASM_CRATE}/pkg/" "${REPO_ROOT}/ui/src/wasm/pkg/"
+
+# 4. Ensure pkg/package.json has a "main" field (needed by Vite/Vitest)
+if [ -f "${REPO_ROOT}/ui/src/wasm/pkg/package.json" ]; then
+  node -e "
+    const fs = require('fs');
+    const p = '${REPO_ROOT}/ui/src/wasm/pkg/package.json';
+    const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!pkg.main) { pkg.main = pkg.module || 'cosmian_kms_client_wasm.js'; fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n'); }
+  "
+fi
+
+# Ensure pnpm >= 10 is available.
+# The nix-shell provides pnpm 9.x, but the lockfile (lockfileVersion 9.0) requires pnpm 10+.
+# Install pnpm 10.17.1 from npm into a temp dir and prepend to PATH.
+ensure_pnpm_v10() {
+  local pnpm_major
+  pnpm_major=$(pnpm --version 2>/dev/null | cut -d. -f1 || echo "0")
+  if [ "${pnpm_major}" -ge 10 ]; then
+    return 0
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    local _pnpm_tmp
+    _pnpm_tmp="$(mktemp -d)"
+    npm install "pnpm@10.17.1" --prefix "${_pnpm_tmp}" --no-save --quiet >/dev/null 2>&1 || true
+    if [ -f "${_pnpm_tmp}/node_modules/.bin/pnpm" ]; then
+      export PATH="${_pnpm_tmp}/node_modules/.bin:${PATH}"
+      echo "Upgraded to pnpm $(pnpm --version)"
+    fi
+  fi
+}
+
+# 5. Run UI TypeScript check + unit tests (pnpm is in ui/, not in wasm crate)
+echo "Running UI unit tests..."
+(
+  cd "${REPO_ROOT}/ui"
+  export OPENSSL_CONF=/dev/null
+  unset OPENSSL_MODULES LD_PRELOAD OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_STATIC PKG_CONFIG_PATH || true
+  ensure_pnpm_v10
+  pnpm install --frozen-lockfile
+  pnpm run check
+  pnpm run test:unit
+)
+
+print_success "WASM tests completed"

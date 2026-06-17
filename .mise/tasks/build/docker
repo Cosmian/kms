@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+#MISE description="Build KMS Docker image via Nix"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "--load" help="Load the built image into the local Docker daemon"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+print_header "Building KMS Docker image (${VARIANT_NAME})"
+
+REPO_ROOT="$(get_repo_root)"
+ensure_nix_shell
+
+ARGS=(--variant "${VARIANT}")
+if [ "${usage_load:-false}" = "true" ]; then
+  ARGS+=(--load)
+fi
+
+bash "${REPO_ROOT}/.mise/scripts/nix.sh" docker "${ARGS[@]}"
+
+print_success "Docker image built"

@@ -19,6 +19,17 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
@@ -29,9 +40,7 @@ jobs:
           sudo mkdir -p ${{ env.OPENSSL_DIR }}/ssl
           sudo mkdir -p ${{ env.OPENSSL_DIR }}/lib64/ossl-modules
           sudo chown -R $USER ${{ env.OPENSSL_DIR }}
-          bash .github/reusable_scripts/get_openssl_binaries.sh
-        env:
-          OS_NAME: ubuntu_24_04
+          mise run build:openssl-binaries --os-name ubuntu_24_04 --openssl-dir ${{ env.OPENSSL_DIR }}
 
       - name: Prerequisites
         run: |

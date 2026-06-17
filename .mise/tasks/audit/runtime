@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#MISE description="Run runtime network security assessment against a live KMS"
+#USAGE flag "--server-url <url>" help="KMS server URL (e.g. https://localhost:9998)" required=true
+#USAGE flag "--cert <path>" help="Client TLS certificate for mTLS tests"
+#USAGE flag "--key <path>" help="Client TLS private key for mTLS tests"
+#USAGE flag "--ca <path>" help="CA certificate for server verification"
+#USAGE flag "--output-dir <dir>" help="Output directory for reports"
+#USAGE flag "--report <path>" help="Write Markdown report to file"
+#USAGE flag "--insecure" help="Skip server cert verification (dev environments)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running Runtime Security Assessment"
+
+ARGS=()
+[ -n "${usage_server_url:-}" ] && ARGS+=(--server-url "$usage_server_url")
+[ -n "${usage_cert:-}" ] && ARGS+=(--cert "$usage_cert")
+[ -n "${usage_key:-}" ] && ARGS+=(--key "$usage_key")
+[ -n "${usage_ca:-}" ] && ARGS+=(--ca "$usage_ca")
+[ -n "${usage_output_dir:-}" ] && ARGS+=(--output-dir "$usage_output_dir")
+[ -n "${usage_report:-}" ] && ARGS+=(--report "$usage_report")
+[ "${usage_insecure:-}" = "true" ] && ARGS+=(--insecure)
+
+bash "${MISE_CONFIG_ROOT}/.mise/scripts/audit/runtime_security.sh" "${ARGS[@]}"
+
+print_success "Runtime security assessment completed"

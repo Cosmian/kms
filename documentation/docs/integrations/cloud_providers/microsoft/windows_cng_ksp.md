@@ -321,15 +321,15 @@ This performs the following steps:
    DLLs from that directory)
 2. Calls `BCryptRegisterProvider` to create the proper registry structure:
 
-```text
-HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
-    Cosmian KMS Key Storage Provider\
-        UM\
-            Image        REG_SZ     "cosmian_cng.dll"
-            00010001\
-                (Default)   REG_SZ         "CRYPT_KEY_STORAGE_INTERFACE"
-                Functions   REG_MULTI_SZ   "KEY_STORAGE"
-```
+   ```text
+   HKLM\SYSTEM\CurrentControlSet\Control\Cryptography\Providers\
+       Cosmian KMS Key Storage Provider\
+           UM\
+               Image        REG_SZ     "cosmian_cng.dll"
+               00010001\
+                   (Default)   REG_SZ         "CRYPT_KEY_STORAGE_INTERFACE"
+                   Functions   REG_MULTI_SZ   "KEY_STORAGE"
+   ```
 
 3. Calls `BCryptAddContextFunctionProvider` to make the provider discoverable by
    `NCryptOpenStorageProvider` and `certutil -csplist`

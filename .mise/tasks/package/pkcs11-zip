@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Build PKCS#11 ZIP bundle"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+REPO_ROOT="${MISE_CONFIG_ROOT}"
+
+exec bash "${REPO_ROOT}/.mise/scripts/package/package_pkcs11_zip.sh" \
+  --variant "${usage_variant:-fips}" \
+  --link "${usage_link:-static}"

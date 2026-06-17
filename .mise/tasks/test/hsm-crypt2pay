@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Run Crypt2Pay HSM tests (Linux only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "-d --db <db>" env="DB" help="DB backend (accepted for matrix consistency; loader tests do not use a KMS server DB)" default="sqlite" {
+#USAGE   choices "sqlite" "postgresql" "mysql" "percona" "maria" "redis"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+ensure_nix_shell
+
+print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
+
+require_cmd cargo
+
+cargo test \
+  -p crypt2pay_pkcs11_loader \
+  -- --nocapture
+
+print_success "Crypt2Pay HSM tests completed"

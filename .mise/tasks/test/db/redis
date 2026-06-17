@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Run Redis-findex tests (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+exec bash "${MISE_CONFIG_ROOT}/.mise/tasks/test/redis" "$@"

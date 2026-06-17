@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\windows\windows_ui.ps1
+          . .\.mise\scripts\windows\windows_ui.ps1
           Build-UI -Variant non-fips
 
       - name: Copy UI to server directory
@@ -82,7 +82,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\windows\cargo_build.ps1
+          . .\.mise\scripts\windows\cargo_build.ps1
           BuildProject
 
       - name: Rename installers to new convention

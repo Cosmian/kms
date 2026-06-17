@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#MISE description="Smoke test a .deb package"
+#USAGE arg "<package_file>" help="Path to the .deb file to test"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/package_smoke.sh"
+
+PACKAGE_FILE="${usage_package_file:?Package file required}"
+print_header "Smoke testing DEB package: $(basename "$PACKAGE_FILE")"
+
+require_cmd ar "ar is required for DEB extraction"
+require_cmd tar
+
+TEMP_DIR="$(mktemp -d /tmp/smoke-deb-XXXXXX)"
+# shellcheck disable=SC2064  # TEMP_DIR must expand now so the correct path is captured in the trap
+trap "rm -rf '$TEMP_DIR'" EXIT
+
+# Extract DEB
+cd "$TEMP_DIR"
+ar x "$PACKAGE_FILE"
+tar xf data.tar.* -C "$TEMP_DIR"
+
+detect_fips_variant "$PACKAGE_FILE"
+find_binary "$TEMP_DIR"
+verify_crypto_modules "$TEMP_DIR" "$IS_FIPS"
+check_binary_rpath "$BINARY_PATH"
+detect_linkage_type "$BINARY_PATH"
+verify_package_assets "$TEMP_DIR" "$IS_FIPS" "$IS_DYNAMIC"
+test_binary_execution "$BINARY_PATH" "$TEMP_DIR" "$IS_FIPS" "$IS_DYNAMIC"
+
+print_success "DEB smoke test passed"

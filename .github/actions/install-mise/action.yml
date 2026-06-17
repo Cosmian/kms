@@ -1,0 +1,26 @@
+---
+name: Install mise
+description: >
+  Install mise in a CI-resilient way.
+  Uses Homebrew on macOS (never hits GitHub release race conditions)
+  and the official install script on Linux (Linux builds are always present).
+  Sets MISE_YES=1 so all subsequent mise commands run non-interactively.
+
+runs:
+  using: composite
+  steps:
+    - name: Install mise (macOS via Homebrew)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install mise
+
+    - name: Install mise (Linux via install script)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        curl -fsSL https://mise.run | sh
+        echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+
+    - name: Configure mise for CI (non-interactive)
+      shell: bash
+      run: echo "MISE_YES=1" >> "$GITHUB_ENV"

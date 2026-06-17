@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#MISE description="Run Playwright E2E tests for the KMS web UI"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+
+# WITH_WASM=1 tells shell.nix to include wasm-pack, nodejs_23, and pnpm.
+# WITH_HSM=1 tells shell.nix to include softhsm2 and related tools.
+# WITH_CURL=1 for kms_wait_ready.
+# Must be exported before ensure_nix_shell so builtins.getEnv sees them.
+export WITH_WASM=1 WITH_HSM=1 WITH_CURL=1
+
+# The Nix-built Node.js links against OpenSSL with compiled-in OPENSSLDIR=/usr/local/cosmian/lib/ssl.
+# Create symlinks so node can initialize without error.
+if [ -n "${OPENSSL_MODULES:-}" ] && [ -d "$OPENSSL_MODULES" ]; then
+  sudo mkdir -p /usr/local/cosmian/lib/ossl-modules
+  for f in "$OPENSSL_MODULES"/*.so "$OPENSSL_MODULES"/*.dylib; do
+    [ -f "$f" ] && sudo ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+  done
+  if [ -f "${OPENSSL_CONF:-}" ]; then
+    sudo mkdir -p /usr/local/cosmian/lib/ssl
+    sudo ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
+  fi
+fi
+
+ensure_nix_shell
+
+# Delegate to the full UI test script (ported from .github/scripts/test/test_ui.sh)
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/test/test_ui.sh" --variant "${VARIANT}" --link "${LINK}"

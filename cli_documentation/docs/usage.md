@@ -1,7 +1,7 @@
 # Usage
 
 ```sh
-Command Line Interface used to manage the Eviden KMS server.
+Command Line Interface used to manage the Cosmian KMS server.
 
 If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
 or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
@@ -33,6 +33,7 @@ Commands:
   server         Server-related commands
   rsa            Manage RSA keys. Encrypt and decrypt data using RSA keys
   opaque-object  Create, import, export, revoke and destroy Opaque Objects
+  pkcs11         Verify PKCS#11 shared library integration
   secret-data    Create, import, export and destroy secret data
   sym            Manage symmetric keys. Encrypt and decrypt data
   markdown       Regenerate the CLI documentation in Markdown format

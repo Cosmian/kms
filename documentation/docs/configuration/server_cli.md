@@ -460,15 +460,18 @@ Options:
           [env: KMS_LOG_TO_SYSLOG=]
 
       --rolling-log-dir <ROLLING_LOG_DIR>
-          If set, daily rolling logs will be written to the specified directory
-          using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
+          The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.
+          File logging is disabled unless this option is explicitly set.
+          Suggested paths:
+            Linux: /var/log/
+            Windows: C:\ProgramData\Cosmian KMS Server\logs
+            macOS: ~/Library/Logs/Cosmian KMS Server
 
           [env: KMS_ROLLING_LOG_DIR=]
 
       --rolling-log-name <ROLLING_LOG_NAME>
-          If `rolling_log_dir` is set, this is the name of the rolling log file:
-           <rolling_log_name>.YYYY-MM-DD.
-          Defaults to "kms" if not set.
+          The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
+          Defaults to `cosmian_kms` if not set.
 
           [env: KMS_ROLLING_LOG_NAME=]
 

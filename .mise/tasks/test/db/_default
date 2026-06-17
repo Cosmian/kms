@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#MISE description="Run all database backend tests (sqlite, psql, redis, percona, mysql, mariadb)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test"
+PASS=()
+SKIP=()
+FAIL=()
+
+HAS_NIX=false
+command -v nix-shell >/dev/null 2>&1 && HAS_NIX=true
+
+# Run a named DB test task; track pass/fail.
+run_db() {
+  local name="$1" task="$2" v="${3:-$VARIANT}"
+  print_header "DB suite: $name"
+  if bash "${TASK_DIR}/${task}" --variant "$v" --link "$LINK"; then
+    PASS+=("$name")
+  else
+    FAIL+=("$name")
+  fi
+}
+
+# Record a skipped backend with a human-readable reason.
+skip_db() {
+  local name="$1" reason="$2"
+  echo "[SKIP] $name — $reason"
+  SKIP+=("$name")
+}
+
+# Instant TCP port probe (no retry loop).
+port_open() {
+  (exec 3<>"/dev/tcp/${1:-127.0.0.1}/$2") 2>/dev/null && {
+    exec 3>&- 3<&-
+    return 0
+  } || return 1
+}
+
+print_header "Running all database tests (${VARIANT_NAME})"
+
+# ── SQLite — no external service, no Nix required ─────────────────────────
+run_db "sqlite" "sqlite"
+
+# ── External databases ─────────────────────────────────────────────────────
+# Fields (colon-separated): name : task : port : variant : pretty-name : docker-compose-hint
+# Redis always uses non-fips; others inherit the user-supplied variant.
+while IFS=: read -r name task port v pretty hint; do
+  if ! port_open "127.0.0.1" "$port"; then
+    skip_db "$pretty" "not reachable at 127.0.0.1:$port — start with: docker compose up -d $hint"
+  elif ! $HAS_NIX; then
+    skip_db "$pretty" "nix-shell not available (required for $pretty tests on CI)"
+  else
+    run_db "$pretty" "$task" "$v"
+  fi
+done <<EOF
+psql:psql:5432:${VARIANT}:PostgreSQL:postgres
+redis:redis:6379:non-fips:Redis:redis
+percona:percona:3307:${VARIANT}:Percona:percona
+mysql:mysql:3306:${VARIANT}:MySQL:mysql
+mariadb:mariadb:3308:${VARIANT}:MariaDB:mariadb
+EOF
+
+# ── Summary ───────────────────────────────────────────────────────────────
+echo ""
+echo "════════════════════════════════════════════"
+echo "  Database test suite summary"
+echo "════════════════════════════════════════════"
+for db in "${PASS[@]+"${PASS[@]}"}"; do echo "  [PASS] $db"; done
+for db in "${SKIP[@]+"${SKIP[@]}"}"; do echo "  [SKIP] $db"; done
+for db in "${FAIL[@]+"${FAIL[@]}"}"; do echo "  [FAIL] $db"; done
+printf "  PASS: %d  SKIP: %d  FAIL: %d\n" "${#PASS[@]}" "${#SKIP[@]}" "${#FAIL[@]}"
+
+if [ "${#FAIL[@]}" -gt 0 ]; then
+  print_error "Some database tests FAILED: ${FAIL[*]}"
+fi
+print_success "Database test suite completed (${#PASS[@]} passed, ${#SKIP[@]} skipped)"

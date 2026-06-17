@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#MISE description="Build WASM client package"
+#MISE depends=[]
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "static"
+
+print_header "Building WASM package (${VARIANT_NAME})"
+
+require_cmd wasm-pack "wasm-pack is required. Install: cargo install wasm-pack"
+
+REPO_ROOT="$(get_repo_root)"
+WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
+
+# wasm32-unknown-unknown does not accept macOS framework link flags (-F ...).
+# Clear any host-specific RUSTFLAGS/LDFLAGS set by ensure_macos_frameworks_ldflags.
+unset RUSTFLAGS LDFLAGS
+
+wasm-pack build --target web "$WASM_CRATE" ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+
+# Copy output to UI source
+cp -r "${WASM_CRATE}/pkg/" "${REPO_ROOT}/ui/src/wasm/pkg/"
+
+print_success "WASM package built and copied to ui/src/wasm/pkg/"

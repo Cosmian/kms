@@ -1,0 +1,14 @@
+# mise.toml — Cosmian KMS development environment & task runner
+# See https://mise.jdx.dev/configuration.html
+
+[env]
+RUST_BACKTRACE = "1"
+
+[tools]
+node = "22"
+"npm:pnpm" = "10.17.1"
+# Rust is managed by rust-toolchain.toml (mise auto-detects)
+
+[task_config]
+dir = "{{config_root}}"
+includes = [".mise/tasks"]

@@ -22,16 +22,15 @@ jobs:
           - percona
           - mariadb
           - psql
-          - otel_export
-          - google_cse
+          - otel
+          - google-cse
           - redis
           - pykmip
-          - edb_tde
           - wasm
-          - aws_xks
-          - azure_ekm
+          - xks
+          - azure-ekm
           - ui
-          - gcp_cmek
+          - gcp-cmek
           - openssh
           - luks
           - jose
@@ -48,14 +47,11 @@ jobs:
           # pykmip is exclusively for non-fips since P12 is used for TLS KMS server
           - type: pykmip
             features: fips
-          # edb_tde is exclusively for non-fips (uses PyKMIP which requires ssl.wrap_socket)
-          - type: edb_tde
-            features: fips
           # aws_xks relies on curl SigV4 + non-FIPS build flags
-          - type: aws_xks
+          - type: xks
             features: fips
           # azure_ekm is only run with non-fips
-          - type: azure_ekm
+          - type: azure-ekm
             features: fips
           # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
           - type: openssh
@@ -89,9 +85,8 @@ jobs:
             docker: mariadb
           - type: redis
             docker: redis
-          - type: otel_export
+          - type: otel
             docker: otel-collector jaeger
-          # iris container is started by test_iris.sh so IRIS_DOCKER_IMAGE/IRIS_LICENSE_KEY are honored
 
     steps:
       - name: Manual cleanup for extra space
@@ -110,6 +105,17 @@ jobs:
             connect-timeout = 15
             stalled-download-timeout = 15
             narinfo-cache-negative-ttl = 0
+
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
 
       - uses: actions/checkout@v6
         with:
@@ -135,17 +141,6 @@ jobs:
         if: matrix.docker
         run: |
           docker compose up -d ${{ matrix.docker }}
-
-      - name: Login to EDB Docker registry and pre-build image
-        if: matrix.type == 'edb_tde' && env.EDB_SUBSCRIPTION_TOKEN != ''
-        env:
-          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
-        run: |
-          # Authenticate and pre-pull the EDB image so the nix wrapper's
-          # docker compose up edb-tde only needs to create and start the container.
-          echo "$EDB_SUBSCRIPTION_TOKEN" | \
-            docker login --username k8s --password-stdin docker.enterprisedb.com
-          docker compose pull edb-tde
 
       - name: Test
         env:
@@ -207,13 +202,7 @@ jobs:
           AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
         run: |
           set -ex
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}
-
-      - name: Stop EDB container
-        if: always() && matrix.type == 'edb_tde'
-        run: |
-          docker compose stop edb-tde 2>/dev/null || true
-          docker compose rm -f edb-tde 2>/dev/null || true
+          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
@@ -222,8 +211,7 @@ jobs:
     # give them fixed concurrency groups so only one job runs at a time across all PRs.
     # utimaco and softhsm2 use a per-run group so they are never blocked by other PRs.
     concurrency:
-      group:
-        ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
+      group: ${{ (matrix.hsm-type == 'proteccio' && 'hsm-proteccio') || (matrix.hsm-type == 'crypt2pay' && 'hsm-crypt2pay') || format('hsm-{0}-{1}', matrix.hsm-type,
         github.run_id) }}
       queue: max
       cancel-in-progress: false
@@ -262,6 +250,17 @@ jobs:
             stalled-download-timeout = 15
             narinfo-cache-negative-ttl = 0
 
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -297,7 +296,7 @@ jobs:
           # OVPN for Crypt2Pay HSM tests
           OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
+          mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
   windows-2022:
     uses: ./.github/workflows/test_windows.yml

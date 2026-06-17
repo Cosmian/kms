@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate all documentation (server help, ckms markdown, KMIP tables, CBOM)"
+#USAGE flag "--skip-cbom" help="Skip CBOM generation"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Generating documentation"
+
+REPO_ROOT="$(get_repo_root)"
+
+ARGS=()
+if [ "${usage_skip_cbom:-false}" = "true" ]; then
+  ARGS+=(--skip-cbom)
+fi
+
+bash "${REPO_ROOT}/.mise/scripts/docs/generate_docs.sh" "${ARGS[@]}"
+
+print_success "Documentation generated"

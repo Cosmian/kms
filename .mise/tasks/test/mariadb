@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#MISE description="Run MariaDB tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+ensure_nix_shell
+
+print_header "Running MariaDB tests (${VARIANT_NAME})"
+
+# CI sets KMS_MARIADB_URL; fall back to port 3308 default
+export KMS_MYSQL_URL="${KMS_MARIADB_URL:-${KMS_MYSQL_URL:-mysql://kms:kms@127.0.0.1:3308/kms}}"
+
+check_and_test_db "MariaDB" "mysql" "MARIADB_HOST" "MARIADB_PORT"
+
+print_success "MariaDB tests completed"

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#MISE description="Build server binary via Nix with verification"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+
+print_header "Building server via Nix (${VARIANT_NAME}, ${LINK})"
+
+REPO_ROOT="$(get_repo_root)"
+ATTR="server-${VARIANT}-${LINK}"
+OUT_LINK="${REPO_ROOT}/result-server-${VARIANT}-${LINK}"
+
+nix_build "$ATTR" "$OUT_LINK"
+
+# Verify the built binary
+BINARY="${OUT_LINK}/bin/cosmian_kms"
+if [ ! -f "$BINARY" ]; then
+  print_error "Binary not found at $BINARY"
+fi
+
+# Verify no Nix store RPATH (Linux only)
+if [ "$(uname)" = "Linux" ]; then
+  if readelf -d "$BINARY" 2>/dev/null | grep -E "RPATH|RUNPATH" | grep -q "/nix/store"; then
+    print_error "Binary has hardcoded Nix store RPATH!"
+  fi
+  print_status "No Nix store RPATH (good)"
+
+  # Verify GLIBC version <= 2.34
+  GLIBC_MAX=$(readelf -V "$BINARY" 2>/dev/null |
+    grep -oP 'GLIBC_\K[0-9.]+' |
+    sort -V | tail -1)
+  if [ -n "$GLIBC_MAX" ]; then
+    echo "Max GLIBC version required: $GLIBC_MAX"
+    if printf '%s\n' "2.34" "$GLIBC_MAX" | sort -V | head -1 | grep -qv "^2.34$"; then
+      print_error "Binary requires GLIBC > 2.34 ($GLIBC_MAX)"
+    fi
+    print_status "GLIBC <= 2.34 (good)"
+  fi
+fi
+
+# macOS: verify no Nix store in LC_RPATH
+if [ "$(uname)" = "Darwin" ]; then
+  if otool -l "$BINARY" 2>/dev/null | grep -A2 LC_RPATH | grep -q "/nix/store"; then
+    print_error "Binary has Nix store in LC_RPATH!"
+  fi
+  print_status "No Nix store in LC_RPATH (good)"
+fi
+
+print_success "Nix build completed: $OUT_LINK"
