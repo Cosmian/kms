@@ -33,6 +33,7 @@ jobs:
           - gcp-cmek
           - openssh
           - luks
+          - veracrypt
           - jose
           - iris
           - secret_vault
@@ -58,6 +59,9 @@ jobs:
             features: fips
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
+            features: fips
+          # veracrypt disk-encryption PKCS#11 tests force non-fips
+          - type: veracrypt
             features: fips
           # jose (REST crypto + jwcrypto interop) runs only with non-fips
           - type: jose

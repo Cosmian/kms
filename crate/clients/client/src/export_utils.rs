@@ -147,7 +147,9 @@ async fn batch_get(
     let operations = object_ids_or_tags
         .into_iter()
         .flat_map(|id| {
-            // Get  does not return (external) attributes, so we need to do a GetAttributes
+            // Get does not return (external) attributes, so we need to do a GetAttributes.
+            // Tags are excluded from the default GetAttributes response, so request them
+            // explicitly via a dedicated GetAttributes call (same pattern as batch_export).
             vec![
                 Operation::Get(get_request(
                     &id,
@@ -160,7 +162,13 @@ async fn batch_get(
                 )),
                 Operation::GetAttributes(GetAttributes {
                     unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
-                    attribute_reference: None, // all attributes
+                    attribute_reference: None, // all attributes (except internal tags)
+                }),
+                Operation::GetAttributes(GetAttributes {
+                    unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
+                    attribute_reference: Some(vec![AttributeReference::tags_reference(
+                        kms_rest_client.config.vendor_id.as_str(),
+                    )]),
                 }),
             ]
         })
@@ -168,18 +176,18 @@ async fn batch_get(
     let responses = batch_operations(kms_rest_client, operations).await?;
     let mut results = Vec::with_capacity(responses.len());
 
-    for response in responses.chunks(2) {
+    for response in responses.chunks(3) {
         match response {
             [
                 Operation::GetResponse(get),
                 Operation::GetAttributesResponse(get_attributes_response),
+                Operation::GetAttributesResponse(get_tags_response),
             ] => {
                 let object = get.object.clone();
-                results.push((
-                    get.unique_identifier.clone(),
-                    object,
-                    get_attributes_response.attributes.clone(),
-                ));
+                let mut attributes = get_attributes_response.attributes.clone();
+                let vendor_id = kms_rest_client.config.vendor_id.as_str();
+                attributes.set_tags(vendor_id, get_tags_response.attributes.get_tags(vendor_id))?;
+                results.push((get.unique_identifier.clone(), object, attributes));
             }
             operations => {
                 let mut errors = String::new();

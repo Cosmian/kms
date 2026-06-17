@@ -1036,8 +1036,9 @@ fn apply_owned_ops(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     /// Verify that `count-non-destroyed-objects` and `count-non-destroyed-keys-sqlite`
     /// are present in the parsed query map.

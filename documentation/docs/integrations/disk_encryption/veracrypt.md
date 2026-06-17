@@ -1,12 +1,12 @@
-# Veracrypt integration with Eviden KMS
+# Veracrypt integration with Cosmian KMS
 
-The Eviden KMS is integrated with [Veracrypt](https://www.veracrypt.fr/en/Home.html)
-disk encryption using the Eviden KMS PKCS#11 provider library.
+The Cosmian KMS is integrated with [Veracrypt](https://www.veracrypt.fr/en/Home.html)
+disk encryption using the Cosmian KMS PKCS#11 provider library.
 
 Veracrypt is a free, open-source disk encryption software for Windows, macOS, and Linux, and is a successor to TrueCrypt, certified by ANSSI.
 Veracrypt has undergone a formal security evaluation by the BSI.
 
-Using the Eviden KMS PKCS#11 provider library, Veracrypt can use keys stored in the KMS to
+Using the Cosmian KMS PKCS#11 provider library, Veracrypt can use keys stored in the KMS to
 encrypt and decrypt volumes.
 
 ![Veracrypt-cosmian](./images/veracrypt_ckms.svg)
@@ -14,7 +14,7 @@ encrypt and decrypt volumes.
 ## Installing the PKCS#11 provider library on Veracrypt
 
 Go to Veracrypt `Settings > Security Tokens` and use the `Select Library...`
-button to select the Eviden KMS PKCS#11 library for your operating system.
+button to select the Cosmian KMS PKCS#11 library for your operating system.
 Then click `OK`.
 
 ![Veracrypt PKCS#11 library](images/Veracrypt-library-loading.png)
@@ -55,11 +55,29 @@ carry at least two tags, one being `disk-encryption`. The other tag(s) will be d
 user in the Veracrypt GUI when selecting the key to use to mount the volume. The other tag(s) can
 also be used to identify the key when using Veracrypt CLI.
 
-To create a key using the CLI, which will be shown as `vol1`to the user, use the following command:
+To create a key using the CLI, which will be shown as `vol1` to the user, use the following command:
 
 ```sh
 ckms sym keys create -t disk-encryption -t vol1
 ```
+
+The keys are exposed to Veracrypt as PKCS#11 token files (`CKO_DATA` objects).
+The label shown in the Veracrypt GUI corresponds to the second tag (e.g. `vol1`).
+
+!!! note "Custom discovery tag"
+
+    The PKCS#11 provider discovers disk-encryption keys using the tag `disk-encryption` by default.
+    To use a different tag, set the `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG` environment variable before
+    starting Veracrypt.
+
+    ```sh
+    COSMIAN_PKCS11_DISK_ENCRYPTION_TAG=my-veracrypt-keys veracrypt
+    ```
+
+!!! warning "Do not use `--sensitive`"
+
+    Keys must remain non-sensitive (exportable) so the PKCS#11 provider can
+    retrieve the key material. This is the default for `ckms sym keys create`.
 
 Do not forget to grant `Get` access to the key to the machine that will mount the Veracrypt volume.
 

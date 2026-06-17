@@ -126,6 +126,7 @@ impl Database {
             .ok_or_else(|| DbError::InvalidRequest("No default object store available".to_owned()))
             .map(Arc::clone)
     }
+
     /// Centralises metrics instrumentation boilerplate so that public methods
     /// stay focused on their core logic.
     ///
@@ -154,6 +155,7 @@ impl Database {
         }
         result
     }
+
     /// Create the given Object in the database.
     /// A new UUID will be created if none is supplier.
     /// This method will fail if an ` uid ` is supplied

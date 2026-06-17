@@ -3,14 +3,13 @@
 mod database_objects;
 mod database_permissions;
 mod db_metrics;
-pub use db_metrics::DbMetricsRecorder;
-
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+pub use db_metrics::DbMetricsRecorder;
 #[cfg(feature = "non-fips")]
 use redis::AsyncCommands;
 use tokio::sync::RwLock;

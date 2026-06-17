@@ -30,8 +30,9 @@ set -x
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPT_DIR}/../common.sh"
+source "${SCRIPT_DIR}/../../lib/pkcs11_helpers.sh"
+source "${SCRIPT_DIR}/../../lib/kms_server.sh"
 
-REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
 
@@ -65,7 +66,7 @@ fi
 
 # Build the ckms CLI first so test executables that call `Command::cargo_bin("ckms")`
 # find a compiled binary with matching feature flags.
-cargo build -p ckms "${FEATURES_FLAG[@]}"
+kms_build_cli
 
 # Run the LUKS-related unit tests. The Rust test harness accepts a single
 # substring filter; run them separately to keep output clean.
@@ -96,75 +97,29 @@ if ! command -v openssl >/dev/null 2>&1; then
 fi
 
 # Build PKCS#11 library, KMS server, and ckms CLI.
-cargo build \
-  -p cosmian_pkcs11 \
-  -p cosmian_kms_server \
-  -p ckms \
-  "${FEATURES_FLAG[@]}"
+kms_build_all
 
-cargo_target_dir="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
-kms_bin="$cargo_target_dir/debug/cosmian_kms"
-ckms_bin="$cargo_target_dir/debug/ckms"
-
-# Platform-specific PKCS#11 library extension.
-if [ "$(uname)" = "Darwin" ]; then
-  pkcs11_lib="$cargo_target_dir/debug/libcosmian_pkcs11.dylib"
-else
-  pkcs11_lib="$cargo_target_dir/debug/libcosmian_pkcs11.so"
-fi
-
-if [ ! -f "$pkcs11_lib" ]; then
-  echo "ERROR: PKCS#11 library not found: $pkcs11_lib" >&2
-  exit 1
-fi
+ckms_bin=$(get_ckms_bin)
+pkcs11_lib=$(get_cosmian_pkcs11_lib)
 echo "Using PKCS#11 library: $pkcs11_lib"
 
 # ── Start a dedicated KMS server ─────────────────────────────────────────────
-tmp_dir=$(mktemp -d)
-kms_pid=""
-
-_cleanup_luks_test() {
-  [ -n "${kms_pid:-}" ] && {
-    kill "$kms_pid" 2>/dev/null || true
-    wait "$kms_pid" 2>/dev/null || true
-  }
-  rm -rf "${tmp_dir:-}"
-}
-trap _cleanup_luks_test EXIT
+trap kms_stop EXIT
 
 # Use a dedicated port to avoid collisions with the Rust test-server (9998),
 # the SoftHSM2 test (19998), and the OpenSSH test (19997).
-kms_port=19996
-sqlite_path="$tmp_dir/kms-data"
+kms_write_config 19996 "$(mktemp -d)/kms-data"
+kms_start_from_bin "$(get_kms_bin)"
 
-# Force an explicit config to avoid host defaults and ensure deterministic
-# startup behavior in CI and local nix-shell runs.
-kms_conf="$tmp_dir/kms.toml"
-cat >"$kms_conf" <<EOF
-default_username = "admin"
+# tmp_dir for test artifacts (certs, etc.)
+tmp_dir=$(mktemp -d)
+_cleanup_luks_artifacts() {
+  kms_stop
+  rm -rf "${tmp_dir:-}"
+}
+trap _cleanup_luks_artifacts EXIT
 
-[http]
-hostname = "127.0.0.1"
-port = ${kms_port}
-
-[db]
-database_type = "sqlite"
-sqlite_path = "${sqlite_path}"
-clear_database = true
-
-[logging]
-rust_log = "info,cosmian_kms=info"
-ansi_colors = false
-EOF
-
-"$kms_bin" \
-  --config "$kms_conf" \
-  >"$tmp_dir/kms.log" 2>&1 &
-kms_pid=$!
-
-kms_wait_ready "http://127.0.0.1:${kms_port}/" "$kms_pid" "$tmp_dir/kms.log" 120
-
-ckms_args=(--url "http://127.0.0.1:${kms_port}")
+ckms_args=(--url "${KMS_URL}")
 
 # ── Generate a fresh self-signed RSA certificate ─────────────────────────────
 p12_password="cosmian_luks_test"
@@ -232,11 +187,8 @@ vol2_id=$("$ckms_bin" "${ckms_args[@]}" sym keys create \
 echo "vol2 key id: $vol2_id"
 
 # ── Write PKCS#11 client config ────────────────────────────────────────────────
-ckms_conf="$tmp_dir/ckms.toml"
-cat >"$ckms_conf" <<EOF
-[http_config]
-server_url = "http://127.0.0.1:${kms_port}"
-EOF
+kms_write_ckms_conf
+ckms_conf="$KMS_CKMS_CONF"
 echo "Wrote PKCS#11 config: $ckms_conf"
 
 verify_disk_encryption_objects_via_ckms_and_rust() {

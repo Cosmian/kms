@@ -5,12 +5,6 @@
 //!
 //! Must be placed as the **outermost** `App`-level wrap to correctly measure total latency.
 
-use crate::core::OtelMetrics;
-use actix_web::{
-    Error,
-    dev::{Service, ServiceRequest, ServiceResponse, Transform},
-};
-use futures::future::{Ready, ok};
 use std::{
     future::Future,
     pin::Pin,
@@ -19,6 +13,14 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
+
+use actix_web::{
+    Error,
+    dev::{Service, ServiceRequest, ServiceResponse, Transform},
+};
+use futures::future::{Ready, ok};
+
+use crate::core::OtelMetrics;
 
 /// App-level middleware that records HTTP request metrics via OTLP.
 ///
@@ -169,11 +171,13 @@ fn normalize_path(path: &str) -> &'static str {
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
-    use super::{OtelHttpMetrics, normalize_path};
-    use crate::core::OtelMetrics;
+    use std::sync::Arc;
+
     use actix_web::{App, web};
     use opentelemetry_sdk::metrics::SdkMeterProvider;
-    use std::sync::Arc;
+
+    use super::{OtelHttpMetrics, normalize_path};
+    use crate::core::OtelMetrics;
 
     #[test]
     fn test_normalize_exact_kmip() {
