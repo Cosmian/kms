@@ -217,7 +217,7 @@ pub(crate) async fn signature_verify(
     kms: &KMS,
     request: SignatureVerify,
     user: &str,
-) -> KResult<SignatureVerifyResponse> {
+) -> KResult<(SignatureVerifyResponse, Option<u32>)> {
     trace!("{request}");
 
     // Validate streaming indicators

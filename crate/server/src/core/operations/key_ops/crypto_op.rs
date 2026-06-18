@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::HashSet};
+use std::collections::HashSet;
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -11,14 +11,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{trace, warn};
-
-// Task-local that carries the 0-based index (depth) at which a keyset chain
-// walk successfully decrypted/verified.  Set by `execute_keyset_try_each`;
-// read by the HTTP route handler to inject `X-KMS-Keyset-Depth` header.
-// Uses `Cell<Option<u32>>` so it can be mutated from an immutable reference.
-tokio::task_local! {
-    pub(crate) static KEYSET_CHAIN_DEPTH: Cell<Option<u32>>;
-}
 
 use super::{DatabaseOps, ObjectWithMetadataOps};
 use crate::{
@@ -204,13 +196,13 @@ pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
     kms: &KMS,
     request: Op::Request,
     user: &str,
-) -> KResult<Op::Response> {
+) -> KResult<(Op::Response, Option<u32>)> {
     let unique_identifier =
         Op::unique_identifier(&request).ok_or(KmsError::UnsupportedPlaceholder)?;
 
     match resolve_key_for_operation::<Op>(unique_identifier, kms, user).await? {
         ResolvedKey::Oracle { uid, prefix } => {
-            let result = Op::execute_oracle(kms, &request, &uid, &prefix).await;
+            let result = Op::execute_oracle(kms, &request, &uid, &prefix).await?;
             if let Some(ref metrics) = kms.metrics {
                 let model = crate::core::uid_utils::hsm_model_from_prefix(
                     &kms.params.hsm_instances,
@@ -218,9 +210,12 @@ pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
                 );
                 metrics.record_hsm_operation(Op::OP_NAME, model);
             }
-            result
+            Ok((result, None))
         }
-        ResolvedKey::Local(owm) => execute_local_with_limits::<Op>(kms, *owm, &request, user).await,
+        ResolvedKey::Local(owm) => {
+            let resp = execute_local_with_limits::<Op>(kms, *owm, &request, user).await?;
+            Ok((resp, None))
+        }
         ResolvedKey::Keyset(chain) => {
             execute_keyset_try_each::<Op>(kms, &chain, &request, user).await
         }
@@ -260,16 +255,16 @@ async fn execute_local_with_limits<Op: CryptoOpSpec>(
 /// Try each key in a keyset chain (newest→oldest) until one succeeds.
 ///
 /// The traversal is unbounded: `walk_keyset_chain` already guarantees termination
-/// via cycle detection.  The 0-based index of the successful key is stored in the
-/// `KEYSET_CHAIN_DEPTH` task-local so the HTTP route handler can return it as the
-/// `X-KMS-Keyset-Depth` response header.  A server-side warning is emitted whenever
-/// the depth is ≥ `params.keyset_warn_depth`.
+/// via cycle detection.  The 0-based index of the successful key is returned alongside
+/// the response so the HTTP route handler can emit it as the `X-KMS-Keyset-Depth`
+/// response header.  A server-side warning is emitted whenever the depth is
+/// ≥ `params.keyset_warn_depth`.
 async fn execute_keyset_try_each<Op: CryptoOpSpec>(
     kms: &KMS,
     chain: &[String],
     request: &Op::Request,
     user: &str,
-) -> KResult<Op::Response> {
+) -> KResult<(Op::Response, Option<u32>)> {
     let mut last_err: Option<KmsError> = None;
 
     for (depth, uid) in chain.iter().enumerate() {
@@ -306,8 +301,6 @@ async fn execute_keyset_try_each<Op: CryptoOpSpec>(
             Ok(response) => {
                 let depth_u32 = u32::try_from(depth).unwrap_or(u32::MAX);
                 let warn_threshold = kms.params.keyset_warn_depth;
-                // Store depth for the HTTP layer to forward as a response header.
-                KEYSET_CHAIN_DEPTH.try_with(|c| c.set(Some(depth_u32))).ok();
                 if depth_u32 >= warn_threshold {
                     warn!(
                         "{}: keyset chain depth {} ≥ warn threshold {} for uid {}; \
@@ -318,7 +311,7 @@ async fn execute_keyset_try_each<Op: CryptoOpSpec>(
                         uid
                     );
                 }
-                return Ok(response);
+                return Ok((response, Some(depth_u32)));
             }
             Err(e) => {
                 trace!(

@@ -201,7 +201,11 @@ impl CryptoOpSpec for DecryptOp {
     }
 }
 
-pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
+pub(crate) async fn decrypt(
+    kms: &KMS,
+    request: Decrypt,
+    user: &str,
+) -> KResult<(DecryptResponse, Option<u32>)> {
     trace!(
         "Decrypt: uid={:?}, data_len={}",
         request.unique_identifier,

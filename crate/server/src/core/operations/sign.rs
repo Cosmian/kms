@@ -107,7 +107,11 @@ impl CryptoOpSpec for SignOp {
     }
 }
 
-pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignResponse> {
+pub(crate) async fn sign(
+    kms: &KMS,
+    request: Sign,
+    user: &str,
+) -> KResult<(SignResponse, Option<u32>)> {
     trace!("{request}");
 
     // KMIP 2.1 §6.30: data and digested_data are mutually exclusive

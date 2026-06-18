@@ -162,7 +162,11 @@ impl CryptoOpSpec for EncryptOp {
     }
 }
 
-pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
+pub(crate) async fn encrypt(
+    kms: &KMS,
+    request: Encrypt,
+    user: &str,
+) -> KResult<(EncryptResponse, Option<u32>)> {
     trace!(
         "uid={:?}, data_len={}",
         request.unique_identifier,

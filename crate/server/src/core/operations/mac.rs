@@ -203,7 +203,11 @@ impl CryptoOpSpec for MacVerifyOp {
     }
 }
 
-pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
+pub(crate) async fn mac(
+    kms: &KMS,
+    request: MAC,
+    user: &str,
+) -> KResult<(MACResponse, Option<u32>)> {
     trace!("uid={:?}", request.unique_identifier);
     Box::pin(perform_crypto_operation::<MacOp>(kms, request, user)).await
 }
@@ -212,7 +216,7 @@ pub(crate) async fn mac_verify(
     kms: &KMS,
     request: MACVerify,
     user: &str,
-) -> KResult<MACVerifyResponse> {
+) -> KResult<(MACVerifyResponse, Option<u32>)> {
     trace!("uid={}", request.unique_identifier);
     Box::pin(perform_crypto_operation::<MacVerifyOp>(kms, request, user)).await
 }

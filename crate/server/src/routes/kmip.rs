@@ -1,4 +1,4 @@
-use std::{cell::Cell, sync::Arc};
+use std::sync::Arc;
 
 use actix_web::{
     HttpRequest, HttpResponse,
@@ -28,7 +28,7 @@ use tracing::Instrument;
 use crate::{
     core::{
         KMS,
-        operations::{dispatch, key_ops::crypto_op::KEYSET_CHAIN_DEPTH, message},
+        operations::{dispatch, message},
     },
     error::KmsError,
     result::KResult,
@@ -160,15 +160,8 @@ pub(crate) async fn kmip_2_1_json(
 
     let span = tracing::info_span!("kmip_2_1", user = user.as_str(), tag = ttlv.tag.as_str());
 
-    // Scope the task-local so `execute_keyset_try_each` can record the chain depth.
-    let (ttlv, depth) = KEYSET_CHAIN_DEPTH
-        .scope(std::cell::Cell::new(None), async {
-            let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
-                .instrument(span)
-                .await?;
-            let depth = KEYSET_CHAIN_DEPTH.with(Cell::get);
-            Ok::<_, KmsError>((ttlv, depth))
-        })
+    let (ttlv, depth) = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
+        .instrument(span)
         .await?;
 
     let mut builder = HttpResponse::Ok();
@@ -186,26 +179,37 @@ pub(crate) async fn kmip_2_1_json(
 ///
 /// The input request could be either a single KMIP `Operation` or
 /// multiple KMIP `Operation` serialized in a single KMIP `Message`
-async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) -> KResult<TTLV> {
+async fn handle_ttlv(
+    kms: &KMS,
+    ttlv: TTLV,
+    user: &str,
+    major: i32,
+    minor: i32,
+) -> KResult<(TTLV, Option<u32>)> {
     if ttlv.tag.as_str() == "RequestMessage" {
         let req = match from_ttlv::<RequestMessage>(ttlv) {
             Ok(req) => req,
             Err(e) => {
                 error!(target: "kmip", "Failed to parse RequestMessage: {}", e);
-                return Ok(error_response_ttlv(major, minor, &e.to_string()));
+                return Ok((error_response_ttlv(major, minor, &e.to_string()), None));
             }
         };
-        let resp = kms.message(req, user).await.unwrap_or_else(|e| {
-            error!(target: "kmip", "Failed to process request: {}", e);
-            invalid_response_message(major, minor, e.to_string())
-        });
-        Ok(to_ttlv(&resp).unwrap_or_else(|e| {
+        let span = tracing::span!(tracing::Level::ERROR, "message");
+        let (resp, depth) = Box::pin(message(kms, req, user))
+            .instrument(span)
+            .await
+            .unwrap_or_else(|e| {
+                error!(target: "kmip", "Failed to process request: {}", e);
+                (invalid_response_message(major, minor, e.to_string()), None)
+            });
+        let ttlv = to_ttlv(&resp).unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
             error_response_ttlv(major, minor, e.to_string().as_str())
-        }))
+        });
+        Ok((ttlv, depth))
     } else {
-        let operation = Box::pin(dispatch(kms, ttlv, user)).await?;
-        Ok(to_ttlv(&operation)?)
+        let (operation, depth) = Box::pin(dispatch(kms, ttlv, user)).await?;
+        Ok((to_ttlv(&operation)?, depth))
     }
 }
 
@@ -237,19 +241,26 @@ pub(crate) async fn kmip_json(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let json = Box::pin(kmip_json_inner(req_http, body, kms))
+    let (json, depth) = Box::pin(kmip_json_inner(req_http, body, kms))
         .await
         .unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to process request: {}", e);
-            error_response_ttlv(2, 1, &e.to_string())
+            (error_response_ttlv(2, 1, &e.to_string()), None)
         });
-    HttpResponse::Ok()
-        .content_type("application/json")
-        .json(json)
+    let mut builder = HttpResponse::Ok();
+    builder.content_type("application/json");
+    if let Some(d) = depth {
+        builder.insert_header(("X-KMS-Keyset-Depth", d.to_string()));
+    }
+    builder.json(json)
 }
 
 /// Handle KMIP requests with JSON content type
-async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>) -> KResult<TTLV> {
+async fn kmip_json_inner(
+    req_http: HttpRequest,
+    body: Bytes,
+    kms: Data<Arc<KMS>>,
+) -> KResult<(TTLV, Option<u32>)> {
     // Recover the user from the request
     let user = kms.get_user(&req_http);
 
@@ -379,7 +390,7 @@ async fn handle_ttlv_bytes_inner(
         "Request Message: {request_message}"
     );
 
-    let mut response_message = Box::pin(message(kms, request_message, user)).await?;
+    let (mut response_message, _depth) = Box::pin(message(kms, request_message, user)).await?;
 
     // Perform 1.1 and 1.2 Response Tweaks to ensure compatibility
     perform_response_tweaks(&mut response_message, major, minor);
