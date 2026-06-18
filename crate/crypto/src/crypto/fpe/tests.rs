@@ -26,7 +26,7 @@ fn random_key() -> [u8; 32] {
 fn alphabet_check(plaintext: &str, alphabet: &Alphabet, non_alphabet_chars: &str) {
     let key = random_key();
     let ciphertext = alphabet.encrypt(&key, &[], plaintext).unwrap();
-    eprintln!("  {:?} -> {:?} ", &plaintext, &ciphertext);
+    eprintln!("  {plaintext:?} -> {ciphertext:?} ");
     assert_eq!(plaintext.chars().count(), ciphertext.chars().count());
     // every character of the generated string should be part of the alphabet or a -
     // or a ' '

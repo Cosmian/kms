@@ -25,9 +25,9 @@ use zeroize::Zeroizing;
 
 use crate::{
     kms_object::{
-        get_kms_certificate_objects, get_kms_object, get_kms_object_attributes,
-        get_kms_secret_data_objects, key_algorithm_from_attributes, kms_decrypt,
-        kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
+        get_kms_certificate_objects, get_kms_disk_encryption_data_objects, get_kms_object,
+        get_kms_object_attributes, get_kms_secret_data_objects, key_algorithm_from_attributes,
+        kms_decrypt, kms_destroy_object, kms_encrypt, kms_import_object, kms_import_symmetric_key,
         kms_revoke_object, kms_sign, locate_kms_objects,
     },
     pkcs11_certificate::Pkcs11Certificate,
@@ -395,6 +395,36 @@ impl Backend for CliBackend {
             let data_object: Arc<dyn DataObject> = Arc::new(Pkcs11DataObject::try_from(dao)?);
             result.push(data_object);
         }
+
+        // Also expose disk-encryption symmetric keys as DataObjects for VeraCrypt.
+        let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
+        let disk_enc_objects = get_kms_disk_encryption_data_objects(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &disk_encryption_tag,
+        )
+        .unwrap_or_else(|e| {
+            warn!(
+                "find_all_data_objects: failed to fetch disk-encryption data objects: {e}, \
+                 returning empty list"
+            );
+            vec![]
+        });
+        for kms_obj in disk_enc_objects {
+            match Pkcs11DataObject::try_from(kms_obj) {
+                Ok(data_object) => {
+                    result.push(Arc::new(data_object));
+                }
+                Err(e) => {
+                    warn!(
+                        "find_all_data_objects: failed to build DataObject for disk-encryption \
+                         key: {e}, skipping"
+                    );
+                }
+            }
+        }
+
         Ok(result)
     }
 
@@ -483,6 +513,42 @@ impl Backend for CliBackend {
         }
 
         trace!("find_all_objects: found {} keys", objects.len());
+
+        // Additionally expose disk-encryption symmetric keys as CKO_DATA objects so
+        // that VeraCrypt (which queries CKA_CLASS = CKO_DATA for token keyfiles) can
+        // discover them.
+        let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
+            .unwrap_or_else(|_| COSMIAN_PKCS11_DISK_ENCRYPTION_TAG.to_owned());
+        let disk_enc_data_objects = get_kms_disk_encryption_data_objects(
+            &self.kms_rest_client,
+            &self.vendor_id,
+            &disk_encryption_tag,
+        )
+        .unwrap_or_else(|e| {
+            warn!(
+                "find_all_objects: failed to fetch disk-encryption data objects: {e}, \
+                 returning empty list"
+            );
+            vec![]
+        });
+        for kms_obj in disk_enc_data_objects {
+            match Pkcs11DataObject::try_from(kms_obj) {
+                Ok(data_object) => {
+                    objects.push(Arc::new(Object::DataObject(Arc::new(data_object))));
+                }
+                Err(e) => {
+                    warn!(
+                        "find_all_objects: failed to build DataObject for disk-encryption key: \
+                         {e}, skipping"
+                    );
+                }
+            }
+        }
+
+        trace!(
+            "find_all_objects: total {} objects (including disk-encryption DataObjects)",
+            objects.len()
+        );
         Ok(objects)
     }
 

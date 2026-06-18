@@ -28,8 +28,8 @@ use cosmian_pkcs11_module::{
     traits::{Backend, SignatureAlgorithm},
 };
 use pkcs11_sys::{
-    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INVALID_HANDLE, CK_ULONG, CKA_LABEL, CKF_SERIAL_SESSION,
-    CKR_OK,
+    CK_ATTRIBUTE, CK_FUNCTION_LIST, CK_INVALID_HANDLE, CK_OBJECT_CLASS, CK_ULONG, CKA_CLASS,
+    CKA_LABEL, CKF_SERIAL_SESSION, CKO_DATA, CKR_OK,
 };
 use serial_test::serial;
 use test_kms_server::start_default_test_kms_server;
@@ -220,16 +220,25 @@ fn test_kms_client_and_backend() -> Result<(), Pkcs11Error> {
 
     let backend = initialize_backend()?;
 
-    // TODO fix this test
-    // // data objects
-    // let data_objects = backend.find_all_data_objects()?;
-    // assert_eq!(data_objects.len(), 2);
-    // let mut labels = data_objects
-    //     .iter()
-    //     .map(|dao| dao.label())
-    //     .collect::<Vec<String>>();
-    // labels.sort();
-    // assert_eq!(labels, vec!["vol1".to_owned(), "vol2".to_owned()]);
+    // Disk-encryption symmetric keys should now appear as DataObjects (for VeraCrypt).
+    let data_objects = backend.find_all_data_objects()?;
+    assert!(
+        data_objects.len() >= 2,
+        "expected at least 2 data objects (vol1, vol2), got {}",
+        data_objects.len()
+    );
+    let labels: Vec<String> = data_objects
+        .iter()
+        .map(|dao| dao.remote_id().to_owned())
+        .collect();
+    assert!(
+        labels.contains(&"vol1".to_owned()),
+        "expected 'vol1' in data object labels, got {labels:?}"
+    );
+    assert!(
+        labels.contains(&"vol2".to_owned()),
+        "expected 'vol2' in data object labels, got {labels:?}"
+    );
 
     // RSA certificate — at least one from the P12 imported by initialize_backend();
     // other tests running against the shared server may add more.
@@ -278,6 +287,8 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
 
     // Ensure the PKCS#11 provider (which loads config via C_GetFunctionList) targets loopback
     let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
     unsafe {
         std::env::set_var(CKMS_CONF_ENV, &conf_path);
     }
@@ -286,6 +297,8 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
     let mut handle = CK_INVALID_HANDLE;
     assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
         unsafe {
             C_OpenSession(
                 SLOT_ID,
@@ -312,6 +325,9 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     }];
     let template_len: CK_ULONG = template.len().try_into()?;
     assert_eq!(
+        // SAFETY: `handle` is a valid open session; `template` is a correctly-sized,
+        // properly-aligned `CK_ATTRIBUTE` array with `template_len` elements, all alive
+        // for the duration of the call.
         unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
         CKR_OK
     );
@@ -319,6 +335,9 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     let mut count: CK_ULONG = 0;
     let max_count: CK_ULONG = obj_handles.len().try_into()?;
     assert_eq!(
+        // SAFETY: `handle` is a valid open session after a successful C_FindObjectsInit;
+        // `obj_handles` is a buffer of `max_count` elements; `count` is a valid stack
+        // out-parameter.
         unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
         CKR_OK
     );
@@ -335,6 +354,78 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     // call to decrypt() test function
     let decrypted_data = test_decrypt(handle, key_handle, encrypted_data);
     assert_eq!(decrypted_data, plaintext);
+
+    assert_eq!(C_CloseSession(handle), CKR_OK);
+    assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);
+    Ok(())
+}
+
+/// `VeraCrypt` discovers token keyfiles via `C_FindObjects` with `CKA_CLASS = CKO_DATA`.
+/// This test verifies that disk-encryption symmetric keys are exposed as `CKO_DATA`
+/// objects so `VeraCrypt` can list and select them.
+#[test]
+#[serial]
+#[expect(unsafe_code)]
+fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
+    let _backend = initialize_backend()?;
+
+    let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
+    unsafe {
+        std::env::set_var(CKMS_CONF_ENV, &conf_path);
+    }
+
+    test_init();
+    assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                std::ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+
+    // Search for CKO_DATA objects — this is how VeraCrypt discovers keyfiles.
+    let mut class: CK_OBJECT_CLASS = CKO_DATA;
+    #[allow(clippy::cast_ptr_alignment)]
+    let mut template = [CK_ATTRIBUTE {
+        type_: CKA_CLASS,
+        pValue: std::ptr::from_mut(&mut class).cast::<std::ffi::c_void>(),
+        ulValueLen: std::mem::size_of::<CK_OBJECT_CLASS>().try_into()?,
+    }];
+    let template_len: CK_ULONG = template.len().try_into()?;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session; `template` is a correctly-sized,
+        // properly-aligned `CK_ATTRIBUTE` array with `template_len` elements, all alive
+        // for the duration of the call.
+        unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
+        CKR_OK
+    );
+    let mut obj_handles = [CK_INVALID_HANDLE; 16];
+    let mut count: CK_ULONG = 0;
+    let max_count: CK_ULONG = obj_handles.len().try_into()?;
+    assert_eq!(
+        // SAFETY: `handle` is a valid open session after a successful C_FindObjectsInit;
+        // `obj_handles` is a buffer of `max_count` elements; `count` is a valid stack
+        // out-parameter.
+        unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(handle), CKR_OK);
+    assert!(
+        count >= 2,
+        "VeraCrypt CKO_DATA search should find at least 2 disk-encryption keyfiles (vol1, \
+         vol2), got {count}"
+    );
 
     assert_eq!(C_CloseSession(handle), CKR_OK);
     assert_eq!(C_Finalize(std::ptr::null_mut()), CKR_OK);

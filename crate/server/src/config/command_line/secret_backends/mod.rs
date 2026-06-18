@@ -273,9 +273,8 @@ mod tests {
         let expected = std::env::var("KMS_TEST_COSMIAN_KMS_EXPECTED")
             .expect("KMS_TEST_COSMIAN_KMS_EXPECTED must be set");
         let token = std::env::var("COSMIAN_KMS_SECRET_TOKEN").ok();
-        let insecure = std::env::var("COSMIAN_KMS_INSECURE_CERTS")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(false);
+        let insecure =
+            std::env::var("COSMIAN_KMS_INSECURE_CERTS").is_ok_and(|v| v == "true" || v == "1");
 
         // The bash script passes URIs as "cosmian-kms://host:port/id" but
         // resolve_config expects the neutral "secret://" scheme.

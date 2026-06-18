@@ -10,7 +10,7 @@ use ckms::{
                 PaddingMethod, RevocationReason, RevocationReasonCode, SecretDataType,
             },
             kmip_2_1::{
-                extra::VENDOR_ID_COSMIAN,
+                extra::{VENDOR_ID_COSMIAN, tagging::SYSTEM_TAG_SYMMETRIC_KEY},
                 kmip_attributes::Attributes,
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
@@ -273,6 +273,83 @@ async fn get_kms_secret_data_objects_async(
             .collect::<Vec<String>>();
         results.push(KmsObject {
             remote_id: id.to_string(),
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
+}
+
+/// Locate disk-encryption symmetric keys and return them as `KmsObject`s suitable
+/// for wrapping as PKCS#11 `CKO_DATA` objects.
+///
+/// `VeraCrypt` discovers keyfiles via `C_FindObjects` with `CKA_CLASS = CKO_DATA`.
+/// This function locates `SymmetricKey` objects tagged with `disk_encryption_tag`,
+/// exports them, and rewrites `remote_id` to the first user-visible tag (e.g. `"vol1"`)
+/// so the label shown in the `VeraCrypt` GUI is meaningful.
+pub(crate) fn get_kms_disk_encryption_data_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    disk_encryption_tag: &str,
+) -> Pkcs11Result<Vec<KmsObject>> {
+    RUNTIME.block_on(get_kms_disk_encryption_data_objects_async(
+        kms_rest_client,
+        vendor_id,
+        disk_encryption_tag,
+    ))
+}
+
+async fn get_kms_disk_encryption_data_objects_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    disk_encryption_tag: &str,
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let tags = [
+        disk_encryption_tag.to_owned(),
+        SYSTEM_TAG_SYMMETRIC_KEY.to_owned(),
+    ];
+    let key_ids = locate_objects_of_type(
+        kms_rest_client,
+        vendor_id,
+        &tags,
+        Some(ObjectType::SymmetricKey),
+    )
+    .await?;
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag: \
+             {disk_encryption_tag}",
+        );
+        return Ok(vec![]);
+    }
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!(
+        "get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects",
+        responses.len()
+    );
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        // Extract user-visible tags (exclude system tags and the disk-encryption tag itself).
+        // Sorted so that label selection is deterministic regardless of HashSet iteration order.
+        let mut other_tags: Vec<String> = attributes
+            .get_tags(vendor_id)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !t.starts_with('_') && t != disk_encryption_tag)
+            .collect();
+        other_tags.sort();
+        // Use the first user label (sorted, e.g. "vol1") as remote_id so VeraCrypt displays it
+        let label = other_tags
+            .first()
+            .cloned()
+            .unwrap_or_else(|| id.to_string());
+        results.push(KmsObject {
+            remote_id: label,
             object,
             attributes,
             other_tags,

@@ -464,8 +464,11 @@ Options:
           File logging is disabled unless this option is explicitly set.
           Suggested paths:
             Linux: /var/log/
-            Windows: C:\ProgramData\Cosmian KMS Server\logs
-            macOS: ~/Library/Logs/Cosmian KMS Server
+            Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
+            macOS: ~/Library/Logs/
+
+          WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
+          expanded. Use the fully-resolved path.
 
           [env: KMS_ROLLING_LOG_DIR=]
 
@@ -527,6 +530,52 @@ Options:
           - `CUSTOM`: enforce the allowlists provided under `[kmip.allowlists]`.
 
           [env: KMS_POLICY_ID=]
+
+      --backend <BACKEND>
+          Possible values:
+          - vault:       `HashCorp` Vault KV-v2. Path format: `secret://<mount>/<path>[#<field>]`
+          - aws-ssm:     AWS Systems Manager Parameter Store. Path format: `secret://<region>/<parameter-name>`
+          - azure-kv:    Azure Key Vault. Path format: `secret://<vault-name>/secrets/<name>[/<version>]`
+          - cosmian-kms: Another Cosmian KMS server (KMIP Get). Path format: `secret://<host>[:<port>]/<object-id>`
+
+          [env: KMS_SECRET_BACKEND=]
+
+      --vault-addr <VAULT_ADDR>
+          [env: VAULT_ADDR=]
+          [default: http://127.0.0.1:8200]
+
+      --vault-token <VAULT_TOKEN>
+          [env: VAULT_TOKEN=]
+          [default: ""]
+
+      --aws-access-key-id <AWS_ACCESS_KEY_ID>
+          [env: AWS_ACCESS_KEY_ID=]
+          [default: ""]
+
+      --aws-secret-access-key <AWS_SECRET_ACCESS_KEY>
+          [env: AWS_SECRET_ACCESS_KEY=]
+          [default: ""]
+
+      --aws-session-token <AWS_SESSION_TOKEN>
+          [env: AWS_SESSION_TOKEN=]
+
+      --azure-tenant-id <AZURE_TENANT_ID>
+          [env: AZURE_TENANT_ID=]
+          [default: ""]
+
+      --azure-client-id <AZURE_CLIENT_ID>
+          [env: AZURE_CLIENT_ID=]
+          [default: ""]
+
+      --azure-client-secret <AZURE_CLIENT_SECRET>
+          [env: AZURE_CLIENT_SECRET=]
+          [default: ""]
+
+      --cosmian-kms-secret-token <COSMIAN_KMS_SECRET_TOKEN>
+          [env: COSMIAN_KMS_SECRET_TOKEN=]
+
+      --cosmian-kms-insecure-certs
+          [env: COSMIAN_KMS_INSECURE_CERTS=]
 
   -h, --help
           Print help (see a summary with '-h')
