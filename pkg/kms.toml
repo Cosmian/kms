@@ -1,48 +1,6 @@
 # The default username to use when no authentication method is provided
 default_username = "admin"
 
-# Optional: path to a secrets file containing sensitive values (passwords, tokens, credentials).
-# The secrets file is a TOML file with the same structure as this file; its values are deep-merged
-# over this file at startup (secrets file takes precedence).
-# This allows keeping sensitive data in a separate, root-only file (e.g. mode 400) while sharing
-# the main config with teams.
-# Can also be set via the COSMIAN_KMS_SECRETS_CONF environment variable (takes precedence over this key).
-# Example:
-# secrets_file = "/etc/cosmian/kms-secrets.toml"
-
-# Any string value in this file (and in the secrets file) can reference environment variables
-# using the ${VAR_NAME} syntax. The variable is resolved at startup and must be set.
-# Example:
-#   database_url = "postgresql://kms:${KMS_DB_PASSWORD}@db.internal/kms"
-
-# Phase-2: secret URI backends (requires building with the matching feature flag).
-# Any string value can use a secret URI instead of a literal; the value is fetched at startup.
-#
-# Scheme          Feature flag    Description
-# ─────────────── ─────────────── ──────────────────────────────────────────────
-# vault://        secret-vault    HashiCorp Vault KV-v2
-#                                 Format: vault://<mount>/<path>[#<field>]
-#                                 Required env: VAULT_ADDR, VAULT_TOKEN
-#                                 Example: vault://secret/kms/db#password
-#
-# aws-ssm://      secret-aws      AWS Systems Manager Parameter Store
-#                                 Format: aws-ssm://<region>/<parameter-name>
-#                                 Required: standard AWS credential chain
-#                                 Example: aws-ssm://eu-west-1/kms/prod/db-url
-#
-# azure-kv://     secret-azure    Azure Key Vault
-#                                 Format: azure-kv://<vault-name>/secrets/<name>[/<version>]
-#                                 Required env: AZURE_TENANT_ID, AZURE_CLIENT_ID,
-#                                               AZURE_CLIENT_SECRET
-#                                 Example: azure-kv://my-vault/secrets/kms-tls-p12
-#
-# cosmian-kms://  secret-cosmian-kms  Another Cosmian KMS server (KMIP Get)
-#                                 Format: cosmian-kms://<host>[:<port>]/<object-id>
-#                                 Fetches a SecretData or OpaqueObject via KMIP 2.1
-#                                 Optional env: COSMIAN_KMS_TOKEN (Bearer auth),
-#                                               COSMIAN_KMS_INSECURE_CERTS (skip TLS verify)
-#                                 Example: cosmian-kms://kms.internal:9998/b4c2f00a-1234-5678-abcd-ef0123456789
-
 # When an authentication method is provided, perform the authentication
 # but always use the default username instead of the one provided by the authentication method
 force_default_username = false
@@ -90,8 +48,6 @@ info = false
 # see `--hsm_slot` for more information.
 # Set `KMS_HSM_PASSWORD` to avoid the password appearing in `ps` output.
 # hsm_password = ["changeme"]         # Login passwords (same order as hsm_slot)
-# hsm_password = ["${KMS_HSM_SLOT1_PASSWORD}", "${KMS_HSM_SLOT2_PASSWORD}"]
-# hsm_password = ["vault://secret/kms/hsm-slot1", "vault://secret/kms/hsm-slot2"]
 #
 # ── New multi-instance format ─────────────────────────────────────────────────
 # Uses the new UID convention: hsm::<model>::<slot_id>::<key_id>
@@ -145,17 +101,10 @@ info = false
 database_type = "sqlite"
 # The URL of the database for `Postgres`, `MySQL`, or `Findex-Redis`
 # database_url = "<database-url>"
-# Sensitive: use env var interpolation or a secret URI backend for the password:
-# database_url = "postgresql://kms:${KMS_DB_PASSWORD}@db.internal/kms"
-# database_url = "vault://secret/kms/db#url"
-# database_url = "aws-ssm://eu-west-1//kms/prod/db-url"
-# database_url = "azure-kv://my-vault/secrets/kms-db-url"
-# database_url = "cosmian-kms://kms.internal:9998/b4c2f00a-1234-5678-abcd-ef0123456789"
 # The directory path of the `SQLite`
 # sqlite_path = "<sqlite-path>"
 # redis-findex: a master password used to encrypt the Redis data and indexes
 # redis_master_password = "<redis master password>"
-# redis_master_password = "${KMS_REDIS_MASTER_PASSWORD}"
 
 # Clear the database on start.
 # WARNING: This will delete ALL the data in the database
@@ -193,8 +142,6 @@ unwrapped_cache_max_age = 15 # minutes
 # tls_p12_file = "[tls p12 file]"
 # The password to open the PKCS#12 Certificates and Key file
 # tls_p12_password = "[tls p12 password]"
-# tls_p12_password = "${KMS_TLS_P12_PASSWORD}"
-# tls_p12_password = "vault://secret/kms/tls#p12_password"
 
 # The server's optional X. 509 certificate in PEM format validates the client certificate presented for authentication.
 # If provided, clients must present a certificate signed by this authority for authentication.
@@ -312,11 +259,15 @@ quiet = false
 # Log to syslog
 log_to_syslog = false
 
-# Daily rolling logs: <rolling_log_name>.YYYY-MM-DD
-# When not set, the binary uses a platform-specific default:
-#   Linux:   /var/log/
+# The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.
+# File logging is disabled unless this option is explicitly set.
+# Suggested paths:
+#   Linux: /var/log/
 #   Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
-#   macOS:   ~/Library/Logs/
+#   macOS: ~/Library/Logs/
+#
+# WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
+# expanded. Use the fully-resolved path.
 # rolling_log_dir = "/var/log/"
 # The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
 # Defaults to `cosmian_kms` if not set.

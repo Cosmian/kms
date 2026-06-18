@@ -345,11 +345,15 @@ quiet = false
 # Log to syslog
 log_to_syslog = false
 
-# Daily rolling logs: <rolling_log_name>.YYYY-MM-DD
-# When not set, the binary uses a platform-specific default:
-#   Linux:   /var/log/
+# The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.
+# File logging is disabled unless this option is explicitly set.
+# Suggested paths:
+#   Linux: /var/log/
 #   Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
-#   macOS:   ~/Library/Logs/
+#   macOS: ~/Library/Logs/
+#
+# WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
+# expanded. Use the fully-resolved path.
 # rolling_log_dir = "/var/log/"
 # The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
 # Defaults to `cosmian_kms` if not set.
