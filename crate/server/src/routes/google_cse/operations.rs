@@ -1180,7 +1180,7 @@ async fn cse_wrapped_key_decrypt(
     };
     let key = Box::pin(decrypt(kms, decryption_request, &user)).await?;
 
-    let data = key.data.ok_or_else(|| {
+    let data = key.0.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
     })?;
     Ok(data)
@@ -1219,13 +1219,13 @@ async fn cse_key_encrypt(
     let dek = Box::pin(encrypt(kms, encryption_request, &user)).await?;
 
     // re-extract the bytes from the key
-    let data = dek.data.ok_or_else(|| {
+    let data = dek.0.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing data.".to_owned())
     })?;
-    let iv_counter_nonce = dek.i_v_counter_nonce.ok_or_else(|| {
+    let iv_counter_nonce = dek.0.i_v_counter_nonce.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - missing nonce.".to_owned())
     })?;
-    let authenticated_encryption_tag = dek.authenticated_encryption_tag.ok_or_else(|| {
+    let authenticated_encryption_tag = dek.0.authenticated_encryption_tag.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid wrapped key - authenticated encryption tag.".to_owned())
     })?;
 

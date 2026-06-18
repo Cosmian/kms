@@ -208,8 +208,8 @@ async fn handle_ttlv(
         });
         Ok((ttlv, depth))
     } else {
-        let (operation, depth) = Box::pin(dispatch(kms, ttlv, user)).await?;
-        Ok((to_ttlv(&operation)?, depth))
+        let operation = Box::pin(dispatch(kms, ttlv, user)).await?;
+        Ok((to_ttlv(&operation)?, None))
     }
 }
 
