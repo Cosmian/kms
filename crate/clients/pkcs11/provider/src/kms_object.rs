@@ -335,13 +335,15 @@ async fn get_kms_disk_encryption_data_objects_async(
     );
     let mut results = vec![];
     for (id, object, attributes) in responses {
-        // Extract user-visible tags (exclude system tags and the disk-encryption tag itself)
-        let other_tags: Vec<String> = attributes
+        // Extract user-visible tags (exclude system tags and the disk-encryption tag itself).
+        // Sorted so that label selection is deterministic regardless of HashSet iteration order.
+        let mut other_tags: Vec<String> = attributes
             .get_tags(vendor_id)
             .into_iter()
             .filter(|t| !t.is_empty() && !t.starts_with('_') && t != disk_encryption_tag)
             .collect();
-        // Use the first user label (e.g. "vol1") as remote_id so VeraCrypt displays it
+        other_tags.sort();
+        // Use the first user label (sorted, e.g. "vol1") as remote_id so VeraCrypt displays it
         let label = other_tags
             .first()
             .cloned()

@@ -104,11 +104,12 @@ pkcs11_lib=$(get_cosmian_pkcs11_lib)
 echo "Using PKCS#11 library: $pkcs11_lib"
 
 # ── Start a dedicated KMS server ─────────────────────────────────────────────
-trap kms_stop EXIT
-
 # Use a dedicated port to avoid collisions with the Rust test-server (9998),
 # the SoftHSM2 test (19998), and the OpenSSH test (19997).
-kms_write_config 19996 "$(mktemp -d)/kms-data"
+_kms_data_parent=$(mktemp -d)
+# Early cleanup trap: ensures _kms_data_parent is removed even if startup fails.
+trap 'kms_stop; rm -rf "${_kms_data_parent:-}"' EXIT
+kms_write_config 19996 "${_kms_data_parent}/kms-data"
 kms_start_from_bin "$(get_kms_bin)"
 
 # tmp_dir for test artifacts (certs, etc.)
@@ -116,6 +117,7 @@ tmp_dir=$(mktemp -d)
 _cleanup_luks_artifacts() {
   kms_stop
   rm -rf "${tmp_dir:-}"
+  rm -rf "${_kms_data_parent:-}"
 }
 trap _cleanup_luks_artifacts EXIT
 

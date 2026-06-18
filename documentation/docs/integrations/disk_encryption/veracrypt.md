@@ -62,7 +62,7 @@ ckms sym keys create -t disk-encryption -t vol1
 ```
 
 The keys are exposed to Veracrypt as PKCS#11 token files (`CKO_DATA` objects).
-The label shown in the Veracrypt GUI corresponds to the second tag (e.g. `vol1`).
+The label shown in the Veracrypt GUI is the first user-defined tag sorted alphabetically (e.g. `vol1`).
 
 !!! note "Custom discovery tag"
 

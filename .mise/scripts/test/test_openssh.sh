@@ -86,11 +86,16 @@ pkcs11_lib=$(get_cosmian_pkcs11_lib)
 echo "Using PKCS#11 library: $pkcs11_lib"
 
 # ── Start a dedicated KMS server for the integration test ───────────────────
-trap kms_stop EXIT
+_kms_data_parent=$(mktemp -d)
+_kms_openssh_cleanup() {
+  kms_stop
+  rm -rf "${_kms_data_parent:-}"
+}
+trap _kms_openssh_cleanup EXIT
 
 # Use a dedicated port to avoid collisions with the Rust test-server (9998)
 # and the SoftHSM2 integration test (19998).
-kms_write_config 19997 "$(mktemp -d)/kms-data"
+kms_write_config 19997 "${_kms_data_parent}/kms-data"
 kms_start_from_bin "$(get_kms_bin)"
 
 ckms_args=(--url "${KMS_URL}")

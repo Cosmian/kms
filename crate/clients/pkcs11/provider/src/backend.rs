@@ -404,7 +404,13 @@ impl Backend for CliBackend {
             &self.vendor_id,
             &disk_encryption_tag,
         )
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            warn!(
+                "find_all_data_objects: failed to fetch disk-encryption data objects: {e}, \
+                 returning empty list"
+            );
+            vec![]
+        });
         for kms_obj in disk_enc_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {
@@ -518,7 +524,13 @@ impl Backend for CliBackend {
             &self.vendor_id,
             &disk_encryption_tag,
         )
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            warn!(
+                "find_all_objects: failed to fetch disk-encryption data objects: {e}, \
+                 returning empty list"
+            );
+            vec![]
+        });
         for kms_obj in disk_enc_data_objects {
             match Pkcs11DataObject::try_from(kms_obj) {
                 Ok(data_object) => {

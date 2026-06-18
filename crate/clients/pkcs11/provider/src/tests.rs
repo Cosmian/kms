@@ -287,6 +287,8 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
 
     // Ensure the PKCS#11 provider (which loads config via C_GetFunctionList) targets loopback
     let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
     unsafe {
         std::env::set_var(CKMS_CONF_ENV, &conf_path);
     }
@@ -295,6 +297,8 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
     let mut handle = CK_INVALID_HANDLE;
     assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
         unsafe {
             C_OpenSession(
                 SLOT_ID,
@@ -321,6 +325,9 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     }];
     let template_len: CK_ULONG = template.len().try_into()?;
     assert_eq!(
+        // SAFETY: `handle` is a valid open session; `template` is a correctly-sized,
+        // properly-aligned `CK_ATTRIBUTE` array with `template_len` elements, all alive
+        // for the duration of the call.
         unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
         CKR_OK
     );
@@ -328,6 +335,9 @@ fn test_generate_key_encrypt_decrypt() -> Pkcs11Result<()> {
     let mut count: CK_ULONG = 0;
     let max_count: CK_ULONG = obj_handles.len().try_into()?;
     assert_eq!(
+        // SAFETY: `handle` is a valid open session after a successful C_FindObjectsInit;
+        // `obj_handles` is a buffer of `max_count` elements; `count` is a valid stack
+        // out-parameter.
         unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
         CKR_OK
     );
@@ -360,6 +370,8 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
     let _backend = initialize_backend()?;
 
     let conf_path = save_pkcs11_client_config();
+    // SAFETY: `#[serial]` ensures no other thread concurrently reads or modifies the process
+    // environment, satisfying the thread-safety requirement for `set_var` (Rust 2024 edition).
     unsafe {
         std::env::set_var(CKMS_CONF_ENV, &conf_path);
     }
@@ -368,6 +380,8 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
     assert_eq!(C_Initialize(std::ptr::null_mut()), CKR_OK);
     let mut handle = CK_INVALID_HANDLE;
     assert_eq!(
+        // SAFETY: `SLOT_ID` is the only valid slot; the two null/None args are optional and
+        // intentionally unused; `handle` is a properly-aligned out-parameter on the stack.
         unsafe {
             C_OpenSession(
                 SLOT_ID,
@@ -390,6 +404,9 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
     }];
     let template_len: CK_ULONG = template.len().try_into()?;
     assert_eq!(
+        // SAFETY: `handle` is a valid open session; `template` is a correctly-sized,
+        // properly-aligned `CK_ATTRIBUTE` array with `template_len` elements, all alive
+        // for the duration of the call.
         unsafe { C_FindObjectsInit(handle, template.as_mut_ptr(), template_len) },
         CKR_OK
     );
@@ -397,6 +414,9 @@ fn test_veracrypt_cko_data_find() -> Pkcs11Result<()> {
     let mut count: CK_ULONG = 0;
     let max_count: CK_ULONG = obj_handles.len().try_into()?;
     assert_eq!(
+        // SAFETY: `handle` is a valid open session after a successful C_FindObjectsInit;
+        // `obj_handles` is a buffer of `max_count` elements; `count` is a valid stack
+        // out-parameter.
         unsafe { C_FindObjects(handle, obj_handles.as_mut_ptr(), max_count, &raw mut count) },
         CKR_OK
     );
