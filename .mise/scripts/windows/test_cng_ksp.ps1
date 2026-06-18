@@ -24,7 +24,7 @@
 #   .\\.github\\scripts\\windows\\test_cng_ksp.ps1
 #
 #   # Or via CI:
-#   pwsh -NoProfile -ExecutionPolicy Bypass -File .github/scripts/windows/test_cng_ksp.ps1
+#   pwsh -NoProfile -ExecutionPolicy Bypass -File .mise/scripts/windows/test_cng_ksp.ps1
 # ============================================================================
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest

@@ -706,6 +706,10 @@ pub async fn start_default_test_kms_server_with_privileged_users(
 /// Configuration is loaded from `test_data/configs/server/test/pqc_tls.toml`.
 /// The test that uses this is `#[ignore]` because most TLS clients (native-tls
 /// on macOS, etc.) do not yet support PQC signature schemes in the TLS handshake.
+///
+/// The standard [`start_test_server_from_toml`] / [`wait_for_server_to_start`] path
+/// works here because `KmsClient` now uses the OpenSSL-backed transport (hyper +
+/// hyper-openssl) which natively supports ML-DSA-44 TLS handshakes.
 #[cfg(feature = "non-fips")]
 pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();

@@ -44,7 +44,7 @@ test.skip(isFips, 'Non-FIPS feature — skipped in FIPS mode');
 ```bash
 cd ui && CI=true PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173" pnpm run test:e2e
 # Or via nix:
-bash .github/scripts/nix.sh --variant non-fips test ui
+mise run test:ui --variant non-fips
 ```
 
 > For detailed patterns and examples, run `/playwright-kms`.

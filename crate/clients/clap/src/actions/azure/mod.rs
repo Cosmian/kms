@@ -15,7 +15,7 @@ pub enum AzureCommands {
 impl AzureCommands {
     pub async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
-            Self::Byok(command) => command.process(kms_rest_client).await?,
+            Self::Byok(command) => Box::pin(command.process(kms_rest_client)).await?,
         }
         Ok(())
     }

@@ -8,14 +8,13 @@ use actix_web::{
     App, HttpResponse, HttpServer, get,
     web::{self, Data},
 };
+use http::{
+    HeaderMap, HeaderValue, StatusCode,
+    header::{ACCEPT, CONTENT_TYPE},
+};
 use oauth2::{
     AuthUrl, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
-    Scope, TokenUrl,
-    basic::BasicClient,
-    http::{
-        HeaderMap, HeaderValue, StatusCode,
-        header::{ACCEPT, CONTENT_TYPE},
-    },
+    Scope, TokenUrl, basic::BasicClient,
 };
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -317,29 +316,33 @@ pub(crate) async fn request_token(
         .extend_pairs(params)
         .finish();
 
-    let client = reqwest::Client::new();
+    let client = super::HttpClient::instantiate(&super::HttpClientConfig {
+        server_url: login_config.token_url.clone(),
+        accept_invalid_certs: true,
+        ..Default::default()
+    })
+    .map_err(|e| HttpClientError::Default(format!("failed to create HTTP client: {e}")))?;
+
+    let mut extra_headers = HeaderMap::new();
+    extra_headers.append(ACCEPT, HeaderValue::from_static("application/json"));
+
     let response = client
-        .post(&login_config.token_url)
-        .header(ACCEPT, "application/json")
-        .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-        .body(body)
-        .send()
+        .post_form(&login_config.token_url, &body, &extra_headers)
         .await
         .map_err(|e| {
             HttpClientError::Default(format!("failed issuing token exchange request: {e:?}"))
         })?;
 
-    if response.status() != StatusCode::OK {
+    if response.status != StatusCode::OK {
         let error_text = response
             .text()
-            .await
             .unwrap_or_else(|_| "<failed to read response>".to_owned());
         return Err(HttpClientError::Default(format!(
             "failed token exchange: {error_text}"
         )));
     }
 
-    response.json().await.map_err(|e| {
+    response.json().map_err(|e| {
         HttpClientError::Default(format!("failed parsing token exchange response: {e:?}"))
     })
 }

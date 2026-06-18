@@ -54,13 +54,13 @@ Re-run after any change to `Cargo.lock` or the package version:
 
 ```bash
 # All combinations (server + ckms + OpenSSL derivations)
-bash .github/scripts/nix.sh sbom
+mise run sbom:generate
 
 # Server only — one specific combination
-bash .github/scripts/nix.sh sbom --target server --variant fips --link static
+mise run sbom:generate --target server --variant fips --link static
 
 # OpenSSL 3.6.0 derivation only
-bash .github/scripts/nix.sh sbom --target openssl_3_6_0
+mise run sbom:generate --target openssl_3_6_0
 ```
 
 See [`sbom/README.md`](../../../sbom/README.md) for the full regeneration guide and usage

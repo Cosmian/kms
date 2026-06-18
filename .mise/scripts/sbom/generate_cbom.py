@@ -36,7 +36,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 
 # Repo root is three levels up from the script file
-#   .github/scripts/sbom/generate_cbom.py → .github/scripts/sbom/ → .github/scripts/ → .github/ → repo root
+#   .mise/scripts/sbom/generate_cbom.py → .mise/scripts/sbom/ → .mise/scripts/ → .mise/ → repo root
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 

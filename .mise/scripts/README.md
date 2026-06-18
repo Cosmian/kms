@@ -951,7 +951,7 @@ NO_PREWARM=1 bash .mise/scripts/nix.sh package deb   # Skip prewarm (cached stor
 **Tests:**
 
 - `RUST_LOG=<level>`: Cargo test verbosity (debug, info, warn, error)
-- `COSMIAN_KMS_CONF`: Path to KMS config file (default: `.github/scripts/pykmip/kms.toml`)
+- `COSMIAN_KMS_CONF`: Path to KMS config file (default: `.mise/scripts/pykmip/kms.toml`)
 - Database connection vars (see test section above)
 - Google CSE credential vars (see test section above)
 

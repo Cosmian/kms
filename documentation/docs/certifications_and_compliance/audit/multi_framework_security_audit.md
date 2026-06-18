@@ -4,9 +4,9 @@
 **Frameworks**: NIST CSF 2.0 / SSDF (SP 800-218) · CIS Controls v8 · ISO/IEC 27034 · OSSTMM
 **Repository**: `Eviden/kms`
 **Workspace root**: `crate/` (Rust workspace) + `ui/` (React/TypeScript)
-**Audit script**: `.github/scripts/audit/multi_framework.sh` — run `bash .github/scripts/audit/multi_framework.sh` to reproduce all automated checks
+**Audit script**: `.mise/scripts/audit/multi_framework.sh` — run `bash .mise/scripts/audit/multi_framework.sh` to reproduce all automated checks
 
-See also `.github/scripts/audit/audit.sh` for the unified entry-point that runs both OWASP and multi-framework checks.
+See also `.mise/scripts/audit/audit.sh` for the unified entry-point that runs both OWASP and multi-framework checks.
 
 ---
 
@@ -49,7 +49,7 @@ See also `.github/scripts/audit/audit.sh` for the unified entry-point that runs 
 
 This audit combines:
 
-1. **Automated static analysis** — `cargo audit`, `cargo deny`, `semgrep`, `gitleaks`, `grep`-based pattern checks (orchestrated by `.github/scripts/audit/multi_framework.sh`)
+1. **Automated static analysis** — `cargo audit`, `cargo deny`, `semgrep`, `gitleaks`, `grep`-based pattern checks (orchestrated by `.mise/scripts/audit/multi_framework.sh`)
 2. **Manual code review** — targeted review of authentication, cryptographic key handling, input parsing, and inter-service communication paths
 3. **Integration testing** — Rust `#[test]` modules in `crate/clients/clap/src/tests/security/` and `crate/server/src/middlewares/jwt/jwks.rs`
 4. **Control gap analysis** — mapping findings to each framework's control catalogue
@@ -261,12 +261,12 @@ The table below maps each finding to its framework references, severity, and cor
 
 ## 8. Automated Audit Checks (`audit.sh`)
 
-`.github/scripts/audit/multi_framework.sh` contains 21 automated checks that can be run locally or in CI:
+`.mise/scripts/audit/multi_framework.sh` contains 21 automated checks that can be run locally or in CI:
 
 ```bash
-bash .github/scripts/audit/multi_framework.sh          # run all checks
-bash .github/scripts/audit/multi_framework.sh --verbose  # show additional detail
-bash .github/scripts/audit/audit.sh                    # run unified OWASP + multi-framework
+bash .mise/scripts/audit/multi_framework.sh          # run all checks
+bash .mise/scripts/audit/multi_framework.sh --verbose  # show additional detail
+bash .mise/scripts/audit/audit.sh                    # run unified OWASP + multi-framework
 ```
 
 | Check | Framework(s) | Description |

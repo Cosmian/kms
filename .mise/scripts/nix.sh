@@ -527,7 +527,7 @@ test_command() {
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_luks.sh"
       ;;
     secret_vault)
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_vault.sh"
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_secret_vault.sh"
       ;;
     secret_aws)
       for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION; do
@@ -537,7 +537,7 @@ test_command() {
           exit 1
         fi
       done
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_aws.sh"
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_secret_aws.sh"
       ;;
     secret_azure)
       for var in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_KV_NAME; do
@@ -547,10 +547,10 @@ test_command() {
           exit 1
         fi
       done
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_azure.sh"
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_secret_azure.sh"
       ;;
     secret_cosmian_kms)
-      SCRIPT="$REPO_ROOT/.github/scripts/test/test_secret_cosmian_kms.sh"
+      SCRIPT="$REPO_ROOT/.mise/scripts/test/test_secret_cosmian_kms.sh"
       ;;
     ui)
       SCRIPT="$REPO_ROOT/.mise/scripts/test/test_ui.sh"

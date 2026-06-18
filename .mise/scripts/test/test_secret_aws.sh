@@ -30,7 +30,9 @@ echo "Variant: ${VARIANT_NAME}"
 echo "========================================="
 
 AWS_REGION="${AWS_REGION:-eu-west-1}"
-PARAM_NAME="/kms/ci/secret-backend-test"
+# Use a unique parameter name per CI run to avoid races between concurrent jobs
+# competing for the same SSM path (e.g. multiple pushes on the same PR branch).
+PARAM_NAME="/kms/ci/secret-backend-test-${GITHUB_RUN_ID:-$$}"
 SECRET_VALUE="ci-secret-value"
 KMS_KEY="${KMS_TEST_AWS_KMS_KEY_ID:-alias/aws/ssm}"
 

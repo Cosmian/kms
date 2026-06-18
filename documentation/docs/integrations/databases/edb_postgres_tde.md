@@ -105,7 +105,7 @@ or any other KMIP client to create an AES-256 key:
 
 ```bash
 # Using the bundled helper script
-python3 .github/scripts/edb_tde/create_master_key.py \
+python3 .mise/scripts/edb_tde/create_master_key.py \
   --pykmip-config-file=/path/to/pykmip.conf
 # → prints the key UID, e.g. 0193a4b2-...
 ```
@@ -197,7 +197,7 @@ Docker image.
 
 ```bash
 EDB_SUBSCRIPTION_TOKEN=<token> \
-  bash .github/scripts/nix.sh --variant non-fips test edb_tde
+  mise run test:edb_tde --variant non-fips
 ```
 
 The test suite:
@@ -209,7 +209,7 @@ The test suite:
 4. Exercises both `--variant=pykmip` and `--variant=thales` wrap/unwrap roundtrips.
 5. Tests key rotation (re-wrap DEK with a new master key).
 
-See `.github/scripts/edb_tde/README.md` for full test documentation.
+See `.mise/scripts/edb_tde/README.md` for full test documentation.
 
 ---
 

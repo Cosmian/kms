@@ -16,7 +16,7 @@ function assertFileExists(relPathFromUi: string) {
 }
 
 describe("WASM artifacts", () => {
-    test("built wasm files are present (run .github/scripts/build_ui.sh if missing)", () => {
+    test("built wasm files are present (run mise run build:wasm if missing)", () => {
         // These are produced by `wasm-pack build` in `crate/wasm` and copied into `ui/src/wasm/pkg`.
         assertFileExists("src/wasm/pkg/cosmian_kms_client_wasm_bg.wasm");
     });

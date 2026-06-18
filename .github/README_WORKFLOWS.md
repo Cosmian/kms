@@ -448,12 +448,12 @@ flowchart TB
 
 ## Key Build Scripts
 
-All scripts are located in `.github/scripts/`. See the [scripts README](.github/scripts/README.md) for comprehensive documentation.
+All scripts are located in `.mise/scripts/`. See the [scripts README](.mise/scripts/README.md) for comprehensive documentation.
 
 ### Nix Build System
 
 **`nix.sh`** is the single entrypoint for all Nix-based builds, tests, packaging, and Docker operations.
-All CI jobs invoke it as `bash .github/scripts/nix.sh [global options] <command> [args]`.
+All CI jobs invoke it as `mise run [task] --variant [fips|non-fips]`.
 
 #### Global options
 
@@ -586,7 +586,7 @@ All test scripts are called via `nix.sh test <type>` for reproducible environmen
 
 ### Docker Compose Configurations
 
-- `.github/scripts/docker-compose.yml`: Single compose file for docker image smoke tests (auth/TLS, config-based, example, and load-balancer stacks)
+- `.mise/scripts/docker-compose.yml`: Single compose file for docker image smoke tests (auth/TLS, config-based, example, and load-balancer stacks)
 - `test_data/configs/server/{no_auth,tls_auth_*,tls13_auth_*,lb_kms*_postgres}.toml`: Dedicated server configuration files mounted via `COSMIAN_KMS_CONF` (used by the compose services)
 
 ---

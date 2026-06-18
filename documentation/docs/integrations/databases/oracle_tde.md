@@ -414,7 +414,7 @@ For all other KMS authentication methods (mTLS, static bearer token, OAuth2/OIDC
 
 Oracle TDE supports migrating the master encryption key between a software wallet (file-based
 keystore) and the HSM wallet backed by `libcosmian_pkcs11.so`. Both directions are supported
-and are verified in CI by `.github/scripts/oracle/run_sql_commands.sh`.
+and are verified in CI by `.mise/scripts/oracle/run_sql_commands.sh`.
 
 - **Forward (SW → HSM)**: Oracle calls `C_GenerateKey(CKM_AES_KEY_GEN)` to create a new master key in the KMS, then `C_Encrypt` to re-wrap DEKs.
 - **Reverse (HSM → SW)**: Oracle calls `C_Decrypt` on the HSM master key to unwrap DEKs before re-encrypting under the new software key.

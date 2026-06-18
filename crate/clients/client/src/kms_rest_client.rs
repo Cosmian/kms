@@ -32,10 +32,7 @@ use crate::{
         ttlv::{TTLV, from_ttlv, to_ttlv},
     },
     error::{KmsClientError, result::KmsClientResultHelper},
-    http_client::{
-        HttpClient,
-        reexport::reqwest::{Response, StatusCode},
-    },
+    http_client::HttpClient,
 };
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
@@ -703,21 +700,16 @@ impl KmsClient {
         let server_url = format!("{}{endpoint}", self.client.server_url);
         info!("GET {server_url}");
         let response = match data {
-            Some(d) => self.client.client.get(server_url).query(d).send().await?,
-            None => self.client.client.get(server_url).send().await?,
+            Some(d) => self.client.get_with_query(&server_url, d).await?,
+            None => self.client.get(&server_url).await?,
         };
 
-        let status_code = response.status();
+        let status_code = response.status;
         if status_code.is_success() {
-            return Ok(response.json::<R>().await?);
+            return Ok(response.json::<R>()?);
         }
 
-        // process error
-        let p = handle_error(endpoint, response).await?;
-        if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p));
-        }
-        Err(KmsClientError::RequestFailed(p))
+        Err(process_error_response(endpoint, status_code, &response))
     }
 
     pub async fn delete_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, KmsClientError>
@@ -726,25 +718,14 @@ impl KmsClient {
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
         let server_url = format!("{}{endpoint}", self.client.server_url);
-        let response = self
-            .client
-            .client
-            .delete(server_url)
-            .json(data)
-            .send()
-            .await?;
+        let response = self.client.delete_json(&server_url, data).await?;
 
-        let status_code = response.status();
+        let status_code = response.status;
         if status_code.is_success() {
-            return Ok(response.json::<R>().await?);
+            return Ok(response.json::<R>()?);
         }
 
-        // process error
-        let p = handle_error(endpoint, response).await?;
-        if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p));
-        }
-        Err(KmsClientError::RequestFailed(p))
+        Err(process_error_response(endpoint, status_code, &response))
     }
 
     pub async fn post_no_ttlv<O, R>(
@@ -763,141 +744,124 @@ impl KmsClient {
                     "==>\n{}",
                     serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[N/A]".to_owned())
                 );
-                self.client.client.post(server_url).json(d).send().await?
+                self.client.post_json(&server_url, d).await?
             }
-            None => self.client.client.post(server_url).send().await?,
+            None => self.client.post_empty(&server_url).await?,
         };
 
-        let status_code = response.status();
+        let status_code = response.status;
         if status_code.is_success() {
-            let response = response.json::<R>().await?;
+            let result = response.json::<R>()?;
             trace!(
                 "<==\n{}",
-                serde_json::to_string_pretty(&response).unwrap_or_else(|_| "[N/A]".to_owned())
+                serde_json::to_string_pretty(&result).unwrap_or_else(|_| "[N/A]".to_owned())
             );
-            return Ok(response);
+            return Ok(result);
         }
 
-        // process error
-        let p = handle_error(endpoint, response).await?;
-        if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p));
-        }
-        Err(KmsClientError::RequestFailed(p))
+        Err(process_error_response(endpoint, status_code, &response))
     }
 
+    /// Shared TTLV request/response logic for KMIP endpoints.
+    ///
+    /// Serialises `request` to TTLV, POSTs it to `endpoint`, deserialises the TTLV
+    /// response, and routes errors through [`process_error_response`].
     #[expect(clippy::print_stdout)]
+    async fn send_ttlv_request<O, R>(
+        &self,
+        endpoint: &str,
+        request: &O,
+    ) -> Result<R, KmsClientError>
+    where
+        O: Serialize + Sync,
+        R: serde::de::DeserializeOwned + Sized + 'static,
+    {
+        let server_url = format!("{}{endpoint}", self.client.server_url);
+        let ttlv = to_ttlv(request)?;
+        if self.print_json {
+            println!(
+                "\nKMIP Request ==>\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
+            );
+        }
+        trace!(
+            "==>\n{}",
+            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
+        );
+
+        let response = self.client.post_json(&server_url, &ttlv).await?;
+        let status_code = response.status;
+        if status_code.is_success() {
+            let ttlv = response.json::<TTLV>()?;
+            if self.print_json {
+                println!(
+                    "\nKMIP Response <==\n{}\n",
+                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
+                );
+            }
+            trace!(
+                "<==\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
+            );
+            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
+        }
+
+        Err(process_error_response(endpoint, status_code, &response))
+    }
+
     pub async fn post_ttlv_2_1<O, R>(&self, kmip_request: &O) -> Result<R, KmsClientError>
     where
         O: Serialize + Sync,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
-        let endpoint = "/kmip/2_1";
-        let server_url = format!("{}{endpoint}", self.client.server_url);
-        let mut request = self.client.client.post(&server_url);
-        let ttlv = to_ttlv(kmip_request)?;
-        if self.print_json {
-            println!(
-                "\nKMIP Request ==>\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-            );
-        }
-        trace!(
-            "==>\n{}",
-            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-        );
-        request = request.json(&ttlv);
-
-        let response = request.send().await?;
-        let status_code = response.status();
-        if status_code.is_success() {
-            let ttlv = response.json::<TTLV>().await?;
-            if self.print_json {
-                println!(
-                    "\nKMIP Response <==\n{}\n",
-                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-                );
-            }
-            trace!(
-                "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-            );
-            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
-        }
-
-        // process error
-        let p = handle_error(endpoint, response).await?;
-        if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p));
-        }
-        Err(KmsClientError::RequestFailed(p))
+        self.send_ttlv_request("/kmip/2_1", kmip_request).await
     }
 
-    #[expect(clippy::print_stdout)]
     pub async fn post_message(
         &self,
         request_message: &RequestMessage,
     ) -> Result<ResponseMessage, KmsClientError> {
-        let endpoint = "/kmip";
-        let server_url = format!("{}{endpoint}", self.client.server_url);
-        let mut request = self.client.client.post(&server_url);
-        let ttlv = to_ttlv(request_message)?;
-        if self.print_json {
-            println!(
-                "\nKMIP Request ==>\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-            );
-        }
-        trace!(
-            "==>\n{}",
-            serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-        );
-        request = request.json(&ttlv);
+        self.send_ttlv_request("/kmip", request_message).await
+    }
+}
 
-        let response = request.send().await?;
-        let status_code = response.status();
-        if status_code.is_success() {
-            let ttlv = response.json::<TTLV>().await?;
-            if self.print_json {
-                println!(
-                    "\nKMIP Response <==\n{}\n",
-                    serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-                );
-            }
-            trace!(
-                "<==\n{}",
-                serde_json::to_string_pretty(&ttlv).unwrap_or_else(|_| "[N/A]".to_owned())
-            );
-            return from_ttlv(ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
-        }
-
-        // process error
-        let p = handle_error(endpoint, response).await?;
-        if status_code == StatusCode::UNAUTHORIZED {
-            return Err(KmsClientError::Unauthorized(p));
-        }
-        Err(KmsClientError::RequestFailed(p))
+/// Convert an error HTTP response into the appropriate `KmsClientError` variant.
+///
+/// Returns [`KmsClientError::Unauthorized`] for 401, otherwise [`KmsClientError::RequestFailed`].
+fn process_error_response(
+    endpoint: &str,
+    status_code: http::StatusCode,
+    response: &crate::http_client::HttpResponse,
+) -> KmsClientError {
+    let p = handle_error(endpoint, status_code, response);
+    if status_code == http::StatusCode::UNAUTHORIZED {
+        KmsClientError::Unauthorized(p)
+    } else {
+        KmsClientError::RequestFailed(p)
     }
 }
 
 /// Some errors are returned by the Middleware without going through our own error manager.
 /// In that case, we make the error clearer here for the client.
-async fn handle_error(endpoint: &str, response: Response) -> Result<String, KmsClientError> {
-    trace!("Error response received on {endpoint}: Response: {response:?}");
-    let status = response.status();
-    let text = response.text().await?;
+fn handle_error(
+    endpoint: &str,
+    status: http::StatusCode,
+    response: &crate::http_client::HttpResponse,
+) -> String {
+    let text = response.text().unwrap_or_default();
+    trace!("Error response on {endpoint}: status={status}, body={text}");
 
-    Ok(format!(
+    format!(
         "{}: {}",
         endpoint,
         if text.is_empty() {
             match status {
-                StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_owned(),
-                StatusCode::UNAUTHORIZED => "Bad authorization token".to_owned(),
-                _ => format!("{status} {text}"),
+                http::StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_owned(),
+                http::StatusCode::UNAUTHORIZED => "Bad authorization token".to_owned(),
+                _ => status.to_string(),
             }
         } else {
             text
         }
-    ))
+    )
 }

@@ -358,11 +358,7 @@ async fn send_binary_request(
     // POST binary
     let response = client
         .client
-        .client
-        .post(binary_url)
-        .header("Content-Type", "application/octet-stream")
-        .body(request_bytes)
-        .send()
+        .post_bytes(binary_url, request_bytes, "application/octet-stream")
         .await
         .map_err(|e| {
             KmsClientError::UnexpectedError(format!(
@@ -370,11 +366,7 @@ async fn send_binary_request(
             ))
         })?;
 
-    let response_bytes = response.bytes().await.map_err(|e| {
-        KmsClientError::UnexpectedError(format!(
-            "Step {step_index} '{step_operation}': cannot read response body: {e}"
-        ))
-    })?;
+    let response_bytes = response.bytes();
 
     // binary bytes → TTLV struct → JSON
     if response_bytes.is_empty() {
@@ -383,7 +375,7 @@ async fn send_binary_request(
         )));
     }
 
-    let response_ttlv = TTLV::from_bytes(&response_bytes, kmip_flavor).map_err(|e| {
+    let response_ttlv = TTLV::from_bytes(response_bytes, kmip_flavor).map_err(|e| {
         KmsClientError::UnexpectedError(format!(
             "Step {step_index} '{step_operation}': failed to parse binary TTLV response: {e}"
         ))
@@ -1061,18 +1053,12 @@ async fn execute_steps(
             };
 
             // POST the wrapped JSON TTLV to the KMIP /kmip/2_1 endpoint
-            let send_result = client
-                .client
-                .client
-                .post(&json_url)
-                .json(&request_message)
-                .send()
-                .await;
+            let send_result = client.client.post_json(&json_url, &request_message).await;
 
             match send_result {
                 Ok(response) => {
-                    let status = response.status();
-                    let response_text = response.text().await.map_err(|e| {
+                    let status = response.status;
+                    let response_text = response.text().map_err(|e| {
                         KmsClientError::UnexpectedError(format!(
                             "Step {i} '{}': cannot read response body: {e}",
                             step.operation

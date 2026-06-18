@@ -33,15 +33,15 @@ pub enum HttpClientError {
     UnexpectedError(String),
 }
 
-impl From<reqwest::Error> for HttpClientError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Default(format!("{e}: Details: {e:?}"))
+impl From<http::header::InvalidHeaderValue> for HttpClientError {
+    fn from(e: http::header::InvalidHeaderValue) -> Self {
+        Self::Default(e.to_string())
     }
 }
 
-impl From<reqwest::header::InvalidHeaderValue> for HttpClientError {
-    fn from(e: reqwest::header::InvalidHeaderValue) -> Self {
-        Self::Default(e.to_string())
+impl From<openssl::error::ErrorStack> for HttpClientError {
+    fn from(e: openssl::error::ErrorStack) -> Self {
+        Self::Default(format!("OpenSSL error: {e}"))
     }
 }
 

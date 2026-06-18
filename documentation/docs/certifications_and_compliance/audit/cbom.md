@@ -38,7 +38,7 @@ The CBOM covers:
 Re-run the generator after any algorithm or dependency change:
 
 ```bash
-python3 .github/scripts/sbom/generate_cbom.py --output cbom/cbom.cdx.json
+python3 .mise/scripts/sbom/generate_cbom.py --output cbom/cbom.cdx.json
 ```
 
 The script:

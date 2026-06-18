@@ -52,7 +52,6 @@ interop = ["cosmian_kms_server_database/interop"]
 [dependencies]
 actix-cors = { workspace = true }
 actix-files = { workspace = true }
-governor = { version = "0.10", features = ["std"] }
 actix-identity = { workspace = true }
 actix-rt = { workspace = true }
 actix-session = { workspace = true, features = ["cookie-session"] }
@@ -79,6 +78,7 @@ crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.23.0" }
 dialoguer = { workspace = true }
 dotenvy = { workspace = true }
 futures = { workspace = true }
+governor = { version = "0.10", features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
@@ -106,12 +106,12 @@ serde_json = { workspace = true }
 smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.23.0" }
 softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.23.0" }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
+subtle = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 tokio = { workspace = true, features = ["full"] }
 toml = { workspace = true }
 tracing = { workspace = true }
-subtle = { workspace = true }
 url = { workspace = true }
 utimaco_pkcs11_loader = { path = "../hsm/utimaco", version = "5.23.0" }
 uuid = { workspace = true, features = ["v4"] }
