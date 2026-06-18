@@ -31,6 +31,11 @@ VARIANT="fips" # fips | non-fips
 LINK="static"  # static | dynamic (static by default)
 OUTPUT_DIR="$REPO_ROOT/sbom"
 
+# Retrieve mode: download pre-built SBOMs from package.cosmian.com instead of
+# generating them locally via sbomnix.  Set via --retrieve + --branch.
+RETRIEVE=false
+BRANCH=""
+
 usage() {
   cat <<EOF
 Generate SBOM (Software Bill of Materials) using sbomnix standard tools
@@ -46,18 +51,23 @@ Options:
                        - openssl_3_6_2: ./sbom/openssl_3_6_2
                        - server:        ./sbom/server/<variant>/<link>
                        - ckms:          ./sbom/ckms/<variant>/<link>)
+  --retrieve           Download pre-built SBOMs from package.cosmian.com
+                       instead of generating them locally (requires --branch)
+  --branch BRANCH      Remote branch/tag path used by the packaging CI
+                       (e.g. last_build/release/5.24.0).  Used with --retrieve.
   -h, --help           Show this help message
 
 Examples:
-  $0                                       # Generate SBOM for OpenSSL 3.1.2 (default)
-  $0 --target openssl_3_1_2                # Explicitly target OpenSSL 3.1.2 (FIPS)
-  $0 --target openssl_3_6_2                # Target OpenSSL 3.6.2 (non-FIPS)
-  $0 --target server                       # Target KMS server (fips, static OpenSSL)
-  $0 --target server --variant non-fips    # Target KMS server (non-fips)
-  $0 --target server --link dynamic        # Target KMS server (dynamic link, if available)
-  $0 --target ckms                         # Target ckms CLI binary (fips, static OpenSSL)
-  $0 --target ckms --variant non-fips      # Target ckms CLI binary (non-fips)
-  $0 --output /tmp/sbom                    # Use custom output directory
+  $0                                           # Generate SBOM for OpenSSL 3.1.2 (default)
+  $0 --target openssl_3_1_2                    # Explicitly target OpenSSL 3.1.2 (FIPS)
+  $0 --target openssl_3_6_2                    # Target OpenSSL 3.6.2 (non-FIPS)
+  $0 --target server                           # Target KMS server (fips, static OpenSSL)
+  $0 --target server --variant non-fips        # Target KMS server (non-fips)
+  $0 --target server --link dynamic            # Target KMS server (dynamic link, if available)
+  $0 --target ckms                             # Target ckms CLI binary (fips, static OpenSSL)
+  $0 --target ckms --variant non-fips          # Target ckms CLI binary (non-fips)
+  $0 --output /tmp/sbom                        # Use custom output directory
+  $0 --retrieve --branch last_build/release/5.24.0  # Download SBOMs from package.cosmian.com
 
 Generated files:
   - bom.cdx.json               CycloneDX SBOM (industry standard)
@@ -86,6 +96,14 @@ while [ $# -gt 0 ]; do
       OUTPUT_DIR="${2:-}"
       shift 2
       ;;
+    --retrieve)
+      RETRIEVE=true
+      shift
+      ;;
+    --branch)
+      BRANCH="${2:-}"
+      shift 2
+      ;;
     -h | --help)
       usage
       exit 0
@@ -97,6 +115,67 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# ── Retrieve mode ─────────────────────────────────────────────────────────────
+# When --retrieve is set, download all pre-built SBOM artifacts from
+# package.cosmian.com for every target/variant/link combination produced by the
+# packaging CI matrix (features: [fips, non-fips], link: [static, dynamic]).
+if [[ "$RETRIEVE" == true ]]; then
+  if [[ -z "$BRANCH" ]]; then
+    echo "Error: --retrieve requires --branch <branch>" >&2
+    exit 1
+  fi
+
+  BASE_URL="https://package.cosmian.com/kms/${BRANCH}/sbom"
+  # Files the packaging CI uploads for each target/variant/link directory.
+  SBOM_FILES=(bom.cdx.json bom.spdx.json sbom.csv meta.json)
+  # Optional files — missing ones are silently skipped.
+  SBOM_FILES_OPTIONAL=(vulns.csv graph.png)
+
+  errors=0
+  for target in server ckms; do
+    for variant in fips non-fips; do
+      for link in static dynamic; do
+        remote_dir="${BASE_URL}/${target}/${variant}/${link}"
+        local_dir="${REPO_ROOT}/sbom/${target}/${variant}/${link}"
+        mkdir -p "$local_dir"
+
+        for file in "${SBOM_FILES[@]}"; do
+          url="${remote_dir}/${file}"
+          dest="${local_dir}/${file}"
+          echo "  Downloading ${target}/${variant}/${link}/${file}…"
+          if ! curl --silent --show-error --fail --location \
+            --retry 3 --retry-delay 5 \
+            -o "$dest" "$url"; then
+            echo "Error: failed to download ${url}" >&2
+            errors=$((errors + 1))
+          fi
+        done
+
+        for file in "${SBOM_FILES_OPTIONAL[@]}"; do
+          url="${remote_dir}/${file}"
+          dest="${local_dir}/${file}"
+          # --fail is intentionally omitted: 404 is acceptable for optional files.
+          if curl --silent --location \
+            --retry 3 --retry-delay 5 \
+            -o "$dest" "$url" 2>/dev/null; then
+            # Remove empty files produced when the server returns a non-200 without --fail.
+            [[ -s "$dest" ]] || rm -f "$dest"
+          fi
+        done
+      done
+    done
+  done
+
+  if [[ "$errors" -gt 0 ]]; then
+    echo "Error: ${errors} SBOM file(s) could not be retrieved." >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "All SBOMs retrieved from ${BASE_URL}"
+  exit 0
+fi
 
 # Determine the derivation to analyze based on target
 case "$TARGET" in
