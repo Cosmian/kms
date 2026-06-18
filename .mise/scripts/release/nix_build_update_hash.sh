@@ -18,6 +18,7 @@ EXPECTED_DIR="$REPO_ROOT/nix/expected-hashes"
 MAX_RETRIES=3
 
 OS="$(uname -s)"
+OS_LOWER="$(tr '[:upper:]' '[:lower:]' <<<"$OS")"
 
 # Ordered list of derivations to build, split by platform:
 #   Linux  — all derivations (server + cli + ui wasm + ui pnpm)
@@ -52,7 +53,7 @@ drv_to_hash_file() {
   local attr="$2"
 
   if [[ "$drv_name" =~ ui-deps.*(fips|non-fips).*pnpm-deps ]]; then
-    echo "$EXPECTED_DIR/ui.pnpm.${OS,,}.sha256"
+    echo "$EXPECTED_DIR/ui.pnpm.${OS_LOWER}.sha256"
     return
   fi
   if [[ "$drv_name" =~ ui-wasm-non-fips.*vendor ]]; then
