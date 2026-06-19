@@ -7,17 +7,8 @@ All notable changes to this project will be documented in this file.
 ### 🔒 Security
 
 - **COSMIAN-2026-019** (Low): Upgrade `mysql_async` 0.36→0.37 to remove `proc-macro-error2` (RUSTSEC-2026-0173)
-- Guard FPE_FF1 keys against algorithm-confusion misuse; replace RustCrypto crates with OpenSSL backend ([#869](https://github.com/Cosmian/kms/issues/869))
-- Fix `/tokenize` scope `EnsureAuth` to check all auth methods ([#907](https://github.com/Cosmian/kms/pull/907))
 
 ### 🚀 Features
-
-#### FPE & Anonymization (non-FIPS)
-
-- Add `ckms fpe` module: key lifecycle (`create`, `export`, `import`, `wrap`, `unwrap`, `revoke`, `destroy`) + `encrypt`/`decrypt` with text/integer/float types ([#869](https://github.com/Cosmian/kms/issues/869))
-- Add 8 stateless `POST /tokenize/{method}` REST endpoints: `hash`, `noise`, `word-mask`, `word-tokenize`, `word-pattern-mask`, `aggregate-number`, `aggregate-date`, `scale-number` ([#869](https://github.com/Cosmian/kms/issues/869))
-- Add matching `ckms tokenize` CLI commands for all 8 methods ([#869](https://github.com/Cosmian/kms/issues/869))
-- Add **FPE** and **Anonymize** Web UI menu groups with WASM bindings, auto-hidden in FIPS mode ([#869](https://github.com/Cosmian/kms/issues/869))
 
 #### JOSE / REST Crypto API
 
@@ -48,6 +39,7 @@ All notable changes to this project will be documented in this file.
 #### PKCS#11 / VeraCrypt
 
 - Expose KMS symmetric keys tagged `disk-encryption` as `CKO_DATA` token objects for VeraCrypt; configurable via `COSMIAN_PKCS11_DISK_ENCRYPTION_TAG`
+- Fix `batch_get` not returning tags: add explicit `GetAttributes(tags)` call to populate `CKO_DATA` labels
 
 #### EDB PostgreSQL TDE
 
@@ -66,11 +58,6 @@ All notable changes to this project will be documented in this file.
 - Fix `AddAttribute(OperationPolicyName)` dropped; now stored and returned as VendorAttribute
 - Allow KMIP 1.x `vendor_identification="KMIP1"` attributes to be overwritten via `AddAttribute`
 
-#### JOSE / REST Crypto API
-
-- Fix `POST /v1/crypto/keys` asymmetric import: set `PublicKeyLink` so JOSE sign uses correct `kid` in JWS headers
-- Fix EDB TDE decrypt: treat missing `IVCounterNonce` as zero-IV (thales KMIP variant)
-
 #### CKMS CLI
 
 - Translate IANA TLS 1.2 cipher suite names to OpenSSL format; skip unknown ciphers ([#1015](https://github.com/Cosmian/kms/pull/1015))
@@ -86,15 +73,10 @@ All notable changes to this project will be documented in this file.
 - Fix XML response comparison: `result_reason` in v1.4, `KeyMaterial::ByteString` empty match, `response_payload` presence mismatch
 - Fix vector runner for MariaDB/Percona using hardcoded MySQL URL
 
-#### PKCS#11
-
-- Fix `batch_get` not returning tags: add explicit `GetAttributes(tags)` call to populate `CKO_DATA` labels
-
 ### ♻️ Refactor
 
 - Consolidate `ActivateKeyAction` into shared struct across 8 CLI modules; extract shared encrypt/decrypt, wrap/unwrap, derive-key, and HTTP client helpers (`apply_default_headers`, `process_error_response`, `send_ttlv_request`)
 - Eliminate ~9,100 LOC duplicate tests from `cosmian_kms_cli_actions`; unify KMIP XML 1.4/2.1 test infrastructure with shared macros
-- Rename `cosmian_kms_cng_ksp` → `cosmian_cng`; merge standalone verify binaries into `ckms` subcommands ([#924](https://github.com/Cosmian/kms/pull/924))
 
 ### 🧪 Testing
 

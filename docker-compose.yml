@@ -1,10 +1,12 @@
 ---
-# Only used for local development and testing
+# Only used for local development and testing.
+# Port isolation: set KMS_TEST_SLOT=N to shift all host ports by N×1000.
+# Source .mise/lib/test_slots.sh to compute KMS_SLOT_* variables automatically.
 services:
   postgres:
     image: postgres:16
     ports:
-      - 5432:5432
+      - ${KMS_SLOT_POSTGRES_PORT:-5432}:5432
     environment:
       - POSTGRES_USER=kms
       - POSTGRES_DB=kms
@@ -13,7 +15,7 @@ services:
   mysql:
     image: mysql:8.0
     ports:
-      - 3306:3306
+      - ${KMS_SLOT_MYSQL_PORT:-3306}:3306
     environment:
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
@@ -22,7 +24,7 @@ services:
   percona:
     image: percona/percona-xtradb-cluster:8.0
     ports:
-      - 3307:3306
+      - ${KMS_SLOT_PERCONA_PORT:-3307}:3306
     environment:
       - MYSQL_ROOT_PASSWORD=kms
       - MYSQL_DATABASE=kms
@@ -33,7 +35,7 @@ services:
   mariadb:
     image: mariadb:11.4
     ports:
-      - 3308:3306
+      - ${KMS_SLOT_MARIADB_PORT:-3308}:3306
     environment:
       - MYSQL_ROOT_PASSWORD=kms
       - MYSQL_DATABASE=kms
@@ -42,7 +44,7 @@ services:
   postgres-mtls:
     image: postgres:16
     ports:
-      - 5433:5432
+      - ${KMS_SLOT_POSTGRES_MTLS_PORT:-5433}:5432
     environment:
       - POSTGRES_USER=kms
       - POSTGRES_DB=kms
@@ -77,7 +79,7 @@ services:
   mysql-mtls:
     image: mysql:8.0
     ports:
-      - 3309:3306
+      - ${KMS_SLOT_MYSQL_MTLS_PORT:-3309}:3306
     environment:
       - MYSQL_USER=kms
       - MYSQL_PASSWORD=kms
@@ -95,12 +97,12 @@ services:
   redis:
     image: redis:7.2
     ports:
-      - 6379:6379
+      - ${KMS_SLOT_REDIS_PORT:-6379}:6379
 
   jaeger:
     image: jaegertracing/all-in-one:1.55
     ports:
-      - 16686:16686
+      - ${KMS_SLOT_JAEGER_PORT:-16686}:16686
     environment:
       - COLLECTOR_OTLP_ENABLED=true
 
@@ -118,9 +120,9 @@ services:
       - ENVIRONMENT=test
       - KMS_VERSION=dev
     ports:
-      - 4317:4317 # OTLP gRPC receiver (host)
-      - 4318:4318 # OTLP HTTP receiver (host)
-      - 8889:8889 # Prometheus metrics endpoint (host)
+      - ${KMS_SLOT_OTEL_GRPC_PORT:-4317}:4317   # OTLP gRPC receiver (host)
+      - ${KMS_SLOT_OTEL_HTTP_PORT:-4318}:4318   # OTLP HTTP receiver (host)
+      - ${KMS_SLOT_OTEL_METRICS_PORT:-8889}:8889   # Prometheus metrics endpoint (host)
 
   # ── EDB Postgres Advanced Server 17 with Transparent Data Encryption ──────
   #
@@ -143,7 +145,7 @@ services:
     # Base image is x86_64-only.
     platform: linux/amd64
     ports:
-      - 5444:5444
+      - ${KMS_SLOT_EDB_PORT:-5444}:5444
     environment:
       PGPASSWORD: ${EDB_PGPASSWORD:-kms_test}
 
@@ -193,8 +195,8 @@ services:
     profiles:
       - iris
     ports:
-      - 52773:52773   # IRIS Management Portal
-      - 1972:1972     # IRIS SuperServer
+      - ${KMS_SLOT_IRIS_WEB_PORT:-52773}:52773     # IRIS Management Portal
+      - ${KMS_SLOT_IRIS_SUPER_PORT:-1972}:1972      # IRIS SuperServer
     volumes:
       - ./test_data/certificates/client_server/ca/ca.crt:/iris-kmip-certs/ca.crt:ro
       - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/iris-kmip-certs/client.crt:ro

@@ -58,15 +58,12 @@ echo "============================================="
 echo "Part 1: VeraCrypt PKCS#11 Rust unit tests"
 echo "============================================="
 
-# The Rust tests use start_default_test_kms_server() on port 9998.
-if command -v lsof >/dev/null 2>&1 && lsof -ti :9998 >/dev/null 2>&1; then
-  echo "Killing stale process on port 9998 before Rust unit tests..."
-  kill "$(lsof -ti :9998)" 2>/dev/null || true
-  sleep 1
-fi
+# The Rust tests use start_default_test_kms_server() which allocates dynamic
+# ports, so no stale process cleanup is needed.
 
 # Build the ckms CLI first so test executables find a compiled binary.
-kms_build_cli
+# kms_build_all also builds ckms, so we use it upfront to avoid building twice.
+kms_build_all
 
 # Run the VeraCrypt-related unit tests.
 cargo test \
@@ -95,7 +92,7 @@ echo "Part 2: Shell integration test"
 echo "============================================="
 
 # Build PKCS#11 library, KMS server, and ckms CLI.
-kms_build_all
+# Already built by kms_build_all above — this is a no-op thanks to cargo caching.
 
 ckms_bin=$(get_ckms_bin)
 pkcs11_lib=$(get_cosmian_pkcs11_lib)

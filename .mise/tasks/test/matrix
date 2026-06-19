@@ -71,12 +71,12 @@ while IFS=: read -r name port non_fips_only; do
       NON_FIPS_ONLY_DBS+=("$name")
     fi
   fi
-done <<'EOF'
-postgresql:5432:0
-mysql:3306:0
-percona:3307:0
-maria:3308:0
-redis:6379:1
+done <<EOF
+postgresql:${KMS_SLOT_POSTGRES_PORT:-5432}:0
+mysql:${KMS_SLOT_MYSQL_PORT:-3306}:0
+percona:${KMS_SLOT_PERCONA_PORT:-3307}:0
+maria:${KMS_SLOT_MARIADB_PORT:-3308}:0
+redis:${KMS_SLOT_REDIS_PORT:-6379}:1
 EOF
 
 # ── Print matrix plan ─────────────────────────────────────────────────────────

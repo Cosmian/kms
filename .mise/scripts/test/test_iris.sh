@@ -33,6 +33,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=.mise/scripts/common.sh
 source "${MISE_CONFIG_ROOT:-.}/.mise/scripts/common.sh"
+# shellcheck source=.mise/lib/test_slots.sh
+source "${MISE_CONFIG_ROOT:-.}/.mise/lib/test_slots.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 
 init_build_env "$@"
@@ -41,8 +43,8 @@ setup_test_logging
 # ── Configuration ─────────────────────────────────────────────────────────────
 : "${IRIS_DOCKER_IMAGE:=intersystemsdc/iris-community:latest}"
 : "${IRIS_CONTAINER_NAME:=iris-kmip-test}"
-: "${KMS_KMIP_PORT:=15696}"
-: "${KMS_HTTP_PORT:=9998}"
+: "${KMS_KMIP_PORT:=$(kms_pick_free_port)}"
+: "${KMS_HTTP_PORT:=$(kms_pick_free_port)}"
 # KMS hostname as seen from inside the IRIS Docker container.
 # 'host.docker.internal' is resolved by Docker to the host gateway IP.
 # Use the KMS server cert CN so IRIS TLS hostname verification succeeds.

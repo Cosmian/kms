@@ -61,11 +61,11 @@ while IFS=: read -r name task port v pretty hint; do
     run_db "$pretty" "$task" "$v"
   fi
 done <<EOF
-psql:psql:5432:${VARIANT}:PostgreSQL:postgres
-redis:redis:6379:non-fips:Redis:redis
-percona:percona:3307:${VARIANT}:Percona:percona
-mysql:mysql:3306:${VARIANT}:MySQL:mysql
-mariadb:mariadb:3308:${VARIANT}:MariaDB:mariadb
+psql:psql:${KMS_SLOT_POSTGRES_PORT:-5432}:${VARIANT}:PostgreSQL:postgres
+redis:redis:${KMS_SLOT_REDIS_PORT:-6379}:non-fips:Redis:redis
+percona:percona:${KMS_SLOT_PERCONA_PORT:-3307}:${VARIANT}:Percona:percona
+mysql:mysql:${KMS_SLOT_MYSQL_PORT:-3306}:${VARIANT}:MySQL:mysql
+mariadb:mariadb:${KMS_SLOT_MARIADB_PORT:-3308}:${VARIANT}:MariaDB:mariadb
 EOF
 
 # ── Summary ───────────────────────────────────────────────────────────────

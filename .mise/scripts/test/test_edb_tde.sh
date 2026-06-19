@@ -19,6 +19,8 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${MISE_CONFIG_ROOT:-.}/.mise/scripts/common.sh"
+# shellcheck source=.mise/lib/kms_build.sh
+source "${MISE_CONFIG_ROOT:-.}/.mise/lib/kms_build.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 
 init_build_env "$@"
@@ -82,37 +84,16 @@ fi
 pushd "$REPO_ROOT" >/dev/null
 cargo build --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
 
-KMS_PORT=9998
-KMIP_PORT=15696
-
-# Clean up ports
-free_port() {
-  local port="$1"
-  if command -v lsof >/dev/null 2>&1; then
-    local pids
-    pids=$(lsof -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
-    if [ -n "$pids" ]; then
-      echo "Freeing port $port (PIDs: $pids) …"
-      # shellcheck disable=SC2086
-      kill $pids 2>/dev/null || true
-    fi
-  elif command -v ss >/dev/null 2>&1; then
-    local pids
-    pids=$(ss -ltnp 2>/dev/null | awk -v p=":$port" '$4 ~ p {gsub(/.*pid=([0-9]+).*/,"\\1",$NF); print $NF}')
-    if [ -n "$pids" ]; then
-      echo "Freeing port $port (PIDs: $pids) …"
-      # shellcheck disable=SC2086
-      kill $pids 2>/dev/null || true
-    fi
-  fi
-}
-
-free_port "$KMS_PORT"
-free_port "$KMIP_PORT"
+KMS_PORT=$(kms_pick_free_port)
+KMIP_PORT=$(kms_pick_free_port)
 
 # Start server
-RUST_LOG=${RUST_LOG:-warn} COSMIAN_KMS_CONF="$COSMIAN_KMS_CONF" \
-  cargo run --bin cosmian_kms ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"} &
+RUST_LOG=${RUST_LOG:-warn} \
+  "$(get_cargo_target_dir)/debug/cosmian_kms" \
+  --database-type sqlite --clear-database \
+  --port "$KMS_PORT" --hostname 127.0.0.1 \
+  --socket-server-start --socket-server-port "$KMIP_PORT" \
+  &
 KMS_PID=$!
 
 # Ensure cleanup on exit
