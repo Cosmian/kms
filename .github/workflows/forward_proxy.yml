@@ -19,16 +19,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
+      - uses: ./.github/actions/install-mise
 
       - uses: dtolnay/rust-toolchain@master
         with:

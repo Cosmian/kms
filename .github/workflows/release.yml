@@ -163,16 +163,7 @@ jobs:
         with:
           toolchain: 1.91.0
 
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
+      - uses: ./.github/actions/install-mise
 
       - name: Run version-bump script
         run: |
@@ -290,16 +281,7 @@ jobs:
             rm -f "$dest"
           done
 
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
+      - uses: ./.github/actions/install-mise
 
       - name: Recompute all Nix vendor hashes
         run: mise run release:nix-update-hashes
@@ -444,16 +426,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
+      - uses: ./.github/actions/install-mise
 
       - name: Retrieve SBOMs from package.cosmian.com
         run: |
