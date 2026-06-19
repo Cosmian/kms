@@ -70,16 +70,17 @@ pub struct UnwrappedCache {
 }
 
 impl UnwrappedCache {
-    /// Create a new cache with a configurable max age setting.
-    /// The max age is the time after which an object is considered stale.
-    /// The garbage collection interval is set to `max_age x 1.5`
-    #[allow(clippy::missing_panics_doc)]
+    /// Create a new cache with configurable max age and max size settings.
+    ///
+    /// `max_age` is the duration after which an entry is considered stale and
+    /// eligible for garbage collection.  `max_size` is the maximum number of
+    /// entries the LRU cache will hold before evicting the least-recently-used
+    /// entry.  Callers should set `max_size` above their active key cardinality
+    /// to avoid LRU thrashing (every access to a cold key evicting a warm one).
+    ///
+    /// The garbage collection interval is set to `max_age × 1.5`.
     #[must_use]
-    pub fn new(max_age: Duration) -> Self {
-        // SAFETY: 100 is a non-zero constant
-        #[allow(clippy::expect_used)]
-        let max_size = NonZeroUsize::new(100).expect("100 is not zero. This will never trigger");
-
+    pub fn new(max_age: Duration, max_size: NonZeroUsize) -> Self {
         let (tx, rx) = mpsc::channel(100_000);
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let cache = Arc::new(RwLock::new(LruCache::new(max_size)));
@@ -278,10 +279,13 @@ mod tests {
         clippy::panic_in_result_fn,
         clippy::unwrap_in_result,
         clippy::assertions_on_result_states,
-        clippy::assertions_on_constants
+        clippy::assertions_on_constants,
+        // Test helpers use NonZeroUsize::new(N).expect() with literal non-zero constants.
+        clippy::expect_used
     )]
     use std::{
         collections::{HashMap, HashSet},
+        num::NonZeroUsize,
         time::Duration,
     };
 
@@ -311,6 +315,7 @@ mod tests {
             true,
             HashMap::new(),
             Duration::from_millis(100),
+            NonZeroUsize::new(100).expect("100 is non-zero"),
             None,
         )
         .await?;
@@ -376,6 +381,7 @@ mod tests {
         // Create a cache with a short GC interval and max age
         let cache = super::UnwrappedCache::new(
             Duration::from_millis(100), // Keys expire after 100 ms, GC runs every 150 ms.
+            NonZeroUsize::new(100).expect("100 is non-zero"),
         );
 
         // Insert an item
@@ -425,7 +431,10 @@ mod tests {
 
         // Create a scope to ensure the cache is dropped
         {
-            let cache = super::UnwrappedCache::new(Duration::from_millis(100));
+            let cache = super::UnwrappedCache::new(
+                Duration::from_millis(100),
+                NonZeroUsize::new(100).expect("100 is non-zero"),
+            );
 
             let uid = "test_item".to_owned();
 

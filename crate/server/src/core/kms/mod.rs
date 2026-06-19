@@ -4,7 +4,7 @@ mod kmip;
 mod other_kms_methods;
 mod permissions;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
 use cosmian_kms_server_database::{
     Database, DbMetricsRecorder,
@@ -146,11 +146,18 @@ impl KMS {
                 m.clone() // Arc clones are cheap
             });
 
+        let cache_max_size =
+            NonZeroUsize::new(server_params.unwrapped_cache_max_size).ok_or_else(|| {
+                KmsError::InvalidRequest(
+                    "unwrapped_cache_max_size must be greater than 0".to_owned(),
+                )
+            })?;
         let database = Database::instantiate(
             main_db_params,
             server_params.clear_db_on_start,
             object_stores,
             server_params.unwrapped_cache_max_age,
+            cache_max_size,
             db_otel_recorder,
         )
         .await?;
