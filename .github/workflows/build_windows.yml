@@ -19,7 +19,7 @@ jobs:
       - name: Print ENV
         run: printenv
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -165,7 +165,7 @@ jobs:
 
     steps:
       - name: Checkout repository (for release metadata)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
 

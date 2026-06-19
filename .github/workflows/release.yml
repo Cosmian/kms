@@ -94,7 +94,7 @@ jobs:
           fi
 
       # Use PAT_TOKEN so commits and tag pushes re-trigger other workflows.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: develop
           fetch-depth: 0
@@ -251,7 +251,7 @@ jobs:
             narinfo-cache-negative-ttl = 0
             http-connections = 8
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.release_branch }}
           fetch-depth: 0
@@ -414,7 +414,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.release_branch }}
           fetch-depth: 0
@@ -464,7 +464,7 @@ jobs:
 
     steps:
       # Use PAT_TOKEN so the push to `main` and `develop` re-triggers CI.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0

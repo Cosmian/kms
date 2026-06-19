@@ -68,7 +68,7 @@ jobs:
 
       - uses: ./.github/actions/install-mise
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -179,7 +179,7 @@ jobs:
         run: rm -rf ${{ matrix.features }}_${{ matrix.link }}_${{ matrix.runner }}-release
 
       - name: Checkout repository (for public key file)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
 
@@ -297,7 +297,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
 
@@ -336,7 +336,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: false
 
