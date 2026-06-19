@@ -285,7 +285,7 @@ mod tests {
         let port = one_shot_http_server(SAMPLE_JWKS).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let (res_url, jwks) = parse_jwks(&url, &None).await.unwrap();
+        let (res_url, jwks) = parse_jwks(&url, &None, false).await.unwrap();
 
         assert_eq!(res_url, url);
         assert_eq!(jwks.keys.len(), 1);
@@ -301,7 +301,7 @@ mod tests {
         let port = one_shot_http_server(r#"{"not_keys": []}"#).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let err = parse_jwks(&url, &None).await.unwrap_err();
+        let err = parse_jwks(&url, &None, false).await.unwrap_err();
 
         assert!(
             err.to_string().contains("JSON key 'keys' not found"),
@@ -315,7 +315,7 @@ mod tests {
         let port = one_shot_http_server(r#"{"keys": []}"#).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let err = parse_jwks(&url, &None).await.unwrap_err();
+        let err = parse_jwks(&url, &None, false).await.unwrap_err();
 
         assert!(
             err.to_string().contains("No valid JWK found"),
@@ -359,7 +359,7 @@ mod tests {
         let redirect_port = one_shot_redirect_server(attacker_url).await;
         let jwks_url = format!("http://127.0.0.1:{redirect_port}/jwks.json");
 
-        let err = parse_jwks(&jwks_url, &None).await.unwrap_err();
+        let err = parse_jwks(&jwks_url, &None, false).await.unwrap_err();
 
         // The JSON parse of the empty 307 body must fail — not a successful JWKS fetch.
         assert!(
@@ -383,7 +383,7 @@ mod tests {
         let port = one_shot_http_server(SAMPLE_JWKS).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let (res_url, jwks) = parse_jwks(&url, &None).await.unwrap();
+        let (res_url, jwks) = parse_jwks(&url, &None, false).await.unwrap();
 
         assert_eq!(res_url, url);
         assert_eq!(jwks.keys.len(), 1);
@@ -397,7 +397,7 @@ mod tests {
         let port = one_shot_http_server(MIXED_JWKS).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let (_, jwks) = parse_jwks(&url, &None).await.unwrap();
+        let (_, jwks) = parse_jwks(&url, &None, false).await.unwrap();
 
         assert_eq!(jwks.keys.len(), 1);
         assert_eq!(
