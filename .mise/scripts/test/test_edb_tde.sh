@@ -21,6 +21,8 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${MISE_CONFIG_ROOT:-.}/.mise/scripts/common.sh"
 # shellcheck source=.mise/lib/kms_build.sh
 source "${MISE_CONFIG_ROOT:-.}/.mise/lib/kms_build.sh"
+# shellcheck source=.mise/lib/kms_server.sh
+source "${MISE_CONFIG_ROOT:-.}/.mise/lib/kms_server.sh"
 REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 
 init_build_env "$@"
