@@ -52,7 +52,12 @@ get_ckms_bin() {
 # Build the KMS server binary.
 # Usage: kms_build_server [extra_cargo_args...]
 # Requires: FEATURES_FLAG[] from kms_init_env
+# Set KMS_SKIP_BUILD=1 to skip (useful when a batch runner already built everything).
 kms_build_server() {
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+    return 0
+  fi
   require_cmd cargo "Cargo is required to build the KMS server."
   cargo build -p cosmian_kms_server "${FEATURES_FLAG[@]}" "$@"
 }
@@ -60,7 +65,12 @@ kms_build_server() {
 # Build the ckms CLI binary.
 # Usage: kms_build_cli [extra_cargo_args...]
 # Requires: FEATURES_FLAG[] from kms_init_env
+# Set KMS_SKIP_BUILD=1 to skip (useful when a batch runner already built everything).
 kms_build_cli() {
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+    return 0
+  fi
   require_cmd cargo "Cargo is required to build the ckms CLI."
   cargo build -p ckms "${FEATURES_FLAG[@]}" "$@"
 }
@@ -69,7 +79,12 @@ kms_build_cli() {
 # In non-fips mode, also builds cosmian_pkcs11.
 # Usage: kms_build_all [extra_cargo_args...]
 # Requires: FEATURES_FLAG[], VARIANT from kms_init_env
+# Set KMS_SKIP_BUILD=1 to skip (useful when a batch runner already built everything).
 kms_build_all() {
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+    return 0
+  fi
   require_cmd cargo "Cargo is required to build KMS binaries."
   local packages=(-p cosmian_kms_server -p ckms)
   if [ "${VARIANT:-fips}" = "non-fips" ]; then

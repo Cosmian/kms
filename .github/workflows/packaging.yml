@@ -25,19 +25,16 @@ jobs:
       archive-name: windows
 
   docker:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/packaging-docker.yml
     with:
       toolchain: 1.91.0
     secrets: inherit
-    if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
-      || startsWith(github.ref, 'refs/tags/')
-      || github.event_name == 'workflow_dispatch'
 
   packages:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}
     runs-on: ${{ matrix.runner }}
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
     strategy:
       fail-fast: false
@@ -47,47 +44,18 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
 
     steps:
-      - name: Manual cleanup for extra space
-        if: runner.os == 'Linux'
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-          df -h
-
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            connect-timeout = 15
-            stalled-download-timeout = 15
-            narinfo-cache-negative-ttl = 0
-            http-connections = 8
-
-      - uses: ./.github/actions/install-mise
-
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - name: Warm Nix store
-        run: |
-          # Pre-fetch nixpkgs tarballs (*.tar.gz from default.nix)
-          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
-            dest="/tmp/$(basename "$url")"
-            # Build GitHub fallback URL from mirror URL
-            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
-            echo "Downloading $(basename "$url") …"
-            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
-              echo "Mirror failed, falling back to GitHub …"
-              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
-            fi
-            echo "Injecting into Nix store …"
-            nix-prefetch-url --unpack --name source "file://$dest"
-            rm -f "$dest"
-          done
+      - uses: ./.github/actions/cleanup-runner
+        if: runner.os == 'Linux'
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - uses: ./.github/actions/install-mise
 
       - name: Set up GPG
         uses: crazy-max/ghaction-import-gpg@v7
@@ -390,13 +358,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: cosmian-kms-monitoring.zip
-
-  cargo-publish:
-    uses: ./.github/workflows/cargo-publish.yml
-    with:
-      toolchain: 1.91.0
-    secrets:
-      token: ${{ secrets.CRATES_IO }}
 
   tests:
     needs: packages

@@ -13,6 +13,10 @@ set -x
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 source "${SCRIPT_DIR}/../common.sh"
+# shellcheck source=.mise/lib/kms_server.sh
+source "${SCRIPT_DIR}/../../lib/kms_server.sh"
+# shellcheck source=.mise/lib/test_slots.sh
+source "${SCRIPT_DIR}/../../lib/test_slots.sh"
 
 init_build_env "$@"
 setup_test_logging
@@ -26,7 +30,7 @@ echo "Variant: ${VARIANT_NAME}"
 echo "========================================="
 
 KMS_HOST="127.0.0.1"
-KMS_PORT=19998
+KMS_PORT=$(kms_pick_free_port)
 KMS_URL="http://${KMS_HOST}:${KMS_PORT}"
 SQLITE_PATH="$(mktemp -d -t kms-secret-test-XXXXXX)"
 KMS_CONF_PATH="$(mktemp -t kms-secret-test-conf-XXXXXX.toml)"
@@ -67,8 +71,7 @@ echo "Building KMS server..."
 cargo build ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms
 
 echo "Starting KMS server on port ${KMS_PORT}..."
-# shellcheck disable=SC2068
-cargo run ${FEATURES_FLAG[@]+${FEATURES_FLAG[@]}} --bin cosmian_kms -- \
+"$(get_cargo_target_dir)/debug/cosmian_kms" \
   --config "${KMS_CONF_PATH}" \
   &
 KMS_PID=$!

@@ -3,12 +3,15 @@ set -euo pipefail
 
 COMPOSE_FILE="${COMPOSE_FILE:-.mise/scripts/docker-compose.yml}"
 RECREATE_NGINX="${RECREATE_NGINX:-1}"
-LB_PORT="${LB_PORT:-18080}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=.mise/lib/test_slots.sh
+source "${SCRIPT_DIR}/../../lib/test_slots.sh"
 source "${SCRIPT_DIR}/../common.sh"
 ROOT_DIR="$(get_repo_root "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
+
+LB_PORT="${KMS_SLOT_LB_PORT}"
 
 log() {
   printf '%s\n' "$*"

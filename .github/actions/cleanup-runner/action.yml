@@ -1,0 +1,19 @@
+---
+name: Cleanup runner disk space
+description: >
+  Free up disk space on GitHub-hosted runners by removing pre-installed
+  toolchains and Docker images that are not needed for KMS builds.
+  Typically recovers 20-30 GB and prints a disk-usage summary.
+
+runs:
+  using: composite
+  steps:
+    - name: Cleanup runner disk space
+      shell: bash
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        df -h

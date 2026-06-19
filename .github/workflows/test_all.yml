@@ -93,44 +93,15 @@ jobs:
             docker: otel-collector jaeger
 
     steps:
-      - name: Manual cleanup for extra space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-          df -h
-
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            connect-timeout = 15
-            stalled-download-timeout = 15
-            narinfo-cache-negative-ttl = 0
-
-      - uses: ./.github/actions/install-mise
-
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Warm Nix store
-        run: |
-          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
-            dest="/tmp/$(basename "$url")"
-            # Build GitHub fallback URL from mirror URL
-            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
-            echo "Downloading $(basename "$url") …"
-            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
-              echo "Mirror failed, falling back to GitHub …"
-              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
-            fi
-            echo "Injecting into Nix store …"
-            nix-prefetch-url --unpack --name source "file://$dest"
-            rm -f "$dest"
-          done
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
 
       - name: Run docker containers
         if: matrix.docker
@@ -228,44 +199,15 @@ jobs:
             features: fips
 
     steps:
-      - name: Manual cleanup for extra space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-          df -h
-
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            connect-timeout = 15
-            stalled-download-timeout = 15
-            narinfo-cache-negative-ttl = 0
-
-      - uses: ./.github/actions/install-mise
-
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Warm Nix store
-        run: |
-          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u | while read -r url; do
-            dest="/tmp/$(basename "$url")"
-            # Build GitHub fallback URL from mirror URL
-            fallback=$(echo "$url" | sed 's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
-            echo "Downloading $(basename "$url") …"
-            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
-              echo "Mirror failed, falling back to GitHub …"
-              curl --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors -fsSL -o "$dest" "$fallback"
-            fi
-            echo "Injecting into Nix store …"
-            nix-prefetch-url --unpack --name source "file://$dest"
-            rm -f "$dest"
-          done
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+
+      - uses: ./.github/actions/install-mise
 
       - name: Test
         env:
@@ -285,15 +227,27 @@ jobs:
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
   windows-2022:
+    # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
 
-  cleanup:
+  # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.). The publication will be done on tags only.
+  cargo-publish:
     needs:
       - test-nix
       - hsm
-      - windows-2022
+    uses: ./.github/workflows/cargo-publish.yml
+    with:
+      toolchain: 1.91.0
+    secrets:
+      token: ${{ secrets.CRATES_IO }}
+
+  cleanup:
+    needs:
+      - cargo-publish
+    if: always()
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit

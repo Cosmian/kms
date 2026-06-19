@@ -242,15 +242,6 @@ jobs:
         runner: [ubuntu-latest, macos-15]
 
     steps:
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            connect-timeout = 15
-            stalled-download-timeout = 15
-            narinfo-cache-negative-ttl = 0
-            http-connections = 8
-
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.release_branch }}
@@ -263,23 +254,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Warm Nix store
-        run: |
-          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u \
-          | while read -r url; do
-            dest="/tmp/$(basename "$url")"
-            fallback=$(echo "$url" | sed \
-              's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
-            echo "Downloading $(basename "$url") …"
-            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
-              echo "Mirror failed, falling back to GitHub …"
-              curl --retry 5 --retry-delay 10 --retry-max-time 300 \
-                   --retry-all-errors -fsSL -o "$dest" "$fallback"
-            fi
-            echo "Injecting into Nix store …"
-            nix-prefetch-url --unpack --name source "file://$dest"
-            rm -f "$dest"
-          done
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
 
       - uses: ./.github/actions/install-mise
 

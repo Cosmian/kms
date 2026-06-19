@@ -3,16 +3,18 @@ name: Packaging
 
 on:
   push:
+    branches:
+      - develop
+      - main
     tags:
       - '**'
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: 0 1 * * * # Daily at 1 AM
+
 jobs:
-  # Run packaging for PRs
   packaging:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     uses: ./.github/workflows/packaging.yml
     secrets: inherit
     with:

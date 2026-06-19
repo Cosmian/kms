@@ -45,17 +45,13 @@ echo "========================================="
 echo "Part 1: SSH signing Rust unit tests"
 echo "========================================="
 
-# The Rust tests use start_default_test_kms_server() on port 9998.
-# If a stale local server is still bound, tests abort with "Address already in use".
-if command -v lsof >/dev/null 2>&1 && lsof -ti :9998 >/dev/null 2>&1; then
-  echo "Killing stale process on port 9998 before Rust unit tests..."
-  kill "$(lsof -ti :9998)" 2>/dev/null || true
-  sleep 1
-fi
+# The Rust tests use start_default_test_kms_server() which allocates dynamic
+# ports, so no stale process cleanup is needed.
 
 # Build the ckms CLI binary first so that `Command::cargo_bin("ckms")` inside
 # lib tests finds a binary compiled with the matching feature flags.
-kms_build_cli
+# kms_build_all also builds ckms, so we use it upfront to avoid building twice.
+kms_build_all
 
 cargo test \
   -p cosmian_pkcs11 \
@@ -79,7 +75,7 @@ if ! command -v ssh-keygen >/dev/null 2>&1; then
 fi
 
 # Build PKCS#11 library, KMS server and ckms CLI.
-kms_build_all
+# Already built by kms_build_all above — this is a no-op thanks to cargo caching.
 
 ckms_bin=$(get_ckms_bin)
 pkcs11_lib=$(get_cosmian_pkcs11_lib)
