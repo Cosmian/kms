@@ -383,9 +383,10 @@ jobs:
           set -euo pipefail
 
           echo "Waiting for packaging run $RUN_ID to complete…"
-          echo "  (packaging takes 40-70 min; timeout set to 120 min)"
+          echo "  (packaging takes 40-70 min to run; self-hosted runners may"
+          echo "   also be pending/queued for hours — timeout set to 360 min)"
 
-          MAX_WAIT=7200
+          MAX_WAIT=21600
           INTERVAL=60
           elapsed=0
 
