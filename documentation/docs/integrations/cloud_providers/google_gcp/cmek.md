@@ -79,9 +79,9 @@ The key should now be available in the Google Cloud KMS.
 ## Automated testing
 
 The entire Eviden KMS side of this workflow (steps 2–4) is covered by the
-script `.github/scripts/test_gcp_cmek.sh`. It uses the test wrapping key at
+script `.mise/scripts/test_gcp_cmek.sh`. It uses the test wrapping key at
 `test_data/google_cmek/Import_RSA_AES_WRAP.pem` and can be executed via:
 
 ```shell
-bash .github/scripts/nix.sh --variant non-fips test gcp_cmek
+mise run test:gcp_cmek --variant non-fips
 ```

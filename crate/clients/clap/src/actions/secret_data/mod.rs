@@ -7,8 +7,8 @@ use self::{
 };
 use crate::{
     actions::shared::{
-        ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction, UnwrapSecretDataOrKeyAction,
-        WrapSecretDataOrKeyAction,
+        ActivateKeyAction, ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction,
+        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
@@ -20,6 +20,7 @@ pub mod revoke_secret;
 /// Create, import, export and destroy secret data
 #[derive(Subcommand)]
 pub enum SecretDataCommands {
+    Activate(ActivateKeyAction),
     Create(CreateSecretDataAction),
     Export(ExportSecretDataOrKeyAction),
     Import(ImportSecretDataOrKeyAction),
@@ -32,6 +33,9 @@ pub enum SecretDataCommands {
 impl SecretDataCommands {
     pub(crate) async fn process(&self, kms_rest_client: KmsClient) -> KmsCliResult<()> {
         match self {
+            Self::Activate(action) => {
+                action.run(kms_rest_client).await?;
+            }
             Self::Create(action) => {
                 action.run(kms_rest_client).await?;
             }

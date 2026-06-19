@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#MISE description="Run SQLite workspace tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+
+require_cmd cargo
+
+print_header "Running SQLite tests (${VARIANT_NAME})"
+
+# Diagnostics
+echo "OpenSSL diagnostics:"
+echo "  OPENSSL_CONF=${OPENSSL_CONF:-unset}"
+echo "  OPENSSL_MODULES=${OPENSSL_MODULES:-unset}"
+echo "  VARIANT=${VARIANT} (${VARIANT_NAME})"
+if command -v openssl >/dev/null 2>&1; then
+  echo "Providers:"
+  openssl list -providers -verbose || true
+fi
+
+# On CI, also test workspace binaries
+if [ "${CI:-false}" = "true" ] || [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+  echo "Testing workspace binaries..."
+  cargo test --workspace --bins ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}
+fi
+
+run_db_tests "sqlite"
+
+print_success "SQLite tests completed"

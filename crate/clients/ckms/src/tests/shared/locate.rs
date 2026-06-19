@@ -1,12 +1,6 @@
-use std::process::Command;
-
-use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::cosmian_kmip::kmip_2_1::extra::tagging::{
-        SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY,
-        SYSTEM_TAG_SYMMETRIC_KEY,
-    },
+use cosmian_kms_cli_actions::reexport::cosmian_kmip::kmip_2_1::extra::tagging::{
+    SYSTEM_TAG_COVER_CRYPT_USER_KEY, SYSTEM_TAG_PRIVATE_KEY, SYSTEM_TAG_PUBLIC_KEY,
+    SYSTEM_TAG_SYMMETRIC_KEY,
 };
 #[cfg(feature = "non-fips")]
 use cosmian_logger::log_init;
@@ -26,9 +20,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_locate_uids, recover_cmd_logs},
+        utils::{
+            ckms_bin, extract_uids::extract_locate_uids, load_client_config, recover_cmd_logs,
+        },
     },
 };
 
@@ -59,7 +54,7 @@ pub(crate) fn locate(
         args.push(key_format_type.to_string());
     }
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     cmd.arg("locate").args(args);
@@ -76,13 +71,11 @@ pub(crate) fn locate(
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_locate_cover_crypt() -> CosmianResult<()> {
-    use crate::tests::save_kms_cli_config;
-
     log_init(option_env!("RUST_LOG"));
 
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -225,12 +218,10 @@ pub(crate) async fn test_locate_cover_crypt() -> CosmianResult<()> {
 #[cfg(feature = "non-fips")]
 #[tokio::test]
 pub(crate) async fn test_locate_elliptic_curve() -> CosmianResult<()> {
-    use crate::tests::save_kms_cli_config;
-
     log_init(option_env!("RUST_LOG"));
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
@@ -319,16 +310,10 @@ pub(crate) async fn test_locate_elliptic_curve() -> CosmianResult<()> {
 pub(crate) async fn test_locate_symmetric_key() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
 
     // generate a new key
-    let key_id = create_symmetric_key(
-        &owner_client_conf_path,
-        CreateKeyAction {
-            tags: vec!["test_sym".to_string()],
-            ..Default::default()
-        },
-    )?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &["--tag", "test_sym"])?;
 
     // Locate with Tags
     let ids = locate(
@@ -394,7 +379,8 @@ pub(crate) async fn test_locate_symmetric_key() -> CosmianResult<()> {
 pub(crate) async fn test_locate_grant() -> CosmianResult<()> {
     // init the test server
     let ctx = start_default_test_kms_server_with_cert_auth().await;
-    let (owner_client_conf_path, user_client_conf_path) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = load_client_config("cert_auth_owner.toml", ctx);
+    let user_client_conf_path = load_client_config("cert_auth_user.toml", ctx);
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(

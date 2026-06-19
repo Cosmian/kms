@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Run MySQL tests"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
+setup_test_logging
+ensure_nix_shell
+
+print_header "Running MySQL tests (${VARIANT_NAME})"
+
+check_and_test_db "MySQL" "mysql" "MYSQL_HOST" "MYSQL_PORT"
+
+print_success "MySQL tests completed"

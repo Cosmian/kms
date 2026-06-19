@@ -16,8 +16,11 @@ Commands:
   aws            Support for AWS specific interactions
   bench          Run benchmarks using criterion for statistical analysis.
   cc             Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+  fpe            Manage FPE keys and perform FPE encryption/decryption through KMIP Encrypt/Decrypt
   pqc            Manage post-quantum keys (ML-KEM, ML-DSA, Hybrid KEM, SLH-DSA). Encapsulate, decapsulate, sign, and verify
+  tokenize       Anonymization utilities: hash, noise, word masking, pattern masking, aggregation, and scaling
   certificates   Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
+  cng            Manage the Windows CNG Key Storage Provider (KSP)
   derive-key     Derive a new key from an existing key
   ec             Manage elliptic curve keys. Encrypt and decrypt data using ECIES
   google         Manage google elements. Handle key pairs and identities from Gmail API
@@ -30,6 +33,7 @@ Commands:
   server         Server-related commands
   rsa            Manage RSA keys. Encrypt and decrypt data using RSA keys
   opaque-object  Create, import, export, revoke and destroy Opaque Objects
+  pkcs11         Verify PKCS#11 shared library integration
   secret-data    Create, import, export and destroy secret data
   sym            Manage symmetric keys. Encrypt and decrypt data
   markdown       Regenerate the CLI documentation in Markdown format

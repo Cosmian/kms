@@ -48,6 +48,17 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: Install dependencies (jq, bc, OpenSSL)
         run: |
           if command -v apt-get >/dev/null 2>&1; then
@@ -62,8 +73,7 @@ jobs:
           BENCH_SPEED: ${{ inputs.bench_speed || 'quick' }}
           REGRESSION_THRESHOLD: ${{ inputs.regression_threshold || '10' }}
         run: |
-          bash .github/scripts/benchmarks/bench_regression.sh \
-            --variant "$VARIANT"
+          mise run bench:regression --variant "$VARIANT"
 
       - name: Upload benchmark results
         if: always()

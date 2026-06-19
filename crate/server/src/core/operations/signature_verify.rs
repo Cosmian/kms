@@ -1,6 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason},
+        kmip_0::kmip_types::CryptographicUsageMask,
         kmip_2_1::{
             KmipOperation,
             kmip_objects::{Object, ObjectType},
@@ -13,7 +13,7 @@ use cosmian_kms_server_database::reexport::{
             elliptic_curves::verify::{ecdsa_verify, ed_verify},
             rsa::{default_cryptographic_parameters, verify::rsa_verify},
         },
-        openssl::kmip_public_key_to_openssl,
+        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
@@ -53,23 +53,16 @@ impl CryptoOpSpec for SignatureVerifyOp {
     }
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
-        if let Object::PublicKey { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Verify, true);
-        }
-        false
-    }
-
-    fn map_selection_error(
-        e: KmsError,
-        unique_identifier: &UniqueIdentifier,
-        _user: &str,
-    ) -> KmsError {
-        match e {
-            KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                format!("SignatureVerify: no valid public key for id: {unique_identifier}"),
-            ),
-            other => other,
+        match owm.object() {
+            // Accept both public and private keys for verification.
+            // Private keys are supported for imported keys that may lack a paired public key;
+            // the public component is extracted at execution time.
+            // Use Verify mask with lenient=true so imported keys without an explicit mask
+            // still work.
+            Object::PublicKey { .. } | Object::PrivateKey { .. } => {
+                has_usage_mask(owm, CryptographicUsageMask::Verify, true)
+            }
+            _ => false,
         }
     }
 
@@ -247,6 +240,14 @@ pub(crate) async fn signature_verify(
 fn extract_verification_key(object: &Object) -> KResult<PKey<Public>> {
     match object.object_type() {
         ObjectType::PublicKey => Ok(kmip_public_key_to_openssl(object)?),
+        ObjectType::PrivateKey => {
+            // Extract the public component from a private key (covers imported keys
+            // that have no paired public key object in the store).
+            let pkey = kmip_private_key_to_openssl(object)?;
+            // openssl PKey<Private> can be converted to its public component via raw bytes
+            let pub_der = pkey.public_key_to_der()?;
+            Ok(PKey::public_key_from_der(&pub_der)?)
+        }
         _ => Err(KmsError::InvalidRequest(format!(
             "Object type {} is not valid for signature verification",
             object.object_type()

@@ -116,21 +116,21 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.set_link(link.link_type, link.linked_object_identifier);
             }
-            // OperationPolicyName was deprecated in KMIP 1.3 and removed in KMIP 2.0+.
-            Attribute::VendorAttribute(ref vendor_attribute)
-                if vendor_attribute.vendor_identification == "KMIP1"
-                    && vendor_attribute.attribute_name == "__Operation Policy Name__" =>
-            {
-                trace!("Ignoring deprecated OperationPolicyName attribute (KMIP 1.3+, removed in 2.0)");
-            }
             Attribute::VendorAttribute(vendor_attribute) => {
                 trace!("Vendor Attribute: {}", vendor_attribute);
-                if attributes
-                    .get_vendor_attribute_value(
-                        &vendor_attribute.vendor_identification,
-                        &vendor_attribute.attribute_name,
-                    )
-                    .is_some()
+                // For KMIP 1.x deprecated attributes (e.g. OperationPolicyName)
+                // that are stored as VendorAttributes with vendor_identification="KMIP1",
+                // allow overwrite since the attribute may already exist from the
+                // Create template. VAST sends OPN both in Create and via AddAttribute.
+                let is_kmip1_compat =
+                    vendor_attribute.vendor_identification == "KMIP1";
+                if !is_kmip1_compat
+                    && attributes
+                        .get_vendor_attribute_value(
+                            &vendor_attribute.vendor_identification,
+                            &vendor_attribute.attribute_name,
+                        )
+                        .is_some()
                 {
                     return Err(KmsError::InvalidRequest(
                         "Vendor Attribute already exists".to_owned(),

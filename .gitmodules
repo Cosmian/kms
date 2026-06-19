@@ -4,3 +4,6 @@
 [submodule "test_data"]
     path = test_data
     url = https://github.com/Cosmian/test_data.git
+[submodule "kmip"]
+    path = kmip
+    url = https://github.com/Cosmian/kmip.git

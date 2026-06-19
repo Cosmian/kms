@@ -8,6 +8,7 @@ pub(crate) mod error;
 pub(crate) mod keys;
 pub(crate) mod mac;
 pub(crate) mod sign;
+pub(crate) mod unwrap;
 pub(crate) mod verify;
 
 // Re-export handlers under names that callers (start_kms_server, test_utils) can use
@@ -25,6 +26,7 @@ pub(crate) use keys::{create_key as create_key_handler, delete_key as delete_key
 pub(crate) use mac::mac as mac_handler;
 pub(crate) use models::*;
 pub(crate) use sign::sign as sign_handler;
+pub(crate) use unwrap::unwrap_key as unwrap_key_handler;
 pub(crate) use verify::verify as verify_handler;
 
 /// Return the ECDSA coordinate byte-length for JOSE EC algorithms (None for non-EC algs).

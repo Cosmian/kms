@@ -8,10 +8,10 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME, save_kms_cli_config,
+        PROG_NAME,
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
-            recover_cmd_logs,
+            owner_config, recover_cmd_logs,
         },
     },
 };
@@ -213,7 +213,7 @@ fn test_sign(cli_conf_path: &str, name: &str, algorithm: &str) -> CosmianResult<
 #[tokio::test]
 async fn test_pqc_ml_kem_ckms() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_conf_path = owner_config(ctx);
 
     test_kem(&owner_conf_path, "PQC ML-KEM-512", "ml-kem-512")?;
     test_kem(&owner_conf_path, "PQC ML-KEM-768", "ml-kem-768")?;
@@ -225,7 +225,7 @@ async fn test_pqc_ml_kem_ckms() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_pqc_ml_dsa_ckms() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_conf_path = owner_config(ctx);
 
     test_sign(&owner_conf_path, "PQC ML-DSA-44", "ml-dsa-44")?;
     test_sign(&owner_conf_path, "PQC ML-DSA-65", "ml-dsa-65")?;
@@ -237,7 +237,7 @@ async fn test_pqc_ml_dsa_ckms() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_pqc_hybrid_kem_ckms() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_conf_path = owner_config(ctx);
 
     test_kem(&owner_conf_path, "PQC X25519MLKEM768", "x25519-ml-kem-768")?;
     test_kem(&owner_conf_path, "PQC X448MLKEM1024", "x448-ml-kem-1024")?;
@@ -248,7 +248,7 @@ async fn test_pqc_hybrid_kem_ckms() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_pqc_slh_dsa_ckms() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_conf_path = owner_config(ctx);
 
     test_sign(
         &owner_conf_path,
@@ -317,7 +317,7 @@ async fn test_pqc_slh_dsa_ckms() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_pqc_configurable_hybrid_kem_ckms() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_conf_path = owner_config(ctx);
 
     test_kem(&owner_conf_path, "PQC ML-KEM-512-P256", "ml-kem-512-p256")?;
     test_kem(&owner_conf_path, "PQC ML-KEM-768-P256", "ml-kem-768-p256")?;

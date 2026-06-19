@@ -3,7 +3,9 @@
     let
       rustOverlay = import (
         builtins.fetchTarball {
-          url = "https://github.com/oxalica/rust-overlay/archive/refs/heads/stable.tar.gz";
+          # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
+          url = "https://package.cosmian.com/nixpkgs/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
+          sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
         }
       );
       pinned =
@@ -42,6 +44,10 @@ let
   withOpenssh = (builtins.getEnv "WITH_OPENSSH") == "1";
   # LUKS disk-encryption PKCS#11 test: pkcs11-tool (opensc) lists objects on Linux
   withLuks = (builtins.getEnv "WITH_LUKS") == "1";
+  # AWS secret backend test: awscli2 is needed to create/delete SSM parameters
+  withAws = (builtins.getEnv "WITH_AWS") == "1";
+  # IRIS mTLS test / Vault secret backend test: Docker CLI must be available inside the nix-shell to pull and run containers
+  withDocker = (builtins.getEnv "WITH_DOCKER") == "1";
 
   rustToolchain =
     if withWasm then
@@ -175,7 +181,11 @@ pkgs.mkShell {
   # OpenSSH PKCS#11 test: include openssh so ssh-keygen is available on Linux CI
   ++ pkgs.lib.optionals (withOpenssh && pkgs.stdenv.isLinux) [ pkgs.openssh ]
   # LUKS disk-encryption test: include opensc for pkcs11-tool on Linux CI
-  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ];
+  ++ pkgs.lib.optionals (withLuks && pkgs.stdenv.isLinux) [ pkgs.opensc ]
+  # AWS secret backend test: include awscli2 for SSM parameter management
+  ++ pkgs.lib.optionals withAws [ pkgs.awscli2 ]
+  # IRIS mTLS test + Vault secret backend test: include docker CLI
+  ++ pkgs.lib.optionals withDocker [ pkgs.docker ];
 
   shellHook = ''
     set -eo pipefail

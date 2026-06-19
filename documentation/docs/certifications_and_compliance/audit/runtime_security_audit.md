@@ -7,7 +7,7 @@
 
     Run the analyser with:
     ```bash
-    bash .github/scripts/audit/runtime_security.sh \
+    bash .mise/scripts/audit/runtime_security.sh \
         --server-url https://HOST:PORT \
         [--cert client.pem] [--key client.key] [--ca ca.pem]
     ```
@@ -258,7 +258,7 @@ graph LR
 
     ```bash
     # Test mTLS with ckms-generated certs
-    bash .github/scripts/audit/runtime_security.sh \
+    bash .mise/scripts/audit/runtime_security.sh \
         --server-url https://localhost:9998 \
         --cert test_data/certs/client.crt \
         --key  test_data/certs/client.key \
@@ -357,7 +357,7 @@ go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest  # template s
 ### Basic run (plain HTTPS)
 
 ```bash
-bash .github/scripts/audit/runtime_security.sh \
+bash .mise/scripts/audit/runtime_security.sh \
     --server-url https://localhost:9998 \
     --insecure    # skip cert verification on self-signed cert
 ```
@@ -365,7 +365,7 @@ bash .github/scripts/audit/runtime_security.sh \
 ### Full run with mTLS
 
 ```bash
-bash .github/scripts/audit/runtime_security.sh \
+bash .mise/scripts/audit/runtime_security.sh \
     --server-url https://kms.prod.example.com:9998 \
     --cert  certs/client.crt \
     --key   certs/client.key \
@@ -406,7 +406,7 @@ Add to `.github/workflows/main_base.yml` as a post-deploy smoke test:
 ```yaml
 - name: Runtime Security Scan
   run: |
-    bash .github/scripts/audit/runtime_security.sh \
+    bash .mise/scripts/audit/runtime_security.sh \
       --server-url https://localhost:9998 \
       --insecure \
       --report cbom/runtime_security_report.md

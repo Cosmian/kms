@@ -1,16 +1,12 @@
 use std::path::PathBuf;
 
-use base64::{Engine as _, engine::general_purpose};
 use clap::Parser;
 use cosmian_kms_client::{
     ExportObjectParams, KmsClient,
-    cosmian_kmip::kmip_2_1::{kmip_objects::Object, kmip_types::CryptographicAlgorithm},
+    cosmian_kmip::kmip_2_1::kmip_objects::Object,
     export_object,
     kmip_2_1::{
-        kmip_attributes::Attributes,
-        kmip_operations::Destroy,
-        kmip_types::UniqueIdentifier,
-        requests::{create_symmetric_key_kmip_object, import_object_request},
+        kmip_operations::Destroy, kmip_types::UniqueIdentifier, requests::import_object_request,
     },
     read_object_from_json_ttlv_file, write_kmip_object_to_file,
 };
@@ -18,9 +14,9 @@ use cosmian_kms_crypto::crypto::wrap::unwrap_key_block;
 use cosmian_logger::trace;
 use uuid::Uuid;
 
+use super::resolve_key::resolve_key_from_options;
 use crate::{
     actions::console,
-    cli_bail,
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -94,46 +90,29 @@ impl UnwrapSecretDataOrKeyAction {
         // cache the object type
         let object_type = object.object_type();
 
-        let vendor_id = kms_rest_client.config.vendor_id.as_str();
-        // if the key must be unwrapped, prepare the unwrapping key
-        let unwrapping_key = if let Some(b64) = &self.unwrap_key_b64 {
-            trace!(
-                "unwrap using a base64 encoded key (length: {} chars)",
-                b64.len()
-            );
-            let key_bytes = general_purpose::STANDARD
-                .decode(b64)
-                .with_context(|| "failed decoding the unwrap key")?;
-            create_symmetric_key_kmip_object(
-                vendor_id,
-                &key_bytes,
-                &Attributes {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-                    ..Default::default()
-                },
-            )?
-        } else if let Some(key_id) = &self.unwrap_key_id {
-            // When the unwrapping key is stored in an HSM (sensitive, non-exportable),
-            // we cannot export it for local unwrapping. Instead, import the wrapped
-            // object to the KMS server with key_wrap_type=NotWrapped so the server uses
-            // its HSM crypto oracle for server-side unwrapping, then export the result
-            // (issue #762).
+        // HSM keys (identified by "::") cannot be exported; delegate to server-side unwrap.
+        if let Some(key_id) = &self.unwrap_key_id {
             if key_id.contains("::") {
                 trace!("unwrap using server-side HSM crypto oracle for key: {key_id}");
                 return self
                     .unwrap_via_server(kms_rest_client, object, key_id)
                     .await;
             }
-            trace!("unwrap using the KMS server with the unique identifier of the unwrapping key");
-            export_object(&kms_rest_client, key_id, ExportObjectParams::default())
-                .await?
-                .1
-        } else if let Some(key_file) = &self.unwrap_key_file {
-            trace!("unwrap using a key file path");
-            read_object_from_json_ttlv_file(key_file)?
-        } else {
-            cli_bail!("one of the unwrapping options must be specified");
-        };
+        }
+
+        // Resolve the unwrapping key from the common options.
+        let unwrapping_key = resolve_key_from_options(
+            &kms_rest_client,
+            self.unwrap_key_b64.as_deref(),
+            self.unwrap_key_id.as_deref(),
+            self.unwrap_key_file.as_ref(),
+        )
+        .await?
+        .ok_or_else(|| {
+            crate::error::KmsCliError::Default(
+                "one of the unwrapping options must be specified".to_owned(),
+            )
+        })?;
 
         unwrap_key_block(object.key_block_mut()?, &unwrapping_key)?;
 

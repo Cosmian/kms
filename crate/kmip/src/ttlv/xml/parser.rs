@@ -16,17 +16,63 @@
 //! The merge keeps the deterministic placeholder behavior from the legacy
 //! parser and the cleaner split / transform layering from the refactored one.
 
-use std::fmt::Write as _;
+use std::{fmt::Write as _, sync::LazyLock};
 
 use quick_xml::{Reader, events::Event};
 use regex::Regex;
 
 use crate::{
     KmipError,
-    error::result::KmipResult,
     kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
     ttlv::{TTLV, from_ttlv, xml::TTLVXMLDeserializer},
 };
+
+/// Static regex: matches `$NOW-<digits>` placeholders.
+#[allow(clippy::expect_used)]
+static RE_NOW_DELTA: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$NOW-\d+").expect("static regex RE_NOW_DELTA"));
+
+/// Static regex: matches `$UNIQUE_IDENTIFIER_<digits>` placeholders.
+#[allow(clippy::expect_used)]
+static RE_UID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)").expect("static regex RE_UID"));
+
+/// Pre-compiled regexes for injecting `type="Structure"` into well-known structural tags.
+static STRUCTURAL_TAG_REGEXES: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
+    STRUCTURAL_TAGS
+        .iter()
+        .filter_map(|tag| {
+            let pattern = format!(r"<{tag}\b[^>]*>");
+            Regex::new(&pattern).ok().map(|re| (*tag, re))
+        })
+        .collect()
+});
+
+/// Reconstruct an XML start/empty tag (with attributes) from a `quick_xml` event.
+/// If `self_closing` is true, emits `<tag .../>`, otherwise `<tag ...>`.
+fn reconstruct_tag(
+    name: &str,
+    attrs: quick_xml::events::attributes::Attributes,
+    self_closing: bool,
+    out: &mut String,
+) {
+    out.push('<');
+    out.push_str(name);
+    for attr in attrs.flatten() {
+        if let Ok(val) = attr.unescape_value() {
+            out.push(' ');
+            out.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
+            out.push_str("=\"");
+            out.push_str(&val);
+            out.push('"');
+        }
+    }
+    if self_closing {
+        out.push_str("/>");
+    } else {
+        out.push('>');
+    }
+}
 
 // Helper to backfill LocateResponse.located_items when omitted in XML
 fn backfill_locate_response(resp: &mut ResponseMessage) {
@@ -93,12 +139,12 @@ impl KmipXmlDoc {
     }
 }
 
-fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> KmipResult<String> {
+fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> String {
     // Normalize timestamps: replace $NOW-<delta> first, then plain $NOW
-    let mut out = Regex::new(r"\$NOW-\d+")?.replace_all(raw, "0").into_owned();
+    let mut out = RE_NOW_DELTA.replace_all(raw, "0").into_owned();
     out = out.replace("$NOW", "0");
     // Deterministic unique identifiers
-    out = Regex::new(r"\$UNIQUE_IDENTIFIER_(\d+)")?
+    out = RE_UID
         .replace_all(&out, |caps: &regex::Captures| {
             let idx: usize = caps
                 .get(1)
@@ -118,34 +164,24 @@ fn substitute_placeholders(raw: &str, uid_state: &mut Vec<String>) -> KmipResult
             )
         })
         .into_owned();
-    Ok(out)
+    out
 }
 
 fn xml_fragment_to_ttlv(fragment: &str) -> Result<TTLV, KmipError> {
     TTLVXMLDeserializer::from_xml(fragment)
 }
 
-fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> KmipResult<String> {
-    let mut substituted = substitute_placeholders(fragment, uid_state)?;
+fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> String {
+    let mut substituted = substitute_placeholders(fragment, uid_state);
 
     // Inject structure type hints if absent
-    for tag in STRUCTURAL_TAGS {
-        // Match the full start tag (including attributes) so we can accurately
-        // detect an existing type attribute and avoid duplicating it.
-        let pattern = format!(r"<{tag}\\b[^>]*>");
-        let Ok(re) = Regex::new(&pattern) else {
-            continue;
-        };
-
+    for (tag, re) in STRUCTURAL_TAG_REGEXES.iter() {
         substituted = re
             .replace_all(&substituted, |caps: &regex::Captures| {
-                let matched = &caps[0]; // e.g., "<Tag ...>" or "<Tag/>"
-                // If a type attribute already exists, leave as-is
+                let matched = &caps[0];
                 if matched.contains(" type=\"") || matched.contains(" type =\"") {
                     matched.to_owned()
                 } else {
-                    // Insert type="Structure" immediately after the tag name
-                    // matched starts with "<" then the tag name; keep the remainder as-is
                     let insert_pos = 1 + tag.len();
                     let remainder = &matched[insert_pos..];
                     format!("<{tag} type=\"Structure\"{remainder}")
@@ -154,7 +190,7 @@ fn normalize_fragment(fragment: &str, uid_state: &mut Vec<String>) -> KmipResult
             .into_owned();
     }
 
-    Ok(substituted)
+    substituted
 }
 
 fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
@@ -176,23 +212,11 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                 let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                 if !capturing && (name == "RequestMessage" || name == "ResponseMessage") {
                     capturing = true;
-                    depth = 0; // depth relative to root
+                    depth = 0;
                     current.clear();
                 }
                 if capturing {
-                    // Reconstruct start tag with attributes
-                    current.push('<');
-                    current.push_str(&name);
-                    for attr in e.attributes().flatten() {
-                        if let Ok(val) = attr.unescape_value() {
-                            current.push(' ');
-                            current.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
-                            current.push_str("=\"");
-                            current.push_str(&val);
-                            current.push('"');
-                        }
-                    }
-                    current.push('>');
+                    reconstruct_tag(&name, e.attributes(), false, &mut current);
                     depth += 1;
                 }
             }
@@ -201,20 +225,9 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                 if !capturing && (name == "RequestMessage" || name == "ResponseMessage") {
                     // Self-closing root (unlikely in KMIP); treat as full fragment
                     current.clear();
-                    current.push('<');
-                    current.push_str(&name);
-                    for attr in e.attributes().flatten() {
-                        if let Ok(val) = attr.unescape_value() {
-                            current.push(' ');
-                            current.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
-                            current.push_str("=\"");
-                            current.push_str(&val);
-                            current.push('"');
-                        }
-                    }
-                    current.push_str("/>");
+                    reconstruct_tag(&name, e.attributes(), true, &mut current);
                     // Process immediately
-                    let normalized = normalize_fragment(&current, &mut uid_state)?;
+                    let normalized = normalize_fragment(&current, &mut uid_state);
                     let ttlv = xml_fragment_to_ttlv(&normalized)?;
                     match ttlv.tag.as_str() {
                         "RequestMessage" => requests
@@ -222,7 +235,6 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                         "ResponseMessage" => {
                             let mut resp: ResponseMessage =
                                 from_ttlv(ttlv).map_err(|e| KmipError::Default(e.to_string()))?;
-                            // Backfill LocateResponse.located_items when omitted in XML
                             backfill_locate_response(&mut resp);
                             responses.push(resp);
                         }
@@ -234,18 +246,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                     }
                     current.clear();
                 } else if capturing {
-                    current.push('<');
-                    current.push_str(&name);
-                    for attr in e.attributes().flatten() {
-                        if let Ok(val) = attr.unescape_value() {
-                            current.push(' ');
-                            current.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
-                            current.push_str("=\"");
-                            current.push_str(&val);
-                            current.push('"');
-                        }
-                    }
-                    current.push_str("/>");
+                    reconstruct_tag(&name, e.attributes(), true, &mut current);
                 }
             }
             Ok(Event::Text(e)) if capturing => {
@@ -267,7 +268,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                     depth -= 1;
                     if depth == 0 {
                         // Completed one fragment
-                        let normalized = normalize_fragment(&current, &mut uid_state)?;
+                        let normalized = normalize_fragment(&current, &mut uid_state);
                         let ttlv = xml_fragment_to_ttlv(&normalized)?;
                         match ttlv.tag.as_str() {
                             "RequestMessage" => requests.push(
@@ -276,7 +277,6 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                             "ResponseMessage" => {
                                 let mut resp: ResponseMessage = from_ttlv(ttlv)
                                     .map_err(|e| KmipError::Default(e.to_string()))?;
-                                // Backfill LocateResponse.located_items when omitted in XML
                                 backfill_locate_response(&mut resp);
                                 responses.push(resp);
                             }

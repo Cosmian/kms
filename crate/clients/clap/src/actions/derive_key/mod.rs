@@ -88,88 +88,8 @@ impl DeriveKeyAction {
             ));
         }
 
-        // Determine the base key identifier
-        let base_key_id = if let Some(key_id) = &self.key_id {
-            // Use existing key
-            key_id.clone()
-        } else if let Some(password) = &self.password {
-            // Create SecretData from password
-            let password_bytes = Zeroizing::from(password.as_bytes().to_vec());
-
-            let secret_data_object = create_secret_data_kmip_object(
-                kms_rest_client.config.vendor_id.as_str(),
-                password_bytes.as_slice(),
-                cosmian_kmip::kmip_0::kmip_types::SecretDataType::Password,
-                &Attributes::default(),
-            )?;
-
-            let import_request = import_object_request(
-                kms_rest_client.config.vendor_id.as_str(),
-                None, // Let the server generate the ID
-                secret_data_object,
-                None,
-                false,
-                false,
-                Vec::<String>::new(), // No tags for temporary password object
-            )?;
-
-            let import_response = kms_rest_client.import(import_request).await?;
-            import_response.unique_identifier.to_string()
-        } else {
-            return Err(KmsCliError::Default(
-                "Either key_id or password must be provided".to_owned(),
-            ));
-        };
-
-        // Parse derivation method
-        let derivation_method = match self.derivation_method.to_uppercase().as_str() {
-            "PBKDF2" => DerivationMethod::PBKDF2,
-            "HKDF" => DerivationMethod::HKDF,
-            _ => {
-                return Err(KmsCliError::Default(format!(
-                    "Unsupported derivation method: {}",
-                    self.derivation_method
-                )));
-            }
-        };
-
-        // Decode salt from hex
-        let salt = hex::decode(&self.salt)
-            .map_err(|e| KmsCliError::Default(format!("Invalid salt hex format: {e}")))?;
-
-        // Decode initialization vector if provided
-        let initialization_vector = if let Some(iv_hex) = &self.initialization_vector {
-            Some(hex::decode(iv_hex).map_err(|e| {
-                KmsCliError::Default(format!("Invalid initialization vector hex format: {e}"))
-            })?)
-        } else {
-            None
-        };
-
-        // Create derivation parameters
-        let derivation_parameters = DerivationParameters {
-            cryptographic_parameters: Some(CryptographicParameters {
-                hashing_algorithm: Some(self.digest_algorithm.clone().into()),
-                ..Default::default()
-            }),
-            initialization_vector,
-            derivation_data: if self.derivation_method.to_uppercase() == "HKDF" {
-                // For HKDF, use a unique context based on the key ID, timestamp, and random value
-                use std::time::{SystemTime, UNIX_EPOCH};
-                let timestamp = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_nanos(); // Use nanoseconds for higher precision
-                let random_id = uuid::Uuid::new_v4();
-                let context = format!("CLI-HKDF-{base_key_id}-{timestamp}-{random_id}");
-                Some(Zeroizing::new(context.into_bytes()))
-            } else {
-                // For PBKDF2, derivation_data is optional, so we can omit it
-                None
-            },
-            salt: Some(salt),
-            iteration_count: Some(self.iteration_count),
-        };
+        let base_key_id = self.resolve_base_key_id(kms_rest_client).await?;
+        let derivation_parameters = self.build_derivation_params(&base_key_id)?;
 
         let (cryptographic_length, _, algorithm) =
             prepare_sym_key_elements(Some(self.cryptographic_length), &None, self.algorithm)
@@ -187,25 +107,22 @@ impl DeriveKeyAction {
             ..Default::default()
         };
 
-        // Only set unique_identifier if derived_key_id is provided
         if let Some(ref derived_key_id) = self.derived_key_id {
             attributes.unique_identifier =
                 Some(UniqueIdentifier::TextString(derived_key_id.clone()));
         }
 
-        // Create the DeriveKey request
+        // Create and send the DeriveKey request
         let derive_request = DeriveKey {
             object_type: ObjectType::SymmetricKey,
             object_unique_identifier: UniqueIdentifier::TextString(base_key_id),
-            derivation_method,
+            derivation_method: self.parse_derivation_method()?,
             derivation_parameters,
             attributes,
         };
 
-        // Call the KMS to derive the key
         let response = kms_rest_client.derive_key(derive_request).await?;
 
-        // Display the result
         console::Stdout::new(&format!(
             "DeriveKey operation successful. Derived key ID: {}",
             response.unique_identifier
@@ -213,5 +130,88 @@ impl DeriveKeyAction {
         .write()?;
 
         Ok(())
+    }
+
+    /// Resolve the base key identifier: either use the provided `key_id` directly,
+    /// or import a password as a temporary `SecretData` object and return its ID.
+    async fn resolve_base_key_id(&self, kms_rest_client: &KmsClient) -> KmsCliResult<String> {
+        if let Some(key_id) = &self.key_id {
+            return Ok(key_id.clone());
+        }
+
+        let password = self.password.as_ref().ok_or_else(|| {
+            KmsCliError::Default("Either key_id or password must be provided".to_owned())
+        })?;
+
+        let password_bytes = Zeroizing::from(password.as_bytes().to_vec());
+        let secret_data_object = create_secret_data_kmip_object(
+            kms_rest_client.config.vendor_id.as_str(),
+            password_bytes.as_slice(),
+            cosmian_kmip::kmip_0::kmip_types::SecretDataType::Password,
+            &Attributes::default(),
+        )?;
+
+        let import_request = import_object_request(
+            kms_rest_client.config.vendor_id.as_str(),
+            None,
+            secret_data_object,
+            None,
+            false,
+            false,
+            Vec::<String>::new(),
+        )?;
+
+        let import_response = kms_rest_client.import(import_request).await?;
+        Ok(import_response.unique_identifier.to_string())
+    }
+
+    /// Parse the derivation method string into the KMIP enum.
+    fn parse_derivation_method(&self) -> KmsCliResult<DerivationMethod> {
+        match self.derivation_method.to_uppercase().as_str() {
+            "PBKDF2" => Ok(DerivationMethod::PBKDF2),
+            "HKDF" => Ok(DerivationMethod::HKDF),
+            _ => Err(KmsCliError::Default(format!(
+                "Unsupported derivation method: {}",
+                self.derivation_method
+            ))),
+        }
+    }
+
+    /// Build the `DerivationParameters` from the CLI arguments.
+    fn build_derivation_params(&self, base_key_id: &str) -> KmsCliResult<DerivationParameters> {
+        let salt = hex::decode(&self.salt)
+            .map_err(|e| KmsCliError::Default(format!("Invalid salt hex format: {e}")))?;
+
+        let initialization_vector = if let Some(iv_hex) = &self.initialization_vector {
+            Some(hex::decode(iv_hex).map_err(|e| {
+                KmsCliError::Default(format!("Invalid initialization vector hex format: {e}"))
+            })?)
+        } else {
+            None
+        };
+
+        let derivation_data = if self.derivation_method.to_uppercase() == "HKDF" {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let random_id = uuid::Uuid::new_v4();
+            let context = format!("CLI-HKDF-{base_key_id}-{timestamp}-{random_id}");
+            Some(Zeroizing::new(context.into_bytes()))
+        } else {
+            None
+        };
+
+        Ok(DerivationParameters {
+            cryptographic_parameters: Some(CryptographicParameters {
+                hashing_algorithm: Some(self.digest_algorithm.clone().into()),
+                ..Default::default()
+            }),
+            initialization_vector,
+            derivation_data,
+            salt: Some(salt),
+            iteration_count: Some(self.iteration_count),
+        })
     }
 }

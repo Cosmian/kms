@@ -13,9 +13,9 @@ Online [documentation](https://docs.cosmian.com/key_management_system/).
 
 The **Cosmian KMS** presents some unique features, such as:
 
-- **Use cases**: [large-scale encryption/decryption](./documentation/docs/use_cases/encrypting_and_decrypting_at_scale.md) and [client-side/application-level encryption](./documentation/docs/use_cases/client_side_and_application_level_encryption.md), with support for signature at scale (including secp256k1 in non-FIPS mode).
+- **Use cases**: [large-scale encryption/decryption](./documentation/docs/use_cases/encrypting_and_decrypting_at_scale.md), [client-side/application-level encryption](./documentation/docs/use_cases/client_side_and_application_level_encryption.md), and [data anonymization/tokenization](./documentation/docs/use_cases/anonymization.md), with support for signature at scale (including secp256k1 in non-FIPS mode).
 - **Cloud and enterprise integrations**: [AWS XKS v2](./documentation/docs/integrations/cloud_providers/aws/xks.md), [Azure EKM](./documentation/docs/integrations/cloud_providers/azure/ekm.md), [Google Workspace CSE](./documentation/docs/integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md), and [Microsoft 365 DKE](./documentation/docs/integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md).
-- **Databases**: [Oracle Database TDE](./documentation/docs/integrations/databases/oracle_tde.md), [Microsoft SQL Server External (EKM)](./documentation/docs/integrations/databases/ms_sql_server.md), [MongoDB](./documentation/docs/integrations/databases/mongodb.md), [MySQL Enterprise](./documentation/docs/integrations/databases/mysql.md), and [PostgreSQL Percona](./documentation/docs/integrations/databases/percona.md).
+- **Databases**: [Oracle Database TDE](./documentation/docs/integrations/databases/oracle_tde.md), [Microsoft SQL Server External (EKM)](./documentation/docs/integrations/databases/ms_sql_server.md), [MongoDB](./documentation/docs/integrations/databases/mongodb.md), [MySQL Enterprise](./documentation/docs/integrations/databases/mysql.md), [PostgreSQL Percona](./documentation/docs/integrations/databases/percona.md), and [EDB Postgres Advanced Server TDE](./documentation/docs/integrations/databases/edb_postgres_tde.md).
 - **Disk encryption**: [Veracrypt](./documentation/docs/integrations/disk_encryption/veracrypt.md), [LUKS](./documentation/docs/integrations/disk_encryption/luks.md), and [Cryhod](./documentation/docs/integrations/disk_encryption/cryhod.md).
 - **Big Data**: [Snowflake Native App](./documentation/docs/integrations/big_data/snowflake_native_app/index.md) and [PySpark/Databricks Python UDF](./documentation/docs/integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md) for large-scale data encryption.
 - **Storage integrations**: [VMware vCenter Trust Key Provider](./documentation/docs/integrations/storage/vcenter.md), [Synology DSM](./documentation/docs/integrations/storage/synology_dsm.md), [VAST Data](./documentation/docs/integrations/storage/vast_data.md), and [Veeam Backup & Replication](./documentation/docs/integrations/storage/veeam.md).
@@ -26,7 +26,7 @@ The **Cosmian KMS** presents some unique features, such as:
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
-The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Please refer to the list of [supported algorithms](./documentation/docs/algorithms.md).
+The **Cosmian KMS** supports all the standard NIST cryptographic algorithms as well as advanced post-quantum cryptography algorithms such as [Covercrypt](https://github.com/Cosmian/cover_crypt), and FF1 format-preserving encryption in non-FIPS mode. Please refer to the list of [supported algorithms](./documentation/docs/certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
 As a **PKI** it can manage root and intermediate certificates, sign and verify certificates, use their public keys to encrypt and decrypt data. Certificates can be exported under various formats, including _PKCS#12_ modern and legacy flavor, to be used in various applications, such as in _S/MIME_ encrypted emails.
 
@@ -34,7 +34,7 @@ The **Cosmian KMS** has extensive online [documentation](https://docs.cosmian.co
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.23.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.24.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
@@ -112,7 +112,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
       - CycloneDX (ckms CLI): [`sbom/ckms/fips/static/bom.cdx.json`](sbom/ckms/fips/static/bom.cdx.json)
       - Overview: [`sbom/README.md`](sbom/README.md)
     - Cryptography Bill of Materials (CBOM): full inventory of cryptographic assets (algorithms, libraries, parameters) in CycloneDX 1.6 format.
-        - [`cbom/cbom.cdx.json`](cbom/cbom.cdx.json) — generated by `.github/scripts/sbom/generate_cbom.py`
+        - [`cbom/cbom.cdx.json`](cbom/cbom.cdx.json) — generated by `.mise/scripts/sbom/generate_cbom.py`
 -
   Observability built-in with OpenTelemetry metrics/traces. See [`OTLP_METRICS.md`](monitoring/OTLP_METRICS.md).
 
@@ -169,6 +169,7 @@ Unlike AWS XKS or GCP EKM, Azure has no single proxy gateway — each service in
 | **DKE** (live proxy) | Key material never leaves Cosmian KMS; M365 / Purview requires both your key and Microsoft's key to decrypt                                                                                                                                      | ✅      |
 | **BYOK**             | Key material generated by you, imported once into Azure Key Vault; Azure holds a copy — applies to Azure Information Protection (AIP)                                                                                                            | ✅      |
 | **BYOK / CMK**       | Key imported or generated inside Azure Key Vault; applies to all remaining Azure data services (Storage, Disk Encryption, SQL/Managed Instance TDE, Cosmos DB, Synapse, Databricks, Container Registry, Monitor, Service Bus, ASK etcd, Backup…) | ✅      |
+| **CNG KSP**          | Windows CNG Key Storage Provider — device certificate private keys (e.g. Intune SCEP) stored exclusively in Cosmian KMS — [docs](./documentation/docs/integrations/cloud_providers/microsoft/windows_cng_ksp.md) | ✅      |
 
 #### Google Cloud Platform (GCP)
 
@@ -203,6 +204,7 @@ OCI Vault **External KMS** (HYOK) is a **single proxy gateway** — implementing
 | MySQL Enterprise     | TDE via KMIP ([docs](./documentation/docs/integrations/databases/mysql.md))                                      | 1.1          | ✅      |
 | Percona PostgreSQL   | TDE via KMIP ([docs](./documentation/docs/integrations/databases/percona.md))                                    | 1.4          | ✅      |
 | Microsoft SQL Server | External Key Management (EKM) via PKCS#11 ([docs](./documentation/docs/integrations/databases/ms_sql_server.md)) | —            | ✅      |
+| EDB Postgres Adv. Server | TDE via KMIP ([docs](./documentation/docs/integrations/databases/edb_postgres_tde.md)) | 2.1          | ✅      |
 
 ### 💿 Disk Encryption
 
@@ -584,7 +586,7 @@ directory.
 
 Two paths are supported:
 
-- For production use, use Nix build: use the unified script `.github/scripts/nix.sh` for a pinned toolchain,
+- For production use, use Nix build: use the unified script `.mise/scripts/nix.sh` (via `mise run`) for a pinned toolchain,
   reproducible FIPS builds (non-FIPS builds are tracked for consistency), and packaging.
 - For development purpose, use traditional `cargo` command: `cargo build...`, `cargo test`
 
@@ -638,11 +640,11 @@ All builds link against OpenSSL 3.6.2. FIPS variants ship the FIPS provider and 
 Nix-based (reproducible FIPS builds):
 
 ```sh
-# Run tests (defaults to 'all'; DB backends require services)
-bash .github/scripts/nix.sh test
+# Run tests (defaults to sqlite; DB backends require services)
+mise run test:sqlite
 
 # Package artifacts (Linux → deb+rpm, macOS → dmg)
-bash .github/scripts/nix.sh package
+mise run package
 ```
 
 Simple (Cargo-only):
@@ -680,10 +682,10 @@ vcpkg integrate install
 PowerShell helpers (non-FIPS by default):
 
 ```powershell
-. .github/scripts/cargo_build.ps1
+. .mise/scripts/windows/cargo_build.ps1
 BuildProject -BuildType release   # or debug
 
-. .github/scripts/cargo_test.ps1
+. .mise/scripts/windows/cargo_test.ps1
 TestProject -BuildType release    # or debug
 ```
 
@@ -693,12 +695,12 @@ Use the Nix entrypoint to build packages:
 
 ```sh
 # Linux
-bash .github/scripts/nix.sh package           # builds deb + rpm
-bash .github/scripts/nix.sh package deb       # build deb only
-bash .github/scripts/nix.sh package rpm       # build rpm only
+mise run package           # builds deb + rpm
+mise run package:deb       # build deb only
+mise run package:rpm       # build rpm only
 
 # macOS
-bash .github/scripts/nix.sh package dmg
+mise run package:dmg
 ```
 
 On success, a SHA-256 checksum file (.sha256) is written next to each generated package

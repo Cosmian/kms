@@ -384,6 +384,8 @@ impl ObjectsStore for SqlitePool {
     async fn delete(&self, uid: &str) -> InterfaceResult<()> {
         let del_obj = replace_dollars_with_qn(get_sqlite_query!("delete-object"));
         let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
+        let del_access =
+            replace_dollars_with_qn(get_sqlite_query!("delete-read-access-for-object"));
         let uid_s = uid.to_owned();
         self.writer
             .call(
@@ -391,6 +393,7 @@ impl ObjectsStore for SqlitePool {
                     let tx = c.transaction()?;
                     tx.execute(&del_obj, params_from_iter([&uid_s]))?;
                     tx.execute(&del_tags, params_from_iter([&uid_s]))?;
+                    tx.execute(&del_access, params_from_iter([&uid_s]))?;
                     tx.commit()?;
                     Ok(())
                 },
@@ -530,6 +533,42 @@ impl ObjectsStore for SqlitePool {
             .await
             .map_err(DbError::from)?;
         Ok(rows)
+    }
+
+    /// Returns the total count of live (non-destroyed) objects in this `SQLite` store.
+    ///
+    /// This is a **metrics-only** privileged query: it scans the full `objects` table
+    /// without any user or permission filter, so the result always reflects the true
+    /// server-wide inventory. It must never be used to answer client requests.
+    ///
+    /// The state strings `'Destroyed'` and `'Destroyed_Compromised'` are the Rust
+    /// enum variant names as serialised to the DB by `strum::Display`.
+    async fn count_all_non_destroyed(&self) -> InterfaceResult<u64> {
+        // No $N placeholders — no need for replace_dollars_with_qn.
+        let sql = get_sqlite_query!("count-non-destroyed-objects").to_string();
+        let count: i64 = self
+            .reader()
+            .call(move |c: &mut rusqlite::Connection| {
+                let mut stmt = c.prepare(&sql)?;
+                stmt.query_row([], |r| r.get(0))
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(u64::try_from(count).unwrap_or(0))
+    }
+
+    async fn count_non_destroyed_keys(&self) -> InterfaceResult<u64> {
+        // No $N placeholders — no need for replace_dollars_with_qn.
+        let sql = get_sqlite_query!("count-non-destroyed-keys-sqlite").to_string();
+        let count: i64 = self
+            .reader()
+            .call(move |c: &mut rusqlite::Connection| {
+                let mut stmt = c.prepare(&sql)?;
+                stmt.query_row([], |r| r.get(0))
+            })
+            .await
+            .map_err(DbError::from)?;
+        Ok(u64::try_from(count).unwrap_or(0))
     }
 }
 
@@ -985,9 +1024,97 @@ fn apply_owned_ops(
                 tx.execute(&del_obj, params_from_iter([uid]))?;
                 let del_tags = replace_dollars_with_qn(get_sqlite_query!("delete-tags"));
                 tx.execute(&del_tags, params_from_iter([uid]))?;
+                let del_access =
+                    replace_dollars_with_qn(get_sqlite_query!("delete-read-access-for-object"));
+                tx.execute(&del_access, params_from_iter([uid]))?;
                 uids.push(uid.clone());
             }
         }
     }
     Ok(uids)
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::*;
+
+    /// Verify that `count-non-destroyed-objects` and `count-non-destroyed-keys-sqlite`
+    /// are present in the parsed query map.
+    ///
+    /// Regression guard: `rawsql` treats any `--` line containing the substring
+    /// `"name"` as a new named-query tag, silently overwriting the current query
+    /// accumulation. Intermediate comment lines that contained "names" or "rename"
+    /// previously caused these keys to be absent from the map, making every call
+    /// to `count_all_non_destroyed` / `count_non_destroyed_keys` return 0 via the
+    /// `unwrap_or(0)` in `database_objects.rs`.
+    #[test]
+    fn test_count_query_keys_present_in_loader() {
+        assert!(
+            SQLITE_QUERIES.get("count-non-destroyed-objects").is_some(),
+            "count-non-destroyed-objects not found – rawsql comment stripping bug recurred"
+        );
+        assert!(
+            SQLITE_QUERIES
+                .get("count-non-destroyed-keys-sqlite")
+                .is_some(),
+            "count-non-destroyed-keys-sqlite not found – rawsql comment stripping bug recurred"
+        );
+    }
+
+    /// End-to-end: insert rows directly via SQL and verify both count methods
+    /// return the expected value. Uses raw SQL to avoid pulling in the full KMIP
+    /// object-construction machinery.
+    ///
+    /// `assert_eq!` is the appropriate tool for test assertions; `Result` return
+    /// is required to propagate setup errors via `?`. The combination is intentional.
+    #[tokio::test]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "assertions are the test mechanism; Result return propagates async setup errors via ?"
+    )]
+    async fn test_count_non_destroyed_returns_correct_value()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = TempDir::new()?;
+        let db_path = dir.path().join("test.db");
+        let pool = SqlitePool::instantiate(&db_path, true, None).await?;
+
+        // Initially empty.
+        assert_eq!(pool.count_all_non_destroyed().await?, 0);
+        assert_eq!(pool.count_non_destroyed_keys().await?, 0);
+
+        // Insert one Active SymmetricKey row directly.
+        let attrs_json = r#"{"ObjectType":"SymmetricKey","State":"Active"}"#.to_owned();
+        pool.writer
+            .call(move |c: &mut rusqlite::Connection| {
+                c.execute(
+                    "INSERT INTO objects (id, object, attributes, state, owner) \
+                     VALUES ('uid-1', '{}', ?1, 'Active', 'owner')",
+                    rusqlite::params![attrs_json],
+                )
+            })
+            .await?;
+
+        assert_eq!(pool.count_all_non_destroyed().await?, 1);
+        assert_eq!(pool.count_non_destroyed_keys().await?, 1);
+
+        // Insert one Destroyed Certificate row — should not be counted.
+        let attrs2 = r#"{"ObjectType":"Certificate","State":"Destroyed"}"#.to_owned();
+        pool.writer
+            .call(move |c: &mut rusqlite::Connection| {
+                c.execute(
+                    "INSERT INTO objects (id, object, attributes, state, owner) \
+                     VALUES ('uid-2', '{}', ?1, 'Destroyed', 'owner')",
+                    rusqlite::params![attrs2],
+                )
+            })
+            .await?;
+
+        // Total non-destroyed stays 1; keys also stays 1.
+        assert_eq!(pool.count_all_non_destroyed().await?, 1);
+        assert_eq!(pool.count_non_destroyed_keys().await?, 1);
+
+        Ok(())
+    }
 }

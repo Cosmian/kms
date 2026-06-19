@@ -26,13 +26,13 @@ Packages are automatically signed during the packaging process if:
 
 ```bash
 export GPG_SIGNING_KEY_PASSPHRASE='your-secure-passphrase'
-bash .github/scripts/nix.sh package deb
+mise run package:deb
 ```
 
 Each package will have a corresponding `.asc` signature file:
 
-- `cosmian_kms_server_5.23.0_amd64.deb`
-- `cosmian_kms_server_5.23.0_amd64.deb.asc` ← GPG signature
+- `cosmian_kms_server_5.24.0_amd64.deb`
+- `cosmian_kms_server_5.24.0_amd64.deb.asc` ← GPG signature
 
 ## Verifying Signatures
 
@@ -46,13 +46,13 @@ Verify a package signature:
 
 ```bash
 # Debian package
-gpg --verify result-deb-fips/cosmian_kms_server_5.23.0_amd64.deb.asc
+gpg --verify result-deb-fips/cosmian_kms_server_5.24.0_amd64.deb.asc
 
 # RPM package
-gpg --verify result-rpm-fips/cosmian_kms_server_fips-5.23.0.x86_64.rpm.asc
+gpg --verify result-rpm-fips/cosmian_kms_server_fips-5.24.0.x86_64.rpm.asc
 
 # DMG package
-gpg --verify result-dmg-fips/Cosmian\ KMS\ Server_5.23.0_arm64.dmg.asc
+gpg --verify result-dmg-fips/Cosmian\ KMS\ Server_5.24.0_arm64.dmg.asc
 ```
 
 Expected output:

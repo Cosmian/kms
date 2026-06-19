@@ -1,6 +1,5 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::cargo::CommandCargoExt;
 use cosmian_kms_cli_actions::reexport::{
     cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::CertificateInputFormat,
 };
@@ -8,23 +7,22 @@ use    test_kms_server::start_default_test_kms_server;
 use tempfile::TempDir;
 use cosmian_logger::{debug, info};
 
+use crate::tests::utils::{ckms_bin, owner_config};
 use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         certificates::{
             encrypt::encrypt,
             import::{ImportCertificateInput, import_certificate},
         },
-        save_kms_cli_config,
         utils::recover_cmd_logs,
     },
 };
 
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -91,7 +89,7 @@ pub(crate) fn validate_certificate(
     uids: Vec<String>,
     date: Option<String>,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     let mut args: Vec<String> = vec!["validate".to_owned()];
     for uid in uids {
@@ -116,7 +114,7 @@ pub(crate) fn validate_certificate(
 #[tokio::test]
 async fn test_validate_cli() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     info!("importing root cert");
     let root_certificate_id = import_certificate(ImportCertificateInput {

@@ -30,7 +30,7 @@ The SBOM generator produces several "base" reports.
 
 During generation, `vulns.csv` is deduplicated in-place by an external script:
 
-- `.github/scripts/sbom/filter_vulns.py`
+- `.mise/scripts/sbom/filter_vulns.py`
 
 It removes duplicate CVE-like rows based on the normalized **YEAR-ID** key, so e.g. `CVE-2026-0915`, `UBUNTU-CVE-2026-0915`, and `DEBIAN-CVE-2026-0915` collapse to a single row.
 
@@ -201,19 +201,19 @@ CVE-2024-XXXX,https://...,package-name,1.2.3,7.5,1,0,1,2,2024A...
 
 ```bash
 # From repository root (generates OpenSSL + all server combinations)
-bash .github/scripts/nix.sh sbom
+mise run sbom:generate
 
 # OpenSSL 3.1.2 derivation only (writes under sbom/openssl_3_1_2)
-bash .github/scripts/nix.sh sbom --target openssl_3_1_2
+mise run sbom:generate --target openssl_3_1_2
 
 # OpenSSL 3.6.2 derivation only (writes under sbom/openssl_3_6_2)
-bash .github/scripts/nix.sh sbom --target openssl_3_6_2
+mise run sbom:generate --target openssl_3_6_2
 
 # All server combinations (writes under sbom/server/<variant>/<link>)
-bash .github/scripts/nix.sh sbom --target server
+mise run sbom:generate --target server
 
 # One specific server combination
-bash .github/scripts/nix.sh sbom --target server --variant fips --link static
+mise run sbom:generate --target server --variant fips --link static
 
 # Notes:
 # - --variant/--link are only valid with: --target server (otherwise the command errors)
@@ -221,7 +221,7 @@ bash .github/scripts/nix.sh sbom --target server --variant fips --link static
 # - Generation is run from an isolated temporary work directory to avoid accidental `sbom.*` files being written to the repository root
 
 # Run the generator script directly (supports --target/--variant/--link/--output)
-.github/scripts/sbom/generate_sbom.sh --target server --variant non-fips --link dynamic --output /custom/path
+.mise/scripts/sbom/generate_sbom.sh --target server --variant non-fips --link dynamic --output /custom/path
 ```
 
 ## 📚 Standards & Specifications
@@ -244,7 +244,7 @@ bash .github/scripts/nix.sh sbom --target server --variant fips --link static
 
 ```yaml
 - name: Generate SBOM
-  run: bash .github/scripts/nix.sh sbom
+  run: mise run sbom:generate
 
 - name: Upload SBOM to Dependency-Track
   uses: DependencyTrack/gh-upload-sbom@v1

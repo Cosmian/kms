@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:89261a95-bebe-40df-8d7b-767c60edac73",
+  "serialNumber": "urn:uuid:d68d7fcb-61f7-4be0-b500-dfd2079ab2be",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-05-29T09:41:42Z",
+    "timestamp": "2026-06-19T04:28:19Z",
     "tools": [
       {
         "type": "application",
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "kms-server",
       "name": "cosmian-kms",
-      "version": "5.23.0",
+      "version": "5.24.0",
       "description": "Cosmian Key Management System — FIPS 140-3 compliant KMS server",
       "externalReferences": [
         {
@@ -88,15 +88,15 @@
       "type": "library",
       "bom-ref": "lib-ml-kem",
       "name": "ml-kem (RustCrypto / FIPS 203)",
-      "version": "0.2.1",
-      "purl": "pkg:cargo/ml-kem@0.2.1"
+      "version": "0.2.3",
+      "purl": "pkg:cargo/ml-kem@0.2.3"
     },
     {
       "type": "library",
       "bom-ref": "lib-openssl",
       "name": "openssl (Rust bindings to OpenSSL FIPS provider)",
-      "version": "0.10.80",
-      "purl": "pkg:cargo/openssl@0.10.80"
+      "version": "0.10.81",
+      "purl": "pkg:cargo/openssl@0.10.81"
     },
     {
       "type": "library",
@@ -116,8 +116,8 @@
       "type": "library",
       "bom-ref": "lib-sha3",
       "name": "sha3 (RustCrypto)",
-      "version": "0.10.8",
-      "purl": "pkg:cargo/sha3@0.10.8"
+      "version": "0.10.9",
+      "purl": "pkg:cargo/sha3@0.10.9"
     },
     {
       "type": "cryptographic-asset",

@@ -4,9 +4,13 @@ pub mod aws;
 pub mod azure;
 pub mod bench;
 pub mod certificates;
+pub mod cng;
+pub(crate) mod cng_verify;
 pub mod console;
 pub mod derive_key;
 pub mod elliptic_curves;
+#[cfg(feature = "non-fips")]
+pub mod fpe;
 pub mod google;
 pub mod hash;
 pub mod kms_actions;
@@ -14,6 +18,8 @@ pub(crate) mod labels;
 pub mod login;
 pub mod mac;
 pub mod opaque_object;
+pub mod pkcs11;
+pub(crate) mod pkcs11_verify;
 pub mod rng;
 pub mod rsa;
 pub mod secret_data;
@@ -25,3 +31,5 @@ pub mod version;
 pub mod cover_crypt;
 #[cfg(feature = "non-fips")]
 pub mod pqc;
+#[cfg(feature = "non-fips")]
+pub mod tokenize;

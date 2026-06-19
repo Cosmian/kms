@@ -84,45 +84,68 @@ The server exposes the following instruments via OTLP, as implemented in `crate/
 
 ### KMIP Operations
 
-- `kms.kmip.operations.total` — Total KMIP operations executed (counter)
-- `kms.kmip.operations.per_user.total` — Total KMIP operations per user (counter)
-- `kms.kmip.operation.duration` — Duration of KMIP operations in seconds (histogram)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.kmip.operations.total` | counter | `operation` |
+| `kms.kmip.operations.per_user.total` | counter | `operation`, `user` |
+| `kms.kmip.operation.duration` | histogram (s) | `operation` |
+
+> **Note:** The `user` label in `kms.kmip.operations.per_user.total` and `kms.permissions.granted.per_user.total` carries whatever string the authentication middleware extracts (e.g. an OAuth subject, email address, or service-account identifier); operators connecting these metrics to a cloud OTLP backend should be aware that this value will be stored in the backend.
 
 ### Users & Permissions
 
-- `kms.active.users` — Number of unique active users (up-down counter)
-- `kms.permissions.granted.per_user.total` — Permissions granted per user (counter)
-- `kms.permissions.granted.total` — Total permissions granted (counter)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.active.users` | up-down counter | — |
+| `kms.permissions.granted.per_user.total` | counter | `user`, `permission_type` |
+| `kms.permissions.granted.total` | counter | — |
 
 ### Database Metrics
 
-- `kms.database.operations.total` — Total database operations (counter)
-- `kms.database.operation.duration` — Database operation duration in seconds (histogram)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.database.operations.total` | counter | `operation`, `backend`, `outcome` |
+| `kms.database.operation.duration` | histogram (s) | `operation`, `backend`, `outcome` |
+
+`backend`: `sqlite` · `postgresql` · `mysql` · `redis` — `outcome`: `success` · `error`
 
 ### HTTP Metrics
 
-- `kms.http.requests.total` — Total HTTP requests (counter)
-- `kms.http.request.duration` — HTTP request duration in seconds (histogram)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.http.requests.total` | counter | `method`, `path`, `status` |
+| `kms.http.request.duration` | histogram (s) | `method`, `path`, `status` |
 
 ### Server Health
 
-- `kms.server.uptime` — Server uptime in seconds (counter)
-- `kms.server.start_time` — Server start time as Unix timestamp (up-down counter)
-- `kms.active.connections` — Current number of active connections (up-down counter)
-- `kms.errors.total` — Total number of errors by type (counter)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.server.uptime` | counter (monotonic, s) | — |
+| `kms.server.start_time` | up-down counter | — |
+| `kms.active.connections` | up-down counter | — |
+| `kms.errors.total` | counter | `error_type` |
 
 ### Objects & Keys
 
-- `kms.objects.total` — Total number of objects (up-down counter)
-- `kms.keys.active.count` — Number of keys in Active state (up-down counter; absolute count applied via delta)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.objects.total` | gauge | — |
+| `kms.keys.active.count` | gauge | — |
+
+`kms.keys.active.count` counts all **non-destroyed** key objects (SymmetricKey, PrivateKey,
+PublicKey, SplitKey) across all non-terminal states: PreActive, Active, Deactivated, Compromised.
 
 ### Cache
 
-- `kms.cache.operations.total` — Total cache operations (counter)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.cache.operations.total` | counter | `operation`, `result` |
 
 ### HSM
 
-- `kms.hsm.operations.total` — Total HSM operations (counter)
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kms.hsm.operations.total` | counter | `operation`, `hsm_model` |
 
 ## OTLP Collector Configuration
 
@@ -269,7 +292,9 @@ docker compose --profile otel-test logs -f otel-collector
 
 ## Additional Resources
 
-- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
-- [OTLP Specification](https://opentelemetry.io/docs/specs/otlp/)
-- [Jaeger Documentation](https://www.jaegertracing.io/docs/)
-- [Grafana Documentation](https://grafana.com/docs/)
+- [OpenTelemetry documentation](https://opentelemetry.io/docs/)
+- [OTLP specification](https://opentelemetry.io/docs/specs/otlp/)
+- [Jaeger documentation](https://www.jaegertracing.io/docs/)
+- [Grafana documentation](https://grafana.com/docs/)
+- [Cosmian KMS metrics reference](https://docs.cosmian.com/key_management_system/configuration/otlp-metrics/)
+- [Cosmian KMS monitoring documentation](https://docs.cosmian.com/key_management_system/configuration/monitoring-setup/)

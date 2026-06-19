@@ -1,21 +1,14 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::path::{Path, PathBuf};
 
-use assert_cmd::prelude::CommandCargoExt;
 use base64::{Engine as _, engine::general_purpose};
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::{
-        cosmian_kms_client::{
-            cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
-            read_object_from_json_ttlv_file,
-        },
-        cosmian_kms_crypto::reexport::cosmian_crypto_core::{
-            CsRng,
-            reexport::rand_core::{RngCore, SeedableRng},
-        },
+use cosmian_kms_cli_actions::reexport::{
+    cosmian_kms_client::{
+        cosmian_kmip::kmip_2_1::kmip_types::{EncodingOption, WrappingMethod},
+        read_object_from_json_ttlv_file,
+    },
+    cosmian_kms_crypto::reexport::cosmian_crypto_core::{
+        CsRng,
+        reexport::rand_core::{RngCore, SeedableRng},
     },
 };
 use cosmian_logger::log_init;
@@ -27,13 +20,11 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        save_kms_cli_config,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_wrapping_key, recover_cmd_logs},
+        utils::{ckms_bin, extract_uids::extract_wrapping_key, owner_config, recover_cmd_logs},
     },
 };
 
@@ -48,7 +39,7 @@ pub(crate) fn wrap(
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
 ) -> CosmianResult<String> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec![
@@ -100,7 +91,7 @@ pub(crate) fn unwrap(
     unwrap_key_id: Option<String>,
     unwrap_key_file: Option<PathBuf>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args: Vec<String> = vec![
@@ -140,7 +131,7 @@ pub(crate) fn unwrap(
 pub(crate) async fn test_password_wrap_import() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
@@ -158,7 +149,7 @@ pub(crate) async fn test_password_wrap_import() -> CosmianResult<()> {
     password_wrap_import_test(&owner_client_conf_path, "ec", &private_key_id)?;
 
     // sym
-    let key_id = create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     password_wrap_import_test(&owner_client_conf_path, "sym", &key_id)?;
 
     Ok(())

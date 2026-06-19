@@ -2,13 +2,14 @@
 //! permission checks, and caching mechanisms for unwrapped keys.
 mod database_objects;
 mod database_permissions;
-
+mod db_metrics;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_crypto::reexport::cosmian_crypto_core::Secret;
 use cosmian_kms_interfaces::{ObjectsStore, PermissionsStore};
+pub use db_metrics::DbMetricsRecorder;
 #[cfg(feature = "non-fips")]
 use redis::AsyncCommands;
 use tokio::sync::RwLock;
@@ -43,6 +44,13 @@ pub struct Database {
     ///
     /// This enables server-side `/health` checks without exposing internal store types.
     health: Arc<dyn DatabaseHealth + Sync + Send>,
+
+    /// Optional OTEL metrics recorder injected at construction time.
+    ///
+    /// When `None`, all metric recording is skipped without any overhead.
+    /// The concrete implementation lives in the `server` crate to avoid a
+    /// dependency cycle.
+    recorder: Option<Arc<dyn DbMetricsRecorder>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,6 +60,19 @@ pub enum MainDbKind {
     Mysql,
     #[cfg(feature = "non-fips")]
     RedisFindex,
+}
+
+impl MainDbKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgres => "postgresql",
+            Self::Mysql => "mysql",
+            #[cfg(feature = "non-fips")]
+            Self::RedisFindex => "redis",
+        }
+    }
 }
 
 #[async_trait]
@@ -75,10 +96,13 @@ impl Database {
         clear_db_on_start: bool,
         object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
         cache_max_age: Duration,
+        recorder: Option<Arc<dyn DbMetricsRecorder>>,
     ) -> DbResult<Self> {
         // main/default database
-        let db = Self::instantiate_main_database(main_db_params, clear_db_on_start, cache_max_age)
-            .await?;
+        let mut db =
+            Self::instantiate_main_database(main_db_params, clear_db_on_start, cache_max_age)
+                .await?;
+        db.recorder = recorder;
         for (prefix, store) in object_stores {
             db.register_objects_store(&prefix, store).await;
         }
@@ -190,6 +214,7 @@ impl Database {
             unwrapped_cache: UnwrappedCache::new(cache_max_age),
             kind,
             health,
+            recorder: None,
         }
     }
 

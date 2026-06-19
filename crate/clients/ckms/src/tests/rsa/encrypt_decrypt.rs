@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs, path::PathBuf, process::Command};
+use std::{collections::HashSet, fs, path::PathBuf};
 
 use assert_cmd::prelude::*;
 use clap::ValueEnum;
@@ -16,14 +16,13 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         rsa::create_key_pair::{RsaKeyPairOptions, create_rsa_key_pair},
-        save_kms_cli_config,
-        utils::recover_cmd_logs,
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
     },
 };
 
 /// Encrypts a file using the given public key
+#[allow(clippy::unnecessary_wraps)]
 pub(crate) fn encrypt(
     cli_conf_path: &str,
     input_files: &[&str],
@@ -33,7 +32,7 @@ pub(crate) fn encrypt(
     output_file: Option<&str>,
     authentication_data: Option<&str>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["encrypt"];
@@ -85,7 +84,7 @@ pub(crate) fn decrypt(
     output_file: Option<&str>,
     authentication_data: Option<&str>,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let mut args = vec!["decrypt", input_file, "--key-id", private_key_id];
@@ -136,7 +135,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs() -> CosmianResult<()> {
 
     use cosmian_logger::trace;
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -209,7 +208,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> CosmianResult<()>
     //      cosmian_kms_utils=trace,cosmian_kmip=info",
     // );
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -294,7 +293,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CosmianResult<()> 
     //     "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
     // );
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -372,7 +371,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_aes_key_wrap() -> CosmianResult<()> 
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_tags() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

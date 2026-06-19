@@ -1,7 +1,9 @@
+mod activate;
 pub(crate) mod export_key;
 mod get_key_uid;
 pub(crate) mod import_key;
 mod locate;
+pub(crate) mod resolve_key;
 pub(crate) mod sign;
 pub(crate) mod signature_verify;
 pub mod utils;
@@ -10,6 +12,7 @@ mod wrap_key;
 
 mod unwrap_key;
 
+pub use activate::ActivateKeyAction;
 pub use export_key::ExportSecretDataOrKeyAction;
 pub(crate) use get_key_uid::get_key_uid;
 pub use import_key::ImportSecretDataOrKeyAction;

@@ -1,21 +1,15 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::{
-    actions::symmetric::keys::create_key::CreateKeyAction,
-    reexport::{
-        cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
-        cosmian_kms_crypto::{
-            crypto::cover_crypt::access_structure::access_structure_from_json_file,
-            reexport::{
-                cosmian_cover_crypt::{
-                    AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt,
-                    encrypted_header::EncryptedHeader,
-                },
-                cosmian_crypto_core::bytes_ser_de::{
-                    Deserializer, Serializable, test_serialization,
-                },
+use cosmian_kms_cli_actions::reexport::{
+    cosmian_kms_client::reexport::cosmian_kms_client_utils::import_utils::KeyUsage,
+    cosmian_kms_crypto::{
+        crypto::cover_crypt::access_structure::access_structure_from_json_file,
+        reexport::{
+            cosmian_cover_crypt::{
+                AccessPolicy, MasterSecretKey, UserSecretKey, api::Covercrypt,
+                encrypted_header::EncryptedHeader,
             },
+            cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable, test_serialization},
         },
     },
 };
@@ -26,17 +20,15 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         cover_crypt::{
             SUB_COMMAND,
             encrypt_decrypt::{decrypt, encrypt},
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
-        save_kms_cli_config,
         shared::{ExportKeyParams, ImportKeyParams, export_key, import_key},
         symmetric::create_key::create_symmetric_key,
-        utils::recover_cmd_logs,
+        utils::{ckms_bin, owner_config, recover_cmd_logs},
     },
 };
 
@@ -45,7 +37,7 @@ pub(crate) fn rekey(
     master_secret_key_id: &str,
     access_policy: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -70,7 +62,7 @@ pub(crate) fn prune(
     master_secret_key_id: &str,
     access_policy: &str,
 ) -> CosmianResult<()> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
 
     let args = vec![
@@ -93,7 +85,7 @@ pub(crate) fn prune(
 #[tokio::test]
 async fn test_rekey_error() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // generate a new master key pair
     let (master_secret_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -137,8 +129,7 @@ async fn test_rekey_error() -> CosmianResult<()> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // create a symmetric key
-    let symmetric_key_id =
-        create_symmetric_key(&owner_client_conf_path, CreateKeyAction::default())?;
+    let symmetric_key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     export_key(ExportKeyParams {
@@ -219,7 +210,7 @@ fn test_cc() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_enc_dec_rekey() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -288,7 +279,7 @@ async fn test_enc_dec_rekey() -> CosmianResult<()> {
 #[tokio::test]
 async fn test_rekey_prune() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;

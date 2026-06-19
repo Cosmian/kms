@@ -358,11 +358,7 @@ async fn send_binary_request(
     // POST binary
     let response = client
         .client
-        .client
-        .post(binary_url)
-        .header("Content-Type", "application/octet-stream")
-        .body(request_bytes)
-        .send()
+        .post_bytes(binary_url, request_bytes, "application/octet-stream")
         .await
         .map_err(|e| {
             KmsClientError::UnexpectedError(format!(
@@ -370,11 +366,7 @@ async fn send_binary_request(
             ))
         })?;
 
-    let response_bytes = response.bytes().await.map_err(|e| {
-        KmsClientError::UnexpectedError(format!(
-            "Step {step_index} '{step_operation}': cannot read response body: {e}"
-        ))
-    })?;
+    let response_bytes = response.bytes();
 
     // binary bytes → TTLV struct → JSON
     if response_bytes.is_empty() {
@@ -383,7 +375,7 @@ async fn send_binary_request(
         )));
     }
 
-    let response_ttlv = TTLV::from_bytes(&response_bytes, kmip_flavor).map_err(|e| {
+    let response_ttlv = TTLV::from_bytes(response_bytes, kmip_flavor).map_err(|e| {
         KmsClientError::UnexpectedError(format!(
             "Step {step_index} '{step_operation}': failed to parse binary TTLV response: {e}"
         ))
@@ -724,15 +716,38 @@ fn backend_available(backend: &str) -> bool {
 /// Get or initialize a singleton test server for the given backend.
 async fn get_or_init_vector_server(backend: &str) -> Result<&'static TestsContext, KmsClientError> {
     let root = repo_root()?;
-    let (cell, toml) = match backend {
-        "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml"),
-        "mysql" => (&ONCE_VECTOR_MYSQL, "mysql.toml"),
-        "redis-findex" => (&ONCE_VECTOR_REDIS_FINDEX, "redis_findex.toml"),
-        _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml"),
+    let (cell, toml, env_var) = match backend {
+        "postgresql" => (&ONCE_VECTOR_POSTGRESQL, "postgres.toml", "KMS_POSTGRES_URL"),
+        "mysql" => (&ONCE_VECTOR_MYSQL, "mysql.toml", "KMS_MYSQL_URL"),
+        "redis-findex" => (
+            &ONCE_VECTOR_REDIS_FINDEX,
+            "redis_findex.toml",
+            "KMS_REDIS_URL",
+        ),
+        _ => (&ONCE_VECTOR_SQLITE, "auth_plain.toml", ""),
     };
     let p = root.join("test_data/configs/server/test").join(toml);
-    cell.get_or_try_init(|| async move { crate::start_test_server_from_toml(&p).await })
+    // Override the database URL from the environment when set (e.g. MariaDB on
+    // port 3308 or Percona on port 3307 reuse the "mysql" backend with a
+    // different connection URL).
+    let url_override = if env_var.is_empty() {
+        None
+    } else {
+        std::env::var(env_var).ok()
+    };
+    cell.get_or_try_init(|| async move {
+        crate::start_test_server_with_patch(
+            &p,
+            |config| {
+                if let Some(url) = &url_override {
+                    config.db.database_url = Some(url.clone());
+                }
+            },
+            crate::TestClientOptions::default(),
+        )
         .await
+    })
+    .await
 }
 
 /// Run a test vector from a directory containing `manifest.toml` and step JSON files.
@@ -1038,18 +1053,12 @@ async fn execute_steps(
             };
 
             // POST the wrapped JSON TTLV to the KMIP /kmip/2_1 endpoint
-            let send_result = client
-                .client
-                .client
-                .post(&json_url)
-                .json(&request_message)
-                .send()
-                .await;
+            let send_result = client.client.post_json(&json_url, &request_message).await;
 
             match send_result {
                 Ok(response) => {
-                    let status = response.status();
-                    let response_text = response.text().await.map_err(|e| {
+                    let status = response.status;
+                    let response_text = response.text().map_err(|e| {
                         KmsClientError::UnexpectedError(format!(
                             "Step {i} '{}': cannot read response body: {e}",
                             step.operation
@@ -2439,6 +2448,31 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_integration_fortigate_locate_get() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/fortigate_locate_get").await
+    }
+
+    #[tokio::test]
+    async fn test_integration_fortigate_locate_many_similar_names() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/fortigate_locate_many_similar_names")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_integration_fortigate_locate_multi_tunnel() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/fortigate_locate_multi_tunnel").await
+    }
+
+    #[tokio::test]
+    async fn test_integration_fortigate_locate_no_match() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/integrations/fortigate_locate_no_match").await
+    }
+
+    #[tokio::test]
     async fn test_integration_synology_dsm() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/integrations/synology_dsm").await
@@ -2488,6 +2522,27 @@ ObjectType = "SymmetricKey"
     async fn test_integration_pykmip() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/non-fips/integrations/pykmip").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_integration_edb_tde_pykmip_variant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/integrations/edb_tde_pykmip_variant").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_integration_edb_tde_thales_variant() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/integrations/edb_tde_thales_variant").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_integration_edb_tde_key_rotation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/integrations/edb_tde_key_rotation").await
     }
 
     // ── KAT vectors: non-FIPS symmetric ──────────────────────────────────
@@ -2919,6 +2974,406 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/negative/duplicate_tags_encrypt").await
     }
 
+    // ── Negative tests: KMIP spec error coverage ──────────────────────
+
+    #[tokio::test]
+    async fn test_neg_spec_activate_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/activate/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_activate_wrong_key_lifecycle_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/activate/wrong_key_lifecycle_state").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_add_attribute_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/add_attribute/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_add_attribute_read_only_attribute() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/add_attribute/read_only_attribute").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_certify_invalid_object_type() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/certify/invalid_object_type").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_certify_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/certify/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_check_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/check/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_invalid_attribute() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create/invalid_attribute").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_invalid_attribute_value() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create/invalid_attribute_value").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_invalid_field() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create/invalid_field").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_invalid_message() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_read_only_attribute() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create/read_only_attribute").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_key_pair_invalid_attribute() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_key_pair/invalid_attribute").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_key_pair_invalid_attribute_value() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_key_pair/invalid_attribute_value").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_create_key_pair_invalid_message() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/create_key_pair/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_decrypt_invalid_message() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/decrypt/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_decrypt_wrong_key_lifecycle_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/decrypt/wrong_key_lifecycle_state").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_delete_attribute_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/delete_attribute/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_destroy_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/destroy/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_destroy_wrong_key_lifecycle_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/destroy/wrong_key_lifecycle_state").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_encrypt_bad_cryptographic_parameters() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/encrypt/bad_cryptographic_parameters").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_encrypt_incompatible_cryptographic_usage_mask()
+    -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/encrypt/incompatible_cryptographic_usage_mask")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_encrypt_invalid_field() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/encrypt/invalid_field").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_encrypt_invalid_message() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/encrypt/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_encrypt_invalid_object_type() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/encrypt/invalid_object_type").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_encrypt_unsupported_cryptographic_parameters()
+    -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/encrypt/unsupported_cryptographic_parameters")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_encrypt_wrong_key_lifecycle_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/encrypt/wrong_key_lifecycle_state").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_export_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/export/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_export_key_format_type_not_supported() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/export/key_format_type_not_supported").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_get_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/get/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_get_key_format_type_not_supported() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/get/key_format_type_not_supported").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_get_attribute_list_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/get_attribute_list/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_get_attributes_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/get_attributes/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_import_invalid_message() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/import/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_mac_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/mac/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_mac_wrong_key_lifecycle_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/mac/wrong_key_lifecycle_state").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_mac_verify_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/mac_verify/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_mac_verify_wrong_key_lifecycle_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/mac_verify/wrong_key_lifecycle_state").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_modify_attribute_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/modify_attribute/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_modify_attribute_read_only_attribute() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/modify_attribute/read_only_attribute").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_register_invalid_attribute() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/register/invalid_attribute").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_register_invalid_attribute_value() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/register/invalid_attribute_value").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_register_invalid_message() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/register/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_revoke_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/revoke/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_set_attribute_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_set_attribute_read_only_attribute() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/read_only_attribute").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_sign_invalid_message() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/sign/invalid_message").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_sign_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/sign/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_sign_wrong_key_lifecycle_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/sign/wrong_key_lifecycle_state").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_signature_verify_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/signature_verify/item_not_found").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_signature_verify_wrong_key_lifecycle_state() -> Result<(), KmsClientError>
+    {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/signature_verify/wrong_key_lifecycle_state")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_neg_spec_validate_item_not_found() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/validate/item_not_found").await
+    }
+
+    // ── Negative tests: ReCertify ───────────────────────────────────────
+    // ReCertify is not yet implemented (KMIP 1.4 only); these tests verify the
+    // server correctly rejects the operation. Enable positive recertify tests
+    // above once the operation is dispatched.
+
+    #[tokio::test]
+    async fn test_neg_recertify_missing_uid() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/recertify_missing_uid").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_recertify_nonexistent() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/recertify_nonexistent").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_recertify_not_a_certificate() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/recertify_not_a_certificate").await
+    }
+
+    // ── KMIP operations: Batch requests ─────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_batch_create_get() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/batch_create_get").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_batch_hash_query() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/batch_hash_query").await
+    }
+
+    // ── KMIP operations: ReCertify ──────────────────────────────────────
+
+    // #[tokio::test]
+    // async fn test_vec_recertify_chain() -> Result<(), KmsClientError> {
+    //     crate::init_test_logging();
+    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_chain").await
+    // }
+
+    // #[tokio::test]
+    // async fn test_vec_recertify_self_signed() -> Result<(), KmsClientError> {
+    //     crate::init_test_logging();
+    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_self_signed").await
+    // }
+
+    // #[tokio::test]
+    // async fn test_vec_recertify_with_links() -> Result<(), KmsClientError> {
+    //     crate::init_test_logging();
+    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_with_links").await
+    // }
+
+    // #[tokio::test]
+    // async fn test_vec_recertify_with_offset() -> Result<(), KmsClientError> {
+    //     crate::init_test_logging();
+    //     run_test_vector("test_data/vectors/fips/kmip_operations/recertify_with_offset").await
+    // }
+
+    // ── KMIP operations: ReKey with offset/state ─────────────────────────
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_with_offset_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_with_offset_state")
+            .await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_with_offset_state() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_with_offset_state").await
+    }
+
     // ── KMIP operations: ReKeyKeyPair (non-FIPS only) ────────────────────
     // These vectors do not supply PrivateKeyAttributes/PublicKeyAttributes with
     // FIPS-compliant CryptographicUsageMask values, and some use PQC algorithms
@@ -3109,6 +3564,13 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_keypair_secp256k1() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/non-fips/rekey_keypair_secp256k1").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_covercrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/non-fips/rekey_keypair_covercrypt").await
     }
 
     // ── KMIP operations: certificate chain and revoke ───────────────────
@@ -3411,6 +3873,18 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/no_kek_baseline").await
     }
 
+    #[tokio::test]
+    async fn test_vec_hsm_resident_encrypt_all() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/hsm_resident_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_sign_all() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/hsm_resident_sign").await
+    }
+
     // ── HSM permission vectors ────────────────────────────────────────────
 
     #[tokio::test]
@@ -3471,5 +3945,40 @@ ObjectType = "SymmetricKey"
     async fn test_vec_hsm_perm_locate_visibility() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/permissions/locate_visibility").await
+    }
+
+    // ── Serialization round-trip vectors ────────────────────────────────────────
+    // Verify that objects and attributes survive the KMIP 3.0 DB serialization
+    // (KMIP3: prefix for objects, raw 3.0 JSON for attributes).
+
+    #[tokio::test]
+    async fn test_vec_serial_create_locate_roundtrip() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/serialization/create_locate_roundtrip").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_serial_create_encrypt_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/serialization/create_encrypt_decrypt_roundtrip")
+            .await
+    }
+
+    // #[tokio::test]
+    // async fn test_vec_serial_rsa_sign_verify() -> Result<(), KmsClientError> {
+    //     crate::init_test_logging();
+    //     run_test_vector("test_data/vectors/fips/serialization/rsa_sign_verify_roundtrip").await
+    // }
+
+    #[tokio::test]
+    async fn test_vec_serial_attributes_preservation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/serialization/attributes_preservation").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_serial_import_destroy_reimport() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/serialization/import_destroy_reimport").await
     }
 }

@@ -1,9 +1,6 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use assert_cmd::prelude::*;
-use cosmian_kms_cli_actions::actions::{
-    google::key_pairs::create::CreateKeyPairsAction, symmetric::keys::create_key::CreateKeyAction,
-};
+use cosmian_kms_cli_actions::actions::google::key_pairs::create::CreateKeyPairsAction;
 use cosmian_logger::log_init;
 use test_kms_server::start_default_test_kms_server;
 
@@ -11,10 +8,9 @@ use crate::{
     config::CKMS_CONF_ENV,
     error::{CosmianError, result::CosmianResult},
     tests::{
-        PROG_NAME,
         certificates::certify::import_root_and_intermediate,
-        save_kms_cli_config,
-        utils::{extract_uids::extract_certificate_id, recover_cmd_logs},
+        symmetric::create_key::create_symmetric_key,
+        utils::{ckms_bin, extract_uids::extract_certificate_id, owner_config, recover_cmd_logs},
     },
 };
 
@@ -72,7 +68,7 @@ fn create_keypairs(
     // Finish with user id
     args.push(action.user_id);
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    let mut cmd = ckms_bin();
     cmd.env(CKMS_CONF_ENV, cli_conf_path);
     cmd.arg("google").arg("key-pairs").args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -97,12 +93,10 @@ fn create_keypairs(
 async fn cli_create_google_key_pair() -> CosmianResult<()> {
     log_init(None);
     let ctx = start_default_test_kms_server().await;
-    let (owner_client_conf_path, _) = save_kms_cli_config(ctx);
+    let owner_client_conf_path = owner_config(ctx);
 
     // Create the Google CSE key
-    let cse_key_id = CreateKeyAction::default()
-        .run(ctx.get_owner_client())
-        .await?;
+    let cse_key_id = create_symmetric_key(&owner_client_conf_path, &[])?;
 
     // import signers
     let (_root_id, _intermediate_id, issuer_private_key_id) =
@@ -111,7 +105,7 @@ async fn cli_create_google_key_pair() -> CosmianResult<()> {
     // Create key pair without certificate extensions (must fail)
     let action = CreateKeyPairsAction {
         user_id: "john.doe@acme.com".to_string(),
-        cse_key_id: cse_key_id.to_string(),
+        cse_key_id,
         issuer_private_key_id: None,
         subject_name: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US".to_string(),
         rsa_private_key_id: None,

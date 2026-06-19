@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Download and install pre-built OpenSSL binaries (CI use)"
+#USAGE flag "--os-name <os_name>" env="OS_NAME" help="OS identifier (e.g. ubuntu_24_04)" default="ubuntu_24_04"
+#USAGE flag "--openssl-dir <dir>" env="OPENSSL_DIR" help="Install prefix for OpenSSL" default="/usr/local/openssl"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Installing pre-built OpenSSL binaries (OS=${OS_NAME:-ubuntu_24_04})"
+
+REPO_ROOT="$(get_repo_root)"
+
+export OS_NAME="${OS_NAME:-ubuntu_24_04}"
+export OPENSSL_DIR="${OPENSSL_DIR:-/usr/local/openssl}"
+
+bash "${REPO_ROOT}/.github/reusable_scripts/get_openssl_binaries.sh"
+
+print_success "OpenSSL binaries installed to ${OPENSSL_DIR}"

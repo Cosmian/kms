@@ -362,6 +362,11 @@ async fn wrap_using_crypto_oracle(
     let encrypted_content = crypto_oracle
         .encrypt(wrapping_key_uid, data_to_wrap.as_slice(), None, None)
         .await?;
+    if let Some(ref metrics) = kms.metrics {
+        let model =
+            crate::core::uid_utils::hsm_model_from_prefix(&kms.params.hsm_instances, prefix);
+        metrics.record_hsm_operation("Wrap", model);
+    }
 
     let wrapped_key = [
         encrypted_content.iv.clone().unwrap_or_default(),

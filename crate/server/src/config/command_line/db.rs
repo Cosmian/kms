@@ -1,6 +1,7 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use cosmian_kms_server_database::MainDbParams;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::redis_master_key_from_password;
@@ -87,7 +88,7 @@ impl Display for DatabaseType {
 }
 
 /// Configuration for the database
-#[derive(Args, Clone, Deserialize, Serialize)]
+#[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct MainDBConfig {
     /// The main database of the KMS server that holds default cryptographic objects and permissions.

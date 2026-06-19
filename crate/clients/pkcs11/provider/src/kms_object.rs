@@ -10,17 +10,17 @@ use ckms::{
                 PaddingMethod, RevocationReason, RevocationReasonCode, SecretDataType,
             },
             kmip_2_1::{
-                extra::VENDOR_ID_COSMIAN,
+                extra::{VENDOR_ID_COSMIAN, tagging::SYSTEM_TAG_SYMMETRIC_KEY},
                 kmip_attributes::Attributes,
                 kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
                 kmip_objects::{Object, ObjectType, SecretData, SymmetricKey},
                 kmip_operations::{
-                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Revoke,
-                    Sign,
+                    Activate, Decrypt, Destroy, Encrypt, GetAttributes, Import, Locate, Query,
+                    Revoke, Sign,
                 },
                 kmip_types::{
                     CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-                    KeyFormatType, RecommendedCurve, UniqueIdentifier,
+                    KeyFormatType, QueryFunction, RecommendedCurve, UniqueIdentifier,
                 },
             },
         },
@@ -52,6 +52,24 @@ static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLo
         std::process::abort()
     })
 });
+
+/// Query the KMS server for its vendor identification string.
+///
+/// Falls back to `VENDOR_ID_COSMIAN` if the server doesn't report one.
+pub(crate) fn query_vendor_id(client: &KmsClient) -> String {
+    RUNTIME
+        .block_on(async {
+            let request = Query {
+                query_function: Some(vec![QueryFunction::QueryServerInformation]),
+            };
+            client
+                .query(request)
+                .await
+                .ok()
+                .and_then(|resp| resp.vendor_identification)
+        })
+        .unwrap_or_else(|| VENDOR_ID_COSMIAN.to_owned())
+}
 
 /// Write-once, read-many holder for sensitive key material.
 ///
@@ -124,16 +142,18 @@ pub(crate) fn get_kms_config(conf_path: Option<PathBuf>) -> Pkcs11Result<KmsClie
 
 pub(crate) fn locate_kms_objects(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<String>> {
-    RUNTIME.block_on(locate_kms_objects_async(kms_rest_client, tags))
+    RUNTIME.block_on(locate_kms_objects_async(kms_rest_client, vendor_id, tags))
 }
 
 pub(crate) async fn locate_kms_objects_async(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<String>> {
-    locate_objects(kms_rest_client, tags).await
+    locate_objects(kms_rest_client, vendor_id, tags).await
 }
 
 /// Locate and export only `SecretData` objects with the given tags.
@@ -142,9 +162,14 @@ pub(crate) async fn locate_kms_objects_async(
 /// happen to carry the same tag (e.g. old TDE master keys tagged with `_sd`).
 pub(crate) fn get_kms_secret_data_objects(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_secret_data_objects_async(kms_rest_client, tags))
+    RUNTIME.block_on(get_kms_secret_data_objects_async(
+        kms_rest_client,
+        vendor_id,
+        tags,
+    ))
 }
 
 /// Locate and export only `Certificate` objects with the given tags.
@@ -154,17 +179,28 @@ pub(crate) fn get_kms_secret_data_objects(
 /// would otherwise cause the entire batch export to fail with `CKR_GENERAL_ERROR`.
 pub(crate) fn get_kms_certificate_objects(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    RUNTIME.block_on(get_kms_certificate_objects_async(kms_rest_client, tags))
+    RUNTIME.block_on(get_kms_certificate_objects_async(
+        kms_rest_client,
+        vendor_id,
+        tags,
+    ))
 }
 
 async fn get_kms_certificate_objects_async(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    let key_ids =
-        locate_objects_of_type(kms_rest_client, tags, Some(ObjectType::Certificate)).await?;
+    let key_ids = locate_objects_of_type(
+        kms_rest_client,
+        vendor_id,
+        tags,
+        Some(ObjectType::Certificate),
+    )
+    .await?;
     if key_ids.is_empty() {
         trace!(
             "get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}",
@@ -185,7 +221,7 @@ async fn get_kms_certificate_objects_async(
     let mut results = vec![];
     for (id, object, attributes) in responses {
         let other_tags = attributes
-            .get_tags(VENDOR_ID_COSMIAN)
+            .get_tags(vendor_id)
             .into_iter()
             .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
             .collect::<Vec<String>>();
@@ -201,10 +237,16 @@ async fn get_kms_certificate_objects_async(
 
 async fn get_kms_secret_data_objects_async(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    let key_ids =
-        locate_objects_of_type(kms_rest_client, tags, Some(ObjectType::SecretData)).await?;
+    let key_ids = locate_objects_of_type(
+        kms_rest_client,
+        vendor_id,
+        tags,
+        Some(ObjectType::SecretData),
+    )
+    .await?;
     if key_ids.is_empty() {
         trace!(
             "get_kms_secret_data_objects_async: no SecretData objects found for tags: {:?}",
@@ -225,7 +267,7 @@ async fn get_kms_secret_data_objects_async(
     let mut results = vec![];
     for (id, object, attributes) in responses {
         let other_tags = attributes
-            .get_tags(VENDOR_ID_COSMIAN)
+            .get_tags(vendor_id)
             .into_iter()
             .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
             .collect::<Vec<String>>();
@@ -239,14 +281,92 @@ async fn get_kms_secret_data_objects_async(
     Ok(results)
 }
 
+/// Locate disk-encryption symmetric keys and return them as `KmsObject`s suitable
+/// for wrapping as PKCS#11 `CKO_DATA` objects.
+///
+/// `VeraCrypt` discovers keyfiles via `C_FindObjects` with `CKA_CLASS = CKO_DATA`.
+/// This function locates `SymmetricKey` objects tagged with `disk_encryption_tag`,
+/// exports them, and rewrites `remote_id` to the first user-visible tag (e.g. `"vol1"`)
+/// so the label shown in the `VeraCrypt` GUI is meaningful.
+pub(crate) fn get_kms_disk_encryption_data_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    disk_encryption_tag: &str,
+) -> Pkcs11Result<Vec<KmsObject>> {
+    RUNTIME.block_on(get_kms_disk_encryption_data_objects_async(
+        kms_rest_client,
+        vendor_id,
+        disk_encryption_tag,
+    ))
+}
+
+async fn get_kms_disk_encryption_data_objects_async(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    disk_encryption_tag: &str,
+) -> Pkcs11Result<Vec<KmsObject>> {
+    let tags = [
+        disk_encryption_tag.to_owned(),
+        SYSTEM_TAG_SYMMETRIC_KEY.to_owned(),
+    ];
+    let key_ids = locate_objects_of_type(
+        kms_rest_client,
+        vendor_id,
+        &tags,
+        Some(ObjectType::SymmetricKey),
+    )
+    .await?;
+    if key_ids.is_empty() {
+        trace!(
+            "get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag: \
+             {disk_encryption_tag}",
+        );
+        return Ok(vec![]);
+    }
+    let export_object_params = ExportObjectParams {
+        unwrap: true,
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        ..Default::default()
+    };
+    let responses = batch_export_objects(kms_rest_client, key_ids, export_object_params).await?;
+    trace!(
+        "get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects",
+        responses.len()
+    );
+    let mut results = vec![];
+    for (id, object, attributes) in responses {
+        // Extract user-visible tags (exclude system tags and the disk-encryption tag itself).
+        // Sorted so that label selection is deterministic regardless of HashSet iteration order.
+        let mut other_tags: Vec<String> = attributes
+            .get_tags(vendor_id)
+            .into_iter()
+            .filter(|t| !t.is_empty() && !t.starts_with('_') && t != disk_encryption_tag)
+            .collect();
+        other_tags.sort();
+        // Use the first user label (sorted, e.g. "vol1") as remote_id so VeraCrypt displays it
+        let label = other_tags
+            .first()
+            .cloned()
+            .unwrap_or_else(|| id.to_string());
+        results.push(KmsObject {
+            remote_id: label,
+            object,
+            attributes,
+            other_tags,
+        });
+    }
+    Ok(results)
+}
+
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) async fn get_kms_objects_async(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
     key_format_type: Option<KeyFormatType>,
 ) -> Pkcs11Result<Vec<KmsObject>> {
-    let key_ids = locate_objects(kms_rest_client, tags).await?;
+    let key_ids = locate_objects(kms_rest_client, vendor_id, tags).await?;
     let export_object_params = ExportObjectParams {
         unwrap: true,
         key_format_type,
@@ -266,7 +386,7 @@ pub(crate) async fn get_kms_objects_async(
     let mut results = vec![];
     for (id, object, attributes) in responses {
         let other_tags = attributes
-            .get_tags(VENDOR_ID_COSMIAN)
+            .get_tags(vendor_id)
             .into_iter()
             .filter(|t| !t.is_empty() && !tags.contains(t) && !t.starts_with('_'))
             .collect::<Vec<String>>();
@@ -282,11 +402,13 @@ pub(crate) async fn get_kms_objects_async(
 
 pub(crate) fn get_kms_object(
     kms_client: &KmsClient,
+    vendor_id: &str,
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
     RUNTIME.block_on(get_kms_object_async(
         kms_client,
+        vendor_id,
         object_id_or_tags,
         key_format_type,
     ))
@@ -294,6 +416,7 @@ pub(crate) fn get_kms_object(
 
 pub(crate) async fn get_kms_object_async(
     kms_client: &KmsClient,
+    vendor_id: &str,
     object_id_or_tags: &str,
     key_format_type: KeyFormatType,
 ) -> Pkcs11Result<KmsObject> {
@@ -311,7 +434,7 @@ pub(crate) async fn get_kms_object_async(
     // Get request does not return attributes, try to get them form the object
     let attributes = object.attributes().cloned().unwrap_or_default();
     let other_tags = attributes
-        .get_tags(VENDOR_ID_COSMIAN)
+        .get_tags(vendor_id)
         .into_iter()
         .filter(|t| !t.is_empty() && !t.starts_with('_'))
         .collect::<Vec<String>>();
@@ -323,19 +446,24 @@ pub(crate) async fn get_kms_object_async(
     })
 }
 
-async fn locate_objects(kms_rest_client: &KmsClient, tags: &[String]) -> Pkcs11Result<Vec<String>> {
-    locate_objects_of_type(kms_rest_client, tags, None).await
+async fn locate_objects(
+    kms_rest_client: &KmsClient,
+    vendor_id: &str,
+    tags: &[String],
+) -> Pkcs11Result<Vec<String>> {
+    locate_objects_of_type(kms_rest_client, vendor_id, tags, None).await
 }
 
 /// Locate KMS objects by tags, optionally filtering by `ObjectType`.
 /// This avoids returning objects of wrong type when multiple object types share the same tag.
 async fn locate_objects_of_type(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     tags: &[String],
     object_type: Option<ObjectType>,
 ) -> Pkcs11Result<Vec<String>> {
     let mut attributes = Attributes::default();
-    attributes.set_tags(VENDOR_ID_COSMIAN, tags)?;
+    attributes.set_tags(vendor_id, tags)?;
     attributes.object_type = object_type;
 
     let locate = Locate {
@@ -357,6 +485,7 @@ async fn locate_objects_of_type(
 
 pub(crate) fn kms_import_symmetric_key(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     algorithm: KeyAlgorithm,
     key_length: usize,
     sensitive: bool,
@@ -364,6 +493,7 @@ pub(crate) fn kms_import_symmetric_key(
 ) -> Pkcs11Result<KmsObject> {
     RUNTIME.block_on(kms_import_symmetric_key_async(
         kms_rest_client,
+        vendor_id,
         algorithm,
         key_length,
         sensitive,
@@ -377,6 +507,7 @@ pub(crate) fn kms_import_symmetric_key(
 /// - 2/ is that the content of the key must be kept in cache to be reused later.
 pub(crate) async fn kms_import_symmetric_key_async(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     algorithm: KeyAlgorithm,
     key_length: usize,
     sensitive: bool,
@@ -415,7 +546,7 @@ pub(crate) async fn kms_import_symmetric_key_async(
         sensitive: if sensitive { Some(true) } else { None },
         ..Attributes::default()
     };
-    attributes.set_tags(VENDOR_ID_COSMIAN, tags.clone())?;
+    attributes.set_tags(vendor_id, tags.clone())?;
     let object = Object::SymmetricKey(SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),
@@ -463,14 +594,21 @@ pub(crate) async fn kms_import_symmetric_key_async(
 
 pub(crate) fn kms_import_object(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     label: &str,
     data: &[u8],
 ) -> Pkcs11Result<KmsObject> {
-    RUNTIME.block_on(kms_import_object_async(kms_rest_client, label, data))
+    RUNTIME.block_on(kms_import_object_async(
+        kms_rest_client,
+        vendor_id,
+        label,
+        data,
+    ))
 }
 
 pub(crate) async fn kms_import_object_async(
     kms_rest_client: &KmsClient,
+    vendor_id: &str,
     label: &str,
     data: &[u8],
 ) -> Pkcs11Result<KmsObject> {
@@ -486,7 +624,7 @@ pub(crate) async fn kms_import_object_async(
     let cryptographic_length = Some(i32::try_from(secret_data_value.len() * 8)?);
 
     let mut attributes = Attributes::default();
-    attributes.set_tags(VENDOR_ID_COSMIAN, tags.clone())?;
+    attributes.set_tags(vendor_id, tags.clone())?;
 
     let object = Object::SecretData(SecretData {
         secret_data_type: SecretDataType::Password,

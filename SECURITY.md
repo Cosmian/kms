@@ -5,6 +5,7 @@
     - [Severity Rating](#severity-rating)
     - [Known Vulnerabilities](#known-vulnerabilities)
         - [2026](#2026)
+            - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
             - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
             - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
             - [COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type](#cosmian-2026-016--attribute-mutation-authorization-bypass-via-incorrect-operation-type)
@@ -75,6 +76,25 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 ## Known Vulnerabilities
 
 ### 2026
+
+#### COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`
+
+| Field      | Value                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                               |
+| Published  | 2026                                                                                              |
+| Affected   | from 5.0.0 before 5.23.0 (MySQL/Percona/MariaDB backend only)                                    |
+| Fixed in   | 5.23.0                                                                                            |
+| Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0173)                                                 |
+| References | [RUSTSEC-2026-0173](https://rustsec.org/advisories/RUSTSEC-2026-0173.html), [#fix_RUSTSEC-2026-0173](https://github.com/Cosmian/kms/pull/1011) |
+
+**Summary:** `mysql_async` 0.36 pulled in `mysql-common-derive`, which transitively depended on `proc-macro-error2`. `proc-macro-error2` carries RUSTSEC-2026-0173, a soundness issue in its procedural macro machinery (use of `std::mem::transmute` across incompatible lifetime bounds). The advisory affects compile-time macro expansion, not the runtime KMS binary.
+
+**Impact:** Compile-time only. No runtime key confidentiality, integrity, or availability impact. Exploitation would require an attacker to control the build environment (supply-chain attack scenario). Severity is Low for the KMS server binary in production.
+
+**Mitigation:** Upgrade to 5.23.0. `mysql_async` was upgraded from 0.36 to 0.37 with `default-features = false`, which drops the `derive` feature and removes the `mysql-common-derive → proc-macro-error2` chain entirely.
+
+---
 
 #### COSMIAN-2026-018 — Activate operation uses overly permissive authorization check
 
@@ -633,6 +653,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 | ID               | Severity | Affected                | Fixed in | Title                                                         |
 | ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
+| COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |
 | COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check           |
 | COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                     |
 | COSMIAN-2026-016 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type |

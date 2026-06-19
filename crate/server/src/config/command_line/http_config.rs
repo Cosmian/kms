@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
 use super::tls_config::TlsConfig;
@@ -11,7 +12,7 @@ const DEFAULT_HOSTNAME: &str = "127.0.0.1";
 #[cfg(not(target_os = "windows"))]
 const DEFAULT_HOSTNAME: &str = "0.0.0.0";
 
-#[derive(Args, Clone, Deserialize, Serialize)]
+#[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct HttpConfig {
     /// The KMS HTTP server port
@@ -96,4 +97,17 @@ impl Default for HttpConfig {
             cors_allowed_origins: None,
         }
     }
+}
+
+/// Build the default CORS allowed-origins list for the given scheme and port.
+///
+/// Includes `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, and `[::]` so that
+/// the bundled Web UI works out-of-the-box from any loopback address.
+#[must_use]
+pub fn default_cors_origins(scheme: &str, port: u16) -> Vec<String> {
+    let hosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "[::]"];
+    hosts
+        .iter()
+        .map(|h| format!("{scheme}://{h}:{port}"))
+        .collect()
 }

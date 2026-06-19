@@ -9,22 +9,22 @@ a centrally audited, optionally HSM-backed key store.
 
 ## Overview
 
-| Item | Details |
-|------|---------|
-| **Protocol** | KMIP 1.0–1.4 over TCP/TLS |
-| **Port** | 5696 (IANA-registered KMIP port) |
-| **FortiOS version** | FortiOS 7.4 and above (tested on FortiOS 7.6.0 / FortiGate 40F) |
-| **Eviden KMS feature** | Works with both FIPS and non-FIPS builds |
+| Item                   | Details                                                         |
+| ---------------------- | --------------------------------------------------------------- |
+| **Protocol**           | KMIP 1.0–1.4 over TCP/TLS                                       |
+| **Port**               | 5696 (IANA-registered KMIP port)                                |
+| **FortiOS version**    | FortiOS 7.4 and above (tested on FortiOS 7.6.0 / FortiGate 40F) |
+| **Eviden KMS feature** | Works with both FIPS and non-FIPS builds                        |
 
 ### KMIP operations used by FortiOS
 
-| KMIP Operation | Purpose |
-|---------------|---------|
-| `Create` | Create a symmetric key |
-| `Locate` | Find an existing key by name using `TemplateAttribute` filter |
-| `Get` | Retrieve key material |
-| `Activate` | Transition the key to *Active* state |
-| `Destroy` | Delete a key on removal or rotation |
+| KMIP Operation | Purpose                                                       |
+| -------------- | ------------------------------------------------------------- |
+| `Create`       | Create a symmetric key                                        |
+| `Locate`       | Find an existing key by name using `TemplateAttribute` filter |
+| `Get`          | Retrieve key material                                         |
+| `Activate`     | Transition the key to *Active* state                          |
+| `Destroy`      | Delete a key on removal or rotation                           |
 
 !!! note "KMIP 1.0/1.4 compatibility in Eviden KMS"
     FortiOS uses an older KMIP 1.x encoding that required specific server-side

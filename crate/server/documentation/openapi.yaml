@@ -43,6 +43,8 @@ tags:
     description: Microsoft 365 Double Key Encryption (DKE) endpoints
   - name: UI Auth
     description: OAuth2/OIDC flow endpoints for the built-in web UI — not part of the KMS API proper
+  - name: Tokenize
+    description: Anonymization and tokenization REST endpoints — hash, noise, masking, aggregation, scaling (non-FIPS only)
 
 components:
   securitySchemes:
@@ -520,6 +522,46 @@ components:
         e:
           type: string
           description: RSA public exponent (base64url) — public keys only
+
+    KeyUnwrapRequest:
+      type: object
+      required: [protected, encrypted_key]
+      description: |
+        Unwrap a JWE encrypted_key using an RSA private key in the KMS.
+        The `protected` header must contain `alg` (RSA-OAEP or RSA-OAEP-256),
+        `enc` (A128GCM, A192GCM, or A256GCM), and `kid` (the unique identifier
+        of an RSA private key or a public key linked to a private key).
+      properties:
+        protected:
+          type: string
+          description: Base64url-encoded JWE Protected Header JSON (must contain alg, enc, kid)
+          example: eyJhbGciOiJSU0EtT0FFUC0yNTYiLCJlbmMiOiJBMjU2R0NNIiwia2lkIjoiYWJjZC0xMjM0In0
+        encrypted_key:
+          type: string
+          description: Base64url-encoded RSA-OAEP-wrapped CEK (must be non-empty)
+
+    KeyUnwrapResponse:
+      type: object
+      required: [kid, kty, alg, key_ops]
+      description: Metadata of the unwrapped symmetric key. Key material is stored in the KMS but never returned.
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the imported symmetric key
+        kty:
+          type: string
+          description: Always "oct" (symmetric key)
+          enum: [oct]
+        alg:
+          type: string
+          description: Content encryption algorithm (matches `enc` from protected header)
+          enum: [A128GCM, A192GCM, A256GCM]
+        key_ops:
+          type: array
+          items:
+            type: string
+          description: Permitted operations — always ["encrypt", "decrypt"]
+          example: [encrypt, decrypt]
 
     # ── Access Control ────────────────────────────────────────────────────────
 
@@ -1352,6 +1394,26 @@ components:
           type: string
           description: Human-readable error description
 
+    # ── Tokenize ──────────────────────────────────────────────────────────────
+
+    TokenizeResponse:
+      type: object
+      required: [result]
+      properties:
+        result:
+          description: Anonymized/tokenized result value
+
+    TokenizeError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          description: HTTP status code (always 422)
+        message:
+          type: string
+          description: Human-readable error description
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
 paths:
@@ -1979,6 +2041,41 @@ paths:
       responses:
         '204':
           description: Key destroyed — no content
+
+  /v1/crypto/keys/unwrap:
+    post:
+      tags: [REST Crypto API]
+      summary: Unwrap a CEK (JWE key import)
+      description: |
+        Unwraps (decrypts) a JWE `encrypted_key` using an RSA private key stored in the KMS
+        and imports the resulting symmetric CEK as a managed key. The raw key material is
+        never returned to the caller — only the `kid` identifier.
+
+        Supported algorithms: `RSA-OAEP`, `RSA-OAEP-256`.
+        Supported content encryption: `A128GCM`, `A192GCM`, `A256GCM`.
+      operationId: cryptoUnwrapKey
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KeyUnwrapRequest'
+      responses:
+        '200':
+          description: Unwrapped key metadata (key material is stored, never returned)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyUnwrapResponse'
+        '400':
+          description: Bad request — invalid base64, missing field in protected header, empty encrypted_key
+        '404':
+          description: Private key not found
+        '422':
+          description: Unsupported algorithm, decryption failure, or CEK size mismatch
 
   # ── Google CSE ───────────────────────────────────────────────────────────────
 
@@ -2746,3 +2843,342 @@ paths:
                   oidc_issuer:
                     type: string
                     description: OIDC issuer URL (only when auth_method is jwt)
+
+  # ── Tokenize (non-FIPS only) ─────────────────────────────────────────────
+
+  /tokenize/hash:
+    post:
+      tags: [Tokenize]
+      summary: Hash a string
+      description: Hash a string using SHA2, SHA3, or Argon2. Optionally accepts a base64-encoded salt.
+      operationId: tokenizeHash
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, method]
+              properties:
+                data:
+                  type: string
+                  description: Input string to hash
+                method:
+                  type: string
+                  enum: [SHA2, SHA3, Argon2]
+                  description: Hash algorithm
+                salt:
+                  type: string
+                  description: Optional base64-encoded salt bytes
+      responses:
+        '200':
+          description: Hashed result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'
+
+  /tokenize/noise:
+    post:
+      tags: [Tokenize]
+      summary: Add statistical noise
+      description: Add Gaussian, Laplace, or Uniform noise to a float, integer, or RFC3339 date.
+      operationId: tokenizeNoise
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, data_type, method]
+              properties:
+                data:
+                  description: Value to add noise to (number or RFC3339 string)
+                data_type:
+                  type: string
+                  enum: [float, integer, date]
+                method:
+                  type: string
+                  enum: [Gaussian, Laplace, Uniform]
+                  description: Noise distribution
+                mean:
+                  type: number
+                  description: Mean parameter (Gaussian/Laplace with parameters)
+                std_dev:
+                  type: number
+                  description: Standard deviation (Gaussian/Laplace with parameters)
+                min_bound:
+                  type: number
+                  description: Minimum bound (Gaussian/Laplace/Uniform with bounds)
+                max_bound:
+                  type: number
+                  description: Maximum bound (Gaussian/Laplace/Uniform with bounds)
+      responses:
+        '200':
+          description: Noised result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'
+
+  /tokenize/word-mask:
+    post:
+      tags: [Tokenize]
+      summary: Mask sensitive words
+      description: Replace sensitive words with "XXXX".
+      operationId: tokenizeWordMask
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, words]
+              properties:
+                data:
+                  type: string
+                  description: Input text
+                words:
+                  type: array
+                  items:
+                    type: string
+                  description: Words to mask
+      responses:
+        '200':
+          description: Masked text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'
+
+  /tokenize/word-tokenize:
+    post:
+      tags: [Tokenize]
+      summary: Tokenize sensitive words
+      description: Replace sensitive words with random hex tokens (consistent within one request).
+      operationId: tokenizeWordTokenize
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, words]
+              properties:
+                data:
+                  type: string
+                  description: Input text
+                words:
+                  type: array
+                  items:
+                    type: string
+                  description: Words to tokenize
+      responses:
+        '200':
+          description: Tokenized text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'
+
+  /tokenize/word-pattern-mask:
+    post:
+      tags: [Tokenize]
+      summary: Regex pattern masking
+      description: Replace all regex-matched substrings with a replacement string. Pattern limited to 1024 characters (ReDoS mitigation).
+      operationId: tokenizeWordPatternMask
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, pattern, replace]
+              properties:
+                data:
+                  type: string
+                  description: Input text
+                pattern:
+                  type: string
+                  maxLength: 1024
+                  description: Regex pattern to match
+                replace:
+                  type: string
+                  description: Replacement string
+      responses:
+        '200':
+          description: Masked text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'
+
+  /tokenize/aggregate-number:
+    post:
+      tags: [Tokenize]
+      summary: Round a number
+      description: Round a number to the nearest power of ten.
+      operationId: tokenizeAggregateNumber
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, data_type, power_of_ten]
+              properties:
+                data:
+                  description: Number to round (float or integer)
+                data_type:
+                  type: string
+                  enum: [float, integer]
+                power_of_ten:
+                  type: integer
+                  description: Power of ten to round to (e.g. 2 → round to nearest 100)
+      responses:
+        '200':
+          description: Rounded result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'
+
+  /tokenize/aggregate-date:
+    post:
+      tags: [Tokenize]
+      summary: Truncate a date
+      description: Truncate an RFC3339 date to the specified time unit precision.
+      operationId: tokenizeAggregateDate
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, time_unit]
+              properties:
+                data:
+                  type: string
+                  description: RFC3339 date string to truncate
+                time_unit:
+                  type: string
+                  enum: [Second, Minute, Hour, Day, Month, Year]
+                  description: Truncation precision
+      responses:
+        '200':
+          description: Truncated date
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'
+
+  /tokenize/scale-number:
+    post:
+      tags: [Tokenize]
+      summary: Normalize and scale a number
+      description: Normalize and scale a number using z-score transformation.
+      operationId: tokenizeScaleNumber
+      security:
+        - bearerAuth: []
+        - mtls: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, data_type, mean, std_deviation, scale, translate]
+              properties:
+                data:
+                  description: Number to scale (float or integer)
+                data_type:
+                  type: string
+                  enum: [float, integer]
+                mean:
+                  type: number
+                  description: Mean of the original data distribution
+                std_deviation:
+                  type: number
+                  description: Standard deviation (non-zero)
+                scale:
+                  type: number
+                  description: Scaling factor
+                translate:
+                  type: number
+                  description: Translation factor
+      responses:
+        '200':
+          description: Scaled result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeResponse'
+        '422':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenizeError'

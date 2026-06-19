@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Bump version across all Cargo.toml and config files"
+#USAGE arg "<old_version>" help="Current version (e.g. 5.22.0)"
+#USAGE arg "<new_version>" help="New version (e.g. 5.23.0)"
+#USAGE flag "--ci" help="Run in CI mode (skip interactive prompts)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+# shellcheck disable=SC2154  # usage_old_version and usage_new_version are set by the MISE USAGE framework
+print_header "Version bump: ${usage_old_version} -> ${usage_new_version}"
+
+REPO_ROOT="$(get_repo_root)"
+
+ARGS=("${usage_old_version}" "${usage_new_version}")
+if [ "${usage_ci:-false}" = "true" ]; then
+  ARGS+=(--ci)
+fi
+
+bash "${REPO_ROOT}/.mise/scripts/release/release.sh" "${ARGS[@]}"
+
+print_success "Version bumped to ${usage_new_version}"

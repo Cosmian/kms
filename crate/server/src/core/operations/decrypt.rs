@@ -4,7 +4,8 @@ use std::borrow::Cow;
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
     crypto::{
         DecryptionSystem, cover_crypt::decryption::CovercryptDecryption,
-        elliptic_curves::ecies::ecies_decrypt, rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt,
+        elliptic_curves::ecies::ecies_decrypt, fpe::decrypt_fpe,
+        rsa::ckm_rsa_pkcs::ckm_rsa_pkcs_decrypt,
     },
     reexport::cosmian_cover_crypt::api::Covercrypt,
 };
@@ -427,6 +428,41 @@ fn decrypt_single_with_symmetric_key(
     owm: &ObjectWithMetadata,
     request: &Decrypt,
 ) -> Result<Result<DecryptResponse, KmsError>, KmsError> {
+    let key_block = owm.object().key_block()?;
+    let stored_cp = owm.attributes().cryptographic_parameters.as_ref();
+    let req_cp = request.cryptographic_parameters.as_ref();
+    let cryptographic_algorithm = req_cp
+        .and_then(|cp| cp.cryptographic_algorithm)
+        .or_else(|| stored_cp.and_then(|cp| cp.cryptographic_algorithm))
+        .or_else(|| key_block.cryptographic_algorithm().copied())
+        .unwrap_or(CryptographicAlgorithm::AES);
+
+    #[cfg(not(feature = "non-fips"))]
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        return Ok(Err(KmsError::NotSupported(
+            "FPE_FF1 decryption is not supported in FIPS mode".to_owned(),
+        )));
+    }
+
+    #[cfg(feature = "non-fips")]
+    if cryptographic_algorithm == CryptographicAlgorithm::FPE_FF1 {
+        let ciphertext = request.data.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest("Decrypt: data to decrypt must be provided".to_owned())
+        })?;
+        let plaintext = decrypt_fpe(
+            &key_block.key_bytes()?,
+            ciphertext,
+            request.authenticated_encryption_additional_data.as_deref(),
+            request.i_v_counter_nonce.as_deref(),
+        )
+        .map_err(|e| KmsError::CryptographicError(format!("FPE decrypt failed: {e}")))?;
+        return Ok(Ok(DecryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),
+            data: Some(Zeroizing::from(plaintext)),
+            correlation_value: request.correlation_value.clone(),
+        }));
+    }
+
     let ciphertext = request.data.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
             "Decrypt single with symmetric key: data to decrypt must be provided".to_owned(),
@@ -439,28 +475,43 @@ fn decrypt_single_with_symmetric_key(
         aead
     );
     // For modes with nonce_size()==0 (e.g. ECB) we do not expect / require an IV.
-    // For modes with nonce_size()>0 we require an IV. Some KMIP vectors supply an empty
-    // IVCounterNonce element to indicate an all-zero IV (e.g. CBC test cases). Treat a
-    // present-but-empty value as a zero IV of the required size. Any other length mismatch
-    // is reported as Invalid_Message instead of triggering an OpenSSL panic.
+    // For modes with nonce_size()>0 we require an IV.
+    //   - Absent IVCounterNonce (None)  → Invalid_Message "missing-iv" (KMIP mandatory compliance).
+    //   - Present but empty (Some([]))  → all-zero IV of the required size (some clients send this
+    //     explicitly to request a zero IV).
+    //   - Correct length               → use as-is.
+    //   - Wrong length for GCM         → pass through (OpenSSL derives J0 for non-96-bit IVs).
+    //   - Wrong length for other modes → Invalid_Message "invalid-iv-length".
     let empty_nonce_storage = Vec::new();
     let nonce_storage: Cow<[u8]> = if aead.nonce_size() == 0 {
         Cow::Borrowed(&empty_nonce_storage)
     } else {
-        let provided = request.i_v_counter_nonce.as_ref().ok_or_else(|| {
-            KmsError::Kmip21Error(ErrorReason::Invalid_Message, "missing-iv".to_owned())
-        })?;
-        if provided.is_empty() {
-            // Interpret empty provided IV as an all-zero IV of the recommended size for the cipher.
+        let provided = request.i_v_counter_nonce.as_ref();
+        if provided.is_none() {
+            // IVCounterNonce completely absent — required field; reject per KMIP spec.
+            return Ok(Err(KmsError::Kmip21Error(
+                ErrorReason::Invalid_Message,
+                "missing-iv".to_owned(),
+            )));
+        } else if provided.is_some_and(Vec::is_empty) {
+            // Explicitly empty IVCounterNonce → caller requests all-zero IV.
             Cow::Owned(vec![0_u8; aead.nonce_size()])
-        } else if provided.len() == aead.nonce_size() {
-            Cow::Borrowed(provided)
+        } else if let Some(iv) = provided.filter(|v| v.len() == aead.nonce_size()) {
+            Cow::Borrowed(iv)
         } else {
             // Length mismatch: allow variable length only for AES-GCM (per spec and OpenSSL support).
+            // `provided` is guaranteed Some and non-empty at this point (None and empty were
+            // handled above), but we retain the let-else for exhaustive safety.
+            let Some(iv) = provided else {
+                return Ok(Err(KmsError::Kmip21Error(
+                    ErrorReason::Invalid_Message,
+                    "internal: IV unexpectedly absent after checks".to_owned(),
+                )));
+            };
             match aead {
                 SymCipher::Aes128Gcm | SymCipher::Aes192Gcm | SymCipher::Aes256Gcm => {
                     // Accept any non-empty length; pass through unchanged. (OpenSSL derives J0 for non-96-bit IVs.)
-                    Cow::Borrowed(provided)
+                    Cow::Borrowed(iv)
                 }
                 _ => {
                     return Ok(Err(KmsError::Kmip21Error(
@@ -468,7 +519,7 @@ fn decrypt_single_with_symmetric_key(
                         format!(
                             "invalid-iv-length: expected {} got {}",
                             aead.nonce_size(),
-                            provided.len()
+                            iv.len()
                         ),
                     )));
                 }
@@ -530,6 +581,15 @@ fn get_aead_and_key(
     request: &Decrypt,
 ) -> Result<(Zeroizing<Vec<u8>>, SymCipher), KmsError> {
     let key_block = owm.object().key_block()?;
+    // Prevent FPE_FF1 keys from being misused for standard symmetric operations.
+    // FPE_FF1 decryption is handled before this point; reaching here with an FPE_FF1
+    // key means the caller explicitly requested a different algorithm, which is a misuse.
+    if key_block.cryptographic_algorithm().copied() == Some(CryptographicAlgorithm::FPE_FF1) {
+        return Err(KmsError::Kmip21Error(
+            ErrorReason::Incompatible_Cryptographic_Usage_Mask,
+            "an FPE_FF1 key may only be used for FPE_FF1 decrypt operations".to_owned(),
+        ));
+    }
     // recover the cryptographic algorithm from the request or the key block or default to AES
     let cryptographic_algorithm = request
         .cryptographic_parameters

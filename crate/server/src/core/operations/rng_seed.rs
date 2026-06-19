@@ -30,7 +30,7 @@ pub(crate) async fn rng_seed(
     }
 
     // Report how much seed data was consumed (as per KMIP vectors expectations).
-    let amount_of_seed_data: i32 = i32::try_from(request.data.len()).map_or(i32::MAX, |v| v);
+    let amount_of_seed_data: i32 = i32::try_from(request.data.len()).unwrap_or(i32::MAX);
     Ok(RNGSeedResponse {
         amount_of_seed_data,
     })

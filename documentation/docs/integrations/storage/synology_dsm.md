@@ -177,7 +177,7 @@ bash scripts/test_synology_dsm.sh simulate
 ### Running via nix-shell (recommended for CI parity)
 
 ```bash
-bash .github/scripts/nix.sh --variant non-fips test synology_dsm
+mise run test:synology_dsm --variant non-fips
 ```
 
 ### GitHub Actions CI
@@ -211,7 +211,7 @@ The CI job:
 |--------|---------|
 | `scripts/synology_dsm_client.py` | Python KMIP client replicating DSM's operation sequence |
 | `scripts/test_synology_dsm.sh` | Local test runner (prereq checks + venv activation) |
-| `.github/scripts/test_synology_dsm.sh` | CI entry point (builds server, starts it, runs test) |
+| `.mise/scripts/test_synology_dsm.sh` | CI entry point (builds server, starts it, runs test) |
 | `scripts/pykmip.conf` | Shared PyKMIP TLS configuration (host, port, certs) |
 | `scripts/kms.toml` | KMS server configuration used by KMIP tests |
 

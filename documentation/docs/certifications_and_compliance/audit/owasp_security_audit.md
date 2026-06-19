@@ -4,9 +4,9 @@
 **Standard**: OWASP Top 10 (2021) + OWASP ASVS v4.0 (selective)
 **Repository**: `Eviden/kms` — branch `develop`
 **Workspace root**: `crate/` (Rust workspace) + `ui/` (React/TypeScript)
-**Audit date**: 2026-04-18 (re-run with remediation verification: 2026-04-14)
+**Audit date**: 2026-06-05 (re-run with remediation verification: 2026-04-14)
 **Auditor(s)**: GitHub Copilot (automated static analysis)
-**Status**: ☑ Complete — automated pass (audit.sh ran 2026-04-18)
+**Status**: ☑ Complete — automated pass (audit.sh ran 2026-06-05)
 
 ## Tools available during this audit
 
@@ -680,7 +680,7 @@ Status: ⚠️ Review needed
 | Imported object validation | `crate/server/src/core/operations/import.rs` |
 | KMIP deserializer | `crate/kmip/src/ttlv/` |
 | Cargo lock and git deps | `Cargo.lock`, `Cargo.toml` |
-| CI pipeline scripts | `.github/workflows/`, `.github/scripts/` |
+| CI pipeline scripts | `.github/workflows/`, `.mise/scripts/` |
 | Nix vendor hashes | `nix/expected-hashes/` |
 
 ### 9.2 Investigation Steps
@@ -703,7 +703,7 @@ grep -rn "git =\|path =\|branch =\|rev =" Cargo.toml crate/*/Cargo.toml
 
 # Step 5 — CI scripts: unauthenticated downloads or pipe-to-shell patterns
 grep -rn "curl.*sh\|wget.*sh\|pip install\|npm install" \
-  .github/scripts/ .github/workflows/ 2>/dev/null \
+  .mise/scripts/ .github/workflows/ 2>/dev/null \
   | grep -v "^#\|#.*curl" | head -20
 
 # Step 6 — Nix vendor hashes: all four variants must be present and non-trivial

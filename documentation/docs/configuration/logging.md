@@ -59,13 +59,51 @@ On Linux, logs can be redirected to syslog instead of stdout by setting:
 
 ## Rolling log files
 
-Daily rolling log files can be enabled by specifying the target directory via:
+The server can write daily rolling log files. File logging is **disabled** unless
+`rolling_log_dir` is explicitly configured (via `--rolling-log-dir`, the
+`KMS_ROLLING_LOG_DIR` environment variable, or the TOML configuration).
 
-- the `rolling_log_dir` entry of the TOML configuration file,
-- the `--rolling-log-dir` command line argument.
+Log files are named `<name>.YYYY-MM-DD`, where `<name>` defaults to `kms`.
 
-Files are named `<name>.YYYY-MM-DD`, where `<name>` defaults to `kms`.
-The name can be changed using the `rolling_log_name` TOML entry or `--rolling-log-name` argument.
+When `rolling_log_dir` is set without specifying a path (e.g. via the
+configuration wizard), the recommended platform-specific defaults are:
+
+| Platform | Default directory                                        |
+| -------- | ------------------------------------------------------- |
+| Linux    | `/var/log/`                                             |
+| Windows  | `C:\Users\<username>\AppData\Local\Cosmian KMS Server` |
+| macOS    | `~/Library/Logs/`                                       |
+
+> **Warning (Windows):** The server does **not** expand Windows environment variables
+> such as `%LOCALAPPDATA%` in configuration files. If you override `rolling_log_dir`
+> in `kms.toml`, you must use the fully-expanded path, for example:
+>
+> ```toml
+> rolling_log_dir = "C:\\Users\\<username>\\AppData\\Local\\Cosmian KMS Server"
+> ```
+>
+> When `rolling_log_dir` is not set, the server resolves the `LOCALAPPDATA`
+> environment variable at runtime and defaults to
+> `C:\Users\<username>\AppData\Local\Cosmian KMS Server`.
+> When running as a Windows service under LocalSystem, the variable may not be set;
+> the server then falls back to `C:\ProgramData\Cosmian KMS Server`.
+>
+> **Note (macOS):** The server defaults to `~/Library/Logs/` which is the standard
+> per-user log directory on macOS and is writable without root. If you run the server
+> as a LaunchDaemon (root), you may override this with
+> `--rolling-log-dir /Library/Logs/`.
+>
+> **Graceful fallback:** If the configured rolling log directory does not exist and cannot
+> be created, or is not writable by the current process, the server disables file logging
+> with a warning message on stderr and continues operating normally. This prevents the
+> server from panicking due to inaccessible log paths.
+
+The directory and file name can be overridden via:
+
+- the `rolling_log_dir` / `rolling_log_name` entries in the TOML configuration
+  file (`[logging]` section),
+- the `--rolling-log-dir` / `--rolling-log-name` command line arguments,
+- the `KMS_ROLLING_LOG_DIR` / `KMS_ROLLING_LOG_NAME` environment variables.
 
 ---
 
@@ -101,6 +139,9 @@ Enable the feature with:
 - the `--enable-metering` command line argument,
 - or the equivalent TOML key in the `[logging]` section.
 
+For the full list of emitted metrics, their types, and label sets, see the
+[Metrics reference](./otlp-metrics.md).
+
 ---
 
 ## Observability stack (OTel Collector + VictoriaMetrics + Grafana)
@@ -118,11 +159,11 @@ KMS ──OTLP gRPC──► OTel Collector ──remote_write──► Victoria
                         └──prometheus scrape :8888──► VictoriaMetrics
 ```
 
-| Component | Role |
-|---|---|
-| **OTel Collector** | Receives OTLP, enriches with metadata, generates RED metrics from traces, exports to VictoriaMetrics |
-| **VictoriaMetrics** | Long-term metrics storage (configurable retention) |
-| **Grafana** | Dashboard UI — queries VictoriaMetrics via PromQL |
+| Component           | Role                                                                                                 |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| **OTel Collector**  | Receives OTLP, enriches with metadata, generates RED metrics from traces, exports to VictoriaMetrics |
+| **VictoriaMetrics** | Long-term metrics storage (configurable retention)                                                   |
+| **Grafana**         | Dashboard UI — queries VictoriaMetrics via PromQL                                                    |
 
 ### Quick start
 
@@ -164,43 +205,43 @@ KMS_OTLP_URL=http://<collector-host>:4318
 
 ### `.env` reference
 
-| Variable | Default | Description |
-|---|---|---|
-| `COMPOSE_PROFILES` | `kms-local` | `kms-local` to include the KMS container, empty for external mode |
-| `KMS_MODE` | `local` | `local` or `external` — propagated as label in all metrics/traces |
-| `KMS_CLUSTER` | `cosmian-kms-local` | Logical cluster name — `kms.cluster` label in dashboards |
-| `KMS_VERSION` | `latest` | Docker image tag for the KMS |
-| `ENVIRONMENT` | `production` | Deployment environment (`production`, `staging`, …) |
-| `GRAFANA_ADMIN_PASSWORD` | `password` | Grafana `admin` user password |
-| `METRICS_RETENTION_MONTHS` | `12` | VictoriaMetrics retention period (months) |
+| Variable                   | Default             | Description                                                       |
+| -------------------------- | ------------------- | ----------------------------------------------------------------- |
+| `COMPOSE_PROFILES`         | `kms-local`         | `kms-local` to include the KMS container, empty for external mode |
+| `KMS_MODE`                 | `local`             | `local` or `external` — propagated as label in all metrics/traces |
+| `KMS_CLUSTER`              | `cosmian-kms-local` | Logical cluster name — `kms.cluster` label in dashboards          |
+| `KMS_VERSION`              | `latest`            | Docker image tag for the KMS                                      |
+| `ENVIRONMENT`              | `production`        | Deployment environment (`production`, `staging`, …)               |
+| `GRAFANA_ADMIN_PASSWORD`   | `password`          | Grafana `admin` user password                                     |
+| `METRICS_RETENTION_MONTHS` | `12`                | VictoriaMetrics retention period (months)                         |
 
 ### OTel Collector pipeline
 
 The collector enriches every span and metric with the following resource attributes:
 
-| Attribute | Source |
-|---|---|
-| `deployment.environment` | `ENVIRONMENT` from `.env` |
-| `service.name` | hardcoded `cosmian-kms` |
-| `service.version` | `KMS_VERSION` from `.env` |
-| `kms.mode` | `KMS_MODE` from `.env` |
-| `kms.cluster` | `KMS_CLUSTER` from `.env` |
-| `kms.node` | `host.name` of the KMS container |
+| Attribute                | Source                           |
+| ------------------------ | -------------------------------- |
+| `deployment.environment` | `ENVIRONMENT` from `.env`        |
+| `service.name`           | hardcoded `cosmian-kms`          |
+| `service.version`        | `KMS_VERSION` from `.env`        |
+| `kms.mode`               | `KMS_MODE` from `.env`           |
+| `kms.cluster`            | `KMS_CLUSTER` from `.env`        |
+| `kms.node`               | `host.name` of the KMS container |
 
 **RED metrics from traces** are automatically generated by the `spanmetrics` connector with the
 following latency buckets: `10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s, 30s`.
 
 ### Exposed ports
 
-| Service | Port | Protocol | Usage |
-|---|---|---|---|
-| KMS | `9998` | HTTPS | KMS API (local mode only) |
-| OTel Collector | `4317` | gRPC | OTLP traces & metrics ingestion |
-| OTel Collector | `4318` | HTTP | OTLP traces & metrics ingestion |
-| OTel Collector | `8888` | HTTP | Collector self-metrics (Prometheus) |
-| OTel Collector | `13133` | HTTP | Health check |
-| VictoriaMetrics | `8428` | HTTP | PromQL API + `remote_write` endpoint |
-| Grafana | `3000` | HTTP | Dashboard UI |
+| Service         | Port    | Protocol | Usage                                |
+| --------------- | ------- | -------- | ------------------------------------ |
+| KMS             | `9998`  | HTTPS    | KMS API (local mode only)            |
+| OTel Collector  | `4317`  | gRPC     | OTLP traces & metrics ingestion      |
+| OTel Collector  | `4318`  | HTTP     | OTLP traces & metrics ingestion      |
+| OTel Collector  | `8888`  | HTTP     | Collector self-metrics (Prometheus)  |
+| OTel Collector  | `13133` | HTTP     | Health check                         |
+| VictoriaMetrics | `8428`  | HTTP     | PromQL API + `remote_write` endpoint |
+| Grafana         | `3000`  | HTTP     | Dashboard UI                         |
 
 Access Grafana at [http://localhost:3000](http://localhost:3000) with user `admin`.
 

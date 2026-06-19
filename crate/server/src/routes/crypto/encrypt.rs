@@ -12,7 +12,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::{
         crypto::rsa::ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
-        openssl::kmip_public_key_to_openssl,
+        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
     },
 };
 use cosmian_logger::{debug, trace};
@@ -145,23 +145,44 @@ async fn encrypt_rsa_oaep(
         .map_err(CryptoApiError::from)?;
 
     // Determine if this is a private key (resolve to linked public key) or already a public key
-    let (public_key_owm, private_key_uid) = match owm.object() {
+    let (public_key, private_key_uid) = match owm.object() {
         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey { .. } => {
-            // Resolve linked public key
-            let pub_key_uid = owm.attributes().get_link(LinkType::PublicKeyLink).ok_or_else(|| {
-                CryptoApiError::CryptoFailure(
-                    "RSA-OAEP encrypt: private key has no linked public key".to_owned(),
+            // Resolve linked public key if available; otherwise extract from private key
+            let pkey = if let Some(pub_key_uid) =
+                owm.attributes().get_link(LinkType::PublicKeyLink)
+            {
+                let pub_owm = retrieve_object_for_operation(
+                    &pub_key_uid.to_string(),
+                    KmipOperation::Encrypt,
+                    kms,
+                    user,
                 )
-            })?;
-            let pub_owm = retrieve_object_for_operation(
-                &pub_key_uid.to_string(),
-                KmipOperation::Encrypt,
-                kms,
-                user,
-            )
-            .await
-            .map_err(CryptoApiError::from)?;
-            (pub_owm, kid.clone())
+                .await
+                .map_err(CryptoApiError::from)?;
+                kmip_public_key_to_openssl(pub_owm.object()).map_err(|e| {
+                    CryptoApiError::CryptoFailure(format!(
+                        "RSA-OAEP encrypt: failed to load public key: {e}"
+                    ))
+                })?
+            } else {
+                // No linked public key (e.g. imported private key) — extract from private key
+                let priv_pkey = kmip_private_key_to_openssl(owm.object()).map_err(|e| {
+                    CryptoApiError::CryptoFailure(format!(
+                        "RSA-OAEP encrypt: failed to load private key: {e}"
+                    ))
+                })?;
+                let pub_der = priv_pkey.public_key_to_der().map_err(|e| {
+                    CryptoApiError::CryptoFailure(format!(
+                        "RSA-OAEP encrypt: failed to extract public key: {e}"
+                    ))
+                })?;
+                openssl::pkey::PKey::public_key_from_der(&pub_der).map_err(|e| {
+                    CryptoApiError::CryptoFailure(format!(
+                        "RSA-OAEP encrypt: failed to parse public key DER: {e}"
+                    ))
+                })?
+            };
+            (pkey, kid.clone())
         }
         cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PublicKey { .. } => {
             // Already a public key — resolve linked private key UID for the protected header
@@ -169,7 +190,12 @@ async fn encrypt_rsa_oaep(
                 .attributes()
                 .get_link(LinkType::PrivateKeyLink)
                 .map_or_else(|| kid.clone(), |l| l.to_string());
-            (owm, priv_key_uid)
+            let pkey = kmip_public_key_to_openssl(owm.object()).map_err(|e| {
+                CryptoApiError::CryptoFailure(format!(
+                    "RSA-OAEP encrypt: failed to load public key: {e}"
+                ))
+            })?;
+            (pkey, priv_key_uid)
         }
         _ => {
             return Err(CryptoApiError::CryptoFailure(format!(
@@ -179,11 +205,6 @@ async fn encrypt_rsa_oaep(
             )));
         }
     };
-
-    // Convert KMIP public key to OpenSSL PKey<Public>
-    let public_key = kmip_public_key_to_openssl(public_key_owm.object()).map_err(|e| {
-        CryptoApiError::CryptoFailure(format!("RSA-OAEP encrypt: failed to load public key: {e}"))
-    })?;
 
     // Validate RSA key type and minimum size (2048 bits)
     if public_key.id() != openssl::pkey::Id::RSA {

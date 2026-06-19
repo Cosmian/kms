@@ -8,7 +8,7 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 fail_fast: true
-exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|crate/kmip/src/kmip_2_1/specifications/|crate/kmip/src/kmip_1_4/specifications/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/kmip/src/oasis|crate/kmip/src/kmip_1_0/specifications|crate/server/documentation/swagger-ui/swagger-ui-bundle.js|crate/server/documentation/swagger-ui/swagger-ui.css
+exclude: documentation/pandoc|documentation/overrides|crate/server/src/tests/test_utils.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|crate/server/src/routes/google_cse/python/openssl|documentation/docs/google_cse|crate/pkcs11/sys|documentation/docs/drawings|test_data|documentation/docs/benchmarks.md|crate/hsm/proteccio/driver|crate/server/ui|kmip/|crate/server_database/src/tests/migrate/postgre-4.20.dump.sql|crate/kmip/src/ttlv/tests/pykmip/|crate/server/documentation/swagger-ui/swagger-ui-bundle.js|crate/server/documentation/swagger-ui/swagger-ui.css
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.0.0
@@ -43,7 +43,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|crate/kmip/src/kmip_1_0/specifications|.github/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|docs.instructions.md
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -103,7 +103,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
-        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs
+        exclude: test_data|documentation/docs|crate/clients/clap/src/tests/google_cmd/identities.rs|crate/clients/ckms/src/tests/google_cmd/identities.rs|crate/server/src/tests|crate/clients/clap/src/tests/shared/export_import.rs|crate/clients/ckms/src/tests/shared/export_import.rs|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/cng/src/key.rs
 
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
@@ -185,7 +185,7 @@ repos:
             4. crypto_inventory.md (cryptographic asset sensor, no network)
           CBOM generation (step 5) is skipped on every commit (manual stage only —
           it requires cdxgen and network access).
-        entry: bash .github/scripts/docs/generate_docs.sh --skip-cbom
+        entry: mise run docs:generate -- --skip-cbom
         language: system
         types: [rust]
         pass_filenames: false
@@ -201,7 +201,7 @@ repos:
 
       - id: cbom
         name: Release - generate CBOM
-        entry: bash .github/scripts/release/generate_cbom.sh
+        entry: python3 .mise/scripts/sbom/generate_cbom.py
         language: system
         pass_filenames: false
         always_run: true
@@ -209,7 +209,7 @@ repos:
 
       - id: release-update-readme-kmip
         name: Release - update README KMIP table
-        entry: python3 .github/scripts/docs/update_readme_kmip.py
+        entry: python3 .mise/scripts/docs/update_readme_kmip.py
         language: system
         pass_filenames: false
         always_run: true
@@ -217,7 +217,7 @@ repos:
 
       - id: release-git-cliff
         name: Release - update CHANGELOG with git cliff
-        entry: bash .github/scripts/release/git_cliff.sh
+        entry: mise run release:changelog
         language: system
         pass_filenames: false
         always_run: true
@@ -226,7 +226,7 @@ repos:
       # # Remove folders result*
       # - id: clean-result-folders
       #   name: Clean result* folders
-      #   entry: bash .github/scripts/release/clean_result.sh
+      #   entry: bash .mise/scripts/release/clean_result.sh
       #   language: system
       #   types: [rust]
       #   pass_filenames: false
@@ -248,21 +248,21 @@ repos:
 
       - id: ui-wasm-react-unit-tests
         name: UI wasm + React tests (incl. integration if Docker)
-        entry: bash .github/scripts/test/test_wasm.sh
+        entry: mise run test:wasm
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
       - id: ui-e2e
         name: UI end-to-end
-        entry: bash .github/scripts/test/test_ui.sh
+        entry: mise run test:ui
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)
-        entry: bash .github/scripts/test/test_sqlite.sh --variant fips
+        entry: mise run test:sqlite -- --variant fips
         language: system
         types: [rust]
         pass_filenames: false
@@ -270,21 +270,21 @@ repos:
 
       - id: cargo-test-non-fips
         name: cargo test (sqlite non-fips)
-        entry: bash .github/scripts/test/test_sqlite.sh --variant non-fips
+        entry: mise run test:sqlite -- --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
 
       - id: redis-cargo-test-non-fips
         name: Redis and cargo test (non-fips)
-        entry: bash .github/scripts/test/test_redis.sh --variant non-fips
+        entry: mise run test:redis -- --variant non-fips
         language: system
         types: [rust]
         pass_filenames: false
 
       - id: nix-build-all
         name: Nix build all derivations (ui → cli → server)
-        entry: bash .github/scripts/release/nix_build_update_hash.sh
+        entry: mise run release:nix-update-hashes
         language: system
         pass_filenames: false
         always_run: true
@@ -292,7 +292,7 @@ repos:
 
       - id: release-docker-build-ui
         name: Release - docker compose up + build UI + docker compose down
-        entry: bash .github/scripts/release/build_ui.sh
+        entry: mise run build:ui
         language: system
         pass_filenames: false
         always_run: true

@@ -19,14 +19,22 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_client_utils::symmetric_utils::DataEncryptionAlgorithm,
 };
 use cosmian_kms_crypto::crypto::{
-    symmetric::symmetric_ciphers::{Mode, SymCipher, encrypt, random_key, random_nonce},
+    symmetric::symmetric_ciphers::{Mode, encrypt, random_nonce},
     wrap::wrap_object_with_key,
 };
 use cosmian_logger::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::{console, labels::KEY_ID, shared::get_key_uid, symmetric::KeyEncryptionAlgorithm},
+    actions::{
+        console,
+        labels::KEY_ID,
+        shared::get_key_uid,
+        symmetric::{
+            KeyEncryptionAlgorithm,
+            cipher_io::{build_cipher, generate_dek, resolve_aad},
+        },
+    },
     error::{
         KmsCliError,
         result::{KmsCliResult, KmsCliResultHelper},
@@ -252,15 +260,7 @@ impl EncryptAction {
         aad: Option<Vec<u8>>,
     ) -> KmsCliResult<Zeroizing<Vec<u8>>> {
         // Additional authenticated data (AAD) for AEAD ciphers
-        // (empty for XTS)
-        let aad = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
-            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
-                aad.unwrap_or_default()
-            }
-        };
+        let aad = resolve_aad(data_encryption_algorithm, aad);
 
         // Generate an ephemeral key (DEK) and wrap it with the KEK.
         let (dek, encapsulation) = self
@@ -278,18 +278,7 @@ impl EncryptAction {
         output_file.write_all(&encapsulation)?;
 
         // Determine the DEM parameters
-        let cryptographic_parameters: CryptographicParameters = data_encryption_algorithm.into();
-        let cipher = SymCipher::from_algorithm_and_key_size(
-            cryptographic_parameters
-                .cryptographic_algorithm
-                .ok_or_else(|| {
-                    KmsCliError::Default(
-                        "No data encryption cryptographic algorithm specified".to_owned(),
-                    )
-                })?,
-            cryptographic_parameters.block_cipher_mode,
-            dek.len(),
-        )?;
+        let cipher = build_cipher(data_encryption_algorithm, dek.len())?;
 
         // we need a nonce (or tweak)
         let nonce = match nonce {
@@ -335,15 +324,7 @@ impl EncryptAction {
         data_encryption_algorithm: DataEncryptionAlgorithm,
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         // Generate the ephemeral key (DEK)
-        let dek = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
-            DataEncryptionAlgorithm::AesCbc => random_key(SymCipher::Aes256Cbc)?,
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
-            DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
-        };
+        let dek = generate_dek(data_encryption_algorithm)?;
 
         // Wrap the DEK with the KEK
         let (kem_nonce, kem_ciphertext, kem_tag) = self
@@ -382,15 +363,7 @@ impl EncryptAction {
     ) -> KmsCliResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         trace!("data_encryption_algorithm: {data_encryption_algorithm}");
         // Generate the ephemeral key (DEK)
-        let dek: Zeroizing<Vec<u8>> = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesCbc => random_key(SymCipher::Aes256Cbc)?,
-            DataEncryptionAlgorithm::AesGcm => random_key(SymCipher::Aes256Gcm)?,
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::Chacha20Poly1305 => random_key(SymCipher::Chacha20Poly1305)?,
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::AesGcmSiv => random_key(SymCipher::Aes256Gcm)?,
-            DataEncryptionAlgorithm::AesXts => random_key(SymCipher::Aes256Xts)?,
-        };
+        let dek = generate_dek(data_encryption_algorithm)?;
         trace!("dek (len={}): {dek:?}", dek.len());
 
         // First export the KEK locally
@@ -447,15 +420,7 @@ impl EncryptAction {
         aad: Option<Vec<u8>>,
     ) -> KmsCliResult<Vec<u8>> {
         // Additional authenticated data (AAD) for AEAD ciphers
-        // (empty for XTS or CBC modes)
-        let aad = match data_encryption_algorithm {
-            DataEncryptionAlgorithm::AesXts | DataEncryptionAlgorithm::AesCbc => vec![],
-            DataEncryptionAlgorithm::AesGcm => aad.unwrap_or_default(),
-            #[cfg(feature = "non-fips")]
-            DataEncryptionAlgorithm::Chacha20Poly1305 | DataEncryptionAlgorithm::AesGcmSiv => {
-                aad.unwrap_or_default()
-            }
-        };
+        let aad = resolve_aad(data_encryption_algorithm, aad);
 
         // write the encapsulation to the output file, starting with the length of the encapsulation
         // as an unsigned LEB128 integer
@@ -465,18 +430,7 @@ impl EncryptAction {
         output_buffer.write_all(encapsulation)?;
 
         // Determine the DEM parameters
-        let cryptographic_parameters: CryptographicParameters = data_encryption_algorithm.into();
-        let sym_cipher = SymCipher::from_algorithm_and_key_size(
-            cryptographic_parameters
-                .cryptographic_algorithm
-                .ok_or_else(|| {
-                    KmsCliError::Default(
-                        "No data encryption cryptographic algorithm specified".to_owned(),
-                    )
-                })?,
-            cryptographic_parameters.block_cipher_mode,
-            dek.len(),
-        )?;
+        let sym_cipher = build_cipher(data_encryption_algorithm, dek.len())?;
 
         // we need a nonce (or tweak)
         let nonce = match nonce {

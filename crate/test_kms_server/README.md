@@ -40,11 +40,11 @@ The vector runner supports testing against multiple database backends.
 
 ### Backend → config mapping
 
-| Backend | Config TOML | Required env var |
-|---------|-------------|------------------|
-| `sqlite` | `auth_plain.toml` | — (always available) |
-| `postgresql` | `postgres.toml` | `KMS_POSTGRES_URL` |
-| `mysql` | `mysql.toml` | `KMS_MYSQL_URL` |
+| Backend        | Config TOML         | Required env var                |
+| -------------- | ------------------- | ------------------------------- |
+| `sqlite`       | `auth_plain.toml`   | — (always available)            |
+| `postgresql`   | `postgres.toml`     | `KMS_POSTGRES_URL`              |
+| `mysql`        | `mysql.toml`        | `KMS_MYSQL_URL`                 |
 | `redis-findex` | `redis_findex.toml` | `KMS_REDIS_URL` or `REDIS_HOST` |
 
 ### CI integration
@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**319 vectors** across 8 categories:
+**353 vectors** across 8 categories:
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -259,11 +259,15 @@ replays the steps sequentially.
 | Integrations | `fips/integrations/fortigate` | Create, Locate, Get, Activate, Revoke, Destroy (binary TTLV / KMIP 1.0) | 6 |
 | Integrations | `fips/integrations/fortigate_credential_type` | Create, Activate, Locate with numeric CredentialType enum, Revoke, Destroy (binary TTLV / KMIP 1.0) | 5 |
 | Integrations | `fips/integrations/fortigate_locate_filter` | Register ×2, Activate ×2, Locate by name ×2 (assert distinct IDs), Revoke ×2, Destroy ×2 (binary TTLV / KMIP 1.0) | 10 |
-| Integrations | `fips/integrations/vast_data` | DiscoverVersions, Create, AddAttribute ×2, Activate, Locate, Get, GetAttributes, ReKey, Locate, Get, GetAttributes, Revoke, Destroy, Revoke, Destroy (JSON TTLV / KMIP 1.4) | 16 |
+| Integrations | `fips/integrations/fortigate_locate_get` | Register ×2, Activate ×2, Batch Locate ×2, Batch Get ×2 (full IPsec key retrieval), Revoke ×2, Destroy ×2 (binary TTLV / KMIP 1.0) | 10 |
+| Integrations | `fips/integrations/vast_data` | DiscoverVersions, Create (with OPN), AddAttribute ×3 (Name, ObjectGroup, OPN), Activate, Locate, Get, GetAttributes, ReKey, Locate, Get, GetAttributes (with OPN), Revoke, Destroy, Revoke, Destroy (JSON TTLV / KMIP 1.4) | 17 |
 | Integrations | `fips/integrations/kmip_1_3_symmetric` | Create, Activate, Get, Locate, Revoke, Destroy (binary TTLV / KMIP 1.3) | 6 |
 | Integrations | `fips/integrations/kmip_1_3_asymmetric` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.3) | 5 |
 | Integrations | `non-fips/integrations/mongodb` | Create, Locate, Get, Destroy (binary TTLV / KMIP 1.0) | 4 |
 | Integrations | `non-fips/integrations/pykmip` | DiscoverVersions, Create, CreateKeyPair, GetAttributes, Locate, Activate, Revoke, Destroy ×3 (binary TTLV / KMIP 1.2) | 11 |
+| Integrations | `non-fips/integrations/edb_tde_pykmip_variant` | Create, Activate, Encrypt (DEK wrap), Decrypt (DEK unwrap), Revoke, Destroy — EDB TDE pykmip variant | 6 |
+| Integrations | `non-fips/integrations/edb_tde_thales_variant` | Create, Activate, Locate, Get (key export), Revoke, Destroy — EDB TDE thales variant | 6 |
+| Integrations | `non-fips/integrations/edb_tde_key_rotation` | Create ×2, Activate ×2, Encrypt, Decrypt, Encrypt (re-wrap), Decrypt (verify), Revoke ×2, Destroy ×2 — EDB TDE key rotation | 12 |
 | **TLS Transport** | | | |
 | TLS | `tls/server_tls` | Create, Revoke, Destroy (HTTPS server TLS) | 3 |
 | TLS | `tls/mtls` | Create, Revoke, Destroy (mTLS client certificate auth) | 3 |
@@ -409,12 +413,10 @@ description = "Creates an AES-256 symmetric key and retrieves it via Get"
 # wire_format = "binary"
 
 # Optional: KMIP protocol version (default [2, 1])
-# Used to set the RequestHeader version and select KMIP 1.x vs 2.x serialization
-# kmip_version = [1, 4]
+# Used to set the RequestHeader version and select KMIP 1.x / 2.x / 3.x serialization
+# kmip_version = [3, 0]
 
 # Optional: named identities for multi-user (access control) tests.
-# Each identity specifies client TLS credentials for mTLS authentication.
-# On macOS, PKCS#12 is required (native-tls/Security.framework doesn't support PEM identity).
 # [identities.owner]
 # client_cert = "test_data/certificates/client_server/owner/owner.client.acme.com.crt"
 # client_key = "test_data/certificates/client_server/owner/owner.client.acme.com.key"
@@ -438,37 +440,28 @@ assert_success = true
 [steps.assert_fields]
 ObjectType = "SymmetricKey"             # assert specific TTLV tags in response
 
+# Batch requests: raw_request = true sends a complete RequestMessage as-is
+[[steps]]
+operation = "Batch Create+Query"
+request = "step_batch.json"             # must be a full RequestMessage JSON
+raw_request = true
+assert_success = true                   # asserts ALL BatchItem ResultStatus == Success
+
 # Error testing: assert failure and inspect reason
 [[steps]]
 operation = "Encrypt"
-request = "step3_encrypt_after_revoke.json"
+request = "step_encrypt_after_revoke.json"
 assert_success = false
-assert_error_reason = "PermissionDenied"           # match ResultReason tag
-# assert_error_contains = "partial message match"  # alternative: substring in ResultMessage
+assert_error_reason = "PermissionDenied"          # match ResultReason tag
+# assert_error_contains = "partial message match" # alternative: substring in ResultMessage
 
 # Negative assertions: verify fields are absent from response
 [steps.assert_fields_absent]
 fields = ["SensitiveField"]
 
-# Count assertions: verify exact number of occurrences of a tag
-# (useful for Locate responses — but only safe when the test owns the full DB state)
-[steps.assert_count]
-UniqueIdentifier = 2
-
 # Assert that a captured value appears among results (for multi-result Locate)
 [steps.assert_any_field]
 UniqueIdentifier = "{{key_id}}"
-
-# Negative value assertion: verify a specific value does NOT appear
-# (concurrency-safe alternative to assert_count for shared-server Locate tests)
-[steps.assert_none_field]
-UniqueIdentifier = "hsm::{{$HSM_SLOT_ID}}::key_that_should_be_invisible"
-
-# Best-effort (cleanup/setup) step — outcome is ignored regardless of success/failure
-[[steps]]
-operation = "Destroy"
-request = "cleanup_destroy.json"
-allow_failure = true
 ```
 
 ---
@@ -480,7 +473,10 @@ are sent directly to the `/kmip/2_1` endpoint. When `wire_format = "binary"`, th
 JSON is wrapped in a `RequestMessage` envelope, serialized to binary TTLV, and
 POSTed to `/kmip` with `Content-Type: application/octet-stream`.
 
-Binary-mode integration vectors use KMIP 1.4 `TemplateAttribute` format:
+When `raw_request = true`, the file IS the complete `RequestMessage` (used for
+batch requests and integration vectors requiring custom headers).
+
+Binary-mode integration vectors use KMIP 1.x `TemplateAttribute` format:
 
 ```json
 {
@@ -516,9 +512,7 @@ JSON-mode vectors use KMIP 2.1 `Attributes` format:
 }
 ```
 
-Placeholders use `{{variable_name}}` syntax and are substituted from captured values.
-Environment variables use `{{$ENV_VAR}}` syntax. Both work in request JSON files
-**and** in assertion values (`assert_fields`, `assert_any_field`, `assert_none_field`).
+Placeholders use `{{variable_name}}` syntax and are substituted from captured values:
 
 ```json
 {

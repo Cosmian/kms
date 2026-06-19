@@ -22,18 +22,24 @@ jobs:
           - percona
           - mariadb
           - psql
-          - otel_export
-          - google_cse
+          - otel
+          - google-cse
           - redis
           - pykmip
           - wasm
-          - aws_xks
-          - azure_ekm
+          - xks
+          - azure-ekm
           - ui
-          - gcp_cmek
+          - gcp-cmek
           - openssh
           - luks
+          - veracrypt
           - jose
+          - iris
+          - secret_vault
+          - secret_aws
+          - secret_azure
+          - secret_cosmian_kms
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -43,10 +49,10 @@ jobs:
           - type: pykmip
             features: fips
           # aws_xks relies on curl SigV4 + non-FIPS build flags
-          - type: aws_xks
+          - type: xks
             features: fips
           # azure_ekm is only run with non-fips
-          - type: azure_ekm
+          - type: azure-ekm
             features: fips
           # openssh PKCS#11 tests force non-fips (EdDSA / full algorithm set)
           - type: openssh
@@ -54,9 +60,37 @@ jobs:
           # luks disk-encryption PKCS#11 tests force non-fips
           - type: luks
             features: fips
+          # veracrypt disk-encryption PKCS#11 tests force non-fips
+          - type: veracrypt
+            features: fips
           # jose (REST crypto + jwcrypto interop) runs only with non-fips
           - type: jose
             features: fips
+          # iris requires non-fips (PKCS#12 + full TLS stack)
+          - type: iris
+            features: fips
+          # secret_cosmian_kms runs against a local KMS server — works with both fips and non-fips
+          # secret_vault, secret_aws, secret_azure require external services — run non-fips only
+          - type: secret_vault
+            features: fips
+          - type: secret_aws
+            features: fips
+          - type: secret_azure
+            features: fips
+        include:
+          # Docker services required per test type (types without an entry need no containers)
+          - type: psql
+            docker: postgres
+          - type: mysql
+            docker: mysql
+          - type: percona
+            docker: percona
+          - type: mariadb
+            docker: mariadb
+          - type: redis
+            docker: redis
+          - type: otel
+            docker: otel-collector jaeger
 
     steps:
       - name: Manual cleanup for extra space
@@ -75,6 +109,17 @@ jobs:
             connect-timeout = 15
             stalled-download-timeout = 15
             narinfo-cache-negative-ttl = 0
+
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
 
       - uses: actions/checkout@v6
         with:
@@ -97,9 +142,9 @@ jobs:
           done
 
       - name: Run docker containers
+        if: matrix.docker
         run: |
-          docker compose -h
-          docker compose up -d
+          docker compose up -d ${{ matrix.docker }}
 
       - name: Test
         env:
@@ -136,9 +181,32 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
+
+          # EDB Postgres Advanced Server TDE variables.
+          # When EDB_SUBSCRIPTION_TOKEN is set the test suite starts the real
+          # EDB Postgres 17 container (edb-tde service in docker-compose.yml)
+          # and runs a live end-to-end TDE scenario.  Without it the Docker
+          # test is skipped and only the PyKMIP/Thales KMIP simulations run.
+          # Register for a free token: https://www.enterprisedb.com/accounts/register
+          EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
+
+          # InterSystems IRIS mTLS integration test
+          IRIS_DOCKER_IMAGE: ${{ vars.IRIS_DOCKER_IMAGE || 'intersystemsdc/iris-community:latest' }}
+          IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
+
+          # AWS secret backend variables (secret_aws test type)
+          AWS_ACCESS_KEY_ID: ${{ secrets.KMS_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KMS_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.KMS_CI_AWS_REGION }}
+
+          # Azure Key Vault secret backend variables (secret_azure test type)
+          AZURE_TENANT_ID: ${{ secrets.KMS_CI_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
+          AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
         run: |
           set -ex
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test ${{ matrix.type }}
+          mise run test:${{ matrix.type }} --variant ${{ matrix.features }}
 
   hsm:
     name: HSM ${{ matrix.hsm-type }} - ${{ matrix.features }}
@@ -186,6 +254,17 @@ jobs:
             stalled-download-timeout = 15
             narinfo-cache-negative-ttl = 0
 
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
+
       - uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -221,7 +300,7 @@ jobs:
           # OVPN for Crypt2Pay HSM tests
           OVPN_CONF: ${{ secrets.OVPN_CONF }}
         run: |
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} test hsm ${{ matrix.hsm-type }}
+          mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
   windows-2022:
     uses: ./.github/workflows/test_windows.yml

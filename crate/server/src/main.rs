@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cosmian_kms_server::{
     config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
     core::KMS,
-    openssl_providers::safe_openssl_version_info,
+    openssl_providers::{cpu_features_info, safe_openssl_version_info},
     result::{KResult, KResultHelper},
 };
 use cosmian_logger::{TelemetryConfig, TracingConfig, info, tracing_init};
@@ -33,8 +33,28 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
+///
+/// On Windows, if the process was launched by the Service Control Manager, it
+/// dispatches to the Windows service entry point instead.
 #[tokio::main]
 async fn main() {
+    // On Windows, attempt to register with the SCM.  If the process was launched
+    // by the SCM, `try_run_as_service()` blocks until the service stops and then
+    // returns Ok(()).  If launched from a console, it returns Err (not an SCM
+    // launch) and we fall through to the normal interactive startup path.
+    #[cfg(windows)]
+    {
+        match cosmian_kms_server::windows_service::try_run_as_service() {
+            Ok(()) => {
+                // Service ran and stopped — exit cleanly.
+                return;
+            }
+            Err(_e) => {
+                // Not launched by the SCM — continue with normal console startup.
+            }
+        }
+    }
+
     if let Err(e) = run().await {
         eprintln!("Error: {e}");
         std::process::exit(1);
@@ -74,6 +94,45 @@ async fn run() -> KResult<()> {
         KMS::validate_otlp_url(url, &otel_config)?;
     }
 
+    // ── Pre-validate rolling log directory ──────────────────────────────────
+    // tracing-appender panics if the directory is not writable.  Gracefully
+    // disable file logging when the configured path cannot be used.
+    let log_to_file = clap_config.logging.rolling_log_dir.clone().and_then(|dir| {
+        // Attempt to create the directory hierarchy.
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            eprintln!(
+                "WARNING: Cannot create rolling log directory '{}': {e}. \
+                     File logging disabled. Use --rolling-log-dir or KMS_ROLLING_LOG_DIR \
+                     to specify an alternative writable path.",
+                dir.display()
+            );
+            return None;
+        }
+        // Verify write access by creating and removing a temporary probe file.
+        let probe = dir.join(".cosmian_kms_write_probe");
+        match std::fs::File::create(&probe) {
+            Ok(file) => {
+                drop(file);
+                std::fs::remove_file(&probe).ok();
+            }
+            Err(e) => {
+                eprintln!(
+                    "WARNING: Rolling log directory '{}' is not writable: {e}. \
+                         File logging disabled. Use --rolling-log-dir or KMS_ROLLING_LOG_DIR \
+                         to specify an alternative writable path.",
+                    dir.display()
+                );
+                return None;
+            }
+        }
+        let name = clap_config
+            .logging
+            .rolling_log_name
+            .clone()
+            .unwrap_or_else(|| "cosmian_kms".to_owned());
+        Some((dir, name))
+    });
+
     // Initialize the tracing system
     let _otel_guard = tracing_init(&TracingConfig {
         service_name: "cosmian_kms".to_owned(),
@@ -92,16 +151,7 @@ async fn run() -> KResult<()> {
         log_to_syslog: clap_config.logging.log_to_syslog,
         // Use safe rust_log configuration without environment variable setting
         rust_log: get_effective_rust_log(clap_config.logging.rust_log.clone(), info_only),
-        log_to_file: clap_config.logging.rolling_log_dir.clone().map(|dir| {
-            (
-                dir,
-                clap_config
-                    .logging
-                    .rolling_log_name
-                    .clone()
-                    .unwrap_or_else(|| "kms".to_owned()),
-            )
-        }),
+        log_to_file,
         with_ansi_colors: clap_config.logging.ansi_colors,
     });
 
@@ -124,6 +174,7 @@ async fn run() -> KResult<()> {
         env!("CARGO_PKG_VERSION")
     );
     info!("OpenSSL version: {ossl_version}, in {ossl_dir}, number: {ossl_number:x}");
+    info!("{}", cpu_features_info());
 
     // For an explanation of OpenSSL providers,
     //  https://docs.openssl.org/3.1/man7/crypto/#openssl-providers
@@ -295,6 +346,7 @@ mod tests {
             default_unwrap_type: None,
             non_revocable_key_id: None,
             privileged_users: None,
+            secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             print_default_config: false,
         };
 
@@ -308,6 +360,7 @@ hsm_model = ""
 hsm_admin = []
 hsm_slot = []
 hsm_password = []
+hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
 
@@ -333,6 +386,7 @@ tls_cipher_suites = "TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256"
 [http]
 port = 443
 hostname = "[hostname]"
+rate_limit_per_second = 100
 
 [proxy]
 proxy_url = "https://proxy.example.com:8080"
@@ -368,6 +422,7 @@ tmp_path = "[tmp path]"
 [logging]
 rust_log = "info,cosmian_kms=debug"
 otlp = "http://localhost:4317"
+otlp_allow_insecure = false
 quiet = false
 log_to_syslog = false
 rolling_log_dir = "[rolling log dir]"

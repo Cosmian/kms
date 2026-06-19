@@ -1,10 +1,40 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use clap_config_fallback::ConfigArgs;
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "linux")]
+#[must_use]
+pub fn get_default_rolling_log_dir() -> PathBuf {
+    PathBuf::from("/var/log/")
+}
+
+#[cfg(target_os = "windows")]
+#[must_use]
+pub fn get_default_rolling_log_dir() -> PathBuf {
+    // Use %LOCALAPPDATA%\Cosmian KMS Server which is guaranteed to exist and is
+    // writable by standard (non-admin) users.  Falls back to ProgramData only
+    // when the environment variable is missing (e.g. LocalSystem service account).
+    std::env::var("LOCALAPPDATA").map_or_else(
+        |_| PathBuf::from(r"C:\ProgramData\Cosmian KMS Server"),
+        |localappdata| PathBuf::from(localappdata).join("Cosmian KMS Server"),
+    )
+}
+
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn get_default_rolling_log_dir() -> PathBuf {
+    // Use ~/Library/Logs/ which is the standard per-user log directory on macOS
+    // and is writable without root.
+    std::env::var_os("HOME").map_or_else(
+        || PathBuf::from("/tmp"),
+        |home| PathBuf::from(home).join("Library/Logs"),
+    )
+}
+
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, Default, Args, Deserialize, Serialize, Clone)]
+#[derive(Debug, Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct LoggingConfig {
     /// An alternative to setting the `RUST_LOG` environment variable.
@@ -36,20 +66,21 @@ pub struct LoggingConfig {
     /// Log to syslog
     pub log_to_syslog: bool,
 
-    /// If set, daily rolling logs will be written to the specified directory
-    /// using the name specified by `rolling_log_name`: <rolling_log_name>.YYYY-MM-DD.
+    /// The directory for daily rolling logs: <rolling_log_name>.YYYY-MM-DD.
+    /// File logging is disabled unless this option is explicitly set.
+    /// Suggested paths:
+    ///   Linux: /var/log/
+    ///   Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
+    ///   macOS: ~/Library/Logs/
+    ///
+    /// WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
+    /// expanded. Use the fully-resolved path.
     #[clap(long, env("KMS_ROLLING_LOG_DIR"), verbatim_doc_comment)]
     pub rolling_log_dir: Option<PathBuf>,
 
-    /// If `rolling_log_dir` is set, this is the name of the rolling log file:
-    ///  <rolling_log_name>.YYYY-MM-DD.
-    /// Defaults to "kms" if not set.
-    #[clap(
-        long,
-        env("KMS_ROLLING_LOG_NAME"),
-        requires = "rolling_log_dir",
-        verbatim_doc_comment
-    )]
+    /// The name of the rolling log file: <rolling_log_name>.YYYY-MM-DD.
+    /// Defaults to `cosmian_kms` if not set.
+    #[clap(long, env("KMS_ROLLING_LOG_NAME"), verbatim_doc_comment)]
     pub rolling_log_name: Option<String>,
 
     /// Enable metering in addition to tracing when telemetry is enabled

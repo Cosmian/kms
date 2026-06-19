@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate ckms CLI markdown documentation"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Regenerating ckms markdown"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/docs/renew_ckms_markdown.sh"
+
+print_success "ckms markdown regenerated"

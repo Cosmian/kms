@@ -1,33 +1,13 @@
-mod access;
-mod attributes;
-mod auth_tests;
 mod aws;
 mod azure;
-mod certificates;
 #[cfg(feature = "non-fips")]
-mod cover_crypt;
-mod derive_key;
-pub(crate) mod digested;
-mod discover_versions;
-mod elliptic_curve;
-mod error_messages;
+mod certificates;
 mod google_cmd;
-mod hash;
-mod hsm;
-mod mac;
-mod mac_verify;
 mod metrics;
 mod oom;
-mod opaque_object;
-#[cfg(feature = "non-fips")]
-mod pqc;
-mod query;
-mod rng;
-mod rsa;
-mod secret_data;
-mod security;
 mod serialization;
 mod shared;
-mod symmetric;
+#[cfg(feature = "non-fips")]
+mod tokenize;
 #[cfg(feature = "non-fips")] // Since KMIP test vectors use non-FIPS algorithms such as ChaCha20
 mod xml;

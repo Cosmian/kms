@@ -8,6 +8,7 @@ mod idp_auth_config;
 mod kmip_policy_config;
 mod logging;
 mod proxy_config;
+pub mod secret_backends;
 mod socket_server_config;
 mod tls_config;
 mod ui_config;
@@ -20,13 +21,17 @@ pub use clap_config::{ClapConfig, get_default_config_path};
 pub use db::{DEFAULT_SQLITE_PATH, DatabaseType, MainDBConfig};
 pub use google_cse_config::GoogleCseConfig;
 pub use hsm_config::{HsmConfig, HsmModel};
-pub use http_config::HttpConfig;
+pub use http_config::{HttpConfig, default_cors_origins};
 pub use idp_auth_config::IdpAuthConfig;
 pub use kmip_policy_config::{
     AesKeySize, KmipAllowlistsConfig, KmipPolicyConfig, KmipPolicyId, RsaKeySize,
 };
-pub use logging::LoggingConfig;
+pub use logging::{LoggingConfig, get_default_rolling_log_dir};
 pub use proxy_config::ProxyConfig;
+pub use secret_backends::{
+    AwsSsmBackendConfig, AzureKvBackendConfig, CosmianKmsSecretConfig, SecretBackendConfig,
+    SecretBackendKind, VaultBackendConfig,
+};
 pub use socket_server_config::SocketServerConfig;
 pub use tls_config::TlsConfig;
 pub use ui_config::{OidcConfig, UiConfig, get_default_ui_dist_path};

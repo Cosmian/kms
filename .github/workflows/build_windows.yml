@@ -47,7 +47,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\windows\windows_ui.ps1
+          . .\.mise\scripts\windows\windows_ui.ps1
           Build-UI -Variant non-fips
 
       - name: Copy UI to server directory
@@ -67,13 +67,22 @@ jobs:
           vcpkg install --triplet x64-windows-static
           vcpkg integrate install
 
-          Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
+          # vcpkg manifest mode (vcpkg.json present) installs to vcpkg_installed/<triplet>
+          # relative to the project root, not under VCPKG_INSTALLATION_ROOT\packages.
+          $manifestDir = "vcpkg_installed\x64-windows-static"
+          if (Test-Path $manifestDir) {
+            Write-Host "vcpkg manifest-mode install found at: $manifestDir"
+            Get-ChildItem -Recurse $manifestDir
+          } else {
+            Write-Host "Falling back to classic-mode path under VCPKG_INSTALLATION_ROOT"
+            Get-ChildItem -Recurse "$env:VCPKG_INSTALLATION_ROOT\packages"
+          }
 
       - name: Build
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          . .\.github\scripts\windows\cargo_build.ps1
+          . .\.mise\scripts\windows\cargo_build.ps1
           BuildProject
 
       - name: Rename installers to new convention

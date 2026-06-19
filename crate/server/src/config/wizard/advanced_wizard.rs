@@ -48,6 +48,15 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         .interact_text()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
 
+    // Create the root data directory immediately for early validation.
+    let root_data_pb = PathBuf::from(&root_data_path);
+    std::fs::create_dir_all(&root_data_pb).map_err(|e| {
+        KmsError::ServerError(format!(
+            "Cannot create root data directory '{}': {e}",
+            root_data_pb.display()
+        ))
+    })?;
+
     #[cfg(not(target_os = "windows"))]
     let default_tmp = "/tmp".to_owned();
     #[cfg(target_os = "windows")]
@@ -61,6 +70,15 @@ pub fn configure_advanced(mut ui: UiConfig) -> KResult<AdvancedConfig> {
         .default(default_tmp)
         .interact_text()
         .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+
+    // Create the temporary directory immediately for early validation.
+    let tmp_pb = PathBuf::from(&tmp_path);
+    std::fs::create_dir_all(&tmp_pb).map_err(|e| {
+        KmsError::ServerError(format!(
+            "Cannot create temporary directory '{}': {e}",
+            tmp_pb.display()
+        ))
+    })?;
 
     let workspace = WorkspaceConfig {
         root_data_path: PathBuf::from(root_data_path),

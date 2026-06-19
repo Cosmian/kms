@@ -23,6 +23,7 @@ jobs:
     concurrency:
       group: docker-test-${{ matrix.features }}-${{ matrix.runner }}
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       packages: write
@@ -34,6 +35,14 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
 
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          df -h
+
       - name: Derive architecture from runner
         id: arch
         run: |
@@ -59,6 +68,17 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: recursive
+
+      - name: Install mise
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install mise
+          else
+            curl -fsSL https://mise.run | sh
+            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          fi
+          echo "MISE_YES=1" >> "$GITHUB_ENV"
+        shell: bash
 
       - name: Warm Nix store
         run: |
@@ -111,7 +131,7 @@ jobs:
       - name: Build and load Docker image
         id: build
         run: |
-          bash .github/scripts/nix.sh --variant ${{ matrix.features }} docker --load
+          mise run build:docker --variant ${{ matrix.features }} --load
 
       - name: Get image name and digest
         id: image_info
@@ -189,11 +209,19 @@ jobs:
       - name: Test Docker image
         env:
           DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
-          # RUN_ORACLE_TESTS: ${{ matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04' }}
           ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
           COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
         run: |
-          bash .github/scripts/test/test_docker_image.sh
+          mise run test:docker --variant ${{ matrix.features }}
+
+      - name: Oracle TDE remote upgrade and smoke test
+        if: matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'
+        env:
+          DOCKER_IMAGE_NAME: ${{ steps.pick_test_tag.outputs.test_tag }}
+          ORACLE_KMS_DEMO_USER_PASS: ${{ secrets.ORACLE_KMS_DEMO_USER_PASS }}
+          COSMIAN_HSM_PIN: ${{ secrets.COSMIAN_HSM_PIN }}
+        run: |
+          mise run test:docker-oracle
 
       - name: Disconnect from Netbird (non-fips amd64 only)
         if: always() && matrix.features == 'non-fips' && matrix.runner == 'ubuntu-24.04'

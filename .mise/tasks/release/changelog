@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate CHANGELOG.md via git-cliff"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Regenerating CHANGELOG.md"
+
+REPO_ROOT="$(get_repo_root)"
+bash "${REPO_ROOT}/.mise/scripts/release/git_cliff.sh"
+
+print_success "CHANGELOG.md updated"

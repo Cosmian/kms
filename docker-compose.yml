@@ -121,3 +121,90 @@ services:
       - 4317:4317 # OTLP gRPC receiver (host)
       - 4318:4318 # OTLP HTTP receiver (host)
       - 8889:8889 # Prometheus metrics endpoint (host)
+
+  # ── EDB Postgres Advanced Server 17 with Transparent Data Encryption ──────
+  #
+  # Requires:
+  #   - EDB subscription token (free): https://www.enterprisedb.com/accounts/register
+  #   - Login before use:
+  #       echo "$EDB_SUBSCRIPTION_TOKEN" | docker login --username k8s --password-stdin docker.enterprisedb.com
+  #   - Cosmian KMS running with KMIP port 15696
+  #   - EDB_MASTER_KEY_UID exported (UID of an Active AES-256 key in the KMS)
+  #
+  # Used automatically by:  mise run test:edb-tde --variant non-fips
+  # (when EDB_SUBSCRIPTION_TOKEN is set; the test script handles login and lifecycle)
+  edb-tde:
+    profiles:
+      - edb-tde
+    # Build locally to install PyKMIP (not shipped in the base image).
+    build:
+      context: .mise/scripts/edb_tde
+      dockerfile: Dockerfile.edb
+    # Base image is x86_64-only.
+    platform: linux/amd64
+    ports:
+      - 5444:5444
+    environment:
+      PGPASSWORD: ${EDB_PGPASSWORD:-kms_test}
+
+      # Called by initdb --data-encryption to seal the cluster DEK.
+      # Wire format: [16-byte IV][ciphertext]  (AES-256-CBC + PKCS5)
+      PGDATAKEYWRAPCMD: >-
+        python3 /usr/edb/kmip/client/edb_tde_kmip_client.py encrypt
+        --pykmip-config-file=/kmip-certs/pykmip.conf
+        --key-uid=${EDB_MASTER_KEY_UID:-}
+        --variant=pykmip
+        --out-file=%p
+
+      # Called by pg_ctl start to unseal the DEK on every restart.
+      PGDATAKEYUNWRAPCMD: >-
+        python3 /usr/edb/kmip/client/edb_tde_kmip_client.py decrypt
+        --pykmip-config-file=/kmip-certs/pykmip.conf
+        --key-uid=${EDB_MASTER_KEY_UID:-}
+        --variant=pykmip
+        --in-file=%p
+
+    # Startup script: runs initdb with TDE (calls the real edb_tde_kmip_client.py
+    # to wrap the cluster DEK) then starts postgres in the foreground.
+    command: [/bin/bash, /startup/edb_startup.sh]
+
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/kmip-certs/client.key:ro
+      - ./.mise/scripts/edb_tde/pykmip_docker.conf:/kmip-certs/pykmip.conf:ro
+      - ./.mise/scripts/edb_tde/edb_startup.sh:/startup/edb_startup.sh:ro
+
+    extra_hosts:
+      # Resolves to the Docker host (host.docker.internal is natively available
+      # on macOS/Windows Docker Desktop; on Linux Docker the special value
+      # "host-gateway" maps to the host IP).
+      - host.docker.internal:host-gateway
+
+  # InterSystems IRIS — mTLS integration test
+  # Started on demand with: docker compose up -d iris
+  # The profile keeps it out of the default `docker compose up -d` that runs
+  iris:
+    image: ${IRIS_DOCKER_IMAGE:-intersystemsdc/iris-community:latest}
+    container_name: ${IRIS_CONTAINER_NAME:-iris-kmip-test}
+    # The Community image is amd64-only; Rosetta handles this on Apple Silicon.
+    platform: linux/amd64
+    pull_policy: always
+    profiles:
+      - iris
+    ports:
+      - 52773:52773   # IRIS Management Portal
+      - 1972:1972     # IRIS SuperServer
+    volumes:
+      - ./test_data/certificates/client_server/ca/ca.crt:/iris-kmip-certs/ca.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.crt:/iris-kmip-certs/client.crt:ro
+      - ./test_data/certificates/client_server/owner/owner.client.acme.com.key:/iris-kmip-certs/client.key:ro
+    environment:
+      # Inject an ISC license key when provided (optional; Community image has a built-in key).
+      - ISC_PACKAGE_LICENSEKEY=${IRIS_LICENSE_KEY:-}
+    extra_hosts:
+      # Allow IRIS to reach the KMS running on the Docker host.
+      # The KMS server certificate CN is kmserver.acme.com, so IRIS TLS
+      # hostname verification requires this alias to resolve to the host.
+      - host.docker.internal:host-gateway
+      - kmserver.acme.com:host-gateway

@@ -281,7 +281,7 @@ Rolling file logging configuration.
 ```toml
 # Rolling file logging
 [logging]
-rolling_log_dir = "/var/log/cosmian"
+rolling_log_dir = "/var/log/"
 rolling_log_name = "kms"
 rust_log = "info,cosmian_kms_server=debug"
 ```
@@ -338,7 +338,7 @@ database_type = "mysql"
 database_url = "mysql://kms_user:secure_password@mysql.internal:3306/kms"
 
 [logging]
-rolling_log_dir = "/var/log/cosmian"
+rolling_log_dir = "/var/log/"
 rust_log = "warn,cosmian_kms_server=info"
 ```
 

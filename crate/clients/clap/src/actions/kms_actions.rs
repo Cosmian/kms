@@ -8,19 +8,57 @@ use cosmian_kms_client::{KmsClient, KmsClientConfig};
 #[cfg(feature = "non-fips")]
 use super::cover_crypt::CovercryptCommands;
 #[cfg(feature = "non-fips")]
+use super::fpe::FpeCommands;
+#[cfg(feature = "non-fips")]
 use super::pqc::PqcCommands;
+#[cfg(feature = "non-fips")]
+use super::tokenize::TokenizeCommands;
 use crate::{
     actions::{
         access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
         azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
-        console::Stdout, derive_key::DeriveKeyAction, elliptic_curves::EllipticCurveCommands,
-        google::GoogleCommands, hash::HashAction, login::LoginAction, mac::MacCommands,
-        opaque_object::OpaqueObjectCommands, rng::RngAction, rsa::RsaCommands,
-        secret_data::SecretDataCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        version::ServerVersionAction,
+        cng::CngCommands, console::Stdout, derive_key::DeriveKeyAction,
+        elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
+        login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands,
+        pkcs11::Pkcs11Commands, rng::RngAction, rsa::RsaCommands, secret_data::SecretDataCommands,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
+
+/// Print a labeled list of items from a Query response field.
+/// Does nothing if the option is `None` or the list is empty.
+fn print_query_list<T: std::fmt::Display>(label: &str, items: Option<Vec<T>>) -> KmsCliResult<()> {
+    if let Some(items) = items {
+        let s = items
+            .into_iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        if !s.is_empty() {
+            Stdout::new(&format!("{label}: {s}")).write()?;
+        }
+    }
+    Ok(())
+}
+
+/// Print a labeled count of items from a Query response field.
+/// Does nothing if the option is `None`.
+fn print_query_count<T>(label: &str, items: Option<Vec<T>>) -> KmsCliResult<()> {
+    if let Some(items) = items {
+        Stdout::new(&format!("{label}: {} item(s)", items.len())).write()?;
+    }
+    Ok(())
+}
+
+/// Print a labeled optional scalar value from a Query response.
+/// Does nothing if the option is `None`.
+fn print_query_value<T: std::fmt::Display>(label: &str, value: Option<T>) -> KmsCliResult<()> {
+    if let Some(v) = value {
+        Stdout::new(&format!("{label}: {v}")).write()?;
+    }
+    Ok(())
+}
 
 #[derive(Subcommand)]
 pub enum ServerCommands {
@@ -48,9 +86,20 @@ pub enum KmsActions {
     Cc(CovercryptCommands),
     #[cfg(feature = "non-fips")]
     #[command(subcommand)]
+    Fpe(FpeCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
     Pqc(PqcCommands),
+    #[cfg(feature = "non-fips")]
+    #[command(subcommand)]
+    Tokenize(TokenizeCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
+    /// Manage the Windows CNG Key Storage Provider (KSP).
+    ///
+    /// Register, unregister, or list keys in the Cosmian KMS CNG KSP.
+    #[command(subcommand)]
+    Cng(CngCommands),
     DeriveKey(DeriveKeyAction),
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
@@ -73,6 +122,11 @@ pub enum KmsActions {
     Rsa(RsaCommands),
     #[command(subcommand)]
     OpaqueObject(OpaqueObjectCommands),
+    /// Verify PKCS#11 shared library integration.
+    ///
+    /// Load a PKCS#11 shared object and exercise the standard API sequence.
+    #[command(subcommand)]
+    Pkcs11(Pkcs11Commands),
     #[command(subcommand)]
     SecretData(SecretDataCommands),
     #[command(subcommand)]
@@ -96,10 +150,16 @@ impl KmsActions {
             #[cfg(feature = "non-fips")]
             Self::Cc(action) => Box::pin(action.process(kms_rest_client)).await?,
             #[cfg(feature = "non-fips")]
+            Self::Fpe(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
             Self::Pqc(action) => Box::pin(action.process(kms_rest_client)).await?,
+            #[cfg(feature = "non-fips")]
+            Self::Tokenize(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Certificates(action) => {
                 Box::pin(action.process(kms_rest_client)).await?;
             }
+            Self::Cng(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Pkcs11(action) => action.process()?,
             Self::DeriveKey(action) => {
                 Box::pin(action.run(&kms_rest_client)).await?;
             }
@@ -145,7 +205,6 @@ impl KmsActions {
                 }
                 ServerCommands::Query => {
                     Box::pin(async move {
-                        // If query_function is None, ask all capabilities sequentially.
                         let all_funcs = [
                             QueryFunction::QueryOperations,
                             QueryFunction::QueryObjects,
@@ -172,123 +231,61 @@ impl KmsActions {
 
                             match func {
                                 QueryFunction::QueryOperations => {
-                                    let ops = resp
-                                        .operation
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .map(|o| o.to_string())
-                                        .collect::<Vec<_>>()
-                                        .join(", ");
-                                    if !ops.is_empty() {
-                                        Stdout::new(&format!("Supported operations: {ops}"))
-                                            .write()?;
-                                    }
+                                    print_query_list("Supported operations", resp.operation)?;
                                 }
                                 QueryFunction::QueryObjects => {
-                                    let objs = resp
-                                        .object_type
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .map(|t| t.to_string())
-                                        .collect::<Vec<_>>()
-                                        .join(", ");
-                                    if !objs.is_empty() {
-                                        Stdout::new(&format!("Supported object types: {objs}"))
-                                            .write()?;
-                                    }
+                                    print_query_list("Supported object types", resp.object_type)?;
                                 }
                                 QueryFunction::QueryServerInformation => {
-                                    if let Some(vendor) = resp.vendor_identification {
-                                        Stdout::new(&format!("Vendor identification: {vendor}"))
-                                            .write()?;
-                                    }
-                                    if let Some(info) = resp.server_information {
-                                        Stdout::new(&format!("Server information: {info}"))
-                                            .write()?;
-                                    }
+                                    print_query_value(
+                                        "Vendor identification",
+                                        resp.vendor_identification,
+                                    )?;
+                                    print_query_value(
+                                        "Server information",
+                                        resp.server_information,
+                                    )?;
                                 }
                                 QueryFunction::QueryApplicationNamespaces => {
-                                    let namespaces =
-                                        resp.application_namespaces.unwrap_or_default().join(", ");
-                                    if !namespaces.is_empty() {
-                                        Stdout::new(&format!(
-                                            "Application namespaces: {namespaces}"
-                                        ))
-                                        .write()?;
-                                    }
+                                    print_query_list(
+                                        "Application namespaces",
+                                        resp.application_namespaces,
+                                    )?;
                                 }
                                 QueryFunction::QueryExtensionList
                                 | QueryFunction::QueryExtensionMap => {
-                                    if let Some(exts) = resp.extension_information {
-                                        Stdout::new(&format!("Extensions: {} item(s)", exts.len()))
-                                            .write()?;
-                                    }
+                                    print_query_count("Extensions", resp.extension_information)?;
                                 }
                                 QueryFunction::QueryAttestationTypes => {
-                                    let types = resp
-                                        .attestation_types
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .map(|t| t.to_string())
-                                        .collect::<Vec<_>>()
-                                        .join(", ");
-                                    if !types.is_empty() {
-                                        Stdout::new(&format!("Attestation types: {types}"))
-                                            .write()?;
-                                    }
+                                    print_query_list("Attestation types", resp.attestation_types)?;
                                 }
                                 QueryFunction::QueryRNGs => {
-                                    if let Some(params) = resp.rng_parameters {
-                                        Stdout::new(&format!(
-                                            "RNG parameters: {} item(s)",
-                                            params.len()
-                                        ))
-                                        .write()?;
-                                    }
+                                    print_query_count("RNG parameters", resp.rng_parameters)?;
                                 }
                                 QueryFunction::QueryValidations => {
-                                    if let Some(vals) = resp.validation_information {
-                                        Stdout::new(&format!(
-                                            "Validation authorities: {} item(s)",
-                                            vals.len()
-                                        ))
-                                        .write()?;
-                                    }
+                                    print_query_count(
+                                        "Validation authorities",
+                                        resp.validation_information,
+                                    )?;
                                 }
                                 QueryFunction::QueryProfiles => {
-                                    if let Some(profiles) = resp.profiles_information {
-                                        Stdout::new(&format!(
-                                            "Profiles: {} item(s)",
-                                            profiles.len()
-                                        ))
-                                        .write()?;
-                                    }
+                                    print_query_count("Profiles", resp.profiles_information)?;
                                 }
                                 QueryFunction::QueryCapabilities
                                 | QueryFunction::QueryClientRegistrationMethods => {
-                                    if let Some(caps) = resp.capability_information {
-                                        let caps_str = caps
-                                            .into_iter()
-                                            .map(|c| c.to_string())
-                                            .collect::<Vec<_>>()
-                                            .join("; ");
-                                        if !caps_str.is_empty() {
-                                            Stdout::new(&format!("Capabilities: {caps_str}"))
-                                                .write()?;
-                                        }
-                                    }
+                                    print_query_list("Capabilities", resp.capability_information)?;
                                 }
                                 QueryFunction::QueryDefaultsInformation => {
-                                    if let Some(defs) = resp.defaults_information {
-                                        Stdout::new(&format!("Defaults information: {defs}"))
-                                            .write()?;
-                                    }
+                                    print_query_value(
+                                        "Defaults information",
+                                        resp.defaults_information,
+                                    )?;
                                 }
                                 QueryFunction::QueryStorageProtectionMasks => {
-                                    if let Some(psm) = resp.protection_storage_masks {
-                                        Stdout::new(&format!("Protection storage masks: {psm}"))
-                                            .write()?;
-                                    }
+                                    print_query_value(
+                                        "Protection storage masks",
+                                        resp.protection_storage_masks,
+                                    )?;
                                 }
                             }
                         }

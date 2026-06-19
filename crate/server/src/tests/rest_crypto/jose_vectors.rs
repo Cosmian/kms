@@ -20,6 +20,28 @@ use serde_json::{Value, json};
 
 use crate::{result::KResult, tests::test_utils};
 
+/// Returns `true` if this vector requires non-FIPS algorithms (e.g. OKP/EdDSA)
+/// and should be skipped when the `non-fips` feature is not enabled.
+#[cfg(not(feature = "non-fips"))]
+fn is_non_fips_vector(v: &Value) -> bool {
+    let kty = v
+        .get("key")
+        .and_then(|k| k.get("kty"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let alg = v
+        .get("algorithm")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            v.get("key")
+                .and_then(|k| k.get("alg"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or("");
+    // OKP (Ed25519, X25519) is not FIPS-approved
+    kty == "OKP" || alg == "EdDSA"
+}
+
 /// Root directory for JOSE test vectors (relative to workspace root).
 fn vectors_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -86,25 +108,14 @@ fn resolve_plaintext(request: &Value) -> Vec<u8> {
 
 /// Provision a key using `POST /v1/crypto/keys` and return `(kid, kid_public)`.
 ///
-/// For KAT vectors with existing key material (`key.k` present), falls back to
-/// the import helper (since `/v1/crypto/keys` import is not yet implemented).
+/// Both key generation (no material) and key import (material present via `k` or `d`)
+/// are handled by the REST endpoint.
 async fn provision_key<S, B>(app: &S, key: &Value) -> KResult<(String, Option<String>)>
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: actix_web::body::MessageBody,
 {
-    // KAT vectors with existing key material — use KMIP import directly
-    // (import via /v1/crypto/keys is not yet implemented)
-    if key.get("k").is_some() {
-        let key_b64 = key["k"].as_str().expect("key.k must be a string");
-        let key_bytes = URL_SAFE_NO_PAD
-            .decode(key_b64)
-            .expect("key.k must be valid base64url");
-        let kid = super::common::import_hmac_key(app, key_bytes).await?;
-        return Ok((kid, None));
-    }
-
-    // Generate key via POST /v1/crypto/keys
+    // All key requests (generate or import) go through POST /v1/crypto/keys
     let resp: Value = test_utils::post_json_with_uri(app, key, "/v1/crypto/keys").await?;
     let kid = resp["kid"]
         .as_str()
@@ -156,6 +167,7 @@ where
         "encrypt_decrypt_tamper_reject" => {
             run_encrypt_decrypt_tamper_reject(app, &v, &filename).await
         }
+        "unwrap_key_round_trip" => run_unwrap_key_round_trip(app, &v, &filename).await,
         "key_lifecycle" => run_key_lifecycle(app, &v, &filename).await,
         "expect_error" => run_expect_error(app, &v, &filename).await,
         unknown => panic!("Vector {filename}: unknown type '{unknown}'"),
@@ -536,6 +548,101 @@ where
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Unwrap key tests (RSA-OAEP → import CEK → encrypt/decrypt round-trip)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Run an unwrap-key round-trip vector:
+/// 1. Provision an RSA key pair
+/// 2. Encrypt with RSA-OAEP (wraps a fresh CEK with the public key)
+/// 3. Call `POST /v1/crypto/keys/unwrap` with the protected header + encrypted_key
+/// 4. Use the unwrapped symmetric key to encrypt/decrypt a payload
+async fn run_unwrap_key_round_trip<S, B>(app: &S, v: &Value, filename: &str) -> KResult<()>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: actix_web::body::MessageBody,
+{
+    let key = &v["key"];
+    let (kid, kid_public) = provision_key(app, key).await?;
+    let pub_kid = kid_public.unwrap_or_else(|| kid.clone());
+
+    let alg = v["algorithm"].as_str().expect("algorithm missing");
+    let enc_alg = v["enc"].as_str().unwrap_or("A256GCM");
+    let plaintext = resolve_plaintext(&v["request"]);
+    let plaintext_b64 = URL_SAFE_NO_PAD.encode(&plaintext);
+
+    // Step 1: Encrypt with RSA-OAEP → produces wrapped CEK
+    let enc_resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"kid": pub_kid, "alg": alg, "enc": enc_alg, "data": plaintext_b64}),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+
+    let protected = enc_resp["protected"]
+        .as_str()
+        .expect("missing protected in encrypt response");
+    let encrypted_key = enc_resp["encrypted_key"]
+        .as_str()
+        .expect("missing encrypted_key in encrypt response");
+
+    // Step 2: Unwrap the CEK via POST /v1/crypto/keys/unwrap
+    let unwrap_resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"protected": protected, "encrypted_key": encrypted_key}),
+        "/v1/crypto/keys/unwrap",
+    )
+    .await?;
+
+    let sym_kid = unwrap_resp["kid"]
+        .as_str()
+        .expect("unwrap response missing kid");
+    assert!(
+        !sym_kid.is_empty(),
+        "Vector {filename}: unwrap must return non-empty kid"
+    );
+    assert_eq!(
+        unwrap_resp["kty"].as_str(),
+        Some("oct"),
+        "Vector {filename}: unwrapped key must be symmetric (kty=oct)"
+    );
+    assert_eq!(
+        unwrap_resp["alg"].as_str(),
+        Some(enc_alg),
+        "Vector {filename}: unwrapped key alg must match enc"
+    );
+
+    // Step 3: Verify the unwrapped key works for encrypt + decrypt
+    let enc2_resp: Value = test_utils::post_json_with_uri(
+        app,
+        json!({"kid": sym_kid, "alg": "dir", "enc": enc_alg, "data": plaintext_b64}),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+
+    let dec_payload = json!({
+        "protected":  enc2_resp["protected"],
+        "iv":         enc2_resp["iv"],
+        "ciphertext": enc2_resp["ciphertext"],
+        "tag":        enc2_resp["tag"]
+    });
+    let dec_resp: Value =
+        test_utils::post_json_with_uri(app, dec_payload, "/v1/crypto/decrypt").await?;
+
+    let recovered = URL_SAFE_NO_PAD
+        .decode(dec_resp["data"].as_str().expect("missing data"))
+        .expect("base64 decode");
+    assert_eq!(
+        recovered, plaintext,
+        "Vector {filename}: decrypt with unwrapped key must yield original plaintext"
+    );
+
+    // Cleanup
+    delete_key(app, &kid).await;
+    delete_key(app, sym_kid).await;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Key lifecycle tests (create → use → delete → verify gone)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -556,12 +663,14 @@ where
         "Vector {filename}: POST /v1/crypto/keys must return non-empty kid"
     );
 
-    // Verify asymmetric keys return kid_public
+    // Verify asymmetric key-generation (no material provided) returns kid_public.
+    // Imported private keys (material present via 'd') do not create a paired public key.
     let kty = key["kty"].as_str().unwrap_or("oct");
-    if kty == "EC" || kty == "RSA" || kty == "OKP" {
+    let is_import = key.get("k").is_some() || key.get("d").is_some();
+    if (kty == "EC" || kty == "RSA" || kty == "OKP") && !is_import {
         assert!(
             kid_public.is_some(),
-            "Vector {filename}: asymmetric key must return kid_public"
+            "Vector {filename}: asymmetric generated key must return kid_public"
         );
     }
 
@@ -585,13 +694,15 @@ where
         }
         "sign" => {
             let sign_kid = &kid;
-            let verify_kid = kid_public.as_deref().expect("sign needs kid_public");
-            let resp: Value = test_utils::post_json_with_uri(
+            // For generated keys, verify with the public kid; for imports, use private kid
+            let verify_kid = kid_public.as_deref().unwrap_or(&kid);
+            let sign_result: KResult<Value> = test_utils::post_json_with_uri(
                 app,
                 json!({"kid": sign_kid, "alg": alg, "data": data_b64}),
                 "/v1/crypto/sign",
             )
-            .await?;
+            .await;
+            let resp = sign_result?;
             let protected = resp["protected"].as_str().expect("missing protected");
             let signature = resp["signature"].as_str().expect("missing signature");
 
@@ -823,10 +934,24 @@ async fn test_jose_vectors() -> KResult<()> {
     );
 
     let mut passed = 0;
+    #[allow(unused_mut)]
+    let mut skipped: usize = 0;
     let mut errors: Vec<String> = Vec::new();
 
     for path in &vectors {
         let filename = path.file_name().unwrap().to_string_lossy();
+
+        // Skip non-FIPS vectors when running in FIPS mode
+        #[cfg(not(feature = "non-fips"))]
+        {
+            let v = load_vector(path);
+            if is_non_fips_vector(&v) {
+                skipped += 1;
+                tracing::info!("Skipping non-FIPS vector: {filename}");
+                continue;
+            }
+        }
+
         match run_vector(&app, path).await {
             Ok(()) => {
                 passed += 1;
@@ -838,10 +963,10 @@ async fn test_jose_vectors() -> KResult<()> {
     }
 
     if errors.is_empty() {
-        eprintln!("JOSE vectors: {passed}/{} passed", vectors.len());
+        tracing::info!("JOSE vectors: {passed} passed, {skipped} skipped (non-FIPS), 0 failed");
     } else {
         panic!(
-            "JOSE vectors: {passed}/{} passed, {} failed:\n  {}",
+            "JOSE vectors: {passed}/{} passed, {skipped} skipped, {} failed:\n  {}",
             vectors.len(),
             errors.len(),
             errors.join("\n  ")

@@ -1,17 +1,17 @@
-use reqwest::{
-    Client,
-    header::{HeaderMap, HeaderName, HeaderValue},
-};
+use bytes::Bytes;
+use http::header::{HeaderMap, HeaderName, HeaderValue};
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
+use hyper_openssl::client::legacy::HttpsConnector;
+use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use serde::{Deserialize, Deserializer, Serialize};
 use tracing::{info, warn};
 
 use super::{
     Oauth2LoginConfig, ProxyParams,
-    error::{
-        HttpClientError,
-        result::{HttpClientResult, HttpClientResultHelper},
-    },
-    tls::build_tls_client,
+    error::{HttpClientError, result::HttpClientResult},
+    proxy::SmartConnector,
+    tls::build_ssl_connector,
 };
 
 /// Configuration for the HTTP client
@@ -206,16 +206,66 @@ impl<'de> Deserialize<'de> for HttpClientConfig {
     }
 }
 
+/// An HTTP response from the server.
+pub struct HttpResponse {
+    /// HTTP status code.
+    pub status: http::StatusCode,
+    /// Response body as raw bytes.
+    body: Bytes,
+}
+
+impl HttpResponse {
+    /// Deserialize the response body as JSON.
+    ///
+    /// # Errors
+    /// Returns an error if the body is not valid JSON for type `T`.
+    pub fn json<T: serde::de::DeserializeOwned>(&self) -> HttpClientResult<T> {
+        serde_json::from_slice(&self.body).map_err(|e| {
+            HttpClientError::Default(format!("Failed to deserialize response body as JSON: {e}"))
+        })
+    }
+
+    /// Return the response body as a UTF-8 string.
+    ///
+    /// # Errors
+    /// Returns an error if the body is not valid UTF-8.
+    pub fn text(&self) -> HttpClientResult<String> {
+        String::from_utf8(self.body.to_vec())
+            .map_err(|e| HttpClientError::Default(format!("Response body is not UTF-8: {e}")))
+    }
+
+    /// Return the raw response body bytes.
+    #[must_use]
+    pub const fn bytes(&self) -> &Bytes {
+        &self.body
+    }
+}
+
+/// The inner hyper client type used by [`HttpClient`].
+type InnerClient = Client<HttpsConnector<SmartConnector>, Full<Bytes>>;
+
 /// A struct implementing some of the 50+ operations a KMIP client should
 /// implement: <https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip>
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HttpClient {
     pub server_url: String,
-    pub client: Client,
+    client: InnerClient,
+    default_headers: HeaderMap,
+}
+
+impl std::fmt::Debug for HttpClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpClient")
+            .field("server_url", &self.server_url)
+            .finish_non_exhaustive()
+    }
 }
 
 impl HttpClient {
-    /// Instantiate a new HTTP(S) Client
+    /// Instantiate a new HTTP(S) Client backed by OpenSSL for TLS.
+    ///
+    /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.2.
+    ///
     /// # Errors
     /// Will return an error if the client cannot be instantiated
     pub fn instantiate(http_conf: &HttpClientConfig) -> Result<Self, HttpClientError> {
@@ -254,6 +304,7 @@ impl HttpClient {
             .map_or_else(|| http_conf.server_url.clone(), str::to_owned);
         info!("Using server URL: {}", server_url);
 
+        // Build default headers
         let mut headers = HeaderMap::new();
         if let Some(bearer_token) = http_conf.access_token.clone() {
             headers.insert(
@@ -283,55 +334,206 @@ impl HttpClient {
             }
         }
 
-        // Build a TLS client builder with native-tls backend compatible with TLS 1.3
-        // and 1.2
-        let mut builder = build_tls_client(http_conf)?;
+        // Build OpenSSL connector
+        let ssl_builder = build_ssl_connector(http_conf)?;
 
-        // Apply proxy settings if configured
-        if let Some(proxy_params) = &http_conf.proxy_params {
-            builder = configure_proxy(builder, proxy_params)?;
-        }
+        // Build the smart connector (handles proxy or direct connections)
+        let connector =
+            http_conf
+                .proxy_params
+                .as_ref()
+                .map_or_else(SmartConnector::direct, |proxy_params| {
+                    info!("Using proxy: {:?}", proxy_params);
+                    SmartConnector::with_proxy(proxy_params.clone())
+                });
 
-        // Build the client
+        // Wrap with HTTPS (OpenSSL TLS)
+        let https_connector =
+            HttpsConnector::with_connector(connector, ssl_builder).map_err(|e| {
+                HttpClientError::Default(format!("Failed to build HTTPS connector: {e}"))
+            })?;
+
+        // Build hyper client with connection pooling
+        let client = Client::builder(TokioExecutor::new()).build(https_connector);
+
         Ok(Self {
             server_url,
-            client: builder
-                .default_headers(headers)
-                .build()
-                .context("Reqwest client builder")?,
+            client,
+            default_headers: headers,
         })
     }
-}
 
-fn configure_proxy(
-    mut client_builder: reqwest::ClientBuilder,
-    proxy_params: &ProxyParams,
-) -> HttpClientResult<reqwest::ClientBuilder> {
-    // Apply proxy settings if configured
-    let mut proxy = reqwest::Proxy::all(proxy_params.url.clone()).map_err(|e| {
-        HttpClientError::Default(format!(
-            "Failed to configure the HTTPS proxy for HTTP client: {e}"
-        ))
-    })?;
-
-    if let Some(ref username) = proxy_params.basic_auth_username {
-        if let Some(ref password) = proxy_params.basic_auth_password {
-            proxy = proxy.basic_auth(username, password);
+    /// Apply the client's default headers to a request builder.
+    fn apply_default_headers(&self, mut builder: http::request::Builder) -> http::request::Builder {
+        for (name, value) in &self.default_headers {
+            builder = builder.header(name, value);
         }
-    } else if let Some(custom_auth_header) = &proxy_params.custom_auth_header {
-        proxy = proxy.custom_http_auth(HeaderValue::from_str(custom_auth_header).map_err(|e| {
-            HttpClientError::Default(format!(
-                "Failed to set custom HTTP auth header for HTTP client: {e}"
-            ))
-        })?);
-    }
-    if !proxy_params.exclusion_list.is_empty() {
-        proxy = proxy.no_proxy(reqwest::NoProxy::from_string(
-            &proxy_params.exclusion_list.join(","),
-        ));
+        builder
     }
 
-    info!("Overriding reqwest builder with proxy: {:?}", proxy);
-    client_builder = client_builder.proxy(proxy);
-    Ok(client_builder)
+    /// Send an HTTP GET request.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn get(&self, url: &str) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder().method("GET").uri(url);
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::new()))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build GET request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP GET request with query parameters serialized from `query`.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn get_with_query<Q: Serialize>(
+        &self,
+        url: &str,
+        query: &Q,
+    ) -> HttpClientResult<HttpResponse> {
+        let query_string = serde_urlencoded::to_string(query).map_err(|e| {
+            HttpClientError::Default(format!("Failed to serialize query params: {e}"))
+        })?;
+        let full_url = if query_string.is_empty() {
+            url.to_owned()
+        } else {
+            format!("{url}?{query_string}")
+        };
+        self.get(&full_url).await
+    }
+
+    /// Send an HTTP POST request with a JSON body.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_json<B: Serialize>(
+        &self,
+        url: &str,
+        body: &B,
+    ) -> HttpClientResult<HttpResponse> {
+        let json_bytes = serde_json::to_vec(body).map_err(|e| {
+            HttpClientError::Default(format!("Failed to serialize request body: {e}"))
+        })?;
+
+        let mut builder = http::Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("Content-Type", "application/json");
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::from(json_bytes)))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP POST request with raw bytes and a specified content type.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_bytes(
+        &self,
+        url: &str,
+        body: Vec<u8>,
+        content_type: &str,
+    ) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("Content-Type", content_type);
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::from(body)))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP POST request without a body.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_empty(&self, url: &str) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder().method("POST").uri(url);
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::new()))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP DELETE request with a JSON body.
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn delete_json<B: Serialize>(
+        &self,
+        url: &str,
+        body: &B,
+    ) -> HttpClientResult<HttpResponse> {
+        let json_bytes = serde_json::to_vec(body).map_err(|e| {
+            HttpClientError::Default(format!("Failed to serialize request body: {e}"))
+        })?;
+
+        let mut builder = http::Request::builder()
+            .method("DELETE")
+            .uri(url)
+            .header("Content-Type", "application/json");
+        builder = self.apply_default_headers(builder);
+        let request = builder
+            .body(Full::new(Bytes::from(json_bytes)))
+            .map_err(|e| {
+                HttpClientError::Default(format!("Failed to build DELETE request: {e}"))
+            })?;
+
+        self.send(request).await
+    }
+
+    /// Send an HTTP POST with form-urlencoded body (for `OAuth2` token exchange).
+    ///
+    /// # Errors
+    /// Returns an error if the request fails.
+    pub async fn post_form(
+        &self,
+        url: &str,
+        form_body: &str,
+        extra_headers: &HeaderMap,
+    ) -> HttpClientResult<HttpResponse> {
+        let mut builder = http::Request::builder()
+            .method("POST")
+            .uri(url)
+            .header("Content-Type", "application/x-www-form-urlencoded");
+        builder = self.apply_default_headers(builder);
+        for (name, value) in extra_headers {
+            builder = builder.header(name, value);
+        }
+        let request = builder
+            .body(Full::new(Bytes::from(form_body.to_owned())))
+            .map_err(|e| HttpClientError::Default(format!("Failed to build POST request: {e}")))?;
+
+        self.send(request).await
+    }
+
+    /// Send a prepared HTTP request and collect the response.
+    async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
+        let response: http::Response<Incoming> = self
+            .client
+            .request(request)
+            .await
+            .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?;
+
+        let status = response.status();
+        let body = response
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| HttpClientError::Default(format!("Failed to read response body: {e}")))?
+            .to_bytes();
+
+        Ok(HttpResponse { status, body })
+    }
 }

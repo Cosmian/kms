@@ -51,7 +51,7 @@ impl Default for KmsClientConfig {
     fn default() -> Self {
         Self {
             http_config: HttpClientConfig {
-                server_url: "http://0.0.0.0:9998".to_owned(),
+                server_url: "http://localhost:9998".to_owned(),
                 ..HttpClientConfig::default()
             },
             gmail_api_conf: None,
