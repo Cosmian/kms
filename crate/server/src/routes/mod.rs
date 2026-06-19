@@ -24,6 +24,7 @@ pub(crate) mod azure_ekm;
 pub(crate) mod crypto;
 pub mod google_cse;
 pub mod health;
+pub(crate) mod jwks;
 pub mod kmip;
 pub mod ms_dke;
 pub mod root_redirect;

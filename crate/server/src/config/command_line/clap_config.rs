@@ -9,8 +9,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::extra::taggin
 use serde::{Deserialize, Serialize};
 
 use super::{
-    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, KmipPolicyConfig, MainDBConfig,
-    WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
+    GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig,
+    MainDBConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
     ui_config::UiConfig,
 };
 use crate::{
@@ -73,6 +73,7 @@ impl Default for ClapConfig {
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
+            jwks_endpoint_config: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
         }
     }
@@ -238,6 +239,9 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(skip)]
     pub secret_backends: SecretBackendConfig,
+
+    #[command(flatten)]
+    pub jwks_endpoint_config: JwksEndpointConfig,
 }
 
 impl ClapConfig {

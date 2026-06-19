@@ -234,6 +234,7 @@ fn test_config_toml_round_trip_preserves_values() {
             rate_limit_per_second: None,
             cors_allowed_origins: None,
             server_workers: None,
+            jwks_enabled: false,
         },
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),

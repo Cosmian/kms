@@ -8,6 +8,7 @@ mod derive_key_tests;
 pub(crate) mod google_cse;
 mod health_endpoint;
 mod hsm;
+mod jwks_endpoint;
 mod kmip_endpoints;
 #[cfg(feature = "non-fips")]
 mod kmip_messages;

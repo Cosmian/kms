@@ -26,7 +26,7 @@ use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use super::google_cse::utils::google_cse_auth;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, MainDBConfig, ServerParams, SocketServerConfig, TlsConfig,
+        ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams, SocketServerConfig, TlsConfig
     },
     core::KMS,
     kms_bail,
@@ -107,6 +107,11 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
             google_cse_disable_tokens_validation: true,
             google_cse_incoming_url_whitelist: None,
             google_cse_migration_key: None,
+        },
+        http: HttpConfig::default(),
+        jwks_endpoint_config: crate::config::JwksEndpointConfig {
+            jwks_endpoint_enabled: true,
+            ..Default::default()
         },
         ..Default::default()
     }
@@ -229,6 +234,7 @@ pub(crate) async fn test_app(
         .app_data(Data::new(kms_server.clone()))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
+        .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
         .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)
@@ -302,6 +308,7 @@ pub(crate) async fn test_app_with_clap_config(
         .app_data(Data::new(kms_server.clone()))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
+        .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
         .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)

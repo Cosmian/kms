@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kms_server::{
-    config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
+    config::{ClapConfig, JwksEndpointConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
     core::KMS,
     openssl_providers::{cpu_features_info, safe_openssl_version_info},
     result::{KResult, KResultHelper},
@@ -218,8 +218,8 @@ mod tests {
     use cosmian_kms_server::{
         config::{
             AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
-            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
-            SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+            JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig,
+            ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
@@ -261,6 +261,7 @@ mod tests {
                 rate_limit_per_second: Some(100),
                 cors_allowed_origins: None,
                 server_workers: None,
+                jwks_enabled: false,
             },
             proxy: ProxyConfig {
                 proxy_url: Some("https://proxy.example.com:8080".to_owned()),
@@ -304,6 +305,7 @@ mod tests {
                 azure_ekm_ekm_vendor: String::new(),
                 azure_ekm_ekm_product: String::new(),
             },
+            jwks_endpoint_config: JwksEndpointConfig::default(),
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),

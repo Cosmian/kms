@@ -62,7 +62,7 @@ use crate::{
         azure_ekm, cli_archive_download, cli_archive_exists, crypto, get_hsm_status,
         get_server_info, get_version,
         google_cse::{self, GoogleCseConfig},
-        health,
+        health, jwks,
         kmip::{self, handle_ttlv_bytes},
         ms_dke, root_redirect, swagger,
         ui_auth::configure_auth_routes,
@@ -1053,6 +1053,29 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
             .service(get_version);
+
+        // JWKS endpoint: public, unauthenticated, CORS-open (partially).
+        // The scope prefix `/.well-known` is explicit so this scope does not conflict
+        // with the empty-prefix default_scope and its restrictive CORS configuration.
+        if kms_server_for_http.params.jwks_endpoint.jwks_endpoint_enabled {
+            warn!(
+                "JWKS endpoint enabled — all active public keys CREATED USING JOSE OR HAVING THE \"jwks\" tag will be publicly exposed (unauthenticated) at \
+                 `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served. \
+                 Ensure this is intentional. (TODO: updated this comment later)",
+                kms_server_for_http.params.jwks_endpoint.jwks_endpoint_max_keys
+            );
+            app = app.service(
+                web::scope("/.well-known")
+                    .wrap(
+                        // delibarate choice of exposing only what's needed
+                        // the CORS::permissive default is too permissive for this use case
+                        Cors::default()
+                            .allow_any_origin()
+                            .allowed_methods(vec!["GET"])
+                    )
+                    .service(jwks::get_jwks),
+            );
+        }
 
         // REST Native Crypto API — /v1/crypto/*
         let crypto_scope = web::scope("/v1/crypto")
