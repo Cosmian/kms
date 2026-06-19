@@ -415,7 +415,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.23.0"]
+          [default: "Cosmian KMS v5.24.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -533,7 +533,7 @@ Options:
 
       --backend <BACKEND>
           Possible values:
-          - vault:       `HashCorp` Vault KV-v2. Path format: `secret://<mount>/<path>[#<field>]`
+          - vault:       `HashiCorp` Vault KV-v2. Path format: `secret://<mount>/<path>[#<field>]`
           - aws-ssm:     AWS Systems Manager Parameter Store. Path format: `secret://<region>/<parameter-name>`
           - azure-kv:    Azure Key Vault. Path format: `secret://<vault-name>/secrets/<name>[/<version>]`
           - cosmian-kms: Another Cosmian KMS server (KMIP Get). Path format: `secret://<host>[:<port>]/<object-id>`
