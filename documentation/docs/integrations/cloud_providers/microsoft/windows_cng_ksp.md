@@ -248,7 +248,7 @@ alongside `ckms.exe`. Download and run the installer for your platform:
 ```powershell
 # Download the CLI installer (adjust the version number as needed)
 Invoke-WebRequest `
-    -Uri "https://package.cosmian.com/kms/5.23.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-cli-non-fips-static-openssl_5.23.0_x86_64.exe" `
+    -Uri "https://package.cosmian.com/kms/5.24.0/windows/x86_64/non-fips/static-openssl/cosmian-kms-cli-non-fips-static-openssl_5.24.0_x86_64.exe" `
     -OutFile "$env:TEMP\cosmian-kms-cli.exe"
 
 # Run the installer (accepts the default installation directory)
