@@ -382,28 +382,63 @@ pub struct CosmianLoginConfig {
     pub realm: String,
 }
 
+/// The next step the authentication server requires after a login attempt.
+///
+/// Mirrors the server-side `AuthenticationNextStep` enum, serialized as `PascalCase`
+/// string variants (e.g. `"TotpRequired"`).
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(super) enum AuthenticationNextStep {
+    /// Authentication succeeded; the session cookie is set.
+    Authenticated,
+    /// Server requires a TOTP code before granting the session.
+    TotpRequired,
+    /// The user's password has expired and must be changed before logging in.
+    ChangePassword,
+}
+
+/// JSON body returned by the authentication server on every login response.
+#[derive(Deserialize, Debug)]
+struct AuthenticationResult {
+    next_step: AuthenticationNextStep,
+}
+
+/// The outcome of a [`cosmian_login`] call.
+#[derive(Debug)]
+pub enum CosmianLoginStep {
+    /// Authentication succeeded. Contains the JWT extracted from the `_ea_` cookie.
+    Authenticated(String),
+    /// The server requires a TOTP code. Re-call [`cosmian_login`] with `totp_code: Some(...)`.
+    TotpRequired,
+}
+
 /// Login to a Cosmian authentication server using HTTP Basic credentials.
 ///
 /// Sends `POST {server_url}/login?realm={realm}` with an
-/// `Authorization: Basic <base64(username:password)>` header and returns the
-/// JWT value from the `_ea_` session cookie set in the response.
+/// `Authorization: Basic <base64(username:password)>` header.
 ///
-/// The server sets a `Set-Cookie: _ea_=<JWT>; HttpOnly; Secure; ...` header.
-/// The JWT is extracted and returned as a plain string, matching the same
-/// token-storage mechanism used by the `login oauth` subcommand: the caller
-/// stores it in `http_config.access_token` and it is forwarded as a Bearer
-/// token on every subsequent request.
+/// If `totp_code` is `Some`, it is included in the JSON body so that TOTP
+/// verification is completed in a single request. Pass `None` on the first
+/// call; if the server responds with [`CosmianLoginStep::TotpRequired`],
+/// prompt the user and re-call with the code.
+///
+/// On success the JWT is extracted from the `Set-Cookie: _ea_=<JWT>` header
+/// and returned inside [`CosmianLoginStep::Authenticated`]. The caller stores
+/// it in `http_config.access_token` and forwards it as a Bearer token on every
+/// subsequent KMS request.
 ///
 /// # Errors
 ///
 /// Returns [`HttpClientError`] if the HTTP request fails, the server responds
-/// with a non-2xx status, or the `_ea_` cookie is absent from the response.
+/// with a non-2xx status, the password has expired, or the `_ea_` cookie is
+/// absent from a successful response.
 pub async fn cosmian_login(
     config: &CosmianLoginConfig,
     username: &str,
     password: &str,
+    // TODO: remove accept_invalid_certs
     accept_invalid_certs: bool,
-) -> HttpClientResult<String> {
+    totp_code: Option<&str>,
+) -> HttpClientResult<CosmianLoginStep> {
     /// Name of the session cookie set by the Cosmian authentication server.
     const COSMIAN_SESSION_COOKIE: &str = "_ea_";
 
@@ -413,21 +448,24 @@ pub async fn cosmian_login(
         config.realm
     );
 
+    let body = totp_code.map_or_else(
+        || "{}".to_owned(),
+        |code| format!(r#"{{"totp_code":"{code}"}}"#),
+    );
+
     let client = reqwest::Client::builder()
+        // TODO: remove accept_invalid_certs
         .danger_accept_invalid_certs(accept_invalid_certs)
         .build()
-        .map_err(|e| HttpClientError::Default(format!("Failed to build reqwest client: {e:?}")))?
-        ;
+        .map_err(|e| HttpClientError::Default(format!("Failed to build reqwest client: {e:?}")))?;
     let response = client
         .post(&url)
         .basic_auth(username, Some(password))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body("{}")
+        .body(body)
         .send()
         .await
-        .map_err(|e| {
-            HttpClientError::Default(format!("Cosmian login request failed: {e:?}"))
-        })?;
+        .map_err(|e| HttpClientError::Default(format!("Cosmian login request failed: {e:?}")))?;
 
     let status = response.status();
     if !status.is_success() {
@@ -440,10 +478,32 @@ pub async fn cosmian_login(
         )));
     }
 
+    // Collect headers before consuming the response body.
+    let headers = response.headers().clone();
+
+    // Parse the JSON body to determine the authentication next step.
+    let body_bytes = response.bytes().await.map_err(|e| {
+        HttpClientError::Default(format!("Failed to read login response body: {e}"))
+    })?;
+    let result: AuthenticationResult = serde_json::from_slice(&body_bytes)
+        .map_err(|e| HttpClientError::Default(format!("Failed to parse login response: {e}")))?;
+
+    match result.next_step {
+        AuthenticationNextStep::TotpRequired => return Ok(CosmianLoginStep::TotpRequired),
+        AuthenticationNextStep::ChangePassword => {
+            return Err(HttpClientError::Default(
+                "Your password has expired. Please change it via the Cosmian authentication \
+                 server before logging in."
+                    .to_owned(),
+            ));
+        }
+        AuthenticationNextStep::Authenticated => {}
+    }
+
     // The access token is delivered via `Set-Cookie: _ea_=<JWT>; ...`.
     // There may be multiple Set-Cookie headers; find the first one whose
     // cookie name is exactly `_ea_`.
-    for header_value in response.headers().get_all(reqwest::header::SET_COOKIE) {
+    for header_value in headers.get_all(reqwest::header::SET_COOKIE) {
         let raw = header_value
             .to_str()
             .map_err(|e| HttpClientError::Default(format!("invalid Set-Cookie header: {e}")))?;
@@ -455,7 +515,7 @@ pub async fn cosmian_login(
         let name_value = raw.split(';').next().unwrap_or(raw);
         if let Some((name, value)) = name_value.split_once('=') {
             if name.trim() == COSMIAN_SESSION_COOKIE {
-                return Ok(value.trim().to_owned());
+                return Ok(CosmianLoginStep::Authenticated(value.trim().to_owned()));
             }
         }
     }

@@ -123,17 +123,13 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     }
 
     if selected.contains(&2) {
-        println!(
-            "  Configure the Cosmian authentication server."
-        );
+        println!("  Configure the Cosmian authentication server.");
         let server_url: String = Input::with_theme(&theme)
             .with_prompt("Cosmian auth server URL (e.g. https://auth.example.com)")
             .interact_text()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
         let jwks_uri: String = Input::with_theme(&theme)
-            .with_prompt(
-                "JWKS URI (leave blank to use <server_url>/.well-known/jwks.json)",
-            )
+            .with_prompt("JWKS URI (leave blank to use <server_url>/.well-known/jwks.json)")
             .allow_empty(true)
             .interact_text()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;

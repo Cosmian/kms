@@ -734,7 +734,10 @@ impl fmt::Debug for ClapConfig {
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
         let x = if self.cosmian_auth.is_enabled() {
-            x.field("cosmian_auth_server_url", &self.cosmian_auth.cosmian_auth_server_url)
+            x.field(
+                "cosmian_auth_server_url",
+                &self.cosmian_auth.cosmian_auth_server_url,
+            )
         } else {
             x
         };

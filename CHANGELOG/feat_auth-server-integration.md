@@ -1,5 +1,13 @@
 ## Features
 
+- **`ckms login cosmian` TOTP support**: `ckms login cosmian` now handles accounts with TOTP enabled on the Cosmian authentication server.
+  - `cosmian_login()` accepts an optional `totp_code: Option<&str>` parameter; includes it in the JSON request body when provided.
+  - Parses the server's `AuthenticationResult` JSON (`next_step`: `Authenticated` / `TotpRequired` / `ChangePassword`) before extracting the `_ea_` session cookie, replacing the previous cookie-only detection that produced a confusing error on TOTP-protected accounts.
+  - `CosmianLoginStep` return enum distinguishes `Authenticated(token)` from `TotpRequired`.
+  - On `TotpRequired`, the CLI prompts interactively (`dialoguer::Input`) and re-submits; fails with a clear error in non-TTY environments.
+  - `ChangePassword` returns an actionable error message instead of a silent failure.
+  - Add `dialoguer` workspace dependency to `cosmian_kms_cli_actions`.
+
 - **`ckms login cosmian`**: implement Cosmian authentication server login via `POST /login?realm=<realm>` with HTTP Basic credentials (`Authorization: Basic <base64(username:password)>`).
   - Add `CosmianLoginConfig` struct (`server_url`, `realm`) to `cosmian_kms_client`.
   - Add `cosmian_conf` field to `HttpClientConfig` (separate from `oauth2_conf`).
