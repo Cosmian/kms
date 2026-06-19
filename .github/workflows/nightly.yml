@@ -1,0 +1,21 @@
+---
+name: Packaging
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+    tags:
+      - '**'
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 1 * * * # Daily at 1 AM
+
+jobs:
+  packaging:
+    uses: ./.github/workflows/packaging.yml
+    secrets: inherit
+    with:
+      toolchain: 1.91.0
