@@ -39,7 +39,7 @@ jobs:
       - name: Clean workspace (fix self-hosted runner permission issues)
         run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
