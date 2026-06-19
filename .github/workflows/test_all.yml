@@ -227,6 +227,8 @@ jobs:
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
   windows-2022:
+    # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
     uses: ./.github/workflows/test_windows.yml
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -237,7 +239,6 @@ jobs:
     needs:
       - test-nix
       - hsm
-      - windows-2022
     uses: ./.github/workflows/cargo-publish.yml
     with:
       toolchain: 1.91.0
@@ -247,5 +248,6 @@ jobs:
   cleanup:
     needs:
       - cargo-publish
+    if: always()
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit
