@@ -676,32 +676,31 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Determine if API Token Auth should be used for authentication.
     let use_api_token_auth = kms_server.params.api_token_id.is_some();
     // Determine if Cosmian Auth Server should be used for authentication.
-    let (use_cosmian_auth, cosmian_auth_jwks_manager) = if let Some(ref cosmian_cfg) =
-        kms_server.params.cosmian_auth_config
-    {
-        let jwks_uri = cosmian_cfg.jwks_uri().ok_or_else(|| {
-            KmsError::ServerError(
-                "Cosmian auth is enabled but no server URL is configured".to_owned(),
-            )
-        })?;
-        let proxy_params = kms_server.params.proxy_params.clone();
-        let mgr = Arc::new(
-            JwksManager::new_with_options(
-                vec![jwks_uri],
-                proxy_params.as_ref(),
-                cosmian_cfg.cosmian_auth_accept_invalid_certs,
-            )
-            .await
-            .map_err(|e| {
-                KmsError::ServerError(format!(
-                    "Failed to initialise Cosmian auth JWKS manager: {e}"
-                ))
-            })?,
-        );
-        (true, Some(mgr))
-    } else {
-        (false, None)
-    };
+    let (use_cosmian_auth, cosmian_auth_jwks_manager) =
+        if let Some(ref cosmian_cfg) = kms_server.params.cosmian_auth_config {
+            let jwks_uri = cosmian_cfg.jwks_uri().ok_or_else(|| {
+                KmsError::ServerError(
+                    "Cosmian auth is enabled but no server URL is configured".to_owned(),
+                )
+            })?;
+            let proxy_params = kms_server.params.proxy_params.clone();
+            let mgr = Arc::new(
+                JwksManager::new_with_options(
+                    vec![jwks_uri],
+                    proxy_params.as_ref(),
+                    cosmian_cfg.cosmian_auth_accept_invalid_certs,
+                )
+                .await
+                .map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "Failed to initialise Cosmian auth JWKS manager: {e}"
+                    ))
+                })?,
+            );
+            (true, Some(mgr))
+        } else {
+            (false, None)
+        };
 
     // Determine the address to bind the server to.
     let address = format!(

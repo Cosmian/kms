@@ -100,8 +100,9 @@ async fn validate_cosmian_token(
     // In test/insecure builds skip signature validation — decode only.
     #[cfg(any(test, feature = "insecure"))]
     {
-        let token_data = dangerous::insecure_decode::<CosmianClaims>(token)
-            .map_err(|e| KmsError::Unauthorized(format!("Cosmian auth: cannot decode token: {e}")))?;
+        let token_data = dangerous::insecure_decode::<CosmianClaims>(token).map_err(|e| {
+            KmsError::Unauthorized(format!("Cosmian auth: cannot decode token: {e}"))
+        })?;
         Ok(AuthenticatedUser {
             username: token_data.claims.sub,
         })

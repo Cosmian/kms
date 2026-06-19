@@ -35,7 +35,12 @@ pub struct CosmianAuthConfig {
     /// Accept invalid or self-signed TLS certificates when fetching the JWKS.
     ///
     /// **Development and testing only.** Never set this in production.
-    #[clap(long, env = "KMS_COSMIAN_AUTH_ACCEPT_INVALID_CERTS", default_value = "false", verbatim_doc_comment)]
+    #[clap(
+        long,
+        env = "KMS_COSMIAN_AUTH_ACCEPT_INVALID_CERTS",
+        default_value = "false",
+        verbatim_doc_comment
+    )]
     pub cosmian_auth_accept_invalid_certs: bool,
 }
 
@@ -54,9 +59,9 @@ impl CosmianAuthConfig {
     #[must_use]
     pub fn jwks_uri(&self) -> Option<String> {
         self.cosmian_auth_server_url.as_ref().map(|url| {
-            self.cosmian_auth_jwks_uri.clone().unwrap_or_else(|| {
-                format!("{}/.well-known/jwks.json", url.trim_end_matches('/'))
-            })
+            self.cosmian_auth_jwks_uri
+                .clone()
+                .unwrap_or_else(|| format!("{}/.well-known/jwks.json", url.trim_end_matches('/')))
         })
     }
 }

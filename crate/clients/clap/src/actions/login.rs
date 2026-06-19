@@ -1,8 +1,11 @@
 use clap::Parser;
 use cosmian_kms_client::{
     KmsClientConfig,
-    reexport::cosmian_http_client::{CosmianLoginConfig, LoginState, cosmian_login},
+    reexport::cosmian_http_client::{
+        CosmianLoginConfig, CosmianLoginStep, LoginState, cosmian_login,
+    },
 };
+use dialoguer::Input;
 
 use crate::error::{KmsCliError, result::KmsCliResult};
 
@@ -68,7 +71,9 @@ impl LoginAction {
                 println!("Browse to: {}", state.auth_url);
                 let access_token = state.finalize().await?;
 
-                println!("\nSuccess! The access token was saved in the KMS configuration (in memory)");
+                println!(
+                    "\nSuccess! The access token was saved in the KMS configuration (in memory)"
+                );
 
                 Ok(access_token)
             }
@@ -82,15 +87,55 @@ impl LoginAction {
                         )
                     })?;
 
-                let access_token = cosmian_login(
+                let accept_invalid_certs = config.http_config.accept_invalid_certs;
+
+                // First attempt: send without a TOTP code.
+                let access_token = match cosmian_login(
                     cosmian_conf,
                     username,
                     password,
-                    config.http_config.accept_invalid_certs,
+                    accept_invalid_certs,
+                    None,
                 )
-                .await?;
+                .await?
+                {
+                    CosmianLoginStep::Authenticated(token) => token,
+                    CosmianLoginStep::TotpRequired => {
+                        // Prompt the user for their TOTP code, then re-submit.
+                        let code: String = Input::new()
+                            .with_prompt("TOTP code")
+                            .interact_text()
+                            .map_err(|e| {
+                                KmsCliError::Default(format!(
+                                    "Server requires TOTP but no interactive terminal is \
+                                     available: {e}"
+                                ))
+                            })?;
 
-                println!("\nSuccess! The access token was saved in the KMS configuration (in memory)");
+                        match cosmian_login(
+                            cosmian_conf,
+                            username,
+                            password,
+                            accept_invalid_certs,
+                            Some(&code),
+                        )
+                        .await?
+                        {
+                            CosmianLoginStep::Authenticated(token) => token,
+                            CosmianLoginStep::TotpRequired => {
+                                return Err(KmsCliError::Default(
+                                    "TOTP code rejected by the server. Check that your \
+                                     authenticator app is synchronized."
+                                        .to_owned(),
+                                ));
+                            }
+                        }
+                    }
+                };
+
+                println!(
+                    "\nSuccess! The access token was saved in the KMS configuration (in memory)"
+                );
 
                 Ok(access_token)
             }
