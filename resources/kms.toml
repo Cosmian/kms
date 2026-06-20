@@ -38,6 +38,19 @@ default_username = "admin"
 #
 # UIDs for the above: hsm::utimaco::0::<key_id>, hsm::utimaco::1::<key_id>
 
+# ── Key Rotation & Keyset Management ────────────────────────────────────────
+# Background auto-rotation check interval (seconds).
+# Set to 0 (default) to disable the auto-rotation background task.
+# When enabled, must be at least 60 seconds to avoid excessive database churn.
+# auto_rotation_check_interval_secs = 0
+
+# Depth at which a keyset chain decryption triggers a warning.
+# Keyset chain traversal is unbounded (stopped only by cycle detection);
+# this threshold emits a server-side warning and returns the depth as
+# the X-KMS-Keyset-Depth HTTP header so clients can flag stale ciphertexts.
+# Default: 5.
+# keyset_warn_depth = 5
+
 [http]
 port = 9998
 hostname = "0.0.0.0"

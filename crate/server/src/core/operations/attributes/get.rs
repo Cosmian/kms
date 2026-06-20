@@ -565,7 +565,6 @@ pub(crate) async fn get_attributes(
     res.rotate_date = attributes.rotate_date;
     res.rotate_generation = attributes.rotate_generation;
     res.rotate_interval = attributes.rotate_interval;
-    res.rotate_latest = attributes.rotate_latest;
     res.rotate_name.clone_from(&attributes.rotate_name);
     res.rotate_offset = attributes.rotate_offset;
 

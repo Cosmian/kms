@@ -552,7 +552,6 @@ pub(crate) fn update_old_key_after_rekey(old_attrs: &mut Attributes, new_uid: &s
 /// - `rotate_generation` = old value + 1
 /// - `rotate_date` = now
 /// - `rotate_interval` = 0 (manual rekey does not inherit the policy)
-/// - `rotate_latest` = true (this is the newest key in the chain)
 /// - `rotate_name` = inherited from old key (required for keyset resolution)
 /// - `rotate_offset` = None (cleared for manual rekey)
 pub(crate) fn set_rotation_metadata_on_new_key(
@@ -563,7 +562,6 @@ pub(crate) fn set_rotation_metadata_on_new_key(
     new_attrs.rotate_date = Some(time_normalize()?);
     // Manual rekey: do not inherit the rotation policy — user must re-arm explicitly
     new_attrs.rotate_interval = Some(0);
-    new_attrs.rotate_latest = Some(true);
     // Inherit rotate_name so keyset resolution (name@latest, bare name) can find the new key
     new_attrs.rotate_name.clone_from(&old_attrs.rotate_name);
     new_attrs.rotate_offset = None;
@@ -572,11 +570,29 @@ pub(crate) fn set_rotation_metadata_on_new_key(
 
 /// Clear rotation flags on the **old** key after a rekey.
 ///
-/// - `rotate_latest` = false (no longer the newest)
 /// - `rotate_interval` = 0 (prevent the scheduler from picking it up again)
 pub(crate) const fn clear_rotation_flags_on_old_key(old_attrs: &mut Attributes) {
-    old_attrs.rotate_latest = Some(false);
     old_attrs.rotate_interval = Some(0);
+}
+
+/// Returns `true` if `attrs` represents the latest generation in its named keyset.
+///
+/// The latest key is the one with the highest `rotate_generation` value for the
+/// given `rotate_name`. If the key has no `rotate_name` it is trivially the latest.
+pub(crate) async fn is_keyset_latest(
+    kms: &KMS,
+    uid: &str,
+    attrs: &Attributes,
+    user: &str,
+) -> KResult<bool> {
+    let Some(name) = attrs.rotate_name.as_deref() else {
+        return Ok(true);
+    };
+    let current_gen = attrs.rotate_generation.unwrap_or(0);
+    let all = kms.database.find_by_rotate_name(name, None, user).await?;
+    Ok(!all.iter().any(|(other_uid, other_attrs)| {
+        other_uid != uid && other_attrs.rotate_generation.unwrap_or(0) > current_gen
+    }))
 }
 
 /// Enforce privileged-user restriction for rekey operations that create new keys.

@@ -184,11 +184,7 @@ pub(crate) fn parse_keyset_identifier(identifier: &str) -> Option<KeysetRef> {
 
 /// Resolve a keyset identifier to a single UID (for encrypt/sign operations).
 ///
-/// For `@latest` or `Bare` mode, resolves to the key with `rotate_latest=true`.
-/// If no key has `rotate_latest=true`, falls back to finding any key with that
-/// `rotate_name` and picks the one with the highest generation (handles the case
-/// where a key has `rotate_name` set but hasn't been rotated yet).
-///
+/// For `@latest` or `Bare` mode, resolves to the key with the highest `rotate_generation`.
 /// For `@first` or `@N`, resolves to the key with the matching generation.
 ///
 /// Returns `None` if the keyset name doesn't match any object.
@@ -197,26 +193,16 @@ pub(crate) async fn resolve_keyset_to_single_uid(
     kms: &KMS,
     user: &str,
 ) -> KResult<Option<String>> {
-    let (generation, latest) = match &keyset_ref.version {
-        KeysetVersion::Latest | KeysetVersion::Bare => (None, Some(true)),
-        KeysetVersion::First => (Some(0), None),
-        KeysetVersion::Generation(n) => (Some(*n), None),
+    let generation = match &keyset_ref.version {
+        KeysetVersion::Latest | KeysetVersion::Bare => None,
+        KeysetVersion::First => Some(0),
+        KeysetVersion::Generation(n) => Some(*n),
     };
 
-    let mut results = kms
+    let results = kms
         .database
-        .find_by_rotate_name(&keyset_ref.name, generation, latest, user)
+        .find_by_rotate_name(&keyset_ref.name, generation, user)
         .await?;
-
-    // Fallback: if looking for @latest but no key has rotate_latest=true,
-    // search by name only and pick the highest generation. This handles keys
-    // that have rotate_name set but haven't been rotated yet.
-    if results.is_empty() && latest == Some(true) {
-        results = kms
-            .database
-            .find_by_rotate_name(&keyset_ref.name, None, None, user)
-            .await?;
-    }
 
     match results.len() {
         0 => Ok(None),
@@ -239,9 +225,9 @@ pub(crate) async fn resolve_keyset_to_single_uid(
 
 /// Walk the keyset rotation chain from the latest key backward.
 ///
-/// Starts from the key with `rotate_latest=true` for the given `rotate_name`,
-/// then follows `ReplacedObjectLink` backward, collecting UIDs in newest-to-oldest
-/// order.
+/// Resolves the key with the highest `rotate_generation` for the given
+/// `rotate_name`, then follows `ReplacedObjectLink` backward, collecting UIDs
+/// in newest-to-oldest order.
 ///
 /// Stops when:
 /// - No more `ReplacedObjectLink` is found (reached the original key)
@@ -257,19 +243,11 @@ pub(crate) async fn walk_keyset_chain(
     kms: &KMS,
     user: &str,
 ) -> KResult<Vec<String>> {
-    // Find the latest key in the chain (prefer rotate_latest=true)
-    let mut results = kms
+    // Find all members of the keyset and pick the one with the highest generation.
+    let results = kms
         .database
-        .find_by_rotate_name(keyset_name, None, Some(true), user)
+        .find_by_rotate_name(keyset_name, None, user)
         .await?;
-
-    // Fallback: if no key has rotate_latest=true, search by name only
-    if results.is_empty() {
-        results = kms
-            .database
-            .find_by_rotate_name(keyset_name, None, None, user)
-            .await?;
-    }
 
     let Some((latest_uid, _)) = results
         .into_iter()
@@ -283,7 +261,7 @@ pub(crate) async fn walk_keyset_chain(
     if latest_uid.starts_with("hsm::") {
         let all_results = kms
             .database
-            .find_by_rotate_name(keyset_name, None, None, user)
+            .find_by_rotate_name(keyset_name, None, user)
             .await?;
         let mut all_pairs: Vec<(String, i32)> = all_results
             .into_iter()

@@ -1883,32 +1883,29 @@ impl Session {
     /// Parse keyset metadata from a `CKA_LABEL` value.
     ///
     /// Format: `rotate_name::generation::key_id[::latest]`
+    /// The optional `::latest` suffix is accepted for backward compatibility with
+    /// existing HSM keys but is no longer used; callers determine the latest
+    /// generation by comparing `rotate_generation` values.
     ///
-    /// Returns `(rotate_name, rotate_generation, rotate_latest)`.
-    /// Returns `(None, None, None)` if the label does not match the format
+    /// Returns `(rotate_name, rotate_generation)`.
+    /// Returns `(None, None)` if the label does not match the format
     /// (e.g. plain keys whose label is just an identifier).
-    pub(crate) fn parse_label_metadata(label: &str) -> (Option<String>, Option<i32>, Option<bool>) {
+    pub(crate) fn parse_label_metadata(label: &str) -> (Option<String>, Option<i32>) {
         // Minimum viable format: "name::gen::keyid" (3 segments)
         let parts: Vec<&str> = label.splitn(4, "::").collect();
         if parts.len() < 3 {
-            return (None, None, None);
+            return (None, None);
         }
         let Some(rotate_name) = parts.first() else {
-            return (None, None, None);
+            return (None, None);
         };
         let Some(gen_str) = parts.get(1) else {
-            return (None, None, None);
+            return (None, None);
         };
         let Ok(generation) = gen_str.parse::<i32>() else {
-            return (None, None, None);
+            return (None, None);
         };
-        // 4th segment (if present) must be "latest"; otherwise no latest flag
-        let latest = parts.get(3).is_some_and(|s| *s == "latest");
-        (
-            Some((*rotate_name).to_owned()),
-            Some(generation),
-            Some(latest),
-        )
+        (Some((*rotate_name).to_owned()), Some(generation))
     }
 
     /// Build the `CKA_LABEL` value for a keyset key.
@@ -2019,8 +2016,7 @@ impl Session {
                     })?
                 };
                 let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
-                let (rotate_name, rotate_generation, rotate_latest) =
-                    Self::parse_label_metadata(&label);
+                let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits: usize::try_from(key_size).map_err(|e| {
@@ -2032,7 +2028,6 @@ impl Session {
                     end_date,
                     rotate_name,
                     rotate_generation,
-                    rotate_latest,
                 }))
             }
             KeyType::RsaPrivateKey | KeyType::RsaPublicKey => {
@@ -2097,8 +2092,7 @@ impl Session {
                 }
                 let sensitive = sensitive == CK_TRUE;
                 let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
-                let (rotate_name, rotate_generation, rotate_latest) =
-                    Self::parse_label_metadata(&label);
+                let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits,
@@ -2108,7 +2102,6 @@ impl Session {
                     end_date,
                     rotate_name,
                     rotate_generation,
-                    rotate_latest,
                 }))
             }
         }

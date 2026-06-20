@@ -727,7 +727,6 @@ impl ObjectsStore for MySqlPool {
         &self,
         name: &str,
         generation: Option<i32>,
-        latest: Option<bool>,
         owner: &str,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let mut conn = self
@@ -735,7 +734,7 @@ impl ObjectsStore for MySqlPool {
             .get_conn()
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
-        let locate = find_by_rotate_name_query::<MySqlPlaceholder>(name, generation, latest, owner);
+        let locate = find_by_rotate_name_query::<MySqlPlaceholder>(name, generation, owner);
         let params: Vec<mysql_async::Value> = locate
             .params
             .into_iter()

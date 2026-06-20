@@ -119,7 +119,6 @@ pub(crate) async fn add_attribute(
             RotateDate => rotate_date,
             RotateGeneration => rotate_generation,
             RotateInterval => rotate_interval,
-            RotateLatest => rotate_latest,
             RotateName => rotate_name,
             RotateOffset => rotate_offset,
             ShortUniqueIdentifier => short_unique_identifier,

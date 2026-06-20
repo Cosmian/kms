@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Regenerate crate/test_kms_server/README.md from all test vector manifests"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Regenerating test_kms_server vector README"
+
+REPO_ROOT="$(get_repo_root)"
+python3 "${REPO_ROOT}/.mise/scripts/docs/gen_vector_readme.py"
+
+print_success "Vector README regenerated"

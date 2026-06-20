@@ -145,7 +145,6 @@ pub trait ObjectsStore {
         &self,
         _name: &str,
         _generation: Option<i32>,
-        _latest: Option<bool>,
         _owner: &str,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         Ok(vec![])

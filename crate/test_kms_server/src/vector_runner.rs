@@ -1616,6 +1616,12 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_vec_rekey_deactivated_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_deactivated_fails").await
+    }
+
+    #[tokio::test]
     async fn test_vec_rekey_with_links() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_with_links").await
@@ -1643,6 +1649,12 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_old_key_still_decrypts() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_old_key_still_decrypts").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_mac_keyset() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_mac_keyset").await
     }
 
     #[tokio::test]
@@ -3508,6 +3520,14 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
+    async fn test_vec_rekey_keypair_rsa_sign_verify() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_rsa_sign_verify")
+            .await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
     async fn test_vec_rekey_keypair_p384() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_p384").await
@@ -3529,6 +3549,13 @@ ObjectType = "SymmetricKey"
 
     #[cfg(feature = "non-fips")]
     #[tokio::test]
+    async fn test_vec_rekey_keypair_ml_kem_512() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_kem_512").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
     async fn test_vec_rekey_keypair_ml_kem_768() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_kem_768").await
@@ -3539,6 +3566,13 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_keypair_ml_kem_1024() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_kem_1024").await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_ml_dsa_44() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_ml_dsa_44").await
     }
 
     #[cfg(feature = "non-fips")]
@@ -3582,6 +3616,14 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_keypair_deactivated_succeeds() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_deactivated_succeeds")
+            .await
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_deactivated_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_deactivated_fails")
             .await
     }
 

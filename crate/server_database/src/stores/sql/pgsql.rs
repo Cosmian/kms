@@ -917,7 +917,6 @@ impl ObjectsStore for PgPool {
         &self,
         name: &str,
         generation: Option<i32>,
-        latest: Option<bool>,
         owner: &str,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let name = name.to_owned();
@@ -925,7 +924,7 @@ impl ObjectsStore for PgPool {
         pg_retry!(self.pool, |client| {
             let locate = crate::stores::sql::locate_query::find_by_rotate_name_query::<
                 crate::stores::sql::locate_query::PgSqlPlaceholder,
-            >(&name, generation, latest, &owner);
+            >(&name, generation, &owner);
             let stmt = client
                 .prepare(&locate.sql)
                 .await

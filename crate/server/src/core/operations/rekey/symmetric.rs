@@ -16,7 +16,7 @@ use time::OffsetDateTime;
 
 use super::common::{
     RekeyOperation, ReplacementObject, RotationCandidate, compute_rotation_uid,
-    enforce_privileged_user, execute_rekey, finalize_replacement_key,
+    enforce_privileged_user, execute_rekey, finalize_replacement_key, is_keyset_latest,
     prepare_replacement_attributes, preserve_wrapping_key_link, retrieve_eligible_keys,
     set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
 };
@@ -121,7 +121,7 @@ async fn rekey_hsm_symmetric(kms: &KMS, uid: &str, user: &str) -> KResult<ReKeyR
 
     // Reject Re-Key on a retired (non-latest) member of a named keyset.
     // Keys without a rotate_name are not keyset members and may be freely re-keyed.
-    if old_attrs.rotate_name.is_some() && old_attrs.rotate_latest == Some(false) {
+    if old_attrs.rotate_name.is_some() && !is_keyset_latest(kms, uid, old_attrs, user).await? {
         return Err(KmsError::InvalidRequest(format!(
             "ReKey: HSM key '{uid}' is not the latest in its keyset — only the latest \
              generation can be rotated"
@@ -208,7 +208,7 @@ async fn rekey_hsm_symmetric(kms: &KMS, uid: &str, user: &str) -> KResult<ReKeyR
     // introduce extra `::` delimiters that break `parse_label_metadata()`.
     if let Some(ref name) = rotate_name {
         let old_label_retired = format!("{name}::{old_rotate_gen}::{base_id}");
-        let new_label_latest = format!("{name}::{new_gen}::{base_id}::latest");
+        let new_label_latest = format!("{name}::{new_gen}::{base_id}");
 
         kms.database
             .set_key_label(uid, &old_label_retired)
@@ -275,16 +275,6 @@ impl RekeyOperation for SymmetricRekey {
         let candidates = retrieve_eligible_keys(kms, uid_or_tags, ObjectType::SymmetricKey).await?;
 
         let owm = select_unique_key::<Self, _>(candidates, uid_or_tags, kms, user, |owm| {
-            // Reject Re-Key on a retired (non-latest) member of a named keyset.
-            if owm.attributes().rotate_name.is_some()
-                && owm.attributes().rotate_latest == Some(false)
-            {
-                return Err(KmsError::InvalidRequest(format!(
-                    "ReKey: key '{}' is not the latest in its keyset — only the latest \
-                         generation can be rotated",
-                    owm.id()
-                )));
-            }
             // Reject requests that attempt to change crypto parameters
             validate_no_crypto_param_change(
                 owm.attributes(),
@@ -294,6 +284,15 @@ impl RekeyOperation for SymmetricRekey {
             Ok(())
         })
         .await?;
+
+        // Reject Re-Key on a retired (non-latest) member of a named keyset.
+        if !is_keyset_latest(kms, owm.id(), owm.attributes(), user).await? {
+            return Err(KmsError::InvalidRequest(format!(
+                "ReKey: key '{}' is not the latest in its keyset — only the latest \
+                     generation can be rotated",
+                owm.id()
+            )));
+        }
 
         let uid = owm.id().to_owned();
         Ok([RotationCandidate {

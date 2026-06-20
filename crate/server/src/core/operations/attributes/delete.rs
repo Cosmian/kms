@@ -107,7 +107,6 @@ pub(crate) async fn delete_attribute(
                 RotateDate => rotate_date,
                 RotateGeneration => rotate_generation,
                 RotateInterval => rotate_interval,
-                RotateLatest => rotate_latest,
                 RotateName => rotate_name,
                 RotateOffset => rotate_offset,
                 Sensitive => sensitive,

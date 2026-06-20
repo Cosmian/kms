@@ -383,12 +383,6 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotate_interval: Option<i64>,
 
-    /// The Rotate Latest attribute is a Boolean that indicates whether the latest
-    /// rotation time should be recalculated based on the Rotation Interval and
-    /// the Initial Date.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotate_latest: Option<bool>,
-
     /// The Rotate Name attribute specifies the name of the rotation. This attribute
     /// SHALL be used to specify the algorithm and/or template to be used for the
     /// rotation.
@@ -400,12 +394,6 @@ pub struct Attributes {
     /// seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotate_offset: Option<i64>,
-
-    /// Tracks the last warning threshold (in days) for which a renewal-warning
-    /// notification was already sent in the current rotation cycle.
-    /// Reset to `None` after each successful rotation so warnings restart fresh.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotate_last_warning_days: Option<i32>,
 
     /// If True then the server SHALL prevent the object value being retrieved
     /// (via the Get operation) unless it is wrapped by another key. The server
@@ -737,10 +725,8 @@ impl Attributes {
         merge_option_field!(rotate_date);
         merge_option_field!(rotate_generation);
         merge_option_field!(rotate_interval);
-        merge_option_field!(rotate_latest);
         merge_option_field!(rotate_name);
         merge_option_field!(rotate_offset);
-        merge_option_field!(rotate_last_warning_days);
         merge_option_field!(sensitive);
         merge_option_field!(short_unique_identifier);
         merge_option_field!(state);
@@ -962,17 +948,11 @@ impl Display for Attributes {
         if let Some(value) = &self.rotate_interval {
             writeln!(f, "  Rotate Interval: {value}")?;
         }
-        if let Some(value) = &self.rotate_latest {
-            writeln!(f, "  Rotate Latest: {value}")?;
-        }
         if let Some(value) = &self.rotate_name {
             writeln!(f, "  Rotate Name: {value}")?;
         }
         if let Some(value) = &self.rotate_offset {
             writeln!(f, "  Rotate Offset: {value}")?;
-        }
-        if let Some(value) = &self.rotate_last_warning_days {
-            writeln!(f, "  Rotate Last Warning Days: {value}")?;
         }
         if let Some(value) = &self.sensitive {
             writeln!(f, "  Sensitive: {value}")?;
@@ -1262,11 +1242,6 @@ pub enum Attribute {
     /// Managed Cryptographic Object, measured in seconds.
     RotateInterval(i64),
 
-    /// The Rotate Latest attribute is a Boolean that indicates whether the latest
-    /// rotation time should be recalculated based on the Rotation Interval and
-    /// the Initial Date.
-    RotateLatest(bool),
-
     /// The Rotate Name attribute specifies the name of the rotation. This attribute
     /// SHALL be used to specify the algorithm and/or template to be used for the
     /// rotation.
@@ -1490,9 +1465,6 @@ impl From<Attributes> for Vec<Attribute> {
         if let Some(rotate_interval) = attributes.rotate_interval {
             vec.push(Attribute::RotateInterval(rotate_interval));
         }
-        if let Some(rotate_latest) = attributes.rotate_latest {
-            vec.push(Attribute::RotateLatest(rotate_latest));
-        }
         if let Some(rotate_name) = attributes.rotate_name {
             vec.push(Attribute::RotateName(rotate_name));
         }
@@ -1617,7 +1589,6 @@ impl From<Vec<Attribute>> for Attributes {
                 Attribute::RotateDate(value) => attrs.rotate_date = Some(value),
                 Attribute::RotateGeneration(value) => attrs.rotate_generation = Some(value),
                 Attribute::RotateInterval(value) => attrs.rotate_interval = Some(value),
-                Attribute::RotateLatest(value) => attrs.rotate_latest = Some(value),
                 Attribute::RotateName(value) => attrs.rotate_name = Some(value),
                 Attribute::RotateOffset(value) => attrs.rotate_offset = Some(value),
                 Attribute::Sensitive(value) => attrs.sensitive = Some(value),

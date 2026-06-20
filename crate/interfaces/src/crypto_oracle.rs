@@ -30,8 +30,6 @@ pub struct KeyMetadata {
     pub rotate_name: Option<String>,
     /// Keyset generation counter parsed from `CKA_LABEL`.
     pub rotate_generation: Option<i32>,
-    /// `true` if the key carries the `::latest` suffix in `CKA_LABEL`.
-    pub rotate_latest: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

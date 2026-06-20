@@ -24,7 +24,7 @@ use cosmian_logger::trace;
 
 use super::common::{
     RekeyOperation, ReplacementObject, RotationCandidate, compute_rotation_uid,
-    enforce_privileged_user, execute_rekey, finalize_replacement_key,
+    enforce_privileged_user, execute_rekey, finalize_replacement_key, is_keyset_latest,
     prepare_replacement_attributes, preserve_wrapping_key_link, retrieve_eligible_keys,
     set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
 };
@@ -205,16 +205,6 @@ impl RekeyOperation for KeypairRekey {
         let candidates = retrieve_eligible_keys(kms, uid_or_tags, ObjectType::PrivateKey).await?;
 
         let owm = select_unique_key::<Self, _>(candidates, uid_or_tags, kms, user, |owm| {
-            // Reject Re-Key on a retired (non-latest) member of a named keyset.
-            if owm.attributes().rotate_name.is_some()
-                && owm.attributes().rotate_latest == Some(false)
-            {
-                return Err(KmsError::InvalidRequest(format!(
-                    "ReKeyKeyPair: key '{}' is not the latest in its keyset — only the \
-                         latest generation can be rotated",
-                    owm.id()
-                )));
-            }
             // Validate no crypto param changes
             validate_no_crypto_param_change(
                 owm.attributes(),
@@ -228,6 +218,15 @@ impl RekeyOperation for KeypairRekey {
             Ok(())
         })
         .await?;
+
+        // Reject Re-Key on a retired (non-latest) member of a named keyset.
+        if !is_keyset_latest(kms, owm.id(), owm.attributes(), user).await? {
+            return Err(KmsError::InvalidRequest(format!(
+                "ReKeyKeyPair: key '{}' is not the latest in its keyset — only the \
+                     latest generation can be rotated",
+                owm.id()
+            )));
+        }
 
         // Resolve paired public key (post-selection: only for the winning candidate)
         let old_sk_uid = owm.id().to_owned();

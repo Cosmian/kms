@@ -421,14 +421,13 @@ impl Database {
         &self,
         name: &str,
         generation: Option<i32>,
-        latest: Option<bool>,
         owner: &str,
     ) -> DbResult<Vec<(String, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, Attributes)> = Vec::new();
         for db in map.values() {
             results.extend(
-                db.find_by_rotate_name(name, generation, latest, owner)
+                db.find_by_rotate_name(name, generation, owner)
                     .await
                     .unwrap_or_default(),
             );

@@ -19,14 +19,15 @@ export WITH_WASM=1 WITH_HSM=1 WITH_CURL=1
 
 # The Nix-built Node.js links against OpenSSL with compiled-in OPENSSLDIR=/usr/local/cosmian/lib/ssl.
 # Create symlinks so node can initialize without error.
+# Use sudo -n (non-interactive) to avoid hanging in CI or pre-commit hooks.
 if [ -n "${OPENSSL_MODULES:-}" ] && [ -d "$OPENSSL_MODULES" ]; then
-  sudo mkdir -p /usr/local/cosmian/lib/ossl-modules
+  sudo -n mkdir -p /usr/local/cosmian/lib/ossl-modules 2>/dev/null || true
   for f in "$OPENSSL_MODULES"/*.so "$OPENSSL_MODULES"/*.dylib; do
-    [ -f "$f" ] && sudo ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
+    [ -f "$f" ] && sudo -n ln -sf "$f" /usr/local/cosmian/lib/ossl-modules/ 2>/dev/null || true
   done
   if [ -f "${OPENSSL_CONF:-}" ]; then
-    sudo mkdir -p /usr/local/cosmian/lib/ssl
-    sudo ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
+    sudo -n mkdir -p /usr/local/cosmian/lib/ssl 2>/dev/null || true
+    sudo -n ln -sf "$OPENSSL_CONF" /usr/local/cosmian/lib/ssl/openssl.cnf 2>/dev/null || true
   fi
 fi
 

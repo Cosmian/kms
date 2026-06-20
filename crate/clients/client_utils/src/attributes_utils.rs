@@ -415,11 +415,6 @@ pub fn parse_selected_attributes_flatten(
                 selected_attribute_name,
                 attributes.rotate_interval.as_ref()
             ),
-            "rotate_latest" => insert_if_some!(
-                results,
-                selected_attribute_name,
-                attributes.rotate_latest.as_ref()
-            ),
             "rotate_name" => insert_if_some!(
                 results,
                 selected_attribute_name,

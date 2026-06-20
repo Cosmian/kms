@@ -16,10 +16,8 @@ use crate::{
 
 pub mod create_key;
 pub mod destroy_key;
-pub mod get_rotation_policy;
 pub mod rekey;
 pub mod revoke_key;
-pub mod set_rotation_policy;
 
 /// Create, destroy, import, and export symmetric keys
 #[derive(Subcommand)]

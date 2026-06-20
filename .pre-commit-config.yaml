@@ -252,6 +252,14 @@ repos:
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
 
+      - id: gen-vector-readme
+        name: Regenerate test_kms_server vector README
+        entry: python3 .mise/scripts/docs/gen_vector_readme.py
+        language: system
+        pass_filenames: false
+        files: test_data/vectors/.*/manifest\.toml|\.mise/scripts/docs/gen_vector_readme\.py
+        stages: [manual]
+
       - id: pnpm-ui-lint
         name: pnpm ui check:lint
         entry: pnpm -C ui check:lint
@@ -272,6 +280,7 @@ repos:
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
+        stages: [manual]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)

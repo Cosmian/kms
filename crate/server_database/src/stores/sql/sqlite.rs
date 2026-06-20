@@ -687,11 +687,9 @@ impl ObjectsStore for SqlitePool {
         &self,
         name: &str,
         generation: Option<i32>,
-        latest: Option<bool>,
         owner: &str,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
-        let locate =
-            find_by_rotate_name_query::<SqlitePlaceholder>(name, generation, latest, owner);
+        let locate = find_by_rotate_name_query::<SqlitePlaceholder>(name, generation, owner);
         let sql = replace_dollars_with_qn(&locate.sql);
         let locate_params = locate.params;
         let rows = self

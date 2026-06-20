@@ -517,14 +517,12 @@ ON objects.id = matched_tags.id"
 
 /// Build the SQL query to find objects by their `RotateName` vendor attribute.
 ///
-/// Optionally filters by `RotateGeneration` (integer equality) and `RotateLatest` (text
-/// `"true"`/`"false"`) directly in SQL, reducing the result set at the database level.
+/// Optionally filters by `RotateGeneration` (integer equality) directly in SQL.
 ///
 /// Returns a `LocateQuery` with parameterized bindings suitable for all SQL backends.
 pub(super) fn find_by_rotate_name_query<P: PlaceholderTrait>(
     name: &str,
     generation: Option<i32>,
-    latest: Option<bool>,
     owner: &str,
 ) -> LocateQuery {
     let mut qb = LocateQueryBuilder::<P>::new();
@@ -550,12 +548,6 @@ pub(super) fn find_by_rotate_name_query<P: PlaceholderTrait>(
         } else {
             query = format!("{query} AND CAST({gen_extract} AS SIGNED) = {gen_bind}");
         }
-    }
-
-    if let Some(lat) = latest {
-        let latest_extract = P::extract_attribute_path(&["RotateLatest"]);
-        let latest_bind = qb.bind_text(if lat { "true" } else { "false" });
-        query = format!("{query} AND {latest_extract} = {latest_bind}");
     }
 
     qb.finish(query)

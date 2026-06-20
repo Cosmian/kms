@@ -778,7 +778,6 @@ impl ObjectsStore for RedisWithFindex {
         &self,
         name: &str,
         generation: Option<i32>,
-        latest: Option<bool>,
         owner: &str,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         // Search Findex for objects indexed under this rotate_name keyword
@@ -814,12 +813,6 @@ impl ObjectsStore for RedisWithFindex {
             // Filter by generation if requested
             if let Some(expected_gen) = generation {
                 if attrs.rotate_generation != Some(expected_gen) {
-                    continue;
-                }
-            }
-            // Filter by latest flag if requested
-            if let Some(lat) = latest {
-                if attrs.rotate_latest != Some(lat) {
                     continue;
                 }
             }

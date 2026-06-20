@@ -658,7 +658,6 @@ pub(crate) fn compare_attributes(
     cmp_opt!(rotate_date);
     cmp_opt!(rotate_generation);
     cmp_opt!(rotate_interval);
-    cmp_opt!(rotate_latest);
     cmp_opt!(rotate_name);
     cmp_opt!(rotate_offset);
     cmp_opt!(sensitive);

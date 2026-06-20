@@ -31,7 +31,6 @@ const ENRICH_ATTRIBUTE_KEYS = [
     "rotate_interval",
     "rotate_offset",
     "rotate_generation",
-    "rotate_latest",
 ];
 
 interface LocateObjectRow {

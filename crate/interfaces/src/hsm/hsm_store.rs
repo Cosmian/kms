@@ -149,7 +149,6 @@ impl ObjectsStore for HsmStore {
                     let attrs = owm.attributes_mut();
                     attrs.rotate_name = meta.rotate_name;
                     attrs.rotate_generation = meta.rotate_generation;
-                    attrs.rotate_latest = meta.rotate_latest;
                     // Reconstruct rotate_interval from CKA_START_DATE / CKA_END_DATE.
                     // HsmStore::update_object is a no-op for KMIP attributes so there is
                     // no persistent KMIP storage for rotate_interval on HSM keys; we
@@ -446,7 +445,6 @@ impl ObjectsStore for HsmStore {
         &self,
         name: &str,
         generation: Option<i32>,
-        latest: Option<bool>,
         _owner: &str,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;
@@ -480,12 +478,7 @@ impl ObjectsStore for HsmStore {
                         continue;
                     }
                 }
-                // Optional latest filter
-                if let Some(latest_filter) = latest {
-                    if meta.rotate_latest != Some(latest_filter) {
-                        continue;
-                    }
-                }
+                // Optional latest filter — removed: caller selects max generation instead
                 let Ok(object_string) = std::str::from_utf8(&object_id) else {
                     continue;
                 };
@@ -807,7 +800,6 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
         sensitive: Some(true),
         rotate_name: meta.rotate_name.clone(),
         rotate_generation: meta.rotate_generation,
-        rotate_latest: meta.rotate_latest,
         rotate_interval,
         ..Attributes::default()
     }
@@ -888,7 +880,6 @@ fn build_keyset_attributes(meta: &KeyMetadata) -> Attributes {
     let mut attrs = build_find_attributes(&Some(meta.clone()), &HsmObjectFilter::Any);
     attrs.rotate_name.clone_from(&meta.rotate_name);
     attrs.rotate_generation = meta.rotate_generation;
-    attrs.rotate_latest = meta.rotate_latest;
     attrs
 }
 
