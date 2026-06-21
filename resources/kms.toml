@@ -44,10 +44,9 @@ default_username = "admin"
 # When enabled, must be at least 60 seconds to avoid excessive database churn.
 # auto_rotation_check_interval_secs = 0
 
-# Depth at which a keyset chain decryption triggers a warning.
+# Depth at which a keyset chain decryption triggers a server-side warning.
 # Keyset chain traversal is unbounded (stopped only by cycle detection);
-# this threshold emits a server-side warning and returns the depth as
-# the X-KMS-Keyset-Depth HTTP header so clients can flag stale ciphertexts.
+# this threshold emits a warning log so operators can flag stale ciphertexts.
 # Default: 5.
 # keyset_warn_depth = 5
 

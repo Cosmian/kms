@@ -36,7 +36,7 @@ pub(crate) async fn message(
     kms: &KMS,
     request: RequestMessage,
     user: &str,
-) -> KResult<(ResponseMessage, Option<u32>)> {
+) -> KResult<ResponseMessage> {
     info!(
         user = user,
         "KMIP Request message with {} operation(s): {:?}",
@@ -78,9 +78,6 @@ pub(crate) async fn message(
     // Track successful Activate responses so we can revert side-effects if UNDO is triggered
     let mut undo_activate_uids: Vec<String> = Vec::new();
 
-    // Track keyset chain depth across batch items (last non-None wins)
-    let mut batch_keyset_depth: Option<u32> = None;
-
     for versioned_batch_item in request.batch_item {
         let (batch_item, kmip_version) = match versioned_batch_item {
             RequestMessageBatchItemVersioned::V14(item_request) => {
@@ -102,22 +99,13 @@ pub(crate) async fn message(
         // 2) Expand KMIP 2.1 GetAttributes with empty AttributeReference into the full explicit list
         expand_kmip2_get_attributes_request(&mut request_operation, kmip_version);
 
-        let response_result = Box::pin(process_operation(
+        let response_operation = Box::pin(process_operation(
             kms,
             user,
             request_operation,
             Some(request.request_header.protocol_version),
         ))
         .await;
-
-        // Split the keyset depth from the operation result
-        let (response_operation, item_depth) = match response_result {
-            Ok((op, depth)) => (Ok(op), depth),
-            Err(e) => (Err(e), None),
-        };
-        if item_depth.is_some() {
-            batch_keyset_depth = item_depth;
-        }
 
         // 3) Optionally enforce MaximumResponseSize for Query
         let forced_size_error =
@@ -288,7 +276,7 @@ pub(crate) async fn message(
 
     trace!("Response message: {response_message}");
 
-    Ok((response_message, batch_keyset_depth))
+    Ok(response_message)
 }
 
 /// Revert an Activate operation by setting the object's state back to `PreActive` and clearing
@@ -369,14 +357,12 @@ async fn process_operation(
 
     request_operation: Operation,
     protocol_version: Option<ProtocolVersion>,
-) -> Result<(Operation, Option<u32>), KmsError> {
+) -> Result<Operation, KmsError> {
     // Get operation name for metrics
     let operation_name = get_operation_name(&request_operation);
     trace!("Processing KMIP operation: {operation_name} with user: {user:?}");
 
     let start_time = std::time::Instant::now();
-
-    let mut keyset_depth: Option<u32> = None;
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = async {
@@ -459,10 +445,9 @@ async fn process_operation(
                     .await?,
             ),
             Operation::Decrypt(kmip_request) => {
-                let (resp, depth) =
-                    crate::core::operations::decrypt(kms, *kmip_request, user).await?;
-                keyset_depth = depth;
-                Operation::DecryptResponse(resp)
+                Operation::DecryptResponse(
+                    crate::core::operations::decrypt(kms, *kmip_request, user).await?,
+                )
             }
             Operation::DeleteAttribute(kmip_request) => Operation::DeleteAttributeResponse(
                 kms.delete_attribute(kmip_request, user).await?,
@@ -477,10 +462,9 @@ async fn process_operation(
                 kms.discover_versions(kmip_request, user).await,
             ),
             Operation::Encrypt(kmip_request) => {
-                let (resp, depth) =
-                    crate::core::operations::encrypt(kms, *kmip_request, user).await?;
-                keyset_depth = depth;
-                Operation::EncryptResponse(resp)
+                Operation::EncryptResponse(
+                    crate::core::operations::encrypt(kms, *kmip_request, user).await?,
+                )
             }
             Operation::Export(kmip_request) => {
                 Operation::ExportResponse(Box::new(kms.export(kmip_request, user).await?))
@@ -502,16 +486,14 @@ async fn process_operation(
                 Operation::LocateResponse(kms.locate(*kmip_request, user).await?)
             }
             Operation::MAC(kmip_request) => {
-                let (resp, depth) =
-                    crate::core::operations::mac(kms, kmip_request, user).await?;
-                keyset_depth = depth;
-                Operation::MACResponse(resp)
+                Operation::MACResponse(
+                    crate::core::operations::mac(kms, kmip_request, user).await?,
+                )
             }
         Operation::MACVerify(kmip_request) => {
-            let (resp, depth) =
-                crate::core::operations::mac_verify(kms, kmip_request, user).await?;
-            keyset_depth = depth;
-            Operation::MACVerifyResponse(resp)
+            Operation::MACVerifyResponse(
+                crate::core::operations::mac_verify(kms, kmip_request, user).await?,
+            )
         }
             Operation::Query(kmip_request) => {
                 Operation::QueryResponse(Box::new(kms.query(kmip_request).await?))
@@ -538,16 +520,14 @@ async fn process_operation(
                 kms.set_attribute(kmip_request, user).await?,
             ),
             Operation::Sign(kmip_request) => {
-                let (resp, depth) =
-                    crate::core::operations::sign(kms, kmip_request, user).await?;
-                keyset_depth = depth;
-                Operation::SignResponse(resp)
+                Operation::SignResponse(
+                    crate::core::operations::sign(kms, kmip_request, user).await?,
+                )
             }
             Operation::SignatureVerify(kmip_request) => {
-                let (resp, depth) =
-                    crate::core::operations::signature_verify(kms, kmip_request, user).await?;
-                keyset_depth = depth;
-                Operation::SignatureVerifyResponse(resp)
+                Operation::SignatureVerifyResponse(
+                    crate::core::operations::signature_verify(kms, kmip_request, user).await?,
+                )
             }
             Operation::Validate(kmip_request) => {
                 Operation::ValidateResponse(kms.validate(kmip_request, user).await?)
@@ -603,7 +583,7 @@ async fn process_operation(
         }
     }
 
-    result.map(|op| (op, keyset_depth))
+    result
 }
 
 // --- helper functions extracted from message() to improve readability and maintainability ---

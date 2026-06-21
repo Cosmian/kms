@@ -23,10 +23,10 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::trace;
 
 use super::common::{
-    RekeyOperation, ReplacementObject, RotationCandidate, compute_rotation_uid,
-    enforce_privileged_user, execute_rekey, finalize_replacement_key, is_keyset_latest,
-    prepare_replacement_attributes, preserve_wrapping_key_link, retrieve_eligible_keys,
-    set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
+    RekeyOperation, ReplacementObject, RotationCandidate, clean_attributes_for_generation,
+    compute_rotation_uid, enforce_privileged_user, execute_rekey, finalize_replacement_key,
+    is_keyset_latest, prepare_replacement_attributes, preserve_wrapping_key_link,
+    retrieve_eligible_keys, set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
 };
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::rekey_keypair_cover_crypt;
@@ -34,8 +34,8 @@ use crate::{
     core::{
         KMS,
         operations::{
-            create_key_pair::generate_key_pair, key_ops::reject_protection_storage_masks,
-            key_selection::KeySelectionSpec,
+            create_key_pair::generate_key_pair,
+            key_ops::{key_resolution::KeySelectionSpec, reject_protection_storage_masks},
         },
     },
     error::KmsError,
@@ -173,7 +173,7 @@ impl RekeyOperation for KeypairRekey {
         request: &ReKeyKeyPair,
         user: &str,
     ) -> KResult<[RotationCandidate; 2]> {
-        use crate::core::operations::key_selection::select_unique_key;
+        use crate::core::operations::key_ops::key_resolution::select_unique_key;
 
         reject_protection_storage_masks(
             request.common_protection_storage_masks.is_some()
@@ -255,7 +255,7 @@ impl RekeyOperation for KeypairRekey {
         let [sk_candidate, pk_candidate] = candidates;
 
         let common_attrs =
-            build_generation_attributes(sk_candidate.owm.attributes(), kms.vendor_id());
+            clean_attributes_for_generation(sk_candidate.owm.attributes(), kms.vendor_id());
         let new_sk_uid = compute_rotation_uid(&sk_candidate.uid);
         let new_pk_uid = compute_rotation_uid(&pk_candidate.uid);
 
@@ -396,7 +396,7 @@ fn prepare_sk_replacement(
         Some((pk_new_uid, LinkType::PublicKeyLink)),
         vendor_id,
     )?;
-    preserve_wrapping_key_link(candidate.owm.object(), &mut sk.attributes)?;
+    preserve_wrapping_key_link(candidate.owm.object(), &mut sk.attributes);
     Ok(())
 }
 
@@ -416,7 +416,7 @@ fn prepare_pk_replacement(
         Some((sk_new_uid, LinkType::PrivateKeyLink)),
         vendor_id,
     )?;
-    preserve_wrapping_key_link(candidate.owm.object(), &mut pk.attributes)?;
+    preserve_wrapping_key_link(candidate.owm.object(), &mut pk.attributes);
     // Public key IS a wrapping key — dependants get re-wrapped to it
     pk.rewrap_to = Some(pk.new_uid.clone());
     Ok(())
@@ -454,21 +454,4 @@ async fn retrieve_linked_public_key(
                 format!("ReKeyKeyPair: linked public key '{pk_uid}' not found in database"),
             )
         })
-}
-
-/// Build clean attributes for key pair generation.
-fn build_generation_attributes(old_attrs: &Attributes, vendor_id: &str) -> Attributes {
-    let mut attrs = old_attrs.clone();
-    attrs.unique_identifier = None;
-    attrs.link = None;
-    attrs.name = None;
-    attrs.initial_date = None;
-    attrs.last_change_date = None;
-    attrs.activation_date = None;
-    attrs.deactivation_date = None;
-    attrs.destroy_date = None;
-    attrs.compromise_date = None;
-    attrs.compromise_occurrence_date = None;
-    attrs.remove_vendor_attribute(vendor_id, "tag");
-    attrs
 }

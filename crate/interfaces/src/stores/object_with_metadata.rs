@@ -1,10 +1,14 @@
 use std::fmt::{self, Display, Formatter};
 
 use cosmian_kmip::{
-    kmip_0::kmip_types::State,
+    KmipError,
+    kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
     kmip_2_1::{
-        kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
+        kmip_attributes::Attributes,
+        kmip_objects::Object,
+        kmip_types::{CryptographicAlgorithm, UsageLimitsUnit},
     },
+    time_normalize,
 };
 
 /// An object with its metadata such as owner, permissions and state
@@ -92,6 +96,143 @@ impl ObjectWithMetadata {
             .ok()
             .and_then(|kb| kb.cryptographic_algorithm().copied())
             .or(self.attributes.cryptographic_algorithm)
+    }
+
+    // ─── Lifecycle predicates ────────────────────────────────────────────────
+
+    /// Determine the effective KMIP state based on stored state and time-based
+    /// transitions (activation / deactivation).
+    ///
+    /// - `PreActive` → `Active` when `activation_date` ≤ now.
+    /// - `Active` → `Deactivated` when `deactivation_date` ≤ now.
+    ///
+    /// Falls back to the stored state if the system clock cannot be read.
+    #[must_use]
+    pub fn effective_state(&self) -> State {
+        let Ok(now) = time_normalize() else {
+            return self.state;
+        };
+        match self.state {
+            State::PreActive => {
+                let activation_date = self.attributes.activation_date.or_else(|| {
+                    self.object
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.activation_date)
+                });
+                if activation_date.is_some_and(|d| d <= now) {
+                    State::Active
+                } else {
+                    State::PreActive
+                }
+            }
+            State::Active => {
+                let deactivation_date = self.attributes.deactivation_date.or_else(|| {
+                    self.object
+                        .attributes()
+                        .ok()
+                        .and_then(|attrs| attrs.deactivation_date)
+                });
+                if deactivation_date.is_some_and(|d| d <= now) {
+                    State::Deactivated
+                } else {
+                    State::Active
+                }
+            }
+            other => other,
+        }
+    }
+
+    /// Check whether the current time falls within the KMIP process window
+    /// (`ProcessStartDate`..`ProtectStopDate`).
+    ///
+    /// Returns `true` when usage is allowed (window is open or no window is set).
+    /// Returns `false` when the key is outside its process window.
+    /// Falls back to `true` if the system clock cannot be read.
+    #[must_use]
+    pub fn is_within_process_window(&self) -> bool {
+        if self.effective_state() != State::Active {
+            return true; // window only applies to Active keys
+        }
+        let Ok(attrs) = self.object.attributes() else {
+            return true;
+        };
+        let Ok(now) = time_normalize() else {
+            return true;
+        };
+        let too_early = attrs.process_start_date.is_some_and(|d| now < d);
+        let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
+        !(too_early || too_late)
+    }
+
+    // ─── Usage predicates ────────────────────────────────────────────────────
+
+    /// Check whether the object's usage mask permits the given operation.
+    ///
+    /// In **lenient** mode a missing mask (`None`) is treated as "allowed",
+    /// which supports legacy Certificates/Public Keys imported without masks.
+    #[must_use]
+    pub fn has_usage_mask(&self, required: CryptographicUsageMask, lenient: bool) -> bool {
+        let attributes = self
+            .object
+            .attributes()
+            .unwrap_or_else(|_| self.attributes());
+        if lenient && attributes.cryptographic_usage_mask.is_none() {
+            return true;
+        }
+        attributes
+            .is_usage_authorized_for(required)
+            .unwrap_or(false)
+    }
+
+    /// Check whether the key's remaining usage budget is sufficient for
+    /// `data_len` bytes of payload.
+    ///
+    /// Returns `true` when no `UsageLimits` are set or the budget is sufficient.
+    #[must_use]
+    pub fn has_usage_budget(&self, data_len: usize) -> bool {
+        let Some(ul) = self.attributes.usage_limits.as_ref() else {
+            return true;
+        };
+        match ul.usage_limits_unit {
+            UsageLimitsUnit::Byte => {
+                let needed = i64::try_from(data_len).unwrap_or(i64::MAX);
+                ul.usage_limits_total >= needed
+            }
+            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
+                ul.usage_limits_total > 0
+            }
+        }
+    }
+
+    // ─── Enforcement (error-returning) ───────────────────────────────────────
+
+    /// Enforce the KMIP process-window constraints.
+    ///
+    /// An Active key whose current time is before `ProcessStartDate` or after
+    /// `ProtectStopDate` is rejected with `Wrong_Key_Lifecycle_State`.
+    pub fn check_process_window(&self) -> Result<(), KmipError> {
+        if !self.is_within_process_window() {
+            return Err(KmipError::Kmip21(
+                ErrorReason::Wrong_Key_Lifecycle_State,
+                "DENIED".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Enforce `UsageLimits` before a cryptographic operation.
+    ///
+    /// Returns `Err(Permission_Denied)` when the key's remaining usage budget
+    /// is insufficient for the requested `data_len` bytes.
+    pub fn enforce_usage_limits(&self, data_len: usize) -> Result<(), KmipError> {
+        if !self.has_usage_budget(data_len) {
+            return Err(KmipError::Kmip21(
+                ErrorReason::Permission_Denied,
+                "DENIED".to_owned(),
+            ));
+        }
+        Ok(())
     }
 }
 

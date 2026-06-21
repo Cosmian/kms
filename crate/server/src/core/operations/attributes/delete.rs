@@ -45,7 +45,9 @@ pub(crate) async fn delete_attribute(
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
         match &attribute {
-            Attribute::RotateGeneration(_) | Attribute::RotateDate(_) => {
+            Attribute::RotateGeneration(_)
+            | Attribute::RotateDate(_)
+            | Attribute::RotateLatest(_) => {
                 return Err(KmsError::Kmip21Error(
                     ErrorReason::Attribute_Read_Only,
                     "DENIED: this attribute is server-managed and cannot be deleted by the user"
@@ -104,9 +106,11 @@ pub(crate) async fn delete_attribute(
                 QuantumSafe => quantum_safe,
                 RandomNumberGenerator => random_number_generator,
                 RevocationReason => revocation_reason,
+                RotateAutomatic => rotate_automatic,
                 RotateDate => rotate_date,
                 RotateGeneration => rotate_generation,
                 RotateInterval => rotate_interval,
+                RotateLatest => rotate_latest,
                 RotateName => rotate_name,
                 RotateOffset => rotate_offset,
                 Sensitive => sensitive,

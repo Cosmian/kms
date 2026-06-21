@@ -52,7 +52,10 @@ pub(crate) async fn set_attribute(
 
     // Read-only guard — must be checked before the DB round-trip.
     match &request.new_attribute {
-        Attribute::State(_) | Attribute::RotateGeneration(_) | Attribute::RotateDate(_) => {
+        Attribute::State(_)
+        | Attribute::RotateGeneration(_)
+        | Attribute::RotateDate(_)
+        | Attribute::RotateLatest(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Attribute_Read_Only,
                 "DENIED: this attribute is server-managed and cannot be set by the user".to_owned(),
@@ -151,9 +154,11 @@ pub(crate) async fn set_attribute(
             QuantumSafe => quantum_safe,
             RandomNumberGenerator => random_number_generator,
             RevocationReason => revocation_reason,
+            RotateAutomatic => rotate_automatic,
             RotateDate => rotate_date,
             RotateGeneration => rotate_generation,
             RotateInterval => rotate_interval,
+            RotateLatest => rotate_latest,
             RotateName => rotate_name,
             RotateOffset => rotate_offset,
             Sensitive => sensitive,

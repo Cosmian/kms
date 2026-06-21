@@ -44,7 +44,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, KeysetMode, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -86,10 +86,10 @@ impl CryptoOpSpec for DecryptOp {
         #[cfg(not(feature = "non-fips"))]
         let _ = vendor_id;
         if let Object::SymmetricKey { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Decrypt, false);
+            return owm.has_usage_mask(CryptographicUsageMask::Decrypt, false);
         }
         if let Object::PrivateKey { .. } = owm.object() {
-            if !has_usage_mask(owm, CryptographicUsageMask::Decrypt, false) {
+            if !owm.has_usage_mask(CryptographicUsageMask::Decrypt, false) {
                 return false;
             }
             #[cfg(feature = "non-fips")]
@@ -201,11 +201,7 @@ impl CryptoOpSpec for DecryptOp {
     }
 }
 
-pub(crate) async fn decrypt(
-    kms: &KMS,
-    request: Decrypt,
-    user: &str,
-) -> KResult<(DecryptResponse, Option<u32>)> {
+pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
     trace!(
         "Decrypt: uid={:?}, data_len={}",
         request.unique_identifier,

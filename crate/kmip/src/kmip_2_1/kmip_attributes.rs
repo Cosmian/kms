@@ -366,6 +366,12 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revocation_reason: Option<RevocationReason>,
 
+    /// If set to True, specifies the Managed Object will be automatically rotated by the server
+    /// using the Rotate Interval via the equivalent of the `ReKey`, `ReKeyKeyPair` or `ReCertify`
+    /// operation performed by the server (KMIP 2.1 §4.48).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_automatic: Option<bool>,
+
     /// The Rotate Date attribute specifies the date and time for the last rotation
     /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
     /// the server when the Rotate operation successfully completes.
@@ -382,6 +388,11 @@ pub struct Attributes {
     /// Managed Cryptographic Object, measured in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotate_interval: Option<i64>,
+
+    /// If set to True, specifies the Managed Object is the most recent object of the set of
+    /// rotated Managed Objects. Set by the server when the object is rotated (KMIP 2.1 §4.52).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_latest: Option<bool>,
 
     /// The Rotate Name attribute specifies the name of the rotation. This attribute
     /// SHALL be used to specify the algorithm and/or template to be used for the
@@ -722,9 +733,11 @@ impl Attributes {
         merge_option_field!(quantum_safe);
         merge_option_field!(random_number_generator);
         merge_option_field!(revocation_reason);
+        merge_option_field!(rotate_automatic);
         merge_option_field!(rotate_date);
         merge_option_field!(rotate_generation);
         merge_option_field!(rotate_interval);
+        merge_option_field!(rotate_latest);
         merge_option_field!(rotate_name);
         merge_option_field!(rotate_offset);
         merge_option_field!(sensitive);
@@ -939,6 +952,9 @@ impl Display for Attributes {
         if let Some(value) = &self.revocation_reason {
             writeln!(f, "  Revocation Reason: {value}")?;
         }
+        if let Some(value) = &self.rotate_automatic {
+            writeln!(f, "  Rotate Automatic: {value}")?;
+        }
         if let Some(value) = &self.rotate_date {
             writeln!(f, "  Rotate Date: {value}")?;
         }
@@ -947,6 +963,9 @@ impl Display for Attributes {
         }
         if let Some(value) = &self.rotate_interval {
             writeln!(f, "  Rotate Interval: {value}")?;
+        }
+        if let Some(value) = &self.rotate_latest {
+            writeln!(f, "  Rotate Latest: {value}")?;
         }
         if let Some(value) = &self.rotate_name {
             writeln!(f, "  Rotate Name: {value}")?;
@@ -1228,6 +1247,10 @@ pub enum Attribute {
     /// Managed Object was revoked.
     RevocationReason(RevocationReason),
 
+    /// If set to True, specifies the Managed Object will be automatically rotated by the server
+    /// using the Rotate Interval (KMIP 2.1 §4.48).
+    RotateAutomatic(bool),
+
     /// The Rotate Date attribute specifies the date and time for the last rotation
     /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
     /// the server when the Rotate operation successfully completes.
@@ -1241,6 +1264,10 @@ pub enum Attribute {
     /// The Rotate Interval attribute specifies the interval between rotations of a
     /// Managed Cryptographic Object, measured in seconds.
     RotateInterval(i64),
+
+    /// If set to True, specifies the Managed Object is the most recent object of the set of
+    /// rotated Managed Objects (KMIP 2.1 §4.52). Set by the server; not modifiable by client.
+    RotateLatest(bool),
 
     /// The Rotate Name attribute specifies the name of the rotation. This attribute
     /// SHALL be used to specify the algorithm and/or template to be used for the
@@ -1456,6 +1483,9 @@ impl From<Attributes> for Vec<Attribute> {
         if let Some(revocation_reason) = attributes.revocation_reason {
             vec.push(Attribute::RevocationReason(revocation_reason));
         }
+        if let Some(rotate_automatic) = attributes.rotate_automatic {
+            vec.push(Attribute::RotateAutomatic(rotate_automatic));
+        }
         if let Some(rotate_date) = attributes.rotate_date {
             vec.push(Attribute::RotateDate(rotate_date));
         }
@@ -1464,6 +1494,9 @@ impl From<Attributes> for Vec<Attribute> {
         }
         if let Some(rotate_interval) = attributes.rotate_interval {
             vec.push(Attribute::RotateInterval(rotate_interval));
+        }
+        if let Some(rotate_latest) = attributes.rotate_latest {
+            vec.push(Attribute::RotateLatest(rotate_latest));
         }
         if let Some(rotate_name) = attributes.rotate_name {
             vec.push(Attribute::RotateName(rotate_name));
@@ -1586,9 +1619,11 @@ impl From<Vec<Attribute>> for Attributes {
                     attrs.random_number_generator = Some(value);
                 }
                 Attribute::RevocationReason(value) => attrs.revocation_reason = Some(value),
+                Attribute::RotateAutomatic(value) => attrs.rotate_automatic = Some(value),
                 Attribute::RotateDate(value) => attrs.rotate_date = Some(value),
                 Attribute::RotateGeneration(value) => attrs.rotate_generation = Some(value),
                 Attribute::RotateInterval(value) => attrs.rotate_interval = Some(value),
+                Attribute::RotateLatest(value) => attrs.rotate_latest = Some(value),
                 Attribute::RotateName(value) => attrs.rotate_name = Some(value),
                 Attribute::RotateOffset(value) => attrs.rotate_offset = Some(value),
                 Attribute::Sensitive(value) => attrs.sensitive = Some(value),

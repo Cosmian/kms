@@ -52,7 +52,8 @@ pub(crate) async fn modify_attribute(
         Attribute::State(_)
         | Attribute::CertificateLength(_)
         | Attribute::RotateGeneration(_)
-        | Attribute::RotateDate(_) => {
+        | Attribute::RotateDate(_)
+        | Attribute::RotateLatest(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Attribute_Read_Only,
                 "DENIED: this attribute is server-managed and cannot be modified by the user"
@@ -149,9 +150,11 @@ pub(crate) async fn modify_attribute(
             QuantumSafe => quantum_safe,
             RandomNumberGenerator => random_number_generator,
             RevocationReason => revocation_reason,
+            RotateAutomatic => rotate_automatic,
             RotateDate => rotate_date,
             RotateGeneration => rotate_generation,
             RotateInterval => rotate_interval,
+            RotateLatest => rotate_latest,
             RotateName => rotate_name,
             RotateOffset => rotate_offset,
             Sensitive => sensitive,

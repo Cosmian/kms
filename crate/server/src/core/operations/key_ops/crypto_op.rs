@@ -1,85 +1,22 @@
-use std::collections::HashSet;
-
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, State},
-        kmip_2_1::{
-            KmipOperation,
-            kmip_types::{UniqueIdentifier, UsageLimitsUnit},
-        },
+        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::{trace, warn};
 
-use super::{DatabaseOps, ObjectWithMetadataOps};
+use super::{
+    authorization::is_user_authorized,
+    key_resolution::{KeysetMode, ResolvedKey, resolve_key_for_operation},
+    usage_limits::decrement_usage_limits,
+};
 use crate::{
-    core::{
-        KMS,
-        uid_utils::{
-            KeysetVersion, has_prefix, parse_keyset_identifier, resolve_keyset_to_single_uid,
-            uids_from_unique_identifier, walk_keyset_chain,
-        },
-    },
+    core::KMS,
     error::KmsError,
     result::{KResult, KResultHelper},
 };
-
-// ─── Keyset mode ─────────────────────────────────────────────────────────────
-
-/// Determines how a keyset reference (bare name without `@version`) is handled.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KeysetMode {
-    /// Use only the latest key in the keyset (for encrypt, sign, MAC).
-    SingleLatest,
-    /// Try each key in the chain from newest to oldest (for decrypt, verify).
-    TryEach,
-}
-
-// ─── Generic crypto operation key resolution ─────────────────────────────────
-
-/// Result of key resolution for a cryptographic operation.
-pub(crate) enum ResolvedKey {
-    /// Key lives on an external crypto oracle (HSM / external key store).
-    /// The caller dispatches to the oracle using the `uid` and `prefix`.
-    Oracle { uid: String, prefix: String },
-    /// Key is in the local database: selected, Active, lifecycle-validated.
-    /// NOT yet unwrapped — the caller handles unwrapping based on operation needs.
-    Local(Box<ObjectWithMetadata>),
-    /// A keyset chain: ordered list of UIDs from newest to oldest.
-    /// The caller tries each key in order until one succeeds.
-    Keyset(Vec<String>),
-}
-
-/// Check whether a managed object's usage mask permits the given operation.
-///
-/// Resolves the object's effective attributes (prefers the object's own key-block
-/// attributes, falls back to externally-stored metadata) and tests against the
-/// required `CryptographicUsageMask` flag.
-///
-/// # `lenient` mode
-///
-/// When `true`, a **missing** usage mask (`None`) is treated as "allowed".
-/// This backward-compatibility mode is used for Certificates and Public Keys that
-/// were imported without a usage mask.
-///
-/// When `false`, a missing mask means the key is **rejected**.
-pub(crate) fn has_usage_mask(
-    owm: &ObjectWithMetadata,
-    required: CryptographicUsageMask,
-    lenient: bool,
-) -> bool {
-    let attributes = owm
-        .object()
-        .attributes()
-        .unwrap_or_else(|_| owm.attributes());
-    if lenient && attributes.cryptographic_usage_mask.is_none() {
-        return true;
-    }
-    attributes
-        .is_usage_authorized_for(required)
-        .unwrap_or(false)
-}
 
 /// Declarative specification for KMIP cryptographic operations.
 ///
@@ -196,7 +133,7 @@ pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
     kms: &KMS,
     request: Op::Request,
     user: &str,
-) -> KResult<(Op::Response, Option<u32>)> {
+) -> KResult<Op::Response> {
     let unique_identifier =
         Op::unique_identifier(&request).ok_or(KmsError::UnsupportedPlaceholder)?;
 
@@ -210,12 +147,9 @@ pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
                 );
                 metrics.record_hsm_operation(Op::OP_NAME, model);
             }
-            Ok((result, None))
+            Ok(result)
         }
-        ResolvedKey::Local(owm) => {
-            let resp = execute_local_with_limits::<Op>(kms, *owm, &request, user).await?;
-            Ok((resp, None))
-        }
+        ResolvedKey::Local(owm) => execute_local_with_limits::<Op>(kms, *owm, &request, user).await,
         ResolvedKey::Keyset(chain) => {
             execute_keyset_try_each::<Op>(kms, &chain, &request, user).await
         }
@@ -244,7 +178,7 @@ async fn execute_local_with_limits<Op: CryptoOpSpec>(
         })?;
 
     let data_len = Op::usage_data_len(request);
-    enforce_usage_limits(&owm, data_len)?;
+    owm.enforce_usage_limits(data_len)?;
 
     let res = Op::execute_local(kms, &unwrapped_owm, request, user).await?;
 
@@ -255,16 +189,14 @@ async fn execute_local_with_limits<Op: CryptoOpSpec>(
 /// Try each key in a keyset chain (newest→oldest) until one succeeds.
 ///
 /// The traversal is unbounded: `walk_keyset_chain` already guarantees termination
-/// via cycle detection.  The 0-based index of the successful key is returned alongside
-/// the response so the HTTP route handler can emit it as the `X-KMS-Keyset-Depth`
-/// response header.  A server-side warning is emitted whenever the depth is
+/// via cycle detection.  A server-side warning is emitted whenever the depth is
 /// ≥ `params.keyset_warn_depth`.
 async fn execute_keyset_try_each<Op: CryptoOpSpec>(
     kms: &KMS,
     chain: &[String],
     request: &Op::Request,
     user: &str,
-) -> KResult<(Op::Response, Option<u32>)> {
+) -> KResult<Op::Response> {
     let mut last_err: Option<KmsError> = None;
 
     for (depth, uid) in chain.iter().enumerate() {
@@ -274,16 +206,12 @@ async fn execute_keyset_try_each<Op: CryptoOpSpec>(
 
         // State filter: per KMIP 2.1 §3.31, processing operations (Decrypt, Verify)
         // accept Deactivated/Compromised keys; protection operations require Active only.
-        if !Op::accepted_states().contains(&owm.get_effective_state()?) {
+        if !Op::accepted_states().contains(&owm.effective_state()) {
             continue;
         }
 
         // Permission check
-        if !kms
-            .database
-            .is_user_authorized_for_operation(uid, user, Op::KMIP_OP)
-            .await?
-        {
+        if !is_user_authorized(&kms.database, uid, user, Op::KMIP_OP).await? {
             continue;
         }
 
@@ -311,7 +239,7 @@ async fn execute_keyset_try_each<Op: CryptoOpSpec>(
                         uid
                     );
                 }
-                return Ok((response, Some(depth_u32)));
+                return Ok(response);
             }
             Err(e) => {
                 trace!(
@@ -336,189 +264,6 @@ async fn execute_keyset_try_each<Op: CryptoOpSpec>(
     }))
 }
 
-/// Collect the single eligible crypto-oracle UID for a cryptographic operation.
-///
-/// Iterates over `candidate_uids`, retains those that carry a recognized prefix (oracle
-/// keys), and filters out any for which the current `user` lacks authorization.
-///
-/// Returns:
-/// * `Ok(None)` — no oracle UID is eligible; the caller should fall through to the standard
-///   database path.
-/// * `Ok(Some((uid, prefix)))` — exactly one oracle UID is eligible; use it.
-/// * `Err(KmsError::InvalidRequest)` — more than one oracle UID is eligible (ambiguous).
-pub(crate) async fn select_eligible_oracle_uid(
-    operation: KmipOperation,
-    op_name: &str,
-    candidate_uids: &HashSet<String>,
-    unique_identifier: &UniqueIdentifier,
-    kms: &KMS,
-    user: &str,
-) -> KResult<Option<(String, String)>> {
-    let mut eligible: Vec<(String, String)> = Vec::new();
-    for uid in candidate_uids {
-        if let Some(prefix) = has_prefix(uid) {
-            if !kms
-                .database
-                .is_user_authorized_for_operation(uid, user, operation)
-                .await?
-            {
-                continue;
-            }
-            eligible.push((uid.clone(), prefix.to_owned()));
-        }
-    }
-    match eligible.len() {
-        0 => Ok(None),
-        1 => Ok(eligible.into_iter().next()),
-        n => {
-            let ids: Vec<&str> = eligible.iter().map(|(uid, _)| uid.as_str()).collect();
-            Err(KmsError::InvalidRequest(format!(
-                "{op_name}: identifier {unique_identifier} resolves to {n} valid oracle keys \
-                 {ids:?}; use a unique identifier",
-            )))
-        }
-    }
-}
-
-/// Select exactly one key from a set of candidate UIDs for a cryptographic operation.
-///
-/// `candidate_uids` is a `HashSet` as returned by `uid_utils::uids_from_unique_identifier`.
-/// The function:
-///
-/// 1. Skips prefix-based (oracle) UIDs — those are handled by the caller before this call.
-/// 2. Fetches each object from the database and checks it is `Active` via `get_effective_state`.
-/// 3. Verifies the user is authorized via `is_user_authorized_for_operation`.
-/// 4. Applies `is_eligible` — a caller-supplied predicate that checks object type / usage mask.
-/// 5. Enforces uniqueness: the operation **fails** when more than one eligible key is found.
-///    This prevents an attacker from silently substituting a key by tagging a second one.
-///
-/// # Errors
-/// * `KmsError::Unauthorized`   — candidates found but the user has no permission on any of them
-/// * `KmsError::ItemNotFound`   — no candidate qualifies after all filters
-/// * `KmsError::InvalidRequest` — more than one eligible key matched
-pub(crate) async fn select_unique_key_for_operation<Op: CryptoOpSpec>(
-    candidate_uids: &HashSet<String>,
-    unique_identifier: &UniqueIdentifier,
-    kms: &KMS,
-    user: &str,
-) -> KResult<ObjectWithMetadata> {
-    use super::super::key_selection::select_unique_key;
-
-    // Fetch objects from UIDs, skipping oracle (prefix) UIDs handled by the caller.
-    let mut candidates = Vec::new();
-    for uid in candidate_uids {
-        if has_prefix(uid).is_some() {
-            continue;
-        }
-        if let Some(owm) = kms.database.retrieve_object(uid).await? {
-            candidates.push(owm);
-        }
-    }
-
-    let uid_display = unique_identifier.to_string();
-    select_unique_key::<Op, _>(candidates, &uid_display, kms, user, |_| Ok(())).await
-}
-
-/// Resolve the key for a cryptographic operation using the [`CryptoOpSpec`] trait.
-///
-/// Performs the entire key selection pipeline generically:
-/// 1. Checks if the identifier is a keyset reference (name or name@version).
-/// 2. Resolves UIDs from the `unique_identifier`.
-/// 3. Attempts oracle (HSM) routing.
-/// 4. Selects the key from the database with `Op::is_key_eligible`.
-/// 5. Applies error mapping via `Op::map_selection_error`.
-/// 6. Enforces process window constraints (`ProcessStartDate` / `ProtectStopDate`).
-///
-/// Returns [`ResolvedKey::Oracle`] for HSM keys, [`ResolvedKey::Local`] for DB keys,
-/// or [`ResolvedKey::Keyset`] for try-each keyset chains.
-/// Local keys are NOT unwrapped — `perform_crypto_operation` handles unwrapping.
-pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
-    unique_identifier: &UniqueIdentifier,
-    kms: &KMS,
-    user: &str,
-) -> KResult<ResolvedKey> {
-    let uid_str = unique_identifier
-        .as_str()
-        .context("The unique identifier must be a string")?;
-
-    // ── Keyset detection ─────────────────────────────────────────────────────
-    if let Some(keyset_ref) = parse_keyset_identifier(uid_str) {
-        // Explicit @version → resolve to a single key
-        match &keyset_ref.version {
-            KeysetVersion::Latest | KeysetVersion::First | KeysetVersion::Generation(_) => {
-                if let Some(uid) = resolve_keyset_to_single_uid(&keyset_ref, kms, user).await? {
-                    let owm = kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
-                        KmsError::ItemNotFound(format!(
-                            "{}: keyset key not found: {uid}",
-                            Op::OP_NAME
-                        ))
-                    })?;
-                    owm.check_process_window()?;
-                    return Ok(ResolvedKey::Local(Box::new(owm)));
-                }
-                // Keyset name not found in DB — fall through to normal UID resolution
-            }
-            KeysetVersion::Bare => {
-                // Bare keyset name: behavior depends on operation's keyset_mode
-                match Op::keyset_mode() {
-                    KeysetMode::SingleLatest => {
-                        if let Some(uid) =
-                            resolve_keyset_to_single_uid(&keyset_ref, kms, user).await?
-                        {
-                            let owm =
-                                kms.database.retrieve_object(&uid).await?.ok_or_else(|| {
-                                    KmsError::ItemNotFound(format!(
-                                        "{}: keyset key not found: {uid}",
-                                        Op::OP_NAME
-                                    ))
-                                })?;
-                            owm.check_process_window()?;
-                            return Ok(ResolvedKey::Local(Box::new(owm)));
-                        }
-                        // Not a keyset → fall through to normal path
-                    }
-                    KeysetMode::TryEach => {
-                        let chain = walk_keyset_chain(&keyset_ref.name, kms, user).await?;
-                        if !chain.is_empty() {
-                            return Ok(ResolvedKey::Keyset(chain));
-                        }
-                        // Not a keyset → fall through to normal path
-                    }
-                }
-            }
-        }
-    }
-
-    // ── Standard UID / tag resolution ────────────────────────────────────────
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
-        .await
-        .context(Op::OP_NAME)?;
-
-    // Phase 1 — Oracle (HSM / prefix) routing.
-    if let Some((uid, prefix)) = select_eligible_oracle_uid(
-        Op::KMIP_OP,
-        Op::OP_NAME,
-        &uids,
-        unique_identifier,
-        kms,
-        user,
-    )
-    .await?
-    {
-        return Ok(ResolvedKey::Oracle { uid, prefix });
-    }
-
-    // Phase 2 — Standard database path.
-    let owm = select_unique_key_for_operation::<Op>(&uids, unique_identifier, kms, user)
-        .await
-        .map_err(|e| Op::map_selection_error(e, unique_identifier, user))?;
-
-    // Lifecycle enforcement: always check process window.
-    owm.check_process_window()?;
-
-    Ok(ResolvedKey::Local(Box::new(owm)))
-}
-
 /// Unwrap a key (if wrapped) and enforce the KMIP algorithm policy.
 ///
 /// This is the generic second-stage enforcement step shared by all cryptographic
@@ -533,7 +278,7 @@ pub(crate) async fn resolve_key_for_operation<Op: CryptoOpSpec>(
 /// **MUST clone** before calling this function and pass the original (still-wrapped)
 /// `owm` to the persistence path.  Failing to do so silently stores the plaintext key
 /// in the database, defeating KEK encryption at rest.
-pub(crate) async fn unwrap_and_enforce_policy(
+async fn unwrap_and_enforce_policy(
     kms: &KMS,
     owm: &mut ObjectWithMetadata,
     op_name: &str,
@@ -549,80 +294,4 @@ pub(crate) async fn unwrap_and_enforce_policy(
         owm.id(),
         owm,
     )
-}
-
-// ─── UsageLimits helpers ─────────────────────────────────────────────────────
-
-/// Enforce `UsageLimits` before a cryptographic operation.
-///
-/// Returns `Err(Permission_Denied / "DENIED")` when the key's remaining usage
-/// budget is insufficient for the requested `data_len` bytes.
-///
-/// For `Byte`-based limits the check is data-length-aware; for `Object`, `Block`,
-/// and `Operation` units the limit simply cannot be zero.
-pub(crate) fn enforce_usage_limits(owm: &ObjectWithMetadata, data_len: usize) -> KResult<()> {
-    let Some(ul) = owm.attributes().usage_limits.as_ref() else {
-        return Ok(());
-    };
-    match ul.usage_limits_unit {
-        UsageLimitsUnit::Byte => {
-            let needed = i64::try_from(data_len).unwrap_or(i64::MAX);
-            if ul.usage_limits_total < needed {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Permission_Denied,
-                    "DENIED".to_owned(),
-                ));
-            }
-        }
-        UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
-            if ul.usage_limits_total <= 0 {
-                return Err(KmsError::Kmip21Error(
-                    ErrorReason::Permission_Denied,
-                    "DENIED".to_owned(),
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Decrement and persist `UsageLimits` after a successful cryptographic operation.
-///
-/// For `Byte`-based limits, `data_len` bytes are subtracted from the remaining total.
-/// For `Object`, `Block`, and `Operation` units, one unit is consumed.
-///
-/// Persistence (database UPDATE) is skipped when no usage limits are set on the key,
-/// avoiding unnecessary row-level lock contention on the hot path.
-pub(crate) async fn decrement_usage_limits(
-    kms: &KMS,
-    owm: &mut ObjectWithMetadata,
-    op_name: &str,
-    data_len: usize,
-) -> KResult<()> {
-    let mut decremented = false;
-    if let Some(ref mut ul) = owm.attributes_mut().usage_limits {
-        match ul.usage_limits_unit {
-            UsageLimitsUnit::Byte => {
-                let consumed = i64::try_from(data_len).unwrap_or(i64::MAX);
-                ul.usage_limits_total = (ul.usage_limits_total - consumed).max(0);
-                decremented = true;
-            }
-            UsageLimitsUnit::Object | UsageLimitsUnit::Block | UsageLimitsUnit::Operation => {
-                ul.usage_limits_total = (ul.usage_limits_total - 1).max(0);
-                decremented = true;
-            }
-        }
-    }
-    if decremented {
-        let attributes = owm.attributes().clone();
-        kms.database
-            .update_object(owm.id(), owm.object(), &attributes, None)
-            .await
-            .map_err(|e| {
-                KmsError::ServerError(format!(
-                    "{op_name}: failed to persist updated usage limits: {e}"
-                ))
-            })?;
-    }
-    Ok(())
 }

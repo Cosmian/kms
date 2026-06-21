@@ -23,7 +23,7 @@ use openssl::pkey::{Id, PKey, Private};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -54,7 +54,7 @@ impl CryptoOpSpec for SignOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::PrivateKey { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Sign, false);
+            return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
         }
         false
     }
@@ -107,11 +107,7 @@ impl CryptoOpSpec for SignOp {
     }
 }
 
-pub(crate) async fn sign(
-    kms: &KMS,
-    request: Sign,
-    user: &str,
-) -> KResult<(SignResponse, Option<u32>)> {
+pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignResponse> {
     trace!("{request}");
 
     // KMIP 2.1 §6.30: data and digested_data are mutually exclusive

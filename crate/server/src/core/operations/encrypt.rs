@@ -53,7 +53,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -82,10 +82,10 @@ impl CryptoOpSpec for EncryptOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::Certificate { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Encrypt, true);
+            return owm.has_usage_mask(CryptographicUsageMask::Encrypt, true);
         }
         if let Object::SymmetricKey { .. } | Object::PublicKey { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Encrypt, false);
+            return owm.has_usage_mask(CryptographicUsageMask::Encrypt, false);
         }
         false
     }
@@ -162,11 +162,7 @@ impl CryptoOpSpec for EncryptOp {
     }
 }
 
-pub(crate) async fn encrypt(
-    kms: &KMS,
-    request: Encrypt,
-    user: &str,
-) -> KResult<(EncryptResponse, Option<u32>)> {
+pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
     trace!(
         "uid={:?}, data_len={}",
         request.unique_identifier,

@@ -47,66 +47,18 @@ use crate::{
 
 // ─── Shared helpers (used by all rotation trait implementors) ────────────────
 
-/// Extract the full wrapping specification from an object's `KeyWrappingData`.
-///
-/// Returns `None` if the object has no key block or is not wrapped.
-/// Used by the default [`RekeyOperation::detect_wrapping`] implementation.
-pub(crate) fn extract_rewrap_spec(object: &Object) -> Option<KeyWrappingSpecification> {
-    let kb = object.key_block().ok()?;
-    let kwd = kb.key_wrapping_data.as_ref()?;
-    Some(KeyWrappingSpecification {
-        wrapping_method: kwd.wrapping_method,
-        encryption_key_information: kwd.encryption_key_information.clone(),
-        mac_or_signature_key_information: kwd.mac_signature_key_information.clone(),
-        attribute_name: None,
-        encoding_option: kwd.encoding_option,
-    })
-}
-
-/// Extract the wrapping key UID from a wrapped object's encryption key information.
-///
-/// Returns:
-/// - `Ok(Some(uid))` if the object is wrapped and has a valid wrapping key UID.
-/// - `Ok(None)` if the object has no key block or no `KeyWrappingData` (i.e. not wrapped).
-/// - `Err(...)` if the object has `KeyWrappingData` but the `EncryptionKeyInformation`
-///   is missing or has no `UniqueIdentifier` — this is a structural invariant violation.
-pub(crate) fn extract_wrapping_key_uid(object: &Object) -> KResult<Option<String>> {
-    let Some(kb) = object.key_block().ok() else {
-        return Ok(None);
-    };
-    let Some(kwd) = &kb.key_wrapping_data else {
-        return Ok(None);
-    };
-    // Object has wrapping data → the wrapping key UID MUST be present
-    let eki = kwd.encryption_key_information.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest(
-            "Object has KeyWrappingData but no EncryptionKeyInformation".to_owned(),
-        )
-    })?;
-    let uid = eki.unique_identifier.as_str().ok_or_else(|| {
-        KmsError::InvalidRequest(
-            "EncryptionKeyInformation has no UniqueIdentifier for the wrapping key".to_owned(),
-        )
-    })?;
-    Ok(Some(uid.to_owned()))
-}
-
 /// Copy the `WrappingKeyLink` from an old (wrapped) object to the new object's attributes.
 ///
 /// If the old object was wrapped, the wrapping key UID is preserved as a
 /// `LinkType::WrappingKeyLink` on the replacement's attributes so that
 /// dependant re-wrapping and attribute queries work correctly.
-pub(crate) fn preserve_wrapping_key_link(
-    old_object: &Object,
-    new_attrs: &mut Attributes,
-) -> KResult<()> {
-    if let Some(wrapping_key_uid) = extract_wrapping_key_uid(old_object)? {
+pub(crate) fn preserve_wrapping_key_link(old_object: &Object, new_attrs: &mut Attributes) {
+    if let Some(wrapping_key_uid) = old_object.wrapping_key_uid() {
         new_attrs.set_link(
             LinkType::WrappingKeyLink,
             LinkedObjectIdentifier::TextString(wrapping_key_uid),
         );
     }
-    Ok(())
 }
 
 /// Retrieve all eligible objects matching the given identifier, filtered by state and type.
@@ -234,7 +186,7 @@ pub(crate) trait RekeyOperation {
         candidates
             .as_ref()
             .iter()
-            .map(|c| extract_rewrap_spec(c.owm.object()))
+            .map(|c| c.owm.object().rewrap_spec())
             .collect()
     }
 
@@ -523,6 +475,42 @@ pub(crate) fn prepare_replacement_attributes(
     Ok(new_attrs)
 }
 
+/// Clean attributes from an existing key to use as input to `Create` / `CreateKeyPair`.
+///
+/// Removes identity, lifecycle dates, rotation metadata, and vendor tags that must not
+/// leak from the old key into the generation request. The cryptographic parameters
+/// (algorithm, length, domain parameters) are preserved so the replacement key has
+/// identical cryptographic properties.
+///
+/// Used by both `symmetric.rs` and `keypair.rs` in their `generate_replacement` step.
+pub(crate) fn clean_attributes_for_generation(
+    old_attrs: &Attributes,
+    vendor_id: &str,
+) -> Attributes {
+    let mut attrs = old_attrs.clone();
+    // Identity — the new key gets its own UID and links
+    attrs.unique_identifier = None;
+    attrs.link = None;
+    attrs.name = None;
+    // Lifecycle dates — must not leak from old key
+    attrs.initial_date = None;
+    attrs.last_change_date = None;
+    attrs.activation_date = None;
+    attrs.deactivation_date = None;
+    attrs.destroy_date = None;
+    attrs.compromise_date = None;
+    attrs.compromise_occurrence_date = None;
+    // Generation format — let Create/CreateKeyPair choose
+    attrs.key_format_type = None;
+    // Rotation metadata — new key starts fresh (set_rotation_metadata_on_new_key applies later)
+    attrs.rotate_interval = None;
+    attrs.rotate_name = None;
+    attrs.rotate_offset = None;
+    // Vendor tags — assigned fresh by Create
+    attrs.remove_vendor_attribute(vendor_id, "tag");
+    attrs
+}
+
 /// Update the old key's attributes after a rekey operation.
 ///
 /// Per KMIP 1.4 §4.4 Table 173 / §4.5 Table 177 / §4.8 Table 187:
@@ -565,14 +553,18 @@ pub(crate) fn set_rotation_metadata_on_new_key(
     // Inherit rotate_name so keyset resolution (name@latest, bare name) can find the new key
     new_attrs.rotate_name.clone_from(&old_attrs.rotate_name);
     new_attrs.rotate_offset = None;
+    // Mark the new key as the latest in the keyset
+    new_attrs.rotate_latest = Some(true);
     Ok(())
 }
 
 /// Clear rotation flags on the **old** key after a rekey.
 ///
 /// - `rotate_interval` = 0 (prevent the scheduler from picking it up again)
+/// - `rotate_latest` = false (the old key is no longer the latest in the keyset)
 pub(crate) const fn clear_rotation_flags_on_old_key(old_attrs: &mut Attributes) {
     old_attrs.rotate_interval = Some(0);
+    old_attrs.rotate_latest = Some(false);
 }
 
 /// Returns `true` if `attrs` represents the latest generation in its named keyset.

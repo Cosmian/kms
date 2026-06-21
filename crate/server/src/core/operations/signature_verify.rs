@@ -23,7 +23,7 @@ use openssl::pkey::{Id, PKey, Public};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, KeysetMode, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode, perform_crypto_operation},
     },
     error::KmsError,
     kms_bail,
@@ -69,7 +69,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
             // Use Verify mask with lenient=true so imported keys without an explicit mask
             // still work.
             Object::PublicKey { .. } | Object::PrivateKey { .. } => {
-                has_usage_mask(owm, CryptographicUsageMask::Verify, true)
+                owm.has_usage_mask(CryptographicUsageMask::Verify, true)
             }
             _ => false,
         }
@@ -217,7 +217,7 @@ pub(crate) async fn signature_verify(
     kms: &KMS,
     request: SignatureVerify,
     user: &str,
-) -> KResult<(SignatureVerifyResponse, Option<u32>)> {
+) -> KResult<SignatureVerifyResponse> {
     trace!("{request}");
 
     // Validate streaming indicators

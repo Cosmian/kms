@@ -175,10 +175,9 @@ impl KMS {
     pub(crate) async fn decrypt(&self, request: Decrypt, user: &str) -> KResult<DecryptResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "decrypt");
 
-        let (resp, _depth) = Box::pin(operations::decrypt(self, request, user))
+        Box::pin(operations::decrypt(self, request, user))
             .instrument(span)
-            .await?;
-        Ok(resp)
+            .await
     }
 
     /// This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
@@ -257,10 +256,9 @@ impl KMS {
     pub(crate) async fn encrypt(&self, request: Encrypt, user: &str) -> KResult<EncryptResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "encrypt");
 
-        let (resp, _depth) = Box::pin(operations::encrypt(self, request, user))
+        Box::pin(operations::encrypt(self, request, user))
             .instrument(span)
-            .await?;
-        Ok(resp)
+            .await
     }
 
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
@@ -542,10 +540,9 @@ impl KMS {
     pub(crate) async fn mac(&self, request: MAC, user: &str) -> KResult<MACResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "mac");
 
-        let (resp, _depth) = Box::pin(operations::mac(self, request, user))
+        Box::pin(operations::mac(self, request, user))
             .instrument(span)
-            .await?;
-        Ok(resp)
+            .await
     }
 
     pub(crate) async fn mac_verify(
@@ -555,10 +552,9 @@ impl KMS {
     ) -> KResult<MACVerifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "mac_verify");
 
-        let (resp, _depth) = Box::pin(operations::mac_verify(self, request, user))
+        Box::pin(operations::mac_verify(self, request, user))
             .instrument(span)
-            .await?;
-        Ok(resp)
+            .await
     }
 
     // Used in tests to send a full KMIP RequestMessage and receive a ResponseMessage.
@@ -572,10 +568,9 @@ impl KMS {
         let span = tracing::span!(tracing::Level::ERROR, "message");
 
         // This is a large future, hence pinning
-        let (resp, _depth) = Box::pin(operations::message(self, request, user))
+        Box::pin(operations::message(self, request, user))
             .instrument(span)
-            .await?;
-        Ok(resp)
+            .await
     }
 
     pub(crate) async fn register(
@@ -694,10 +689,9 @@ impl KMS {
     pub(crate) async fn sign(&self, request: Sign, user: &str) -> KResult<SignResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "sign");
 
-        let (resp, _depth) = Box::pin(operations::sign(self, request, user))
+        Box::pin(operations::sign(self, request, user))
             .instrument(span)
-            .await?;
-        Ok(resp)
+            .await
     }
 
     /// This operation requests the server to perform a signature verify operation on the provided data using a Managed Cryptographic Object as the key for the signature verification operation.
@@ -718,10 +712,9 @@ impl KMS {
     ) -> KResult<SignatureVerifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "signature_verify");
 
-        let (resp, _depth) = Box::pin(operations::signature_verify(self, request, user))
+        Box::pin(operations::signature_verify(self, request, user))
             .instrument(span)
-            .await?;
-        Ok(resp)
+            .await
     }
 
     /// This operation requests the server to validate a certificate chain and return information on its validity. Only a single certificate chain SHALL be included in each request.

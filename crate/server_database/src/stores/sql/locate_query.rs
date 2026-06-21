@@ -554,21 +554,24 @@ pub(super) fn find_by_rotate_name_query<P: PlaceholderTrait>(
 }
 
 /// Build the SQL query to find objects that are candidates for rotation.
-/// Selects active objects with a non-null `RotateInterval > 0`.
+/// Selects active objects where `RotateAutomatic = true` and `RotateInterval > 0`.
+/// Per KMIP 2.1 §4.48, automatic rotation only occurs when explicitly enabled by the client.
 /// The actual "due" check (comparing timestamps) is done in Rust via `is_due_for_rotation`.
 #[must_use]
 pub(super) fn find_due_for_rotation_query<P: PlaceholderTrait>() -> String {
-    let extract = P::extract_attribute_path(&["RotateInterval"]);
+    let interval_extract = P::extract_attribute_path(&["RotateInterval"]);
+    let auto_extract = P::extract_attribute_path(&["RotateAutomatic"]);
     let cast_and_compare = if P::NEEDS_INTEGER_CAST {
-        format!("CAST({extract} AS {}) > 0", P::TYPE_INTEGER)
+        format!("CAST({interval_extract} AS {}) > 0", P::TYPE_INTEGER)
     } else {
         // MySQL: CAST with SIGNED for correct numeric comparison
-        format!("CAST({extract} AS SIGNED) > 0")
+        format!("CAST({interval_extract} AS SIGNED) > 0")
     };
     format!(
         "SELECT objects.id, objects.attributes FROM objects \
          WHERE objects.state = 'Active' \
-         AND {extract} IS NOT NULL \
+         AND {auto_extract} = 'true' \
+         AND {interval_extract} IS NOT NULL \
          AND {cast_and_compare}"
     )
 }

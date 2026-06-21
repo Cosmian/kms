@@ -224,10 +224,9 @@ pub struct ClapConfig {
     #[clap(long, default_value = "0", verbatim_doc_comment)]
     pub auto_rotation_check_interval_secs: u64,
 
-    /// Depth at which a successful keyset chain decryption triggers a warning.
+    /// Depth at which a successful keyset chain decryption triggers a server-side warning.
     /// Keyset chain traversal is unbounded (stopped only by cycle detection);
-    /// this threshold emits a server-side warning and returns the depth as the
-    /// `X-KMS-Keyset-Depth` HTTP header so clients can flag stale ciphertexts.
+    /// this threshold emits a warning log so operators can flag stale ciphertexts.
     /// Default: 5.
     #[clap(long, default_value = "5", verbatim_doc_comment)]
     pub keyset_warn_depth: u32,

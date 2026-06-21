@@ -15,15 +15,15 @@ use cosmian_logger::trace;
 use time::OffsetDateTime;
 
 use super::common::{
-    RekeyOperation, ReplacementObject, RotationCandidate, compute_rotation_uid,
-    enforce_privileged_user, execute_rekey, finalize_replacement_key, is_keyset_latest,
-    prepare_replacement_attributes, preserve_wrapping_key_link, retrieve_eligible_keys,
-    set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
+    RekeyOperation, ReplacementObject, RotationCandidate, clean_attributes_for_generation,
+    compute_rotation_uid, enforce_privileged_user, execute_rekey, finalize_replacement_key,
+    is_keyset_latest, prepare_replacement_attributes, preserve_wrapping_key_link,
+    retrieve_eligible_keys, set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
 };
 use crate::{
     core::{
         KMS,
-        operations::{key_ops::reject_protection_storage_masks, key_selection::KeySelectionSpec},
+        operations::key_ops::{key_resolution::KeySelectionSpec, reject_protection_storage_masks},
         uid_utils::has_prefix,
     },
     error::KmsError,
@@ -247,7 +247,7 @@ impl RekeyOperation for SymmetricRekey {
         request: &ReKey,
         user: &str,
     ) -> KResult<[RotationCandidate; 1]> {
-        use crate::core::operations::key_selection::select_unique_key;
+        use crate::core::operations::key_ops::key_resolution::select_unique_key;
 
         reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
@@ -309,14 +309,9 @@ impl RekeyOperation for SymmetricRekey {
     ) -> KResult<[ReplacementObject; 1]> {
         let [candidate] = candidates;
 
-        // Clean attributes for generation
-        let mut gen_attrs = candidate.owm.attributes().to_owned();
-        gen_attrs.unique_identifier = None;
-        gen_attrs.key_format_type = None;
-        gen_attrs.link = None;
-        gen_attrs.rotate_interval = None;
-        gen_attrs.rotate_name = None;
-        gen_attrs.rotate_offset = None;
+        // Clean attributes for generation (removes identity, lifecycle dates, rotation metadata)
+        let gen_attrs =
+            clean_attributes_for_generation(candidate.owm.attributes(), kms.vendor_id());
 
         let create_request = Create {
             object_type: ObjectType::SymmetricKey,
@@ -363,7 +358,7 @@ impl RekeyOperation for SymmetricRekey {
         )?;
 
         // Preserve WrappingKeyLink if the old key was wrapped
-        preserve_wrapping_key_link(candidate.owm.object(), &mut replacement.attributes)?;
+        preserve_wrapping_key_link(candidate.owm.object(), &mut replacement.attributes);
 
         // Set rotation metadata
         set_rotation_metadata_on_new_key(&mut replacement.attributes, candidate.owm.attributes())?;

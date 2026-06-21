@@ -54,12 +54,6 @@ macro_rules! op {
         let resp = Box::pin($func($kms, req, $user)).await?;
         Operation::$Resp(resp)
     }};
-    // Variant for free functions with Box::pin returning (Resp, Option<u32>)
-    (pin_fn_depth $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $func:expr, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
-        let (resp, _depth) = Box::pin($func($kms, req, $user)).await?;
-        Operation::$Resp(resp)
-    }};
     // Variant for infallible KMS methods (no `?`)
     (infallible $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
         let req = from_ttlv::<$Req>($ttlv)?;
@@ -170,7 +164,7 @@ async fn dispatch_inner(
         "Locate" => op!(ttlv, kms, user, Locate, locate, LocateResponse),
         "Mac" | "MAC" => op!(ttlv, kms, user, MAC, mac, MACResponse),
         "MACVerify" => {
-            op!(pin_fn_depth ttlv, kms, user, MACVerify, mac_verify, MACVerifyResponse)
+            op!(pin_fn ttlv, kms, user, MACVerify, mac_verify, MACVerifyResponse)
         }
         "Query" => op!(query ttlv, kms, Query, query_op, QueryResponse),
         "ModifyAttribute" => {
