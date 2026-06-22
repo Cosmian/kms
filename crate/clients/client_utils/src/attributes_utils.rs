@@ -397,6 +397,11 @@ pub fn parse_selected_attributes_flatten(
                     );
                 }
             }
+            "rotate_automatic" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_automatic.as_ref()
+            ),
             "rotate_date" => {
                 if let Some(v) = attributes.rotate_date.as_ref() {
                     results.insert(
@@ -414,6 +419,11 @@ pub fn parse_selected_attributes_flatten(
                 results,
                 selected_attribute_name,
                 attributes.rotate_interval.as_ref()
+            ),
+            "rotate_latest" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_latest.as_ref()
             ),
             "rotate_name" => insert_if_some!(
                 results,
