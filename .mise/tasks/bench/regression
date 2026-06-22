@@ -22,6 +22,8 @@ bench_build_binaries "release"
 BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 bench_start_server "$BENCH_PORT" "$TMP_DIR"
 
-"${CKMS_BIN}" --url "http://127.0.0.1:${BENCH_PORT}" bench --load-baseline
+"${CKMS_BIN}" --url "http://127.0.0.1:${BENCH_PORT}" bench \
+  --speed "${BENCH_SPEED:-quick}" \
+  --load-baseline base
 
 print_success "Benchmark regression completed"
