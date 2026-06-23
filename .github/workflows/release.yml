@@ -231,7 +231,9 @@ jobs:
     with:
       ref: ${{ needs.prepare.outputs.release_branch }}
       new_version: ${{ inputs.new_version }}
-      commit_back: true
+      # release.yml has its own trigger-packaging job (with polling + SBOM
+      # retrieval), so the reusable workflow must NOT dispatch packaging again.
+      trigger_packaging: false
     secrets:
       PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
 
