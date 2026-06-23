@@ -24,7 +24,23 @@ jobs:
       toolchain: 1.91.0
       archive-name: windows
 
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Recompute Nix vendor hashes before any Nix-based build job.
+  #
+  # On branch refs (workflow_dispatch, workflow_call on a branch) this commits
+  # and pushes updated hashes so that docker and packages check out correct
+  # values.  On tag refs the hashes are already committed (the release workflow
+  # committed them), so commit_back is set to false.
+  # ─────────────────────────────────────────────────────────────────────────────
+  update-nix-hashes:
+    uses: ./.github/workflows/nix-update-hashes.yml
+    with:
+      ref: ${{ github.ref_name }}
+      commit_back: ${{ github.ref_type == 'branch' }}
+    secrets: inherit
+
   docker:
+    needs: update-nix-hashes
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
       'schedule'
     uses: ./.github/workflows/packaging-docker.yml
@@ -33,6 +49,7 @@ jobs:
     secrets: inherit
 
   packages:
+    needs: update-nix-hashes
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name ==
       'schedule'
     name: ${{ matrix.runner }}-${{ matrix.features }}-${{ matrix.link }}

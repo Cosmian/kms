@@ -221,61 +221,19 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 2 — Recompute Nix vendor hashes (matrix: Linux + macOS)
   #
-  # Hash files split by platform:
-  #   Linux  : server.vendor.{static,dynamic}.sha256
-  #             cli.vendor.linux.sha256
-  #             ui.vendor.{fips,non-fips}.sha256
-  #             ui.pnpm.linux.sha256
-  #   macOS  : cli.vendor.{static,dynamic}.darwin.sha256
-  #             ui.pnpm.darwin.sha256
-  #
-  # The two sets are disjoint, so both runners can commit concurrently without
-  # conflicts.  Each job pulls the latest HEAD before pushing.
+  # Delegated to the local reusable workflow nix-update-hashes.yml.
+  # See that file for the full hash-file split by platform and idempotency notes.
   # ─────────────────────────────────────────────────────────────────────────────
   update-nix-hashes:
-    name: Update Nix vendor hashes (${{ matrix.runner }})
+    name: Update Nix vendor hashes
     needs: prepare
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-latest, macos-15]
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.release_branch }}
-          fetch-depth: 0
-          submodules: recursive
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - uses: ./.github/actions/setup-nix
-        with:
-          extra-nix-config: http-connections = 8
-
-      - uses: ./.github/actions/install-mise
-
-      - name: Recompute all Nix vendor hashes
-        run: mise run release:nix-update-hashes
-
-      - name: Commit updated Nix hashes
-        run: |
-          git add nix/expected-hashes/
-          if git diff --cached --quiet; then
-            echo "Nix hashes are already up-to-date, nothing to commit."
-          else
-            git commit -m "build: update Nix vendor hashes (${{ runner.os }}) for ${{ inputs.new_version }}"
-            # Pull after committing to avoid "index contains uncommitted changes"
-            # error. The two platform jobs touch disjoint file sets so rebase
-            # always succeeds cleanly.
-            git pull --rebase origin "${{ needs.prepare.outputs.release_branch }}"
-            git push origin "${{ needs.prepare.outputs.release_branch }}"
-          fi
+    uses: ./.github/workflows/nix-update-hashes.yml
+    with:
+      ref: ${{ needs.prepare.outputs.release_branch }}
+      new_version: ${{ inputs.new_version }}
+      commit_back: true
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 3 — Trigger packaging CI on the release branch and wait for completion
@@ -290,8 +248,8 @@ jobs:
   trigger-packaging:
     name: Trigger & await packaging CI
     needs: [prepare, update-nix-hashes]
-    # update-nix-hashes is a matrix job; GitHub waits for ALL instances before
-    # starting trigger-packaging.
+    # nix-update-hashes.yml runs a Linux+macOS matrix internally; GitHub waits
+    # for all instances before starting trigger-packaging.
     runs-on: ubuntu-latest
     outputs:
       packaging_run_id: ${{ steps.dispatch.outputs.run_id }}

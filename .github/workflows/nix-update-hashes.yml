@@ -1,0 +1,107 @@
+---
+# Local reusable workflow — Update Nix vendor hashes.
+#
+# Runs on a Linux + macOS matrix, recomputes all Nix vendor hash files via
+# `mise run release:nix-update-hashes`, and optionally commits and pushes the
+# result back to `inputs.ref`.
+#
+# Hash files split by platform (the two sets are disjoint so both runners can
+# commit concurrently without conflicts):
+#   Linux  : server.vendor.{static,dynamic}.sha256
+#             cli.vendor.linux.sha256
+#             ui.vendor.{fips,non-fips}.sha256
+#             ui.pnpm.linux.sha256
+#   macOS  : cli.vendor.{static,dynamic}.darwin.sha256
+#             ui.pnpm.darwin.sha256
+#
+# Callers
+# ───────
+# release.yml  — Job 2: commit_back=true, PAT_TOKEN required (push to release branch)
+# packaging.yml — before docker + packages jobs: commit_back depends on ref_type
+#                 (branch → true, tag → false; tags already carry correct hashes
+#                  from the release workflow).
+
+name: Update Nix vendor hashes
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: >
+          Git ref (branch name or full refs/…) to check out.
+          For release.yml this is the release branch name (e.g. release/5.20.0).
+          For packaging.yml this is github.ref_name.
+        required: true
+        type: string
+      new_version:
+        description: >
+          Optional version string appended to the commit message
+          (e.g. "5.20.0"). Leave empty when not in a release context.
+        required: false
+        type: string
+        default: ''
+      commit_back:
+        description: >
+          When true, commit updated hash files and push them back to `ref`.
+          Set to false for tag refs (hashes are already committed) or read-only
+          contexts such as pull requests.
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      PAT_TOKEN:
+        description: >
+          Personal Access Token with `repo` + `workflow` scopes.
+          Required when commit_back is true so that the push re-triggers other
+          workflows. GITHUB_TOKEN is insufficient for that purpose.
+        required: true
+
+jobs:
+  update-nix-hashes:
+    name: Update Nix vendor hashes (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-15]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Recompute all Nix vendor hashes
+        run: mise run release:nix-update-hashes
+
+      - name: Commit updated Nix hashes
+        if: inputs.commit_back
+        run: |
+          git add nix/expected-hashes/
+          if git diff --cached --quiet; then
+            echo "Nix hashes are already up-to-date, nothing to commit."
+          else
+            MSG="build: update Nix vendor hashes (${{ runner.os }})"
+            if [ -n "${{ inputs.new_version }}" ]; then
+              MSG="$MSG for ${{ inputs.new_version }}"
+            fi
+            git commit -m "$MSG"
+            # Pull after committing to avoid "index contains uncommitted changes"
+            # error. The two platform jobs touch disjoint file sets so rebase
+            # always succeeds cleanly.
+            git pull --rebase origin "${{ inputs.ref }}"
+            git push origin "${{ inputs.ref }}"
+          fi
