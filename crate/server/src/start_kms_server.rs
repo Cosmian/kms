@@ -48,12 +48,13 @@ use url::Url;
 #[cfg(feature = "non-fips")]
 use crate::routes::tokenize;
 use crate::{
-    config::{IdpAuthConfig, ServerParams, TlsParams},
+    config::{IdpAuthConfig, OidcRuntimeConfig, ProxyParams, ServerParams, TlsParams},
     core::KMS,
     cron,
     error::KmsError,
     middlewares::{
-        JwksManager, JwtConfig, SpireTokenCache, api_token_middleware, ensure_auth_middleware,
+        JwksManager, JwtConfig, SpireTokenCache, api_token_middleware, ensure_auth_middleware,SessionAuth,
+        TlsAuth,
         extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
         spire_token_middleware, tls_auth_fn, vault_token_optional_middleware,
     },
@@ -568,6 +569,96 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
     Ok(Key::from(derived_key.as_ref()))
 }
 
+/// Fetch the OIDC discovery document and build an `OidcRuntimeConfig`.
+///
+/// Called once at server startup. The discovered endpoints (`authorization_endpoint`,
+/// `token_endpoint`, `jwks_uri`) are **cached for the lifetime of the server process**.
+///
+/// WARNING: OIDC discovery endpoints are cached at startup.
+/// Changes to the `IdP` configuration (issuer URL, JWKS URI, endpoint URLs)
+/// require a **server restart** to take effect.
+async fn build_oidc_runtime_config(
+    oidc_config: crate::config::OidcConfig,
+    proxy_params: Option<&ProxyParams>,
+) -> OidcRuntimeConfig {
+    use crate::config::OidcDiscoveredEndpoints;
+
+    let Some(ref issuer) = oidc_config.ui_oidc_issuer_url else {
+        return OidcRuntimeConfig { config: oidc_config, discovered: None };
+    };
+
+    let base = issuer.trim_end_matches('/');
+    let discovery_url = format!("{base}/.well-known/openid-configuration");
+
+    let client = match reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("OIDC: failed to build HTTP client for discovery: {e}");
+            return OidcRuntimeConfig { config: oidc_config, discovered: None };
+        }
+    };
+
+    let discovery: serde_json::Value = match client.get(&discovery_url).send().await {
+        Ok(r) => match r.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("OIDC: failed to parse discovery document from {discovery_url}: {e}");
+                return OidcRuntimeConfig { config: oidc_config, discovered: None };
+            }
+        },
+        Err(e) => {
+            warn!("OIDC: failed to fetch discovery document from {discovery_url}: {e}");
+            return OidcRuntimeConfig { config: oidc_config, discovered: None };
+        }
+    };
+
+    let get_str = |key: &str| {
+        discovery
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+    };
+
+    let (Some(authorization_endpoint), Some(token_endpoint), Some(jwks_uri)) = (
+        get_str("authorization_endpoint"),
+        get_str("token_endpoint"),
+        get_str("jwks_uri"),
+    ) else {
+        warn!("OIDC: discovery document at {discovery_url} is missing required fields");
+        return OidcRuntimeConfig { config: oidc_config, discovered: None };
+    };
+
+    info!("OIDC: discovered endpoints from {discovery_url}");
+    debug!("OIDC: authorization_endpoint={authorization_endpoint}");
+    debug!("OIDC: token_endpoint={token_endpoint}");
+    debug!("OIDC: jwks_uri={jwks_uri}");
+
+    let jwks_manager = match JwksManager::new(
+        vec![jwks_uri],
+        proxy_params,
+    )
+    .await
+    {
+        Ok(mgr) => Arc::new(mgr),
+        Err(e) => {
+            warn!("OIDC: failed to build JwksManager for UI OIDC: {e}");
+            return OidcRuntimeConfig { config: oidc_config, discovered: None };
+        }
+    };
+
+    OidcRuntimeConfig {
+        config: oidc_config,
+        discovered: Some(OidcDiscoveredEndpoints {
+            authorization_endpoint,
+            token_endpoint,
+            jwks_manager,
+        }),
+    }
+}
+
 /// Prepare the server for the application.
 ///
 /// Creates an `HttpServer` instance,
@@ -863,6 +954,22 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Extract http_workers before the closure moves kms_server
     let http_workers = kms_server.params.http_workers;
 
+    // Pre-compute OIDC runtime config (async, with discovery fetch) before the
+    // synchronous HttpServer closure. Only built when the UI is enabled.
+    let ui_oidc_runtime_config = {
+        let ui_enable = kms_server.params.ui_enable;
+        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+        if ui_enable && ui_index_folder.join("index.html").exists() {
+            let oidc_config = kms_server.params.ui_oidc_auth.clone();
+            let proxy_params = kms_server.params.proxy_params.clone();
+            Some(Arc::new(
+                build_oidc_runtime_config(oidc_config, proxy_params.as_ref()).await,
+            ))
+        } else {
+            None
+        }
+    };
+
     // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
     // The test-server helper leaves that field at `None` so parallel unit tests are never
     // throttled by the rate limiter. Production configs set it to 100 (req/s, burst 300).
@@ -1059,6 +1166,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     use_any_auth,
                     ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
                 ))
+                .wrap(SessionAuth)
                 .wrap(Condition::new(
                     use_api_token_auth,
                     api_token_middleware(kms_server_for_http.clone()),
@@ -1173,7 +1281,16 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
         if kms_server_for_http.params.ui_enable && ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
-            let oidc_config = kms_server_for_http.params.ui_oidc_auth.clone();
+            // OIDC runtime config was pre-computed before HttpServer::new (async discovery).
+            let oidc_runtime_config: OidcRuntimeConfig = ui_oidc_runtime_config
+                .as_ref()
+                .map_or_else(
+                    || OidcRuntimeConfig {
+                        config: kms_server_for_http.params.ui_oidc_auth.clone(),
+                        discovered: None,
+                    },
+                    |arc| arc.as_ref().clone(),
+                );
 
             let auth_type: Option<String> = if use_jwt_auth {
                 Some("JWT".to_owned())
@@ -1211,7 +1328,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/rotation-policy{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
-                .app_data(Data::new(oidc_config))
+                .app_data(Data::new(oidc_runtime_config))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_type))
@@ -1290,6 +1407,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
             ))
+            .wrap(SessionAuth)
             .wrap(Condition::new(
                 use_api_token_auth,
                 api_token_middleware(kms_server_for_http.clone()),
@@ -1334,6 +1452,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
             ))
+            .wrap(SessionAuth)
             .wrap(Condition::new(
                 use_api_token_auth,
                 api_token_middleware(kms_server_for_http.clone()),

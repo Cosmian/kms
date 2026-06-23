@@ -13,7 +13,7 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
     const [form] = Form.useForm<WordPatternFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -29,8 +29,7 @@ const TokenizeWordPatternMaskForm: React.FC = () => {
             const response = await postNoTTLVRequest(
                 "/tokenize/word-pattern-mask",
                 { data: values.data, pattern: values.pattern, replace: values.replace },
-                idToken,
-                serverUrl,
+                                serverUrl,
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {

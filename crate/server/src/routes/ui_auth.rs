@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use actix_session::Session;
 use actix_web::{HttpRequest, HttpResponse, get, web};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use jsonwebtoken::{DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
+use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
 use serde_json::Value;
 use url::Url;
 
-use crate::config::OidcConfig;
+use crate::config::OidcRuntimeConfig;
 
 fn random_b64url(len_bytes: usize) -> Result<String, ()> {
     let mut buf = vec![0_u8; len_bytes];
@@ -21,57 +21,23 @@ fn pkce_challenge_from_verifier(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(digest)
 }
 
-async fn discover_metadata(client: &Client, issuer: &str) -> Result<Value, String> {
-    let base = issuer.trim_end_matches('/');
-    let url = format!("{base}/.well-known/openid-configuration");
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch OIDC discovery: {e}"))?;
-    resp.json::<Value>()
-        .await
-        .map_err(|e| format!("Failed to parse OIDC discovery JSON: {e}"))
-}
-
 #[get("/login_flow")]
 pub(crate) async fn login(
     session: Session,
-    oidc_config: web::Data<OidcConfig>,
+    oidc_runtime: web::Data<OidcRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
-    // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-3).
-    let Ok(client) = Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-    else {
-        return HttpResponse::InternalServerError().body("Failed to build HTTP client");
+    let Some(ref discovered) = oidc_runtime.discovered else {
+        return HttpResponse::InternalServerError()
+            .body("OIDC is not configured or discovery failed at startup");
     };
 
-    let issuer = match &oidc_config.ui_oidc_issuer_url {
-        Some(url) => url.clone(),
-        None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
-    };
-
-    let redirect_url = format!("{}/ui/callback", kms_url.as_str());
-    let client_id = match &oidc_config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
 
-    let discovery = match discover_metadata(&client, &issuer).await {
-        Ok(v) => v,
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Failed to fetch provider metadata: {e}"));
-        }
-    };
-    let Some(auth_endpoint) = discovery
-        .get("authorization_endpoint")
-        .and_then(|v| v.as_str())
-    else {
-        return HttpResponse::InternalServerError().body("Missing authorization_endpoint");
-    };
+    let redirect_url = format!("{}/ui/callback", kms_url.as_str());
 
     let Ok(pkce_verifier) = random_b64url(32) else {
         return HttpResponse::InternalServerError().body("Failed to create PKCE verifier");
@@ -84,7 +50,7 @@ pub(crate) async fn login(
         return HttpResponse::InternalServerError().body("Failed to create nonce");
     };
 
-    let mut auth_url = match Url::parse(auth_endpoint) {
+    let mut auth_url = match Url::parse(&discovered.authorization_endpoint) {
         Ok(u) => u,
         Err(e) => {
             return HttpResponse::InternalServerError()
@@ -124,9 +90,14 @@ pub(crate) async fn login(
 pub(crate) async fn callback(
     req: HttpRequest,
     session: Session,
-    oidc_config: web::Data<OidcConfig>,
+    oidc_runtime: web::Data<OidcRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
+    let Some(ref discovered) = oidc_runtime.discovered else {
+        return HttpResponse::InternalServerError()
+            .body("OIDC is not configured or discovery failed at startup");
+    };
+
     let Ok(query) = web::Query::<HashMap<String, String>>::from_query(req.query_string()) else {
         return HttpResponse::BadRequest().body("Invalid query parameters");
     };
@@ -174,6 +145,19 @@ pub(crate) async fn callback(
         Some(code) => code.to_owned(),
         None => return HttpResponse::BadRequest().body("Missing authorization code"),
     };
+
+    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
+        Some(id) => id.clone(),
+        None => return HttpResponse::InternalServerError().body("Client ID is missing"),
+    };
+
+    let issuer = match &oidc_runtime.config.ui_oidc_issuer_url {
+        Some(url) => url.clone(),
+        None => return HttpResponse::InternalServerError().body("Issuer URL is missing"),
+    };
+
+    let redirect_url = format!("{}/ui/callback", kms_url.as_str());
+
     // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-3).
     let Ok(client) = Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -182,168 +166,119 @@ pub(crate) async fn callback(
         return HttpResponse::InternalServerError().body("Failed to build HTTP client");
     };
 
-    // Exchange code for tokens
-    let Some(url) = &oidc_config.ui_oidc_issuer_url else {
-        return HttpResponse::InternalServerError().body("Issuer URL is missing");
-    };
-    let issuer = url.clone();
-    let redirect_url = format!("{}/ui/callback", kms_url.as_str());
+    // Exchange code for tokens using the cached token endpoint (no discovery fetch needed).
+    let mut form: Vec<(String, String)> = vec![
+        ("grant_type".to_owned(), "authorization_code".to_owned()),
+        ("code".to_owned(), auth_code),
+        ("redirect_uri".to_owned(), redirect_url),
+        ("client_id".to_owned(), client_id.clone()),
+        ("code_verifier".to_owned(), pkce_verifier),
+    ];
+    if let Some(secret) = oidc_runtime.config.ui_oidc_client_secret.clone() {
+        form.push(("client_secret".to_owned(), secret));
+    }
 
-    let client_id = match &oidc_config.ui_oidc_client_id {
-        Some(id) => id.clone(),
-        None => return HttpResponse::InternalServerError().body("Client ID is missing"),
+    let resp = match client
+        .post(&discovered.token_endpoint)
+        .form(&form)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to exchange auth code: {e}"));
+        }
     };
-    let discovery = match discover_metadata(&client, &issuer).await {
+
+    let json: Value = match resp.json().await {
         Ok(v) => v,
         Err(e) => {
             return HttpResponse::InternalServerError()
-                .body(format!("Failed to fetch provider metadata: {e}"));
+                .body(format!("Failed to parse token response: {e}"));
         }
     };
-    let Some(token_endpoint) = discovery.get("token_endpoint").and_then(|v| v.as_str()) else {
-        return HttpResponse::InternalServerError().body("Missing token_endpoint");
+
+    let Some(id_token_str) = json.get("id_token").and_then(|v| v.as_str()) else {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "No id_token in response" }));
     };
 
-    // pkce_verifier is always present here (the Ok(None) arm returned BadRequest above).
-    // Use a plain binding to make it explicit that PKCE is unconditionally required.
-    let verifier = pkce_verifier;
-    {
-        // Exchange code for tokens (grant_type=authorization_code, client_secret_post method)
-        let mut form: Vec<(String, String)> = vec![
-            ("grant_type".to_owned(), "authorization_code".to_owned()),
-            ("code".to_owned(), auth_code.clone()),
-            ("redirect_uri".to_owned(), redirect_url.clone()),
-            ("client_id".to_owned(), client_id.clone()),
-            ("code_verifier".to_owned(), verifier.clone()),
-        ];
-        if let Some(secret) = oidc_config.ui_oidc_client_secret.clone() {
-            form.push(("client_secret".to_owned(), secret));
-        }
-        let resp = match client.post(token_endpoint).form(&form).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Failed to exchange auth code: {e}"));
-            }
-        };
-        let json: Value = match resp.json().await {
-            Ok(v) => v,
-            Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Failed to parse token response: {e}"));
-            }
-        };
-        let Some(id_token_str) = json.get("id_token").and_then(|v| v.as_str()) else {
-            return HttpResponse::InternalServerError()
-                .json(serde_json::json!({ "error": "No id_token in response" }));
-        };
-
-        // Verify ID Token
-        let Some(jwks_uri) = discovery.get("jwks_uri").and_then(|v| v.as_str()) else {
-            return HttpResponse::InternalServerError().body("Missing jwks_uri in discovery");
-        };
-        let jwks_json = match client.get(jwks_uri).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Failed to fetch JWKS: {e}"));
-            }
-        };
-        let jwks_val: Value = match jwks_json.json().await {
-            Ok(v) => v,
-            Err(e) => {
-                return HttpResponse::InternalServerError()
-                    .body(format!("Failed to parse JWKS: {e}"));
-            }
-        };
-        let jwks: JwkSet = match serde_json::from_value(jwks_val) {
-            Ok(j) => j,
-            Err(_) => {
-                return HttpResponse::InternalServerError().body("Invalid JWKS format");
-            }
-        };
-
-        // Select key by kid
-        let header = match decode_header(id_token_str) {
-            Ok(header) => header,
-            Err(e) => {
-                return HttpResponse::Unauthorized().json(
-                    serde_json::json!({ "error": format!("Failed to decode token header: {e}") }),
-                );
-            }
-        };
-        let Some(kid) = header.kid else {
+    // Validate the id_token using the cached JwksManager (no fresh JWKS fetch).
+    let header = match decode_header(id_token_str) {
+        Ok(h) => h,
+        Err(e) => {
             return HttpResponse::Unauthorized()
-                .json(serde_json::json!({ "error": "No kid in id_token" }));
-        };
-        let Some(jwk) = jwks
-            .keys
-            .iter()
-            .find(|jwk| jwk.common.key_id.as_deref() == Some(kid.as_str()))
-        else {
+                .json(serde_json::json!({ "error": format!("Failed to decode token header: {e}") }));
+        }
+    };
+
+    let Some(kid) = header.kid else {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "No kid in id_token" }));
+    };
+
+    let jwk = match discovered.jwks_manager.find(&kid) {
+        Ok(Some(k)) => k,
+        Ok(None) => {
             return HttpResponse::Unauthorized()
                 .json(serde_json::json!({ "error": "Key not found in JWKS" }));
-        };
-
-        let decoding_key = match DecodingKey::from_jwk(jwk) {
-            Ok(key) => key,
-            Err(e) => {
-                return HttpResponse::Unauthorized().json(
-                    serde_json::json!({ "error": format!("Failed to build decoding key: {e}") }),
-                );
-            }
-        };
-
-        let mut validation = Validation::new(header.alg);
-        validation.set_audience(&[&client_id]);
-
-        #[cfg(all(not(test), not(feature = "insecure")))]
-        {
-            validation.set_issuer(&[&issuer]);
-            validation.validate_exp = true;
         }
-
-        #[cfg(any(test, feature = "insecure"))]
-        {
-            validation.validate_exp = false;
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": format!("JWKS lookup failed: {e}") }));
         }
+    };
 
-        let valid = match decode::<Value>(id_token_str, &decoding_key, &validation) {
-            Ok(v) => v.claims,
-            Err(e) => {
-                return HttpResponse::Unauthorized()
-                    .json(serde_json::json!({ "error": format!("Token validation failed: {e}") }));
-            }
-        };
-
-        let claims = valid;
-        // Check nonce
-        let nonce_claim = claims.get("nonce").and_then(|v| v.as_str());
-        if nonce_claim != Some(stored_nonce.as_str()) {
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "Nonce mismatch"
-            }));
+    let decoding_key = match DecodingKey::from_jwk(&jwk) {
+        Ok(key) => key,
+        Err(e) => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({ "error": format!("Failed to build decoding key: {e}") }));
         }
+    };
 
-        // Extract email
-        let user_email = claims
-            .get("email")
-            .and_then(|v| v.as_str())
-            .map(str::to_owned);
+    let mut validation = Validation::new(header.alg);
+    validation.set_audience(&[&client_id]);
 
-        if session.insert("id_token", id_token_str).is_err() {
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to store id_token"
-            }));
+    #[cfg(all(not(test), not(feature = "insecure")))]
+    {
+        validation.set_issuer(&[&issuer]);
+        validation.validate_exp = true;
+    }
+
+    #[cfg(any(test, feature = "insecure"))]
+    {
+        drop(issuer); // not used in insecure/test builds
+        validation.validate_exp = false;
+    }
+
+    let claims = match decode::<Value>(id_token_str, &decoding_key, &validation) {
+        Ok(v) => v.claims,
+        Err(e) => {
+            return HttpResponse::Unauthorized()
+                .json(serde_json::json!({ "error": format!("Token validation failed: {e}") }));
         }
+    };
 
-        if let Some(user_id) = user_email {
-            if session.insert("user_id", user_id).is_err() {
-                return HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": "Failed to store user_id"
-                }));
-            }
-        }
+    // Validate nonce to prevent authorization code injection.
+    let nonce_claim = claims.get("nonce").and_then(|v| v.as_str());
+    if nonce_claim != Some(stored_nonce.as_str()) {
+        return HttpResponse::BadRequest()
+            .json(serde_json::json!({ "error": "Nonce mismatch" }));
+    }
+
+    // Extract the user identity (email claim). The id_token is intentionally not
+    // stored in the session — the BFF pattern requires only the user_id to be kept.
+    // All subsequent API requests from the UI are authenticated via the session cookie.
+    let Some(user_id) = claims.get("email").and_then(|v| v.as_str()).map(str::to_owned) else {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
+    };
+
+    if session.insert("user_id", &user_id).is_err() {
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
     }
 
     HttpResponse::Found()
@@ -351,35 +286,30 @@ pub(crate) async fn callback(
         .finish()
 }
 
-#[get("/token")]
-pub(crate) async fn token(session: Session) -> HttpResponse {
-    // Retrieve id_token and user_id from session
-    match (
-        session.get::<String>("id_token"),
-        session.get::<String>("user_id"),
-    ) {
-        (Ok(Some(id_token)), Ok(Some(user_id))) => HttpResponse::Ok().json(serde_json::json!({
-            "id_token": id_token,
-            "user_id": user_id,
-        })),
-        (Ok(None), _) | (_, Ok(None)) => HttpResponse::Unauthorized().json(serde_json::json!({
-            "error": "No ID token or user ID found"
-        })),
-        _ => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": "Failed to retrieve session data"
-        })),
+#[get("/whoami")]
+pub(crate) async fn whoami(session: Session) -> HttpResponse {
+    match session.get::<String>("user_id") {
+        Ok(Some(user_id)) => {
+            HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id }))
+        }
+        Ok(None) => HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "No active session" })),
+        Err(_) => HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Failed to read session" })),
     }
 }
 
 #[get("/logout")]
 pub(crate) async fn logout(
     session: Session,
-    oidc_config: web::Data<OidcConfig>,
+    oidc_runtime: web::Data<OidcRuntimeConfig>,
     kms_url: web::Data<String>,
 ) -> HttpResponse {
     session.purge();
 
-    let Some(url) = &oidc_config.ui_oidc_logout_url else {
+    // TODO: when ui_oidc_logout_url is None (e.g. Cosmian auth or unconfigured OIDC),
+    // purge session and redirect to /ui/login instead of returning 500.
+    let Some(url) = &oidc_runtime.config.ui_oidc_logout_url else {
         return HttpResponse::InternalServerError().body("Logout URL is missing");
     };
     let mut logout_url = match Url::parse(url) {
@@ -389,7 +319,7 @@ pub(crate) async fn logout(
         }
     };
 
-    let client_id = match &oidc_config.ui_oidc_client_id {
+    let client_id = match &oidc_runtime.config.ui_oidc_client_id {
         Some(id) => id.clone(),
         None => return HttpResponse::InternalServerError().body("Client ID is missing"),
     };
@@ -419,7 +349,7 @@ pub(crate) async fn get_auth_method(auth_type: web::Data<Option<String>>) -> Htt
 pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(login)
         .service(callback)
-        .service(token)
+        .service(whoami)
         .service(logout)
         .service(get_auth_method);
 }

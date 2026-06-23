@@ -5,7 +5,6 @@ interface ActionState {
     res: string | undefined;
     isLoading: boolean;
     responseRef: React.RefObject<HTMLDivElement | null>;
-    idToken: string | null;
     serverUrl: string;
     execute: (fn: () => Promise<string | undefined>) => Promise<void>;
     setRes: (msg: string | undefined) => void;
@@ -14,7 +13,7 @@ interface ActionState {
 export function useActionState(): ActionState {
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -38,5 +37,5 @@ export function useActionState(): ActionState {
         }
     }, []);
 
-    return { res, isLoading, responseRef, idToken, serverUrl, execute, setRes };
+    return { res, isLoading, responseRef, serverUrl, execute, setRes };
 }

@@ -591,6 +591,7 @@ mod tests {
             jwks: std::sync::RwLock::new(map),
             last_update: std::sync::RwLock::new(Some(chrono::Utc::now())),
             proxy_params: None,
+            accept_invalid_certs: false,
         };
 
         Arc::new(manager)

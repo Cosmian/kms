@@ -73,7 +73,7 @@ const FpeDecryptForm: React.FC = () => {
     const [form] = Form.useForm<FpeDecryptFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
     const dataType = Form.useWatch("dataType", form);
 
@@ -120,7 +120,7 @@ const FpeDecryptForm: React.FC = () => {
             const authenticatedData = buildAuthenticatedData(values.dataType, values.alphabet);
 
             const request = w.decrypt_fpe_ttlv_request(id, ciphertext, tweak, authenticatedData);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_decrypt_ttlv_response(result_str);
                 const typed = response as { Data?: number[] };

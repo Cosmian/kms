@@ -18,7 +18,7 @@ const TokenizeAggregateNumberForm: React.FC = () => {
     const [form] = Form.useForm<AggregateNumberFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -35,8 +35,7 @@ const TokenizeAggregateNumberForm: React.FC = () => {
             const response = await postNoTTLVRequest(
                 "/tokenize/aggregate-number",
                 { data, data_type: values.data_type, power_of_ten: values.power_of_ten },
-                idToken,
-                serverUrl,
+                                serverUrl,
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {

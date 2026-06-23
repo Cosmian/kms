@@ -24,7 +24,7 @@ const exportFileExtension = {
 
 const CertificateExportForm: React.FC = () => {
     const [form] = Form.useForm<CertificateExportFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [selectedFormat, setSelectedFormat] = useState<CertificateExportFormat>("JsonTtlv");
 
     const handleFormatChange = (value: CertificateExportFormat) => {
@@ -38,7 +38,7 @@ const CertificateExportForm: React.FC = () => {
                 throw new Error("Missing certificate identifier.");
             }
             const request = export_certificate_ttlv_request(id, values.outputFormat, values.pkcs12Password);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const data = await parse_export_certificate_ttlv_response(result_str, values.outputFormat);
                 const filename = `certificate_${id}.${exportFileExtension[values.outputFormat]}`;

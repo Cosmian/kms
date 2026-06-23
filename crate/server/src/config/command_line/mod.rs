@@ -39,6 +39,6 @@ pub use secret_backends::{
 };
 pub use socket_server_config::SocketServerConfig;
 pub use tls_config::TlsConfig;
-pub use ui_config::{OidcConfig, UiConfig, get_default_ui_dist_path};
+pub use ui_config::{OidcConfig, OidcDiscoveredEndpoints, OidcRuntimeConfig, UiConfig, get_default_ui_dist_path};
 pub use vault_config::VaultConfig;
 pub use workspace::WorkspaceConfig;

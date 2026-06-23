@@ -75,7 +75,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { useBranding } from "./contexts/useBranding";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
-import { AuthMethod, fetchAuthMethod, fetchIdToken, getNoTTLVRequest } from "./utils/utils";
+import { AuthMethod, fetchAuthMethod, fetchWhoAmI, getNoTTLVRequest } from "./utils/utils";
 import init, * as wasmModule from "./wasm/pkg";
 
 type AppContentProps = {
@@ -115,7 +115,7 @@ const resolveServerUrl = (): string => {
 };
 
 const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasmError }) => {
-    const { serverUrl, setServerUrl, setIdToken, setUserId } = useAuth();
+    const { serverUrl, setServerUrl, setUserId } = useAuth();
     const branding = useBranding();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -162,12 +162,11 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
             const authMethod = await fetchAuthMethod(location);
             setAuthMethod(authMethod);
             if (authMethod == "JWT") {
-                const data = await fetchIdToken(location);
+                const data = await fetchWhoAmI(location);
                 if (data) {
                     try {
-                        const version = await getNoTTLVRequest("/version", data.id_token, location);
+                        const version = await getNoTTLVRequest("/version", location);
                         if (version) {
-                            setIdToken(data.id_token);
                             setUserId(data.user_id);
                             setIsAuthenticated(true);
                             setLoginError(undefined);
@@ -179,28 +178,27 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
             } else if (authMethod === "CERT") {
                 try {
                     // /version succeeds without a cert; /access/create returns 401 without one
-                    await getNoTTLVRequest("/access/create", null, location);
+                    await getNoTTLVRequest("/access/create", location);
                     setIsAuthenticated(true);
                 } catch {
-                    // Cert failed — try JWT as fallback (both may be configured)
-                    const data = await fetchIdToken(location);
+                    // Cert failed — try session fallback (both may be configured)
+                    const data = await fetchWhoAmI(location);
                     if (data) {
                         try {
-                            const version = await getNoTTLVRequest("/version", data.id_token, location);
+                            const version = await getNoTTLVRequest("/version", location);
                             if (version) {
-                                // Valid JWT session found — switch to JWT mode
+                                // Valid session found — switch to JWT mode
                                 setAuthMethod("JWT");
-                                setIdToken(data.id_token);
                                 setUserId(data.user_id);
                                 setIsAuthenticated(true);
                                 setLoginError(undefined);
                             }
                         } catch (error) {
-                            console.error("JWT fallback failed:", error);
+                            console.error("Session fallback failed:", error);
                             setIsAuthenticated(false);
                         }
                     } else {
-                        // No cert, no JWT — block access
+                        // No cert, no session — block access
                         setIsAuthenticated(false);
                     }
                 }

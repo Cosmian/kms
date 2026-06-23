@@ -872,6 +872,7 @@ async fn test_google_cse_custom_jwt() -> KResult<()> {
         jwks: RwLock::new(jwks_map),
         last_update: RwLock::new(None),
         proxy_params: None,
+        accept_invalid_certs: false,
     };
 
     let cse_config = GoogleCseConfig {
@@ -960,6 +961,7 @@ async fn test_google_cse_custom_jwt_multi_audience_match() -> KResult<()> {
         jwks: RwLock::new(jwks_map),
         last_update: RwLock::new(None),
         proxy_params: None,
+        accept_invalid_certs: false,
     };
 
     // Configure multiple allowed audiences, including the correct one
@@ -1047,6 +1049,7 @@ async fn test_google_cse_custom_jwt_multi_audience_nomatch() -> KResult<()> {
         jwks: RwLock::new(jwks_map),
         last_update: RwLock::new(None),
         proxy_params: None,
+        accept_invalid_certs: false,
     };
 
     // Configure multiple allowed audiences, none matching token aud

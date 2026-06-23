@@ -22,3 +22,14 @@
   - `EnsureAuth` boolean conditions updated to include `use_cosmian_auth`.
   - Auth wizard updated with "Cosmian authentication server" option.
   - Test server config: `test_data/configs/server/test/auth_cosmian.toml`.
+
+## Refactor
+
+- **BFF (Backend for Frontend) OIDC pattern for the Web UI**: rework the OIDC authentication flow to eliminate token leakage to the browser.
+  - Discovery document and JWKS are fetched once at server startup (`build_oidc_runtime_config()`) and cached in `OidcRuntimeConfig`; no per-request fetches.
+  - After OIDC callback, only `user_id` is stored in the actix-session cookie; `id_token` is never forwarded to the browser.
+  - New `SessionAuth` middleware reads the session cookie on every request and injects `AuthenticatedUser` when a valid session exists; registered on `default_scope`, `crypto_scope`, and `tokenize_scope`.
+  - `/ui/token` endpoint renamed to `/ui/whoami`; response is `{ user_id: String }` only (no token).
+  - UI updated: `fetchIdToken` → `fetchWhoAmI`, `idToken` state removed from `AuthContext` and all action components; Bearer `Authorization` headers removed from all client-side API calls.
+  - `getNoTTLVRequest`, `sendKmipRequest`, `postNoTTLVRequest`, `getNoTTLVRequestWithTimeout` signatures drop the `idToken` parameter.
+  - `useActionState` hook no longer exposes `idToken`.
