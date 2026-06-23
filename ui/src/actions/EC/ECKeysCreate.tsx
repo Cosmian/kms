@@ -23,7 +23,7 @@ type CreateKeyPairResponse = {
 
 const ECKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<ECKeyCreateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [curveOptions, setCurveOptions] = useState<{ value: string; label: string }[]>([]);
 
     useEffect(() => {
@@ -55,7 +55,7 @@ const ECKeyCreateForm: React.FC = () => {
                 values.sensitive,
                 values.wrappingKeyId,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
                 const skId = result.PrivateKeyUniqueIdentifier;

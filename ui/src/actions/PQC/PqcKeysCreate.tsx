@@ -22,7 +22,7 @@ type CreateKeyPairResponse = {
 
 const PqcKeysCreateForm: React.FC = () => {
     const [form] = Form.useForm<PqcKeyCreateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const branding = useBranding();
     const [algorithmOptions, setAlgorithmOptions] = useState<{ value: string; label: string }[]>([]);
 
@@ -49,7 +49,7 @@ const PqcKeysCreateForm: React.FC = () => {
     const onFinish = async (values: PqcKeyCreateFormData) => {
         await execute(async () => {
             const request = wasm.create_pqc_key_pair_ttlv_request(values.tags, values.algorithm, values.sensitive);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
                 const skId = result.PrivateKeyUniqueIdentifier;

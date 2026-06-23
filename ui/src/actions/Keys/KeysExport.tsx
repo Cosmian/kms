@@ -48,7 +48,7 @@ interface KeyExportFormProps {
 
 const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
     const [form] = Form.useForm<KeyExportFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const wrapKeyId = Form.useWatch("wrapKeyId", form);
     const selectedAlgorithm: WrappingAlgorithm | undefined = Form.useWatch("wrappingAlgorithm", form);
 
@@ -79,7 +79,7 @@ const KeyExportForm: React.FC<KeyExportFormProps> = ({ key_type }) => {
                 throw new Error("Missing identifier.");
             }
             const request = export_ttlv_request(id, values.unwrap, values.keyFormat, values.wrapKeyId, values.wrappingAlgorithm);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const data = await parse_export_ttlv_response(result_str, values.keyFormat);
                 const filename = `${id}.${exportFileExtension[values.keyFormat]}`;

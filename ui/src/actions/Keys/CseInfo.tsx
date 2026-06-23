@@ -22,7 +22,7 @@ const CseInfo: React.FC = () => {
     const [symKeyExist, setSymKeyExist] = useState<boolean | null>(null);
 
     const [error, setError] = useState<string | undefined>(undefined);
-    const { serverUrl, idToken } = useAuth();
+    const { serverUrl, } = useAuth();
 
     const fetchCseInfo = useCallback(async () => {
         setIsLoading(true);
@@ -33,7 +33,7 @@ const CseInfo: React.FC = () => {
         try {
             // Fetch CSE Status
             try {
-                const statusResponse = await getNoTTLVRequest("/google_cse/status", null, serverUrl);
+                const statusResponse = await getNoTTLVRequest("/google_cse/status", serverUrl);
                 setCseStatus(statusResponse);
             } catch {
                 setError("Google CSE is not enabled/configured");
@@ -42,7 +42,7 @@ const CseInfo: React.FC = () => {
             // Check if key exist
             try {
                 const request = export_ttlv_request("google_cse", false, "raw");
-                await sendKmipRequest(request, idToken, serverUrl);
+                await sendKmipRequest(request, serverUrl);
                 setSymKeyExist(true);
             } catch (keysError) {
                 console.warn("Symmetric google_cse key check failed:", keysError);
@@ -54,7 +54,7 @@ const CseInfo: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [idToken, serverUrl]);
+    }, [serverUrl]);
 
     useEffect(() => {
         fetchCseInfo();

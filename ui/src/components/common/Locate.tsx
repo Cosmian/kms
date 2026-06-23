@@ -2,7 +2,7 @@ import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Table
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/useAuth";
 import HashMapDisplay from "./HashMapDisplay";
-import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
+import { getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
 
 const formatUnixDate = (unixMs: number): string => {
@@ -88,8 +88,7 @@ const LocateForm: React.FC = () => {
         // If s already a textual state (possibly with hyphen), return as-is
         return s;
     };
-    const { idToken, serverUrl } = useAuth();
-    const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
     const [detailsVisible, setDetailsVisible] = useState<boolean>(false);
     const [detailsData, setDetailsData] = useState<Map<string, unknown> | undefined>(undefined);
@@ -103,14 +102,6 @@ const LocateForm: React.FC = () => {
     }, [res]);
 
     useEffect(() => {
-        (async () => {
-            try {
-                const method = await fetchAuthMethod(serverUrl);
-                setAuthMethod(method);
-            } catch {
-                /* ignore */
-            }
-        })();
         try {
             const algos = wasm.get_crypto_algorithms() as unknown as AlgoOption[];
             if (Array.isArray(algos)) setCryptoAlgorithms(algos);
@@ -147,12 +138,12 @@ const LocateForm: React.FC = () => {
     };
 
     // Utility: enrich a list of UIDs via KMIP Get
-    const enrichUids = async (uids: string[], idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
+    const enrichUids = async (uids: string[], serverUrl: string): Promise<LocatedRow[]> => {
         const rows = await Promise.all(
             uids.map(async (uid) => {
                 try {
                     const getReq = wasm.get_attributes_ttlv_request(uid);
-                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                    const getRespStr = await sendKmipRequest(getReq, serverUrl);
                     if (getRespStr) {
                         const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                         const m = extractMeta(parsed);
@@ -176,9 +167,9 @@ const LocateForm: React.FC = () => {
     };
 
     // Utility: build state lookup from /access/owned
-    const getOwnedStateMap = async (idToken: string | null, serverUrl: string): Promise<Map<string, string>> => {
+    const getOwnedStateMap = async (serverUrl: string): Promise<Map<string, string>> => {
         const stateById = new Map<string, string>();
-        const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+        const owned = await getNoTTLVRequest("/access/owned", serverUrl);
         if (Array.isArray(owned)) {
             (owned as Array<{ object_id: string; state?: unknown }>).forEach((o) => {
                 if (o.object_id) {
@@ -191,9 +182,9 @@ const LocateForm: React.FC = () => {
     };
 
     // Utility: supplement missing state from owned
-    const supplementStateFromOwned = async (rows: LocatedRow[], idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
+    const supplementStateFromOwned = async (rows: LocatedRow[], serverUrl: string): Promise<LocatedRow[]> => {
         try {
-            const stateById = await getOwnedStateMap(idToken, serverUrl);
+            const stateById = await getOwnedStateMap(serverUrl);
             return rows.map((row) => ({
                 ...row,
                 state: row.state || stateEnumToName(stateById.get(row.object_id)),
@@ -209,7 +200,6 @@ const LocateForm: React.FC = () => {
         cryptographicAlgorithm: string | undefined,
         keyFormatType: string | undefined,
         objectType: string | undefined,
-        idToken: string | null,
         serverUrl: string,
     ): Promise<string[]> => {
         const req = wasm.locate_ttlv_request(
@@ -222,30 +212,25 @@ const LocateForm: React.FC = () => {
             values.privateKeyId,
             values.certificateId,
         );
-        const respStr = await sendKmipRequest(req, idToken, serverUrl);
+        const respStr = await sendKmipRequest(req, serverUrl);
         if (!respStr) return [];
         const resp = await wasm.parse_locate_ttlv_response(respStr);
         return Array.isArray(resp.UniqueIdentifier) ? (resp.UniqueIdentifier as string[]) : [];
     };
 
     // Owned-fallback without criteria
-    const ownedFallbackNoCriteria = async (idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
-        const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+    const ownedFallbackNoCriteria = async (serverUrl: string): Promise<LocatedRow[]> => {
+        const owned = await getNoTTLVRequest("/access/owned", serverUrl);
         const ids: string[] = Array.isArray(owned) ? (owned as Array<{ object_id: string }>).map((o) => o.object_id).filter(Boolean) : [];
-        const enriched = await enrichUids(ids, idToken, serverUrl);
-        return supplementStateFromOwned(enriched, idToken, serverUrl);
+        const enriched = await enrichUids(ids, serverUrl);
+        return supplementStateFromOwned(enriched, serverUrl);
     };
 
     const onFinish = async (values: LocateFormData) => {
         setIsLoading(true);
         setRes(undefined);
         setObjects(undefined);
-        try {
-            if (authMethod === "JWT" && !idToken) {
-                setRes("Authentication required: please log in to search.");
-                return;
-            }
-            // unauthenticated attempt allowed only when auth method is None
+        try {            // unauthenticated attempt allowed only when auth method is None
             const norm = (s?: string) => (s && s.trim() !== "" ? s : undefined);
             const keyFormatType = norm(values.keyFormatType);
             const cryptographicAlgorithm = norm(values.cryptographicAlgorithm);
@@ -259,7 +244,7 @@ const LocateForm: React.FC = () => {
             // /access/owned may not list them on older servers.
             if (stateVal) {
                 try {
-                    const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+                    const owned = await getNoTTLVRequest("/access/owned", serverUrl);
                     type OwnedEntry = { object_id?: string; state?: unknown };
                     const ownedList: OwnedEntry[] = Array.isArray(owned) ? (owned as OwnedEntry[]) : [];
                     const mappedOwnedRaw = ownedList.map((o) => ({ id: o.object_id, state: stateEnumToName(o.state) }));
@@ -279,7 +264,7 @@ const LocateForm: React.FC = () => {
                     );
 
                     // Always run KMIP Locate to capture HSM keys that may not appear in /access/owned
-                    const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
+                    const locatedIds = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, serverUrl);
                     // HSM keys from Locate are always Active; include them even if not in owned set
                     const hsmLocatedIds = locatedIds.filter((id) => /^hsm[0-9]*::/.test(id));
                     const ownedIds = new Set(ownedFiltered.map((o) => o.id));
@@ -291,7 +276,7 @@ const LocateForm: React.FC = () => {
                                 const uid = o.id;
                                 try {
                                     const getReq = wasm.get_attributes_ttlv_request(uid);
-                                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                    const getRespStr = await sendKmipRequest(getReq, serverUrl);
                                     if (getRespStr) {
                                         const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                         const m = extractMeta(parsed);
@@ -334,8 +319,7 @@ const LocateForm: React.FC = () => {
                                 cryptographicAlgorithm,
                                 undefined,
                                 objectType,
-                                idToken,
-                                serverUrl,
+                                                                serverUrl,
                             );
                             intersection = fbIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
                         } catch (e) {
@@ -348,7 +332,7 @@ const LocateForm: React.FC = () => {
                         intersection.map(async (uid: string) => {
                             try {
                                 const getReq = wasm.get_attributes_ttlv_request(uid);
-                                const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                const getRespStr = await sendKmipRequest(getReq, serverUrl);
                                 if (getRespStr) {
                                     const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                     const m = extractMeta(parsed);
@@ -380,7 +364,7 @@ const LocateForm: React.FC = () => {
                     // Fall back to Locate below
                 }
             }
-            const idsGeneral = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, idToken, serverUrl);
+            const idsGeneral = await runKmipLocate(values, cryptographicAlgorithm, keyFormatType, objectType, serverUrl);
             if (idsGeneral.length) {
                 const mapped: LocatedRow[] = idsGeneral.map((uuid: string) => ({
                     object_id: uuid,
@@ -395,8 +379,7 @@ const LocateForm: React.FC = () => {
                 try {
                     const enriched = await enrichUids(
                         mapped.map((r) => r.object_id),
-                        idToken,
-                        serverUrl,
+                                                serverUrl,
                     );
 
                     // If no additional criteria and state is 'All', display enriched results directly
@@ -412,7 +395,7 @@ const LocateForm: React.FC = () => {
                     );
                     if (!hasOtherCriteria && !stateVal) {
                         // Merge state labels from owned list for display, without filtering
-                        const merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
+                        const merged = await supplementStateFromOwned(enriched, serverUrl);
                         setObjects(
                             merged.map((row) => ({
                                 ...row,
@@ -424,7 +407,7 @@ const LocateForm: React.FC = () => {
                     }
                     // Try to supplement state from non-TTLV owned list when available
                     try {
-                        let merged = await supplementStateFromOwned(enriched, idToken, serverUrl);
+                        let merged = await supplementStateFromOwned(enriched, serverUrl);
                         // State filter if requested
                         if (stateVal) {
                             const target = normalizeState(stateVal);
@@ -479,7 +462,7 @@ const LocateForm: React.FC = () => {
                 );
                 if (noCriteria) {
                     try {
-                        const merged = await ownedFallbackNoCriteria(idToken, serverUrl);
+                        const merged = await ownedFallbackNoCriteria(serverUrl);
                         setObjects(merged);
                         setRes(`${merged.length} Object(s) located.`);
                         return;
@@ -500,7 +483,7 @@ const LocateForm: React.FC = () => {
                             values.privateKeyId,
                             values.certificateId,
                         );
-                        const fallbackStr = await sendKmipRequest(fallbackReq, idToken, serverUrl);
+                        const fallbackStr = await sendKmipRequest(fallbackReq, serverUrl);
                         if (fallbackStr) {
                             const fb = await wasm.parse_locate_ttlv_response(fallbackStr);
                             const ids: string[] = Array.isArray(fb.UniqueIdentifier) ? fb.UniqueIdentifier : [];
@@ -509,7 +492,7 @@ const LocateForm: React.FC = () => {
                                 ids.map(async (uid: string) => {
                                     try {
                                         const getReq = wasm.get_attributes_ttlv_request(uid);
-                                        const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                        const getRespStr = await sendKmipRequest(getReq, serverUrl);
                                         if (getRespStr) {
                                             const parsed = await wasm.parse_get_attributes_ttlv_response(
                                                 getRespStr,
@@ -535,7 +518,7 @@ const LocateForm: React.FC = () => {
                             });
                             // Merge state from owned endpoint to avoid 'Unknown'
                             try {
-                                const owned = await getNoTTLVRequest("/access/owned", idToken, serverUrl);
+                                const owned = await getNoTTLVRequest("/access/owned", serverUrl);
                                 const stateById = new Map<string, string>();
                                 if (Array.isArray(owned)) {
                                     (owned as Array<{ object_id: string; state?: unknown }>).forEach((o) => {
@@ -586,7 +569,7 @@ const LocateForm: React.FC = () => {
         setActionLoadingId(uid);
         try {
             const getReq = wasm.get_attributes_ttlv_request(uid);
-            const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+            const getRespStr = await sendKmipRequest(getReq, serverUrl);
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, []);
                 if (parsed instanceof Map) {
@@ -618,7 +601,7 @@ const LocateForm: React.FC = () => {
             const w: any = wasm as any; // eslint-disable-line @typescript-eslint/no-explicit-any
             if (typeof w.revoke_ttlv_request === "function") {
                 const req = w.revoke_ttlv_request(uid, "User-initiated revoke");
-                await sendKmipRequest(req, idToken, serverUrl);
+                await sendKmipRequest(req, serverUrl);
                 await handleRefreshRow(uid);
                 setRes((prev) => (prev ? String(prev).replace(/\d+ Object\(s\) located\./, "Action completed.") : "Action completed."));
             } else {
@@ -640,7 +623,7 @@ const LocateForm: React.FC = () => {
             const w: any = wasm as any; // eslint-disable-line @typescript-eslint/no-explicit-any
             if (typeof w.destroy_ttlv_request === "function") {
                 const req = w.destroy_ttlv_request(uid, true);
-                await sendKmipRequest(req, idToken, serverUrl);
+                await sendKmipRequest(req, serverUrl);
                 setObjects((prev) => (prev ? prev.filter((r) => r.object_id !== uid) : prev));
                 setRes("Object destroyed.");
             } else {
@@ -656,7 +639,7 @@ const LocateForm: React.FC = () => {
     const handleRefreshRow = async (uid: string) => {
         try {
             const getReq = wasm.get_attributes_ttlv_request(uid);
-            const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+            const getRespStr = await sendKmipRequest(getReq, serverUrl);
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, ["object_type", "state", "key_format_type"]);
                 const meta =

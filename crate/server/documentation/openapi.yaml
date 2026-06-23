@@ -3121,25 +3121,27 @@ paths:
         '400':
           description: Invalid callback parameters
 
-  /ui/token:
+  /ui/whoami:
     get:
       tags: [UI Auth]
-      summary: Get current JWT token
-      description: Returns the JWT access token for the currently authenticated UI session.
-      operationId: uiGetToken
+      summary: Current session user
+      description: Returns the user ID of the currently authenticated UI session. Returns 401 if no valid session exists.
+      operationId: uiWhoAmI
       responses:
         '200':
-          description: JWT token
+          description: Authenticated user identity
           content:
             application/json:
               schema:
                 type: object
+                required: [user_id]
                 properties:
-                  token:
+                  user_id:
                     type: string
-                    description: JWT access token
+                    description: The authenticated user's identifier (email or subject claim)
+                    example: alice@example.com
         '401':
-          description: Not authenticated
+          description: No active session
 
   /ui/logout:
     get:

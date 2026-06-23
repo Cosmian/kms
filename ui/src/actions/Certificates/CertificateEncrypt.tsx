@@ -18,7 +18,7 @@ interface CertificateEncryptFormData {
 
 const CertificateEncryptForm: React.FC = () => {
     const [form] = Form.useForm<CertificateEncryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CertificateEncryptFormData) => {
         const id = values.certificateId ? values.certificateId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -27,7 +27,7 @@ const CertificateEncryptForm: React.FC = () => {
                 throw new Error("Missing certificate identifier.");
             }
             const request = encrypt_certificate_ttlv_request(id, values.inputFile, values.authenticationData, values.encryptionAlgorithm);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_encrypt_ttlv_response(result_str);
                 const data = new Uint8Array(response.Data);

@@ -17,7 +17,7 @@ interface CCEncryptFormData {
 
 const CCEncryptForm: React.FC = () => {
     const [form] = Form.useForm<CCEncryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CCEncryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -27,7 +27,7 @@ const CCEncryptForm: React.FC = () => {
             }
             const request = encrypt_cc_ttlv_request(id, values.encryptionPolicy, values.inputFile, values.authenticationData);
 
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_encrypt_ttlv_response(result_str);
                 const data = new Uint8Array(response.Data);

@@ -25,7 +25,7 @@ type CreateResponse = {
 
 const SymKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<SymKeyCreateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [algoOptions, setAlgoOptions] = useState<{ value: string; label: string }[]>([]);
 
     useEffect(() => {
@@ -49,7 +49,7 @@ const SymKeyCreateForm: React.FC = () => {
                 values.wrappingKeyId,
                 values.bytesB64,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: CreateResponse = await wasm.parse_create_ttlv_response(result_str);
                 const keyId = result.UniqueIdentifier;

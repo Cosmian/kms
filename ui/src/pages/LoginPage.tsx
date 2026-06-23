@@ -35,7 +35,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                 setIsLoading(true);
                 setCertError(null);
                 // /version works without a cert; /access/create returns 401 without one
-                await getNoTTLVRequest("/access/create", null, serverUrl);
+                await getNoTTLVRequest("/access/create", serverUrl);
                 navigate("/locate");
             } catch (err) {
                 console.error("Certificate validation failed:", err);

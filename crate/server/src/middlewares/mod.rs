@@ -24,6 +24,9 @@ pub(crate) use spire_token::{
     SpireTokenCache, spire_token_middleware, vault_token_optional_middleware,
 };
 
+mod session_auth;
+pub(crate) use session_auth::SessionAuth;
+
 /// Represents an authenticated user
 ///
 /// This struct is stored in the request extensions after successful

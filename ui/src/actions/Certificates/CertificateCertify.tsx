@@ -29,7 +29,7 @@ type AlgoOption = { label: string; value: string };
 
 const CertificateCertifyForm: React.FC = () => {
     const [form] = Form.useForm<CertificateCertifyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [certifyMethod, setCertifyMethod] = useState<string>("csr");
     const [algorithmOptions, setAlgorithmOptions] = useState<AlgoOption[]>([]);
 
@@ -114,7 +114,7 @@ const CertificateCertifyForm: React.FC = () => {
                 values.certificateExtensions,
                 values.tags,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_certify_ttlv_response(result_str);
                 const newCertId = response.UniqueIdentifier;

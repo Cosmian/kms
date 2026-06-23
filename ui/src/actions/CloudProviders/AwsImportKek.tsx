@@ -36,7 +36,7 @@ const WRAPPING_ALGORITHMS = [
 
 const ImportAwsKekForm: React.FC = () => {
     const [form] = Form.useForm<ImportAwsKekFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [inputType, setInputType] = useState<"file" | "base64">("file");
 
     const onFinish = async (values: ImportAwsKekFormData) => {
@@ -81,7 +81,7 @@ const ImportAwsKekForm: React.FC = () => {
                 null, // Wrapping key ID
             );
 
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await wasm.parse_import_ttlv_response(result_str);
                 return `AWS KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`;
