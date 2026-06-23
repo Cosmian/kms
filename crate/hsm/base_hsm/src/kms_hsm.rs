@@ -253,6 +253,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(())
     }
 
+    /// Sets `CKA_START_DATE` and `CKA_END_DATE` on the key identified by `key_id`. Pass `None` to clear a date.
     async fn set_key_dates(
         &self,
         slot_id: usize,
@@ -267,6 +268,7 @@ impl<P: HsmProvider> HSM for BaseHsm<P> {
         Ok(())
     }
 
+    /// Sets `CKA_LABEL` on the key identified by `key_id`.
     async fn set_key_label(
         &self,
         slot_id: usize,

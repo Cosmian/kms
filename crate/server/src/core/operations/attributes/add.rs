@@ -35,7 +35,10 @@ pub(crate) async fn add_attribute(
 
     // Read-only guard — these attributes are server-managed.
     match &request.new_attribute {
-        Attribute::RotateGeneration(_) | Attribute::RotateDate(_) | Attribute::RotateLatest(_) => {
+        Attribute::RotateAutomatic(_)
+        | Attribute::RotateGeneration(_)
+        | Attribute::RotateDate(_)
+        | Attribute::RotateLatest(_) => {
             return Err(KmsError::Kmip21Error(
                 ErrorReason::Attribute_Read_Only,
                 "DENIED: this attribute is server-managed and cannot be added by the user"

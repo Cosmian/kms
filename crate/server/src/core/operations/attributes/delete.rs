@@ -45,7 +45,8 @@ pub(crate) async fn delete_attribute(
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
         match &attribute {
-            Attribute::RotateGeneration(_)
+            Attribute::RotateAutomatic(_)
+            | Attribute::RotateGeneration(_)
             | Attribute::RotateDate(_)
             | Attribute::RotateLatest(_) => {
                 return Err(KmsError::Kmip21Error(
