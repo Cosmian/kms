@@ -562,9 +562,15 @@ pub(crate) fn set_rotation_metadata_on_new_key(
 ///
 /// - `rotate_interval` = 0 (prevent the scheduler from picking it up again)
 /// - `rotate_latest` = false (the old key is no longer the latest in the keyset)
+/// - `rotate_generation` = 0 if unset (ensure gen-0 is queryable via `@first`/`@0`)
 pub(crate) const fn clear_rotation_flags_on_old_key(old_attrs: &mut Attributes) {
     old_attrs.rotate_interval = Some(0);
     old_attrs.rotate_latest = Some(false);
+    // Ensure the original key has an explicit generation so that keyset
+    // addressing with @first / @0 can find it via find_by_rotate_name.
+    if old_attrs.rotate_generation.is_none() {
+        old_attrs.rotate_generation = Some(0);
+    }
 }
 
 /// Returns `true` if `attrs` represents the latest generation in its named keyset.

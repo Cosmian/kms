@@ -163,6 +163,32 @@ Tests:
 - **get rotation policy (no policy)** — assert "No rotation policy configured" message for a fresh key (symmetric only)
 - **re-key** — rotate key material and verify the returned UID is a valid UUID different from the original (keypair variants assert both private and public UIDs)
 
+### keyset-addressing
+
+Covers all 4 keyset addressing syntax forms (`name`, `name@latest`, `name@first`/`name@0`, `name@N`)
+in symmetric encrypt/decrypt operations.
+
+```mermaid
+graph LR
+    A[Create AES key] --> B[Set rotation name]
+    B --> C[ReKey 0-2 times]
+    C --> D["Encrypt with keyset syntax<br>bare / @latest / @first / @0 / @N"]
+    D --> E[Decrypt with UUID to prove key selection]
+    E --> F{Roundtrip match}
+    F -->|Match| G[Pass]
+```
+
+Tests (8):
+
+- **bare keyset name** — encrypt with bare name resolves to latest key
+- **name@latest** — explicit `@latest` resolves to latest key
+- **name@first** — after rekey, `@first` resolves to gen-0
+- **name@0** — alias for `@first`
+- **name@1** — after double rekey, `@1` resolves to gen-1
+- **bare name decrypt** — try-each chain walk after rotation
+- **name@99** — nonexistent generation returns error
+- **generation after rekey** — get-rotation-policy shows incremented generation
+
 ## Certificates
 
 ### certificates-flow

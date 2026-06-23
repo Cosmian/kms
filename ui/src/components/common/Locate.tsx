@@ -1,37 +1,24 @@
-import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Tooltip } from "antd";
 import type { TableColumnsType } from "antd";
+import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/useAuth";
-import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import HashMapDisplay from "./HashMapDisplay";
 
 const formatUnixDate = (unixMs: number): string => {
     const d = new Date(unixMs);
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
 
-/** Attribute keys fetched for every located row (used in all enrichment calls). */
-const ENRICH_ATTRIBUTE_KEYS = [
-    "object_type",
-    "state",
-    "tags",
-    "user_tags",
-    "cryptographic_algorithm",
-    "cryptographic_length",
-    "key_format_type",
-    "public_key_id",
-    "private_key_id",
-    "certificate_id",
-    "initial_date",
-    "activation_date",
-    "original_creation_date",
-    "rotate_date",
-    "rotate_name",
-    "rotate_interval",
-    "rotate_offset",
-    "rotate_generation",
-];
+/** Attribute keys fetched for every located row — sourced from WASM (single source of truth). */
+const ENRICH_ATTRIBUTE_KEYS: string[] = (() => {
+    try {
+        return wasm.get_locate_enrich_attribute_keys() as string[];
+    } catch {
+        return [];
+    }
+})();
 
 interface LocateObjectRow {
     object_id: string;
@@ -785,9 +772,9 @@ const LocateForm: React.FC = () => {
                                 dataSource={objects || []}
                                 rowKey="object_id"
                                 pagination={{
-                                    defaultPageSize: 10,
+                                    defaultPageSize: 50,
                                     showSizeChanger: true,
-                                    pageSizeOptions: [10, 20, 50, 100],
+                                    pageSizeOptions: [50, 100, 500, 1000],
                                 }}
                                 className="border rounded"
                                 columns={

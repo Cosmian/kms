@@ -346,6 +346,33 @@ pub fn parse_selected_attributes(
     Ok(results)
 }
 
+/// Attribute key names recognised by [`parse_selected_attributes_flatten`].
+///
+/// This is the canonical list used by the WASM layer to enrich KMIP Locate
+/// results.  Add an entry here whenever a new match arm is added to
+/// `parse_selected_attributes_flatten` and the attribute should be surfaced in
+/// the UI.
+pub const LOCATE_ENRICH_ATTRIBUTE_KEYS: &[&str] = &[
+    "object_type",
+    "state",
+    "tags",
+    "user_tags",
+    "cryptographic_algorithm",
+    "cryptographic_length",
+    "key_format_type",
+    "public_key_id",
+    "private_key_id",
+    "certificate_id",
+    "initial_date",
+    "activation_date",
+    "original_creation_date",
+    "rotate_date",
+    "rotate_name",
+    "rotate_interval",
+    "rotate_offset",
+    "rotate_generation",
+];
+
 pub fn parse_selected_attributes_flatten(
     attributes: &Attributes,
     selected_attributes: &[&str],

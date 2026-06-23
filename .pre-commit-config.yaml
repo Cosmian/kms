@@ -280,7 +280,6 @@ repos:
         language: system
         pass_filenames: false
         types_or: [javascript, jsx, ts, tsx]
-        stages: [manual]
 
       - id: cargo-test-fips
         name: cargo test (sqlite fips)

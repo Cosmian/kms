@@ -2,7 +2,9 @@ use std::{cell::RefCell, str::FromStr};
 
 use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_client_utils::{
-    attributes_utils::{build_selected_attribute, parse_selected_attributes_flatten},
+    attributes_utils::{
+        LOCATE_ENRICH_ATTRIBUTE_KEYS, build_selected_attribute, parse_selected_attributes_flatten,
+    },
     certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
@@ -2180,6 +2182,16 @@ pub fn re_certify_ttlv_request(
 wasm_response_parser!(parse_re_certify_ttlv_response, ReCertifyResponse);
 
 // Attributes request
+
+/// Returns the canonical list of attribute key strings used to enrich KMIP Locate results.
+/// Sourced from [`cosmian_kms_client_utils::attributes_utils::LOCATE_ENRICH_ATTRIBUTE_KEYS`] —
+/// single source of truth defined next to `parse_selected_attributes_flatten`.
+#[wasm_bindgen]
+pub fn get_locate_enrich_attribute_keys() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(LOCATE_ENRICH_ATTRIBUTE_KEYS)
+        .map_err(|e| JsValue::from(e.to_string()))
+}
+
 #[wasm_bindgen]
 pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
     let unique_identifier = UniqueIdentifier::TextString(unique_identifier);

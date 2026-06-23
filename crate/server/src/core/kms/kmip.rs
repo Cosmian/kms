@@ -1,8 +1,5 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::{
-        kmip_messages::{RequestMessage, ResponseMessage},
-        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-    },
+    kmip_0::kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     kmip_2_1::kmip_operations::{
         Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify, CertifyResponse,
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
@@ -557,14 +554,14 @@ impl KMS {
             .await
     }
 
-    // Used in tests to send a full KMIP RequestMessage and receive a ResponseMessage.
-    // Production code calls `operations::message()` directly via the HTTP route.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) async fn message(
         &self,
-        request: RequestMessage,
+        request: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::RequestMessage,
         user: &str,
-    ) -> KResult<ResponseMessage> {
+    ) -> KResult<
+        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessage,
+    > {
         let span = tracing::span!(tracing::Level::ERROR, "message");
 
         // This is a large future, hence pinning

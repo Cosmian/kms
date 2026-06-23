@@ -7,3 +7,6 @@
 [submodule "kmip"]
     path = kmip
     url = https://github.com/Cosmian/kmip.git
+[submodule "standards"]
+    path = standards
+    url = https://github.com/Cosmian/standards.git

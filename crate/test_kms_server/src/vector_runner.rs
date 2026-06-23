@@ -4208,8 +4208,40 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_vec_keyset_encrypt_at_first() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_encrypt_at_first").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_at_generation_n() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_encrypt_at_generation_n")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_at_first() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_at_first").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_decrypt_at_generation_n() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_decrypt_at_generation_n")
+            .await
+    }
+
+    #[tokio::test]
     async fn test_vec_keyset_rotate_name_at_rejected() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/keyset_rotate_name_at_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_invalid_generation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/keyset_invalid_generation").await
     }
 }
