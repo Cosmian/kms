@@ -562,7 +562,6 @@ Crate path: `crate/server`
 | `trace` | `ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?},              padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext`, `nonce`, `aad`, `tag`, `padding_method` | — |
 | `trace` | `enter export_get op={:?} req={}` | `src/core/operations/export_get.rs` | — | ×2 in this file |
 | `trace` | `get_attribute_list uid={} refs=[{}]` | `src/core/operations/attributes/get_list.rs` | — | — |
-| `trace` | `Ignoring deprecated OperationPolicyName attribute (KMIP 1.3+, removed in 2.0)` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `JWK has been found:
 {jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
 | `trace` | `JWK has been found:
@@ -977,12 +976,17 @@ Crate path: `crate/clients/client`
 | `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | - |
 | `info` | `The decrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the decrypted output file | ×2 in this file |
 | `info` | `The encrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the encrypted output file | ×2 in this file |
-| `trace` | `Error response received on {endpoint}: Response: {response}` | `src/kms_rest_client.rs` | `endpoint` — URL path of the failing endpoint<br>`response` — raw response object | — |
 | `warn` | `ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning.` | `src/http_client/client.rs` | — | — |
-| `info` | `Overriding reqwest builder with proxy: {:?}` | `src/http_client/client.rs` | — | — |
 | `info` | `Using server URL: {}` | `src/http_client/client.rs` | — | — |
-| `trace` | `<==\n{}` | `src/kms_rest_client.rs` | — | ×3 in this file |
-| `trace` | `==>\n{}` | `src/kms_rest_client.rs` | — | ×3 in this file |
+| `trace` | `<==\n{}` | `src/kms_rest_client.rs` | — | ×2 in this file |
+| `trace` | `==>\n{}` | `src/kms_rest_client.rs` | — | ×2 in this file |
+| `warn` | `Failed to set TLS 1.2 cipher list '{}' (using defaults): {}` | `src/http_client/tls.rs` | — | — |
+| `warn` | `Failed to set TLS 1.3 ciphersuites '{}' (using defaults): {}` | `src/http_client/tls.rs` | — | — |
+| `warn` | `Unknown TLS 1.2 IANA cipher suite '{}' (skipping)` | `src/http_client/tls.rs` | — | — |
+| `info` | `Using proxy: {:?}` | `src/http_client/client.rs` | — | — |
+| `debug` | `CONNECT tunnel established: {target_host}:{target_port}` | `src/http_client/proxy.rs` | `target_host`, `target_port` | — |
+| `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
+| `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `trace` | `<==
 {}` | `src/kms_rest_client.rs` | — | ×3 in this file |
 | `trace` | `==>
@@ -1063,6 +1067,13 @@ Crate path: `crate/clients/pkcs11/provider`
 | `warn` | `create_symmetric_key_object: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | — |
 | `warn` | `find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e},                      skipping` | `src/backend.rs` | `id`, `e` | — |
 | `warn` | `find_all_public_keys: failed to export public key {id}: {e},                              skipping` | `src/backend.rs` | `id`, `e` | — |
+| `warn` | `find_all_data_objects: failed to build DataObject for disk-encryption                          key: {e}, skipping` | `src/backend.rs` | `e` | — |
+| `warn` | `find_all_data_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list` | `src/backend.rs` | `e` | — |
+| `warn` | `find_all_objects: failed to build DataObject for disk-encryption key:                          {e}, skipping` | `src/backend.rs` | `e` | — |
+| `warn` | `find_all_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list` | `src/backend.rs` | `e` | — |
+| `trace` | `find_all_objects: total {} objects (including disk-encryption DataObjects)` | `src/backend.rs` | — | — |
+| `trace` | `get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects` | `src/kms_object.rs` | — | — |
+| `trace` | `get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag:              {disk_encryption_tag}` | `src/kms_object.rs` | `disk_encryption_tag` | — |
 
 
 ### `cosmian_pkcs11_module`

@@ -11,6 +11,7 @@ Usage:
   python3 scripts/update_log_index.py
 """
 
+import argparse
 import re
 import sys
 from dataclasses import dataclass, field
@@ -58,6 +59,11 @@ RUST_CRATES = [
 
 UI_CRATE = "ui/src"   # normalized (no trailing slash)
 
+# Crates that only exist on specific platforms.
+# When the crate directory is absent on the current OS (e.g. Windows-only crates on Linux CI),
+# their doc entries are never flagged as stale to avoid false positives.
+PLATFORM_SPECIFIC_CRATES: frozenset[str] = frozenset({"crate/clients/cng"})  # Windows-only
+
 # ── ANSI colours ───────────────────────────────────────────────────────────
 
 RED    = "\033[91m"
@@ -67,11 +73,13 @@ BOLD   = "\033[1m"
 DIM    = "\033[2m"
 RESET  = "\033[0m"
 
-def _red(s):    return f"{RED}{s}{RESET}"
-def _orange(s): return f"{ORANGE}{s}{RESET}"
-def _green(s):  return f"{GREEN}{s}{RESET}"
-def _bold(s):   return f"{BOLD}{s}{RESET}"
-def _dim(s):    return f"{DIM}{s}{RESET}"
+_USE_COLOR = True   # set to False via --no-color
+
+def _red(s):    return f"{RED}{s}{RESET}" if _USE_COLOR else s
+def _orange(s): return f"{ORANGE}{s}{RESET}" if _USE_COLOR else s
+def _green(s):  return f"{GREEN}{s}{RESET}" if _USE_COLOR else s
+def _bold(s):   return f"{BOLD}{s}{RESET}" if _USE_COLOR else s
+def _dim(s):    return f"{DIM}{s}{RESET}" if _USE_COLOR else s
 
 # ── Severity ordering ──────────────────────────────────────────────────────
 
@@ -220,12 +228,55 @@ _MULT_RE       = re.compile(r'×(\d+) in this file')
 _TABLE_SEP_RE  = re.compile(r'^\|[\s\-:]+\|[\s\-:]+\|[\s\-:]+\|')  # |---|---|...|
 
 
+def _split_table_row(line: str) -> list[str]:
+    """
+    Split a markdown table row on | characters that are NOT inside backtick spans.
+
+    Handles single-backtick `…` and double-backtick `` … `` (and any N-backtick)
+    spans correctly, so log messages containing | are not split mid-cell.
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    i = 0
+    n = len(line)
+    while i < n:
+        ch = line[i]
+        if ch == '`':
+            # Count the run of backticks that opens (or closes) a span.
+            j = i + 1
+            while j < n and line[j] == '`':
+                j += 1
+            tick_str = line[i:j]
+            # Find the matching closing run of the same length.
+            close = line.find(tick_str, j)
+            if close >= 0:
+                # Consume the entire span (no | splitting inside).
+                current.append(line[i : close + len(tick_str)])
+                i = close + len(tick_str)
+            else:
+                # Unmatched backtick run — emit literally.
+                current.append(tick_str)
+                i = j
+        elif ch == '|':
+            parts.append(''.join(current))
+            current = []
+            i += 1
+        else:
+            current.append(ch)
+            i += 1
+    parts.append(''.join(current))
+    return parts
+
+
 def _strip_cell(raw: str) -> str:
     """Strip backticks or Markdown link wrapper from a table cell."""
     s = raw.strip()
     lm = _LINK_RE.match(s)
     if lm:
         return lm.group(1)
+    # Handle `` content `` wrapping (used when message itself contains a backtick).
+    if s.startswith('`` ') and s.endswith(' ``'):
+        return s[3:-3]
     # Strip outermost backtick pair only; inner backticks are part of the message.
     if len(s) >= 2 and s[0] == '`' and s[-1] == '`':
         return s[1:-1]
@@ -254,7 +305,7 @@ def parse_doc(path: Path) -> tuple[list[str], list[DocEntry], dict[str, int]]:
             continue
 
         if current_crate and _LEVEL_ROW_RE.match(line):
-            parts = line.split("|")
+            parts = _split_table_row(line)
             if len(parts) < 7:
                 continue
             level     = _strip_cell(parts[1])
@@ -305,14 +356,45 @@ def _skip_rust_string(text: str, i: int) -> int:
 
 
 def _extract_body(text: str, start: int) -> str:
-    """Extract macro call body from start (after opening paren) to closing paren."""
+    """
+    Extract macro call body from start (after opening paren) to closing paren.
+
+    Handles: nested parens, double-quoted strings, raw strings r#\"…\"#,
+    line comments // …, and block comments /* … */.
+    """
     depth = 1
     i = start
     while i < len(text) and depth > 0:
         c = text[i]
-        if c == "(":
+        # Line comment — skip to end of line.
+        if c == '/' and i + 1 < len(text) and text[i + 1] == '/':
+            while i < len(text) and text[i] != '\n':
+                i += 1
+            continue
+        # Block comment — skip to */.
+        if c == '/' and i + 1 < len(text) and text[i + 1] == '*':
+            i += 2
+            while i + 1 < len(text) and not (text[i] == '*' and text[i + 1] == '/'):
+                i += 1
+            i += 2
+            continue
+        # Raw string  r#\"…\"#  (any number of hashes).
+        if c == 'r' and i + 1 < len(text) and text[i + 1] == '#':
+            j = i + 1
+            hashes = 0
+            while j < len(text) and text[j] == '#':
+                hashes += 1
+                j += 1
+            if j < len(text) and text[j] == '"':
+                j += 1  # skip opening "
+                end_marker = '"' + '#' * hashes
+                end = text.find(end_marker, j)
+                if end >= 0:
+                    i = end + len(end_marker)
+                    continue
+        if c == '(':
             depth += 1
-        elif c == ")":
+        elif c == ')':
             depth -= 1
         elif c == '"':
             i = _skip_rust_string(text, i)
@@ -584,6 +666,9 @@ def merge(
                 result.moved.append((e, move_map[tk]))
         else:
             # Not found anywhere → STALE
+            # Platform-specific crates absent on this OS are never stale.
+            if e.crate_path in PLATFORM_SPECIFIC_CRATES and not (REPO_ROOT / e.crate_path).exists():
+                continue
             if silent_delete:
                 result.deleted.append(e)
             else:
@@ -631,8 +716,18 @@ def _extract_var_names(message: str) -> str:
 
 # ── Document rewriter ──────────────────────────────────────────────────────
 
+def _wrap_in_backticks(s: str) -> str:
+    """Wrap s for a markdown table cell; use double backticks if s contains one."""
+    if '`' not in s:
+        return f"`{s}`"
+    if '``' not in s:
+        return f"`` {s} ``"
+    # Last resort: strip backticks to avoid corrupting the table structure.
+    return f"`{s.replace('`', '')}`"
+
+
 def _fmt_row(level: str, msg: str, file_rel: str, variables: str, notes: str) -> str:
-    return f"| `{level}` | `{msg}` | `{file_rel}` | {variables} | {notes} |"
+    return f"| {_wrap_in_backticks(level)} | {_wrap_in_backticks(msg)} | {_wrap_in_backticks(file_rel)} | {variables} | {notes} |"
 
 
 def _build_new_row(crate_path: str, file_rel: str, level: str, msg: str, mult: int) -> str:
@@ -642,8 +737,14 @@ def _build_new_row(crate_path: str, file_rel: str, level: str, msg: str, mult: i
 
 
 def _update_mult_in_notes(notes: str, new_mult: int) -> str:
-    """Replace ×N in notes with the new count."""
+    """Update the ×N multiplicity marker in a Notes cell."""
     m = _MULT_RE.search(notes)
+    if new_mult == 1:
+        # Count dropped back to 1 — remove the multiplicity note entirely.
+        if m:
+            stripped = (notes[:m.start()] + notes[m.end():]).strip(" ;")
+            return stripped if stripped else "—"
+        return notes  # already no marker
     if m:
         return notes[:m.start()] + f"×{new_mult} in this file" + notes[m.end():]
     # No ×N marker yet (doc defaulted to 1, source now has more) — insert it.
@@ -704,11 +805,14 @@ def rewrite_doc(
     output: list[str] = []
     for i, line in enumerate(lines):
         if i in deleted_idx:
+            # Still emit any new entries queued for insertion after this (now-deleted) anchor.
+            if i in insertions:
+                output.extend(insertions[i])
             continue   # stale — drop
 
         if i in flagged_map:
             # Prepend [REMOVED] to the Notes column
-            parts = line.split("|")
+            parts = _split_table_row(line)
             if len(parts) >= 7:
                 notes = parts[5].strip()
                 if "[REMOVED]" not in notes:
@@ -717,14 +821,14 @@ def rewrite_doc(
 
         if i in moved_map:
             # Update File column with new path
-            parts = line.split("|")
+            parts = _split_table_row(line)
             if len(parts) >= 7:
                 parts[3] = f" `{moved_map[i]}` "
                 line = "|".join(parts)
 
         if i in mult_upd_map:
             # Update ×N count in Notes column
-            parts = line.split("|")
+            parts = _split_table_row(line)
             if len(parts) >= 7:
                 parts[5] = " " + _update_mult_in_notes(parts[5].strip(), mult_upd_map[i]) + " "
                 line = "|".join(parts)
@@ -812,8 +916,57 @@ def _print_report(result: MergeResult, version: str, silent_delete: bool) -> Non
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Update log-reference.md from source call-sites.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  # interactive (default)\n"
+            "  python3 scripts/update_log_index.py\n\n"
+            "  # CI / bot: safe defaults, no prompts, no colour\n"
+            "  python3 scripts/update_log_index.py --non-interactive --no-color\n\n"
+            "  # bot: also delete stale entries\n"
+            "  python3 scripts/update_log_index.py --non-interactive --delete-stale --no-color\n"
+        ),
+    )
+    p.add_argument(
+        "--non-interactive", action="store_true",
+        help="Skip all prompts; use flag values directly (for CI/bots).",
+    )
+    p.add_argument(
+        "--bump-version", action="store_true", default=False,
+        help="Bump the minor version. Only meaningful with --non-interactive.",
+    )
+    p.add_argument(
+        "--delete-stale", action="store_true", default=False,
+        help="Delete stale entries instead of flagging with [REMOVED]. Only meaningful with --non-interactive.",
+    )
+    p.add_argument(
+        "--no-color", action="store_true",
+        help="Suppress ANSI colour codes (useful for CI logs).",
+    )
+    p.add_argument(
+        "--check", action="store_true",
+        help=(
+            "Report changes without writing the file. "
+            "Exits 1 if any changes are detected. "
+            "Implies --non-interactive."
+        ),
+    )
+    return p.parse_args()
+
+
 def main() -> None:
-    print(_bold(f"\n  Log Index Updater"))
+    global _USE_COLOR
+    args = _parse_args()
+    if args.no_color:
+        _USE_COLOR = False
+    check_only = args.check
+    if check_only:
+        args.non_interactive = True   # --check implies --non-interactive
+
+    print(_bold(f"\n  Log Index Updater{'  [check-only]' if check_only else ''}"))
     print(_dim(f"  Doc : {DOC_FILE}"))
     print(_dim(f"  Repo: {REPO_ROOT}"))
 
@@ -821,8 +974,15 @@ def main() -> None:
         print(_red(f"\nERROR: {DOC_FILE} not found."))
         sys.exit(1)
 
-    # Phase 0: interactive prompts
-    version, silent_delete = _phase0_prompts()
+    # Phase 0: prompts or CLI args
+    if args.non_interactive:
+        current = _read_version()
+        version = _bump_version(current) if args.bump_version else current
+        silent_delete = args.delete_stale
+    else:
+        if args.bump_version or args.delete_stale:
+            print(_orange("  ⚠  --bump-version / --delete-stale are only used with --non-interactive; ignoring."))
+        version, silent_delete = _phase0_prompts()
     print(_dim(f"  Version: {version}  |  Stale strategy: {'delete' if silent_delete else 'flag [REMOVED]'}"))
     print()
 
@@ -842,15 +1002,24 @@ def main() -> None:
 
     # Phase 4: rewrite
     if n_changes > 0:
-        print(_dim("  Writing log-reference.md..."), end="", flush=True)
-        new_lines = rewrite_doc(lines, doc_entries, result, crate_sep_idx)
-        DOC_FILE.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-        print(_dim(" Done."))
+        if check_only:
+            print(_dim("  Check mode — file not modified."))
+        else:
+            print(_dim("  Writing log-reference.md..."), end="", flush=True)
+            new_lines = rewrite_doc(lines, doc_entries, result, crate_sep_idx)
+            DOC_FILE.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+            print(_dim(" Done."))
     else:
         print(_dim("  No changes — file not modified."))
 
     # Phase 5: report
     _print_report(result, version, silent_delete)
+
+    # Exit 1 when changes exist so pre-commit (and CI) can detect drift.
+    # In write mode: the file was already updated — user should re-stage it.
+    # In check mode: nothing was written — indicates the index is out of date.
+    if n_changes > 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
