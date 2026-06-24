@@ -33,7 +33,6 @@ use cosmian_logger::{debug, trace, warn};
 use openssl::x509::X509;
 use uuid::Uuid;
 
-use super::key_ops::enforce_create_permission;
 use crate::{
     core::{
         KMS,
@@ -66,7 +65,7 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &str) -> KResult<Im
 
     // To import an object, ensure the user has the `Create` access right.
     // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    enforce_create_permission(kms, user).await?;
+    kms.enforce_create_permission(user).await?;
 
     // When replace_existing is requested with an explicit UID, verify the caller owns the
     // target object. Without this check, any user with Create rights could overwrite another

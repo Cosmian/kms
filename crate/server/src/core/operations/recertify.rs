@@ -34,10 +34,7 @@ use super::rekey::{
 use crate::{
     core::{
         KMS,
-        operations::{
-            certify::{build_and_sign_certificate, get_issuer, get_subject},
-            key_ops::reject_protection_storage_masks,
-        },
+        operations::certify::{build_and_sign_certificate, get_issuer, get_subject},
         retrieve_object_utils::retrieve_object_for_operation,
     },
     error::KmsError,
@@ -85,7 +82,7 @@ impl RekeyOperation for CertificateRekey {
         request: &ReCertify,
         user: &str,
     ) -> KResult<[RotationCandidate; 1]> {
-        reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+        KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
         enforce_privileged_user(kms, user).await?;
 

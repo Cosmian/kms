@@ -31,8 +31,7 @@ use openssl::x509::X509Req;
 use super::subject::{KeyPairData, Subject};
 use crate::{
     core::{
-        KMS,
-        operations::{create_key_pair::generate_key_pair, key_ops::enforce_create_permission},
+        KMS, operations::create_key_pair::generate_key_pair,
         retrieve_object_utils::retrieve_object_for_operation,
     },
     error::KmsError,
@@ -174,7 +173,7 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &str) -> KRe
 
     // For creation of an object, check that user has create access-right
     // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    enforce_create_permission(kms, user).await?;
+    kms.enforce_create_permission(user).await?;
 
     let sk_uid = UniqueIdentifier::default();
     let pk_uid = UniqueIdentifier::default();

@@ -4244,4 +4244,40 @@ ObjectType = "SymmetricKey"
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/keyset_invalid_generation").await
     }
+
+    // ── Process-window (ProtectStopDate / ProcessStartDate) ───────────────────
+
+    #[tokio::test]
+    async fn test_vec_process_window_encrypt_expired_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/fips/kmip_operations/process_window_encrypt_expired_fails",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_process_window_encrypt_not_yet_active_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/fips/kmip_operations/process_window_encrypt_not_yet_active_fails",
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_chain_skips_expired_window() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_chain_skips_expired_window")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_encrypt_expired_window_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector(
+            "test_data/vectors/fips/kmip_operations/keyset_encrypt_expired_window_fails",
+        )
+        .await
+    }
 }

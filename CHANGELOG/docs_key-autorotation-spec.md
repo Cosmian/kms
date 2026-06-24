@@ -30,6 +30,11 @@
 - Restrict rotation to Active or Deactivated keys: `Re-Key`, `Re-Key Key Pair`, and `ReCertify` now reject PreActive, Compromised, Destroyed, and Destroyed_Compromised objects with an explicit error (KMIP §6.1.46 does not list `Wrong_Key_Lifecycle_State` for Re-Key) ([#968](https://github.com/Cosmian/kms/pull/968))
 - Reject `@` character in `rotate_name` attribute values to prevent keyset versioning syntax injection ([#968](https://github.com/Cosmian/kms/pull/968))
 
+### Server internals
+
+- Consolidate `key_ops/` sub-modules: move `enforce_create_permission`, `reject_protection_storage_masks`, and `user_can_perform_operation` to `impl KMS` in `kms/permissions.rs`; move `record_cascading_metrics` to `impl KMS` in `kms/other_kms_methods.rs`; merge `authorization.rs`, `key_resolution.rs`, `lifecycle.rs`, and `usage_limits.rs` into `crypto_op.rs` — callers updated throughout `operations/` ([#968](https://github.com/Cosmian/kms/pull/968))
+- Fix `is_within_process_window()` to honour `ProcessStartDate`/`ProtectStopDate` stored in external DB attributes (previously only key-block embedded attributes were checked) ([#968](https://github.com/Cosmian/kms/pull/968))
+
 ## Bug Fixes
 
 - Fix `ReKeyKeyPair` not propagating `CryptographicUsageMask` from old key pair to the new `CreateKeyPair` request — causes FIPS-mode rejection (`got None but expected among 0x00103A01`) when rotating EC or RSA key pairs in a keyset

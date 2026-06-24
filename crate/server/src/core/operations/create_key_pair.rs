@@ -38,8 +38,6 @@ use crate::{
     result::KResult,
 };
 
-use super::key_ops::{enforce_create_permission, reject_protection_storage_masks};
-
 pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
@@ -47,12 +45,12 @@ pub(crate) async fn create_key_pair(
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
 
-    reject_protection_storage_masks(
+    KMS::reject_protection_storage_masks(
         request.common_protection_storage_masks.is_some()
             || request.private_protection_storage_masks.is_some()
             || request.public_protection_storage_masks.is_some(),
     )?;
-    enforce_create_permission(kms, owner).await?;
+    kms.enforce_create_permission(owner).await?;
 
     // generate uids and create the key pair and tags
     let sk_uid = request

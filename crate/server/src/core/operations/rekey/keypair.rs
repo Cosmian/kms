@@ -33,10 +33,7 @@ use crate::core::cover_crypt::rekey_keypair_cover_crypt;
 use crate::{
     core::{
         KMS,
-        operations::{
-            create_key_pair::generate_key_pair,
-            key_ops::{key_resolution::KeySelectionSpec, reject_protection_storage_masks},
-        },
+        operations::{create_key_pair::generate_key_pair, key_ops::KeySelectionSpec},
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -173,9 +170,9 @@ impl RekeyOperation for KeypairRekey {
         request: &ReKeyKeyPair,
         user: &str,
     ) -> KResult<[RotationCandidate; 2]> {
-        use crate::core::operations::key_ops::key_resolution::select_unique_key;
+        use crate::core::operations::key_ops::select_unique_key;
 
-        reject_protection_storage_masks(
+        KMS::reject_protection_storage_masks(
             request.common_protection_storage_masks.is_some()
                 || request.private_protection_storage_masks.is_some()
                 || request.public_protection_storage_masks.is_some(),

@@ -21,11 +21,7 @@ use super::common::{
     retrieve_eligible_keys, set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
 };
 use crate::{
-    core::{
-        KMS,
-        operations::key_ops::{key_resolution::KeySelectionSpec, reject_protection_storage_masks},
-        uid_utils::has_prefix,
-    },
+    core::{KMS, operations::key_ops::KeySelectionSpec, uid_utils::has_prefix},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -247,9 +243,9 @@ impl RekeyOperation for SymmetricRekey {
         request: &ReKey,
         user: &str,
     ) -> KResult<[RotationCandidate; 1]> {
-        use crate::core::operations::key_ops::key_resolution::select_unique_key;
+        use crate::core::operations::key_ops::select_unique_key;
 
-        reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+        KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
         enforce_privileged_user(kms, user).await?;
 

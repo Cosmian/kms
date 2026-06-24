@@ -9,10 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 };
 use cosmian_logger::{debug, trace};
 
-use super::{
-    import::process_opaque_object,
-    key_ops::{enforce_create_permission, reject_protection_storage_masks},
-};
+use super::import::process_opaque_object;
 use crate::{
     core::{
         KMS,
@@ -32,8 +29,8 @@ pub(crate) async fn register(
     owner: &str,
 ) -> KResult<RegisterResponse> {
     trace!("{request}");
-    reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
-    enforce_create_permission(kms, owner).await?;
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+    kms.enforce_create_permission(owner).await?;
 
     if request.object_type != request.object.object_type() {
         kms_bail!(KmsError::InconsistentOperation(

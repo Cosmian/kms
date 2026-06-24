@@ -37,7 +37,7 @@ use uuid::Uuid;
 use crate::{
     core::{
         KMS,
-        operations::key_ops::{enforce_create_permission, setup_object_lifecycle},
+        operations::key_ops::setup_object_lifecycle,
         wrapping::{unwrap_object, wrap_and_cache, wrap_object},
     },
     error::KmsError,
@@ -599,7 +599,7 @@ pub(crate) async fn is_keyset_latest(
 /// must either have `Create` permission or be in the privileged users list
 /// (configured in `kms.params.privileged_users`).
 pub(crate) async fn enforce_privileged_user(kms: &KMS, user: &str) -> KResult<()> {
-    enforce_create_permission(kms, user).await
+    kms.enforce_create_permission(user).await
 }
 
 /// Validate that request attributes do not attempt to change cryptographic parameters.

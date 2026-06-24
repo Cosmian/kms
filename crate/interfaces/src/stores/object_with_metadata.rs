@@ -149,19 +149,33 @@ impl ObjectWithMetadata {
     /// Returns `true` when usage is allowed (window is open or no window is set).
     /// Returns `false` when the key is outside its process window.
     /// Falls back to `true` if the system clock cannot be read.
+    ///
+    /// # Attribute precedence
+    ///
+    /// The external (database) attributes stored in `self.attributes` are checked
+    /// first, with the embedded key-block attributes as fallback.  This mirrors
+    /// `effective_state()` and ensures that `SetAttribute ProcessStartDate / ProtectStopDate`
+    /// calls are honoured even when the key block itself was not modified.
     #[must_use]
     pub fn is_within_process_window(&self) -> bool {
         if self.effective_state() != State::Active {
             return true; // window only applies to Active keys
         }
-        let Ok(attrs) = self.object.attributes() else {
-            return true;
-        };
         let Ok(now) = time_normalize() else {
             return true;
         };
-        let too_early = attrs.process_start_date.is_some_and(|d| now < d);
-        let too_late = attrs.protect_stop_date.is_some_and(|d| now > d);
+        // Prefer external (database) attributes; fall back to embedded key-block attributes.
+        let kb_attrs = self.object.attributes().ok();
+        let process_start = self
+            .attributes
+            .process_start_date
+            .or_else(|| kb_attrs.as_ref().and_then(|a| a.process_start_date));
+        let protect_stop = self
+            .attributes
+            .protect_stop_date
+            .or_else(|| kb_attrs.as_ref().and_then(|a| a.protect_stop_date));
+        let too_early = process_start.is_some_and(|d| now < d);
+        let too_late = protect_stop.is_some_and(|d| now > d);
         !(too_early || too_late)
     }
 
@@ -243,5 +257,186 @@ impl Display for ObjectWithMetadata {
             "ObjectWithMetadata {{ id: {}, object: {}, owner: {}, state: {}, attributes: {} }}",
             self.id, self.object, self.owner, self.state, self.attributes
         )
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
+mod tests {
+    use cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+            kmip_objects::{Object, SymmetricKey},
+            kmip_types::{CryptographicAlgorithm, KeyFormatType},
+        },
+        time_normalize,
+    };
+    use time::Duration;
+    use zeroize::Zeroizing;
+
+    use super::ObjectWithMetadata;
+
+    /// Build a minimal `Object::SymmetricKey` with empty embedded attributes.
+    fn test_object() -> Object {
+        Object::SymmetricKey(SymmetricKey {
+            key_block: KeyBlock {
+                key_format_type: KeyFormatType::Raw,
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
+                    attributes: Some(Attributes::default()),
+                }),
+                key_compression_type: None,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(256),
+                key_wrapping_data: None,
+            },
+        })
+    }
+
+    fn active_owm(ext_attrs: Attributes) -> ObjectWithMetadata {
+        ObjectWithMetadata::new(
+            "test-key".to_owned(),
+            test_object(),
+            "owner".to_owned(),
+            State::Active,
+            ext_attrs,
+        )
+    }
+
+    // ── is_within_process_window ──────────────────────────────────────────────
+
+    #[test]
+    fn test_process_window_no_dates_is_open() {
+        let owm = active_owm(Attributes::default());
+        assert!(owm.is_within_process_window());
+    }
+
+    /// `ProtectStopDate` set via `SetAttribute` (external DB attrs) in the past
+    /// must be honoured.  This verifies the bug-fix: the old code only checked the
+    /// key-block embedded attributes and would have returned `true` here.
+    #[test]
+    fn test_process_window_protect_stop_past_in_external_attrs_is_closed()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let now = time_normalize()?;
+        let owm = active_owm(Attributes {
+            protect_stop_date: Some(now - Duration::hours(1)),
+            ..Default::default()
+        });
+        assert!(!owm.is_within_process_window());
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_window_protect_stop_future_is_open() -> Result<(), Box<dyn std::error::Error>> {
+        let now = time_normalize()?;
+        let owm = active_owm(Attributes {
+            protect_stop_date: Some(now + Duration::hours(1)),
+            ..Default::default()
+        });
+        assert!(owm.is_within_process_window());
+        Ok(())
+    }
+
+    /// `ProcessStartDate` set via `SetAttribute` (external DB attrs) in the future
+    /// must be honoured.  Same fix as the `ProtectStopDate` case above.
+    #[test]
+    fn test_process_window_process_start_future_in_external_attrs_is_closed()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let now = time_normalize()?;
+        let owm = active_owm(Attributes {
+            process_start_date: Some(now + Duration::hours(1)),
+            ..Default::default()
+        });
+        assert!(!owm.is_within_process_window());
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_window_process_start_past_is_open() -> Result<(), Box<dyn std::error::Error>> {
+        let now = time_normalize()?;
+        let owm = active_owm(Attributes {
+            process_start_date: Some(now - Duration::hours(1)),
+            ..Default::default()
+        });
+        assert!(owm.is_within_process_window());
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_window_both_dates_valid_is_open() -> Result<(), Box<dyn std::error::Error>> {
+        let now = time_normalize()?;
+        let owm = active_owm(Attributes {
+            process_start_date: Some(now - Duration::hours(1)),
+            protect_stop_date: Some(now + Duration::hours(1)),
+            ..Default::default()
+        });
+        assert!(owm.is_within_process_window());
+        Ok(())
+    }
+
+    /// `ProtectStopDate` embedded inside the key block (not via `SetAttribute`)
+    /// must still be honoured — the fallback path remains correct.
+    #[test]
+    fn test_process_window_protect_stop_past_in_key_block_is_closed()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let now = time_normalize()?;
+        // Build an object with ProtectStopDate inside the key block's embedded attrs.
+        let kb_attrs = Attributes {
+            protect_stop_date: Some(now - Duration::hours(1)),
+            ..Default::default()
+        };
+        let object = Object::SymmetricKey(SymmetricKey {
+            key_block: KeyBlock {
+                key_format_type: KeyFormatType::Raw,
+                key_value: Some(KeyValue::Structure {
+                    key_material: KeyMaterial::ByteString(Zeroizing::new(vec![0_u8; 32])),
+                    attributes: Some(kb_attrs),
+                }),
+                key_compression_type: None,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                cryptographic_length: Some(256),
+                key_wrapping_data: None,
+            },
+        });
+        let owm = ObjectWithMetadata::new(
+            "test-key".to_owned(),
+            object,
+            "owner".to_owned(),
+            State::Active,
+            Attributes::default(), // no external attrs
+        );
+        assert!(!owm.is_within_process_window());
+        Ok(())
+    }
+
+    /// Non-Active keys bypass the process-window check (always open).
+    #[test]
+    fn test_process_window_non_active_state_always_open() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let now = time_normalize()?;
+        for state in [
+            State::Compromised,
+            State::Deactivated,
+            State::Destroyed,
+            State::PreActive,
+        ] {
+            let owm = ObjectWithMetadata::new(
+                "test-key".to_owned(),
+                test_object(),
+                "owner".to_owned(),
+                state,
+                Attributes {
+                    protect_stop_date: Some(now - Duration::hours(1)),
+                    ..Default::default()
+                },
+            );
+            assert!(
+                owm.is_within_process_window(),
+                "expected window open for state {state:?}"
+            );
+        }
+        Ok(())
     }
 }

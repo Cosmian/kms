@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**420 vectors** across 15 categories (including KAT):
+**429 vectors** across 15 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -162,6 +162,8 @@ replays the steps sequentially.
 | KMIP Operations | `mac_hmac_sha3_256` | Imports an HMACSHA3256 HMAC key, computes a MAC over data | 2 |
 | KMIP Operations | `mac_hmac_sha512` | Creates an HMACSHA512 HMAC key, computes a MAC over data | 2 |
 | KMIP Operations | `opaque_data` | Imports opaque data, retrieves it, then destroys | 4 |
+| KMIP Operations | `process_window_encrypt_expired_fails` | Creates an Active symmetric key, then sets its ProtectStopDate to a date in the past via SetAttribute.  An Encrypt attempt must be rejected with Wrong_Key_Lifecycle_State even though the key state is still Active. | 5 |
+| KMIP Operations | `process_window_encrypt_not_yet_active_fails` | Creates an Active symmetric key, then sets its ProcessStartDate to a date far in the future via SetAttribute.  An Encrypt attempt must be rejected with Wrong_Key_Lifecycle_State even though the key state is still Active. | 5 |
 | KMIP Operations | `query` | Queries server information, supported operations, and supported object types | 1 |
 | KMIP Operations | `recertify_chain` | Creates a root CA (self-signed) and a leaf certificate signed by the root, then performs ReCertify on the leaf certificate. Verifies the new leaf cert has proper replacement links and Active state. | 16 |
 | KMIP Operations | `recertify_self_signed` | Creates a self-signed certificate, performs ReCertify to rotate it, and verifies the new certificate has a fresh UID and Active state. | 10 |
@@ -449,12 +451,19 @@ replays the steps sequentially.
 | non-FIPS / ChaCha20 | `non-fips/chacha20_server_generated_nonce` | Creates a ChaCha20 key, encrypts without specifying a nonce (server generates an 8-byte nonce), captures the nonce from the response, then decrypts and verifies the plaintext | 3 |
 | non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Creates a ChaCha20 key, encrypts with an explicit CryptographicParameters block specifying the ChaCha20 algorithm and a client-provided 8-byte nonce, then decrypts and verifies the plaintext | 3 |
 | **Keyset Resolution** | | | |
+| Keyset | `keyset_chain_skips_expired_window` | Creates a symmetric key (gen-0), sets a rotate_name, encrypts with the gen-0 UID, then performs a ReKey to create gen-1.  Sets ProtectStopDate in the past on gen-1 (the newest key in the chain).  Decrypts with the bare keyset name. | 10 |
+| Keyset / Decrypt | `keyset_decrypt_at_first` | Creates a symmetric key, assigns a rotate_name, encrypts with the original key UID, performs a ReKey, then decrypts using name@first. Verifies that @first resolves to gen-0 for decryption. | 9 |
+| Keyset / Decrypt | `keyset_decrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, encrypts with gen-0 UID, performs two ReKey operations, then decrypts using name@0. Verifies that @0 resolves to gen-0 for decryption even after multiple rotations. | 12 |
 | Keyset / Decrypt | `keyset_decrypt_at_latest` | Decrypt using name@latest resolves to the single latest key rather than walking the chain. After rotation, encrypts with the new key, then decrypts using name@latest which should find the new key directly. | 9 |
 | Keyset / Decrypt | `keyset_decrypt_double_rotation` | Tests try-each-key across a 3-generation chain: | 12 |
 | Keyset / Decrypt | `keyset_decrypt_try_each` | The primary keyset try-each-key test: | 9 |
+| Keyset / Encrypt | `keyset_encrypt_at_first` | Creates a symmetric key, assigns a rotate_name, performs a ReKey, then encrypts data using the keyset name@first syntax. Verifies that @first resolves to gen-0 by decrypting with the original key UID. | 9 |
+| Keyset / Encrypt | `keyset_encrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, performs two ReKey operations (gen-0→gen-1→gen-2), then encrypts using name@1. Verifies that @1 resolves to gen-1 by decrypting with the gen-1 key UID. | 12 |
 | Keyset / Encrypt | `keyset_encrypt_bare_name` | Creates a symmetric key with rotate_name set, then encrypts using only the bare keyset name (no @version suffix). For Encrypt operations, bare keyset names resolve to the latest key (SingleLatest mode). | 6 |
+| Keyset / Encrypt | `keyset_encrypt_expired_window_fails` | Creates a symmetric key, assigns a rotate_name, then sets ProtectStopDate in the past on the key (the only/latest key in the chain).  An Encrypt with the bare keyset name must fail. | 6 |
 | Keyset / Encrypt | `keyset_encrypt_latest` | Creates a symmetric key, assigns a rotate_name via SetAttribute, then encrypts data using the keyset name@latest syntax. Verifies that keyset resolution correctly finds the latest key. | 6 |
 | Keyset / Encrypt | `keyset_encrypt_latest_after_rotation` | After rotation, encrypting by the bare keyset name must use the new key: | 9 |
+| Negative / Keyset | `negative/keyset_invalid_generation` | Creates a symmetric key with a rotate_name, then attempts to encrypt using name@99 which references a nonexistent generation. The operation must fail. | 5 |
 | Negative / Keyset | `negative/keyset_rotate_name_at_rejected` | Verifies that setting a rotate_name containing '@' is rejected with an InvalidRequest error, since '@' is reserved for keyset versioning syntax. | 4 |
 | Negative / Keyset | `negative/rekey_non_latest_hsm` | Tests that Re-Key on a retired (non-latest) HSM key is rejected. | 8 |
 | Negative / Keyset | `negative/rekey_non_latest_sql` | Tests that Re-Key on a retired (non-latest) SQL-backed key is rejected. | 8 |

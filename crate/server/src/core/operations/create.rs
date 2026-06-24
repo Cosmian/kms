@@ -9,7 +9,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
-use super::key_ops::{enforce_create_permission, reject_protection_storage_masks};
 use crate::{
     core::{KMS, wrapping::wrap_and_cache},
     error::KmsError,
@@ -19,8 +18,8 @@ use crate::{
 
 pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<CreateResponse> {
     trace!("{request}");
-    reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
-    enforce_create_permission(kms, owner).await?;
+    KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
+    kms.enforce_create_permission(owner).await?;
 
     let (unique_identifier, mut object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => KMS::create_symmetric_key_and_tags(kms.vendor_id(), &request)?,
