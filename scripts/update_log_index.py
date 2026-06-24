@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# ── Path resolution ────────────────────────────────────────────────────────
+# Path resolution 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 AGENT_DIR  = SCRIPT_DIR.parent
@@ -38,7 +38,7 @@ def _find_repo_root() -> Path:
 REPO_ROOT  = _find_repo_root()
 CARGO_TOML = REPO_ROOT / "Cargo.toml"
 
-# ── Crate list ─────────────────────────────────────────────────────────────
+# Crate list
 
 RUST_CRATES = [
     "crate/server",
@@ -144,18 +144,6 @@ def _read_version() -> str:
     return m2.group(1) if m2 else "develop"
 
 
-def _bump_version(v: str) -> str:
-    """Increment minor: 5.23.0 → 5.24.0"""
-    parts = v.split(".")
-    if len(parts) >= 2:
-        try:
-            parts[-2] = str(int(parts[-2]) + 1)
-            parts[-1] = "0"
-            return ".".join(parts)
-        except ValueError:
-            pass
-    return v
-
 # ── Interactive prompts ────────────────────────────────────────────────────
 
 def _prompt(question: str, default: str = "") -> str:
@@ -187,37 +175,20 @@ def _print_disclaimer() -> None:
     print(_orange("└─────────────────────────────────────────────────────────┘"))
 
 
-def _phase0_prompts() -> tuple[str, bool]:
-    """Returns (version_str, silent_delete: bool)."""
+def _phase0_prompts() -> bool:
+    """Returns silent_delete: bool."""
     _print_disclaimer()
-    current = _read_version()
-    bumped  = _bump_version(current)
-
-    print()
-    print(_bold("── Version ──────────────────────────────────────────────"))
-    print(f"  Current version : {_bold(current)}")
-    print(f"  Bump to {bumped} only for pre-release work (GitHub links will point to {bumped}).")
-    ans = _prompt(f"  Bump version to {bumped}? [y/N]: ", "n").strip().lower()
-    version = bumped if ans == "y" else current
-
-    bumping = (version == bumped)
 
     print()
     print(_bold("── Stale entries ────────────────────────────────────────"))
     print("  Entries in the doc that no longer exist in source:")
-    if bumping:
-        print("  y  Delete them silently (default — version bump implies a clean slate)")
-        print("  n  Flag with [REMOVED] in the Notes column — safer, reversible")
-        ans2 = _prompt("  Delete stale entries? [Y/n]: ", "y").strip().lower()
-        silent_delete = (ans2 != "n")
-    else:
-        print("  n  Flag with [REMOVED] in the Notes column — safer, reversible (default)")
-        print("  y  Delete them silently")
-        ans2 = _prompt("  Delete stale entries? [y/N]: ", "n").strip().lower()
-        silent_delete = (ans2 == "y")
+    print("  y  Delete them silently (default)")
+    print("  n  Flag with [REMOVED] in the Notes column — safer, reversible")
+    ans = _prompt("  Delete stale entries? [Y/n]: ", "y").strip().lower()
+    silent_delete = (ans != "n")
 
     print()
-    return version, silent_delete
+    return silent_delete
 
 # ── Markdown parser ────────────────────────────────────────────────────────
 
@@ -907,11 +878,62 @@ def _print_report(result: MergeResult, version: str, silent_delete: bool) -> Non
     else:
         print(_green("  Everything is up to date. No changes needed."))
 
-    if result.added:
-        print()
-        print(_bold("  ⚠  New entries have variable names only (no descriptions)."))
-        print("     Please open log-reference.md and add descriptions + notes")
-        print("     where meaningful (security flags, operator guidance).")
+    print()
+
+# ── Post-run action box ───────────────────────────────────────────────────
+
+def _print_action_box(result: MergeResult, doc_file: Path) -> None:
+    """
+    Print a hard-to-miss bordered reminder when new log entries were added.
+    New entries only carry auto-extracted variable names — a human must add
+    meaningful descriptions and operator notes before the information fades.
+    """
+    if not result.added:
+        return
+
+    n   = len(result.added)
+    tag = "entry" if n == 1 else "entries"
+
+    # List the new entries (capped at 8 to keep the box readable)
+    entry_lines: list[str] = []
+    for (cp, file_rel, level, msg, _mult) in result.added[:8]:
+        short_msg = msg[:52] + "\u2026" if len(msg) > 52 else msg
+        entry_lines.append(f"  {level.upper():<5}  {file_rel}")
+        entry_lines.append(f"         \"{short_msg}\"")
+    if len(result.added) > 8:
+        entry_lines.append(f"  \u2026 and {len(result.added) - 8} more")
+
+    width = 62
+    dash  = "\u2500" * width
+
+    def _box(text: str = "") -> None:
+        """Print one line inside the box, padded to width."""
+        # Strip ANSI codes for length calculation
+        plain = re.sub(r'\x1b\[[0-9;]*m', '', text)
+        pad   = width - 2 - len(plain)
+        print(f"\u2502  {text}{' ' * max(pad, 0)}\u2502")
+
+    print()
+    print(_bold(f"\u250c{dash}\u2510"))
+    _box()
+    _box(_bold("ACTION REQUIRED \u2014 NEW LOG ENTRIES ADDED"))
+    _box()
+    _box(f"{_green(str(n) + ' new ' + tag)} appended to  {doc_file.name}")
+    _box()
+    _box("They currently only have auto-extracted variable names.")
+    _box("This context is freshest RIGHT NOW \u2014 once the dev moves on,")
+    _box("it is very hard to recover. Please open the file and add:")
+    _box()
+    _box(f"  \u2022 Variables column  \u2014 what each {{name}} actually means")
+    _box(f"  \u2022 Notes column      \u2014 security flags, operator guidance")
+    _box()
+    _box(_bold("New entries:"))
+    for el in entry_lines:
+        _box(el)
+    _box()
+    _box(_bold(f"Open: {doc_file}"))
+    _box()
+    print(_bold(f"\u2514{dash}\u2518"))
     print()
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -933,10 +955,6 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--non-interactive", action="store_true",
         help="Skip all prompts; use flag values directly (for CI/bots).",
-    )
-    p.add_argument(
-        "--bump-version", action="store_true", default=False,
-        help="Bump the minor version. Only meaningful with --non-interactive.",
     )
     p.add_argument(
         "--delete-stale", action="store_true", default=False,
@@ -975,14 +993,13 @@ def main() -> None:
         sys.exit(1)
 
     # Phase 0: prompts or CLI args
+    version = _read_version()
     if args.non_interactive:
-        current = _read_version()
-        version = _bump_version(current) if args.bump_version else current
         silent_delete = args.delete_stale
     else:
-        if args.bump_version or args.delete_stale:
-            print(_orange("  ⚠  --bump-version / --delete-stale are only used with --non-interactive; ignoring."))
-        version, silent_delete = _phase0_prompts()
+        if args.delete_stale:
+            print(_orange("  ⚠  --delete-stale is only used with --non-interactive; ignoring."))
+        silent_delete = _phase0_prompts()
     print(_dim(f"  Version: {version}  |  Stale strategy: {'delete' if silent_delete else 'flag [REMOVED]'}"))
     print()
 
@@ -1012,8 +1029,9 @@ def main() -> None:
     else:
         print(_dim("  No changes — file not modified."))
 
-    # Phase 5: report
+    # Phase 5: report + action box
     _print_report(result, version, silent_delete)
+    _print_action_box(result, DOC_FILE)
 
     # Exit 1 when changes exist so pre-commit (and CI) can detect drift.
     # In write mode: the file was already updated — user should re-stage it.
