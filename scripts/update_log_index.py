@@ -683,7 +683,7 @@ def _extract_var_names(message: str) -> str:
         if n not in used:
             used.add(n)
             seen.append(f"`{n}`")
-    return ", ".join(seen) if seen else "—"
+    return ", ".join(seen) if seen else "-"
 
 # ── Document rewriter ──────────────────────────────────────────────────────
 
@@ -703,7 +703,7 @@ def _fmt_row(level: str, msg: str, file_rel: str, variables: str, notes: str) ->
 
 def _build_new_row(crate_path: str, file_rel: str, level: str, msg: str, mult: int) -> str:
     variables = _extract_var_names(msg)
-    notes     = f"×{mult} in this file" if mult > 1 else "—"
+    notes     = f"×{mult} in this file" if mult > 1 else "-"
     return _fmt_row(level, msg, file_rel, variables, notes)
 
 
@@ -714,7 +714,7 @@ def _update_mult_in_notes(notes: str, new_mult: int) -> str:
         # Count dropped back to 1 — remove the multiplicity note entirely.
         if m:
             stripped = (notes[:m.start()] + notes[m.end():]).strip(" ;")
-            return stripped if stripped else "—"
+            return stripped if stripped else "-"
         return notes  # already no marker
     if m:
         return notes[:m.start()] + f"×{new_mult} in this file" + notes[m.end():]

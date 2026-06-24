@@ -185,6 +185,7 @@ if [[ "$SKIP_LOG_INDEX" == false ]]; then
 else
   warn "Step 6/6 skipped (--skip-log-index)"
 fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 echo
 if [[ "$ERRORS" -eq 0 ]]; then
