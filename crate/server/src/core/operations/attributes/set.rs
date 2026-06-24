@@ -245,8 +245,9 @@ pub(crate) async fn set_attribute(
             )));
         } else {
             let today = OffsetDateTime::now_utc().date();
-            // Ceiling-divide so that an interval that is not an exact multiple of 86400
-            // does not map to end_date = today (which would trigger immediate rotation).
+            // Ceiling-divide so that an interval that is not an exact multiple of
+            // SECS_PER_DAY (86 400) does not map to end_date = today (which would
+            // trigger immediate rotation).
             let days = (interval_secs + SECS_PER_DAY_MINUS_ONE) / SECS_PER_DAY;
             let end_date = today + time::Duration::days(days);
             trace!(

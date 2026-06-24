@@ -11,14 +11,23 @@ const formatUnixDate = (unixMs: number): string => {
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
 
-/** Attribute keys fetched for every located row — sourced from WASM (single source of truth). */
-const ENRICH_ATTRIBUTE_KEYS: string[] = (() => {
-    try {
-        return wasm.get_locate_enrich_attribute_keys() as string[];
-    } catch {
-        return [];
+/** Attribute keys fetched for every located row — sourced from WASM (single source of truth).
+ *  Lazily initialised on first access so the WASM module is guaranteed to be
+ *  ready (eager module-level evaluation can race with async WASM loading). */
+let _enrichAttributeKeysCache: string[] | null = null;
+function getEnrichAttributeKeys(): string[] {
+    if (_enrichAttributeKeysCache === null || _enrichAttributeKeysCache.length === 0) {
+        try {
+            const keys = wasm.get_locate_enrich_attribute_keys();
+            if (Array.isArray(keys) && keys.length > 0) {
+                _enrichAttributeKeysCache = keys as string[];
+            }
+        } catch {
+            // WASM not ready yet; will retry on next call
+        }
     }
-})();
+    return _enrichAttributeKeysCache ?? [];
+}
 
 interface LocateObjectRow {
     object_id: string;
@@ -147,7 +156,7 @@ const LocateForm: React.FC = () => {
                     const getReq = wasm.get_attributes_ttlv_request(uid);
                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                     if (getRespStr) {
-                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, ENRICH_ATTRIBUTE_KEYS);
+                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                         const m = extractMeta(parsed);
                         // HSM keys are always Active; use that as default when state is missing
                         const isHsm = /^hsm[0-9]*::/.test(uid);
@@ -286,7 +295,7 @@ const LocateForm: React.FC = () => {
                                     const getReq = wasm.get_attributes_ttlv_request(uid);
                                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                     if (getRespStr) {
-                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, ENRICH_ATTRIBUTE_KEYS);
+                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                         const m = extractMeta(parsed);
                                         return {
                                             object_id: uid,
@@ -343,7 +352,7 @@ const LocateForm: React.FC = () => {
                                 const getReq = wasm.get_attributes_ttlv_request(uid);
                                 const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                 if (getRespStr) {
-                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, ENRICH_ATTRIBUTE_KEYS);
+                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                     const m = extractMeta(parsed);
                                     return {
                                         object_id: uid,
@@ -504,7 +513,7 @@ const LocateForm: React.FC = () => {
                                         const getReq = wasm.get_attributes_ttlv_request(uid);
                                         const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                         if (getRespStr) {
-                                            const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, ENRICH_ATTRIBUTE_KEYS);
+                                            const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                             const m = extractMeta(parsed);
                                             return {
                                                 object_id: uid,

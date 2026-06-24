@@ -252,8 +252,8 @@ object in any other state will produce an error:
 | ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------- |
 | **Active**                | ✅ Yes             | The primary valid source state for rotation.                                                          |
 | **Deactivated**           | ✅ Yes             | KMIP §6.1.46 does not list `Wrong_Key_Lifecycle_State` — a deactivated key may produce a replacement. |
+| **Compromised**           | ✅ Yes             | The immediate response to a key compromise should be to rotate it — blocking rotation would be counter-productive. |
 | **Pre-Active**            | ❌ No              | The key has never been activated — rotating unused material is premature.                             |
-| **Compromised**           | ❌ No              | Rotating a compromised key would create confusion about trust lineage.                                |
 | **Destroyed**             | ❌ No              | The object no longer exists.                                                                          |
 | **Destroyed_Compromised** | ❌ No              | The object no longer exists.                                                                          |
 
