@@ -109,6 +109,81 @@ fi
 # Combined with DWARF unwinding in perf, this eliminates most [unknown] frames.
 export RUSTFLAGS="${RUSTFLAGS:-} -C force-frame-pointers=yes"
 
+# ── Build debug-instrumented OpenSSL for profiling ────────────────────────────
+# Builds OpenSSL 3.6.2 with -g (DWARF debug symbols) and -O2 so that perf can
+# resolve OpenSSL frames in the flamegraph.  The result is cached in
+# target/openssl-debug-<version>-<os>-<arch>/ and reused on subsequent runs.
+OPENSSL_VERSION="3.6.2"
+OPENSSL_TARBALL="openssl-${OPENSSL_VERSION}.tar.gz"
+OPENSSL_URL="https://package.cosmian.com/openssl/${OPENSSL_TARBALL}"
+OPENSSL_SHA256="aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f"
+OPENSSL_DEBUG_PREFIX="${CARGO_TARGET_DIR}/openssl-debug-${OPENSSL_VERSION}-linux-$(uname -m)"
+
+if [ ! -f "${OPENSSL_DEBUG_PREFIX}/lib/libcrypto.a" ]; then
+  echo ""
+  echo "── Building OpenSSL ${OPENSSL_VERSION} with debug symbols ──────────────────"
+
+  OPENSSL_BUILD_DIR="${CARGO_TARGET_DIR}/openssl-debug-build"
+  mkdir -p "${OPENSSL_BUILD_DIR}" "${OPENSSL_DEBUG_PREFIX}"
+
+  # Download tarball (bypass proxy if needed)
+  TARBALL_PATH="${OPENSSL_BUILD_DIR}/${OPENSSL_TARBALL}"
+  if [ ! -f "${TARBALL_PATH}" ]; then
+    # Try local cache first (resources/tarballs/)
+    if [ -f "${REPO_ROOT}/resources/tarballs/${OPENSSL_TARBALL}" ]; then
+      cp "${REPO_ROOT}/resources/tarballs/${OPENSSL_TARBALL}" "${TARBALL_PATH}"
+    else
+      echo "   Downloading ${OPENSSL_URL} ..."
+      curl -fsSL "${OPENSSL_URL}" -o "${TARBALL_PATH}"
+    fi
+  fi
+
+  # Verify SHA-256
+  ACTUAL_SHA=$(sha256sum "${TARBALL_PATH}" | awk '{print $1}')
+  if [ "${ACTUAL_SHA}" != "${OPENSSL_SHA256}" ]; then
+    echo "ERROR: SHA-256 mismatch for ${TARBALL_PATH}"
+    echo "  expected: ${OPENSSL_SHA256}"
+    echo "  got:      ${ACTUAL_SHA}"
+    rm -f "${TARBALL_PATH}"
+    exit 1
+  fi
+
+  # Extract and build
+  SRC_DIR="${OPENSSL_BUILD_DIR}/src-${OPENSSL_VERSION}"
+  if [ ! -d "${SRC_DIR}/openssl-${OPENSSL_VERSION}" ]; then
+    mkdir -p "${SRC_DIR}"
+    tar -xf "${TARBALL_PATH}" -C "${SRC_DIR}"
+  fi
+
+  OPENSSL_SRC="${SRC_DIR}/openssl-${OPENSSL_VERSION}"
+  JOBS="$(nproc 2>/dev/null || echo 4)"
+
+  (
+    cd "${OPENSSL_SRC}"
+    # Configure with debug symbols (-g) + optimization (-O2) for profiling.
+    # 'no-shared' produces static libs; 'enable-legacy' for non-fips compat.
+    perl ./Configure \
+      --prefix="${OPENSSL_DEBUG_PREFIX}" \
+      --openssldir="${OPENSSL_DEBUG_PREFIX}/ssl" \
+      --libdir=lib \
+      no-shared \
+      enable-legacy \
+      -g \
+      -O2 \
+      linux-x86_64
+
+    make depend
+    make -j"${JOBS}"
+    make install_sw install_ssldirs -j"${JOBS}"
+  )
+
+  echo "   OpenSSL ${OPENSSL_VERSION} (debug) installed to: ${OPENSSL_DEBUG_PREFIX}"
+fi
+
+# Point build.rs at our debug OpenSSL so it skips downloading/building its own.
+export OPENSSL_DIR="${OPENSSL_DEBUG_PREFIX}"
+echo "   Using OPENSSL_DIR=${OPENSSL_DIR}"
+
 # ── Run throughput benchmark ──────────────────────────────────────────────────
 THROUGHPUT_OUTPUT="${CARGO_TARGET_DIR}/http_throughput_bench.txt"
 
