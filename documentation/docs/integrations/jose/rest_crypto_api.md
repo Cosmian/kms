@@ -22,6 +22,10 @@ Key material **never leaves the KMS**. Only ciphertext, signatures, and MACs tra
     - [POST /v1/crypto/sign](#post-v1cryptosign)
     - [POST /v1/crypto/verify](#post-v1cryptoverify)
     - [POST /v1/crypto/mac](#post-v1cryptomac)
+- [Key tag management](#key-tag-management)
+    - [POST /v1/crypto/keys/{kid}/tags](#post-v1cryptokeyskidtags)
+    - [DELETE /v1/crypto/keys/{kid}/tags](#delete-v1cryptokeyskidtags)
+    - [GET /v1/crypto/keys/{kid}/tags](#get-v1cryptokeyskidtags)
 - [Error responses](#error-responses)
 - [Known limitations](#known-limitations)
 - [Algorithm support matrix](#algorithm-support-matrix)
@@ -637,6 +641,137 @@ curl -s -X POST https://kms.example.com/v1/crypto/mac \
 
 # 4. Clean up
 curl -s -X DELETE https://kms.example.com/v1/crypto/keys/$KID
+```
+
+---
+
+## Key tag management
+
+User-defined string tags can be attached to any key stored in the KMS.  Tags
+enable key discovery (for example the JWKS endpoint returns only keys tagged
+`"jwks"`) and custom key grouping.
+
+**Rules:**
+
+- Tags are arbitrary, non-empty strings.
+- Tags starting with `_` are **system tags** (`_kk`, `_sk`, `_pk`, `_cert`, …)
+  and cannot be created or deleted through these endpoints.
+- All write operations are **idempotent**: adding an existing tag or removing a
+  missing tag has no effect.
+
+---
+
+### `POST /v1/crypto/keys/{kid}/tags`
+
+Add one or more user tags to a key.  Existing tags are preserved.
+
+#### Request body
+
+```json
+{ "tags": ["jwks", "prod"] }
+```
+
+| Field  | Required | Description |
+|--------|----------|-------------|
+| `tags` | ✓ | Array of non-empty tag strings (must not start with `_`) |
+
+#### Response body
+
+```json
+{ "kid": "<key-uuid>", "tags": ["jwks", "prod"] }
+```
+
+The `tags` array reflects the **complete current set** of user tags after the
+operation (sorted, system tags excluded).
+
+#### Status codes
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Tags updated successfully |
+| `400`  | Empty tag string or `_`-prefixed (system) tag supplied |
+| `403`  | Key access denied |
+| `404`  | Key not found |
+
+#### curl example
+
+```bash
+curl -s -X POST "https://kms.example.com/v1/crypto/keys/${KID}/tags" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["jwks", "prod"]}'
+```
+
+---
+
+### `DELETE /v1/crypto/keys/{kid}/tags`
+
+Remove one or more user tags from a key.  Tags not present on the key are
+silently ignored.
+
+#### Request body
+
+```json
+{ "tags": ["prod"] }
+```
+
+| Field  | Required | Description |
+|--------|----------|-------------|
+| `tags` | ✓ | Array of tag strings to remove (must not start with `_`) |
+
+#### Response body
+
+```json
+{ "kid": "<key-uuid>", "tags": ["jwks"] }
+```
+
+The `tags` array reflects the **remaining** user tags after removal.
+
+#### Status codes
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | Tags updated successfully |
+| `400`  | Empty tag string or `_`-prefixed (system) tag supplied |
+| `403`  | Key access denied |
+| `404`  | Key not found |
+
+#### curl example
+
+```bash
+curl -s -X DELETE "https://kms.example.com/v1/crypto/keys/${KID}/tags" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"tags": ["prod"]}'
+```
+
+---
+
+### `GET /v1/crypto/keys/{kid}/tags`
+
+List the current user tags on a key.  No body required.
+
+#### Response body
+
+```json
+{ "kid": "<key-uuid>", "tags": ["jwks"] }
+```
+
+System tags are never included.
+
+#### Status codes
+
+| Status | Meaning |
+|--------|---------|
+| `200`  | OK |
+| `403`  | Key access denied |
+| `404`  | Key not found |
+
+#### curl example
+
+```bash
+curl -s "https://kms.example.com/v1/crypto/keys/${KID}/tags" \
+  -H "Authorization: Bearer ${TOKEN}"
 ```
 
 ---

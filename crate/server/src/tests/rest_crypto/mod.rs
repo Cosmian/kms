@@ -20,4 +20,5 @@ mod key_state;
 mod mac;
 mod rfc_vectors;
 mod sign_verify;
+mod tags;
 mod unwrap;

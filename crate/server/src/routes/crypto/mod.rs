@@ -1,6 +1,7 @@
 mod aes_gcm;
 mod algorithm;
 mod models;
+pub(crate) mod tags;
 
 pub(crate) mod decrypt;
 pub(crate) mod encrypt;
@@ -23,6 +24,7 @@ pub(crate) use error::{
     CryptoApiError, CryptoResult, b64_decode, b64_encode, crypto_json_error_handler,
 };
 pub(crate) use keys::{create_key as create_key_handler, delete_key as delete_key_handler};
+pub(crate) use tags::{add_tags as add_tags_handler, list_tags as list_tags_handler, remove_tags as remove_tags_handler};
 pub(crate) use mac::mac as mac_handler;
 pub(crate) use models::*;
 pub(crate) use sign::sign as sign_handler;

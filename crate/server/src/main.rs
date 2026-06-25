@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kms_server::{
-    config::{ClapConfig, JwksEndpointConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
+    config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
     core::KMS,
     openssl_providers::{cpu_features_info, safe_openssl_version_info},
     result::{KResult, KResultHelper},

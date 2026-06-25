@@ -1104,7 +1104,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(crypto::mac_handler)
             .service(crypto::create_key_handler)
             .service(crypto::delete_key_handler)
-            .service(crypto::unwrap_key_handler);
+            .service(crypto::unwrap_key_handler)
+            .service(crypto::add_tags_handler)
+            .service(crypto::remove_tags_handler)
+            .service(crypto::list_tags_handler);
         app = app.service(crypto_scope);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints

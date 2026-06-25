@@ -219,6 +219,27 @@ pub(crate) struct MacVerifyResponse {
     pub(crate) valid: bool,
 }
 
+// ─── Tag management ────────────────────────────────────────────────────────
+
+/// Request body for `POST /v1/crypto/keys/{kid}/tags` and
+/// `DELETE /v1/crypto/keys/{kid}/tags`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct TagsRequest {
+    /// Tags to add or remove. Must be non-empty strings that do not start with
+    /// `_` (system-tag prefix).
+    pub(crate) tags: Vec<String>,
+}
+
+/// Response body for all three tag endpoints.
+#[derive(Debug, Serialize)]
+pub(crate) struct TagsResponse {
+    /// KMS unique identifier of the key.
+    pub(crate) kid: String,
+    /// Current user-visible tags on the key after the operation (sorted,
+    /// system tags — those starting with `_` — are never included).
+    pub(crate) tags: Vec<String>,
+}
+
 // ─── Key unwrap (import wrapped CEK) ────────────────────────────────────────
 
 /// POST /v1/crypto/keys/unwrap — request body.
