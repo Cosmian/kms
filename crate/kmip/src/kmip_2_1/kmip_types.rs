@@ -1751,6 +1751,25 @@ impl UniqueIdentifier {
             _ => None,
         }
     }
+
+    /// Compute a fresh UID for a rotation replacement key.
+    ///
+    /// - Pure UUID → fresh UUID (e.g. `"abc-…"` → `"def-…"`)
+    /// - User name → `"<name>_<new-uuid>"` (e.g. `"toto"` → `"toto_def-…"`)
+    /// - Already-prefixed → strip old UUID suffix, re-use prefix
+    ///   (e.g. `"toto_abc-…"` → `"toto_def-…"`)
+    #[must_use]
+    pub fn rotation_successor(old_uid: &str) -> String {
+        if Uuid::parse_str(old_uid).is_ok() {
+            Uuid::new_v4().to_string()
+        } else {
+            let prefix = old_uid
+                .rsplit_once('_')
+                .filter(|(_, suffix)| Uuid::parse_str(suffix).is_ok())
+                .map_or(old_uid, |(prefix, _)| prefix);
+            format!("{prefix}_{}", Uuid::new_v4())
+        }
+    }
 }
 
 impl TryFrom<LinkedObjectIdentifier> for UniqueIdentifier {

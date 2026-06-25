@@ -17,7 +17,10 @@ use super::kmip_operations::Base64Display;
 use super::{
     kmip_attributes::Attributes,
     kmip_data_structures::{KeyBlock, KeyWrappingData, KeyWrappingSpecification},
-    kmip_types::{CertificateRequestType, Digest, OpaqueDataType, SplitKeyMethod},
+    kmip_types::{
+        CertificateRequestType, Digest, LinkType, LinkedObjectIdentifier, OpaqueDataType,
+        SplitKeyMethod,
+    },
 };
 use crate::{
     error::KmipError,
@@ -445,6 +448,20 @@ impl Object {
             attribute_name: None,
             encoding_option: kwd.encoding_option,
         })
+    }
+
+    /// Copy the wrapping key link from this object to `new_attrs`.
+    ///
+    /// If this object was wrapped, its wrapping key UID is preserved as a
+    /// `LinkType::WrappingKeyLink` on `new_attrs` so that dependant re-wrapping
+    /// and attribute queries work correctly on the replacement object.
+    pub fn copy_wrapping_key_link_to(&self, new_attrs: &mut Attributes) {
+        if let Some(wrapping_key_uid) = self.wrapping_key_uid() {
+            new_attrs.set_link(
+                LinkType::WrappingKeyLink,
+                LinkedObjectIdentifier::TextString(wrapping_key_uid),
+            );
+        }
     }
 
     /// Initialize lifecycle attributes on a newly created or imported object.

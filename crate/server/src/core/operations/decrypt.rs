@@ -44,7 +44,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, KeysetMode, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode},
     },
     error::KmsError,
     kms_bail,
@@ -207,7 +207,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
         request.unique_identifier,
         request.data.as_ref().map_or(0, Vec::len)
     );
-    Box::pin(perform_crypto_operation::<DecryptOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<DecryptOp>(request, user)).await
 }
 
 fn decrypt_bulk(

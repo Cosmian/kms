@@ -14,12 +14,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::trace;
 use time::OffsetDateTime;
 
-use super::common::{
-    RekeyOperation, ReplacementObject, RotationCandidate, clean_attributes_for_generation,
-    compute_rotation_uid, enforce_privileged_user, execute_rekey, finalize_replacement_key,
-    is_keyset_latest, prepare_replacement_attributes, preserve_wrapping_key_link,
-    retrieve_eligible_keys, set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
-};
+use super::common::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
 use crate::{
     core::{KMS, operations::key_ops::KeySelectionSpec, uid_utils::has_prefix},
     error::KmsError,
@@ -69,7 +64,7 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
     // The general RekeyOperation pipeline is designed for SQL-backed keys and
     // is not applicable to non-extractable HSM key material.
     if has_prefix(uid_or_tags).is_some() {
-        return rekey_hsm_symmetric(kms, uid_or_tags, owner).await;
+        return kms.rekey_hsm_symmetric(uid_or_tags, owner).await;
     }
 
     Box::pin(execute_rekey(
@@ -83,152 +78,154 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
     .await
 }
 
-/// Rotate an HSM-resident AES symmetric key.
-///
-/// ## Rotation algorithm
-///
-/// 1. Validate that the caller has `Rekey` permission.
-/// 2. Retrieve the old key's metadata from the HSM (algorithm, length, sensitivity,
-///    keyset info from `CKA_LABEL`, rotation interval from `CKA_START_DATE`/`CKA_END_DATE`).
-/// 3. Compute the new generation number and new `key_id`/UID
-///    (`base_key_id::new_gen`, `prefix::slot::base_key_id::new_gen`).
-/// 4. Generate the new key on the same HSM slot via `C_GenerateKey` (`create_key`).
-/// 5. Infer the rotation interval from the old key's dates; stamp new `CKA_START_DATE` /
-///    `CKA_END_DATE` on the new key if an interval is known.
-/// 6. Update `CKA_LABEL` on the old key (strip `::latest` suffix) and on the new key
-///    (append `::latest`).
-async fn rekey_hsm_symmetric(kms: &KMS, uid: &str, user: &str) -> KResult<ReKeyResponse> {
-    enforce_privileged_user(kms, user).await?;
+impl KMS {
+    /// Rotate an HSM-resident AES symmetric key.
+    ///
+    /// ## Rotation algorithm
+    ///
+    /// 1. Validate that the caller has `Rekey` permission.
+    /// 2. Retrieve the old key's metadata from the HSM (algorithm, length, sensitivity,
+    ///    keyset info from `CKA_LABEL`, rotation interval from `CKA_START_DATE`/`CKA_END_DATE`).
+    /// 3. Compute the new generation number and new `key_id`/UID
+    ///    (`base_key_id::new_gen`, `prefix::slot::base_key_id::new_gen`).
+    /// 4. Generate the new key on the same HSM slot via `C_GenerateKey` (`create_key`).
+    /// 5. Infer the rotation interval from the old key's dates; stamp new `CKA_START_DATE` /
+    ///    `CKA_END_DATE` on the new key if an interval is known.
+    /// 6. Update `CKA_LABEL` on the old key (strip `::latest` suffix) and on the new key
+    ///    (append `::latest`).
+    async fn rekey_hsm_symmetric(&self, uid: &str, user: &str) -> KResult<ReKeyResponse> {
+        self.enforce_create_permission(user).await?;
 
-    // Retrieve old key metadata from the HSM.
-    let old_owm = kms
-        .database
-        .retrieve_object(uid)
-        .await?
-        .ok_or_else(|| KmsError::InvalidRequest(format!("HSM key '{uid}' not found")))?;
+        // Retrieve old key metadata from the HSM.
+        let old_owm = self
+            .database
+            .retrieve_object(uid)
+            .await?
+            .ok_or_else(|| KmsError::InvalidRequest(format!("HSM key '{uid}' not found")))?;
 
-    if old_owm.object().object_type() != ObjectType::SymmetricKey {
-        return Err(KmsError::NotSupported(
-            "HSM ReKey is currently supported for AES symmetric keys only".to_owned(),
-        ));
-    }
+        if old_owm.object().object_type() != ObjectType::SymmetricKey {
+            return Err(KmsError::NotSupported(
+                "HSM ReKey is currently supported for AES symmetric keys only".to_owned(),
+            ));
+        }
 
-    let old_attrs = old_owm.attributes();
+        let old_attrs = old_owm.attributes();
 
-    // Reject Re-Key on a retired (non-latest) member of a named keyset.
-    // Keys without a rotate_name are not keyset members and may be freely re-keyed.
-    if old_attrs.rotate_name.is_some() && !is_keyset_latest(kms, uid, old_attrs, user).await? {
-        return Err(KmsError::InvalidRequest(format!(
-            "ReKey: HSM key '{uid}' is not the latest in its keyset — only the latest \
-             generation can be rotated"
-        )));
-    }
+        // Reject Re-Key on a retired (non-latest) member of a named keyset.
+        // Keys without a rotate_name are not keyset members and may be freely re-keyed.
+        if old_attrs.rotate_name.is_some() && !self.is_keyset_latest(uid, old_attrs, user).await? {
+            return Err(KmsError::InvalidRequest(format!(
+                "ReKey: HSM key '{uid}' is not the latest in its keyset — only the latest \
+                 generation can be rotated"
+            )));
+        }
 
-    // Parse the UID to extract prefix, slot_id, and key_id.
-    // For `hsm::softhsm2::0::mykey` → prefix = `"hsm::softhsm2"`, rest = `"0::mykey"`.
-    let prefix = has_prefix(uid)
-        .ok_or_else(|| KmsError::InvalidRequest(format!("UID '{uid}' is not an HSM UID")))?;
-    let rest = uid
-        .strip_prefix(&format!("{prefix}::"))
-        .ok_or_else(|| KmsError::InvalidRequest("HSM UID has unexpected format".to_owned()))?;
-    let (slot_str, key_id) = rest.split_once("::").ok_or_else(|| {
-        KmsError::InvalidRequest(format!(
-            "HSM UID '{uid}' must have format '{prefix}::<slot>::<key_id>'"
-        ))
-    })?;
-    let slot_id: usize = slot_str.parse().map_err(|e| {
-        KmsError::InvalidRequest(format!("HSM slot_id '{slot_str}' is not valid: {e}"))
-    })?;
-
-    // Compute the new generation and new key_id.
-    // `key_id` may already contain a generation suffix: `"base_id::N"`.
-    // We split on the last `::` to find any existing numeric generation suffix.
-    let (base_id, old_gen) = key_id
-        .rsplit_once("::")
-        .map_or((key_id, 0), |(base, suffix)| {
-            suffix.parse::<i32>().map_or((key_id, 0), |n| (base, n))
-        });
-
-    let new_gen = old_gen + 1;
-    let new_key_id = format!("{base_id}::{new_gen}");
-    let new_uid = format!("{prefix}::{slot_id}::{new_key_id}");
-
-    // Retrieve old rotate metadata from the HSM (via stub attributes).
-    // Fall back gracefully if CKA_LABEL metadata is absent.
-    let (rotate_name, old_rotate_gen) = (
-        old_attrs.rotate_name.clone(),
-        old_attrs.rotate_generation.unwrap_or(old_gen),
-    );
-
-    // Read rotation interval in days from the old key's attributes.
-    // For HSM keys, rotate_interval is not stored in PKCS#11 as a KMIP attribute
-    // (HsmStore::update_object is a no-op); instead it is reconstructed at
-    // retrieve-time from CKA_START_DATE / CKA_END_DATE as (end − start) × 86400 s.
-    // If unavailable (key was never armed with SetAttribute RotateInterval),
-    // interval_days is None and the new key will not be auto-scheduled.
-    let interval_days: Option<i64> = old_attrs.rotate_interval.filter(|&i| i > 0).map(|secs| {
-        secs / cosmian_kms_server_database::reexport::cosmian_kms_interfaces::SECS_PER_DAY
-    });
-
-    // Generate the new key on the same HSM slot.
-    kms.database
-        .create(
-            Some(new_uid.clone()),
-            user,
-            &old_owm.object().clone(),
-            old_attrs,
-            &std::collections::HashSet::new(),
-        )
-        .await
-        .map_err(|e| {
-            KmsError::InvalidRequest(format!("Failed to generate new HSM key '{new_uid}': {e}"))
+        // Parse the UID to extract prefix, slot_id, and key_id.
+        // For `hsm::softhsm2::0::mykey` → prefix = `"hsm::softhsm2"`, rest = `"0::mykey"`.
+        let prefix = has_prefix(uid)
+            .ok_or_else(|| KmsError::InvalidRequest(format!("UID '{uid}' is not an HSM UID")))?;
+        let rest = uid
+            .strip_prefix(&format!("{prefix}::"))
+            .ok_or_else(|| KmsError::InvalidRequest("HSM UID has unexpected format".to_owned()))?;
+        let (slot_str, key_id) = rest.split_once("::").ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "HSM UID '{uid}' must have format '{prefix}::<slot>::<key_id>'"
+            ))
+        })?;
+        let slot_id: usize = slot_str.parse().map_err(|e| {
+            KmsError::InvalidRequest(format!("HSM slot_id '{slot_str}' is not valid: {e}"))
         })?;
 
-    // Stamp rotation dates on the new key.
-    if let Some(days) = interval_days {
-        let today = OffsetDateTime::now_utc().date();
-        let end = today + time::Duration::days(days);
-        kms.database
-            .set_key_rotation_dates(&new_uid, Some(today), Some(end))
+        // Compute the new generation and new key_id.
+        // `key_id` may already contain a generation suffix: `"base_id::N"`.
+        // We split on the last `::` to find any existing numeric generation suffix.
+        let (base_id, old_gen) = key_id
+            .rsplit_once("::")
+            .map_or((key_id, 0), |(base, suffix)| {
+                suffix.parse::<i32>().map_or((key_id, 0), |n| (base, n))
+            });
+
+        let new_gen = old_gen + 1;
+        let new_key_id = format!("{base_id}::{new_gen}");
+        let new_uid = format!("{prefix}::{slot_id}::{new_key_id}");
+
+        // Retrieve old rotate metadata from the HSM (via stub attributes).
+        // Fall back gracefully if CKA_LABEL metadata is absent.
+        let (rotate_name, old_rotate_gen) = (
+            old_attrs.rotate_name.clone(),
+            old_attrs.rotate_generation.unwrap_or(old_gen),
+        );
+
+        // Read rotation interval in days from the old key's attributes.
+        // For HSM keys, rotate_interval is not stored in PKCS#11 as a KMIP attribute
+        // (HsmStore::update_object is a no-op); instead it is reconstructed at
+        // retrieve-time from CKA_START_DATE / CKA_END_DATE as (end − start) × 86400 s.
+        // If unavailable (key was never armed with SetAttribute RotateInterval),
+        // interval_days is None and the new key will not be auto-scheduled.
+        let interval_days: Option<i64> = old_attrs.rotate_interval.filter(|&i| i > 0).map(|secs| {
+            secs / cosmian_kms_server_database::reexport::cosmian_kms_interfaces::SECS_PER_DAY
+        });
+
+        // Generate the new key on the same HSM slot.
+        self.database
+            .create(
+                Some(new_uid.clone()),
+                user,
+                &old_owm.object().clone(),
+                old_attrs,
+                &std::collections::HashSet::new(),
+            )
             .await
             .map_err(|e| {
-                KmsError::InvalidRequest(format!(
-                    "Failed to set rotation dates on new HSM key '{new_uid}': {e}"
-                ))
+                KmsError::InvalidRequest(format!("Failed to generate new HSM key '{new_uid}': {e}"))
             })?;
+
+        // Stamp rotation dates on the new key.
+        if let Some(days) = interval_days {
+            let today = OffsetDateTime::now_utc().date();
+            let end = today + time::Duration::days(days);
+            self.database
+                .set_key_rotation_dates(&new_uid, Some(today), Some(end))
+                .await
+                .map_err(|e| {
+                    KmsError::InvalidRequest(format!(
+                        "Failed to set rotation dates on new HSM key '{new_uid}': {e}"
+                    ))
+                })?;
+        }
+
+        // Update CKA_LABEL on old key (remove ::latest) and new key (add ::latest).
+        // Use `base_id` (without generation suffix) in the label — the generation is
+        // already in its own field, and including a generation-suffixed key_id would
+        // introduce extra `::` delimiters that break `parse_label_metadata()`.
+        if let Some(ref name) = rotate_name {
+            let old_label_retired = format!("{name}::{old_rotate_gen}::{base_id}");
+            let new_label_latest = format!("{name}::{new_gen}::{base_id}");
+
+            self.database
+                .set_key_label(uid, &old_label_retired)
+                .await
+                .map_err(|e| {
+                    KmsError::InvalidRequest(format!(
+                        "Failed to update CKA_LABEL on old HSM key '{uid}': {e}"
+                    ))
+                })?;
+            self.database
+                .set_key_label(&new_uid, &new_label_latest)
+                .await
+                .map_err(|e| {
+                    KmsError::InvalidRequest(format!(
+                        "Failed to set CKA_LABEL on new HSM key '{new_uid}': {e}"
+                    ))
+                })?;
+        }
+
+        trace!("HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}");
+
+        Ok(ReKeyResponse {
+            unique_identifier: UniqueIdentifier::TextString(new_uid),
+        })
     }
-
-    // Update CKA_LABEL on old key (remove ::latest) and new key (add ::latest).
-    // Use `base_id` (without generation suffix) in the label — the generation is
-    // already in its own field, and including a generation-suffixed key_id would
-    // introduce extra `::` delimiters that break `parse_label_metadata()`.
-    if let Some(ref name) = rotate_name {
-        let old_label_retired = format!("{name}::{old_rotate_gen}::{base_id}");
-        let new_label_latest = format!("{name}::{new_gen}::{base_id}");
-
-        kms.database
-            .set_key_label(uid, &old_label_retired)
-            .await
-            .map_err(|e| {
-                KmsError::InvalidRequest(format!(
-                    "Failed to update CKA_LABEL on old HSM key '{uid}': {e}"
-                ))
-            })?;
-        kms.database
-            .set_key_label(&new_uid, &new_label_latest)
-            .await
-            .map_err(|e| {
-                KmsError::InvalidRequest(format!(
-                    "Failed to set CKA_LABEL on new HSM key '{new_uid}': {e}"
-                ))
-            })?;
-    }
-
-    trace!("HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}");
-
-    Ok(ReKeyResponse {
-        unique_identifier: UniqueIdentifier::TextString(new_uid),
-    })
 }
 
 impl RekeyOperation for SymmetricRekey {
@@ -243,11 +240,9 @@ impl RekeyOperation for SymmetricRekey {
         request: &ReKey,
         user: &str,
     ) -> KResult<[RotationCandidate; 1]> {
-        use crate::core::operations::key_ops::select_unique_key;
-
         KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
-        enforce_privileged_user(kms, user).await?;
+        kms.enforce_create_permission(user).await?;
 
         let uid_or_tags = request
             .unique_identifier
@@ -268,21 +263,24 @@ impl RekeyOperation for SymmetricRekey {
             ));
         }
 
-        let candidates = retrieve_eligible_keys(kms, uid_or_tags, ObjectType::SymmetricKey).await?;
+        let candidates = kms
+            .retrieve_eligible_keys(uid_or_tags, ObjectType::SymmetricKey)
+            .await?;
 
-        let owm = select_unique_key::<Self, _>(candidates, uid_or_tags, kms, user, |owm| {
-            // Reject requests that attempt to change crypto parameters
-            validate_no_crypto_param_change(
-                owm.attributes(),
-                [request.attributes.as_ref()],
-                "ReKey",
-            )?;
-            Ok(())
-        })
-        .await?;
+        let owm = kms
+            .select_unique_key::<Self, _>(candidates, uid_or_tags, user, |owm| {
+                // Reject requests that attempt to change crypto parameters
+                owm.attributes()
+                    .validate_no_crypto_param_change([request.attributes.as_ref()], "ReKey")?;
+                Ok(())
+            })
+            .await?;
 
         // Reject Re-Key on a retired (non-latest) member of a named keyset.
-        if !is_keyset_latest(kms, owm.id(), owm.attributes(), user).await? {
+        if !kms
+            .is_keyset_latest(owm.id(), owm.attributes(), user)
+            .await?
+        {
             return Err(KmsError::InvalidRequest(format!(
                 "ReKey: key '{}' is not the latest in its keyset — only the latest \
                      generation can be rotated",
@@ -306,8 +304,10 @@ impl RekeyOperation for SymmetricRekey {
         let [candidate] = candidates;
 
         // Clean attributes for generation (removes identity, lifecycle dates, rotation metadata)
-        let gen_attrs =
-            clean_attributes_for_generation(candidate.owm.attributes(), kms.vendor_id());
+        let gen_attrs = candidate
+            .owm
+            .attributes()
+            .clean_for_generation(kms.vendor_id());
 
         let create_request = Create {
             object_type: ObjectType::SymmetricKey,
@@ -317,7 +317,7 @@ impl RekeyOperation for SymmetricRekey {
         let (_, new_object, new_tags) =
             KMS::create_symmetric_key_and_tags(kms.vendor_id(), &create_request)?;
 
-        let new_uid = compute_rotation_uid(&candidate.uid);
+        let new_uid = UniqueIdentifier::rotation_successor(&candidate.uid);
 
         Ok([ReplacementObject {
             new_uid,
@@ -338,14 +338,12 @@ impl RekeyOperation for SymmetricRekey {
         let [candidate] = candidates;
         let [replacement] = replacements;
 
-        let new_attrs = prepare_replacement_attributes(
-            candidate.owm.attributes(),
-            &candidate.uid,
-            self.offset,
-        )?;
+        let new_attrs = candidate
+            .owm
+            .attributes()
+            .for_replacement(&candidate.uid, self.offset)?;
 
-        finalize_replacement_key(
-            replacement,
+        replacement.finalize(
             &new_attrs,
             ObjectType::SymmetricKey,
             &candidate.uid,
@@ -354,10 +352,15 @@ impl RekeyOperation for SymmetricRekey {
         )?;
 
         // Preserve WrappingKeyLink if the old key was wrapped
-        preserve_wrapping_key_link(candidate.owm.object(), &mut replacement.attributes);
+        candidate
+            .owm
+            .object()
+            .copy_wrapping_key_link_to(&mut replacement.attributes);
 
         // Set rotation metadata
-        set_rotation_metadata_on_new_key(&mut replacement.attributes, candidate.owm.attributes())?;
+        replacement
+            .attributes
+            .set_rotation_metadata_from(candidate.owm.attributes())?;
 
         // Rewrap dependants to the NEW key
         replacement.rewrap_to = Some(replacement.new_uid.clone());

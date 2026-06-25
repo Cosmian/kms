@@ -11,10 +11,6 @@ mod common;
 mod keypair;
 mod symmetric;
 
-pub(crate) use common::{
-    RekeyOperation, ReplacementObject, RotationCandidate, compute_rotation_uid,
-    enforce_privileged_user, execute_rekey, prepare_replacement_attributes,
-    set_rotation_metadata_on_new_key, update_old_key_after_rekey,
-};
+pub(crate) use common::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
 pub(crate) use keypair::rekey_keypair;
 pub(crate) use symmetric::rekey;

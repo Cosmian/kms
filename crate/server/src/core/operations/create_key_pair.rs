@@ -37,6 +37,7 @@ use crate::{
     kms_bail,
     result::KResult,
 };
+use super::key_ops::ObjectLifecycleExt;
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
@@ -91,11 +92,8 @@ pub(crate) async fn create_key_pair(
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
 
     let mut private_key = key_pair.private_key().to_owned();
-    let private_key_attributes = super::key_ops::setup_object_lifecycle(
-        &mut private_key,
-        ObjectType::PrivateKey,
-        requested_sk_activation_date,
-    )?;
+    let private_key_attributes =
+        private_key.setup_with_lifecycle(ObjectType::PrivateKey, requested_sk_activation_date)?;
     trace!(
         "Private key attributes after lifecycle update: {}",
         private_key_attributes
@@ -112,11 +110,8 @@ pub(crate) async fn create_key_pair(
     .await?;
 
     let mut public_key = key_pair.public_key().to_owned();
-    let public_key_attributes = super::key_ops::setup_object_lifecycle(
-        &mut public_key,
-        ObjectType::PublicKey,
-        requested_pk_activation_date,
-    )?;
+    let public_key_attributes =
+        public_key.setup_with_lifecycle(ObjectType::PublicKey, requested_pk_activation_date)?;
     trace!(
         "Public key attributes after lifecycle update: {}",
         public_key_attributes

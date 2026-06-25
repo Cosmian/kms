@@ -18,7 +18,7 @@ use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, KeysetMode, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode},
     },
     error::KmsError,
     kms_bail,
@@ -205,7 +205,7 @@ impl CryptoOpSpec for MacVerifyOp {
 
 pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
     trace!("uid={:?}", request.unique_identifier);
-    Box::pin(perform_crypto_operation::<MacOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<MacOp>(request, user)).await
 }
 
 pub(crate) async fn mac_verify(
@@ -214,7 +214,7 @@ pub(crate) async fn mac_verify(
     user: &str,
 ) -> KResult<MACVerifyResponse> {
     trace!("uid={}", request.unique_identifier);
-    Box::pin(perform_crypto_operation::<MacVerifyOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<MacVerifyOp>(request, user)).await
 }
 
 // ─── Helper functions ────────────────────────────────────────────────────────

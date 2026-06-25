@@ -9,6 +9,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{info, trace};
 use uuid::Uuid;
 
+use super::key_ops::ObjectLifecycleExt;
 use crate::{
     core::{KMS, wrapping::wrap_and_cache},
     error::KmsError,
@@ -59,11 +60,8 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
     );
 
     // Set lifecycle attributes and copy them before the key gets wrapped
-    let attributes = super::key_ops::setup_object_lifecycle(
-        &mut object,
-        request.object_type,
-        request.attributes.activation_date,
-    )?;
+    let attributes =
+        object.setup_with_lifecycle(request.object_type, request.attributes.activation_date)?;
 
     trace!(
         "Creating object of type {:?} with UID {} and attributes {}",

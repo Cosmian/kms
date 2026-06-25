@@ -23,7 +23,7 @@ use openssl::pkey::{Id, PKey, Public};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, KeysetMode, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode},
     },
     error::KmsError,
     kms_bail,
@@ -227,10 +227,7 @@ pub(crate) async fn signature_verify(
         ));
     }
 
-    Box::pin(perform_crypto_operation::<SignatureVerifyOp>(
-        kms, request, user,
-    ))
-    .await
+    Box::pin(kms.perform_crypto_operation::<SignatureVerifyOp>(request, user)).await
 }
 
 /// Extract the verification key from a managed object.

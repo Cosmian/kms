@@ -51,10 +51,7 @@ use crate::core::operations::algorithm_policy::{
 };
 use crate::{
     config::ServerParams,
-    core::{
-        KMS,
-        operations::{CryptoOpSpec, perform_crypto_operation},
-    },
+    core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -168,7 +165,7 @@ pub(crate) async fn encrypt(kms: &KMS, request: Encrypt, user: &str) -> KResult<
         request.unique_identifier,
         request.data.as_ref().map_or(0, |d| d.len())
     );
-    Box::pin(perform_crypto_operation::<EncryptOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<EncryptOp>(request, user)).await
 }
 
 /// Encrypt a single plaintext with the key

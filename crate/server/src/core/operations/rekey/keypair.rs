@@ -22,12 +22,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::trace;
 
-use super::common::{
-    RekeyOperation, ReplacementObject, RotationCandidate, clean_attributes_for_generation,
-    compute_rotation_uid, enforce_privileged_user, execute_rekey, finalize_replacement_key,
-    is_keyset_latest, prepare_replacement_attributes, preserve_wrapping_key_link,
-    retrieve_eligible_keys, set_rotation_metadata_on_new_key, validate_no_crypto_param_change,
-};
+use super::common::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
 #[cfg(feature = "non-fips")]
 use crate::core::cover_crypt::rekey_keypair_cover_crypt;
 use crate::{
@@ -95,7 +90,7 @@ pub(crate) async fn rekey_keypair(
     // Covercrypt early-return: uses a completely different code path (in-place attribute rekey)
     // that doesn't fit the rotation trait pattern.
     #[cfg(feature = "non-fips")]
-    if let Some(response) = try_covercrypt_rekey(kms, &request, user).await? {
+    if let Some(response) = kms.try_covercrypt_rekey(&request, user).await? {
         return Ok(response);
     }
 
@@ -110,52 +105,76 @@ pub(crate) async fn rekey_keypair(
     .await
 }
 
-/// Attempt Covercrypt-specific rekey. Returns `Some(response)` if handled, `None` otherwise.
-#[cfg(feature = "non-fips")]
-async fn try_covercrypt_rekey(
-    kms: &KMS,
-    request: &ReKeyKeyPair,
-    user: &str,
-) -> KResult<Option<ReKeyKeyPairResponse>> {
-    let uid_or_tags = request
-        .private_key_unique_identifier
-        .as_ref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?
-        .as_str()
-        .context("ReKeyKeyPair: the private key unique identifier must be a string")?;
+impl KMS {
+    /// Attempt Covercrypt-specific rekey. Returns `Some(response)` if handled, `None` otherwise.
+    #[cfg(feature = "non-fips")]
+    async fn try_covercrypt_rekey(
+        &self,
+        request: &ReKeyKeyPair,
+        user: &str,
+    ) -> KResult<Option<ReKeyKeyPairResponse>> {
+        let uid_or_tags = request
+            .private_key_unique_identifier
+            .as_ref()
+            .ok_or(KmsError::UnsupportedPlaceholder)?
+            .as_str()
+            .context("ReKeyKeyPair: the private key unique identifier must be a string")?;
 
-    for owm in retrieve_eligible_keys(kms, uid_or_tags, ObjectType::PrivateKey).await? {
-        let key_format_type = owm.attributes().key_format_type.or_else(|| {
-            owm.object()
-                .attributes()
-                .ok()
-                .and_then(|a| a.key_format_type)
-        });
+        for owm in self
+            .retrieve_eligible_keys(uid_or_tags, ObjectType::PrivateKey)
+            .await?
+        {
+            let key_format_type = owm.attributes().key_format_type.or_else(|| {
+                owm.object()
+                    .attributes()
+                    .ok()
+                    .and_then(|a| a.key_format_type)
+            });
 
-        if key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-            let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "ReKeyKeyPair: the private key attributes must be supplied for Covercrypt"
-                        .to_owned(),
-                )
-            })?;
-            if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
-                let action = rekey_edit_action_from_attributes(kms.vendor_id(), attributes)?;
-                let response = Box::pin(rekey_keypair_cover_crypt(
-                    kms,
-                    Covercrypt::default(),
-                    owm.id().to_owned(),
-                    user,
-                    action,
-                    owm.attributes().sensitive.unwrap_or(false),
-                ))
-                .await
-                .context("ReKeyKeyPair: Covercrypt rekey failed")?;
-                return Ok(Some(response));
+            if key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
+                    KmsError::InvalidRequest(
+                        "ReKeyKeyPair: the private key attributes must be supplied for Covercrypt"
+                            .to_owned(),
+                    )
+                })?;
+                if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
+                    let action = rekey_edit_action_from_attributes(self.vendor_id(), attributes)?;
+                    let response = Box::pin(rekey_keypair_cover_crypt(
+                        self,
+                        Covercrypt::default(),
+                        owm.id().to_owned(),
+                        user,
+                        action,
+                        owm.attributes().sensitive.unwrap_or(false),
+                    ))
+                    .await
+                    .context("ReKeyKeyPair: Covercrypt rekey failed")?;
+                    return Ok(Some(response));
+                }
             }
         }
+        Ok(None)
     }
-    Ok(None)
+
+    /// Retrieve the linked public key from the database.
+    async fn retrieve_linked_public_key(
+        &self,
+        pk_uid: &str,
+    ) -> KResult<cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata>
+    {
+        self.database
+            .retrieve_objects(pk_uid)
+            .await?
+            .into_values()
+            .next()
+            .ok_or_else(|| {
+                KmsError::Kmip21Error(
+                    ErrorReason::Item_Not_Found,
+                    format!("ReKeyKeyPair: linked public key '{pk_uid}' not found in database"),
+                )
+            })
+    }
 }
 
 impl RekeyOperation for KeypairRekey {
@@ -170,15 +189,13 @@ impl RekeyOperation for KeypairRekey {
         request: &ReKeyKeyPair,
         user: &str,
     ) -> KResult<[RotationCandidate; 2]> {
-        use crate::core::operations::key_ops::select_unique_key;
-
         KMS::reject_protection_storage_masks(
             request.common_protection_storage_masks.is_some()
                 || request.private_protection_storage_masks.is_some()
                 || request.public_protection_storage_masks.is_some(),
         )?;
 
-        enforce_privileged_user(kms, user).await?;
+        kms.enforce_create_permission(user).await?;
 
         let uid_or_tags = request
             .private_key_unique_identifier
@@ -199,25 +216,30 @@ impl RekeyOperation for KeypairRekey {
             ));
         }
 
-        let candidates = retrieve_eligible_keys(kms, uid_or_tags, ObjectType::PrivateKey).await?;
+        let candidates = kms
+            .retrieve_eligible_keys(uid_or_tags, ObjectType::PrivateKey)
+            .await?;
 
-        let owm = select_unique_key::<Self, _>(candidates, uid_or_tags, kms, user, |owm| {
-            // Validate no crypto param changes
-            validate_no_crypto_param_change(
-                owm.attributes(),
-                [
-                    request.common_attributes.as_ref(),
-                    request.private_key_attributes.as_ref(),
-                    request.public_key_attributes.as_ref(),
-                ],
-                "ReKeyKeyPair",
-            )?;
-            Ok(())
-        })
-        .await?;
+        let owm = kms
+            .select_unique_key::<Self, _>(candidates, uid_or_tags, user, |owm| {
+                // Validate no crypto param changes
+                owm.attributes().validate_no_crypto_param_change(
+                    [
+                        request.common_attributes.as_ref(),
+                        request.private_key_attributes.as_ref(),
+                        request.public_key_attributes.as_ref(),
+                    ],
+                    "ReKeyKeyPair",
+                )?;
+                Ok(())
+            })
+            .await?;
 
         // Reject Re-Key on a retired (non-latest) member of a named keyset.
-        if !is_keyset_latest(kms, owm.id(), owm.attributes(), user).await? {
+        if !kms
+            .is_keyset_latest(owm.id(), owm.attributes(), user)
+            .await?
+        {
             return Err(KmsError::InvalidRequest(format!(
                 "ReKeyKeyPair: key '{}' is not the latest in its keyset — only the \
                      latest generation can be rotated",
@@ -227,15 +249,16 @@ impl RekeyOperation for KeypairRekey {
 
         // Resolve paired public key (post-selection: only for the winning candidate)
         let old_sk_uid = owm.id().to_owned();
-        let old_pk_uid = resolve_public_key_uid(&owm)?;
-        let old_pk_owm = retrieve_linked_public_key(kms, &old_pk_uid).await?;
+        let sk_candidate = RotationCandidate {
+            uid: old_sk_uid,
+            object_type: ObjectType::PrivateKey,
+            owm,
+        };
+        let old_pk_uid = sk_candidate.public_key_uid()?;
+        let old_pk_owm = kms.retrieve_linked_public_key(&old_pk_uid).await?;
 
         Ok([
-            RotationCandidate {
-                uid: old_sk_uid,
-                object_type: ObjectType::PrivateKey,
-                owm,
-            },
+            sk_candidate,
             RotationCandidate {
                 uid: old_pk_uid,
                 object_type: ObjectType::PublicKey,
@@ -251,10 +274,12 @@ impl RekeyOperation for KeypairRekey {
     ) -> KResult<[ReplacementObject; 2]> {
         let [sk_candidate, pk_candidate] = candidates;
 
-        let common_attrs =
-            clean_attributes_for_generation(sk_candidate.owm.attributes(), kms.vendor_id());
-        let new_sk_uid = compute_rotation_uid(&sk_candidate.uid);
-        let new_pk_uid = compute_rotation_uid(&pk_candidate.uid);
+        let common_attrs = sk_candidate
+            .owm
+            .attributes()
+            .clean_for_generation(kms.vendor_id());
+        let new_sk_uid = UniqueIdentifier::rotation_successor(&sk_candidate.uid);
+        let new_pk_uid = UniqueIdentifier::rotation_successor(&pk_candidate.uid);
 
         // Propagate the CryptographicUsageMask from the old keys so that
         // FIPS-mode key-pair generators receive the required mask value.
@@ -331,35 +356,39 @@ impl RekeyOperation for KeypairRekey {
     ) -> KResult<()> {
         let [sk_candidate, pk_candidate] = candidates;
 
-        let new_sk_attributes = prepare_replacement_attributes(
-            sk_candidate.owm.attributes(),
-            &sk_candidate.uid,
-            self.offset,
-        )?;
-        let new_pk_attributes = prepare_replacement_attributes(
-            pk_candidate.owm.attributes(),
-            &pk_candidate.uid,
-            self.offset,
-        )?;
+        let new_sk_attributes = sk_candidate
+            .owm
+            .attributes()
+            .for_replacement(&sk_candidate.uid, self.offset)?;
+        let new_pk_attributes = pk_candidate
+            .owm
+            .attributes()
+            .for_replacement(&pk_candidate.uid, self.offset)?;
 
         let pk_new_uid = replacements[1].new_uid.clone();
         let sk_new_uid = replacements[0].new_uid.clone();
 
         let [sk_rep, pk_rep] = replacements;
-        prepare_sk_replacement(
-            sk_rep,
+        sk_rep.prepare_for_keypair(
             &new_sk_attributes,
             sk_candidate,
             &pk_new_uid,
+            LinkType::PublicKeyLink,
+            ObjectType::PrivateKey,
+            false,
             kms.vendor_id(),
         )?;
-        set_rotation_metadata_on_new_key(&mut sk_rep.attributes, sk_candidate.owm.attributes())?;
+        sk_rep
+            .attributes
+            .set_rotation_metadata_from(sk_candidate.owm.attributes())?;
 
-        prepare_pk_replacement(
-            pk_rep,
+        pk_rep.prepare_for_keypair(
             &new_pk_attributes,
             pk_candidate,
             &sk_new_uid,
+            LinkType::PrivateKeyLink,
+            ObjectType::PublicKey,
+            true,
             kms.vendor_id(),
         )?;
 
@@ -373,82 +402,4 @@ impl RekeyOperation for KeypairRekey {
             public_key_unique_identifier: UniqueIdentifier::TextString(pk_rep.new_uid.clone()),
         }
     }
-}
-
-// ─── Private helpers ─────────────────────────────────────────────────────────
-
-/// Finalize the private key replacement: lifecycle setup, cross-link, and wrapping key.
-fn prepare_sk_replacement(
-    sk: &mut ReplacementObject,
-    new_attrs: &Attributes,
-    candidate: &RotationCandidate,
-    pk_new_uid: &str,
-    vendor_id: &str,
-) -> KResult<()> {
-    finalize_replacement_key(
-        sk,
-        new_attrs,
-        ObjectType::PrivateKey,
-        &candidate.uid,
-        Some((pk_new_uid, LinkType::PublicKeyLink)),
-        vendor_id,
-    )?;
-    preserve_wrapping_key_link(candidate.owm.object(), &mut sk.attributes);
-    Ok(())
-}
-
-/// Finalize the public key replacement: lifecycle setup, cross-link, wrapping key, and `rewrap_to`.
-fn prepare_pk_replacement(
-    pk: &mut ReplacementObject,
-    new_attrs: &Attributes,
-    candidate: &RotationCandidate,
-    sk_new_uid: &str,
-    vendor_id: &str,
-) -> KResult<()> {
-    finalize_replacement_key(
-        pk,
-        new_attrs,
-        ObjectType::PublicKey,
-        &candidate.uid,
-        Some((sk_new_uid, LinkType::PrivateKeyLink)),
-        vendor_id,
-    )?;
-    preserve_wrapping_key_link(candidate.owm.object(), &mut pk.attributes);
-    // Public key IS a wrapping key — dependants get re-wrapped to it
-    pk.rewrap_to = Some(pk.new_uid.clone());
-    Ok(())
-}
-
-/// Follow `PublicKeyLink` on the private key to resolve the paired public key UID.
-fn resolve_public_key_uid(
-    owm: &cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata,
-) -> KResult<String> {
-    owm.attributes()
-        .get_link(LinkType::PublicKeyLink)
-        .map(|l| l.to_string())
-        .ok_or_else(|| {
-            KmsError::InvalidRequest(
-                "ReKeyKeyPair: the private key has no PublicKeyLink. Cannot determine the \
-                 paired public key."
-                    .to_owned(),
-            )
-        })
-}
-
-/// Retrieve the linked public key from the database.
-async fn retrieve_linked_public_key(
-    kms: &KMS,
-    pk_uid: &str,
-) -> KResult<cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata> {
-    kms.database
-        .retrieve_objects(pk_uid)
-        .await?
-        .into_values()
-        .next()
-        .ok_or_else(|| {
-            KmsError::Kmip21Error(
-                ErrorReason::Item_Not_Found,
-                format!("ReKeyKeyPair: linked public key '{pk_uid}' not found in database"),
-            )
-        })
 }

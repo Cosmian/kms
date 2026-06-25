@@ -26,11 +26,7 @@ use cosmian_kms_server_database::reexport::{
 };
 use cosmian_logger::trace;
 
-use super::rekey::{
-    RekeyOperation, ReplacementObject, RotationCandidate, compute_rotation_uid,
-    enforce_privileged_user, execute_rekey, prepare_replacement_attributes,
-    set_rotation_metadata_on_new_key, update_old_key_after_rekey,
-};
+use super::rekey::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
 use crate::{
     core::{
         KMS,
@@ -84,7 +80,7 @@ impl RekeyOperation for CertificateRekey {
     ) -> KResult<[RotationCandidate; 1]> {
         KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 
-        enforce_privileged_user(kms, user).await?;
+        kms.enforce_create_permission(user).await?;
 
         let uid = request
             .unique_identifier
@@ -137,7 +133,7 @@ impl RekeyOperation for CertificateRekey {
         candidates: &[RotationCandidate; 1],
     ) -> KResult<[ReplacementObject; 1]> {
         let [candidate] = candidates;
-        let new_uid = compute_rotation_uid(&candidate.uid);
+        let new_uid = UniqueIdentifier::rotation_successor(&candidate.uid);
 
         // Build a Certify request that references the existing certificate for renewal.
         // We pass the old certificate's UID so `get_subject` produces a `Subject::Certificate`.
@@ -185,8 +181,7 @@ impl RekeyOperation for CertificateRekey {
         let [replacement] = replacements;
 
         // Use shared date computation for offset-based activation/deactivation
-        let base_attrs =
-            prepare_replacement_attributes(old_attrs, &replacement.old_uid, self.offset)?;
+        let base_attrs = old_attrs.for_replacement(&replacement.old_uid, self.offset)?;
         replacement.attributes.activation_date = base_attrs.activation_date;
         replacement.attributes.deactivation_date = base_attrs.deactivation_date;
         replacement.attributes.initial_date = base_attrs.initial_date;
@@ -219,7 +214,9 @@ impl RekeyOperation for CertificateRekey {
         }
 
         // Set rotation metadata + vendor tags
-        set_rotation_metadata_on_new_key(&mut replacement.attributes, old_attrs)?;
+        replacement
+            .attributes
+            .set_rotation_metadata_from(old_attrs)?;
         replacement.tags.extend(old_attrs.get_tags(kms.vendor_id()));
 
         Ok(())
@@ -249,9 +246,9 @@ impl RekeyOperation for CertificateRekey {
         // Phase 2: Update the old certificate with ReplacementObjectLink
         let mut old_object = candidate.owm.object().clone();
         let mut old_attributes = candidate.owm.attributes().clone();
-        update_old_key_after_rekey(&mut old_attributes, &replacement.new_uid)?;
+        old_attributes.retire_for_replacement(&replacement.new_uid)?;
         if let Ok(obj_attrs) = old_object.attributes_mut() {
-            update_old_key_after_rekey(obj_attrs, &replacement.new_uid)?;
+            obj_attrs.retire_for_replacement(&replacement.new_uid)?;
         }
 
         let mut operations = vec![AtomicOperation::UpdateObject((
