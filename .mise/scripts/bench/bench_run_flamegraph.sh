@@ -105,6 +105,10 @@ if [ -n "${FEATURES_FLAG[*]+x}" ] && [ "${#FEATURES_FLAG[@]}" -gt 0 ]; then
   BENCH_FEATURES_ARGS=("${FEATURES_FLAG[@]}")
 fi
 
+# Force frame pointers in all Rust code for accurate stack unwinding.
+# Combined with DWARF unwinding in perf, this eliminates most [unknown] frames.
+export RUSTFLAGS="${RUSTFLAGS:-} -C force-frame-pointers=yes"
+
 # ── Run throughput benchmark ──────────────────────────────────────────────────
 THROUGHPUT_OUTPUT="${CARGO_TARGET_DIR}/http_throughput_bench.txt"
 
@@ -140,17 +144,16 @@ if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
     # The -c/--cmd argument to cargo-flamegraph is appended token-by-token to
     # `Command::new("perf")` — do NOT include "perf" itself at the start.
     # The default args string is "record -F {freq} --call-graph dwarf,64000 -g";
-    # we replace it entirely to force frame-pointer unwinding and lower frequency.
+    # we use DWARF unwinding for maximum accuracy:
     #
-    #   record              → perf sub-command (required)
-    #   --call-graph fp     → frame-pointer unwinding: 8-byte addresses per frame
-    #                         instead of 65 KB of raw stack (dwarf); keeps perf.data
-    #                         in the tens-of-MB range, eliminates multi-minute parse
-    #   -F ${PERF_FREQ}     → sampling rate; 500 Hz avoids ring-buffer overflow at
-    #                         high thread counts (997 Hz default × 8 threads ≫ 1 MB ring)
-    #   -g                  → enable call-graph recording (belt-and-suspenders alongside
-    #                         --call-graph fp)
-    PERF_CMD="record --call-graph fp -F ${PERF_FREQ} -g"
+    #   record                    → perf sub-command (required)
+    #   --call-graph dwarf,32768  → DWARF-based unwinding: resolves frames in system
+    #                               libraries (glibc, OpenSSL) that lack frame pointers.
+    #                               32 KB stack dump per sample (default 8 KB is often
+    #                               too shallow for deep async stacks).
+    #   -F ${PERF_FREQ}           → sampling rate; 500 Hz avoids ring-buffer overflow
+    #   -g                        → enable call-graph recording
+    PERF_CMD="record --call-graph dwarf,32768 -F ${PERF_FREQ} -g"
     CARGO_PROFILE_BENCH_DEBUG=true \
     cargo flamegraph \
       --bench http_throughput \
