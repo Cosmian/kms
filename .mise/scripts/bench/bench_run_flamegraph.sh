@@ -33,6 +33,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.mise/scripts/common.sh
 source "${SCRIPT_DIR}/../common.sh"
 
+# Default to non-fips for benchmarks (FIPS requires a locally-built OpenSSL
+# with the FIPS provider, which may not be available in all environments).
+: "${VARIANT:=non-fips}"
+
 init_build_env "$@"
 setup_test_logging
 
