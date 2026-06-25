@@ -4,6 +4,13 @@ By default, the Eviden KMS server outputs logs to the console with a log level o
 Beyond console logging, the server supports OpenTelemetry (OTLP) export, which unlocks a full
 observability stack: distributed traces, RED metrics, and long-term dashboards via Grafana.
 
+## Log call-site directory
+
+For a full listing of every log call-site across all components — grouped by domain
+(KMS server, CLI, PKCS#11 provider, CNG module), with per-level counts and the
+`RUST_LOG` filter name for each crate — see the
+[Log Call-Site Directory](./log-reference.md).
+
 ---
 
 ## Adjusting the log level

@@ -191,6 +191,19 @@ repos:
         pass_filenames: false
         stages: [manual]
 
+      - id: update-log-index
+        name: Update log call-site index (log-reference.md)
+        description: |
+          Syncs documentation/docs/configuration/log-reference.md against the
+          actual log call-sites in Rust and TypeScript source files.
+          Flags stale entries with [REMOVED], appends new entries, and updates
+          ×N multiplicity counts. Exits 1 when any change is made so the commit
+          is blocked until the updated file is reviewed and re-staged.
+        entry: python3 scripts/update_log_index.py --non-interactive --no-color
+        language: system
+        pass_filenames: false
+        files: \.(rs|ts|tsx)$
+
       - id: cargo-deny-licenses
         name: Release - generate SBOM licenses list
         entry: bash -c 'cargo deny list -l crate > sbom/licenses.txt'

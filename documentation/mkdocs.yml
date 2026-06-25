@@ -51,12 +51,17 @@ extra_javascript: #see this for Katex: https://squidfunk.github.io/mkdocs-materi
   - https://unpkg.com/katex@0/dist/katex.min.js
   - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
   - javascripts/macros.js
+  - javascripts/log_filter.js
 extra_css:
-  - https://unpkg.com/katex@0/dist/katex.min.css
+    - https://unpkg.com/katex@0/dist/katex.min.css
+hooks:
+    - hooks.py
 plugins:
   - search
   - kroki
   - meta-descriptions
+not_in_nav: |
+  configuration/log-reference.md
 nav:
   - Why use the Eviden KMS: index.md
   - Quick start: quick_start.md
