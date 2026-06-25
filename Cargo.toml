@@ -133,7 +133,6 @@ inherits = "release"
 opt-level = 3           # Speed over size — critical for throughput benchmarks
 strip = "none"          # MUST be none — perf needs symbol tables
 debug = 2               # Full DWARF: line-level attribution + reliable unwinding
-lto = "thin"            # Thin LTO: faster link, still shows cross-crate frames
 codegen-units = 1       # Keep single CGU for realistic inlining
 
 [profile.dev]
