@@ -29,6 +29,7 @@ use crate::{
     core::{
         KMS,
         operations::{create_key_pair::generate_key_pair, key_ops::KeySelectionSpec},
+        uid_utils::{parse_keyset_identifier, resolve_keyset_to_single_uid},
     },
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -93,6 +94,35 @@ pub(crate) async fn rekey_keypair(
     if let Some(response) = kms.try_covercrypt_rekey(&request, user).await? {
         return Ok(response);
     }
+
+    // Resolve keyset references (`name@latest`, `name@first`, `name@N`, bare name) to a concrete
+    // private-key UID before routing, so that `re-key --key-id my-kp@latest` works transparently.
+    let request = if let Some(uid_str) = request
+        .private_key_unique_identifier
+        .as_ref()
+        .and_then(|u| u.as_str())
+    {
+        if let Some(keyset_ref) = parse_keyset_identifier(uid_str) {
+            if let Some(resolved) = resolve_keyset_to_single_uid(&keyset_ref, kms, user).await? {
+                trace!(
+                    "ReKeyKeyPair: resolved keyset ref '{}' -> '{}'",
+                    uid_str, resolved
+                );
+                ReKeyKeyPair {
+                    private_key_unique_identifier: Some(UniqueIdentifier::TextString(resolved)),
+                    ..request
+                }
+            } else {
+                return Err(KmsError::InvalidRequest(format!(
+                    "ReKeyKeyPair: keyset '{uid_str}' not found or has no resolvable latest key"
+                )));
+            }
+        } else {
+            request
+        }
+    } else {
+        request
+    };
 
     Box::pin(execute_rekey(
         &KeypairRekey {
@@ -278,8 +308,12 @@ impl RekeyOperation for KeypairRekey {
             .owm
             .attributes()
             .clean_for_generation(kms.vendor_id());
-        let new_sk_uid = UniqueIdentifier::rotation_successor(&sk_candidate.uid);
-        let new_pk_uid = UniqueIdentifier::rotation_successor(&pk_candidate.uid);
+        let new_sk_uid = UniqueIdentifier::rotation_successor(
+            sk_candidate.owm.attributes().rotate_name.as_deref(),
+            sk_candidate.owm.attributes().rotate_generation,
+        );
+        // The public key UID always mirrors the private key UID with the "_pk" suffix.
+        let new_pk_uid = format!("{new_sk_uid}_pk");
 
         // Propagate the CryptographicUsageMask from the old keys so that
         // FIPS-mode key-pair generators receive the required mask value.

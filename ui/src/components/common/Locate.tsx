@@ -513,7 +513,10 @@ const LocateForm: React.FC = () => {
                                         const getReq = wasm.get_attributes_ttlv_request(uid);
                                         const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                         if (getRespStr) {
-                                            const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
+                                            const parsed = await wasm.parse_get_attributes_ttlv_response(
+                                                getRespStr,
+                                                getEnrichAttributeKeys(),
+                                            );
                                             const m = extractMeta(parsed);
                                             return {
                                                 object_id: uid,

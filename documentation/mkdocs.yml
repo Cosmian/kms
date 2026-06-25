@@ -200,6 +200,8 @@ nav:
       - Mac: kmip_support/_mac.md
       - Re-Key: kmip_support/_re-key.md
       - Re-Key Key Pair: kmip_support/_re-key_key_pair.md
-      - Key Auto-Rotation: kmip_support/key_auto_rotation.md
+      - Key Rotation: kmip_support/key_rotation.md
+      - HSM Key Rotation: kmip_support/key_rotation_hsm.md
+      - Auto-Rotation Policy: kmip_support/key_auto_rotation_policy.md
       - Revoke: kmip_support/_revoke.md
       - Sign: kmip_support/_signature.md

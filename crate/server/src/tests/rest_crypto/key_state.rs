@@ -3,26 +3,35 @@
 //! - **Protection operations** (Encrypt, Sign, MAC) require `Active` state.
 //! - **Processing operations** (Decrypt, Verify, MACVerify) accept
 //!   `Active`, `Deactivated`, and `Compromised` states.
+//!
+//! Also tests KMIP §4.57 auto-deactivation (transition 6):
+//!
+//! - An Active key whose `DeactivationDate` has passed is automatically
+//!   transitioned to Deactivated on retrieval, mirroring the PreActive → Active
+//!   auto-activation mechanism.
 
 use actix_web::{http::StatusCode, test};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::kmip_types::{HashingAlgorithm, RevocationReason, RevocationReasonCode},
+    kmip_0::kmip_types::{HashingAlgorithm, RevocationReason, RevocationReasonCode, State},
     kmip_2_1::{
         extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_attributes::Attribute,
         kmip_operations::{
-            CreateKeyPairResponse, CreateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse,
-            Revoke, RevokeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
+            CreateKeyPairResponse, CreateResponse, GetAttributes, GetAttributesResponse, MAC,
+            MACResponse, MACVerify, MACVerifyResponse, Revoke, RevokeResponse, SetAttribute,
+            SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
         },
         kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
-            RecommendedCurve, UniqueIdentifier, ValidityIndicator,
+            AttributeReference, CryptographicAlgorithm, CryptographicParameters,
+            DigitalSignatureAlgorithm, RecommendedCurve, Tag, UniqueIdentifier, ValidityIndicator,
         },
         requests::{create_ec_key_pair_request, symmetric_key_create_request},
     },
 };
 use cosmian_logger::log_init;
 use serde_json::json;
+use time::{Duration, OffsetDateTime};
 use zeroize::Zeroizing;
 
 use crate::{result::KResult, tests::test_utils};
@@ -620,5 +629,216 @@ async fn test_signature_verify_compromised_key_succeeds() -> KResult<()> {
         Some(ValidityIndicator::Valid),
         "SignatureVerify should report Valid"
     );
+    Ok(())
+}
+
+// ── Auto-deactivation tests (KMIP §4.57 transition 6) ────────────────────────
+
+/// Set the `DeactivationDate` attribute on a key via KMIP `SetAttribute`.
+async fn set_deactivation_date<S, B>(app: &S, kid: &str, date: OffsetDateTime) -> KResult<()>
+where
+    S: actix_web::dev::Service<
+            actix_http::Request,
+            Response = actix_web::dev::ServiceResponse<B>,
+            Error = actix_web::Error,
+        >,
+    B: actix_web::body::MessageBody,
+{
+    let _resp: SetAttributeResponse = test_utils::post_2_1(
+        app,
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(kid.to_owned())),
+            new_attribute: Attribute::DeactivationDate(date),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+/// Set the `ActivationDate` attribute on a key via KMIP `SetAttribute`.
+async fn set_activation_date<S, B>(app: &S, kid: &str, date: OffsetDateTime) -> KResult<()>
+where
+    S: actix_web::dev::Service<
+            actix_http::Request,
+            Response = actix_web::dev::ServiceResponse<B>,
+            Error = actix_web::Error,
+        >,
+    B: actix_web::body::MessageBody,
+{
+    let _resp: SetAttributeResponse = test_utils::post_2_1(
+        app,
+        SetAttribute {
+            unique_identifier: Some(UniqueIdentifier::TextString(kid.to_owned())),
+            new_attribute: Attribute::ActivationDate(date),
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+/// Query the `State` attribute of a key via KMIP `GetAttributes`.
+async fn get_state<S, B>(app: &S, kid: &str) -> KResult<Option<State>>
+where
+    S: actix_web::dev::Service<
+            actix_http::Request,
+            Response = actix_web::dev::ServiceResponse<B>,
+            Error = actix_web::Error,
+        >,
+    B: actix_web::body::MessageBody,
+{
+    let resp: GetAttributesResponse = test_utils::post_2_1(
+        app,
+        GetAttributes {
+            unique_identifier: Some(UniqueIdentifier::TextString(kid.to_owned())),
+            attribute_reference: Some(vec![AttributeReference::Standard(Tag::State)]),
+        },
+    )
+    .await?;
+    Ok(resp.attributes.state)
+}
+
+/// KMIP §4.57 transition 6: An Active key with a `DeactivationDate` in the past
+/// is automatically transitioned to Deactivated on retrieval.
+///
+/// - Encrypt (protection op) MUST fail.
+/// - Decrypt (processing op) MUST succeed.
+/// - Reported state MUST be `Deactivated`.
+#[tokio::test]
+async fn test_auto_deactivation_past_date_blocks_encrypt() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None).await;
+
+    // Create an Active AES key and encrypt while it is Active.
+    let kid = create_aes_key(&app).await?;
+    let enc_resp = encrypt(&app, &kid, b"auto-deact test").await?;
+
+    // Set DeactivationDate to 1 hour in the past → triggers auto-deactivation.
+    let past = OffsetDateTime::now_utc() - Duration::hours(1);
+    set_deactivation_date(&app, &kid, past).await?;
+
+    // Encrypt must be rejected (key is now effectively Deactivated).
+    let enc_result = try_encrypt(&app, &kid, b"should fail").await;
+    assert!(
+        enc_result.is_err(),
+        "Encrypt must fail on an auto-deactivated key (§4.57 transition 6)"
+    );
+
+    // Decrypt must still succeed (processing op on Deactivated key).
+    let dec_result = try_decrypt(&app, &enc_resp).await;
+    assert!(
+        dec_result.is_ok(),
+        "Decrypt must succeed on an auto-deactivated key, got: {dec_result:?}"
+    );
+
+    // State attribute must report Deactivated.
+    let state = get_state(&app, &kid).await?;
+    assert_eq!(
+        state,
+        Some(State::Deactivated),
+        "State must be Deactivated after auto-deactivation"
+    );
+
+    Ok(())
+}
+
+/// A key with `DeactivationDate` in the future remains Active.
+///
+/// Encrypt (protection op) MUST succeed.
+#[tokio::test]
+async fn test_future_deactivation_date_keeps_key_active() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None).await;
+
+    let kid = create_aes_key(&app).await?;
+
+    // Set DeactivationDate 1 hour in the future — key should stay Active.
+    let future = OffsetDateTime::now_utc() + Duration::hours(1);
+    set_deactivation_date(&app, &kid, future).await?;
+
+    // Encrypt must still work (key is Active until DeactivationDate).
+    let enc_result = try_encrypt(&app, &kid, b"still active").await;
+    assert!(
+        enc_result.is_ok(),
+        "Encrypt must succeed when DeactivationDate is in the future"
+    );
+
+    // State must still be Active.
+    let state = get_state(&app, &kid).await?;
+    assert_eq!(
+        state,
+        Some(State::Active),
+        "State must remain Active when DeactivationDate is in the future"
+    );
+
+    Ok(())
+}
+
+/// Auto-deactivation persists: once the server transitions a key to Deactivated
+/// via auto-deactivation, subsequent retrievals reflect the persisted state
+/// without re-checking the date.
+#[tokio::test]
+async fn test_auto_deactivation_persists_across_retrievals() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None).await;
+
+    let kid = create_aes_key(&app).await?;
+    let enc_resp = encrypt(&app, &kid, b"persistence test").await?;
+
+    // Trigger auto-deactivation.
+    let past = OffsetDateTime::now_utc() - Duration::hours(1);
+    set_deactivation_date(&app, &kid, past).await?;
+
+    // First retrieval: triggers auto-deactivation and persists Deactivated.
+    let state1 = get_state(&app, &kid).await?;
+    assert_eq!(state1, Some(State::Deactivated));
+
+    // Second retrieval: state is already persisted, no date check needed.
+    let state2 = get_state(&app, &kid).await?;
+    assert_eq!(state2, Some(State::Deactivated));
+
+    // Decrypt still works on both retrievals.
+    let dec_result = try_decrypt(&app, &enc_resp).await;
+    assert!(
+        dec_result.is_ok(),
+        "Decrypt must succeed on persisted auto-deactivated key"
+    );
+
+    Ok(())
+}
+
+/// KMIP §4.57 combined transitions: a PreActive key with past `ActivationDate`
+/// AND past `DeactivationDate` transitions through PreActive → Active →
+/// Deactivated in a single retrieval.
+#[tokio::test]
+async fn test_preactive_to_deactivated_combined_transition() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None).await;
+
+    // Create a key with a future activation date to make it PreActive.
+    let kid = create_aes_key(&app).await?;
+
+    // Set ActivationDate in the past → server auto-activates.
+    let past_activation = OffsetDateTime::now_utc() - Duration::hours(2);
+    set_activation_date(&app, &kid, past_activation).await?;
+
+    // Set DeactivationDate in the past → server auto-deactivates.
+    let past_deactivation = OffsetDateTime::now_utc() - Duration::hours(1);
+    set_deactivation_date(&app, &kid, past_deactivation).await?;
+
+    // Encrypt must fail (key is effectively Deactivated).
+    let enc_result = try_encrypt(&app, &kid, b"should fail").await;
+    assert!(
+        enc_result.is_err(),
+        "Encrypt must fail on a key that passed through PreActive→Active→Deactivated"
+    );
+
+    // State must report Deactivated.
+    let state = get_state(&app, &kid).await?;
+    assert_eq!(
+        state,
+        Some(State::Deactivated),
+        "State must be Deactivated after combined PreActive→Active→Deactivated transitions"
+    );
+
     Ok(())
 }

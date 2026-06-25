@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use super::key_ops::ObjectLifecycleExt;
 use crate::{
-    core::{KMS, wrapping::wrap_and_cache},
+    core::{KMS, uid_utils::has_prefix, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -62,6 +62,27 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
     // Set lifecycle attributes and copy them before the key gets wrapped
     let attributes =
         object.setup_with_lifecycle(request.object_type, request.attributes.activation_date)?;
+    let mut attributes = attributes;
+
+    // Keyset validation (SQL keys only): if rotate_name is present, the UID must equal it.
+    // HSM keys (those with a prefix such as "hsm::") manage keyset membership differently —
+    // the UID is an opaque PKCS#11 handle; rotate_name is set independently via SetAttribute.
+    if let Some(rotate_name) = &request.attributes.rotate_name {
+        let uid_str = unique_identifier.as_str().ok_or_else(|| {
+            KmsError::InvalidRequest("Create: unique_identifier must be a TextString".to_owned())
+        })?;
+        if has_prefix(uid_str).is_none() && rotate_name.as_str() != uid_str {
+            return Err(KmsError::InvalidRequest(format!(
+                "Create: rotate_name ('{rotate_name}') must equal the key's unique_identifier \
+                 ('{uid_str}') — set the key ID to the keyset name at creation time"
+            )));
+        }
+        // Initialise keyset metadata for SQL keys: generation 0, the current (only) member.
+        if has_prefix(uid_str).is_none() {
+            attributes.rotate_generation = Some(0);
+            attributes.rotate_latest = Some(true);
+        }
+    }
 
     trace!(
         "Creating object of type {:?} with UID {} and attributes {}",

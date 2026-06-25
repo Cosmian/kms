@@ -12,7 +12,7 @@ superseded_by: ""
 
 ## Status
 
-**Accepted**
+Accepted
 
 ## Context
 
@@ -106,7 +106,7 @@ Two new methods are added to the `ObjectsStore` trait with default no-op impleme
 HSM-resident keys cannot carry arbitrary KMIP attributes; PKCS#11 offers only a fixed
 attribute set. Keyset metadata is encoded in `CKA_LABEL` using the convention:
 
-```
+```text
 <rotate_name>::<generation>::<base_key_id>[::latest]
 ```
 
@@ -253,7 +253,7 @@ marked as a TODO stub and is not yet implemented.
 - **REF-002**: KMIP 2.1 specification §6.1.46 (Re-Key), §6.1.47 (Re-Key Key Pair), §4.8
   (ReCertify), §3.31 (Key state lifecycle), §3.1 (Unique Identifier)
 - **REF-003**: Key auto-rotation design document
-  (`documentation/docs/kmip_support/key_auto_rotation.md`)
+  (`documentation/docs/kmip_support/key_rotation.md`)
 - **REF-004**: `RekeyOperation` trait and orchestrator
   (`crate/server/src/core/operations/rekey/common.rs`)
 - **REF-005**: `ObjectsStore` trait extensions

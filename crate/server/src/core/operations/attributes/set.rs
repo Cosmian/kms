@@ -79,6 +79,20 @@ pub(crate) async fn set_attribute(
     .await?;
     trace!("Set Attribute: Retrieved target object");
 
+    // For SQL keys (non-HSM): rotate_name must equal the key's UID.
+    // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
+    if has_prefix(owm.id()).is_none() {
+        if let Attribute::RotateName(name) = &request.new_attribute {
+            let key_uid = owm.id();
+            if name.as_str() != key_uid {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: rotate_name ('{name}') must equal the key's UID \
+                     ('{key_uid}') — create the key with the keyset name as its ID"
+                )));
+            }
+        }
+    }
+
     // Capture HSM-rotation values before the `match_set_attribute!` macro may
     // partially move `request.new_attribute`.  We do this here — after object
     // retrieval — so we can inspect `owm.id()` to confirm it is an HSM key.
@@ -98,6 +112,10 @@ pub(crate) async fn set_attribute(
     };
 
     let mut attributes = owm.attributes_mut().clone();
+
+    // Capture before the macro runs (which may partially move request.new_attribute).
+    let is_setting_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
+        && has_prefix(owm.id()).is_none();
 
     // Check if the attribute is allowed to be set
     match_set_attribute! {
@@ -198,7 +216,17 @@ pub(crate) async fn set_attribute(
 
     let tags = kms.database.retrieve_tags(owm.id()).await?;
 
-    // HSM-specific: propagate rotation attributes directly to PKCS#11 storage.
+    // For SQL keys: initialise keyset metadata when rotate_name is first set.
+    // rotate_generation and rotate_latest are server-managed (read-only guard above),
+    // so they can only be initialised here, not by the user directly.
+    if is_setting_rotate_name_on_sql {
+        if attributes.rotate_generation.is_none() {
+            attributes.rotate_generation = Some(0);
+        }
+        if attributes.rotate_latest.is_none() {
+            attributes.rotate_latest = Some(true);
+        }
+    }
     // `HsmStore::update_object` is a no-op for attributes (the HSM has no
     // generic KV attribute storage), so we must explicitly write CKA_LABEL and
     // CKA_START_DATE / CKA_END_DATE when the caller sets rotation metadata.

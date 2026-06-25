@@ -440,21 +440,23 @@ fn test_vast_rekey_aes_key() {
         !rekey_response.unique_identifier.is_empty(),
         "ReKey: UniqueIdentifier must not be empty"
     );
-    // Per KMIP spec, ReKey creates a new replacement key with a new UID.
-    // The old key remains Active and is linked to the new key.
+    // Per KMIP spec §4.57, ReKey creates a new replacement key with a new UID.
+    // The server automatically Deactivates the old key (KMIP §4.57 transition 6).
     assert_ne!(
         rekey_response.unique_identifier, original_uid,
         "ReKey: new key must have a different UID than the original"
     );
     info!(
-        "ReKey succeeded: new key uid={}, old key uid={} (old key remains Active)",
+        "ReKey succeeded: new key uid={}, old key uid={} (old key is now Deactivated per §4.57)",
         rekey_response.unique_identifier, original_uid
     );
 
-    // Cleanup: destroy both the replacement key and the original key
+    // Cleanup: the new key is Active and must be Revoked before Destroy.
+    // Per KMIP §4.57 (transition 6) the server automatically Deactivates the old key
+    // during ReKey, so revoking the old key again would return Item_Not_Found.
     revoke_key(&client, &rekey_response.unique_identifier);
     destroy_key(&client, &rekey_response.unique_identifier);
-    revoke_key(&client, &original_uid);
+    // old key is already Deactivated by the server — skip Revoke, go straight to Destroy
     destroy_key(&client, &original_uid);
 }
 
@@ -1514,10 +1516,12 @@ fn test_vast_opn_survives_rekey() {
 
     info!("OPN survives ReKey: new key {new_key_uid} has OPN='default' and Name='{vast_key_name}'");
 
-    // Cleanup
+    // Cleanup: new key is Active — revoke before destroy.
+    // Per KMIP §4.57 (transition 6) the server automatically Deactivates the old key
+    // during ReKey, so revoking it again would return Item_Not_Found.
     revoke_key(&client, new_key_uid);
     destroy_key(&client, new_key_uid);
-    revoke_key(&client, &key_uid);
+    // old key is already Deactivated — skip Revoke, go straight to Destroy
     destroy_key(&client, &key_uid);
 }
 
@@ -1689,10 +1693,15 @@ fn test_vast_multi_key_locate_after_rekey() {
         info!("Locate _{i}: found {expected_uid} ✓");
     }
 
-    // Cleanup
+    // Cleanup: new key is Active — revoke before destroy.
+    // Per KMIP §4.57 (transition 6) the server auto-Deactivates key_uids[0] (the rekeyed
+    // key) during ReKey, so revoking it again would return Item_Not_Found.
     revoke_key(&client, &new_uid_0);
     destroy_key(&client, &new_uid_0);
-    for uid in &key_uids {
+    // key_uids[0] is already Deactivated — skip Revoke, go straight to Destroy
+    destroy_key(&client, &key_uids[0]);
+    // key_uids[1..] were not rekeyed and are still Active — revoke them first
+    for uid in &key_uids[1..] {
         revoke_key(&client, uid);
         destroy_key(&client, uid);
     }

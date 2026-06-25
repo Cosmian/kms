@@ -43,7 +43,7 @@ pub(crate) async fn test_pqc_set_and_get_rotation_policy() -> CosmianResult<()> 
         "--interval",
         "259200",
         "--rotation-name",
-        "pqc-keyset",
+        &private_key_id,
     ];
     let output = run_ckms(&owner_client_conf_path, &args)?;
     assert!(
@@ -65,8 +65,8 @@ pub(crate) async fn test_pqc_set_and_get_rotation_policy() -> CosmianResult<()> 
         "expected interval=259200 in: {output}"
     );
     assert!(
-        output.contains("pqc-keyset"),
-        "expected name=pqc-keyset in: {output}"
+        output.contains(&private_key_id),
+        "expected name={private_key_id} in: {output}"
     );
 
     Ok(())

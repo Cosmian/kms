@@ -1686,10 +1686,16 @@ impl Attributes {
         attrs.compromise_occurrence_date = None;
         // Generation format — let Create/CreateKeyPair choose
         attrs.key_format_type = None;
-        // Rotation metadata — new key starts fresh
+        // Rotation metadata — new key starts fresh; server re-stamps these
         attrs.rotate_interval = None;
         attrs.rotate_name = None;
         attrs.rotate_offset = None;
+        // rotate_generation / rotate_latest / rotate_date are server-managed:
+        // clear them so the outer-metadata values set by set_rotation_metadata_from
+        // are not blocked by the merge(overwrite=false) in GetAttributes.
+        attrs.rotate_generation = None;
+        attrs.rotate_latest = None;
+        attrs.rotate_date = None;
         // Vendor tags — assigned fresh by Create
         drop(attrs.remove_tags(vendor_id));
         attrs
@@ -1708,6 +1714,7 @@ impl Attributes {
             LinkedObjectIdentifier::TextString(new_uid.to_owned()),
         );
         self.name = None;
+        self.deactivation_date = Some(now);
         self.last_change_date = Some(now);
         Ok(())
     }

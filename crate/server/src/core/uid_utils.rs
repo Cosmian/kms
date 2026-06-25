@@ -1,8 +1,6 @@
 use std::collections::HashSet;
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::{
-    LinkType, UniqueIdentifier,
-};
+use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::UniqueIdentifier;
 use cosmian_logger::trace;
 
 use crate::{
@@ -225,90 +223,40 @@ pub(crate) async fn resolve_keyset_to_single_uid(
 
 /// Walk the keyset rotation chain from the latest key backward.
 ///
-/// Resolves the key with the highest `rotate_generation` for the given
-/// `rotate_name`, then follows `ReplacedObjectLink` backward, collecting UIDs
-/// in newest-to-oldest order.
+/// Fetches every member of the keyset (all generations) via `find_by_rotate_name`,
+/// then sorts them newest-to-oldest by `rotate_generation`.
 ///
-/// Stops when:
-/// - No more `ReplacedObjectLink` is found (reached the original key)
-/// - A cycle is detected (via a visited-set guard)
+/// This works identically for SQL and HSM keys:
+/// - SQL keys store generation in the `RotateGeneration` JSON attribute.
+/// - HSM keys store generation in `CKA_LABEL` and expose it through the same
+///   `rotate_generation` field.
 ///
-/// The traversal is unbounded by design: since the KMS holds a finite number of
-/// keys and cycle detection prevents infinite loops, all generations remain reachable
-/// for decryption regardless of how many rotations have occurred.
+/// `ReplacedObjectLink` / `ReplacementObjectLink` back-pointers are still
+/// written on each rotation for KMIP protocol compliance, but are not used
+/// for chain traversal.
 ///
-/// Returns the ordered list of UIDs to try for decryption.
+/// Returns the ordered list of UIDs to try for decryption (newest first).
 pub(crate) async fn walk_keyset_chain(
     keyset_name: &str,
     kms: &KMS,
     user: &str,
 ) -> KResult<Vec<String>> {
-    // Find all members of the keyset and pick the one with the highest generation.
     let results = kms
         .database
         .find_by_rotate_name(keyset_name, None, user)
         .await?;
 
-    let Some((latest_uid, _)) = results
-        .into_iter()
-        .max_by_key(|(_, attrs)| attrs.rotate_generation.unwrap_or(0))
-    else {
+    if results.is_empty() {
         return Ok(vec![]);
-    };
-
-    // HSM keys store all rotation metadata in PKCS#11 attributes — there are no
-    // ReplacedObjectLink back-pointers. Fetch every generation and sort newest-first.
-    if latest_uid.starts_with("hsm::") {
-        let all_results = kms
-            .database
-            .find_by_rotate_name(keyset_name, None, user)
-            .await?;
-        let mut all_pairs: Vec<(String, i32)> = all_results
-            .into_iter()
-            .map(|(uid, attrs)| (uid, attrs.rotate_generation.unwrap_or(0)))
-            .collect();
-        all_pairs.sort_by(|a, b| b.1.cmp(&a.1));
-        let chain: Vec<String> = all_pairs.into_iter().map(|(uid, _)| uid).collect();
-        trace!(
-            "walk_keyset_chain: HSM keyset '{}' has {} keys in chain",
-            keyset_name,
-            chain.len()
-        );
-        return Ok(chain);
     }
 
-    let mut chain = vec![latest_uid.clone()];
-    let mut current_uid = latest_uid;
-    let mut visited: HashSet<String> = chain.iter().cloned().collect();
-
-    loop {
-        // Retrieve the current object's attributes to find ReplacedObjectLink
-        let Some(owm) = kms.database.retrieve_object(&current_uid).await? else {
-            break;
-        };
-
-        // Look for ReplacedObjectLink (points backward to the older key)
-        let prev_uid = owm
-            .attributes()
-            .get_link(LinkType::ReplacedObjectLink)
-            .map(|link| link.to_string());
-
-        let Some(prev_uid) = prev_uid else {
-            break; // End of chain
-        };
-
-        // Cycle detection
-        if !visited.insert(prev_uid.clone()) {
-            trace!(
-                "walk_keyset_chain: cycle detected at {} for keyset '{}'",
-                prev_uid, keyset_name
-            );
-            break;
-        }
-
-        chain.push(prev_uid.clone());
-        current_uid = prev_uid;
-    }
+    // Sort all generations newest-first.
+    let mut all_pairs: Vec<(String, i32)> = results
+        .into_iter()
+        .map(|(uid, attrs)| (uid, attrs.rotate_generation.unwrap_or(0)))
+        .collect();
+    all_pairs.sort_by(|a, b| b.1.cmp(&a.1));
+    let chain: Vec<String> = all_pairs.into_iter().map(|(uid, _)| uid).collect();
 
     trace!(
         "walk_keyset_chain: keyset '{}' has {} keys in chain",

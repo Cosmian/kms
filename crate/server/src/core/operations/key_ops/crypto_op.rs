@@ -672,6 +672,19 @@ impl KMS {
                             ))
                         })?;
                         owm.check_process_window()?;
+                        // KMIP §4.57: enforce state requirements for keyset-addressed keys
+                        let effective = owm.effective_state();
+                        if !Op::accepted_states().contains(&effective) {
+                            return Err(KmsError::Kmip21Error(
+                                ErrorReason::Permission_Denied,
+                                format!(
+                                    "{}: key {uid} is in state {effective:?} but operation \
+                                     requires one of {:?}",
+                                    Op::OP_NAME,
+                                    Op::accepted_states()
+                                ),
+                            ));
+                        }
                         return Ok(ResolvedKey::Local(Box::new(owm)));
                     }
                     // Not a keyset → fall through to normal UID resolution
@@ -689,6 +702,19 @@ impl KMS {
                                     ))
                                 })?;
                             owm.check_process_window()?;
+                            // KMIP §4.57: enforce state requirements for keyset-addressed keys
+                            let effective = owm.effective_state();
+                            if !Op::accepted_states().contains(&effective) {
+                                return Err(KmsError::Kmip21Error(
+                                    ErrorReason::Permission_Denied,
+                                    format!(
+                                        "{}: key {uid} is in state {effective:?} but operation \
+                                         requires one of {:?}",
+                                        Op::OP_NAME,
+                                        Op::accepted_states()
+                                    ),
+                                ));
+                            }
                             return Ok(ResolvedKey::Local(Box::new(owm)));
                         }
                         // Not a keyset → fall through to normal path

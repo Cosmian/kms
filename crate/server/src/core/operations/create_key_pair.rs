@@ -32,7 +32,7 @@ use cosmian_logger::warn;
 use cosmian_logger::{debug, info, trace};
 use uuid::Uuid;
 use crate::{
-    core::{KMS, wrapping::wrap_and_cache},
+    core::{KMS, uid_utils::has_prefix, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -63,6 +63,23 @@ pub(crate) async fn create_key_pair(
             std::string::ToString::to_string,
         );
     let pk_uid = sk_uid.clone() + SYSTEM_TAG_PUBLIC_KEY;
+
+    // Extract rotate_name before `request` is consumed by `generate_key_pair`.
+    // Keyset validation (SQL keys only): if rotate_name is set, it must equal the private key's UID.
+    // HSM key pairs have opaque PKCS#11-prefixed UIDs — the UID-match constraint does not apply.
+    let sk_rotate_name = request
+        .private_key_attributes
+        .as_ref()
+        .or(request.common_attributes.as_ref())
+        .and_then(|attrs| attrs.rotate_name.clone());
+    if let Some(ref rotate_name) = sk_rotate_name {
+        if has_prefix(&sk_uid).is_none() && rotate_name.as_str() != sk_uid {
+            return Err(KmsError::InvalidRequest(format!(
+                "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
+                 ('{sk_uid}') — set the private key ID to the keyset name at creation time"
+            )));
+        }
+    }
     // Capture requested ActivationDate values BEFORE moving the request into key generation
     // Private key: prefer private_key_attributes.activation_date then fallback to common_attributes.activation_date
     let requested_sk_activation_date = request
@@ -94,6 +111,12 @@ pub(crate) async fn create_key_pair(
     let mut private_key = key_pair.private_key().to_owned();
     let private_key_attributes =
         private_key.setup_with_lifecycle(ObjectType::PrivateKey, requested_sk_activation_date)?;
+    let mut private_key_attributes = private_key_attributes;
+    // Initialise keyset metadata for gen-0 on SQL key pairs only.
+    if sk_rotate_name.is_some() && has_prefix(&sk_uid).is_none() {
+        private_key_attributes.rotate_generation = Some(0);
+        private_key_attributes.rotate_latest = Some(true);
+    }
     trace!(
         "Private key attributes after lifecycle update: {}",
         private_key_attributes

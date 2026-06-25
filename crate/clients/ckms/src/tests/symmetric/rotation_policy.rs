@@ -49,8 +49,11 @@ pub(crate) async fn test_set_and_get_rotation_policy() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    // Create a symmetric key
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    // Create a symmetric key with the keyset name as UID
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "test-keyset"],
+    )?;
 
     // Set rotation policy with interval, offset, and name
     let output = set_rotation_policy(
@@ -138,8 +141,11 @@ pub(crate) async fn test_keyset_workflow() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    // Create AES-256 key
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    // Create AES-256 key with keyset name as UID
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "e2e-keyset"],
+    )?;
 
     // Set rotation name (keyset) without interval
     let args = vec![
@@ -190,13 +196,17 @@ pub(crate) async fn test_keyset_workflow() -> CosmianResult<()> {
     Ok(())
 }
 
-/// Encrypt with `name@first` after rotation: must use gen-0 key
+/// Encrypt with `name@first` after rotation: gen-0 is Deactivated per KMIP §4.57,
+/// so encrypt MUST fail, but decrypt MUST still succeed.
 #[tokio::test]
 pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "kst-enc-first"],
+    )?;
 
     // Set rotation name
     let args = vec![
@@ -210,10 +220,7 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
-    // ReKey: gen-0 → gen-1
-    let _new_key_id = rekey_symmetric_key(&owner_client_conf_path, &key_id)?;
-
-    // Encrypt using @first — should resolve to gen-0
+    // Encrypt with gen-0 BEFORE re-key (still Active)
     let tmp_dir = TempDir::new()?;
     let input_file = tmp_dir.path().join("plain.txt");
     fs::write(&input_file, b"first-gen-test")?;
@@ -229,12 +236,34 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
         None,
     )?;
 
-    // Decrypt using gen-0 UID — proves gen-0 key was used
+    // ReKey: gen-0 → gen-1 (gen-0 becomes Deactivated)
+    let _new_key_id = rekey_symmetric_key(&owner_client_conf_path, &key_id)?;
+
+    // Encrypt using @first AFTER re-key — must FAIL (gen-0 Deactivated)
+    let input_file2 = tmp_dir.path().join("plain2.txt");
+    fs::write(&input_file2, b"should-fail")?;
+    let encrypted_file2 = tmp_dir.path().join("cipher2.enc");
+
+    let result = encrypt(
+        &owner_client_conf_path,
+        input_file2.to_str().unwrap(),
+        "kst-enc-first@first",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(encrypted_file2.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "encrypt with @first after re-key must fail (gen-0 Deactivated)"
+    );
+
+    // Decrypt using @first AFTER re-key — must SUCCEED (Deactivated allows decrypt)
     let decrypted_file = tmp_dir.path().join("decrypted.txt");
     decrypt(
         &owner_client_conf_path,
         encrypted_file.to_str().unwrap(),
-        &key_id,
+        "kst-enc-first@first",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(decrypted_file.to_str().unwrap()),
@@ -246,13 +275,17 @@ pub(crate) async fn test_keyset_encrypt_at_first() -> CosmianResult<()> {
     Ok(())
 }
 
-/// Encrypt with `name@0` after rotation: alias for `@first`
+/// Encrypt with `name@0` after rotation: gen-0 is Deactivated per KMIP §4.57,
+/// so encrypt MUST fail, but decrypt MUST still succeed.
 #[tokio::test]
 pub(crate) async fn test_keyset_encrypt_at_zero() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "kst-enc-zero"],
+    )?;
 
     let args = vec![
         "sym",
@@ -265,10 +298,7 @@ pub(crate) async fn test_keyset_encrypt_at_zero() -> CosmianResult<()> {
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
-    // ReKey: gen-0 → gen-1
-    let _new_key_id = rekey_symmetric_key(&owner_client_conf_path, &key_id)?;
-
-    // Encrypt using @0
+    // Encrypt with @0 BEFORE re-key (gen-0 still Active)
     let tmp_dir = TempDir::new()?;
     let input_file = tmp_dir.path().join("plain.txt");
     fs::write(&input_file, b"zero-gen-test")?;
@@ -284,12 +314,34 @@ pub(crate) async fn test_keyset_encrypt_at_zero() -> CosmianResult<()> {
         None,
     )?;
 
-    // Decrypt using gen-0 UID
+    // ReKey: gen-0 → gen-1 (gen-0 becomes Deactivated)
+    let _new_key_id = rekey_symmetric_key(&owner_client_conf_path, &key_id)?;
+
+    // Encrypt using @0 AFTER re-key — must FAIL (gen-0 Deactivated)
+    let input_file2 = tmp_dir.path().join("plain2.txt");
+    fs::write(&input_file2, b"should-fail")?;
+    let encrypted_file2 = tmp_dir.path().join("cipher2.enc");
+
+    let result = encrypt(
+        &owner_client_conf_path,
+        input_file2.to_str().unwrap(),
+        "kst-enc-zero@0",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(encrypted_file2.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "encrypt with @0 after re-key must fail (gen-0 Deactivated)"
+    );
+
+    // Decrypt using @0 AFTER re-key — must SUCCEED (Deactivated allows decrypt)
     let decrypted_file = tmp_dir.path().join("decrypted.txt");
     decrypt(
         &owner_client_conf_path,
         encrypted_file.to_str().unwrap(),
-        &key_id,
+        "kst-enc-zero@0",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(decrypted_file.to_str().unwrap()),
@@ -301,13 +353,17 @@ pub(crate) async fn test_keyset_encrypt_at_zero() -> CosmianResult<()> {
     Ok(())
 }
 
-/// Encrypt with `name@1` after double rotation: must use gen-1 key
+/// Encrypt with `name@1` after double rotation: gen-1 is Deactivated per KMIP §4.57,
+/// so encrypt MUST fail, but decrypt MUST still succeed.
 #[tokio::test]
 pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "kst-enc-gen-n"],
+    )?;
 
     let args = vec![
         "sym",
@@ -320,11 +376,10 @@ pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
     ];
     run_ckms(&owner_client_conf_path, &args)?;
 
-    // ReKey twice: gen-0 → gen-1 → gen-2
+    // ReKey: gen-0 → gen-1
     let gen1_id = rekey_symmetric_key(&owner_client_conf_path, &key_id)?;
-    let _gen2_id = rekey_symmetric_key(&owner_client_conf_path, &gen1_id)?;
 
-    // Encrypt using @1 — should resolve to gen-1
+    // Encrypt using @1 BEFORE second re-key (gen-1 is Active/latest)
     let tmp_dir = TempDir::new()?;
     let input_file = tmp_dir.path().join("plain.txt");
     fs::write(&input_file, b"gen-1-test")?;
@@ -340,12 +395,34 @@ pub(crate) async fn test_keyset_encrypt_at_generation_n() -> CosmianResult<()> {
         None,
     )?;
 
-    // Decrypt using gen-1 UID — proves gen-1 key was used
+    // ReKey again: gen-1 → gen-2 (gen-1 becomes Deactivated)
+    let _gen2_id = rekey_symmetric_key(&owner_client_conf_path, &gen1_id)?;
+
+    // Encrypt using @1 AFTER second re-key — must FAIL (gen-1 Deactivated)
+    let input_file2 = tmp_dir.path().join("plain2.txt");
+    fs::write(&input_file2, b"should-fail")?;
+    let encrypted_file2 = tmp_dir.path().join("cipher2.enc");
+
+    let result = encrypt(
+        &owner_client_conf_path,
+        input_file2.to_str().unwrap(),
+        "kst-enc-gen-n@1",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(encrypted_file2.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "encrypt with @1 after second re-key must fail (gen-1 Deactivated)"
+    );
+
+    // Decrypt using @1 AFTER second re-key — must SUCCEED (Deactivated allows decrypt)
     let decrypted_file = tmp_dir.path().join("decrypted.txt");
     decrypt(
         &owner_client_conf_path,
         encrypted_file.to_str().unwrap(),
-        &gen1_id,
+        "kst-enc-gen-n@1",
         DataEncryptionAlgorithm::AesGcm,
         None,
         Some(decrypted_file.to_str().unwrap()),
@@ -363,7 +440,10 @@ pub(crate) async fn test_keyset_decrypt_at_first() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "kst-dec-first"],
+    )?;
 
     let args = vec![
         "sym",
@@ -418,7 +498,10 @@ pub(crate) async fn test_keyset_decrypt_at_generation_n() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "kst-dec-gen-n"],
+    )?;
 
     let args = vec![
         "sym",
@@ -474,7 +557,10 @@ pub(crate) async fn test_keyset_encrypt_at_invalid_generation() -> CosmianResult
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "kst-invalid-gen"],
+    )?;
 
     let args = vec![
         "sym",
@@ -513,8 +599,11 @@ pub(crate) async fn test_rekey_non_latest_rejected() -> CosmianResult<()> {
     let ctx = start_default_test_kms_server().await;
     let owner_client_conf_path = owner_config(ctx);
 
-    // Create AES-256 key
-    let key_id = create_symmetric_key(&owner_client_conf_path, &["--number-of-bits", "256"])?;
+    // Create AES-256 key with keyset name as UID
+    let key_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "e2e-nlat"],
+    )?;
 
     // Set rotation name (keyset) without interval
     let args = vec![
@@ -531,13 +620,259 @@ pub(crate) async fn test_rekey_non_latest_rejected() -> CosmianResult<()> {
     // ReKey: gen-0 → gen-1
     let _new_key_id = rekey_symmetric_key(&owner_client_conf_path, &key_id)?;
 
-    // Attempt to re-key the original (now non-latest) key — should fail
-    let args = vec!["sym", "keys", "re-key", "--key-id", &key_id];
+    // Attempt to re-key gen-0 (now non-latest, Deactivated) via @first — should fail
+    let args = vec!["sym", "keys", "re-key", "--key-id", "e2e-nlat@first"];
     let stderr = run_ckms_expect_error(&owner_client_conf_path, &args)?;
     assert!(
         stderr.contains("not the latest"),
         "expected 'not the latest' error, got: {stderr}"
     );
+
+    Ok(())
+}
+
+/// Full keyset lifecycle exercising KMIP §4.57 state enforcement across all
+/// addressing forms: bare name, `@first`, `@0`, `@latest`, `@N`.
+///
+/// States tested: Active, Deactivated (via Re-Key), Compromised (via Revoke `KeyCompromise`).
+/// Operations tested: Encrypt (protection op — Active only), Decrypt (processing op —
+/// Active, Deactivated, Compromised).
+#[tokio::test]
+pub(crate) async fn test_keyset_full_lifecycle() -> CosmianResult<()> {
+    let ctx = start_default_test_kms_server().await;
+    let owner_client_conf_path = owner_config(ctx);
+
+    let tmp_dir = TempDir::new()?;
+    let plaintext = b"lifecycle-test-data";
+
+    // ── Step 1: Create AES-256 key with keyset name as UID ─────────────
+    let gen0_id = create_symmetric_key(
+        &owner_client_conf_path,
+        &["--number-of-bits", "256", "lc-keyset"],
+    )?;
+
+    let args = vec![
+        "sym",
+        "keys",
+        "set-rotation-policy",
+        "--key-id",
+        &gen0_id,
+        "--rotation-name",
+        "lc-keyset",
+    ];
+    run_ckms(&owner_client_conf_path, &args)?;
+
+    // ── Step 2: Encrypt with gen-0 (Active) → OK ────────────────────────
+    let input_file = tmp_dir.path().join("plain.txt");
+    fs::write(&input_file, plaintext)?;
+    let enc_gen0 = tmp_dir.path().join("enc_gen0.enc");
+
+    encrypt(
+        &owner_client_conf_path,
+        input_file.to_str().unwrap(),
+        "lc-keyset", // bare name → latest = gen-0
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_gen0.to_str().unwrap()),
+        None,
+    )?;
+
+    // ── Step 3: Re-Key gen-0 → gen-1 (gen-0 becomes Deactivated) ────────
+    let gen1_id = rekey_symmetric_key(&owner_client_conf_path, &gen0_id)?;
+
+    // ── Step 4: Encrypt with @0 (Deactivated) → FAIL ────────────────────
+    let input_fail = tmp_dir.path().join("fail.txt");
+    fs::write(&input_fail, b"should-fail")?;
+    let enc_fail = tmp_dir.path().join("enc_fail.enc");
+
+    let result = encrypt(
+        &owner_client_conf_path,
+        input_fail.to_str().unwrap(),
+        "lc-keyset@0",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_fail.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "encrypt with @0 must fail (gen-0 Deactivated)"
+    );
+
+    // @first — same result
+    let result = encrypt(
+        &owner_client_conf_path,
+        input_fail.to_str().unwrap(),
+        "lc-keyset@first",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_fail.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "encrypt with @first must fail (gen-0 Deactivated)"
+    );
+
+    // ── Step 5: Decrypt with @0 (Deactivated) → OK ──────────────────────
+    let dec_gen0 = tmp_dir.path().join("dec_gen0.txt");
+    decrypt(
+        &owner_client_conf_path,
+        enc_gen0.to_str().unwrap(),
+        "lc-keyset@0",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(dec_gen0.to_str().unwrap()),
+        None,
+    )?;
+    assert_eq!(fs::read(&dec_gen0)?, plaintext);
+
+    // @first — same result
+    let dec_gen0_first = tmp_dir.path().join("dec_gen0_first.txt");
+    decrypt(
+        &owner_client_conf_path,
+        enc_gen0.to_str().unwrap(),
+        "lc-keyset@first",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(dec_gen0_first.to_str().unwrap()),
+        None,
+    )?;
+    assert_eq!(fs::read(&dec_gen0_first)?, plaintext);
+
+    // ── Step 6: Encrypt with gen-1 (Active) via multiple addressing forms ─
+    let enc_gen1 = tmp_dir.path().join("enc_gen1.enc");
+    encrypt(
+        &owner_client_conf_path,
+        input_file.to_str().unwrap(),
+        "lc-keyset", // bare name → latest = gen-1
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_gen1.to_str().unwrap()),
+        None,
+    )?;
+
+    let enc_gen1_latest = tmp_dir.path().join("enc_gen1_latest.enc");
+    encrypt(
+        &owner_client_conf_path,
+        input_file.to_str().unwrap(),
+        "lc-keyset@latest",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_gen1_latest.to_str().unwrap()),
+        None,
+    )?;
+
+    let enc_gen1_at1 = tmp_dir.path().join("enc_gen1_at1.enc");
+    encrypt(
+        &owner_client_conf_path,
+        input_file.to_str().unwrap(),
+        "lc-keyset@1",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_gen1_at1.to_str().unwrap()),
+        None,
+    )?;
+
+    // Verify all gen-1 ciphertexts decrypt correctly
+    let dec_gen1 = tmp_dir.path().join("dec_gen1.txt");
+    decrypt(
+        &owner_client_conf_path,
+        enc_gen1.to_str().unwrap(),
+        &gen1_id,
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(dec_gen1.to_str().unwrap()),
+        None,
+    )?;
+    assert_eq!(fs::read(&dec_gen1)?, plaintext);
+
+    // ── Step 7: Revoke gen-1 with KeyCompromise → Compromised ───────────
+    run_ckms(
+        &owner_client_conf_path,
+        &[
+            "sym",
+            "keys",
+            "revoke",
+            "--key-id",
+            &gen1_id,
+            "--reason-code",
+            "key-compromise",
+            "compromised for lifecycle testing",
+        ],
+    )?;
+
+    // ── Step 8: Encrypt with @1 (Compromised) → FAIL ────────────────────
+    let result = encrypt(
+        &owner_client_conf_path,
+        input_fail.to_str().unwrap(),
+        "lc-keyset@1",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_fail.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "encrypt with @1 must fail (gen-1 Compromised)"
+    );
+
+    // bare name (latest = gen-1, Compromised) → also FAIL
+    let result = encrypt(
+        &owner_client_conf_path,
+        input_fail.to_str().unwrap(),
+        "lc-keyset",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(enc_fail.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "encrypt with bare name must fail (latest gen-1 Compromised)"
+    );
+
+    // ── Step 9: Decrypt with @1 (Compromised) → OK ──────────────────────
+    let dec_gen1_comp = tmp_dir.path().join("dec_gen1_comp.txt");
+    decrypt(
+        &owner_client_conf_path,
+        enc_gen1.to_str().unwrap(),
+        "lc-keyset@1",
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(dec_gen1_comp.to_str().unwrap()),
+        None,
+    )?;
+    assert_eq!(fs::read(&dec_gen1_comp)?, plaintext);
+
+    // ── Step 10: Decrypt wrong key → crypto error ───────────────────────
+    let dec_wrong = tmp_dir.path().join("dec_wrong.txt");
+    let result = decrypt(
+        &owner_client_conf_path,
+        enc_gen0.to_str().unwrap(),
+        "lc-keyset@1", // gen-0 ciphertext, gen-1 key
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(dec_wrong.to_str().unwrap()),
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "decrypt with wrong generation key must fail"
+    );
+
+    // ── Step 11: Decrypt via bare name (TryEach) finds correct key ──────
+    let dec_bare = tmp_dir.path().join("dec_bare.txt");
+    decrypt(
+        &owner_client_conf_path,
+        enc_gen0.to_str().unwrap(),
+        "lc-keyset", // bare name walks chain → finds gen-0
+        DataEncryptionAlgorithm::AesGcm,
+        None,
+        Some(dec_bare.to_str().unwrap()),
+        None,
+    )?;
+    assert_eq!(fs::read(&dec_bare)?, plaintext);
 
     Ok(())
 }

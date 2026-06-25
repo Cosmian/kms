@@ -146,6 +146,21 @@ const ECKeyCreateForm: React.FC = () => {
                             name="rotateName"
                             label="Rotation Name"
                             help="Keyset name for addressing generations via name@latest, name@first, name@N"
+                            rules={[
+                                ({ getFieldValue }) => ({
+                                    validator(_, value) {
+                                        const privateKeyId = getFieldValue("privateKeyId") as string | undefined;
+                                        if (value && privateKeyId && value !== privateKeyId) {
+                                            return Promise.reject(
+                                                new Error(
+                                                    `Rotation Name must equal Private Key ID ("${privateKeyId}") — create the keypair with the keyset name as its ID`,
+                                                ),
+                                            );
+                                        }
+                                        return Promise.resolve();
+                                    },
+                                }),
+                            ]}
                         >
                             <Input placeholder="e.g. my-keyset" data-testid="ec-rotation-name" />
                         </Form.Item>

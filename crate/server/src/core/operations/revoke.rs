@@ -141,6 +141,12 @@ pub(crate) async fn recursively_revoke_key(
                     "[revoke] proceed-destroyed uid={uid} state={:?}",
                     owm.state()
                 );
+            } else if owm.state() == State::Deactivated {
+                // KMIP §4.45 / §4.57: revoking an already-Deactivated key is a no-op success.
+                // After Re-Key the old key is Deactivated; cleanup sequences that call
+                // Revoke → Destroy must still succeed.
+                count += 1;
+                continue;
             } else {
                 trace!(
                     "[revoke] skip uid={uid} reason=state-not-revocable state={:?}",

@@ -46,7 +46,8 @@ test.describe("Symmetric key rotation policy", () => {
         // AntD v5 InputNumber passes data-testid to the <input> itself (via rc-input-number inputProps).
         await page.locator('[data-testid="rotation-interval"]').fill("86400");
         await page.locator('[data-testid="rotation-offset"]').fill("3600");
-        await page.fill('[data-testid="rotation-name"]', "sym-keyset");
+        // Server requires rotate_name == key UID; use the key's own UID as the keyset name.
+        await page.fill('[data-testid="rotation-name"]', keyId);
 
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/rotation policy set successfully/i);
@@ -112,7 +113,8 @@ test.describe("RSA key rotation policy", () => {
         await gotoAndWait(page, "/ui/rotation-policy/rsa/set");
         await page.fill('[data-testid="rotation-key-id"]', privKeyId);
         await page.locator('[data-testid="rotation-interval"]').fill("604800");
-        await page.fill('[data-testid="rotation-name"]', "rsa-keyset");
+        // Server requires rotate_name == key UID; use the key's own UID as the keyset name.
+        await page.fill('[data-testid="rotation-name"]', privKeyId);
 
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/rotation policy set successfully/i);
@@ -174,7 +176,8 @@ test.describe("EC key rotation policy", () => {
         await gotoAndWait(page, "/ui/rotation-policy/ec/set");
         await page.fill('[data-testid="rotation-key-id"]', privKeyId);
         await page.locator('[data-testid="rotation-interval"]').fill("2592000");
-        await page.fill('[data-testid="rotation-name"]', "ec-keyset");
+        // Server requires rotate_name == key UID; use the key's own UID as the keyset name.
+        await page.fill('[data-testid="rotation-name"]', privKeyId);
 
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/rotation policy set successfully/i);
@@ -238,7 +241,8 @@ test.describe("PQC key rotation policy", () => {
         await gotoAndWait(page, "/ui/rotation-policy/pqc/set");
         await page.fill('[data-testid="rotation-key-id"]', privKeyId);
         await page.locator('[data-testid="rotation-interval"]').fill("86400");
-        await page.fill('[data-testid="rotation-name"]', "pqc-keyset");
+        // Server requires rotate_name == key UID; use the key's own UID as the keyset name.
+        await page.fill('[data-testid="rotation-name"]', privKeyId);
 
         const text = await submitAndWaitForResponse(page);
         expect(text).toMatch(/rotation policy set successfully/i);

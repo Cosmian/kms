@@ -141,6 +141,21 @@ const SymKeyCreateForm: React.FC = () => {
                             name="rotateName"
                             label="Rotation Name"
                             help="Keyset name for addressing generations via name@latest, name@first, name@N"
+                            rules={[
+                                ({ getFieldValue }) => ({
+                                    validator(_, value) {
+                                        const keyId = getFieldValue("keyId") as string | undefined;
+                                        if (value && keyId && value !== keyId) {
+                                            return Promise.reject(
+                                                new Error(
+                                                    `Rotation Name must equal Key ID ("${keyId}") — create the key with the keyset name as its ID`,
+                                                ),
+                                            );
+                                        }
+                                        return Promise.resolve();
+                                    },
+                                }),
+                            ]}
                         >
                             <Input placeholder="e.g. my-keyset" data-testid="sym-rotation-name" />
                         </Form.Item>

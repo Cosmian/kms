@@ -133,7 +133,8 @@ impl RekeyOperation for CertificateRekey {
         candidates: &[RotationCandidate; 1],
     ) -> KResult<[ReplacementObject; 1]> {
         let [candidate] = candidates;
-        let new_uid = UniqueIdentifier::rotation_successor(&candidate.uid);
+        // Certificates are never members of a named keyset — always use a fresh UUID.
+        let new_uid = UniqueIdentifier::rotation_successor(None, None);
 
         // Build a Certify request that references the existing certificate for renewal.
         // We pass the old certificate's UID so `get_subject` produces a `Subject::Certificate`.

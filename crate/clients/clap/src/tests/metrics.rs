@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip_0::kmip_types::State;
 use cosmian_kms_client::{
-    cosmian_kmip::kmip_2_1::kmip_operations::Get,
+    cosmian_kmip::{kmip_0::kmip_types::RevocationReasonCode, kmip_2_1::kmip_operations::Get},
     reexport::cosmian_kms_client_utils::create_utils::SymmetricAlgorithm,
 };
 use test_kms_server::start_default_test_kms_server;
@@ -38,6 +38,7 @@ async fn test_count_active_keys() -> KmsCliResult<()> {
     // Revoke then destroy the first key
     RevokeKeyAction {
         revocation_reason: "test revoke".to_string(),
+        reason_code: RevocationReasonCode::Unspecified,
         key_id: Some(first_uid.clone()),
         tags: None,
     }
@@ -110,6 +111,7 @@ async fn test_revoked_keys_not_active() -> KmsCliResult<()> {
     // Revoke all keys with the tag in a single operation
     RevokeKeyAction {
         revocation_reason: "test revoke all".to_string(),
+        reason_code: RevocationReasonCode::Unspecified,
         key_id: None,
         tags: Some(vec![test_tag]),
     }

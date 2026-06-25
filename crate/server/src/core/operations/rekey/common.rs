@@ -120,6 +120,12 @@ impl KMS {
                 None,
             )));
 
+            // KMIP §4.57 transition 6: old key becomes Deactivated after Re-Key
+            operations.push(AtomicOperation::UpdateState((
+                retirement.old_owm.id().to_owned(),
+                State::Deactivated,
+            )));
+
             if let Some(new_wrapping_uid) = retirement.rewrap_to {
                 Box::pin(self.rewrap_dependants(
                     owner,
@@ -626,8 +632,12 @@ fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, A
     let mut old_attributes = owm.attributes().clone();
     old_attributes.retire_for_replacement(new_uid)?;
     old_attributes.clear_rotation_flags();
+    // KMIP §4.57 transition 6: persist Deactivated in all attribute layers so that
+    // destroy.rs effective-state logic reads Deactivated (not the stale Active value).
+    old_attributes.state = Some(State::Deactivated);
     if let Ok(obj_attrs) = old_object.attributes_mut() {
         obj_attrs.retire_for_replacement(new_uid)?;
+        obj_attrs.state = Some(State::Deactivated);
     }
     Ok((old_object, old_attributes))
 }

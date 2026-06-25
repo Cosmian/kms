@@ -176,7 +176,7 @@ echo "==> Using dynamic ports: KMS=${KMS_PORT}, Vite=${VITE_PORT}"
 ensure_pnpm
 
 echo "==> Installing UI dependencies …"
-rm -rf "${UI_DIR}/node_modules"
+rm -rf "${UI_DIR}/node_modules" 2>/dev/null || true
 run_ui run_pnpm install --frozen-lockfile
 
 echo "==> Building UI (VITE_KMS_URL=https://127.0.0.1:${KMS_PORT}, VITE_DEV_MODE=true) …"

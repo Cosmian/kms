@@ -16,7 +16,11 @@ use time::OffsetDateTime;
 
 use super::common::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
 use crate::{
-    core::{KMS, operations::key_ops::KeySelectionSpec, uid_utils::has_prefix},
+    core::{
+        KMS,
+        operations::key_ops::KeySelectionSpec,
+        uid_utils::{has_prefix, parse_keyset_identifier, resolve_keyset_to_single_uid},
+    },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -53,6 +57,36 @@ impl KeySelectionSpec for SymmetricRekey {
 ///   `CKA_START_DATE` / `CKA_END_DATE` on both the old and new keys.
 pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReKeyResponse> {
     trace!("ReKey: {}", serde_json::to_string(&request)?);
+    let uid_or_tags = request
+        .unique_identifier
+        .as_ref()
+        .ok_or(KmsError::UnsupportedPlaceholder)?
+        .as_str()
+        .context("ReKey: the unique identifier must be a string")?;
+
+    // Resolve keyset references (`name@latest`, `name@first`, `name@N`, bare name) to a
+    // concrete UID before routing. This allows `re-key --key-id my-keyset@latest` to work
+    // transparently for both SQL and HSM-backed keysets.
+    let request = if let Some(keyset_ref) = parse_keyset_identifier(uid_or_tags) {
+        if let Some(resolved) = resolve_keyset_to_single_uid(&keyset_ref, kms, owner).await? {
+            trace!(
+                "ReKey: resolved keyset ref '{}' → '{}'",
+                uid_or_tags, resolved
+            );
+            ReKey {
+                unique_identifier: Some(UniqueIdentifier::TextString(resolved)),
+                ..request
+            }
+        } else {
+            return Err(KmsError::InvalidRequest(format!(
+                "ReKey: keyset '{uid_or_tags}' not found or has no resolvable latest key"
+            )));
+        }
+    } else {
+        request
+    };
+
+    // uid_or_tags may now differ from the resolved UID — re-read from the (possibly updated) request.
     let uid_or_tags = request
         .unique_identifier
         .as_ref()
@@ -317,7 +351,10 @@ impl RekeyOperation for SymmetricRekey {
         let (_, new_object, new_tags) =
             KMS::create_symmetric_key_and_tags(kms.vendor_id(), &create_request)?;
 
-        let new_uid = UniqueIdentifier::rotation_successor(&candidate.uid);
+        let new_uid = UniqueIdentifier::rotation_successor(
+            candidate.owm.attributes().rotate_name.as_deref(),
+            candidate.owm.attributes().rotate_generation,
+        );
 
         Ok([ReplacementObject {
             new_uid,

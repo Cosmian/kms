@@ -4280,4 +4280,41 @@ ObjectType = "SymmetricKey"
         )
         .await
     }
+
+    #[tokio::test]
+    async fn test_vec_keyset_uid_scheme() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_uid_scheme").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_gen0_via_address() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_gen0_via_address").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_create_uid_mismatch_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/keyset_create_uid_mismatch_fails").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_create_no_uid_with_rotate_name_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/keyset_create_no_uid_with_rotate_name_fails")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_setattribute_uid_mismatch_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/keyset_setattribute_uid_mismatch_fails").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_addattribute_uid_mismatch_fails() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/keyset_addattribute_uid_mismatch_fails").await
+    }
 }
