@@ -190,6 +190,9 @@ fn bench_http_throughput(c: &mut Criterion) {
     // Reduce sample count to keep total bench time reasonable; each sample
     // already exercises many concurrent requests.
     group.sample_size(20);
+    // RSA-2048 OAEP decrypt takes ~450ms/iter; the default 5s measurement
+    // window is too short for 20 samples. 10s avoids the Criterion warning.
+    group.measurement_time(std::time::Duration::from_secs(10));
 
     for &workers in WORKER_COUNTS {
         // ── Start a fresh server with the requested worker count ──────────
