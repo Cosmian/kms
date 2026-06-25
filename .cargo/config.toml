@@ -26,20 +26,3 @@ publish-dry-crate = "publish --dry-run --allow-dirty"
 # Run throughput bench with native-CPU tuning for maximum representative throughput.
 # cargo bench-native -- http_throughput
 bench-native = "bench --bench http_throughput"
-
-[target.x86_64-unknown-linux-gnu]
-# target-cpu=native: enables AES-NI, AVX2, SHA-NI for non-crypto Rust glue code.
-#   OpenSSL already probes these via CPUID at runtime; this flag makes rustc emit
-#   them for serialisation/hashing paths too.
-#   NOTE: produces non-portable binaries — override with RUSTFLAGS="" for CI.
-#
-# force-frame-pointers=yes: makes perf/cargo-flamegraph use --call-graph fp
-#   instead of --call-graph dwarf.  DWARF unwinding requires capturing up to 65 KB
-#   of raw stack per sample, producing hundreds-of-MB perf.data files that take
-#   minutes to parse with `perf script`.  Frame-pointer unwinding stores only a
-#   chain of 8-byte addresses per sample → 50–100× smaller perf.data, instant
-#   `perf script`.  cargo-flamegraph auto-detects the presence of frame pointers
-#   and picks the faster call-graph mode automatically.
-#   Overhead: ~1% throughput from keeping rbp as frame pointer (not used for
-#   general-purpose register allocation); no correctness impact.
-rustflags = ["-C", "force-frame-pointers=yes"]
