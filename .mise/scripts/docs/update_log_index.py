@@ -9,7 +9,7 @@ Compares documented log call-sites against actual source, then merges:
   • Appends new entries with auto-extracted variable names
 
 Usage:
-  python3 .mise/scripts/docs/update_log_index.py
+  python3 scripts/update_log_index.py
 """
 
 import argparse
@@ -22,6 +22,8 @@ from typing import Optional
 # Path resolution
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+AGENT_DIR = SCRIPT_DIR.parent
+DOC_FILE = AGENT_DIR / 'documentation' / 'docs' / 'configuration' / 'log-reference.md'
 
 
 def _find_repo_root() -> Path:
@@ -36,7 +38,6 @@ def _find_repo_root() -> Path:
 
 REPO_ROOT = _find_repo_root()
 CARGO_TOML = REPO_ROOT / 'Cargo.toml'
-DOC_FILE = REPO_ROOT / 'documentation' / 'docs' / 'configuration' / 'log-reference.md'
 
 # Crate list
 
@@ -1028,11 +1029,11 @@ def _parse_args() -> argparse.Namespace:
         epilog=(
             'Examples:\n'
             '  # interactive (default)\n'
-            '  python3 .mise/scripts/docs/update_log_index.py\n\n'
+            '  python3 scripts/update_log_index.py\n\n'
             '  # CI / bot: safe defaults, no prompts, no colour\n'
-            '  python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color\n\n'
+            '  python3 scripts/update_log_index.py --non-interactive --no-color\n\n'
             '  # bot: also delete stale entries\n'
-            '  python3 .mise/scripts/docs/update_log_index.py --non-interactive --delete-stale --no-color\n'
+            '  python3 scripts/update_log_index.py --non-interactive --delete-stale --no-color\n'
         ),
     )
     p.add_argument(

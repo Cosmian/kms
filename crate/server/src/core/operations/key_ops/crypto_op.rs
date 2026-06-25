@@ -289,10 +289,18 @@ impl KMS {
     {
         let mut eligible: Vec<ObjectWithMetadata> = Vec::new();
         let mut found_but_no_permission = false;
+        // Track state mismatches so we can surface a useful error instead of "not found".
+        let mut wrong_state: Option<(String, State)> = None;
 
         for owm in candidates {
             // 1. State filter
-            if !Spec::accepted_states().contains(&owm.effective_state()) {
+            let effective = owm.effective_state();
+            if !Spec::accepted_states().contains(&effective) {
+                // Track live-but-wrong-state for a useful error message.
+                // Skip Destroyed/DestroyedCompromised: those behave as "not found".
+                if effective != State::Destroyed && effective != State::Destroyed_Compromised {
+                    wrong_state.get_or_insert_with(|| (owm.id().to_owned(), effective));
+                }
                 continue;
             }
 
@@ -332,6 +340,15 @@ impl KMS {
                     "{}: user {user} does not have permission to use key: {uid_display}",
                     Spec::OP_NAME,
                 ))
+            } else if let Some((uid, state)) = wrong_state {
+                KmsError::Kmip21Error(
+                    ErrorReason::Permission_Denied,
+                    format!(
+                        "{}: key {uid} is in state {state:?} but operation requires one of {:?}",
+                        Spec::OP_NAME,
+                        Spec::accepted_states()
+                    ),
+                )
             } else {
                 KmsError::ItemNotFound(format!(
                     "{}: no valid key found for identifier: {uid_display}",

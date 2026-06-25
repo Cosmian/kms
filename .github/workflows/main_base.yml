@@ -31,7 +31,7 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
-  log-index-check:
+  log-reference:
     name: Log index — log-reference.md in sync with source
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +41,7 @@ jobs:
 
       - name: Check log-reference.md is up to date
         id: check
-        run: python3 scripts/update_log_index.py --check --no-color
+        run: python3 .mise/scripts/docs/update_log_index.py --check --no-color
 
       - name: How to fix
         if: failure()
@@ -52,7 +52,7 @@ jobs:
           echo ""
           echo "  Fix it locally by running:"
           echo ""
-          echo "    python3 scripts/update_log_index.py --non-interactive --no-color"
+          echo "    python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color"
           echo ""
           echo "  Then review the diff, stage, and commit:"
           echo ""
