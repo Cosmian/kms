@@ -30,8 +30,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=.github/scripts/benchmarks/common.sh
-source "${SCRIPT_DIR}/common.sh"
+# shellcheck source=.mise/scripts/common.sh
+source "${SCRIPT_DIR}/../common.sh"
 
 init_build_env "$@"
 setup_test_logging
