@@ -1,9 +1,10 @@
 //! `GET /.well-known/jwks.json` — RFC 7517 JSON Web Key Set endpoint.
 //!
 //! Serves all public keys owned by (or granted to) the server's
-//! `default_username` that carry the `Verify` usage mask in `Active` or
+//! `default_username` that are tagged [`JWKS_TAG`] and in `Active` or
 //! `Deactivated` state (rotation-overlap support).  The endpoint is
 //! intentionally **unauthenticated**.
+//!
 
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use actix_web::{HttpRequest, HttpResponse, get, web::Data};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, State},
+        kmip_0::kmip_types::State,
         kmip_2_1::{
             kmip_attributes::Attributes,
             kmip_objects::{Object, ObjectType},
@@ -30,6 +31,13 @@ use openssl::{
 };
 
 use crate::{core::KMS, error::KmsError, result::KResult};
+
+/// User tag that marks a public key for inclusion in the JWKS endpoint.
+///
+/// REST-created key pairs are auto-tagged by default; disable globally with
+/// `--jwks-endpoint-auto-tag=false` (`KMS_JWKS_ENDPOINT_AUTO_TAG=false`).
+/// Remove this tag from an individual key to opt it out.
+pub(crate) const JWKS_TAG: &str = "jwks";
 
 /// `GET /.well-known/jwks.json` — RFC 7517 public key endpoint.
 ///
@@ -105,14 +113,16 @@ async fn build_jwk_set(kms: &KMS) -> KResult<(JwkSet, bool)> {
 ///
 /// Eligibility criteria:
 /// - `ObjectType::PublicKey`
-/// - `CryptographicUsageMask` contains `Verify`
+/// - Tagged [`JWKS_TAG`] (`"jwks"`)
 /// - `State` is `Active` or `Deactivated`
 async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object)>> {
-    let filter = Attributes {
+    let mut filter = Attributes {
         object_type: Some(ObjectType::PublicKey),
-        cryptographic_usage_mask: Some(CryptographicUsageMask::Verify),
         ..Default::default()
     };
+    filter
+        .set_tags(kms.vendor_id(), [JWKS_TAG])
+        .map_err(|e| KmsError::ServerError(format!("Failed to build JWKS tag filter: {e}")))?;
 
     let results = kms
         .database

@@ -714,6 +714,10 @@ impl fmt::Debug for ServerParams {
                 .field(
                     "jwks_endpoint_max_keys",
                     &self.jwks_endpoint.jwks_endpoint_max_keys,
+                )
+                .field(
+                    "jwks_endpoint_auto_tag",
+                    &self.jwks_endpoint.jwks_endpoint_auto_tag,
                 );
         } else {
             debug_struct.field(

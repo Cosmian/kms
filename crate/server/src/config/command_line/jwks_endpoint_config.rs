@@ -44,6 +44,25 @@ pub struct JwksEndpointConfig {
         verbatim_doc_comment
     )]
     pub jwks_endpoint_max_keys: usize,
+
+    /// Automatically tag key pairs created via the REST crypto API for JWKS inclusion.
+    ///
+    /// When `true` (the default), every key pair created via `POST /v1/crypto/keys`
+    /// receives the `"jwks"` tag and immediately appears in
+    /// `GET /.well-known/jwks.json`.
+    ///
+    /// Set to `false` to disable this behaviour globally.  Operators must then
+    /// manually tag each public key via `POST /v1/crypto/keys/{kid}/tags` before
+    /// it is published in the JWKS document.
+    ///
+    /// This setting has no effect on keys created directly through the KMIP protocol.
+    #[clap(
+        long,
+        env = "KMS_JWKS_ENDPOINT_AUTO_TAG",
+        default_value_t = true,
+        verbatim_doc_comment
+    )]
+    pub jwks_endpoint_auto_tag: bool,
 }
 
 impl Default for JwksEndpointConfig {
@@ -51,6 +70,7 @@ impl Default for JwksEndpointConfig {
         Self {
             jwks_endpoint_enabled: false,
             jwks_endpoint_max_keys: 50,
+            jwks_endpoint_auto_tag: true,
         }
     }
 }
