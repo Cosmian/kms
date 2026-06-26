@@ -196,7 +196,7 @@ num-bigint-dig = { version = "0.8", default-features = false }
 openssl = { version = "0.10", default-features = false }
 opentelemetry = "0.29"
 opentelemetry-otlp = { version = "0.29", features = ["metrics", "grpc-tonic"] }
-opentelemetry_sdk = { version = "0.29", features = ["metrics", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["metrics", "rt-tokio"] }
 pem = "3.0"
 pkcs11-sys = "0.2"
 rand = "0.10"
