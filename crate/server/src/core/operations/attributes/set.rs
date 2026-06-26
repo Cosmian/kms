@@ -35,6 +35,22 @@ fn extract_hsm_key_id(uid: &str) -> Option<&str> {
     rest.split_once("::").map(|(_, key_id)| key_id)
 }
 
+/// Compute the full base UID for an HSM key: `hsm::<prefix>::<slot>::<key_id_without_@N>`.
+///
+/// This is the canonical `rotate_name` for HSM-resident keys — it embeds the slot ID
+/// and is therefore unique across HSM slots.
+fn hsm_base_uid(uid: &str) -> Option<String> {
+    let prefix = has_prefix(uid)?;
+    let rest = uid.strip_prefix(&format!("{prefix}::"))?;
+    let (slot_str, key_id) = rest.split_once("::")?;
+    // Strip any @N generation suffix to get the stable base key_id.
+    let base_key_id = key_id
+        .rsplit_once('@')
+        .and_then(|(base, suffix)| suffix.parse::<i32>().ok().map(|_| base))
+        .unwrap_or(key_id);
+    Some(format!("{prefix}::{slot_str}::{base_key_id}"))
+}
+
 pub(crate) async fn set_attribute(
     kms: &KMS,
     request: SetAttribute,
@@ -88,6 +104,26 @@ pub(crate) async fn set_attribute(
                 return Err(KmsError::InvalidRequest(format!(
                     "SetAttribute: rotate_name ('{name}') must equal the key's UID \
                      ('{key_uid}') — create the key with the keyset name as its ID"
+                )));
+            }
+        }
+    }
+
+    // For HSM keys: rotate_name must be the key's full base UID (hsm::slot::key_id without
+    // any @N suffix).  The slot ID in the UID guarantees uniqueness across HSM slots,
+    // preventing keyset name collisions when multiple slots host keys with the same name.
+    if has_prefix(owm.id()).is_some() {
+        if let Attribute::RotateName(name) = &request.new_attribute {
+            let expected = hsm_base_uid(owm.id()).ok_or_else(|| {
+                KmsError::InvalidRequest(format!(
+                    "SetAttribute: cannot derive base UID from HSM key '{}'",
+                    owm.id()
+                ))
+            })?;
+            if name.as_str() != expected {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: for HSM keys, rotate_name must be the key's base UID \
+                     ('{expected}'), not '{name}'"
                 )));
             }
         }
@@ -238,7 +274,7 @@ pub(crate) async fn set_attribute(
                 owm.id()
             ))
         })?;
-        let label = format!("{rotate_name}::0::{key_id}::latest");
+        let label = format!("{rotate_name}::0::{key_id}@latest");
         trace!(
             "SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'",
             label,

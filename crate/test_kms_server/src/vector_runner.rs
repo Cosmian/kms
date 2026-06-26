@@ -12,7 +12,7 @@ use cosmian_kms_client::{
     reexport::cosmian_kms_access::access::Access,
 };
 use serde::Deserialize;
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex, OnceCell};
 
 use crate::TestsContext;
 
@@ -34,6 +34,17 @@ static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 /// Used to verify that `wrap_and_cache` does not attempt to self-wrap when the first
 /// operation creates the KEK itself (regression for PR #968 self-wrap bug).
 static ONCE_VECTOR_HSM_KEK_UNCREATED: OnceCell<TestsContext> = OnceCell::const_new();
+/// Singleton server for vector tests requiring `SoftHSM2` **without** a KEK.
+static ONCE_VECTOR_HSM: OnceCell<TestsContext> = OnceCell::const_new();
+/// Serialises `hsm_kek` test vectors to prevent concurrent PKCS#11 access on the same
+/// `SoftHSM2` slot from causing `CKR_OBJECT_HANDLE_INVALID` failures.
+///
+/// `SoftHSM2`'s internal state is not safe under heavy concurrent access; running all
+/// `hsm_kek` vectors sequentially eliminates the race without changing test semantics.
+static HSM_KEK_TEST_MUTEX: Mutex<()> = Mutex::const_new(());
+/// Serialises `hsm` (no-KEK) test vectors — same `SoftHSM2` slot, separate mutex so
+/// KEK and no-KEK suites can run concurrently on different CI machines.
+static HSM_NO_KEK_TEST_MUTEX: Mutex<()> = Mutex::const_new(());
 
 /// A test vector manifest loaded from a TOML file.
 ///
@@ -79,6 +90,8 @@ pub struct TestManifest {
     ///
     /// Controls which singleton server is started:
     /// - `"hsm_kek"` — `SoftHSM2` with a Key Encryption Key (uses `ONCE_VECTOR_HSM_KEK`)
+    /// - `"hsm_kek_uncreated"` — `SoftHSM2` + KEK UID configured but key not yet created
+    /// - `"hsm"` — `SoftHSM2` without any KEK (uses `ONCE_VECTOR_HSM`)
     /// - anything else or omitted — standard backend-driven servers
     pub server_type: Option<String>,
     /// Environment variables required to run this vector.
@@ -822,6 +835,9 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                             .await
                     })
                     .await?;
+                // Serialise PKCS#11 access: SoftHSM2 state is not safe under concurrent
+                // access on the same slot (CKR_OBJECT_HANDLE_INVALID races).
+                let _hsm_guard = HSM_KEK_TEST_MUTEX.lock().await;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek'",
                     manifest.name
@@ -839,6 +855,18 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                     "▶ Running vector '{}' on server_type 'hsm_kek_uncreated'",
                     manifest.name
                 );
+                return execute_steps(context, &manifest, &vector_path).await;
+            }
+            "hsm" => {
+                let context = ONCE_VECTOR_HSM
+                    .get_or_try_init(|| async {
+                        crate::start_default_test_kms_server_with_softhsm2_for_vectors().await
+                    })
+                    .await?;
+                // Serialise PKCS#11 access: SoftHSM2 state is not safe under concurrent
+                // access on the same slot (CKR_OBJECT_HANDLE_INVALID races).
+                let _hsm_guard = HSM_NO_KEK_TEST_MUTEX.lock().await;
+                eprintln!("▶ Running vector '{}' on server_type 'hsm'", manifest.name);
                 return execute_steps(context, &manifest, &vector_path).await;
             }
             other => {
@@ -3906,6 +3934,76 @@ ObjectType = "SymmetricKey"
     async fn test_vec_hsm_resident_keyset_double_rotation() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/hsm/resident_keyset_double_rotation").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_full_lifecycle() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_full_lifecycle").await
+    }
+
+    // ── HSM No-KEK: Keyset addressing, re-key guards, chain-walk semantics ──
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_basic() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_basic").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_addressing() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_addressing").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_consecutive() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_consecutive").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_uid_lifecycle() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_uid_lifecycle").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_rekey_non_latest() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_rekey_non_latest").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_rekey_by_name() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_rekey_by_name").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_rekey_by_hsm_uid() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_rekey_by_hsm_uid").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_rekey_by_keyset_name() -> Result<(), KmsClientError>
+    {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_rekey_by_keyset_name").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_duplicate_rekey() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_duplicate_rekey").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_no_kek_encrypt_gen_select() -> Result<(), KmsClientError>
+    {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_encrypt_gen_select").await
     }
 
     #[tokio::test]

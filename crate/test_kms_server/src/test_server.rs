@@ -589,6 +589,46 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     start_server_from_config(config, &config_path).await
 }
 
+/// Start a `SoftHSM2` test server **without** a Key Encryption Key.
+///
+/// Used for test vectors that exercise HSM-resident key operations (keyset
+/// addressing, re-key guards, chain-walk semantics) without any KEK wrapping
+/// layer. The server otherwise has identical TLS and auth configuration to
+/// [`start_default_test_kms_server_with_softhsm2_and_kek_for_vectors`].
+///
+/// The vector runner owns the singleton; this function returns a fresh
+/// `TestsContext` each call.
+///
+/// # Errors
+/// Returns an error if the server fails to start.
+///
+/// # Panics
+/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
+pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
+-> Result<TestsContext, KmsClientError> {
+    let slot = get_softhsm2_slot_id();
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_softhsm2_no_kek_{}_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+
+    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let mut config = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_slot = vec![slot];
+    config.db.sqlite_path = workspace_dir.join("sqlite-data");
+    config.db.clear_database = false;
+    config.workspace.root_data_path = workspace_dir.join("workspace");
+    config.workspace.tmp_path = workspace_dir.join("tmp");
+    // No key_encryption_key — this is the plain HSM server (no KEK wrapping).
+    config.google_cse_config.google_cse_enable = false;
+    start_server_from_config(config, &config_path).await
+}
+
 /// Start a `SoftHSM2` + KEK test server where the KEK has **not** been pre-created.
 ///
 /// This server type is used to reproduce the self-wrap regression (PR #968):

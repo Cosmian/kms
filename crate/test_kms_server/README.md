@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**429 vectors** across 15 categories (including KAT):
+**444 vectors** across 15 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -274,6 +274,7 @@ replays the steps sequentially.
 | HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | Attempts to create an EC P-384 keypair with an HSM-resident UID. | 1 |
 | HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID. | 1 |
 | HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Tests HSM keyset traversal across a 3-generation chain: | 12 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_uid_lifecycle` | Creates a resident AES-256 HSM key, assigns a rotate_name, rekeys the latest direct UID three times, encrypts with gen-3, rekeys once more to gen-4, then decrypts the gen-3 ciphertext via the bare rotate_name chain walk. | 15 |
 | HSM / Resident Keyset | `hsm/resident_keyset_rekey_and_decrypt` | Full HSM keyset rotation test: | 9 |
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
 | HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |

@@ -13,6 +13,7 @@ pub use test_server::{
     start_default_test_kms_server_with_privileged_users,
     start_default_test_kms_server_with_softhsm2_and_kek,
     start_default_test_kms_server_with_softhsm2_and_kek_for_vectors,
+    start_default_test_kms_server_with_softhsm2_for_vectors,
     start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors,
     start_default_test_kms_server_with_three_softhsm2,
     start_default_test_kms_server_with_utimaco_and_kek,

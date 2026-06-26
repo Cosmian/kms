@@ -25,7 +25,7 @@ pub struct KeyMetadata {
     pub start_date: Option<time::Date>,
     /// PKCS#11 `CKA_END_DATE` — when the key is due for rotation.
     pub end_date: Option<time::Date>,
-    /// Keyset name parsed from `CKA_LABEL` (`rotate_name::generation::key_id[::latest]`).
+    /// Keyset name parsed from `CKA_LABEL` (`rotate_name::generation::key_id[@latest]`).
     /// `None` means the key has no keyset membership.
     pub rotate_name: Option<String>,
     /// Keyset generation counter parsed from `CKA_LABEL`.

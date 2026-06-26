@@ -1,15 +1,13 @@
+//! SQL-backed asymmetric key pair rotation (KMIP `ReKeyKeyPair` §6.1.47).
+//!
+//! This module handles `ReKeyKeyPair` for key pairs stored in the SQL database — generates
+//! a fresh key pair, manages wrapping/unwrapping, links generations, and retires old keys.
+
 use std::collections::HashSet;
 
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
-#[cfg(feature = "non-fips")]
-use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
-    crypto::cover_crypt::attributes::rekey_edit_action_from_attributes,
-    reexport::cosmian_cover_crypt::api::Covercrypt,
-};
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{ErrorReason, State},
+        kmip_0::kmip_types::State,
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
@@ -20,28 +18,26 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
-use cosmian_logger::trace;
 
-use super::common::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
-#[cfg(feature = "non-fips")]
-use crate::core::cover_crypt::rekey_keypair_cover_crypt;
+use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate};
 use crate::{
     core::{
         KMS,
         operations::{create_key_pair::generate_key_pair, key_ops::KeySelectionSpec},
-        uid_utils::{parse_keyset_identifier, resolve_keyset_to_single_uid},
     },
     error::KmsError,
     result::{KResult, KResultHelper},
 };
 
-/// Implementor of [`RekeyOperation`] for KMIP `ReKeyKeyPair` (KMIP 1.4 §4.5 / KMIP 2.1 §6.1.47) on asymmetric key pairs.
-struct KeypairRekey {
-    /// The `offset` from the `ReKeyKeyPair` request (date computation per KMIP 1.4 Table 176 / KMIP 2.1 Table 308).
-    offset: Option<i64>,
+/// Implementor of [`RekeyOperation`] for KMIP `ReKeyKeyPair` (KMIP 1.4 §4.5 / KMIP 2.1
+/// §6.1.47) on SQL-backed asymmetric key pairs.
+pub(in crate::core::operations::rekey) struct SqlKeypairRekeyer {
+    /// The `offset` from the `ReKeyKeyPair` request (date computation per KMIP 1.4 Table
+    /// 176 / KMIP 2.1 Table 308).
+    pub offset: Option<i64>,
 }
 
-impl KeySelectionSpec for KeypairRekey {
+impl KeySelectionSpec for SqlKeypairRekeyer {
     const KMIP_OP: KmipOperation = KmipOperation::Rekey;
     const OP_NAME: &'static str = "ReKeyKeyPair";
 
@@ -68,146 +64,7 @@ impl KeySelectionSpec for KeypairRekey {
     }
 }
 
-/// KMIP `ReKeyKeyPair` operation for asymmetric key pairs.
-///
-/// Per KMIP 1.4 §4.5:
-/// - Creates a replacement key pair with new Unique Identifiers.
-/// - Sets `ReplacementObjectLink` on both old private and public keys.
-/// - Sets `ReplacedObjectLink` on both new private and public keys.
-/// - The replacement keys take over the Name attributes of the existing keys.
-/// - The existing keys' State is NOT changed.
-/// - If `offset` is provided, date computation per Table 176 is applied.
-/// - Rotation metadata is set on both old and new keys.
-///
-/// For Covercrypt keys (non-FIPS only), delegates to the existing in-place
-/// attribute-level rekey which mutates the key material without creating new UIDs.
-pub(crate) async fn rekey_keypair(
-    kms: &KMS,
-    request: ReKeyKeyPair,
-    user: &str,
-) -> KResult<ReKeyKeyPairResponse> {
-    trace!("ReKeyKeyPair: {}", serde_json::to_string(&request)?);
-
-    // Covercrypt early-return: uses a completely different code path (in-place attribute rekey)
-    // that doesn't fit the rotation trait pattern.
-    #[cfg(feature = "non-fips")]
-    if let Some(response) = kms.try_covercrypt_rekey(&request, user).await? {
-        return Ok(response);
-    }
-
-    // Resolve keyset references (`name@latest`, `name@first`, `name@N`, bare name) to a concrete
-    // private-key UID before routing, so that `re-key --key-id my-kp@latest` works transparently.
-    let request = if let Some(uid_str) = request
-        .private_key_unique_identifier
-        .as_ref()
-        .and_then(|u| u.as_str())
-    {
-        if let Some(keyset_ref) = parse_keyset_identifier(uid_str) {
-            if let Some(resolved) = resolve_keyset_to_single_uid(&keyset_ref, kms, user).await? {
-                trace!(
-                    "ReKeyKeyPair: resolved keyset ref '{}' -> '{}'",
-                    uid_str, resolved
-                );
-                ReKeyKeyPair {
-                    private_key_unique_identifier: Some(UniqueIdentifier::TextString(resolved)),
-                    ..request
-                }
-            } else {
-                return Err(KmsError::InvalidRequest(format!(
-                    "ReKeyKeyPair: keyset '{uid_str}' not found or has no resolvable latest key"
-                )));
-            }
-        } else {
-            request
-        }
-    } else {
-        request
-    };
-
-    Box::pin(execute_rekey(
-        &KeypairRekey {
-            offset: request.offset,
-        },
-        kms,
-        &request,
-        user,
-    ))
-    .await
-}
-
-impl KMS {
-    /// Attempt Covercrypt-specific rekey. Returns `Some(response)` if handled, `None` otherwise.
-    #[cfg(feature = "non-fips")]
-    async fn try_covercrypt_rekey(
-        &self,
-        request: &ReKeyKeyPair,
-        user: &str,
-    ) -> KResult<Option<ReKeyKeyPairResponse>> {
-        let uid_or_tags = request
-            .private_key_unique_identifier
-            .as_ref()
-            .ok_or(KmsError::UnsupportedPlaceholder)?
-            .as_str()
-            .context("ReKeyKeyPair: the private key unique identifier must be a string")?;
-
-        for owm in self
-            .retrieve_eligible_keys(uid_or_tags, ObjectType::PrivateKey)
-            .await?
-        {
-            let key_format_type = owm.attributes().key_format_type.or_else(|| {
-                owm.object()
-                    .attributes()
-                    .ok()
-                    .and_then(|a| a.key_format_type)
-            });
-
-            if key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
-                let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
-                    KmsError::InvalidRequest(
-                        "ReKeyKeyPair: the private key attributes must be supplied for Covercrypt"
-                            .to_owned(),
-                    )
-                })?;
-                if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
-                    let action = rekey_edit_action_from_attributes(self.vendor_id(), attributes)?;
-                    let response = Box::pin(rekey_keypair_cover_crypt(
-                        self,
-                        Covercrypt::default(),
-                        owm.id().to_owned(),
-                        user,
-                        action,
-                        owm.attributes().sensitive.unwrap_or(false),
-                    ))
-                    .await
-                    .context("ReKeyKeyPair: Covercrypt rekey failed")?;
-                    return Ok(Some(response));
-                }
-            }
-        }
-        Ok(None)
-    }
-
-    /// Retrieve the linked public key from the database.
-    async fn retrieve_linked_public_key(
-        &self,
-        pk_uid: &str,
-    ) -> KResult<cosmian_kms_server_database::reexport::cosmian_kms_interfaces::ObjectWithMetadata>
-    {
-        self.database
-            .retrieve_objects(pk_uid)
-            .await?
-            .into_values()
-            .next()
-            .ok_or_else(|| {
-                KmsError::Kmip21Error(
-                    ErrorReason::Item_Not_Found,
-                    format!("ReKeyKeyPair: linked public key '{pk_uid}' not found in database"),
-                )
-            })
-    }
-}
-
-impl RekeyOperation for KeypairRekey {
+impl RekeyOperation for SqlKeypairRekeyer {
     type Candidates = [RotationCandidate; 2];
     type Replacements = [ReplacementObject; 2];
     type Request = ReKeyKeyPair;
@@ -234,9 +91,8 @@ impl RekeyOperation for KeypairRekey {
             .as_str()
             .context("ReKeyKeyPair: the private key unique identifier must be a string")?;
 
-        // HSM-managed keys cannot be re-keyed via KMIP: they have no KMIP attribute
-        // storage and are often non-extractable (CKA_EXTRACTABLE = false).
-        // Use PKCS#11 vendor tools for HSM key lifecycle management.
+        // HSM-managed keys cannot be re-keyed via the SQL pipeline: they have no KMIP
+        // attribute storage and are often non-extractable (CKA_EXTRACTABLE = false).
         if uid_or_tags.starts_with("hsm::") {
             return Err(KmsError::NotSupported(
                 "Re-Key Key Pair is not supported for HSM-managed keys. \
@@ -266,16 +122,8 @@ impl RekeyOperation for KeypairRekey {
             .await?;
 
         // Reject Re-Key on a retired (non-latest) member of a named keyset.
-        if !kms
-            .is_keyset_latest(owm.id(), owm.attributes(), user)
-            .await?
-        {
-            return Err(KmsError::InvalidRequest(format!(
-                "ReKeyKeyPair: key '{}' is not the latest in its keyset — only the \
-                     latest generation can be rotated",
-                owm.id()
-            )));
-        }
+        kms.enforce_keyset_latest(owm.id(), owm.attributes(), user, "ReKeyKeyPair")
+            .await?;
 
         // Resolve paired public key (post-selection: only for the winning candidate)
         let old_sk_uid = owm.id().to_owned();

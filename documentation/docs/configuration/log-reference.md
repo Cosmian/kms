@@ -407,8 +407,8 @@ Crate path: `crate/server`
 | `trace` | `Processing PKCS12 import` | `src/core/operations/import.rs` | — | — |
 | `trace` | `Public key attributes after lifecycle update: {}` | `src/core/operations/create_key_pair.rs` | — | — |
 | `trace` | `Public key extracted from PKCS12` | `src/core/operations/import.rs` | — | — |
-| `trace` | `ReKey: {}` | `src/core/operations/rekey/symmetric.rs` | — | — |
-| `trace` | `ReKeyKeyPair: {}` | `src/core/operations/rekey/keypair.rs` | — | — |
+| `trace` | `ReKey: {}` | `src/core/operations/rekey/symmetric/mod.rs` | — | — |
+| `trace` | `ReKeyKeyPair: {}` | `src/core/operations/rekey/keypair/mod.rs` | — | — |
 | `trace` | `Request: {:?}` | `src/routes/azure_ekm/mod.rs` | — | ×4 in this file |
 | `trace` | `request: {username} {}` | `src/start_kms_server.rs` | `username` — … | — |
 | `trace` | `Response message: {response_message}` | `src/core/operations/message.rs` | `response_message` — … | — |
@@ -554,10 +554,9 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate] Rotating key {uid}` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `trace` | `Auto-deactivating object {} (deactivation_date {} <= now {})` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
 | `trace` | `execute_keyset_try_each: key {} failed for {}: {}` | `src/core/operations/key_ops/crypto_op.rs` | - | - |
-| `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
+| `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
 | `trace` | `ReCertify: {}` | `src/core/operations/recertify.rs` | - | - |
-| `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric.rs` | - | - |
-| `trace` | `ReKeyKeyPair: resolved keyset ref '{}' -> '{}'` | `src/core/operations/rekey/keypair.rs` | - | - |
+| `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
 | `trace` | `SetAttribute: clearing CKA_START_DATE / CKA_END_DATE on HSM key '{}' (rotation disabled)` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
@@ -594,6 +593,7 @@ Crate path: `crate/server`
 | `trace` | `` PKCS#11 `C_SeedRandom` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_UnwrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `ReKeyKeyPair: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/keypair/mod.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -892,7 +892,6 @@ Crate path: `crate/hsm/base_hsm`
 | `warn` | `HSM library already initialized (CKR_CRYPTOKI_ALREADY_INITIALIZED); continuing` | `src/hsm_lib.rs` | - | - |
 | `warn` | `user already logged in, ignoring logging` | `src/slots.rs` | - | - |
 | `debug` | `Creating new session: {session_handle}. Logging in? {logging_in}` | `src/session/session_impl.rs` | `session_handle`: session handle<br>`logging_in`: logging in | - |
-| `debug` | `Failed to encrypt data with hash {hash}: {rv}` | `src/session/session_impl.rs` | `hash`: hash<br>`rv`: PKCS#11 return code | - |
 | `debug` | `Found {} possible handles` | `src/session/session_impl.rs` | - | - |
 | `debug` | `Invalid object, skipping` | `src/kms_hsm.rs` | - | - |
 | `debug` | `Logging in session {session_handle} with password` | `src/slots.rs` | `session_handle`: session handle | - |
@@ -905,6 +904,7 @@ Crate path: `crate/hsm/base_hsm`
 | `debug` | `Using PKCS#11 library with {:?}` | `src/base_hsm.rs` | - | - |
 | `trace` | `Doing round with {round_length} bytes. {processed_length} of {total_length} done` | `src/session/session_impl.rs` | `round_length` — …<br>`processed_length` — …<br>`total_length` — … | ×2 in this file |
 | `trace` | `Found {object_count} objects` | `src/session/session_impl.rs` | `object_count` — … | — |
+| `debug` | `OAEP hash {hash} not supported: {e}` | `src/session/session_impl.rs` | `hash`, `e` | - |
 
 ---
 

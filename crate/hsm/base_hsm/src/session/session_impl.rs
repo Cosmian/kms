@@ -311,6 +311,13 @@ impl Session {
 
         let mut supported = Vec::new();
 
+        // Probe each hash by performing a real (dummy) single-part encryption.
+        // Using encrypt_with_mechanism (C_EncryptInit + C_Encrypt) guarantees the
+        // session returns to a clean state after each probe: per PKCS#11, C_Encrypt
+        // terminates the active encryption operation on completion.  Stopping at
+        // C_EncryptInit would leave `self.handle` in ENCRYPT state, causing
+        // CKR_OPERATION_ACTIVE (130) for the next hash and for any later operations
+        // (including C_DestroyObject on the temp key and keys created by other tests).
         for (hash, mgf) in candidates {
             let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: *hash,
@@ -326,20 +333,11 @@ impl Session {
                 ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
             };
 
-            // We don't actually encrypt, just see if init succeeds
-            #[expect(unsafe_code)]
-            let rv = unsafe {
-                self.hsm.C_EncryptInit.ok_or_else(|| {
-                    drop(self.destroy_object(sk_handle));
-                    drop(self.destroy_object(pk_handle));
-                    HError::Default("C_EncryptInit not available on library".to_owned())
-                })?(self.handle, &raw mut mechanism, pk_handle)
-            };
-
-            if rv == CKR_OK {
-                supported.push(*hash);
-            } else {
-                debug!("Failed to encrypt data with hash {hash}: {rv}");
+            // A 1-byte plaintext is minimal but valid for RSA-1024 OAEP.
+            let dummy_plaintext = [0_u8; 1];
+            match self.encrypt_with_mechanism(pk_handle, &mut mechanism, &dummy_plaintext) {
+                Ok(_) => supported.push(*hash),
+                Err(e) => debug!("OAEP hash {hash} not supported: {e}"),
             }
         }
         self.destroy_object(sk_handle)?;
@@ -1882,36 +1880,46 @@ impl Session {
 
     /// Parse keyset metadata from a `CKA_LABEL` value.
     ///
-    /// Format: `rotate_name::generation::key_id[::latest]`
-    /// The optional `::latest` suffix is accepted for backward compatibility with
-    /// existing HSM keys but is no longer used; callers determine the latest
-    /// generation by comparing `rotate_generation` values.
+    /// Format: `rotate_name::generation::key_id[@latest]`
+    /// The optional `@latest` suffix is accepted for backward compatibility with
+    /// existing HSM keys (older format used `::latest`) but is not used for
+    /// determining the latest generation; callers compare `rotate_generation` values.
     ///
     /// Returns `(rotate_name, rotate_generation)`.
     /// Returns `(None, None)` if the label does not match the format
     /// (e.g. plain keys whose label is just an identifier).
     pub(crate) fn parse_label_metadata(label: &str) -> (Option<String>, Option<i32>) {
-        // Minimum viable format: "name::gen::keyid" (3 segments)
-        let parts: Vec<&str> = label.splitn(4, "::").collect();
-        if parts.len() < 3 {
-            return (None, None);
-        }
-        let Some(rotate_name) = parts.first() else {
+        // Format: "rotate_name::generation::key_id[@latest]"
+        //
+        // `rotate_name` may itself contain "::" — for HSM-resident keys the convention is
+        // rotate_name = "hsm::<slot>::<key_id>" (the full base UID), which is unique across
+        // slots.  Split from the RIGHT so the variable-length rotate_name is always the
+        // residual left segment, regardless of how many "::" it contains.
+        //
+        // rsplitn(3, "::") yields (from right to left):
+        //   index 0 → key_id[@latest]
+        //   index 1 → generation (must parse as i32)
+        //   index 2 → rotate_name  (may contain "::")
+        let mut rparts = label.rsplitn(3, "::");
+        let Some(_key_id) = rparts.next() else {
             return (None, None);
         };
-        let Some(gen_str) = parts.get(1) else {
+        let Some(gen_str) = rparts.next() else {
+            return (None, None);
+        };
+        let Some(rotate_name) = rparts.next() else {
             return (None, None);
         };
         let Ok(generation) = gen_str.parse::<i32>() else {
             return (None, None);
         };
-        (Some((*rotate_name).to_owned()), Some(generation))
+        (Some(rotate_name.to_owned()), Some(generation))
     }
 
     /// Build the `CKA_LABEL` value for a keyset key.
     ///
     /// Format: `rotate_name::generation::key_id` (retired) or
-    ///         `rotate_name::generation::key_id::latest` (current latest).
+    ///         `rotate_name::generation::key_id@latest` (current latest).
     // Used by the HSM ReKey flow (Phase 3).
     #[allow(dead_code)]
     pub(crate) fn build_keyset_label(
@@ -1921,7 +1929,7 @@ impl Session {
         latest: bool,
     ) -> String {
         if latest {
-            format!("{rotate_name}::{generation}::{key_id}::latest")
+            format!("{rotate_name}::{generation}::{key_id}@latest")
         } else {
             format!("{rotate_name}::{generation}::{key_id}")
         }

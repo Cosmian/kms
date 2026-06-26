@@ -360,7 +360,7 @@ pub trait HSM: Send + Sync {
     /// Set `CKA_LABEL` on a key object.
     ///
     /// The label encodes keyset metadata in the format
-    /// `rotate_name::generation::key_id[::latest]`.
+    /// `rotate_name::generation::key_id[@latest]`.
     ///
     /// # Arguments
     /// * `slot_id` - the slot ID of the HSM

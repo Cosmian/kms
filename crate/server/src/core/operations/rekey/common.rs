@@ -101,6 +101,26 @@ impl KMS {
         }))
     }
 
+    /// Reject a Re-Key / Re-KeyKeyPair request when the selected key is not the latest
+    /// generation in its named keyset.
+    ///
+    /// No-ops for keys that are not part of a named keyset (no `rotate_name`).
+    pub(crate) async fn enforce_keyset_latest(
+        &self,
+        uid: &str,
+        attrs: &Attributes,
+        user: &str,
+        op_name: &str,
+    ) -> KResult<()> {
+        if !self.is_keyset_latest(uid, attrs, user).await? {
+            return Err(KmsError::InvalidRequest(format!(
+                "{op_name}: key '{uid}' is not the latest in its keyset — only the latest \
+                 generation can be rotated"
+            )));
+        }
+        Ok(())
+    }
+
     /// Phase 2 of a rekey operation: retire old keys, re-wrap dependants, and commit atomically.
     pub(crate) async fn finalize_rekey(
         &self,

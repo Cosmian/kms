@@ -6,6 +6,7 @@ use cosmian_logger::trace;
 use crate::{
     config::HsmInstanceParams,
     core::KMS,
+    error::KmsError,
     result::{KResult, KResultHelper},
 };
 
@@ -120,14 +121,26 @@ fn looks_like_uuid(s: &str) -> bool {
 /// Returns `None` if the identifier doesn't match keyset syntax.
 pub(crate) fn parse_keyset_identifier(identifier: &str) -> Option<KeysetRef> {
     // Skip tags and UUIDs.
-    // HSM UIDs with an `@` suffix ARE valid keyset references: the user addresses
-    // the keyset by its rotate_name, not by an hsm:: UID.
     if identifier.starts_with('[') {
         return None;
     }
-    // A bare `hsm::...` UID (no `@`) is a direct key address, not a keyset ref.
-    if identifier.starts_with("hsm::") && !identifier.contains('@') {
-        return None;
+    // HSM UID handling:
+    // - With an `@N` generation suffix (e.g. `hsm::softhsm2::0::my-key@1`) → direct PKCS#11
+    //   key handle for a specific generation; never a keyset reference.
+    // - Without `@N` (plain base UID, e.g. `hsm::softhsm2::0::my-key`) → this IS the keyset
+    //   name (= rotate_name = full base UID). Treat it as a bare keyset reference so that:
+    //     · Encrypt / Sign (`SingleLatest`) resolves to the current latest generation.
+    //     · Decrypt / Verify (`TryEach`) chain-walks through all generations newest-to-oldest.
+    if identifier.starts_with("hsm::") {
+        if identifier.contains('@') {
+            // Explicit `@N` → direct generation handle, not a keyset ref.
+            return None;
+        }
+        // Plain HSM base UID → bare keyset reference.
+        return Some(KeysetRef {
+            name: identifier.to_owned(),
+            version: KeysetVersion::Bare,
+        });
     }
 
     if let Some(at_pos) = identifier.rfind('@') {
@@ -218,6 +231,43 @@ pub(crate) async fn resolve_keyset_to_single_uid(
                 .max_by_key(|(_, attrs)| attrs.rotate_generation.unwrap_or(0));
             Ok(best.map(|(uid, _)| uid))
         }
+    }
+}
+
+/// Resolve a keyset reference in a rekey operation to a concrete UID.
+///
+/// This combines [`parse_keyset_identifier`] + [`resolve_keyset_to_single_uid`] into a
+/// single call with uniform error handling, suitable for use in rekey dispatchers.
+///
+/// # Return value
+/// - `Ok(None)` — `uid` is not a keyset reference, or is a bare keyset name that has no
+///   members (key exists but has no `rotate_name` set, or keyset lookup returns empty).
+///   The caller should treat `uid` as a direct object identifier.
+/// - `Ok(Some(resolved_uid))` — `uid` was a keyset reference and resolved successfully.
+/// - `Err(...)` — `uid` used an explicit versioned keyset syntax (`@latest`, `@N`, `@first`)
+///   but the keyset could not be found; this is always a user error.
+pub(crate) async fn resolve_uid_or_keyset(
+    uid: &str,
+    op_name: &str,
+    kms: &KMS,
+    user: &str,
+) -> KResult<Option<String>> {
+    let Some(keyset_ref) = parse_keyset_identifier(uid) else {
+        return Ok(None);
+    };
+    let resolved = resolve_keyset_to_single_uid(&keyset_ref, kms, user).await?;
+    match resolved {
+        Some(resolved_uid) => Ok(Some(resolved_uid)),
+        None => match &keyset_ref.version {
+            // Bare name (or plain HSM base UID): no keyset members found → fall through
+            // to direct object lookup. The key may simply have no rotate_name set yet.
+            KeysetVersion::Bare => Ok(None),
+            // Explicit versioned ref (`@latest`, `@N`, `@first`): not finding the keyset
+            // is always a user error.
+            _ => Err(KmsError::InvalidRequest(format!(
+                "{op_name}: keyset '{uid}' not found or has no resolvable latest key"
+            ))),
+        },
     }
 }
 
@@ -318,7 +368,23 @@ mod tests {
 
     #[test]
     fn test_parse_hsm_not_keyset() {
-        assert!(parse_keyset_identifier("hsm::softhsm2::0::my-key").is_none());
+        // HSM UID with @N suffix → explicit generation handle, NOT a keyset ref.
+        assert!(parse_keyset_identifier("hsm::softhsm2::0::my-key@1").is_none());
+        assert!(parse_keyset_identifier("hsm::softhsm2::0::my-key@2").is_none());
+        assert!(parse_keyset_identifier("hsm::1667223158::vec_rk_fl@1").is_none());
+    }
+
+    #[test]
+    fn test_parse_hsm_plain_base_uid_is_keyset() {
+        // Plain HSM base UID (no @N) → bare keyset reference (= rotate_name).
+        let r = parse_keyset_identifier("hsm::softhsm2::0::my-key").expect("should parse");
+        assert_eq!(r.name, "hsm::softhsm2::0::my-key");
+        assert_eq!(r.version, KeysetVersion::Bare);
+
+        // Also works for the legacy single-segment slot format.
+        let r2 = parse_keyset_identifier("hsm::1667223158::vec_rk_fl").expect("should parse");
+        assert_eq!(r2.name, "hsm::1667223158::vec_rk_fl");
+        assert_eq!(r2.version, KeysetVersion::Bare);
     }
 
     #[test]

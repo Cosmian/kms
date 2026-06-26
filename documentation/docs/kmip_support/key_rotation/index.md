@@ -18,8 +18,8 @@ On every rotation the server:
 5. Increments `x-rotate-generation` and records `x-rotate-date` on the new object.
 
 > **Auto-rotation** (scheduler-driven, policy-based) is covered separately in
-> [Auto-Rotation Policy](key_auto_rotation_policy.md).
-> **HSM key rotation** is covered in [HSM Key Rotation](key_rotation_hsm.md).
+> [Auto-Rotation Policy](auto_rotation_policy.md).
+> **HSM key rotation** is covered in [HSM Key Rotation](hsm.md).
 
 ---
 

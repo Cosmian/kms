@@ -439,7 +439,7 @@ impl ObjectsStore for HsmStore {
     /// Find HSM keys by keyset name, with optional generation and latest filters.
     ///
     /// The keyset name is parsed from `CKA_LABEL` which carries the format
-    /// `rotate_name::generation::key_id[::latest]`. This allows keys to be
+    /// `rotate_name::generation::key_id[@latest]`. This allows keys to be
     /// addressed by their logical name rather than their physical UID.
     async fn find_by_rotate_name(
         &self,

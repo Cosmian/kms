@@ -43,16 +43,20 @@ impl RotationPolicyArgs {
     /// Validate `rotate_name` / `key_id` consistency and return the effective key ID to use.
     ///
     /// For SQL keys the keyset invariant requires `key_id == rotate_name` at creation time.
+    /// For HSM-resident keys the key ID has the form `hsm::<slot>::<base_id>`; in that case
+    /// the `base_id` (last `::` segment) must match `rotate_name`.
     /// This check runs client-side so the user gets a clear error before any request is sent.
     ///
     /// Rules:
     /// - If `rotate_name` is `None`, return `key_id` unchanged.
     /// - If `rotate_name` is set and `key_id` is `None`, use `rotate_name` as the key ID.
     /// - If both are set and equal, return `key_id` unchanged.
-    /// - If both are set but differ, return an error immediately.
+    /// - If both are set and `key_id` is an HSM UID whose base segment equals `rotate_name`,
+    ///   return `key_id` unchanged.
+    /// - If both are set but incompatible, return an error immediately.
     ///
     /// # Errors
-    /// Returns an error when `rotate_name` and `key_id` are both set but do not match.
+    /// Returns an error when `rotate_name` and `key_id` are both set but incompatible.
     pub fn effective_key_id<'a>(&'a self, key_id: Option<&'a str>) -> KmsCliResult<Option<String>> {
         self.rotate_name
             .as_deref()
@@ -61,6 +65,14 @@ impl RotationPolicyArgs {
                 |name| match key_id {
                     None => Ok(Some(name.to_owned())),
                     Some(id) if id == name => Ok(Some(id.to_owned())),
+                    // HSM UIDs: "hsm::<slot>::<base_id>" — allow when base_id == name
+                    Some(id)
+                        if id
+                            .rsplit_once("::")
+                            .is_some_and(|(_, base)| base == name) =>
+                    {
+                        Ok(Some(id.to_owned()))
+                    }
                     Some(id) => Err(crate::error::KmsCliError::Default(format!(
                         "key ID '{id}' must equal the rotation name '{name}' — \
                          use --key-id {name} or omit --key-id to use the rotation name as the key ID"

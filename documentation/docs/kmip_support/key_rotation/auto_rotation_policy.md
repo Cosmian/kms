@@ -6,10 +6,10 @@ attached to a key object; a background scheduler then rotates any key whose
 interval has elapsed — without any operator action.
 
 > **HSM keys** support manual rotation only; the auto-rotation scheduler never
-> picks up HSM UIDs.  See [HSM Key Rotation](key_rotation_hsm.md).
+> picks up HSM UIDs.  See [HSM Key Rotation](hsm.md).
 >
 > For the rotation flows and sequence diagrams for each key type, see
-> [Key Rotation](key_rotation.md).
+> [Key Rotation](index.md).
 
 ---
 
@@ -21,7 +21,7 @@ the key object itself:
 | Attribute             | Type            | Mutable | Description                                                                          |
 | --------------------- | --------------- | :-----: | ------------------------------------------------------------------------------------ |
 | `x-rotate-interval`   | `i64` (seconds) | ✅      | How often to rotate.  `0` disables auto-rotation.                                   |
-| `x-rotate-name`       | `string`        | ✅      | Keyset name this key belongs to (see [Key Rotation — Keysets](key_rotation.md#keysets)). |
+| `x-rotate-name`       | `string`        | ✅      | Keyset name this key belongs to (see [Key Rotation — Keysets](index.md#keysets)). |
 | `x-rotate-offset`     | `i64` (seconds) | ✅      | Shift the first rotation trigger by this many seconds after `Initial Date`.          |
 | `x-rotate-generation` | `i32`           | ❌      | Incremented on every rotation; `0` for never-rotated keys. **Server-managed.**       |
 | `x-rotate-date`       | `datetime`      | ❌      | Timestamp of the last rotation. **Server-managed.**                                  |
@@ -211,4 +211,4 @@ OTel-compatible backend (Prometheus + Grafana, Datadog, …) to:
 - Audit which keys were rotated and when.
 - Track rotation throughput across the fleet.
 
-See [Monitoring](../configuration/monitoring-setup.md) for the full OTel setup guide.
+See [Monitoring](../../configuration/monitoring-setup.md) for the full OTel setup guide.
