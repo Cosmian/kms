@@ -583,6 +583,7 @@ Crate path: `crate/server`
 | `info` | `\n{:?}` | `src/routes/kmip.rs` | — | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
+| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
 
 
 ### `cosmian_kms_server_database`
@@ -1213,7 +1214,7 @@ Crate path: `ui/src/`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `error` | `JWT fallback failed:` | `App.tsx` | `error`: JS Error from the catch block, passed as second argument to console.error | - |
+| `error` | `JWT fallback failed:` | `App.tsx` | `error`: JS Error from the catch block, passed as second argument to console.error | [REMOVED] |
 | `warn` | `revoke_ttlv_request not available in WASM package` | `components/common/Locate.tsx` | - | - |
 | `info` | `[KMS] vendor_id set to "{vendorId}"` | `App.tsx` | `vendorId`: vendor identifier string received from the server | - |
 | `error` | `Aggregate date error:` | `actions/Tokenize/TokenizeAggregateDate.tsx` | — | — |
@@ -1255,5 +1256,6 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len` | `actions/EC/ECVerify.tsx` | — | — |
 | `debug` | `RsaSign: signature length` | `actions/RSA/RsaSign.tsx` | — | — |
 | `debug` | `RsaVerify: dataBuf len` | `actions/RSA/RsaVerify.tsx` | — | — |
+| `log` | `JWT fallback failed:` | `App.tsx` | - | - |
 
 ---
