@@ -22,8 +22,6 @@ from typing import Optional
 # Path resolution
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-AGENT_DIR = SCRIPT_DIR.parent
-DOC_FILE = AGENT_DIR / 'documentation' / 'docs' / 'configuration' / 'log-reference.md'
 
 
 def _find_repo_root() -> Path:
@@ -38,6 +36,7 @@ def _find_repo_root() -> Path:
 
 REPO_ROOT = _find_repo_root()
 CARGO_TOML = REPO_ROOT / 'Cargo.toml'
+DOC_FILE = REPO_ROOT / 'documentation' / 'docs' / 'configuration' / 'log-reference.md'
 
 # Crate list
 
