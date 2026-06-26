@@ -20,7 +20,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::openssl::kmip_public_key_to_openssl,
 };
-use cosmian_logger::{info, warn};
+use cosmian_logger::{info, trace, warn};
 use jsonwebtoken::jwk::{
     AlgorithmParameters, CommonParameters, EllipticCurve, EllipticCurveKeyParameters,
     EllipticCurveKeyType, Jwk, JwkSet, KeyAlgorithm, PublicKeyUse, RSAKeyParameters, RSAKeyType,
@@ -115,6 +115,11 @@ async fn build_jwk_set(kms: &KMS) -> KResult<(JwkSet, bool)> {
 /// - `ObjectType::PublicKey`
 /// - Tagged [`JWKS_TAG`] (`"jwks"`)
 /// - `State` is `Active` or `Deactivated`
+///
+/// **Key ordering**: keys are returned in database insertion order (for SQLite).
+/// The order is stable within a session but is not guaranteed to be stable across
+/// server restarts or across different database backends (PostgreSQL, MySQL).
+/// JWKS consumers **must not** rely on position — always match keys by `kid`.
 async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object)>> {
     let mut filter = Attributes {
         object_type: Some(ObjectType::PublicKey),
@@ -149,6 +154,11 @@ async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object
             }
         }
     }
+    trace!(
+        "JWKS key order is database insertion order — not stable across restarts or backends. \
+         Returning {} eligible key(s); consumers must match by `kid`, not position.",
+        objects.len()
+    );
     Ok(objects)
 }
 

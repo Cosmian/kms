@@ -241,7 +241,7 @@ pub struct ClapConfig {
     pub secret_backends: SecretBackendConfig,
 
     #[command(flatten)]
-    pub jwks_endpoint_config: JwksEndpointConfig,
+    pub jwks_endpoint: JwksEndpointConfig,
 }
 
 impl ClapConfig {

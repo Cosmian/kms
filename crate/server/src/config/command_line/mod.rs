@@ -23,8 +23,8 @@ pub use db::{DEFAULT_SQLITE_PATH, DatabaseType, MainDBConfig};
 pub use google_cse_config::GoogleCseConfig;
 pub use hsm_config::{HsmConfig, HsmModel};
 pub use http_config::{HttpConfig, default_cors_origins};
-pub use jwks_endpoint_config::JwksEndpointConfig;
 pub use idp_auth_config::IdpAuthConfig;
+pub use jwks_endpoint_config::JwksEndpointConfig;
 pub use kmip_policy_config::{
     AesKeySize, KmipAllowlistsConfig, KmipPolicyConfig, KmipPolicyId, RsaKeySize,
 };

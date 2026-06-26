@@ -24,12 +24,13 @@ markdown_extensions:
       permalink: true
       baselevel: 1
   - pymdownx.superfences:
-          # make exceptions to highlighting of code:
+      # make exceptions to highlighting of code:
       custom_fences:
         - name: mermaid
-          class: mermaid
-                # Uncomment the following line to check Mermaid figures
-                # format: !!python/name:mermaid2.fence_mermaid_custom
+          class:
+            mermaid
+            # Uncomment the following line to check Mermaid figures
+            # format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji
@@ -85,7 +86,7 @@ nav:
       - JOSE / REST Crypto:
           - REST Native Crypto API: integrations/jose/rest_crypto_api.md
           - JWE Key Unwrap: integrations/jose/jwe_decryption.md
-          - JWKS Key Selection: integrations/jose/jwks_key_selection.md
+          - JWKS Endpoint: integrations/jose/jwks_endpoint.md
       - Cloud providers:
           - Amazon Web Services (AWS):
               - ECS Fargate: integrations/cloud_providers/aws/fargate.md

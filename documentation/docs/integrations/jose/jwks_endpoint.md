@@ -1,4 +1,4 @@
-# JWKS key selection
+# JWKS endpoint
 
 The KMS exposes a standard [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517)
 JWKS endpoint at:
@@ -8,10 +8,10 @@ GET /.well-known/jwks.json
 ```
 
 By default, every public key pair created through the REST API is **automatically tagged
-`"jwks"`** and immediately advertised in the JWKS document. No extra step is
+`jwks`** and immediately advertised in the JWKS document. No extra step is
 needed for the common case.
 
-To exclude a specific public key from the JWKS remove its `"jwks"` tag via the tag management
+To exclude a specific public key from the JWKS remove its `jwks` tag via the tag management
 endpoint.
 
 ## How it works
@@ -31,7 +31,7 @@ sequenceDiagram
 
 ```
 
-## Create a key pair — the simple path
+## Quickstart
 
 ```bash
 # EC P-256 key for JWS (ES256)
@@ -54,8 +54,6 @@ the public key (`kid_public`):
   "key_ops": ["sign", "verify"]
 }
 ```
-
-The public key is now in the JWKS document. No further action is required.
 
 ### Verify the key is advertised
 
@@ -81,11 +79,9 @@ Expected output (abbreviated):
 }
 ```
 
----
-
 ## Opt a key out of JWKS
 
-Remove the `"jwks"` tag from the public key to stop advertising it. The key
+Remove the `jwks` tag from the public key to stop advertising it. The key
 material is not deleted.
 
 ```bash
@@ -95,13 +91,13 @@ curl -s -X DELETE "https://kms.example.com/v1/crypto/keys/${KID_PUBLIC}/tags" \
   -d '{"tags": ["jwks"]}'
 ```
 
-The response confirms the updated tag set (the `"jwks"` tag will be absent):
+The response confirms the updated tag set (the `jwks` tag is absent):
 
 ```json
 { "kid": "<public-key-uuid>", "tags": [] }
 ```
 
----
+If you later want to re-advertise a key that was previously opted out, add the`jwks` tag back via `https://kms.example.com/v1/crypto/keys/${KID_PUBLIC}/tags`
 
 ## Key rotation
 
@@ -125,40 +121,11 @@ curl -s -X DELETE "https://kms.example.com/v1/crypto/keys/${OLD_KID_PUBLIC}/tags
   -d '{"tags": ["jwks"]}'
 ```
 
----
-
-## Inspect the current tags on a public key
-
-```bash
-curl -s "https://kms.example.com/v1/crypto/keys/${KID_PUBLIC}/tags" \
-  -H "Authorization: Bearer ${TOKEN}"
-```
-
-```json
-{ "kid": "<public-key-uuid>", "tags": ["jwks"] }
-```
-
----
-
-## Re-add a key to JWKS
-
-If you later want to re-advertise a key that was previously opted out, add the
-`"jwks"` tag back:
-
-```bash
-curl -s -X POST "https://kms.example.com/v1/crypto/keys/${KID_PUBLIC}/tags" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"tags": ["jwks"]}'
-```
-
----
-
 ## Keys created outside the REST API
 
 Keys created directly through the KMIP protocol (e.g. via `ckms` or a KMIP
 client library) are **not** auto-tagged. To include such a key in the JWKS
-document, explicitly add the `"jwks"` tag:
+document, explicitly add the `jwks` tag:
 
 ```bash
 curl -s -X POST "https://kms.example.com/v1/crypto/keys/${KID_PUBLIC}/tags" \
@@ -166,8 +133,6 @@ curl -s -X POST "https://kms.example.com/v1/crypto/keys/${KID_PUBLIC}/tags" \
   -H "Content-Type: application/json" \
   -d '{"tags": ["jwks"]}'
 ```
-
----
 
 ## Disable auto-tagging globally
 
@@ -182,7 +147,7 @@ configuration:
 | TOML config          | `jwks_endpoint_auto_tag = false`   |
 
 When auto-tagging is disabled, newly created key pairs do **not** receive the
-`"jwks"` tag. To publish a key you must tag it explicitly:
+`jwks` tag. To publish a key you must tag it explicitly:
 
 ```bash
 curl -s -X POST "https://kms.example.com/v1/crypto/keys/${KID_PUBLIC}/tags" \

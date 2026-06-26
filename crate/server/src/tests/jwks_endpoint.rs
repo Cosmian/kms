@@ -3,11 +3,17 @@
 //! Uses the in-process actix-web test infrastructure — no TCP server.
 
 use actix_web::test::{self, call_service, read_body};
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
-    kmip_operations::CreateKeyPairResponse,
-    kmip_types::RecommendedCurve,
-    requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
+    kmip_2_1::{
+        extra::tagging::{EMPTY_TAGS, VENDOR_ID_COSMIAN},
+        kmip_operations::{CreateKeyPairResponse, CreateResponse, RevokeResponse},
+        kmip_types::{CryptographicAlgorithm, RecommendedCurve},
+        requests::{
+            build_revoke_key_request, create_ec_key_pair_request, create_rsa_key_pair_request,
+            symmetric_key_create_request,
+        },
+    },
 };
 use cosmian_logger::log_init;
 use jsonwebtoken::jwk::JwkSet;
@@ -398,6 +404,163 @@ async fn test_jwks_tag_opt_out_flow() -> KResult<()> {
             .iter()
             .any(|k| k.common.key_id.as_deref() == Some(kid_pub_2.as_str())),
         "key 2 should still be in JWKS after key 1 opts out"
+    );
+
+    Ok(())
+}
+
+/// A `Deactivated` public key (rotation overlap) must **still** appear in JWKS.
+///
+/// Rationale: after key rotation, tokens signed with the old private key are still
+/// in circulation until they expire.  Verifiers need the old public key to stay in
+/// JWKS even though the key is deactivated (no longer used for signing).
+#[tokio::test]
+async fn test_jwks_deactivated_key_included() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None, None).await;
+
+    // Create an EC P-256 key pair and tag the public key for JWKS.
+    let kp_req = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        EMPTY_TAGS,
+        RecommendedCurve::P256,
+        false,
+        None,
+    )?;
+    let kp_resp: CreateKeyPairResponse = test_utils::post_2_1(&app, kp_req).await?;
+    let public_kid = kp_resp.public_key_unique_identifier.to_string();
+    let private_kid = kp_resp.private_key_unique_identifier.to_string();
+
+    drop(
+        test_utils::post_json_with_uri::<_, _, serde_json::Value, _>(
+            &app,
+            serde_json::json!({"tags": ["jwks"]}),
+            &format!("/v1/crypto/keys/{public_kid}/tags"),
+        )
+        .await?,
+    );
+
+    // Deactivate via Revoke with CessationOfOperation (→ State::Deactivated).
+    let revoke_req = build_revoke_key_request(
+        &private_kid,
+        RevocationReason {
+            revocation_reason_code: RevocationReasonCode::CessationOfOperation,
+            revocation_message: None,
+        },
+    )?;
+    drop(test_utils::post_2_1::<_, _, RevokeResponse, _>(&app, revoke_req).await?);
+
+    // Deactivated key must still appear in JWKS (rotation overlap).
+    let resp = get_jwks_response(&app).await;
+    assert_eq!(resp.status(), 200);
+    let set: JwkSet = serde_json::from_slice(&read_body(resp).await).expect("valid JwkSet JSON");
+    assert!(
+        set.keys
+            .iter()
+            .any(|k| k.common.key_id.as_deref() == Some(public_kid.as_str())),
+        "deactivated public key must still be in JWKS for rotation overlap"
+    );
+
+    Ok(())
+}
+
+/// A `Compromised` public key must **not** appear in JWKS.
+///
+/// Rationale: a compromised key's signatures cannot be trusted.  Keeping it in
+/// JWKS would allow attackers to present forged tokens as valid.
+#[tokio::test]
+async fn test_jwks_compromised_key_excluded() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None, None).await;
+
+    // Create an EC P-256 key pair and tag the public key for JWKS.
+    let kp_req = create_ec_key_pair_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        EMPTY_TAGS,
+        RecommendedCurve::P256,
+        false,
+        None,
+    )?;
+    let kp_resp: CreateKeyPairResponse = test_utils::post_2_1(&app, kp_req).await?;
+    let public_kid = kp_resp.public_key_unique_identifier.to_string();
+    let private_kid = kp_resp.private_key_unique_identifier.to_string();
+
+    drop(
+        test_utils::post_json_with_uri::<_, _, serde_json::Value, _>(
+            &app,
+            serde_json::json!({"tags": ["jwks"]}),
+            &format!("/v1/crypto/keys/{public_kid}/tags"),
+        )
+        .await?,
+    );
+
+    // Revoke with KeyCompromise → State::Compromised.
+    let revoke_req = build_revoke_key_request(
+        &private_kid,
+        RevocationReason {
+            revocation_reason_code: RevocationReasonCode::KeyCompromise,
+            revocation_message: None,
+        },
+    )?;
+    drop(test_utils::post_2_1::<_, _, RevokeResponse, _>(&app, revoke_req).await?);
+
+    // Compromised key must NOT appear in JWKS.
+    let resp = get_jwks_response(&app).await;
+    assert_eq!(resp.status(), 200);
+    let set: JwkSet = serde_json::from_slice(&read_body(resp).await).expect("valid JwkSet JSON");
+    assert!(
+        !set.keys
+            .iter()
+            .any(|k| k.common.key_id.as_deref() == Some(public_kid.as_str())),
+        "compromised public key must NOT be in JWKS"
+    );
+
+    Ok(())
+}
+
+/// A symmetric key tagged `"jwks"` must **not** appear in JWKS.
+///
+/// JWKS is a public-key format (RFC 7517).  Symmetric key material must never
+/// be published; the endpoint filters by `ObjectType::PublicKey`.
+#[tokio::test]
+async fn test_jwks_symmetric_key_excluded() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None, None).await;
+
+    // Create an AES-256 symmetric key.
+    let create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let cr: CreateResponse = test_utils::post_2_1(&app, create_req).await?;
+    let kid = cr.unique_identifier.to_string();
+
+    // Explicitly tag it "jwks".
+    drop(
+        test_utils::post_json_with_uri::<_, _, serde_json::Value, _>(
+            &app,
+            serde_json::json!({"tags": ["jwks"]}),
+            &format!("/v1/crypto/keys/{kid}/tags"),
+        )
+        .await?,
+    );
+
+    // Symmetric key must NOT appear in JWKS regardless of the tag.
+    let resp = get_jwks_response(&app).await;
+    assert_eq!(resp.status(), 200);
+    let set: JwkSet = serde_json::from_slice(&read_body(resp).await).expect("valid JwkSet JSON");
+    assert!(
+        !set.keys
+            .iter()
+            .any(|k| k.common.key_id.as_deref() == Some(kid.as_str())),
+        "symmetric key must NOT appear in JWKS even when tagged 'jwks'"
     );
 
     Ok(())

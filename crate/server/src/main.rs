@@ -305,7 +305,7 @@ mod tests {
                 azure_ekm_ekm_vendor: String::new(),
                 azure_ekm_ekm_product: String::new(),
             },
-            jwks_endpoint_config: JwksEndpointConfig::default(),
+            jwks_endpoint: JwksEndpointConfig::default(),
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),

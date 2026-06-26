@@ -1059,19 +1059,19 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         // with the empty-prefix default_scope and its restrictive CORS configuration.
         if kms_server_for_http.params.jwks_endpoint.jwks_endpoint_enabled {
             warn!(
-                "JWKS endpoint enabled — all active public keys CREATED USING JOSE OR HAVING THE \"jwks\" tag will be publicly exposed (unauthenticated) at \
+                "JWKS endpoint enabled — all active public keys with the \"jwks\" tag will be publicly exposed (unauthenticated) at \
                  `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served. \
-                 Ensure this is intentional. (TODO: updated this comment later)",
+                 Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file.",
                 kms_server_for_http.params.jwks_endpoint.jwks_endpoint_max_keys
             );
             app = app.service(
                 web::scope("/.well-known")
                     .wrap(
-                        // delibarate choice of exposing only what's needed
-                        // the CORS::permissive default is too permissive for this use case
                         Cors::default()
                             .allow_any_origin()
-                            .allowed_methods(vec!["GET"])
+                            // HEAD is included so that CDN healthchecks and HTTP
+                            // clients that probe with HEAD before GET work correctly.
+                            .allowed_methods(vec!["GET", "HEAD"])
                     )
                     .service(jwks::get_jwks),
             );
