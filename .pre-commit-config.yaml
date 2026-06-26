@@ -199,7 +199,7 @@ repos:
           Flags stale entries with [REMOVED], appends new entries, and updates
           ×N multiplicity counts. Exits 1 when any change is made so the commit
           is blocked until the updated file is reviewed and re-staged.
-        entry: python3 scripts/update_log_index.py --non-interactive --no-color
+        entry: python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color
         language: system
         pass_filenames: false
         files: \.(rs|ts|tsx)$

@@ -9,7 +9,7 @@ Compares documented log call-sites against actual source, then merges:
   • Appends new entries with auto-extracted variable names
 
 Usage:
-  python3 scripts/update_log_index.py
+  python3 .mise/scripts/docs/update_log_index.py
 """
 
 import argparse
@@ -1028,11 +1028,11 @@ def _parse_args() -> argparse.Namespace:
         epilog=(
             'Examples:\n'
             '  # interactive (default)\n'
-            '  python3 scripts/update_log_index.py\n\n'
+            '  python3 .mise/scripts/docs/update_log_index.py\n\n'
             '  # CI / bot: safe defaults, no prompts, no colour\n'
-            '  python3 scripts/update_log_index.py --non-interactive --no-color\n\n'
+            '  python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color\n\n'
             '  # bot: also delete stale entries\n'
-            '  python3 scripts/update_log_index.py --non-interactive --delete-stale --no-color\n'
+            '  python3 .mise/scripts/docs/update_log_index.py --non-interactive --delete-stale --no-color\n'
         ),
     )
     p.add_argument(
