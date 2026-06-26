@@ -8,7 +8,7 @@ It is not listed in the navigation menu but is accessible via
 
 ## How to read this page
 
-The index is organised by usage-domains. Within each domain, each table covers one crate (the UI section is an exception). All tables, ui included, have 5 columns:
+The index is organised by usage-domains. Withing each domain, each table covers one crate (the UI section is an exception). All tables, ui inluded, have 5 columns:
 
 | Column | Meaning |
 |---|---|
@@ -30,7 +30,7 @@ alphabetically by message. Test files are excluded.
 
 ### `cosmian_kms_server`
 
-Crate path: `crate/server`
+Crate path: `crate/server`  
 `RUST_LOG` target: `cosmian_kms_server`
 
 | Level | Message | File | Variables | Notes |
@@ -54,6 +54,7 @@ Crate path: `crate/server`
 | `warn` | `Could not insert: certificate: AKI: {}, SKI: {}` | `src/core/operations/validate.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
+| `warn` | `Key {wrapping_key_id} attempted to wrap itself` | `src/core/wrapping/wrap.rs` | `wrapping_key_id`: UID of the wrapping key | - |
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
@@ -109,6 +110,8 @@ Crate path: `crate/server`
 | `info` | `POST /kms/xks/v1/keys/{key_id}/decrypt - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | `key_id`: XKS key identifier | - |
 | `info` | `POST /kms/xks/v1/keys/{key_id}/encrypt - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | `key_id`: XKS key identifier | - |
 | `info` | `POST /kms/xks/v1/keys/{key_id}/metadata - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/key_metadata.rs` | `key_id`: XKS key identifier | - |
+| `info` | `Re-keyed key pair: new replacement keys created, old keys remain Active` | `src/core/operations/rekey_keypair.rs` | - | - |
+| `info` | `Re-keyed symmetric key: new replacement key created, old key remains Active` | `src/core/operations/rekey.rs` | - | - |
 | `info` | `Refreshing JWKS` | `src/middlewares/jwt/jwks.rs` | - | - |
 | `info` | `Response TTLV: {ttlv:?}` | `src/routes/kmip.rs` | `ttlv`: TTLV-encoded response | - |
 | `info` | `Revoked object type: {}` | `src/core/operations/revoke.rs` | - | - |
@@ -487,10 +490,14 @@ Crate path: `crate/server`
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `CRL signature could not be verified against chain issuers; issuer: {:?}.                          Continuing with status checks.` | `src/core/operations/validate.rs` | — | — |
+| `warn` | `Failed to process request:
+{response_message}` | `src/routes/kmip.rs` | `response_message` | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
 | `warn` | `User-supplied keyUsage in extension config overrides the RFC-mandated PQC keyUsage              extension (RFC 9881/9909/9935)` | `src/core/operations/certify/build_certificate.rs` | — | — |
+| `info` | `
+{:?}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
@@ -520,6 +527,10 @@ Crate path: `crate/server`
 | `trace` | `ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?},              padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext`, `nonce`, `aad`, `tag`, `padding_method` | — |
 | `trace` | `enter export_get op={:?} req={}` | `src/core/operations/export_get.rs` | — | ×2 in this file |
 | `trace` | `get_attribute_list uid={} refs=[{}]` | `src/core/operations/attributes/get_list.rs` | — | — |
+| `trace` | `JWK has been found:
+{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
+| `trace` | `JWK has been found:
+{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
 | `trace` | `post-process symmetric key uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key exit uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
@@ -537,6 +548,7 @@ Crate path: `crate/server`
 | `info` | `\n{:?}` | `src/routes/kmip.rs` | — | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
+| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
 | `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | - |
 | `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
 | `trace` | `` Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `e`, `v` | - |
@@ -569,14 +581,10 @@ Crate path: `crate/server`
 | `trace` | `` PKCS#11 `C_SeedRandom` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_UnwrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
-| `warn` | `Key {wrapping_key_id} attempted to wrap itself` | `src/core/wrapping/wrap.rs` | `wrapping_key_id` | - |
-| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
-| `info` | `Re-keyed key pair: new replacement keys created, old keys remain Active` | `src/core/operations/rekey_keypair.rs` | - | - |
-| `info` | `Re-keyed symmetric key: new replacement key created, old key remains Active` | `src/core/operations/rekey.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
-Crate path: `crate/server_database`
+Crate path: `crate/server_database`  
 `RUST_LOG` target: `cosmian_kms_server_database`
 
 | Level | Message | File | Variables | Notes |
@@ -614,7 +622,7 @@ Crate path: `crate/server_database`
 
 ### `cosmian_kms_crypto`
 
-Crate path: `crate/crypto`
+Crate path: `crate/crypto`  
 `RUST_LOG` target: `cosmian_kms_crypto`
 
 | Level | Message | File | Variables | Notes |
@@ -681,7 +689,7 @@ Crate path: `crate/crypto`
 
 ### `cosmian_kmip`
 
-Crate path: `crate/kmip`
+Crate path: `crate/kmip`  
 `RUST_LOG` target: `cosmian_kmip`
 
 | Level | Message | File | Variables | Notes |
@@ -828,7 +836,7 @@ Crate path: `crate/kmip`
 
 ### `cosmian_kms_interfaces`
 
-Crate path: `crate/interfaces`
+Crate path: `crate/interfaces`  
 `RUST_LOG` target: `cosmian_kms_interfaces`
 
 | Level | Message | File | Variables | Notes |
@@ -856,14 +864,14 @@ Crate path: `crate/interfaces`
 
 ### `cosmian_kms_access`
 
-Crate path: `crate/access`
+Crate path: `crate/access`  
 `RUST_LOG` target: `cosmian_kms_access`
 
 _No production log call-sites in this crate._
 
 ### `cosmian_kms_base_hsm`
 
-Crate path: `crate/hsm/base_hsm`
+Crate path: `crate/hsm/base_hsm`  
 `RUST_LOG` target: `cosmian_kms_base_hsm`
 
 | Level | Message | File | Variables | Notes |
@@ -891,7 +899,7 @@ Crate path: `crate/hsm/base_hsm`
 
 ### `cosmian_kms_cli_actions`
 
-Crate path: `crate/clients/clap`
+Crate path: `crate/clients/clap`  
 `RUST_LOG` target: `cosmian_kms_cli_actions`
 
 | Level | Message | File | Variables | Notes |
@@ -936,7 +944,7 @@ Crate path: `crate/clients/clap`
 
 ### `ckms`
 
-Crate path: `crate/clients/ckms`
+Crate path: `crate/clients/ckms`  
 `RUST_LOG` target: `ckms`
 
 | Level | Message | File | Variables | Notes |
@@ -951,7 +959,7 @@ Crate path: `crate/clients/ckms`
 
 ### `cosmian_kms_client`
 
-Crate path: `crate/clients/client`
+Crate path: `crate/clients/client`  
 `RUST_LOG` target: `cosmian_kms_client`
 
 | Level | Message | File | Variables | Notes |
@@ -970,12 +978,16 @@ Crate path: `crate/clients/client`
 | `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
+| `trace` | `<==
+{}` | `src/kms_rest_client.rs` | — | ×3 in this file |
+| `trace` | `==>
+{}` | `src/kms_rest_client.rs` | — | ×3 in this file |
 
 ---
 
 ### `cosmian_kms_client_utils`
 
-Crate path: `crate/clients/client_utils`
+Crate path: `crate/clients/client_utils`  
 `RUST_LOG` target: `cosmian_kms_client_utils`
 
 | Level | Message | File | Variables | Notes |
@@ -988,7 +1000,7 @@ Crate path: `crate/clients/client_utils`
 
 ### `cosmian_pkcs11`
 
-Crate path: `crate/clients/pkcs11/provider`
+Crate path: `crate/clients/pkcs11/provider`  
 `RUST_LOG` target: `cosmian_pkcs11`
 
 | Level | Message | File | Variables | Notes |
@@ -1055,7 +1067,7 @@ Crate path: `crate/clients/pkcs11/provider`
 
 ### `cosmian_pkcs11_module`
 
-Crate path: `crate/clients/pkcs11/module`
+Crate path: `crate/clients/pkcs11/module`  
 `RUST_LOG` target: `cosmian_pkcs11_module`
 
 | Level | Message | File | Variables | Notes |
@@ -1130,7 +1142,7 @@ Crate path: `crate/clients/pkcs11/module`
 
 ### `cosmian_cng`
 
-Crate path: `crate/clients/cng`
+Crate path: `crate/clients/cng`  
 `RUST_LOG` target: `cosmian_cng`
 
 | Level | Message | File | Variables | Notes |
@@ -1229,6 +1241,6 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len` | `actions/EC/ECVerify.tsx` | — | — |
 | `debug` | `RsaSign: signature length` | `actions/RSA/RsaSign.tsx` | — | — |
 | `debug` | `RsaVerify: dataBuf len` | `actions/RSA/RsaVerify.tsx` | — | — |
-| `log` | `JWT fallback failed:` | `App.tsx` | - | - |
+| `error` | `JWT fallback failed:` | `App.tsx` | - | - |
 
 ---
