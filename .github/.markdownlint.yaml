@@ -12,3 +12,7 @@ MD013:
 MD024:
   # Allow heading duplication if under different parent headings
   siblings_only: true
+
+MD025:
+  # ADR files use frontmatter title: + an H1 body heading — do not double-count
+  front_matter_title: ''

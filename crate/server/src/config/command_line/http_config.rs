@@ -49,6 +49,14 @@ pub struct HttpConfig {
         verbatim_doc_comment
     )]
     pub cors_allowed_origins: Option<Vec<String>>,
+
+    /// Number of actix-web worker threads to spawn for the HTTP server.
+    /// Each worker runs in its own OS thread and handles requests concurrently.
+    /// Leave unset (default) to let actix-web choose based on the number of logical CPUs,
+    /// which gives the best throughput on CPU-bound workloads.
+    /// Set to a fixed value for predictable resource usage or performance benchmarking.
+    #[clap(long, env = "KMS_SERVER_WORKERS", verbatim_doc_comment)]
+    pub server_workers: Option<usize>,
 }
 
 impl HttpConfig {
@@ -77,6 +85,9 @@ impl Display for HttpConfig {
         if let Some(ref origins) = self.cors_allowed_origins {
             write!(f, " (cors_allowed_origins: {})", origins.join(", "))?;
         }
+        if let Some(w) = self.server_workers {
+            write!(f, " (workers: {w})")?;
+        }
         Ok(())
     }
 }
@@ -95,6 +106,7 @@ impl Default for HttpConfig {
             api_token_id: None,
             rate_limit_per_second: None,
             cors_allowed_origins: None,
+            server_workers: None,
         }
     }
 }

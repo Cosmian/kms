@@ -2,7 +2,9 @@
 # Generate test vector files for ReKey and ReKeyKeyPair operations
 set -euo pipefail
 
-BASE="/Users/manu/Cosmian/core/kms_alt3/test_data/vectors"
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+REPO_ROOT="$(get_repo_root)"
+BASE="${REPO_ROOT}/test_data/vectors"
 
 # ===== HELPER: Common JSON fragments =====
 

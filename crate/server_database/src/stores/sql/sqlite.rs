@@ -64,9 +64,18 @@ impl SqlitePool {
             conn.call(
                 |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     c.execute_batch(
+                        // WAL mode: readers and the single writer never block each other.
                         "PRAGMA journal_mode=WAL;\
                          PRAGMA synchronous=NORMAL;\
-                         PRAGMA busy_timeout=5000;",
+                         PRAGMA busy_timeout=5000;\
+                         PRAGMA cache_size=-65536;\
+                         PRAGMA mmap_size=268435456;\
+                         PRAGMA temp_store=MEMORY;",
+                        // cache_size=-65536 → 64 MiB page cache per connection (negative
+                        // value means KiB, positive means pages of 4 KiB each).
+                        // mmap_size=268435456 → 256 MiB memory-mapped I/O window;
+                        // eliminates pread() syscall overhead for read-hot pages.
+                        // temp_store=MEMORY → sort/index temp tables stay in RAM.
                     )
                 },
             )

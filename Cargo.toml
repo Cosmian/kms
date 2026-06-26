@@ -120,6 +120,21 @@ incremental = false # Disable incremental compilation for determinism
 debug = 0 # No debug info (timestamps/paths)
 overflow-checks = true # Catch integer overflows in release builds (ANSSI LANG-ARITH)
 
+[profile.bench]
+# Flamegraph-friendly profile: max-speed optimisations + symbol visibility.
+# Overrides release for the following reasons:
+#   opt-level = 3   → release uses "z" (size) which costs 15–40% throughput;
+#                     benchmarks must measure server speed, not binary size.
+#   strip = "none"  → perf / cargo-flamegraph need symbol tables to resolve frames.
+#   debug = 2       → full DWARF info: enables line-level flamegraph attribution
+#                     and DWARF-based stack unwinding by perf.
+#   lto = "thin"    → faster link than fat-LTO; still enables cross-crate inlining.
+inherits = "release"
+opt-level = 3           # Speed over size — critical for throughput benchmarks
+strip = "none"          # MUST be none — perf needs symbol tables
+debug = 2               # Full DWARF: line-level attribution + reliable unwinding
+codegen-units = 1       # Keep single CGU for realistic inlining
+
 [profile.dev]
 strip = "debuginfo"
 incremental = false
