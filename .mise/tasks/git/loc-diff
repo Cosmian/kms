@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Show lines added/deleted/net vs a base branch, by root folder and crate/ subfolder"
+#USAGE arg "[BASE_REF]" help="Base branch or commit to diff against (default: origin/develop)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+BASE="${1:-origin/develop}"
+REPO_ROOT="$(get_repo_root)"
+
+print_header "LOC diff vs ${BASE}"
+python3 "${REPO_ROOT}/.mise/scripts/git/loc_diff.py" "${BASE}"

@@ -14,6 +14,7 @@ import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
+import CertificateReCertifyForm from "./actions/Certificates/CertificateReCertify";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
 import AwsExportKeyMaterialForm from "./actions/CloudProviders/AwsExportKeyMaterial";
 import ImportAwsKekForm from "./actions/CloudProviders/AwsImportKek";
@@ -38,8 +39,6 @@ import KeyExportForm from "./actions/Keys/KeysExport";
 import KeyImportForm from "./actions/Keys/KeysImport";
 import KeysReKeyForm from "./actions/Keys/KeysReKey";
 import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
-import GetRotationPolicyForm from "./actions/RotationPolicy/GetRotationPolicy";
-import SetRotationPolicyForm from "./actions/RotationPolicy/SetRotationPolicy";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
 import HsmStatus from "./actions/Objects/HsmStatus";
@@ -54,6 +53,8 @@ import PqcKeysCreateForm from "./actions/PQC/PqcKeysCreate";
 import PqcReKeyForm from "./actions/PQC/PqcReKey";
 import PqcSignForm from "./actions/PQC/PqcSign";
 import PqcVerifyForm from "./actions/PQC/PqcVerify";
+import GetRotationPolicyForm from "./actions/RotationPolicy/GetRotationPolicy";
+import SetRotationPolicyForm from "./actions/RotationPolicy/SetRotationPolicy";
 import RsaDecryptForm from "./actions/RSA/RsaDecrypt";
 import RsaEncryptForm from "./actions/RSA/RsaEncrypt";
 import RsaKeyCreateForm from "./actions/RSA/RsaKeysCreate";
@@ -385,6 +386,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="encrypt" element={<CertificateEncryptForm />} />
                             <Route path="decrypt" element={<CertificateDecryptForm />} />
                             <Route path="certs/certify" element={<CertificateCertifyForm />} />
+                            <Route path="certs/recertify" element={<CertificateReCertifyForm />} />
                         </Route>
                         <Route path="attributes">
                             <Route path="get" element={<AttributeGetForm />} />

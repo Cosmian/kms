@@ -55,7 +55,6 @@ Crate path: `crate/server`
 | `warn` | `Could not insert: certificate: AKI: {}, SKI: {}` | `src/core/operations/validate.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
-| `warn` | `Key {wrapping_key_id} attempted to wrap itself` | `src/core/wrapping/wrap.rs` | `wrapping_key_id`: UID of the wrapping key | [REMOVED] |
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
@@ -111,8 +110,6 @@ Crate path: `crate/server`
 | `info` | `POST /kms/xks/v1/keys/{key_id}/decrypt - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | `key_id`: XKS key identifier | - |
 | `info` | `POST /kms/xks/v1/keys/{key_id}/encrypt - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | `key_id`: XKS key identifier | - |
 | `info` | `POST /kms/xks/v1/keys/{key_id}/metadata - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/key_metadata.rs` | `key_id`: XKS key identifier | - |
-| `info` | `Re-keyed key pair: new replacement keys created, old keys remain Active` | `src/core/operations/rekey_keypair.rs` | - | [REMOVED] |
-| `info` | `Re-keyed symmetric key: new replacement key created, old key remains Active` | `src/core/operations/rekey.rs` | - | [REMOVED] |
 | `info` | `Refreshing JWKS` | `src/middlewares/jwt/jwks.rs` | - | - |
 | `info` | `Response TTLV: {ttlv:?}` | `src/routes/kmip.rs` | `ttlv`: TTLV-encoded response | - |
 | `info` | `Revoked object type: {}` | `src/core/operations/revoke.rs` | - | - |
@@ -334,7 +331,6 @@ Crate path: `crate/server`
 | `trace` | `found link to certificate: {}` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `found link to public key: {}. Will get certificate link from there` | `src/core/certificate/find.rs` | — | — |
 | `trace` | `Found uid: {}, attributes: {}` | `src/core/operations/locate.rs` | — | — |
-| `trace` | `Found valid JWK in JWKS at`{jwks_uri}`: {jwk:#?}` | `src/middlewares/jwt/jwks.rs` | `jwks_uri` — …<br>`jwk` — … | — |
 | `trace` | `function={:?}` | `src/core/operations/pkcs11.rs` | — | — |
 | `trace` | `Get Attributes: Attributes: {}` | `src/core/operations/attributes/get.rs` | — | — |
 | `trace` | `Get Attributes: computing LinkType set` | `src/core/operations/attributes/get.rs` | — | — |
@@ -347,7 +343,6 @@ Crate path: `crate/server`
 | `trace` | `got key bytes of length: {}, aead: {:?}. Proceeding to get the nonce...` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `HMAC computed: {} bytes` | `src/core/operations/mac.rs` | — | — |
 | `trace` | `HSM get_key_type probe for '{uid}' failed: {e}; proceeding with destroy` | `src/core/operations/destroy.rs` | `uid` — …<br>`e` — … | — |
-| `trace` | `Ignoring invalid JWK in JWKS at`{jwks_uri}`: {e}: {v:#?}` | `src/middlewares/jwt/jwks.rs` | `jwks_uri` — …<br>`e` — …<br>`v` — … | — |
 | `trace` | `Ignoring tag {x:?} which does not match to an attribute` | `src/core/operations/attributes/get.rs` | `x` — … | — |
 | `trace` | `import opaque_object: uid={}` | `src/core/operations/import.rs` | — | — |
 | `trace` | `import secret_data: uid={}` | `src/core/operations/import.rs` | — | — |
@@ -388,35 +383,6 @@ Crate path: `crate/server`
 | `trace` | `Operation processed successfully: {op}` | `src/core/operations/message.rs` | `op` — … | — |
 | `trace` | `Operation processing failed: {e}` | `src/core/operations/message.rs` | `e` — … | — |
 | `trace` | `params: {server_params:?}` | `src/core/kms/mod.rs` | `server_params` — … | — |
-| `trace` | `PKCS#11`C_CloseSession`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_Decrypt`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_DecryptFinal`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_DecryptInit`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_DecryptUpdate`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_DestroyObject`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_Encrypt`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_EncryptFinal`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_EncryptInit`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_EncryptUpdate`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_Finalize`failed: {e}` | `src/core/operations/pkcs11.rs` | `e` — … | — |
-| `trace` | `PKCS#11`C_FindObjects`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_FindObjectsFinal`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_FindObjectsInit`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_GenerateKey`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_GenerateKeyPair`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_GenerateRandom`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_GetAttributeValue`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_GetInfo`failed: {e}` | `src/core/operations/pkcs11.rs` | `e` — … | — |
-| `trace` | `PKCS#11`C_GetMechanismInfo`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_GetMechanismList`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_Initialize`called on already initialized library - treating as success` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_Initialize`failed: {e}` | `src/core/operations/pkcs11.rs` | `e` — … | — |
-| `trace` | `PKCS#11`C_Login`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_Logout`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_OpenSession`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_SeedRandom`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_UnwrapKey`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
-| `trace` | `PKCS#11`C_WrapKey`not yet implemented` | `src/core/operations/pkcs11.rs` | — | — |
 | `trace` | `PKCS12 parsed successfully` | `src/core/operations/import.rs` | — | — |
 | `trace` | `plaintext length: {} bytes` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}` | `src/core/operations/encrypt.rs` | `padding_method` — … | — |
@@ -515,7 +481,6 @@ Crate path: `crate/server`
 | `trace` | `{}` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/locate.rs` | — | — |
 | `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip.rs` | — | ×2 in this file |
-| `error` | `Failed to convert Response TTLV to bytes: {}: TTLV:{:#?}` | `src/routes/kmip.rs` | — | — |
 | `error` | `Failed to find KMIP version` | `src/routes/kmip.rs` | — | — |
 | `error` | `Failed to parse RequestMessage: {}` | `src/routes/kmip.rs` | — | — |
 | `error` | `Failed to process request: {}` | `src/routes/kmip.rs` | — | ×2 in this file |
@@ -523,13 +488,10 @@ Crate path: `crate/server`
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `CRL signature could not be verified against chain issuers; issuer: {:?}.                          Continuing with status checks.` | `src/core/operations/validate.rs` | — | — |
-| `warn` | `Failed to process request:{response_message}` | `src/routes/kmip.rs` | `response_message` | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
-| `warn` | `ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set`ui_session_salt`(or KMS_UI_SESSION_SALT) to a strong              random secret value.` | `src/start_kms_server.rs` | — | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
 | `warn` | `User-supplied keyUsage in extension config overrides the RFC-mandated PQC keyUsage              extension (RFC 9881/9909/9935)` | `src/core/operations/certify/build_certificate.rs` | — | — |
-| `info` | `{:?}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
@@ -559,8 +521,6 @@ Crate path: `crate/server`
 | `trace` | `ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?},              padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext`, `nonce`, `aad`, `tag`, `padding_method` | — |
 | `trace` | `enter export_get op={:?} req={}` | `src/core/operations/export_get.rs` | — | ×2 in this file |
 | `trace` | `get_attribute_list uid={} refs=[{}]` | `src/core/operations/attributes/get_list.rs` | — | — |
-| `trace` | `JWK has been found:{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
-| `trace` | `JWK has been found:{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
 | `trace` | `post-process symmetric key uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key exit uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
@@ -602,6 +562,38 @@ Crate path: `crate/server`
 | `trace` | `SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
+| `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | - |
+| `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
+| `trace` | `` Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `e`, `v` | - |
+| `trace` | `` PKCS#11 `C_CloseSession` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_Decrypt` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_DecryptFinal` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_DecryptInit` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_DecryptUpdate` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_DestroyObject` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_Encrypt` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_EncryptFinal` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_EncryptInit` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_EncryptUpdate` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_Finalize` failed: {e} `` | `src/core/operations/pkcs11.rs` | `e` | - |
+| `trace` | `` PKCS#11 `C_FindObjects` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_FindObjectsFinal` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_FindObjectsInit` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_GenerateKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_GenerateKeyPair` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_GenerateRandom` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_GetAttributeValue` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_GetInfo` failed: {e} `` | `src/core/operations/pkcs11.rs` | `e` | - |
+| `trace` | `` PKCS#11 `C_GetMechanismInfo` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_GetMechanismList` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_Initialize` called on already initialized library - treating as success `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_Initialize` failed: {e} `` | `src/core/operations/pkcs11.rs` | `e` | - |
+| `trace` | `` PKCS#11 `C_Login` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_Logout` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_OpenSession` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_SeedRandom` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_UnwrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -638,8 +630,8 @@ Crate path: `crate/server_database`
 | `warn` | `[database] reconcile_counts failed for a store: {e}` | `src/core/database_objects.rs` | `e` | — |
 | `debug` | `[redis-bootstrap] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | ×2 in this file |
 | `debug` | `[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}` | `src/stores/redis/redis_with_findex.rs` | `live_count`, `key_count` | — |
-| `debug` | `[redis-metrics] bootstrapped {} live object(s) into`{}`` | `src/stores/redis/redis_with_findex.rs` | — | |
-| `debug` | `[redis-metrics] bootstrapped {} non-destroyed key(s) into`{}`` | `src/stores/redis/redis_with_findex.rs` | — | |
+| `debug` | `` [redis-metrics] bootstrapped {} live object(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
+| `debug` | `` [redis-metrics] bootstrapped {} non-destroyed key(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 
@@ -651,7 +643,6 @@ Crate path: `crate/crypto`
 | `error` | `Error verifying ({:?}) signature: {:?}, data: {:?}, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err`: error detail | - |
 | `error` | `Error verifying digest ({:?}) signature: {:?}, data: {:?}, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err`: error detail | ×2 in this file |
 | `error` | `Error verifying raw ({:?}) signature: {:?}, data: {:?}, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err`: error detail | - |
-| `warn` | `ignored`basicConstraints`extension's value: {value}` | `src/openssl/x509_extensions.rs` | `value`: value | - |
 | `warn` | `test_openssl_cli_compat: openssl CLI call failed, skipping test: {output:#?}` | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs` | `output`: output | - |
 | `warn` | `test_openssl_cli_compat: openssl CLI not found, skipping test` | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs` | - | - |
 | `warn` | `test_openssl_cli_compat: openssl CLI output is not valid UTF-8` | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs` | - | - |
@@ -659,7 +650,6 @@ Crate path: `crate/crypto`
 | `info` | `===> Wrapping asymmetric key with symmetric key` | `src/crypto/wrap/tests.rs` | - | - |
 | `info` | `===> Wrapping symmetric key with asymmetric key` | `src/crypto/wrap/tests.rs` | - | - |
 | `info` | `===> Wrapping symmetric key with symmetric key` | `src/crypto/wrap/tests.rs` | - | - |
-| `info` | `RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using`BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `.` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
 | `info` | `value is: {:?}` | `src/openssl/x509_extensions.rs` | - | ×2 in this file |
 | `debug` | `attribute: {attribute:?}, encryption_hint: {encryption_hint:?}` | `src/crypto/cover_crypt/access_structure.rs` | `attribute`: KMIP attribute (debug display)<br>`encryption_hint`: encryption hint | - |
 | `debug` | `create_dk_object: key len: {}, attributes: {attributes}` | `src/crypto/kem.rs` | `attributes`: KMIP attribute (debug display)s | - |
@@ -707,6 +697,8 @@ Crate path: `crate/crypto`
 | `debug` | `symmetric wrapping using {cryptographic_algorithm} and                          block_cipher_mode: {:?}, padding_method: {:?}` | `src/crypto/wrap/wrap_key.rs` | `cryptographic_algorithm` | — |
 | `trace` | `algorithm: {algorithm:?}, block_cipher_mode: {block_cipher_mode:?}, key_size:              {key_size}` | `src/crypto/symmetric/symmetric_ciphers.rs` | `algorithm`, `block_cipher_mode`, `key_size` | — |
 | `trace` | `encrypt: sym_cipher: {sym_cipher:?}, key length: {}, nonce length: {}, aad length: {},          plaintext length: {}, padding_method: {padding_method:?}` | `src/crypto/symmetric/symmetric_ciphers.rs` | `sym_cipher`, `padding_method` | — |
+| `warn` | `` ignored `basicConstraints` extension's value: {value} `` | `src/openssl/x509_extensions.rs` | `value` | - |
+| `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
 
 ### `cosmian_kmip`
 
@@ -988,7 +980,6 @@ Crate path: `crate/clients/client`
 | `info` | `GET {server_url}` | `src/kms_rest_client.rs` | `server_url`: full URL of the GET request being sent | - |
 | `info` | `The decrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the decrypted output file | ×2 in this file |
 | `info` | `The encrypted file is available at {output_file}` | `src/file_utils.rs` | `output_file`: path to the encrypted output file | ×2 in this file |
-| `warn` | `ckms config:`{}` is deprecated — rename it to `{}`in your                          ckms.toml to silence this warning.` | `src/http_client/client.rs` | — | — |
 | `info` | `Using server URL: {}` | `src/http_client/client.rs` | — | — |
 | `trace` | `<==\n{}` | `src/kms_rest_client.rs` | — | ×2 in this file |
 | `trace` | `==>\n{}` | `src/kms_rest_client.rs` | — | ×2 in this file |
@@ -999,8 +990,7 @@ Crate path: `crate/clients/client`
 | `debug` | `CONNECT tunnel established: {target_host}:{target_port}` | `src/http_client/proxy.rs` | `target_host`, `target_port` | — |
 | `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
-| `trace` | `<=={}` | `src/kms_rest_client.rs` | — | ×3 in this file |
-| `trace` | `==>{}` | `src/kms_rest_client.rs` | — | ×3 in this file |
+| `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
 
 ---
 
@@ -1219,7 +1209,6 @@ Crate path: `ui/src/`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `error` | `JWT fallback failed:` | `App.tsx` | `error`: JS Error from the catch block, passed as second argument to console.error | [REMOVED] |
 | `warn` | `revoke_ttlv_request not available in WASM package` | `components/common/Locate.tsx` | - | - |
 | `info` | `[KMS] vendor_id set to "{vendorId}"` | `App.tsx` | `vendorId`: vendor identifier string received from the server | - |
 | `error` | `Aggregate date error:` | `actions/Tokenize/TokenizeAggregateDate.tsx` | — | — |
@@ -1261,6 +1250,6 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len` | `actions/EC/ECVerify.tsx` | — | — |
 | `debug` | `RsaSign: signature length` | `actions/RSA/RsaSign.tsx` | — | — |
 | `debug` | `RsaVerify: dataBuf len` | `actions/RSA/RsaVerify.tsx` | — | — |
-| `log` | `JWT fallback failed:` | `App.tsx` | - | - |
+| `error` | `JWT fallback failed:` | `App.tsx` | - | - |
 
 ---

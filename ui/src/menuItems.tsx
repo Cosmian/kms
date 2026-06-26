@@ -13,7 +13,6 @@ import {
     SafetyCertificateOutlined,
     SearchOutlined,
     SolutionOutlined,
-    SyncOutlined,
     TeamOutlined,
     ToolOutlined,
     UsbOutlined,
@@ -57,6 +56,14 @@ const baseMenu: MenuItem[] = [
                     { key: "sym/keys/destroy", label: "Destroy" },
                 ],
             },
+            {
+                key: "rotation-policy/sym",
+                label: "Rotation Policy",
+                children: [
+                    { key: "rotation-policy/sym/set", label: "Set Policy" },
+                    { key: "rotation-policy/sym/get", label: "Get Policy" },
+                ],
+            },
             { key: "sym/encrypt", label: "Encrypt" },
             { key: "sym/decrypt", label: "Decrypt" },
             { key: "sym/hash", label: "Hash" },
@@ -78,6 +85,14 @@ const baseMenu: MenuItem[] = [
                     { key: "rsa/keys/rekey", label: "Re-Key" },
                     { key: "rsa/keys/revoke", label: "Revoke" },
                     { key: "rsa/keys/destroy", label: "Destroy" },
+                ],
+            },
+            {
+                key: "rotation-policy/rsa",
+                label: "Rotation Policy",
+                children: [
+                    { key: "rotation-policy/rsa/set", label: "Set Policy" },
+                    { key: "rotation-policy/rsa/get", label: "Get Policy" },
                 ],
             },
             { key: "rsa/encrypt", label: "Encrypt" },
@@ -102,6 +117,14 @@ const baseMenu: MenuItem[] = [
                     { key: "ec/keys/rekey", label: "Re-Key" },
                     { key: "ec/keys/revoke", label: "Revoke" },
                     { key: "ec/keys/destroy", label: "Destroy" },
+                ],
+            },
+            {
+                key: "rotation-policy/ec",
+                label: "Rotation Policy",
+                children: [
+                    { key: "rotation-policy/ec/set", label: "Set Policy" },
+                    { key: "rotation-policy/ec/get", label: "Get Policy" },
                 ],
             },
             { key: "ec/encrypt", label: "Encrypt" },
@@ -129,50 +152,18 @@ const baseMenu: MenuItem[] = [
                     { key: "pqc/keys/destroy", label: "Destroy" },
                 ],
             },
-            { key: "pqc/encapsulate", label: "Encapsulate" },
-            { key: "pqc/decapsulate", label: "Decapsulate" },
-            { key: "pqc/sign", label: "Sign" },
-            { key: "pqc/verify", label: "Verify" },
-        ],
-    },
-    {
-        key: "rotation-policy",
-        label: "Rotation Policy",
-        icon: <SyncOutlined />,
-        collapsedlabel: "ROT",
-        children: [
-            {
-                key: "rotation-policy/sym",
-                label: "Symmetric",
-                children: [
-                    { key: "rotation-policy/sym/set", label: "Set Policy" },
-                    { key: "rotation-policy/sym/get", label: "Get Policy" },
-                ],
-            },
-            {
-                key: "rotation-policy/rsa",
-                label: "RSA",
-                children: [
-                    { key: "rotation-policy/rsa/set", label: "Set Policy" },
-                    { key: "rotation-policy/rsa/get", label: "Get Policy" },
-                ],
-            },
-            {
-                key: "rotation-policy/ec",
-                label: "Elliptic Curve",
-                children: [
-                    { key: "rotation-policy/ec/set", label: "Set Policy" },
-                    { key: "rotation-policy/ec/get", label: "Get Policy" },
-                ],
-            },
             {
                 key: "rotation-policy/pqc",
-                label: "__PQC_ROTATION_LABEL__",
+                label: "Rotation Policy",
                 children: [
                     { key: "rotation-policy/pqc/set", label: "Set Policy" },
                     { key: "rotation-policy/pqc/get", label: "Get Policy" },
                 ],
             },
+            { key: "pqc/encapsulate", label: "Encapsulate" },
+            { key: "pqc/decapsulate", label: "Decapsulate" },
+            { key: "pqc/sign", label: "Sign" },
+            { key: "pqc/verify", label: "Verify" },
         ],
     },
     {
@@ -264,6 +255,7 @@ const baseMenu: MenuItem[] = [
                 label: "Certs",
                 children: [
                     { key: "certificates/certs/certify", label: "Certify" },
+                    { key: "certificates/certs/recertify", label: "ReCertify" },
                     { key: "certificates/certs/export", label: "Export" },
                     { key: "certificates/certs/import", label: "Import" },
                     { key: "certificates/certs/revoke", label: "Revoke" },
@@ -370,30 +362,13 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
 
     let menu = baseMenu.map((item) => {
         if (item.key === "pqc") return { ...item, label: pqcLabel };
-        if (item.key === "rotation-policy") {
-            // Replace the PQC child label placeholder with the real pqcLabel
-            return {
-                ...item,
-                children: item.children?.map((child) => (child.key === "rotation-policy/pqc" ? { ...child, label: pqcLabel } : child)),
-            };
-        }
         return item;
     });
 
     // Hide PQC, MAC, FPE, and Tokenize/Anonymize in FIPS mode (not approved / not available in FIPS build)
-    // For rotation-policy, keep the menu but hide the PQC child.
+    // Rotation Policy for PQC is removed automatically since it lives inside the PQC item.
     if (isFips) {
-        menu = menu
-            .filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize")
-            .map((item) => {
-                if (item.key === "rotation-policy") {
-                    return {
-                        ...item,
-                        children: item.children?.filter((child) => child.key !== "rotation-policy/pqc"),
-                    };
-                }
-                return item;
-            });
+        menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize");
     }
 
     // Insert Covercrypt immediately after PQC so Hyperscalers stays last
