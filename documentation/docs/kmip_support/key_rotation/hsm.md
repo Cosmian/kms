@@ -22,12 +22,13 @@ attributes rather than the KMS database.
 HSM keyset metadata is stored entirely in the PKCS#11 `CKA_LABEL` attribute —
 no SQL shadow rows are written.
 
-| `CKA_LABEL` value                                    | Meaning                                                               |
-| ---------------------------------------------------- | --------------------------------------------------------------------- |
-| `{base_uid}::0::{key_id}@latest`                    | Gen-0 key immediately after `SetAttribute` enrollment (initial state) |
-| `{base_uid}::{gen}::{base_id}@latest`               | Current latest key after any `Re-Key`                                 |
-| `{base_uid}::{gen}::{base_id}`                      | Retired key (any generation that is no longer the latest)             |
-| *(anything else)*                                    | Key does not belong to a keyset                                       |
+| `CKA_LABEL` value                                    | Meaning                                                                                 |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `{key_id}` *(plain, before enrollment)*              | Initial state after `Create` — key has not yet been added to a keyset                  |
+| `{base_uid}::0::{key_id}@latest`                    | Gen-0 key immediately after `SetAttribute` enrollment                                   |
+| `{base_uid}::{gen}::{base_id}@latest`               | Current latest key after any `Re-Key`                                                   |
+| `{base_uid}::{gen}::{base_id}`                      | Retired key (any generation that is no longer the latest)                               |
+| *(anything else)*                                    | Key does not belong to a keyset                                                         |
 
 Where:
 
@@ -38,8 +39,22 @@ Where:
 - `gen` — integer starting at `0`, incremented on every `Re-Key`.
 - `base_id` / `key_id` — the PKCS#11 `CKA_ID` of the gen-0 key.
 
+!!! note "Why does `my-hsm-key` appear twice in the label?"
+    The label format is `{rotate_name}::{gen}::{key_id}`.  For HSM keys,
+    `rotate_name` **is** the full base UID (`hsm::softhsm2::0::my-hsm-key`), which
+    already embeds the local key name.  The same name then appears again as the
+    separate `key_id` field required by `parse_label_metadata` to reconstruct the
+    per-key PKCS#11 `CKA_ID`.
+
+    ```
+    hsm::softhsm2::0::my-hsm-key  ::  0  ::  my-hsm-key@latest
+    ├─ rotate_name (full base UID)  gen   key_id
+    ```
+
+    This duplication is intentional and handled by the right-split parser.
+
 !!! note "CKA_LABEL parsing uses right-split"
-    Because `base_uid` itself contains `::`, the label is parsed **from the right**
+    Because `rotate_name` itself contains `::`, the label is parsed **from the right**
     (`rsplitn(3, "::")`):
 
     ```
@@ -149,7 +164,9 @@ ckms sym keys create \
 
 # 3. Enrol the key in a keyset.
 #    The keyset name MUST equal the key's full base UID.
-#    Writes CKA_LABEL = "hsm::softhsm2::0::my-hsm-key::0::my-hsm-key@latest"
+#    Before: CKA_LABEL = "my-hsm-key"  (plain key_id set at creation)
+#    After:  CKA_LABEL = "hsm::softhsm2::0::my-hsm-key::0::my-hsm-key@latest"
+#             └─ rotate_name ──────────────────────┘ gen └─ key_id ──┘
 ckms sym keys set-rotation-policy \
     --key-id "hsm::softhsm2::0::my-hsm-key" \
     --name   "hsm::softhsm2::0::my-hsm-key"

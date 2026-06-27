@@ -240,7 +240,7 @@ impl KMS {
     }
 
     /// Re-wrap all keys that were wrapped by the old wrapping key.
-    async fn rewrap_dependants(
+    pub(crate) async fn rewrap_dependants(
         &self,
         owner: &str,
         old_uid: &str,
@@ -408,6 +408,15 @@ impl ReplacementObject {
             old_uid,
             paired_key,
         )?;
+        // Stamp the embedded attributes with the correct UID.
+        // `create_symmetric_key_kmip_object` always assigns a random UUID to
+        // `attributes.unique_identifier`; replace it with `new_uid` so that
+        // GetAttributes always returns a `unique_identifier` that matches the
+        // object's actual stored UID.
+        if let Ok(embedded_attrs) = self.object.attributes_mut() {
+            embedded_attrs.unique_identifier =
+                Some(UniqueIdentifier::TextString(self.new_uid.clone()));
+        }
         let attrs = self.object.attributes().cloned().unwrap_or_default();
         self.tags = attrs.get_tags(vendor_id);
         self.attributes = attrs;

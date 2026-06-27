@@ -52,7 +52,7 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
     // The general RekeyOperation pipeline is designed for SQL-backed keys and
     // is not applicable to non-extractable HSM key material.
     if has_prefix(&uid).is_some() {
-        return kms.rekey_hsm_symmetric(&uid, owner).await;
+        return Box::pin(kms.rekey_hsm_symmetric(&uid, owner)).await;
     }
 
     let request = ReKey {

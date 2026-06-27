@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**444 vectors** across 15 categories (including KAT):
+**446 vectors** across 15 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -192,7 +192,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_keypair_ml_kem_768` | Verifies that ReKeyKeyPair succeeds for ML-KEM-768. | 6 |
 | KMIP Operations | `rekey_keypair_name_removed_from_old` | Verifies that after ReKeyKeyPair, the old private key no longer has the Name attribute. | 7 |
 | KMIP Operations | `rekey_keypair_no_public_link_fails` | Verifies that ReKeyKeyPair fails when the private key has no PublicKeyLink. | 5 |
-| KMIP Operations | `rekey_keypair_old_key_still_active` | Verifies that after ReKeyKeyPair, the old private key remains in Active state. | 7 |
+| KMIP Operations | `rekey_keypair_old_key_still_active` | Verifies that after ReKeyKeyPair, the old private key transitions to Deactivated | 7 |
 | KMIP Operations | `rekey_keypair_p384` | Verifies that ReKeyKeyPair succeeds for this key type. | 6 |
 | KMIP Operations | `rekey_keypair_p521` | Verifies that ReKeyKeyPair succeeds for this key type. | 6 |
 | KMIP Operations | `rekey_keypair_rsa` | Verifies that ReKeyKeyPair succeeds for an RSA-2048 key pair, returning new private and public key UIDs. | 7 |
@@ -205,9 +205,9 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_keypair_with_offset_state` | Verifies that ReKeyKeyPair with Offset=0 produces Active keys, and ReKeyKeyPair with Offset=86400 (24h future) produces PreActive keys. | 20 |
 | KMIP Operations | `rekey_kmip14` | Exercises the ReKey operation through the KMIP 1.4 protocol path, verifying that the V14→V21 request conversion and V21→V14 response conversion work correctly. KMIP 1.4 uses TemplateAttribute containers and a required (non-optional) UniqueIdentifier. The ReKey response must return a new UniqueIdentifier as a plain String (not wrapped in UniqueIdentifier enum). | 7 |
 | KMIP Operations | `rekey_locate_by_name` | Verifies that after ReKey, the replacement key inherits the Name attribute and can be found via Locate by name. This is the critical behavior for VAST Data and similar EKM integrations that poll by name after rotation. | 9 |
-| KMIP Operations | `rekey_mac_keyset` | Complex MAC key rotation test: | 11 |
+| KMIP Operations | `rekey_mac_keyset` | Complex MAC key rotation test: | 10 |
 | KMIP Operations | `rekey_name_removed_from_old` | Verifies that after ReKey, the old key no longer has the Name attribute (it was transferred to the replacement key). | 7 |
-| KMIP Operations | `rekey_old_key_still_decrypts` | Verifies that after ReKey, the old key remains Active and can still be used for encryption (proving it is not deactivated by ReKey). | 7 |
+| KMIP Operations | `rekey_old_key_still_decrypts` | Verifies that after ReKey, the old key is Deactivated (KMIP §4.57 transition 6) and can no longer be used for encryption. | 7 |
 | KMIP Operations | `rekey_with_links` | Verifies that ReKey properly sets ReplacementObjectLink on the old key and ReplacedObjectLink on the new key, forming a bidirectional chain. | 8 |
 | KMIP Operations | `rekey_with_offset` | Verifies that ReKey with an Offset parameter correctly computes the replacement key's Activation Date as InitializationDate + Offset. | 7 |
 | KMIP Operations | `rekey_with_offset_state` | Verifies that ReKey with Offset=0 produces an Active key, and ReKey with Offset=86400 (24h future) produces a PreActive key. | 13 |
@@ -274,7 +274,17 @@ replays the steps sequentially.
 | HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | Attempts to create an EC P-384 keypair with an HSM-resident UID. | 1 |
 | HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID. | 1 |
 | HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Tests HSM keyset traversal across a 3-generation chain: | 12 |
-| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_uid_lifecycle` | Creates a resident AES-256 HSM key, assigns a rotate_name, rekeys the latest direct UID three times, encrypts with gen-3, rekeys once more to gen-4, then decrypts the gen-3 ciphertext via the bare rotate_name chain walk. | 15 |
+| HSM / Resident Keyset | `hsm/resident_keyset_full_lifecycle` | Full HSM keyset lifecycle test covering all three decrypt-addressing variants: | 12 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_addressing` | Creates an HSM-resident key, assigns a keyset name (rotate_name = "ks-addr"), | 15 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_basic` | Creates an HSM-resident AES-256 key without a keyset (no rotate_name), encrypts | 9 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_consecutive` | Creates gen-0 key, rekeys twice (gen-1, gen-2), encrypts once per generation, | 17 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_duplicate_rekey` | Creates an HSM-resident key WITHOUT a keyset name (no rotate_name). Re-keys it | 10 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_encrypt_gen_select` | Encrypts with the keyset base UID before rotation (targets gen-0, the only/latest key) | 15 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_hsm_uid` | Verifies that an HSM-resident keyset can be rotated 3 consecutive times using the | 13 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_keyset_name` | Verifies that an HSM-resident keyset can be rotated 3 consecutive times using the | 13 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_name` | Verifies that ReKey can be addressed via the keyset name (not just the direct UID). | 10 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_non_latest` | Verifies that re-keying a non-latest keyset member is transparently redirected to | 13 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_uid_lifecycle` | Creates a resident AES-256 HSM key, assigns a rotate_name, rekeys the latest | 18 |
 | HSM / Resident Keyset | `hsm/resident_keyset_rekey_and_decrypt` | Full HSM keyset rotation test: | 9 |
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
 | HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |
@@ -418,7 +428,7 @@ replays the steps sequentially.
 | Negative / Register | `negative/register/invalid_attribute` | Tests that Register returns Invalid_Attribute error as per KMIP spec | 1 |
 | Negative / Register | `negative/register/invalid_attribute_value` | Tests that Register returns Invalid_Attribute_Value error as per KMIP spec | 1 |
 | Negative / Register | `negative/register/invalid_message` | Tests that Register returns Invalid_Message error as per KMIP spec | 1 |
-| Negative / Protocol | `negative/rekey_keypair_non_latest` | Tests that ReKeyKeyPair on a retired (non-latest) keyset member is rejected. | 8 |
+| Negative / Protocol | `negative/rekey_keypair_non_latest` | Tests that ReKeyKeyPair on a retired (non-latest) keyset member is rejected. | 7 |
 | Negative / Protocol | `negative/rekey_keypair_preactive_fails` | Creates an EC P-256 key pair without ActivationDate (enters PreActive state), then verifies that ReKeyKeyPair on a PreActive private key is rejected. Only Active keys can be rotated. | 5 |
 | Negative / Protocol | `negative/rekey_preactive_fails` | Creates a symmetric key without ActivationDate (enters PreActive state), then verifies that ReKey on a PreActive key is rejected. Only Active keys can be rotated. | 4 |
 | Negative / Revoke | `negative/revoke/item_not_found` | Tests that Revoke returns Item_Not_Found error as per KMIP spec | 1 |
@@ -452,22 +462,28 @@ replays the steps sequentially.
 | non-FIPS / ChaCha20 | `non-fips/chacha20_server_generated_nonce` | Creates a ChaCha20 key, encrypts without specifying a nonce (server generates an 8-byte nonce), captures the nonce from the response, then decrypts and verifies the plaintext | 3 |
 | non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Creates a ChaCha20 key, encrypts with an explicit CryptographicParameters block specifying the ChaCha20 algorithm and a client-provided 8-byte nonce, then decrypts and verifies the plaintext | 3 |
 | **Keyset Resolution** | | | |
-| Keyset | `keyset_chain_skips_expired_window` | Creates a symmetric key (gen-0), sets a rotate_name, encrypts with the gen-0 UID, then performs a ReKey to create gen-1.  Sets ProtectStopDate in the past on gen-1 (the newest key in the chain).  Decrypts with the bare keyset name. | 10 |
-| Keyset / Decrypt | `keyset_decrypt_at_first` | Creates a symmetric key, assigns a rotate_name, encrypts with the original key UID, performs a ReKey, then decrypts using name@first. Verifies that @first resolves to gen-0 for decryption. | 9 |
-| Keyset / Decrypt | `keyset_decrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, encrypts with gen-0 UID, performs two ReKey operations, then decrypts using name@0. Verifies that @0 resolves to gen-0 for decryption even after multiple rotations. | 12 |
-| Keyset / Decrypt | `keyset_decrypt_at_latest` | Decrypt using name@latest resolves to the single latest key rather than walking the chain. After rotation, encrypts with the new key, then decrypts using name@latest which should find the new key directly. | 9 |
-| Keyset / Decrypt | `keyset_decrypt_double_rotation` | Tests try-each-key across a 3-generation chain: | 12 |
-| Keyset / Decrypt | `keyset_decrypt_try_each` | The primary keyset try-each-key test: | 9 |
-| Keyset / Encrypt | `keyset_encrypt_at_first` | Creates a symmetric key, assigns a rotate_name, performs a ReKey, then encrypts data using the keyset name@first syntax. Verifies that @first resolves to gen-0 by decrypting with the original key UID. | 9 |
-| Keyset / Encrypt | `keyset_encrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, performs two ReKey operations (gen-0→gen-1→gen-2), then encrypts using name@1. Verifies that @1 resolves to gen-1 by decrypting with the gen-1 key UID. | 12 |
-| Keyset / Encrypt | `keyset_encrypt_bare_name` | Creates a symmetric key with rotate_name set, then encrypts using only the bare keyset name (no @version suffix). For Encrypt operations, bare keyset names resolve to the latest key (SingleLatest mode). | 6 |
-| Keyset / Encrypt | `keyset_encrypt_expired_window_fails` | Creates a symmetric key, assigns a rotate_name, then sets ProtectStopDate in the past on the key (the only/latest key in the chain).  An Encrypt with the bare keyset name must fail. | 6 |
-| Keyset / Encrypt | `keyset_encrypt_latest` | Creates a symmetric key, assigns a rotate_name via SetAttribute, then encrypts data using the keyset name@latest syntax. Verifies that keyset resolution correctly finds the latest key. | 6 |
-| Keyset / Encrypt | `keyset_encrypt_latest_after_rotation` | After rotation, encrypting by the bare keyset name must use the new key: | 9 |
-| Negative / Keyset | `negative/keyset_invalid_generation` | Creates a symmetric key with a rotate_name, then attempts to encrypt using name@99 which references a nonexistent generation. The operation must fail. | 5 |
+| Keyset | `keyset_chain_skips_expired_window` | Creates a symmetric key (gen-0), sets a rotate_name, encrypts with the gen-0 UID, then performs a ReKey to create gen-1.  Sets ProtectStopDate in the past on gen-1 (the newest key in the chain).  Decrypts with the bare keyset name. | 9 |
+| Keyset / Decrypt | `keyset_decrypt_at_first` | Creates a symmetric key, assigns a rotate_name, encrypts with the original key UID, performs a ReKey, then decrypts using name@first. Verifies that @first resolves to gen-0 for decryption. | 8 |
+| Keyset / Decrypt | `keyset_decrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, encrypts with gen-0 UID, performs two ReKey operations, then decrypts using name@0. Verifies that @0 resolves to gen-0 for decryption even after multiple rotations. | 11 |
+| Keyset / Decrypt | `keyset_decrypt_at_latest` | Decrypt using name@latest resolves to the single latest key rather than walking the chain. After rotation, encrypts with the new key, then decrypts using name@latest which should find the new key directly. | 8 |
+| Keyset / Decrypt | `keyset_decrypt_double_rotation` | Tests try-each-key across a 3-generation chain: | 11 |
+| Keyset / Decrypt | `keyset_decrypt_try_each` | The primary keyset try-each-key test: | 8 |
+| Keyset / Encrypt | `keyset_encrypt_at_first` | Creates a symmetric key with a rotate_name, encrypts using name@first while gen-0 is Active, then performs ReKey (gen-0 → Deactivated per §4.57). Verifies @first resolved to gen-0 by decrypting with the original key UID after rotation (Decrypt accepts Deactivated keys per KMIP §3.31). | 8 |
+| Keyset / Encrypt | `keyset_encrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, performs two ReKey operations (gen-0→gen-1→gen-2). Encrypts with name@1 while gen-1 is still Active (between rotations), then verifies by decrypting with the gen-1 UID after the second rotation (Decrypt accepts Deactivated keys). | 11 |
+| Keyset / Encrypt | `keyset_encrypt_bare_name` | Creates a symmetric key with rotate_name set, then encrypts using only the bare keyset name (no @version suffix). For Encrypt operations, bare keyset names resolve to the latest key (SingleLatest mode). | 5 |
+| Keyset / Encrypt | `keyset_encrypt_expired_window_fails` | Creates a symmetric key, assigns a rotate_name, then sets ProtectStopDate in the past on the key (the only/latest key in the chain).  An Encrypt with the bare keyset name must fail. | 5 |
+| Keyset / Encrypt | `keyset_encrypt_latest` | Creates a symmetric key, assigns a rotate_name via SetAttribute, then encrypts data using the keyset name@latest syntax. Verifies that keyset resolution correctly finds the latest key. | 5 |
+| Keyset / Encrypt | `keyset_encrypt_latest_after_rotation` | After rotation, encrypting by the bare keyset name must use the new key: | 8 |
+| Keyset | `keyset_gen0_via_address` | After creating a keyset and rotating it once, verifies that the gen-0 key | 9 |
+| Keyset | `keyset_uid_scheme` | Verifies the deterministic UID scheme for SQL keysets: | 9 |
+| Negative / Keyset | `negative/keyset_addattribute_uid_mismatch_fails` | Verifies that adding rotate_name via AddAttribute is rejected when the attribute value does not equal the key's UID. Mirrors the SetAttribute enforcement for the same keyset-name invariant. | 4 |
+| Negative / Keyset | `negative/keyset_create_no_uid_with_rotate_name_fails` | Verifies that a Create request that specifies rotate_name but omits UniqueIdentifier is rejected. Without an explicit UID equal to the keyset name, the server would assign a random UUID, violating the gen-0 UID invariant. | 1 |
+| Negative / Keyset | `negative/keyset_create_uid_mismatch_fails` | Verifies that a Create request where rotate_name does not equal the supplied UniqueIdentifier is rejected. The invariant is: gen-0 UID must equal the keyset name. | 1 |
+| Negative / Keyset | `negative/keyset_invalid_generation` | Creates a symmetric key with a rotate_name, then attempts to encrypt using name@99 which references a nonexistent generation. The operation must fail. | 4 |
 | Negative / Keyset | `negative/keyset_rotate_name_at_rejected` | Verifies that setting a rotate_name containing '@' is rejected with an InvalidRequest error, since '@' is reserved for keyset versioning syntax. | 4 |
-| Negative / Keyset | `negative/rekey_non_latest_hsm` | Tests that Re-Key on a retired (non-latest) HSM key is rejected. | 8 |
-| Negative / Keyset | `negative/rekey_non_latest_sql` | Tests that Re-Key on a retired (non-latest) SQL-backed key is rejected. | 8 |
+| Negative / Keyset | `negative/keyset_setattribute_uid_mismatch_fails` | Verifies that setting rotate_name via SetAttribute is rejected when the attribute value does not equal the key's UID. SQL keys require gen-0 UID to equal the keyset name — this invariant must be enforced at SetAttribute time. | 4 |
+| Negative / Keyset | `negative/rekey_non_latest_hsm` | Tests that Re-Key on a retired (non-latest) HSM key is transparently redirected | 10 |
+| Negative / Keyset | `negative/rekey_non_latest_sql` | Tests that Re-Key on a retired (non-latest) SQL-backed key is rejected. | 7 |
 
 ---
 

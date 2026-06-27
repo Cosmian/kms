@@ -591,15 +591,15 @@ const LocateForm: React.FC = () => {
             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, []);
+                let m: Map<string, unknown>;
                 if (parsed instanceof Map) {
-                    setDetailsData(parsed);
+                    m = new Map(parsed as Map<string, unknown>);
                 } else if (parsed && typeof parsed === "object") {
-                    // Convert record to Map
-                    const m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
-                    setDetailsData(m);
+                    m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
                 } else {
-                    setDetailsData(new Map());
+                    m = new Map();
                 }
+                setDetailsData(m);
                 setDetailsForId(uid);
                 setDetailsVisible(true);
             }

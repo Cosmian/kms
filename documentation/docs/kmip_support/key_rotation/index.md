@@ -411,7 +411,7 @@ into the ciphertext, so no unwrap is needed.
 ```mermaid
 flowchart TD
     subgraph "Re-Key dispatch"
-        REQ["Re-Key / Re-Key Key Pair"] --> DISPATCH{"Object type?"}
+        REQ["Re-Key / Re-Key Key Pair / ReCertify"] --> DISPATCH{"Object type?"}
         DISPATCH -->|SymmetricKey, no dependants| PLAIN["Plain rekey<br/>(new material, new UID)"]
         DISPATCH -->|SymmetricKey, has WrappingKeyLink dependants| WRAP_K["Wrapping-key rotation<br/>(Phase 1 commit → Phase 2 re-wrap)"]
         DISPATCH -->|SymmetricKey, is wrapped| WRAP_D["Wrapped-key rotation<br/>(unwrap → new material → re-wrap)"]

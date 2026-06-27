@@ -1892,9 +1892,10 @@ impl Session {
         // Format: "rotate_name::generation::key_id[@latest]"
         //
         // `rotate_name` may itself contain "::" — for HSM-resident keys the convention is
-        // rotate_name = "hsm::<slot>::<key_id>" (the full base UID), which is unique across
-        // slots.  Split from the RIGHT so the variable-length rotate_name is always the
-        // residual left segment, regardless of how many "::" it contains.
+        // rotate_name = "hsm::<model>::<slot>::<key_id>" (the full base UID, including the
+        // model segment), which is unique across slots.  Split from the RIGHT so the
+        // variable-length rotate_name is always the residual left segment, regardless of
+        // how many "::" it contains.
         //
         // rsplitn(3, "::") yields (from right to left):
         //   index 0 → key_id[@latest]

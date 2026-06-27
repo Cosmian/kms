@@ -5,8 +5,11 @@
 //! on the same HSM slot (via `C_GenerateKey`), assigns a generation-suffixed UID, and
 //! updates `CKA_LABEL` / `CKA_START_DATE` / `CKA_END_DATE` on both old and new keys.
 
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    kmip_objects::ObjectType, kmip_operations::ReKeyResponse, kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{
+        kmip_objects::ObjectType, kmip_operations::ReKeyResponse, kmip_types::UniqueIdentifier,
+    },
+    cosmian_kms_interfaces::AtomicOperation,
 };
 use cosmian_logger::trace;
 use time::OffsetDateTime;
@@ -262,6 +265,18 @@ impl KMS {
         }
 
         trace!("HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}");
+
+        // Re-wrap any DB keys that were wrapped by the old HSM key, so that
+        // they remain accessible under the new generation without requiring
+        // the caller to keep the old HSM key alive.
+        let mut operations: Vec<AtomicOperation> = Vec::new();
+        Box::pin(self.rewrap_dependants(user, uid, &new_uid, &mut operations)).await?;
+        if !operations.is_empty() {
+            self.database
+                .atomic(user, &operations)
+                .await
+                .map_err(KmsError::Database)?;
+        }
 
         Ok(ReKeyResponse {
             unique_identifier: UniqueIdentifier::TextString(new_uid),

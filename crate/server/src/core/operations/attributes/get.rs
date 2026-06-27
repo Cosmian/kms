@@ -510,9 +510,11 @@ pub(crate) async fn get_attributes(
                     res.state = attributes.state;
                 }
                 Tag::UniqueIdentifier => {
-                    attributes
-                        .unique_identifier
-                        .clone_into(&mut res.unique_identifier);
+                    // Always authoritative: use the stored object UID from the database row
+                    // rather than the embedded attribute value. The embedded value may be a
+                    // stale random UUID for re-keyed objects created before the `finalize`
+                    // fix stamped the correct new UID into the key material attributes.
+                    res.unique_identifier = Some(UniqueIdentifier::TextString(owm.id().to_owned()));
                 }
                 Tag::ShortUniqueIdentifier => {
                     // Ensure presence: if absent, return an empty string

@@ -3907,6 +3907,12 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/kek_rekey_wrapped").await
     }
 
+    #[tokio::test]
+    async fn test_vec_hsm_kek_rekey_kek() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/kek_rekey_kek").await
+    }
+
     /// Regression test for the HSM self-wrap bug (PR #968):
     /// `wrap_and_cache` must not attempt to wrap an HSM-resident key with the
     /// server-wide KEK when the key being created IS the configured KEK UID.
