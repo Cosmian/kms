@@ -702,22 +702,22 @@ impl ObjectsStore for MySqlPool {
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,
-    ) -> InterfaceResult<Vec<String>> {
+    ) -> InterfaceResult<Vec<(String, String)>> {
         let sql = find_due_for_rotation_query::<MySqlPlaceholder>();
         let mut conn = self
             .pool
             .get_conn()
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
-        let rows: Vec<(String, serde_json::Value)> = conn
+        let rows: Vec<(String, String, serde_json::Value)> = conn
             .exec(&sql, ())
             .await
             .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
         let mut due = Vec::new();
-        for (uid, attrs_val) in rows {
+        for (uid, owner, attrs_val) in rows {
             let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
             if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                due.push(uid);
+                due.push((uid, owner));
             }
         }
         Ok(due)

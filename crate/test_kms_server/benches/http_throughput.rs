@@ -26,13 +26,6 @@
 
 use std::time::Instant;
 
-use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use futures::future::join_all;
-use test_kms_server::{
-    TestClientOptions, init_test_logging, start_test_server_with_patch, test_config_path,
-};
-use zeroize::Zeroizing;
-
 use cosmian_kms_client::{
     KmsClient, KmsClientError,
     kmip_0::kmip_types::{CryptographicUsageMask, HashingAlgorithm, PaddingMethod},
@@ -51,6 +44,12 @@ use cosmian_kms_client::{
         },
     },
 };
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use futures::future::join_all;
+use test_kms_server::{
+    TestClientOptions, init_test_logging, start_test_server_with_patch, test_config_path,
+};
+use zeroize::Zeroizing;
 
 /// Number of concurrent HTTP tasks dispatched per Criterion iteration.
 /// High enough to saturate the server workers; low enough to avoid OS thread exhaustion.

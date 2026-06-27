@@ -128,7 +128,13 @@ pub trait ObjectsStore {
     /// - `initial_date + rotate_interval + rotate_offset` (if `rotate_date` is None)
     ///
     /// The default implementation returns an empty list; backends should override.
-    async fn find_due_for_rotation(&self, _now: OffsetDateTime) -> InterfaceResult<Vec<String>> {
+    ///
+    /// Each entry is `(uid, owner)` so the auto-rotation scheduler can issue a
+    /// Re-Key on behalf of the correct owner without an additional DB round-trip.
+    async fn find_due_for_rotation(
+        &self,
+        _now: OffsetDateTime,
+    ) -> InterfaceResult<Vec<(String, String)>> {
         Ok(vec![])
     }
 

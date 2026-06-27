@@ -404,10 +404,13 @@ impl Database {
     }
 
     /// Find all Active objects that have a `rotate_interval > 0` and whose next
-    /// rotation instant is ≤ `now`. Returns a list of UIDs.
-    pub async fn find_due_for_rotation(&self, now: time::OffsetDateTime) -> DbResult<Vec<String>> {
+    /// rotation instant is ≤ `now`. Returns `(uid, owner)` pairs.
+    pub async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> DbResult<Vec<(String, String)>> {
         let map = self.objects.read().await;
-        let mut results: Vec<String> = Vec::new();
+        let mut results: Vec<(String, String)> = Vec::new();
         for db in map.values() {
             results.extend(db.find_due_for_rotation(now).await.unwrap_or_default());
         }

@@ -399,7 +399,7 @@ impl ObjectsStore for HsmStore {
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,
-    ) -> InterfaceResult<Vec<String>> {
+    ) -> InterfaceResult<Vec<(String, String)>> {
         let today = now.date();
         let slot_ids = self.hsm.get_available_slot_list().await?;
         let mut due_uids = Vec::new();
@@ -428,7 +428,10 @@ impl ObjectsStore for HsmStore {
                         continue;
                     };
                     let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
-                    due_uids.push(uid);
+                    // HSM objects have no KMIP "owner" — the HSM instance is single-tenant.
+                    // Return an empty owner string; the scheduler must resolve ownership
+                    // from the KMS system metadata if multi-tenancy is needed in future.
+                    due_uids.push((uid, String::new()));
                 }
             }
         }
@@ -445,6 +448,11 @@ impl ObjectsStore for HsmStore {
         &self,
         name: &str,
         generation: Option<i32>,
+        // PKCS#11 objects have no KMIP "owner" field — ownership cannot be filtered
+        // at the HSM layer.  The KMS server is assumed to be single-tenant with respect
+        // to a given HSM instance (each deployment's HSM is dedicated to one server).
+        // The `owner` parameter is intentionally unused here; the SQL implementation
+        // (which is multi-tenant) does filter by owner.
         _owner: &str,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let slot_ids = self.hsm.get_available_slot_list().await?;

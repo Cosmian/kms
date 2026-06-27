@@ -650,13 +650,13 @@ impl ObjectsStore for SqlitePool {
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,
-    ) -> InterfaceResult<Vec<String>> {
+    ) -> InterfaceResult<Vec<(String, String)>> {
         let sql = find_due_for_rotation_query::<SqlitePlaceholder>();
         let rows = self
             .reader()
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<
-                    Vec<(String, String)>,
+                    Vec<(String, String, String)>,
                     rusqlite::Error,
                 > {
                     let mut stmt = c.prepare(&sql)?;
@@ -664,8 +664,9 @@ impl ObjectsStore for SqlitePool {
                     let mut out = Vec::new();
                     while let Some(r) = q.next()? {
                         let id: String = r.get(0)?;
-                        let attrs_json: String = r.get(1)?;
-                        out.push((id, attrs_json));
+                        let owner: String = r.get(1)?;
+                        let attrs_json: String = r.get(2)?;
+                        out.push((id, owner, attrs_json));
                     }
                     Ok(out)
                 },
@@ -674,10 +675,10 @@ impl ObjectsStore for SqlitePool {
             .map_err(DbError::from)?;
 
         let mut due = Vec::new();
-        for (uid, attrs_json) in rows {
+        for (uid, owner, attrs_json) in rows {
             let attrs: Attributes = serde_json::from_str(&attrs_json).unwrap_or_default();
             if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                due.push(uid);
+                due.push((uid, owner));
             }
         }
         Ok(due)

@@ -551,7 +551,6 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate] Failed to query keys due for rotation: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
 | `debug` | `[auto-rotate] Found {} key(s) due for rotation` | `src/core/operations/auto_rotate.rs` | - | - |
 | `debug` | `[auto-rotate] Renewal-warning dispatch complete (no-op stub)` | `src/core/operations/auto_rotate.rs` | - | - |
-| `debug` | `[auto-rotate] Rotating key {uid}` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `trace` | `Auto-deactivating object {} (deactivation_date {} <= now {})` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
 | `trace` | `execute_keyset_try_each: key {} failed for {}: {}` | `src/core/operations/key_ops/crypto_op.rs` | - | - |
 | `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
@@ -594,6 +593,8 @@ Crate path: `crate/server`
 | `trace` | `` PKCS#11 `C_UnwrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `ReKeyKeyPair: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/keypair/mod.rs` | - | - |
+| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
+| `debug` | `[auto-rotate] Rotating key {uid} (owner={owner})` | `src/core/operations/auto_rotate.rs` | `uid`, `owner` | - |
 
 ### `cosmian_kms_server_database`
 

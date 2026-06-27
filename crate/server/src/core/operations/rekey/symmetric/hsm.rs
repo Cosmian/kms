@@ -7,7 +7,8 @@
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
-        kmip_objects::ObjectType, kmip_operations::ReKeyResponse, kmip_types::UniqueIdentifier,
+        KmipOperation, kmip_objects::ObjectType, kmip_operations::ReKeyResponse,
+        kmip_types::UniqueIdentifier,
     },
     cosmian_kms_interfaces::AtomicOperation,
 };
@@ -130,6 +131,18 @@ impl KMS {
             return Err(KmsError::NotSupported(
                 "HSM ReKey is currently supported for AES symmetric keys only".to_owned(),
             ));
+        }
+
+        // Per-object authorization: the caller must own the key or hold an explicit
+        // Rekey grant.  `enforce_create_permission` above only checks the server-level
+        // "can create" right; it does not verify ownership of this specific object.
+        if !self
+            .user_can_perform_operation(&old_owm, user, &KmipOperation::Rekey)
+            .await?
+        {
+            return Err(KmsError::Unauthorized(format!(
+                "User '{user}' does not have Rekey permission on HSM key '{uid}'"
+            )));
         }
 
         let old_attrs = old_owm.attributes();

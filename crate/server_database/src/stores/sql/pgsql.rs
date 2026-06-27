@@ -891,7 +891,7 @@ impl ObjectsStore for PgPool {
     async fn find_due_for_rotation(
         &self,
         now: time::OffsetDateTime,
-    ) -> InterfaceResult<Vec<String>> {
+    ) -> InterfaceResult<Vec<(String, String)>> {
         pg_retry!(self.pool, |client| {
             let sql = crate::stores::sql::locate_query::find_due_for_rotation_query::<
                 crate::stores::sql::locate_query::PgSqlPlaceholder,
@@ -903,10 +903,11 @@ impl ObjectsStore for PgPool {
             let mut due = Vec::new();
             for row in rows {
                 let uid: String = row.get(0);
-                let attrs_val: Value = row.get(1);
+                let owner: String = row.get(1);
+                let attrs_val: Value = row.get(2);
                 let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
                 if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
-                    due.push(uid);
+                    due.push((uid, owner));
                 }
             }
             Ok(due)

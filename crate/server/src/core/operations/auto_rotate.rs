@@ -31,8 +31,8 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
         due_keys.len()
     );
 
-    for uid in &due_keys {
-        debug!("[auto-rotate] Rotating key {uid}");
+    for (uid, owner) in &due_keys {
+        debug!("[auto-rotate] Rotating key {uid} (owner={owner})");
         // TODO: issue Re-Key / Re-Key Key Pair operation for the key
     }
 }
