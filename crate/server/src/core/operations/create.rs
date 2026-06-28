@@ -92,6 +92,9 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
     );
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(kms, owner, &unique_identifier, &mut object)).await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     // create the object in the database
     let uid = kms

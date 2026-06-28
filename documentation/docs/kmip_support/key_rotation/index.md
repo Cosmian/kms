@@ -44,11 +44,46 @@ Only objects in the following states can be the **source** of a rotation:
 
 ## Old key Deactivated after rotation
 
-Per KMIP §4.57 state transition 6, the old key is **automatically transitioned
-to Deactivated** when a `Re-Key` or `Re-Key Key Pair` operation completes
-successfully.
+### Why deactivation is enforced
 
-Consequences:
+A key in the **Deactivated** state SHALL NOT be used for applying cryptographic
+protection (encryption, signing, wrapping, MACing, deriving). It MAY still be
+used to *process* already-protected data (decryption, signature verification,
+unwrapping). This asymmetry is the key principle behind post-rotation key
+handling:
+
+- **Limit blast radius.** If the old key material is compromised after rotation,
+  no new data was ever encrypted with it — the damage is bounded.
+- **Enforce the cryptoperiod.** NIST SP800-57-1 defines a *cryptoperiod* as the
+  span during which a key is authorised to protect data. Key rotation ends that
+  period; the Deactivated state makes the boundary enforceable by the server.
+- **Preserve backward compatibility.** Consumers holding ciphertexts produced
+  before rotation must still be able to decrypt. Deactivated keeps the key
+  accessible for decryption without allowing it to encrypt new data.
+
+### How KMIP §4.57 mandates it
+
+KMIP §4.57 defines the **State** attribute and lists the only legal state
+transitions. **Transition 6** governs `Active → Deactivated` and states that it
+SHALL occur in one of three ways:
+
+1. The object's **Deactivation Date is reached**.
+2. A client issues a **Revoke** operation with a non-Compromised reason.
+3. A client **Modify Attribute** sets the Deactivation Date to now or the past.
+
+`Re-Key` / `Re-Key Key Pair` are *not* listed as a direct cause of transition 6.
+The spec mandates deactivation indirectly through path 1: the KMIP §4.33
+**Deactivation Date** attribute rules list `Re-key` and `Re-key Key Pair` under
+*"When implicitly set"*, meaning the server **MUST** set the Deactivation Date on
+the old key as part of the rotation operation. Because that date is set to
+*now* (or already passed), the condition "Deactivation Date is reached"
+immediately triggers transition 6.
+
+In short: the spec does not have a direct Re-Key → Deactivated transition, but
+it mandates deactivation by requiring the server to set the Deactivation Date
+during `Re-Key`, which then fires transition 6 automatically.
+
+### Consequences
 
 - The old key can no longer be used for **Encrypt** or **Sign** operations
   (those require `Active` state).

@@ -11,7 +11,7 @@ interface ECKeyCreateFormData {
     tags: string[];
     sensitive: boolean;
     wrappingKeyId?: string;
-    rotateName?: string;
+    enrollKeyset: boolean;
     rotateInterval?: number;
     rotateOffset?: number;
 }
@@ -61,7 +61,7 @@ const ECKeyCreateForm: React.FC = () => {
                 const skId = result.PrivateKeyUniqueIdentifier;
 
                 // Apply rotation policy on the private key (keyset anchor)
-                if (values.rotateName || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
+                if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
                     if (values.rotateInterval !== undefined) {
                         const req = wasm.set_rotate_interval_ttlv_request(skId, BigInt(values.rotateInterval));
                         await sendKmipRequest(req, idToken, serverUrl);
@@ -70,8 +70,9 @@ const ECKeyCreateForm: React.FC = () => {
                         const req = wasm.set_rotate_offset_ttlv_request(skId, BigInt(values.rotateOffset));
                         await sendKmipRequest(req, idToken, serverUrl);
                     }
-                    if (values.rotateName) {
-                        const req = wasm.set_rotate_name_ttlv_request(skId, values.rotateName);
+                    if (values.enrollKeyset) {
+                        // rotation name must equal the private key ID
+                        const req = wasm.set_rotate_name_ttlv_request(skId, skId);
                         await sendKmipRequest(req, idToken, serverUrl);
                     }
                 }
@@ -101,6 +102,7 @@ const ECKeyCreateForm: React.FC = () => {
                     // curve set via useEffect when options are available
                     tags: [],
                     sensitive: false,
+                    enrollKeyset: false,
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
@@ -143,38 +145,45 @@ const ECKeyCreateForm: React.FC = () => {
                         </Divider>
 
                         <Form.Item
-                            name="rotateName"
-                            label="Rotation Name"
-                            help="Keyset name for addressing generations via name@latest, name@first, name@N"
-                            rules={[
-                                ({ getFieldValue }) => ({
-                                    validator(_, value) {
-                                        const privateKeyId = getFieldValue("privateKeyId") as string | undefined;
-                                        if (value && privateKeyId && value !== privateKeyId) {
-                                            return Promise.reject(
-                                                new Error(
-                                                    `Rotation Name must equal Private Key ID ("${privateKeyId}") — create the keypair with the keyset name as its ID`,
-                                                ),
-                                            );
-                                        }
-                                        return Promise.resolve();
-                                    },
-                                }),
-                            ]}
+                            name="enrollKeyset"
+                            valuePropName="checked"
+                            help="When checked, the rotation name is set to the private key ID so this key pair can be addressed via name@latest, name@first, name@N"
                         >
-                            <Input placeholder="e.g. my-keyset" data-testid="ec-rotation-name" />
+                            <Checkbox data-testid="ec-enroll-keyset">Enroll in keyset (rotation name = private key ID)</Checkbox>
                         </Form.Item>
 
-                        <Form.Item
-                            name="rotateInterval"
-                            label="Rotation Interval (seconds)"
-                            help="Auto-rotate the key pair every N seconds. Set 0 to disable."
-                        >
-                            <InputNumber className="w-[200px]" min={0} placeholder="e.g. 86400" data-testid="ec-rotation-interval" />
-                        </Form.Item>
+                        <Form.Item noStyle shouldUpdate={(prev, curr) => prev.enrollKeyset !== curr.enrollKeyset}>
+                            {({ getFieldValue }) =>
+                                getFieldValue("enrollKeyset") ? (
+                                    <>
+                                        <Form.Item
+                                            name="rotateInterval"
+                                            label="Rotation Interval (seconds)"
+                                            help="Auto-rotate the key pair every N seconds. Set 0 to disable."
+                                        >
+                                            <InputNumber
+                                                className="w-[200px]"
+                                                min={0}
+                                                placeholder="e.g. 86400"
+                                                data-testid="ec-rotation-interval"
+                                            />
+                                        </Form.Item>
 
-                        <Form.Item name="rotateOffset" label="Rotation Offset (seconds)" help="Delay before the first rotation occurs.">
-                            <InputNumber className="w-[200px]" min={0} placeholder="e.g. 3600" data-testid="ec-rotation-offset" />
+                                        <Form.Item
+                                            name="rotateOffset"
+                                            label="Rotation Offset (seconds)"
+                                            help="Delay before the first rotation occurs."
+                                        >
+                                            <InputNumber
+                                                className="w-[200px]"
+                                                min={0}
+                                                placeholder="e.g. 3600"
+                                                data-testid="ec-rotation-offset"
+                                            />
+                                        </Form.Item>
+                                    </>
+                                ) : null
+                            }
                         </Form.Item>
                     </Card>
 

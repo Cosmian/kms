@@ -131,9 +131,12 @@ pub(crate) async fn create_key_pair(
         &mut private_key,
     ))
     .await?;
+    // If the private key was wrapped, record the WrappingKeyLink in stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    private_key.copy_wrapping_key_link_to(&mut private_key_attributes);
 
     let mut public_key = key_pair.public_key().to_owned();
-    let public_key_attributes =
+    let mut public_key_attributes =
         public_key.setup_with_lifecycle(ObjectType::PublicKey, requested_pk_activation_date)?;
     trace!(
         "Public key attributes after lifecycle update: {}",
@@ -147,6 +150,8 @@ pub(crate) async fn create_key_pair(
         &mut public_key,
     ))
     .await?;
+    // If the public key was wrapped, record the WrappingKeyLink in stored attributes.
+    public_key.copy_wrapping_key_link_to(&mut public_key_attributes);
 
     let operations = vec![
         AtomicOperation::Create((

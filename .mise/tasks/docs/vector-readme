@@ -6,6 +6,15 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 print_header "Regenerating test_kms_server vector README"
 
 REPO_ROOT="$(get_repo_root)"
-python3 "${REPO_ROOT}/.mise/scripts/docs/gen_vector_readme.py"
+python3 "${REPO_ROOT}/.mise/scripts/docs/gen_vector_readme.py" || {
+  rc=$?
+  if [ "$rc" -eq 1 ]; then
+    print_status "README.md updated — stage the file and re-commit"
+    exit 1
+  else
+    print_error "gen_vector_readme.py failed with exit code $rc"
+    exit "$rc"
+  fi
+}
 
-print_success "Vector README regenerated"
+print_success "Vector README is already up-to-date"

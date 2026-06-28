@@ -163,17 +163,6 @@ impl CreatePqcKeyPairAction {
         &self,
         kms_rest_client: KmsClient,
     ) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
-        // PQC key pair creation does not support a custom key ID, so rotate_name cannot be
-        // satisfied: the server would reject the subsequent SetAttribute because uid ≠ rotate_name.
-        if let Some(ref name) = self.rotation_policy.rotate_name {
-            return Err(crate::error::KmsCliError::Default(format!(
-                "PQC key pairs do not support --rotation-name: no custom key ID can be set, \
-                 so the keyset invariant (key-id == rotation-name = '{name}') cannot be satisfied. \
-                 Create the key without a rotation name, then use set-rotation-policy separately \
-                 only if this is an HSM-resident key."
-            )));
-        }
-
         let vendor_id = kms_rest_client.config.vendor_id.as_str();
 
         let request = if let Some(kem_algorithm) = self.algorithm.to_kem_algorithm() {

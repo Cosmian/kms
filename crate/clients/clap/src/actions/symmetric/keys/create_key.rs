@@ -93,11 +93,6 @@ impl CreateKeyAction {
             prepare_sym_key_elements(self.number_of_bits, &self.wrap_key_b64, self.algorithm)
                 .with_context(|| "failed preparing key elements")?;
 
-        // Validate key_id / rotate_name consistency early, before any server request.
-        let effective_key_id = self
-            .rotation_policy
-            .effective_key_id(self.key_id.as_deref())?;
-
         let vendor_id = kms_rest_client.config.vendor_id.as_str();
         let unique_identifier = if let Some(key_bytes) = key_bytes {
             let mut object = create_symmetric_key_kmip_object(
@@ -114,7 +109,7 @@ impl CreateKeyAction {
             }
             let import_object_request = import_object_request(
                 vendor_id,
-                effective_key_id.clone(),
+                self.key_id.clone(),
                 object,
                 None,
                 false,
@@ -127,7 +122,8 @@ impl CreateKeyAction {
                 .with_context(|| "failed importing the key")?
                 .unique_identifier
         } else {
-            let key_id = effective_key_id
+            let key_id = self
+                .key_id
                 .as_ref()
                 .map(|id| UniqueIdentifier::TextString(id.clone()));
             let create_key_request = symmetric_key_create_request(

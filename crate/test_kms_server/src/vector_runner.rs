@@ -36,15 +36,21 @@ static ONCE_VECTOR_HSM_KEK: OnceCell<TestsContext> = OnceCell::const_new();
 static ONCE_VECTOR_HSM_KEK_UNCREATED: OnceCell<TestsContext> = OnceCell::const_new();
 /// Singleton server for vector tests requiring `SoftHSM2` **without** a KEK.
 static ONCE_VECTOR_HSM: OnceCell<TestsContext> = OnceCell::const_new();
-/// Serialises `hsm_kek` test vectors to prevent concurrent PKCS#11 access on the same
-/// `SoftHSM2` slot from causing `CKR_OBJECT_HANDLE_INVALID` failures.
+/// Serialises **all** HSM test vectors that target the same `SoftHSM2` slot
+/// (`hsm_kek`, `hsm_kek_uncreated`, and `hsm` server types all use
+/// `HSM_SLOT_ID`).
 ///
-/// `SoftHSM2`'s internal state is not safe under heavy concurrent access; running all
-/// `hsm_kek` vectors sequentially eliminates the race without changing test semantics.
-static HSM_KEK_TEST_MUTEX: Mutex<()> = Mutex::const_new(());
-/// Serialises `hsm` (no-KEK) test vectors — same `SoftHSM2` slot, separate mutex so
-/// KEK and no-KEK suites can run concurrently on different CI machines.
-static HSM_NO_KEK_TEST_MUTEX: Mutex<()> = Mutex::const_new(());
+/// A single slot-level mutex is required because the two KMS server instances
+/// (`hsm` and `hsm_kek`) share PKCS#11 object handles across separate
+/// `BaseHsm` caches.  When both run concurrently, one instance can close a
+/// session whose handles the other still holds in cache, producing
+/// `CKR_OBJECT_HANDLE_INVALID` (130) failures in the losing thread.
+static HSM_SLOT_MUTEX: Mutex<()> = Mutex::const_new(());
+/// Guards the one-time cleanup of stale `vec_*` HSM objects that accumulate
+/// across `cargo test` invocations.  The cleanup must run while `HSM_SLOT_MUTEX`
+/// is held so that it cannot delete keys being used by a concurrently-running
+/// `hsm_kek` test.
+static HSM_CLEANUP_DONE: OnceCell<()> = OnceCell::const_new();
 
 /// A test vector manifest loaded from a TOML file.
 ///
@@ -837,7 +843,7 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                     .await?;
                 // Serialise PKCS#11 access: SoftHSM2 state is not safe under concurrent
                 // access on the same slot (CKR_OBJECT_HANDLE_INVALID races).
-                let _hsm_guard = HSM_KEK_TEST_MUTEX.lock().await;
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek'",
                     manifest.name
@@ -851,6 +857,7 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                             .await
                     })
                     .await?;
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
                 eprintln!(
                     "▶ Running vector '{}' on server_type 'hsm_kek_uncreated'",
                     manifest.name
@@ -863,9 +870,18 @@ pub async fn run_test_vector(vector_dir: &str) -> Result<(), KmsClientError> {
                         crate::start_default_test_kms_server_with_softhsm2_for_vectors().await
                     })
                     .await?;
-                // Serialise PKCS#11 access: SoftHSM2 state is not safe under concurrent
-                // access on the same slot (CKR_OBJECT_HANDLE_INVALID races).
-                let _hsm_guard = HSM_NO_KEK_TEST_MUTEX.lock().await;
+                // Serialise PKCS#11 access: all HSM server types share the same slot.
+                let _hsm_guard = HSM_SLOT_MUTEX.lock().await;
+                // Purge stale `vec_*` objects from previous test runs exactly once,
+                // while the slot mutex is held (prevents deleting keys that an
+                // `hsm_kek` test just created on the shared slot).
+                HSM_CLEANUP_DONE
+                    .get_or_try_init(|| async {
+                        crate::test_server::cleanup_hsm_slot_objects(&context.get_owner_client())
+                            .await;
+                        Ok::<(), cosmian_kms_client::KmsClientError>(())
+                    })
+                    .await?;
                 eprintln!("▶ Running vector '{}' on server_type 'hsm'", manifest.name);
                 return execute_steps(context, &manifest, &vector_path).await;
             }
@@ -1644,6 +1660,12 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_vec_rekey_compromised_succeeds() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_compromised_succeeds").await
+    }
+
+    #[tokio::test]
     async fn test_vec_rekey_deactivated_fails() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_deactivated_fails").await
@@ -1677,6 +1699,32 @@ ObjectType = "SymmetricKey"
     async fn test_vec_rekey_old_key_still_decrypts() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/fips/kmip_operations/rekey_old_key_still_decrypts").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_old_key_decrypt_succeeds() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_old_key_decrypt_succeeds")
+            .await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_manual_clears_interval() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_manual_clears_interval").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_manual_clears_offset() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_manual_clears_offset").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_rekey_keypair_rsa_old_decrypts() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/rekey_keypair_rsa_old_decrypts")
+            .await
     }
 
     #[tokio::test]
@@ -3364,6 +3412,18 @@ ObjectType = "SymmetricKey"
     }
 
     #[tokio::test]
+    async fn test_neg_set_attribute_readonly_rotate_generation() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/readonly_rotate_generation").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_set_attribute_readonly_rotate_date() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/set_attribute/readonly_rotate_date").await
+    }
+
+    #[tokio::test]
     async fn test_neg_spec_sign_invalid_message() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/sign/invalid_message").await
@@ -3464,6 +3524,12 @@ ObjectType = "SymmetricKey"
     async fn test_neg_rekey_preactive_fails() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/rekey_preactive_fails").await
+    }
+
+    #[tokio::test]
+    async fn test_neg_rekey_offset_preactive_cannot_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/negative/rekey_offset_preactive_cannot_encrypt").await
     }
 
     #[tokio::test]
@@ -4012,6 +4078,23 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/hsm/resident_keyset_no_kek_encrypt_gen_select").await
     }
 
+    // ── HSM Negative: Keyset name constraints ─────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_rotate_name_bare_rejected() -> Result<(), KmsClientError>
+    {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_rotate_name_bare_rejected").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_hsm_resident_keyset_rotate_name_gen_suffix_rejected()
+    -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/hsm/resident_keyset_rotate_name_gen_suffix_rejected")
+            .await
+    }
+
     #[tokio::test]
     #[cfg(not(feature = "non-fips"))]
     async fn test_vec_hsm_kek_rsa1024_rejected() -> Result<(), KmsClientError> {
@@ -4420,5 +4503,42 @@ ObjectType = "SymmetricKey"
     async fn test_vec_keyset_addattribute_uid_mismatch_fails() -> Result<(), KmsClientError> {
         crate::init_test_logging();
         run_test_vector("test_data/vectors/negative/keyset_addattribute_uid_mismatch_fails").await
+    }
+
+    // ─── Keyset sign/verify chain walk ────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_keyset_ec_sign_verify_chain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_ec_sign_verify_chain").await
+    }
+
+    #[tokio::test]
+    async fn test_vec_keyset_mac_verify_chain() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_mac_verify_chain").await
+    }
+
+    // ─── Keyset GetAttributes resolution ─────────────────────────────────
+
+    #[tokio::test]
+    async fn test_vec_keyset_getattributes_resolution() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/keyset_getattributes_resolution")
+            .await
+    }
+
+    // ─── ReCertify gaps ──────────────────────────────────────────────────
+
+    // The CreateKeyPair step uses ECDH + mask in CommonAttributes, consistent
+    // with all other ReCertify test vectors (which are also #[cfg(feature = "non-fips")]).
+    // In FIPS mode the private_key_mask must be explicit in PrivateKeyAttributes;
+    // a CommonAttributes-only mask gives None and fails the FIPS check.
+    #[cfg(feature = "non-fips")]
+    #[tokio::test]
+    async fn test_vec_recertify_old_cert_stays_active() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/kmip_operations/recertify_old_cert_stays_active")
+            .await
     }
 }

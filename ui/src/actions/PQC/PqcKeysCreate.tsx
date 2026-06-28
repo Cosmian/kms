@@ -10,7 +10,7 @@ interface PqcKeyCreateFormData {
     algorithm: string;
     tags: string[];
     sensitive: boolean;
-    rotateName?: string;
+    enrollKeyset: boolean;
     rotateInterval?: number;
     rotateOffset?: number;
 }
@@ -55,7 +55,7 @@ const PqcKeysCreateForm: React.FC = () => {
                 const skId = result.PrivateKeyUniqueIdentifier;
 
                 // Apply rotation policy on the private key (keyset anchor)
-                if (values.rotateName || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
+                if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
                     if (values.rotateInterval !== undefined) {
                         const req = wasm.set_rotate_interval_ttlv_request(skId, BigInt(values.rotateInterval));
                         await sendKmipRequest(req, idToken, serverUrl);
@@ -64,8 +64,9 @@ const PqcKeysCreateForm: React.FC = () => {
                         const req = wasm.set_rotate_offset_ttlv_request(skId, BigInt(values.rotateOffset));
                         await sendKmipRequest(req, idToken, serverUrl);
                     }
-                    if (values.rotateName) {
-                        const req = wasm.set_rotate_name_ttlv_request(skId, values.rotateName);
+                    if (values.enrollKeyset) {
+                        // rotation name is set to the private key ID (server-generated for PQC)
+                        const req = wasm.set_rotate_name_ttlv_request(skId, skId);
                         await sendKmipRequest(req, idToken, serverUrl);
                     }
                 }
@@ -108,6 +109,7 @@ const PqcKeysCreateForm: React.FC = () => {
                 initialValues={{
                     tags: [],
                     sensitive: false,
+                    enrollKeyset: false,
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>

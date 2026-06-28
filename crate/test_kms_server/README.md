@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**446 vectors** across 15 categories (including KAT):
+**461 vectors** across 15 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -166,11 +166,13 @@ replays the steps sequentially.
 | KMIP Operations | `process_window_encrypt_not_yet_active_fails` | Creates an Active symmetric key, then sets its ProcessStartDate to a date far in the future via SetAttribute.  An Encrypt attempt must be rejected with Wrong_Key_Lifecycle_State even though the key state is still Active. | 5 |
 | KMIP Operations | `query` | Queries server information, supported operations, and supported object types | 1 |
 | KMIP Operations | `recertify_chain` | Creates a root CA (self-signed) and a leaf certificate signed by the root, then performs ReCertify on the leaf certificate. Verifies the new leaf cert has proper replacement links and Active state. | 16 |
+| KMIP Operations | `recertify_old_cert_stays_active` | After ReCertify, the old certificate transitions to Deactivated state per KMIP §4.57 transition 6 (same path as ReKey). The new certificate is Active. | 11 |
 | KMIP Operations | `recertify_self_signed` | Creates a self-signed certificate, performs ReCertify to rotate it, and verifies the new certificate has a fresh UID and Active state. | 10 |
 | KMIP Operations | `recertify_with_links` | Verifies that ReCertify properly sets ReplacementObjectLink on the old certificate and ReplacedObjectLink on the new certificate, forming a bidirectional chain. Also verifies that the new certificate is in Active state. | 11 |
 | KMIP Operations | `recertify_with_offset` | Verifies that ReCertify with Offset=0 produces an Active certificate, and ReCertify with Offset=86400 (24h future) produces a PreActive certificate. | 19 |
 | KMIP Operations | `register_export` | Registers a pre-existing AES key, retrieves it with Get, exports it, then destroys | 5 |
 | KMIP Operations | `rekey` | Creates an AES key, re-keys it, and verifies the new key works for encryption | 5 |
+| KMIP Operations | `rekey_compromised_succeeds` | Verifies that ReKey on a Compromised key succeeds. Per the spec, Active, Deactivated, and Compromised keys can be rotated. Only PreActive and Destroyed states are rejected. | 8 |
 | KMIP Operations | `rekey_deactivated_fails` | Verifies that ReKey on a Destroyed symmetric key fails with Wrong_Key_Lifecycle_State. | 4 |
 | KMIP Operations | `rekey_deactivated_succeeds` | Verifies that ReKey on a Deactivated key succeeds. Per KMIP §6.1.46, Wrong_Key_Lifecycle_State is NOT listed in the Re-Key error table, meaning Deactivated keys are eligible for rotation. | 9 |
 | KMIP Operations | `rekey_double_chain` | Verifies that re-keying twice creates a proper chain: K1→K2→K3. K1.ReplacementObjectLink=K2, K2.ReplacedObjectLink=K1, K2.ReplacementObjectLink=K3, K3.ReplacedObjectLink=K2. | 12 |
@@ -198,6 +200,7 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_keypair_rsa` | Verifies that ReKeyKeyPair succeeds for an RSA-2048 key pair, returning new private and public key UIDs. | 7 |
 | KMIP Operations | `rekey_keypair_rsa4096` | Verifies that ReKeyKeyPair succeeds for this key type. | 6 |
 | KMIP Operations | `rekey_keypair_rsa_encrypt_decrypt` | Verifies that after ReKeyKeyPair, the new public key can encrypt and the new private key can decrypt. | 8 |
+| KMIP Operations | `rekey_keypair_rsa_old_decrypts` | After ReKeyKeyPair, the old private key is Deactivated but can still decrypt ciphertext encrypted with the old public key. Processing operations (Decrypt) accept Deactivated state per KMIP §3.31. | 8 |
 | KMIP Operations | `rekey_keypair_rsa_sign_verify` | Verifies that after ReKeyKeyPair on an RSA-2048 key pair, the new private key can sign and the new public key can verify the signature (RSA-PSS SHA-256). | 12 |
 | KMIP Operations | `rekey_keypair_rsa_with_links` | Verifies that ReKeyKeyPair on an RSA-2048 key pair properly sets ReplacementObjectLink and ReplacedObjectLink. | 8 |
 | KMIP Operations | `rekey_keypair_slh_dsa_sha2_128f` | Verifies that ReKeyKeyPair succeeds for SLH-DSA-SHA2-128F. | 6 |
@@ -206,7 +209,10 @@ replays the steps sequentially.
 | KMIP Operations | `rekey_kmip14` | Exercises the ReKey operation through the KMIP 1.4 protocol path, verifying that the V14→V21 request conversion and V21→V14 response conversion work correctly. KMIP 1.4 uses TemplateAttribute containers and a required (non-optional) UniqueIdentifier. The ReKey response must return a new UniqueIdentifier as a plain String (not wrapped in UniqueIdentifier enum). | 7 |
 | KMIP Operations | `rekey_locate_by_name` | Verifies that after ReKey, the replacement key inherits the Name attribute and can be found via Locate by name. This is the critical behavior for VAST Data and similar EKM integrations that poll by name after rotation. | 9 |
 | KMIP Operations | `rekey_mac_keyset` | Complex MAC key rotation test: | 10 |
+| KMIP Operations | `rekey_manual_clears_interval` | After a manual ReKey, x-rotate-interval must be set to 0 on the new key. This forces the operator to re-arm the rotation policy explicitly, preventing accidental automatic rotation of the new key. | 8 |
+| KMIP Operations | `rekey_manual_clears_offset` | After a manual ReKey, x-rotate-offset must NOT be inherited by the new key. The spec states the value is 'None (not inherited for manual rekey)'. | 8 |
 | KMIP Operations | `rekey_name_removed_from_old` | Verifies that after ReKey, the old key no longer has the Name attribute (it was transferred to the replacement key). | 7 |
+| KMIP Operations | `rekey_old_key_decrypt_succeeds` | After ReKey, the old key is Deactivated. Per KMIP §3.31 the old key can still be used for Decrypt (processing operations accept Deactivated state). This test encrypts before rotation, then decrypts with the OLD key UID after rotation. | 8 |
 | KMIP Operations | `rekey_old_key_still_decrypts` | Verifies that after ReKey, the old key is Deactivated (KMIP §4.57 transition 6) and can no longer be used for encryption. | 7 |
 | KMIP Operations | `rekey_with_links` | Verifies that ReKey properly sets ReplacementObjectLink on the old key and ReplacedObjectLink on the new key, forming a bidirectional chain. | 8 |
 | KMIP Operations | `rekey_with_offset` | Verifies that ReKey with an Offset parameter correctly computes the replacement key's Activation Date as InitializationDate + Offset. | 7 |
@@ -251,6 +257,7 @@ replays the steps sequentially.
 | HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | Creates an EC P-256 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
 | HSM / KEK Create | `hsm/kek_ed25519_create_sign` | Creates an Ed25519 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
 | HSM / KEK | `hsm/kek_encrypt_decrypt` | Imports an AES-256 key into a KMS server backed by a SoftHSM2 KEK. | 3 |
+| HSM / KEK ReKey | `hsm/kek_rekey_kek` | Creates a dedicated HSM KEK ('hsm::<slot>::vec_kek_rekey') and a DB AES DEK that is explicitly wrapped at rest by that KEK. Re-keys the KEK itself — the HSM rotation generates new key material and a new UID, then automatically re-wraps all dependent DB keys (rewrap_dependants). Verifies via GetAttributes that the DEK's WrappingKeyLink now points to the new KEK UID, and confirms encrypt still works after the rotation. Fully cleans up (DEK + both KEK generations) for idempotent reruns. | 12 |
 | HSM / KEK ReKey | `hsm/kek_rekey_wrapped` | Creates an AES-256 key in a KMS server backed by a SoftHSM2 KEK. The key is auto-wrapped by the HSM-resident KEK at rest. Re-keys the wrapped key (unwrap from KEK, generate new material, re-wrap). Verifies the new key works for encryption. | 9 |
 | HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | Attempts to create an RSA-1024 keypair on a server with KEK enabled. | 1 |
 | HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | Creates an RSA-2048 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
@@ -286,6 +293,8 @@ replays the steps sequentially.
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_non_latest` | Verifies that re-keying a non-latest keyset member is transparently redirected to | 13 |
 | HSM / Resident Keyset | `hsm/resident_keyset_no_kek_uid_lifecycle` | Creates a resident AES-256 HSM key, assigns a rotate_name, rekeys the latest | 18 |
 | HSM / Resident Keyset | `hsm/resident_keyset_rekey_and_decrypt` | Full HSM keyset rotation test: | 9 |
+| HSM / Resident Negative | `hsm/resident_keyset_rotate_name_bare_rejected` | For HSM keys, the keyset name (rotate_name) must be the key's full base UID (hsm::<model>::<slot>::<key_id>). A bare name without the hsm:: prefix is rejected because it would be ambiguous across HSM slots. | 4 |
+| HSM / Resident Negative | `hsm/resident_keyset_rotate_name_gen_suffix_rejected` | For HSM keys, the keyset name must be the base UID without any @N generation suffix. Setting rotate_name to 'hsm::slot::key@1' must be rejected. | 4 |
 | HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
 | HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |
 | HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | Attempts to create an RSA-1024 keypair with an HSM-resident UID. | 1 |
@@ -430,6 +439,7 @@ replays the steps sequentially.
 | Negative / Register | `negative/register/invalid_message` | Tests that Register returns Invalid_Message error as per KMIP spec | 1 |
 | Negative / Protocol | `negative/rekey_keypair_non_latest` | Tests that ReKeyKeyPair on a retired (non-latest) keyset member is rejected. | 7 |
 | Negative / Protocol | `negative/rekey_keypair_preactive_fails` | Creates an EC P-256 key pair without ActivationDate (enters PreActive state), then verifies that ReKeyKeyPair on a PreActive private key is rejected. Only Active keys can be rotated. | 5 |
+| Negative / Protocol | `negative/rekey_offset_preactive_cannot_encrypt` | When ReKey uses Offset=86400, the new key enters PreActive state. A PreActive key must not be usable for Encrypt operations. | 6 |
 | Negative / Protocol | `negative/rekey_preactive_fails` | Creates a symmetric key without ActivationDate (enters PreActive state), then verifies that ReKey on a PreActive key is rejected. Only Active keys can be rotated. | 4 |
 | Negative / Revoke | `negative/revoke/item_not_found` | Tests that Revoke returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / RSA | `negative/rsa/rsa_decrypt_garbage` | Tests that RSA-OAEP decryption fails when ciphertext is random garbage data | 2 |
@@ -438,6 +448,8 @@ replays the steps sequentially.
 | Negative / SetAttribute | `negative/set_attribute/hsm_rotate_offset_rejected` | Tests that SetAttribute rotate_offset on an HSM-resident key is rejected | 4 |
 | Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
 | Negative / Sign | `negative/sign/invalid_message` | Tests that Sign returns Invalid_Message error as per KMIP spec | 1 |
 | Negative / Sign | `negative/sign/item_not_found` | Tests that Sign returns Item_Not_Found error as per KMIP spec | 1 |
 | Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Tests that Sign returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
@@ -468,6 +480,7 @@ replays the steps sequentially.
 | Keyset / Decrypt | `keyset_decrypt_at_latest` | Decrypt using name@latest resolves to the single latest key rather than walking the chain. After rotation, encrypts with the new key, then decrypts using name@latest which should find the new key directly. | 8 |
 | Keyset / Decrypt | `keyset_decrypt_double_rotation` | Tests try-each-key across a 3-generation chain: | 11 |
 | Keyset / Decrypt | `keyset_decrypt_try_each` | The primary keyset try-each-key test: | 8 |
+| Keyset | `keyset_ec_sign_verify_chain` | Tests keyset-based Sign resolution with EC key pairs: | 10 |
 | Keyset / Encrypt | `keyset_encrypt_at_first` | Creates a symmetric key with a rotate_name, encrypts using name@first while gen-0 is Active, then performs ReKey (gen-0 → Deactivated per §4.57). Verifies @first resolved to gen-0 by decrypting with the original key UID after rotation (Decrypt accepts Deactivated keys per KMIP §3.31). | 8 |
 | Keyset / Encrypt | `keyset_encrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, performs two ReKey operations (gen-0→gen-1→gen-2). Encrypts with name@1 while gen-1 is still Active (between rotations), then verifies by decrypting with the gen-1 UID after the second rotation (Decrypt accepts Deactivated keys). | 11 |
 | Keyset / Encrypt | `keyset_encrypt_bare_name` | Creates a symmetric key with rotate_name set, then encrypts using only the bare keyset name (no @version suffix). For Encrypt operations, bare keyset names resolve to the latest key (SingleLatest mode). | 5 |
@@ -475,6 +488,8 @@ replays the steps sequentially.
 | Keyset / Encrypt | `keyset_encrypt_latest` | Creates a symmetric key, assigns a rotate_name via SetAttribute, then encrypts data using the keyset name@latest syntax. Verifies that keyset resolution correctly finds the latest key. | 5 |
 | Keyset / Encrypt | `keyset_encrypt_latest_after_rotation` | After rotation, encrypting by the bare keyset name must use the new key: | 8 |
 | Keyset | `keyset_gen0_via_address` | After creating a keyset and rotating it once, verifies that the gen-0 key | 9 |
+| Keyset | `keyset_getattributes_resolution` | Verifies that after ReKey, RotateGeneration is correctly set: | 7 |
+| Keyset | `keyset_mac_verify_chain` | Tests the TryEach chain-walk for MACVerify via keyset name: | 7 |
 | Keyset | `keyset_uid_scheme` | Verifies the deterministic UID scheme for SQL keysets: | 9 |
 | Negative / Keyset | `negative/keyset_addattribute_uid_mismatch_fails` | Verifies that adding rotate_name via AddAttribute is rejected when the attribute value does not equal the key's UID. Mirrors the SetAttribute enforcement for the same keyset-name invariant. | 4 |
 | Negative / Keyset | `negative/keyset_create_no_uid_with_rotate_name_fails` | Verifies that a Create request that specifies rotate_name but omits UniqueIdentifier is rejected. Without an explicit UID equal to the keyset name, the server would assign a random UUID, violating the gen-0 UID invariant. | 1 |

@@ -175,6 +175,19 @@ info = false
 # and grant access rights for Create Kmip Operation.
 # privileged_users = ["<user_id_1>", "<user_id_2>"]
 
+# Interval in seconds between background auto-rotation checks.
+# Set to 0 (default) to disable the auto-rotation background task.
+# When enabled, must be at least 60 seconds to avoid excessive database churn.
+# See: https://docs.cosmian.com/kmip_support/key_rotation/auto_rotation_policy/
+# auto_rotation_check_interval_secs = 0
+
+# Depth at which a successful keyset-chain decryption triggers a server warning.
+# Keyset chain traversal is unbounded (stopped only by cycle detection).
+# When a Decrypt / Verify call succeeds at depth >= this value, the server logs
+# a warning so operators can identify stale ciphertexts that should be
+# re-encrypted with the latest key.  Default: 5.
+# keyset_warn_depth = 5
+
 # Check the database configuration documentation pages for more information
 [db]
 # The main database of the KMS server that holds default cryptographic objects and permissions.

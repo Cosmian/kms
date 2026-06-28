@@ -286,6 +286,26 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
         "DEK must be KEK-wrapped after creation"
     );
 
+    // Verify WrappingKeyLink attribute is populated in stored metadata (KMIP 2.1 §4.31 Link).
+    // Guards: bug where wrap_and_cache set key_block.key_wrapping_data but never
+    // propagated the wrapping key UID to the separate Attributes struct used by
+    // GetAttributes for wrapped (ByteString) key values.
+    {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::LinkType;
+        let wrapping_link = raw_object_before
+            .attributes()
+            .get_link(LinkType::WrappingKeyLink);
+        assert!(
+            wrapping_link.is_some(),
+            "WrappingKeyLink must be set in stored attributes after KEK-wrapped creation"
+        );
+        assert_eq!(
+            wrapping_link.unwrap().to_string(),
+            kek_id.to_string(),
+            "WrappingKeyLink must point to the KEK"
+        );
+    }
+
     // Phase 3: Encrypt → Decrypt cycle (Decrypt triggers decrement_usage_limits)
     let plaintext = b"Regression test: KEK wrapping must survive decrypt";
     let encrypt_response = kms

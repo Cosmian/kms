@@ -201,6 +201,42 @@ keyset metadata.
 
 ---
 
+## Keyset chain depth warning
+
+When a `Decrypt` or `Verify` call resolves a keyset name (e.g. `my-keyset`)
+rather than an explicit key UID, the server walks the generation chain
+newest-to-oldest until one generation succeeds.  A very deep chain indicates
+that many ciphertexts are still bound to old key generations — a signal that
+client-side re-encryption may be overdue.
+
+To surface this, configure `keyset_warn_depth` in `kms.toml`:
+
+```toml
+# Emit a server warning when decryption succeeds at chain depth >= this value.
+# Default: 5.  0 disables the warning.
+keyset_warn_depth = 5
+```
+
+Or via the CLI flag:
+
+```bash
+cosmian_kms --keyset-warn-depth 5
+```
+
+When the threshold is reached, the server emits a `WARN` log line:
+
+```text
+Decrypt: keyset chain depth 5 >= warn threshold 5 for uid my-keyset@0;
+consider re-encrypting with the latest key
+```
+
+!!! note "Traversal is unbounded"
+    The chain walk has no hard limit.  All key generations remain reachable
+    (subject to KMIP state rules).  `keyset_warn_depth` is purely a
+    monitoring hint — it never prevents a decryption from succeeding.
+
+---
+
 ## Observability
 
 The server increments the OpenTelemetry counter `kms.key.auto_rotation` with

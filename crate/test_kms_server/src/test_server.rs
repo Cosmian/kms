@@ -24,7 +24,7 @@ use cosmian_kms_client::{
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::Create,
+        kmip_operations::{Create, Destroy, Locate},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
     kms_client_bail, kms_client_error,
@@ -589,6 +589,67 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     start_server_from_config(config, &config_path).await
 }
 
+/// Remove all test-vector objects (`vec_…` keys) from the active HSM slot
+/// before test steps execute.
+///
+/// Orphaned keys from a previous test run accumulate in the `SoftHSM2` token
+/// across `cargo test` invocations.  When `find(slot, Any)` is called (e.g.
+/// from `is_keyset_latest`), it pre-populates the
+/// [`ObjectHandlesCache`][cosmian_kms_base_hsm::ObjectHandlesCache] with a
+/// handle for every object in the slot.  If a handle belonging to an orphaned
+/// object gets associated with a newly created key ID, the subsequent
+/// `C_SetAttributeValue` call receives a stale handle and fails with
+/// `CKR_OBJECT_HANDLE_INVALID` (return code 130).
+///
+/// Only keys whose KMIP UID contains a `::vec_` segment are destroyed —
+/// this avoids touching KEKs or other non-test objects that share the slot.
+///
+/// Errors are silently swallowed: if an object is already absent or requires
+/// revocation first, the deletion attempt is simply skipped.
+///
+/// **Must be called while the slot-level mutex is held** (see
+/// `HSM_SLOT_MUTEX` in `vector_runner.rs`) to prevent deleting keys that a
+/// concurrently-running `hsm_kek` test has just created on the same slot.
+pub(crate) async fn cleanup_hsm_slot_objects(client: &KmsClient) {
+    let locate = Locate {
+        attributes: Attributes::default(),
+        ..Default::default()
+    };
+    let ids = match client.locate(locate).await {
+        Ok(resp) => resp.unique_identifier.unwrap_or_default(),
+        Err(e) => {
+            trace!("HSM slot pre-cleanup: locate failed: {e}");
+            return;
+        }
+    };
+    // Only target test-vector keys (key_id starts with "vec_") to avoid
+    // destroying KEKs or other non-test objects on the shared slot.
+    let test_ids: Vec<_> = ids
+        .into_iter()
+        .filter(|uid| {
+            let s = uid.to_string();
+            // KMIP UID format: "hsm::<slot>::<key_id>" — keep only vec_ keys.
+            s.split("::")
+                .nth(2)
+                .is_some_and(|key_id| key_id.starts_with("vec_"))
+        })
+        .collect();
+    trace!(
+        "HSM slot pre-cleanup: found {} test-vector object(s) to destroy",
+        test_ids.len()
+    );
+    for uid in test_ids {
+        let req = Destroy {
+            unique_identifier: Some(uid.clone()),
+            remove: true,
+            ..Default::default()
+        };
+        if let Err(e) = client.destroy(req).await {
+            trace!("HSM slot pre-cleanup: could not destroy {uid}: {e}");
+        }
+    }
+}
+
 /// Start a `SoftHSM2` test server **without** a Key Encryption Key.
 ///
 /// Used for test vectors that exercise HSM-resident key operations (keyset
@@ -607,6 +668,13 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
 pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
 -> Result<TestsContext, KmsClientError> {
     let slot = get_softhsm2_slot_id();
+    // Use a unique directory for workspace/tmp (certs, temp files) but a
+    // **stable** path for the SQLite database.  A stable DB path means that
+    // records for keys created by a previous (possibly failed) test run are
+    // still present on the next invocation.  `cleanup_hsm_slot_objects` can
+    // then call `locate()` + `destroy()` to remove both the DB record and the
+    // still-resident HSM object — fixing the "A secret key with this id already
+    // exists" error that arises when the HSM outlives the ephemeral DB.
     let workspace_dir = std::env::temp_dir().join(format!(
         "kms_test_softhsm2_no_kek_{}_{}_{}",
         std::process::id(),
@@ -616,17 +684,20 @@ pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
             .as_nanos(),
         TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
+    // Stable across runs — cleaned up by `cleanup_hsm_slot_objects` at startup.
+    let stable_db_path = std::env::temp_dir().join("kms_test_hsm_vec_no_kek_sqlite");
 
     let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
     let mut config = load_test_config_from_toml(&config_path)?;
     config.hsm.hsm_slot = vec![slot];
-    config.db.sqlite_path = workspace_dir.join("sqlite-data");
+    config.db.sqlite_path = stable_db_path;
     config.db.clear_database = false;
     config.workspace.root_data_path = workspace_dir.join("workspace");
     config.workspace.tmp_path = workspace_dir.join("tmp");
     // No key_encryption_key — this is the plain HSM server (no KEK wrapping).
     config.google_cse_config.google_cse_enable = false;
-    start_server_from_config(config, &config_path).await
+    let ctx = start_server_from_config(config, &config_path).await?;
+    Ok(ctx)
 }
 
 /// Start a `SoftHSM2` + KEK test server where the KEK has **not** been pre-created.

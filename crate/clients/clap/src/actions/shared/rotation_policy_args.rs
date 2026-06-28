@@ -13,15 +13,16 @@ use crate::error::result::{KmsCliResult, KmsCliResultHelper};
 /// When provided, these are applied as `SetAttribute` calls immediately after the key is created.
 #[derive(Parser, Default, Debug, Clone)]
 pub struct RotationPolicyArgs {
-    /// Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
-    /// Must not contain the `@` character.
+    /// Enroll this key in a keyset so it can be addressed via `name@latest`,
+    /// `name@first`, `name@N` syntax. The keyset name is set automatically to
+    /// the key's own ID returned by the server.
     #[clap(
-        long = "rotation-name",
+        long = "enroll-keyset",
         short = 'n',
-        required = false,
+        default_value = "false",
         verbatim_doc_comment
     )]
-    pub rotate_name: Option<String>,
+    pub enroll_keyset: bool,
 
     /// Rotation interval in seconds. The key will be automatically re-keyed at this interval.
     /// Set to 0 to disable automatic rotation while preserving other policy fields.
@@ -37,51 +38,14 @@ impl RotationPolicyArgs {
     /// Returns `true` if at least one rotation policy field is set.
     #[must_use]
     pub const fn is_set(&self) -> bool {
-        self.rotate_name.is_some() || self.rotate_interval.is_some() || self.rotate_offset.is_some()
-    }
-
-    /// Validate `rotate_name` / `key_id` consistency and return the effective key ID to use.
-    ///
-    /// For SQL keys the keyset invariant requires `key_id == rotate_name` at creation time.
-    /// For HSM-resident keys the key ID has the form `hsm::<slot>::<base_id>`; in that case
-    /// the `base_id` (last `::` segment) must match `rotate_name`.
-    /// This check runs client-side so the user gets a clear error before any request is sent.
-    ///
-    /// Rules:
-    /// - If `rotate_name` is `None`, return `key_id` unchanged.
-    /// - If `rotate_name` is set and `key_id` is `None`, use `rotate_name` as the key ID.
-    /// - If both are set and equal, return `key_id` unchanged.
-    /// - If both are set and `key_id` is an HSM UID whose base segment equals `rotate_name`,
-    ///   return `key_id` unchanged.
-    /// - If both are set but incompatible, return an error immediately.
-    ///
-    /// # Errors
-    /// Returns an error when `rotate_name` and `key_id` are both set but incompatible.
-    pub fn effective_key_id<'a>(&'a self, key_id: Option<&'a str>) -> KmsCliResult<Option<String>> {
-        self.rotate_name
-            .as_deref()
-            .map_or_else(
-                || Ok(key_id.map(ToOwned::to_owned)),
-                |name| match key_id {
-                    None => Ok(Some(name.to_owned())),
-                    Some(id) if id == name => Ok(Some(id.to_owned())),
-                    // HSM UIDs: "hsm::<slot>::<base_id>" — allow when base_id == name
-                    Some(id)
-                        if id
-                            .rsplit_once("::")
-                            .is_some_and(|(_, base)| base == name) =>
-                    {
-                        Ok(Some(id.to_owned()))
-                    }
-                    Some(id) => Err(crate::error::KmsCliError::Default(format!(
-                        "key ID '{id}' must equal the rotation name '{name}' — \
-                         use --key-id {name} or omit --key-id to use the rotation name as the key ID"
-                    ))),
-                },
-            )
+        self.enroll_keyset || self.rotate_interval.is_some() || self.rotate_offset.is_some()
     }
 
     /// Apply rotation policy attributes via `SetAttribute` calls on the given key ID.
+    ///
+    /// When `--enroll-keyset` is set, the keyset name is automatically set to `key_id`
+    /// (the ID returned by the server), so the key can be addressed via `key_id@latest`,
+    /// `key_id@first`, `key_id@N` syntax.
     pub async fn apply(&self, kms_rest_client: &KmsClient, key_id: &str) -> KmsCliResult<()> {
         let uid = UniqueIdentifier::TextString(key_id.to_owned());
 
@@ -105,11 +69,13 @@ impl RotationPolicyArgs {
                 .with_context(|| "failed setting RotateOffset attribute")?;
         }
 
-        if let Some(ref name) = self.rotate_name {
+        if self.enroll_keyset {
+            // Use the server-assigned key ID as the keyset name so the keyset
+            // invariant (key_id == rotate_name) is always satisfied automatically.
             kms_rest_client
                 .set_attribute(SetAttribute {
                     unique_identifier: Some(uid.clone()),
-                    new_attribute: Attribute::RotateName(name.clone()),
+                    new_attribute: Attribute::RotateName(key_id.to_owned()),
                 })
                 .await
                 .with_context(|| "failed setting RotateName attribute")?;

@@ -274,6 +274,9 @@ pub(super) async fn process_symmetric_key(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),
@@ -463,6 +466,9 @@ pub(super) async fn process_public_key(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),
@@ -595,6 +601,9 @@ pub(super) async fn process_private_key(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),
@@ -816,7 +825,7 @@ async fn process_pkcs12(
     trace!("Private key linked to leaf certificate");
 
     // Keep private key attributes before wrapping/inserting in DB
-    let private_key_attributes = private_key.attributes()?.clone();
+    let mut private_key_attributes = private_key.attributes()?.clone();
 
     // Wrap the private key if requested by the user or on the server params
     Box::pin(wrap_and_cache(
@@ -827,6 +836,9 @@ async fn process_pkcs12(
     ))
     .await?;
     trace!("Private key wrapped and cached");
+    // If the private key was wrapped, record the WrappingKeyLink in stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    private_key.copy_wrapping_key_link_to(&mut private_key_attributes);
 
     // Create an operation to set the private key
     operations.push(single_operation(
@@ -1027,6 +1039,9 @@ pub(super) async fn process_secret_data(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),

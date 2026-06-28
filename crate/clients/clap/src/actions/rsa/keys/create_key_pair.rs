@@ -95,12 +95,8 @@ impl CreateKeyPairAction {
         &self,
         kms_rest_client: KmsClient,
     ) -> KmsCliResult<(UniqueIdentifier, UniqueIdentifier)> {
-        // Validate key_id / rotate_name consistency before sending any request.
-        let effective_key_id = self
-            .rotation_policy
-            .effective_key_id(self.private_key_id.as_deref())?;
-
-        let private_key_id = effective_key_id
+        let private_key_id = self
+            .private_key_id
             .as_ref()
             .map(|id| UniqueIdentifier::TextString(id.clone()));
         let create_key_pair_request = create_rsa_key_pair_request(

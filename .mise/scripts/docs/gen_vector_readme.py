@@ -664,8 +664,11 @@ Placeholders use `{{variable_name}}` syntax and are substituted from captured va
 
 # ─── Write output ───────────────────────────────────────────────────────────
 content = '\n'.join(out) + '\n'
-with open(OUTPUT, 'w') as f:
-    f.write(content)
+existing = OUTPUT.read_text(encoding='utf-8') if OUTPUT.exists() else ''
+changed = content != existing
+if changed:
+    with open(OUTPUT, 'w', encoding='utf-8') as f:
+        f.write(content)
 
 # ─── Verify ─────────────────────────────────────────────────────────────────
 accounted = sum(len(v) for v in categories.values()) + len(kat_vectors)
@@ -675,3 +678,7 @@ if accounted != total:
 print(
     f"✓ {OUTPUT.relative_to(REPO_ROOT)}: {total} vectors documented ({len(out)} lines)"
 )
+# Exit 1 when the file was updated so pre-commit blocks the commit and the
+# developer re-stages the regenerated README before continuing.
+if changed:
+    sys.exit(1)
