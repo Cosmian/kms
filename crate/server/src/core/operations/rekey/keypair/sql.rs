@@ -129,7 +129,6 @@ impl RekeyOperation for SqlKeypairRekeyer {
         let old_sk_uid = owm.id().to_owned();
         let sk_candidate = RotationCandidate {
             uid: old_sk_uid,
-            object_type: ObjectType::PrivateKey,
             owm,
         };
         let old_pk_uid = sk_candidate.public_key_uid()?;
@@ -139,7 +138,6 @@ impl RekeyOperation for SqlKeypairRekeyer {
             sk_candidate,
             RotationCandidate {
                 uid: old_pk_uid,
-                object_type: ObjectType::PublicKey,
                 owm: old_pk_owm,
             },
         ])
@@ -165,30 +163,16 @@ impl RekeyOperation for SqlKeypairRekeyer {
 
         // Propagate the CryptographicUsageMask from the old keys so that
         // FIPS-mode key-pair generators receive the required mask value.
-        let sk_mask = sk_candidate
-            .owm
-            .attributes()
-            .cryptographic_usage_mask
-            .or_else(|| {
-                sk_candidate
-                    .owm
-                    .object()
+        let resolve_mask = |owm: &ObjectWithMetadata| {
+            owm.attributes().cryptographic_usage_mask.or_else(|| {
+                owm.object()
                     .attributes()
                     .ok()
                     .and_then(|a| a.cryptographic_usage_mask)
-            });
-        let pk_mask = pk_candidate
-            .owm
-            .attributes()
-            .cryptographic_usage_mask
-            .or_else(|| {
-                pk_candidate
-                    .owm
-                    .object()
-                    .attributes()
-                    .ok()
-                    .and_then(|a| a.cryptographic_usage_mask)
-            });
+            })
+        };
+        let sk_mask = resolve_mask(&sk_candidate.owm);
+        let pk_mask = resolve_mask(&pk_candidate.owm);
         let private_key_attributes = sk_mask.map(|m| Attributes {
             cryptographic_usage_mask: Some(m),
             ..Attributes::default()

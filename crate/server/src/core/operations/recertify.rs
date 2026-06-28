@@ -123,7 +123,6 @@ impl RekeyOperation for CertificateRekey {
         Ok([RotationCandidate {
             owm,
             uid: uid.to_owned(),
-            object_type: ObjectType::Certificate,
         }])
     }
 

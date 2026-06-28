@@ -247,11 +247,13 @@ impl KMS {
         new_uid: &str,
         operations: &mut Vec<AtomicOperation>,
     ) -> KResult<()> {
-        let wrapped_dependants = self
-            .database
-            .find_wrapped_by(old_uid, owner)
-            .await
-            .unwrap_or_default();
+        let wrapped_dependants = match self.database.find_wrapped_by(old_uid, owner).await {
+            Ok(deps) => deps,
+            Err(e) => {
+                warn!("find_wrapped_by({old_uid}) failed — skipping re-wrap of dependants: {e}");
+                vec![]
+            }
+        };
 
         for (dep_uid, _dep_state, _dep_attrs) in wrapped_dependants {
             let Some(dep_owm) = self.database.retrieve_object(&dep_uid).await? else {
@@ -343,14 +345,11 @@ impl KMS {
 // ─── Trait: RekeyOperation ───────────────────────────────────────────────────
 
 /// An existing object that is a candidate for rotation.
-#[allow(dead_code)]
 pub(crate) struct RotationCandidate {
     /// The object-with-metadata from the database.
     pub owm: ObjectWithMetadata,
     /// The UID of this object.
     pub uid: String,
-    /// The KMIP object type.
-    pub object_type: ObjectType,
 }
 
 impl RotationCandidate {
@@ -371,7 +370,6 @@ impl RotationCandidate {
 }
 
 /// A newly generated replacement object ready for Phase 1 commit.
-#[allow(dead_code)]
 pub(crate) struct ReplacementObject {
     /// The fresh UID for the replacement.
     pub new_uid: String,

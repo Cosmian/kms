@@ -595,6 +595,7 @@ Crate path: `crate/server`
 | `trace` | `ReKeyKeyPair: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/keypair/mod.rs` | - | - |
 | `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
 | `debug` | `[auto-rotate] Rotating key {uid} (owner={owner})` | `src/core/operations/auto_rotate.rs` | `uid`, `owner` | - |
+| `warn` | `find_wrapped_by({old_uid}) failed — skipping re-wrap of dependants: {e}` | `src/core/operations/rekey/common.rs` | `old_uid`, `e` | - |
 
 ### `cosmian_kms_server_database`
 

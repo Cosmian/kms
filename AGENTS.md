@@ -330,6 +330,7 @@ All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` f
 | `/code-quality [path]` | Full code quality audit — duplication, patterns, Clippy, CI |
 | `/refactor-plan` | Before any multi-file refactor |
 | `/rust-refactor` | To find and consolidate Rust code duplication |
+| `/rust-simplify [path]` | Find simplification opportunities: nesting, long functions, dead code, bool traps, iterator anti-patterns |
 | `/rust-patterns` | KMS-specific Rust design patterns reference |
 | `/docs-writer` | For documentation pages (Diátaxis framework) |
 | `/adr` | For architectural decisions |

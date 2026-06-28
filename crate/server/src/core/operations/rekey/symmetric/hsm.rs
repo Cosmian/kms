@@ -21,6 +21,53 @@ use crate::{
     result::KResult,
 };
 
+/// Components extracted from an HSM key UID (`{prefix}::{slot}::{base_id}[@N]`).
+struct ParsedHsmUid {
+    prefix: String,
+    slot_id: usize,
+    base_id: String,
+    old_gen: i32,
+    has_explicit_gen: bool,
+}
+
+impl ParsedHsmUid {
+    /// Returns the stable base UID (no generation suffix).
+    fn full_base_uid(&self) -> String {
+        format!("{}::{}::{}", self.prefix, self.slot_id, self.base_id)
+    }
+}
+
+/// Parse an HSM key UID into its components.
+///
+/// Expected format: `{prefix}::{slot}::{base_id}` or `{prefix}::{slot}::{base_id}@{gen}`.
+fn parse_hsm_uid(uid: &str) -> KResult<ParsedHsmUid> {
+    let prefix = has_prefix(uid)
+        .ok_or_else(|| KmsError::InvalidRequest(format!("UID '{uid}' is not an HSM UID")))?
+        .to_owned();
+    let rest = uid
+        .strip_prefix(&format!("{prefix}::"))
+        .ok_or_else(|| KmsError::InvalidRequest("HSM UID has unexpected format".to_owned()))?;
+    let (slot_str, key_id) = rest.split_once("::").ok_or_else(|| {
+        KmsError::InvalidRequest(format!(
+            "HSM UID '{uid}' must have format '{prefix}::<slot>::<key_id>'"
+        ))
+    })?;
+    let slot_id: usize = slot_str.parse().map_err(|e| {
+        KmsError::InvalidRequest(format!("HSM slot_id '{slot_str}' is not valid: {e}"))
+    })?;
+    let (base_id, old_gen, has_explicit_gen) = key_id
+        .rsplit_once('@')
+        .and_then(|(base, suffix)| suffix.parse::<i32>().ok().map(|n| (base, n, true)))
+        .unwrap_or((key_id, 0, false));
+    Ok(ParsedHsmUid {
+        prefix,
+        slot_id,
+        base_id: base_id.to_owned(),
+        old_gen,
+        has_explicit_gen,
+    })
+}
+
 impl KMS {
     /// Find the latest generation UID in a keyset identified by `rotate_name`.
     pub(super) async fn latest_hsm_keyset_uid(
@@ -37,6 +84,27 @@ impl KMS {
                     .max_by_key(|(_, attrs)| attrs.rotate_generation.unwrap_or(0))
                     .map(|(uid, _)| uid)
             })
+    }
+
+    /// Resolve a missing HSM key by falling back to keyset-name resolution.
+    ///
+    /// Looks up the latest-generation key for `full_base_uid` as a keyset name and
+    /// delegates to [`Self::rekey_hsm_symmetric`]. Returns an `InvalidRequest` error
+    /// if no keyset exists under that name.
+    async fn hsm_keyset_fallback(
+        &self,
+        uid: &str,
+        full_base_uid: &str,
+        user: &str,
+    ) -> KResult<ReKeyResponse> {
+        if let Some(latest) = self.latest_hsm_keyset_uid(full_base_uid, user).await {
+            Box::pin(self.rekey_hsm_symmetric(&latest, user)).await
+        } else {
+            Err(KmsError::InvalidRequest(format!(
+                "HSM key '{uid}' not found and no keyset named '{full_base_uid}' exists on \
+                 this HSM slot"
+            )))
+        }
     }
 
     /// Rotate an HSM-resident AES symmetric key.
@@ -69,59 +137,30 @@ impl KMS {
 
         // Parse the UID early — prefix, slot_id, and key_id are needed for the
         // keyset-name fallback resolution that follows.
-        let prefix = has_prefix(uid)
-            .ok_or_else(|| KmsError::InvalidRequest(format!("UID '{uid}' is not an HSM UID")))?;
-        let rest = uid
-            .strip_prefix(&format!("{prefix}::"))
-            .ok_or_else(|| KmsError::InvalidRequest("HSM UID has unexpected format".to_owned()))?;
-        let (slot_str, key_id) = rest.split_once("::").ok_or_else(|| {
-            KmsError::InvalidRequest(format!(
-                "HSM UID '{uid}' must have format '{prefix}::<slot>::<key_id>'"
-            ))
-        })?;
-        let slot_id: usize = slot_str.parse().map_err(|e| {
-            KmsError::InvalidRequest(format!("HSM slot_id '{slot_str}' is not valid: {e}"))
-        })?;
-        // `base_id` strips any `@N` generation suffix.
-        // `has_explicit_gen` is true when the caller specified an explicit generation
-        // (e.g. `hsm::slot::uuid@1`) as opposed to the stable base handle (`hsm::slot::uuid`).
-        let (base_id, old_gen, has_explicit_gen) = key_id
-            .rsplit_once('@')
-            .and_then(|(base, suffix)| suffix.parse::<i32>().ok().map(|n| (base, n, true)))
-            .unwrap_or((key_id, 0, false));
+        let parsed = parse_hsm_uid(uid)?;
+        let full_base_uid = parsed.full_base_uid();
+        let (prefix, slot_id, base_id, old_gen, has_explicit_gen) = (
+            &parsed.prefix,
+            parsed.slot_id,
+            &parsed.base_id,
+            parsed.old_gen,
+            parsed.has_explicit_gen,
+        );
 
         // Retrieve old key metadata from the HSM.
         // When the PKCS#11 slot does not have a key with this exact UID — returned
         // either as `Ok(None)` or as an `Err` containing "not found" — fall back to
         // keyset-name resolution using the full base UID as the rotate_name.
-        let full_base_uid = format!("{prefix}::{slot_str}::{base_id}");
         let old_owm = match self.database.retrieve_object(uid).await {
             Ok(Some(owm)) => owm,
             Ok(None) => {
-                return if let Some(latest) = self.latest_hsm_keyset_uid(&full_base_uid, user).await
-                {
-                    Box::pin(self.rekey_hsm_symmetric(&latest, user)).await
-                } else {
-                    Err(KmsError::InvalidRequest(format!(
-                        "HSM key '{uid}' not found and no keyset named '{full_base_uid}' exists on \
-                         this HSM slot"
-                    )))
-                };
+                return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user)).await;
             }
             Err(e) => {
                 // PKCS#11 returns an error (not just empty results) for missing objects;
                 // treat any "not found" message as an absent key and try keyset resolution.
                 if e.to_string().to_lowercase().contains("not found") {
-                    return if let Some(latest) =
-                        self.latest_hsm_keyset_uid(&full_base_uid, user).await
-                    {
-                        Box::pin(self.rekey_hsm_symmetric(&latest, user)).await
-                    } else {
-                        Err(KmsError::InvalidRequest(format!(
-                            "HSM key '{uid}' not found and no keyset named '{full_base_uid}' exists \
-                             on this HSM slot"
-                        )))
-                    };
+                    return Box::pin(self.hsm_keyset_fallback(uid, &full_base_uid, user)).await;
                 }
                 return Err(KmsError::Database(e));
             }
@@ -173,8 +212,7 @@ impl KMS {
         }
 
         let new_gen = old_gen + 1;
-        let new_key_id = format!("{base_id}@{new_gen}");
-        let new_uid = format!("{prefix}::{slot_id}::{new_key_id}");
+        let new_uid = format!("{prefix}::{slot_id}::{base_id}@{new_gen}");
 
         // Retrieve old rotate metadata from the HSM (via stub attributes).
         // Fall back gracefully if CKA_LABEL metadata is absent.

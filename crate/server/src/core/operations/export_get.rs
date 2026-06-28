@@ -564,6 +564,11 @@ async fn post_process_active_private_key(
             owm_attributes
         }
     };
+    // Strip WrappingKeyLink: it belongs to the server-side metadata (tracking the stored
+    // wrapping relationship), not to the exported key material. Without this, a key that
+    // was imported-as-wrapped and later exported-with-unwrap would carry a stale
+    // WrappingKeyLink in its embedded key_value.attributes.
+    attributes.remove_link(LinkType::WrappingKeyLink);
 
     // Special-case TransparentDSAPrivateKey: we do not need (nor want) an OpenSSL round-trip
     // if the caller either requested no specific format OR explicitly requested the same
@@ -858,6 +863,9 @@ async fn process_public_key(
             owm_attributes
         }
     };
+    // Strip WrappingKeyLink from the exported public key attributes (same rationale as
+    // post_process_active_private_key: server-side metadata, not part of exported material).
+    attributes.remove_link(LinkType::WrappingKeyLink);
 
     // parse the key to an openssl object
     let openssl_key = kmip_public_key_to_openssl(object_with_metadata.object())

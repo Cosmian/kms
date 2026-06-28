@@ -113,11 +113,7 @@ impl RekeyOperation for SqlSymmetricRekeyer {
             .await?;
 
         let uid = owm.id().to_owned();
-        Ok([RotationCandidate {
-            owm,
-            uid,
-            object_type: ObjectType::SymmetricKey,
-        }])
+        Ok([RotationCandidate { owm, uid }])
     }
 
     async fn generate_replacement(
