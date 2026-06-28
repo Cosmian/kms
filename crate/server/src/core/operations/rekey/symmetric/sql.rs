@@ -17,7 +17,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 
-use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate, execute_rekey};
+use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid};
 use crate::{
     core::{KMS, operations::key_ops::KeySelectionSpec},
     error::KmsError,
@@ -49,18 +49,6 @@ impl KeySelectionSpec for SqlSymmetricRekeyer {
     }
 }
 
-impl SqlSymmetricRekeyer {
-    /// Execute the SQL-backed symmetric rekey via the generic [`RekeyOperation`] pipeline.
-    pub(super) async fn execute(
-        &self,
-        kms: &KMS,
-        request: &ReKey,
-        owner: &str,
-    ) -> KResult<ReKeyResponse> {
-        Box::pin(execute_rekey(self, kms, request, owner)).await
-    }
-}
-
 impl RekeyOperation for SqlSymmetricRekeyer {
     type Candidates = [RotationCandidate; 1];
     type Replacements = [ReplacementObject; 1];
@@ -86,14 +74,7 @@ impl RekeyOperation for SqlSymmetricRekeyer {
 
         // HSM-managed keys cannot be re-keyed via the SQL pipeline: they have no KMIP
         // attribute storage and are often non-extractable (CKA_EXTRACTABLE = false).
-        if uid_or_tags.starts_with("hsm::") {
-            return Err(KmsError::NotSupported(
-                "Re-Key is not supported for HSM-managed keys. \
-                 Use PKCS#11 vendor tools or the HSM administration console \
-                 to manage HSM key lifecycle."
-                    .to_owned(),
-            ));
-        }
+        reject_hsm_uid(uid_or_tags, "Re-Key")?;
 
         let candidates = kms
             .retrieve_eligible_keys(uid_or_tags, ObjectType::SymmetricKey)

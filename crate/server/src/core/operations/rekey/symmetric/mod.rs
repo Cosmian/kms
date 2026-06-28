@@ -13,6 +13,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use cosmian_logger::trace;
 
 use self::sql::SqlSymmetricRekeyer;
+use super::common::execute_rekey;
 use crate::{
     core::{
         KMS,
@@ -59,9 +60,13 @@ pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReK
         unique_identifier: Some(UniqueIdentifier::TextString(uid)),
         ..request
     };
-    SqlSymmetricRekeyer {
-        offset: request.offset,
-    }
-    .execute(kms, &request, owner)
+    Box::pin(execute_rekey(
+        &SqlSymmetricRekeyer {
+            offset: request.offset,
+        },
+        kms,
+        &request,
+        owner,
+    ))
     .await
 }

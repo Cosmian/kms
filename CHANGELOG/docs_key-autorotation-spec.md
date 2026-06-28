@@ -37,6 +37,9 @@
 
 ## Bug Fixes
 
+- Fix `GetAttributes` not returning `RotateLatest` and `RotateAutomatic` vendor attributes — these fields were missing from the rotation-attribute propagation block, making rotation policy status completely unqueryable ([#968](https://github.com/Cosmian/kms/pull/968))
+- Fix `ReKeyKeyPair` not calling `set_rotation_metadata_from()` on the new public key — only the new private key received `rotate_latest=true` and `rotate_generation=N+1`; the new public key's rotation metadata stayed `None` after every keypair rotation ([#968](https://github.com/Cosmian/kms/pull/968))
+
 - Fix `ReKeyKeyPair` not propagating `CryptographicUsageMask` from old key pair to the new `CreateKeyPair` request — causes FIPS-mode rejection (`got None but expected among 0x00103A01`) when rotating EC or RSA key pairs in a keyset
 - Add non-regression test vector `negative/rekey_keypair_non_latest`: CreateKeyPair (EC P-256, FIPS masks), SetAttribute(RotateName), ReKeyKeyPair (gen-0→gen-1 succeeds), ReKeyKeyPair (gen-0 again) → "not the latest" error
 
@@ -86,6 +89,8 @@
 - Implement `find_wrapped_by` for Redis-findex backend ([#968](https://github.com/Cosmian/kms/pull/968))
 
 ## Testing
+
+- Add 18 exhaustive KAT (Known-Answer Test) vectors for key rotation operations, covering `ReKey` (8 vectors), `ReKeyKeyPair` (6 vectors), and `ReCertify` (4 vectors): state transitions, `RotateGeneration` counter accuracy, `RotateLatest` flag propagation, `RotateInterval` clearance, keyset UID resolution, replacement/replaced link integrity, deactivated-key rejection (Encrypt/Sign), and deactivated-key acceptance (Decrypt/Verify) ([#968](https://github.com/Cosmian/kms/pull/968))
 
 - Add 6 non-regression test vectors for key rotation scenarios:
   `rekey_wrapping_key`, `rekey_wrapped_key`, `rekey_wrapping_key_with_links`,

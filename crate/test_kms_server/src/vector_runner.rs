@@ -2735,6 +2735,123 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/kat/covercrypt_decrypt").await
     }
 
+    // ── KAT: ReKey (symmetric) lifecycle ─────────────────────────────────
+
+    #[tokio::test]
+    async fn test_kat_rekey_state_transitions() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/state_transitions").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_rotate_generation_counter() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/rotate_generation_counter").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_rotate_latest_flag() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/rotate_latest_flag").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_rotate_interval_cleared() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/rotate_interval_cleared").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_keyset_uid() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/keyset_uid").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_replacement_and_replaced_links() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/replacement_and_replaced_links").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_deactivated_rejects_encrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/deactivated_rejects_encrypt").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_deactivated_accepts_decrypt() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey/deactivated_accepts_decrypt").await
+    }
+
+    // ── KAT: ReKeyKeyPair (asymmetric) lifecycle ──────────────────────────
+
+    #[tokio::test]
+    async fn test_kat_rekey_keypair_state_transitions() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey_keypair/state_transitions").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_keypair_rotate_generation_counter() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey_keypair/rotate_generation_counter").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_keypair_rotate_latest_flag() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey_keypair/rotate_latest_flag").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_keypair_replacement_links() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey_keypair/replacement_links").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_keypair_old_sk_deactivated_rejects_sign() -> Result<(), KmsClientError>
+    {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey_keypair/old_sk_deactivated_rejects_sign").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_rekey_keypair_old_pk_deactivated_accepts_verify() -> Result<(), KmsClientError>
+    {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/rekey_keypair/old_pk_deactivated_accepts_verify")
+            .await
+    }
+
+    // ── KAT: ReCertify lifecycle ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_kat_recertify_state_transitions() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/recertify/state_transitions").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_recertify_rotate_generation_counter() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/recertify/rotate_generation_counter").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_recertify_rotate_latest_flag() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/recertify/rotate_latest_flag").await
+    }
+
+    #[tokio::test]
+    async fn test_kat_recertify_replacement_and_replaced_links() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/kat/recertify/replacement_and_replaced_links").await
+    }
+
     // ── non-FIPS: CryptographicParameters coverage ───────────────────────
 
     #[cfg(feature = "non-fips")]

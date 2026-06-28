@@ -564,9 +564,11 @@ pub(crate) async fn get_attributes(
     // Rotation attributes are not represented by Tag enum variants, so they are
     // not included by the tag-based filtering loop above. Always propagate them
     // from the source attributes when present.
+    res.rotate_automatic = attributes.rotate_automatic;
     res.rotate_date = attributes.rotate_date;
     res.rotate_generation = attributes.rotate_generation;
     res.rotate_interval = attributes.rotate_interval;
+    res.rotate_latest = attributes.rotate_latest;
     res.rotate_name.clone_from(&attributes.rotate_name);
     res.rotate_offset = attributes.rotate_offset;
 

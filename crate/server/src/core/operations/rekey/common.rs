@@ -23,7 +23,7 @@ use cosmian_kms_server_database::reexport::{
             kmip_objects::{Object, ObjectType},
             kmip_types::{
                 EncodingOption, EncryptionKeyInformation, LinkType, LinkedObjectIdentifier,
-                UniqueIdentifier,
+                MacSignatureKeyInformation, UniqueIdentifier,
             },
         },
     },
@@ -121,46 +121,6 @@ impl KMS {
         Ok(())
     }
 
-    /// Phase 2 of a rekey operation: retire old keys, re-wrap dependants, and commit atomically.
-    pub(crate) async fn finalize_rekey(
-        &self,
-        owner: &str,
-        retirements: &[KeyRetirement<'_>],
-    ) -> KResult<()> {
-        let mut operations: Vec<AtomicOperation> = Vec::new();
-
-        for retirement in retirements {
-            let (old_object, old_attributes) =
-                retire_old_key(retirement.old_owm, retirement.new_uid)?;
-
-            operations.push(AtomicOperation::UpdateObject((
-                retirement.old_owm.id().to_owned(),
-                old_object,
-                old_attributes,
-                None,
-            )));
-
-            // KMIP §4.57 transition 6: old key becomes Deactivated after Re-Key
-            operations.push(AtomicOperation::UpdateState((
-                retirement.old_owm.id().to_owned(),
-                State::Deactivated,
-            )));
-
-            if let Some(new_wrapping_uid) = retirement.rewrap_to {
-                Box::pin(self.rewrap_dependants(
-                    owner,
-                    retirement.old_owm.id(),
-                    new_wrapping_uid,
-                    &mut operations,
-                ))
-                .await?;
-            }
-        }
-
-        self.database.atomic(owner, &operations).await?;
-        Ok(())
-    }
-
     /// Default implementation for [`RekeyOperation::finalize_dependants`].
     pub(crate) async fn default_finalize_dependants(
         &self,
@@ -168,17 +128,33 @@ impl KMS {
         candidates: &[RotationCandidate],
         replacements: &[ReplacementObject],
     ) -> KResult<()> {
-        let retirements: Vec<KeyRetirement<'_>> = candidates
-            .iter()
-            .zip(replacements.iter())
-            .map(|(c, r)| KeyRetirement {
-                old_owm: &c.owm,
-                new_uid: &r.new_uid,
-                rewrap_to: r.rewrap_to.as_deref(),
-            })
-            .collect();
+        let mut operations: Vec<AtomicOperation> = Vec::new();
 
-        Box::pin(self.finalize_rekey(user, &retirements)).await?;
+        for (c, r) in candidates.iter().zip(replacements.iter()) {
+            let (old_object, old_attributes) = retire_old_key(&c.owm, &r.new_uid)?;
+            operations.push(AtomicOperation::UpdateObject((
+                c.owm.id().to_owned(),
+                old_object,
+                old_attributes,
+                None,
+            )));
+            // KMIP §4.57 transition 6: old key becomes Deactivated after Re-Key
+            operations.push(AtomicOperation::UpdateState((
+                c.owm.id().to_owned(),
+                State::Deactivated,
+            )));
+            if let Some(ref new_wrapping_uid) = r.rewrap_to {
+                Box::pin(self.rewrap_dependants(
+                    user,
+                    c.owm.id(),
+                    new_wrapping_uid,
+                    &mut operations,
+                ))
+                .await?;
+            }
+        }
+
+        self.database.atomic(user, &operations).await?;
 
         for (c, r) in candidates.iter().zip(replacements.iter()) {
             info!(
@@ -303,11 +279,9 @@ impl KMS {
                         .and_then(|e| e.cryptographic_parameters.clone()),
                 }),
                 mac_or_signature_key_information: kwd.mac_signature_key_information.clone().map(
-                    |m| {
-                        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::MacSignatureKeyInformation {
-                            unique_identifier: UniqueIdentifier::TextString(new_uid.to_owned()),
-                            cryptographic_parameters: m.cryptographic_parameters,
-                        }
+                    |m| MacSignatureKeyInformation {
+                        unique_identifier: UniqueIdentifier::TextString(new_uid.to_owned()),
+                        cryptographic_parameters: m.cryptographic_parameters,
                     },
                 ),
                 attribute_name: None,
@@ -420,44 +394,14 @@ impl ReplacementObject {
         self.attributes = attrs;
         Ok(())
     }
-
-    /// Finalize this replacement for a keypair rotation step.
-    ///
-    /// Applies lifecycle setup, cross-link, wrapping key preservation,
-    /// and optionally marks this key as the rewrap target for dependants.
-    #[allow(clippy::too_many_arguments)] // Builder-style method grouping related keypair params
-    pub(crate) fn prepare_for_keypair(
-        &mut self,
-        new_attrs: &Attributes,
-        candidate: &RotationCandidate,
-        cross_link_uid: &str,
-        link_type: LinkType,
-        object_type: ObjectType,
-        is_rewrap_target: bool,
-        vendor_id: &str,
-    ) -> KResult<()> {
-        self.finalize(
-            new_attrs,
-            object_type,
-            &candidate.uid,
-            Some((cross_link_uid, link_type)),
-            vendor_id,
-        )?;
-        candidate
-            .owm
-            .object()
-            .copy_wrapping_key_link_to(&mut self.attributes);
-        if is_rewrap_target {
-            self.rewrap_to = Some(self.new_uid.clone());
-        }
-        Ok(())
-    }
 }
 
 /// Unified trait for all rotation operations: `ReKey`, `ReKeyKeyPair`, and `ReCertify`.
 ///
-/// Each implementor provides type-specific logic for the 8 steps of the rotation pipeline.
-/// The shared [`execute_rekey`] orchestrator drives the pipeline in order.
+/// Each implementor provides type-specific logic for the rotation pipeline;
+/// the shared [`execute_rekey`] orchestrator drives all steps in order.
+/// Wrapping detection and atomic persist are handled directly in [`execute_rekey`];
+/// the remaining 6 steps below are overridable.
 ///
 /// The associated types `Candidates` and `Replacements` encode the expected cardinality
 /// at compile time (e.g. `[RotationCandidate; 1]` for symmetric, `[RotationCandidate; 2]`
@@ -485,22 +429,6 @@ pub(crate) trait RekeyOperation {
         request: &Self::Request,
         user: &str,
     ) -> impl std::future::Future<Output = KResult<Self::Candidates>>;
-
-    /// Step 2: Detect wrapping context on existing object(s).
-    ///
-    /// Returns one `Option<KeyWrappingSpecification>` per candidate.
-    /// The default implementation extracts wrapping data from each candidate's key block.
-    /// Certificates (which have no key block) naturally return `None`.
-    fn detect_wrapping(
-        &self,
-        candidates: &Self::Candidates,
-    ) -> Vec<Option<KeyWrappingSpecification>> {
-        candidates
-            .as_ref()
-            .iter()
-            .map(|c| c.owm.object().rewrap_spec())
-            .collect()
-    }
 
     /// Step 3: Generate replacement material (new key/cert + fresh UIDs).
     ///
@@ -536,40 +464,12 @@ pub(crate) trait RekeyOperation {
         kms.default_rewrap_new_objects(user, replacements.as_mut(), wrap_specs)
     }
 
-    /// Step 6: Phase 1 — persist new objects atomically.
-    ///
-    /// The default implementation creates all replacement objects in a single atomic transaction.
-    fn persist_new_key(
-        &self,
-        kms: &KMS,
-        user: &str,
-        replacements: &Self::Replacements,
-    ) -> impl std::future::Future<Output = KResult<()>> {
-        async move {
-            let operations: Vec<AtomicOperation> = replacements
-                .as_ref()
-                .iter()
-                .map(|r| {
-                    AtomicOperation::Create((
-                        r.new_uid.clone(),
-                        r.object.clone(),
-                        r.attributes.clone(),
-                        r.tags.clone(),
-                    ))
-                })
-                .collect();
-            kms.database.atomic(user, &operations).await?;
-            Ok(())
-        }
-    }
-
-    /// Step 7: Phase 2 — retire old objects + finalize dependants.
+    /// Step 6: Phase 2 — retire old objects + finalize dependants.
     ///
     /// For keys: rewrap all dependants with the new wrapping key.
     /// For certificates: relink keys' `CertificateLink` to the new cert UID.
     ///
-    /// The default implementation builds [`KeyRetirement`] entries from each
-    /// candidate/replacement pair and delegates to [`finalize_rekey`].
+    /// The default implementation retires old objects and re-wraps dependants atomically.
     /// Override this for certificate-specific logic.
     fn finalize_dependants(
         &self,
@@ -596,32 +496,34 @@ pub(crate) async fn execute_rekey<T: RekeyOperation>(
     user: &str,
 ) -> KResult<T::Response> {
     let candidates = op.validate(kms, request, user).await?;
-    let wrap_specs = op.detect_wrapping(&candidates);
+    let wrap_specs: Vec<_> = candidates
+        .as_ref()
+        .iter()
+        .map(|c| c.owm.object().rewrap_spec())
+        .collect();
     let mut replacements = op.generate_replacement(kms, &candidates).await?;
     op.prepare_attributes(kms, &candidates, &mut replacements)?;
     op.rewrap_new_objects(kms, user, &mut replacements, &wrap_specs)
         .await?;
-    op.persist_new_key(kms, user, &replacements).await?;
+    let persist_ops: Vec<AtomicOperation> = replacements
+        .as_ref()
+        .iter()
+        .map(|r| {
+            AtomicOperation::Create((
+                r.new_uid.clone(),
+                r.object.clone(),
+                r.attributes.clone(),
+                r.tags.clone(),
+            ))
+        })
+        .collect();
+    kms.database.atomic(user, &persist_ops).await?;
     op.finalize_dependants(kms, user, &candidates, &replacements)
         .await?;
     Ok(op.build_response(&replacements))
 }
 
 // ─── Phase 2: Finalize rekey (retire old keys + rewrap dependants) ───────────
-
-/// Describes one old key being retired as part of a rekey operation.
-///
-/// Used by [`KMS::finalize_rekey`] to batch-retire multiple keys (e.g., both the
-/// private key and public key in a key pair rekey) in a single atomic commit.
-pub(crate) struct KeyRetirement<'a> {
-    /// The old key's metadata (object + attributes).
-    pub old_owm: &'a ObjectWithMetadata,
-    /// The UID of the new replacement key.
-    pub new_uid: &'a str,
-    /// If `Some`, all keys that were wrapped by this old key will be re-wrapped
-    /// using the key at this UID.
-    pub rewrap_to: Option<&'a str>,
-}
 
 /// Set up a newly generated key with replacement attributes and links.
 ///
@@ -634,7 +536,7 @@ pub(crate) fn setup_new_key(
     object_type: ObjectType,
     old_uid: &str,
     paired_key: Option<(&str, LinkType)>,
-) -> KResult<Attributes> {
+) -> KResult<()> {
     if let Ok(key_attrs) = key_object.attributes_mut() {
         key_attrs.name.clone_from(&replacement_attrs.name);
         key_attrs.set_link(
@@ -649,10 +551,26 @@ pub(crate) fn setup_new_key(
         }
     }
 
-    key_object.setup_with_lifecycle(object_type, replacement_attrs.activation_date)
+    key_object.setup_with_lifecycle(object_type, replacement_attrs.activation_date)?;
+    Ok(())
 }
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
+
+/// Reject a Re-Key request when the UID refers to an HSM-managed key.
+///
+/// HSM-managed keys have no KMIP attribute storage and are often non-extractable
+/// (`CKA_EXTRACTABLE = false`) — they must be managed via the HSM's own tools.
+pub(in crate::core::operations::rekey) fn reject_hsm_uid(uid: &str, op_name: &str) -> KResult<()> {
+    if uid.starts_with("hsm::") {
+        return Err(KmsError::NotSupported(format!(
+            "{op_name} is not supported for HSM-managed keys. \
+             Use PKCS#11 vendor tools or the HSM administration console \
+             to manage HSM key lifecycle."
+        )));
+    }
+    Ok(())
+}
 
 fn retire_old_key(owm: &ObjectWithMetadata, new_uid: &str) -> KResult<(Object, Attributes)> {
     let mut old_object = owm.object().clone();

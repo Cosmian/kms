@@ -19,7 +19,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
 
-use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate};
+use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid};
 use crate::{
     core::{
         KMS,
@@ -93,14 +93,7 @@ impl RekeyOperation for SqlKeypairRekeyer {
 
         // HSM-managed keys cannot be re-keyed via the SQL pipeline: they have no KMIP
         // attribute storage and are often non-extractable (CKA_EXTRACTABLE = false).
-        if uid_or_tags.starts_with("hsm::") {
-            return Err(KmsError::NotSupported(
-                "Re-Key Key Pair is not supported for HSM-managed keys. \
-                 Use PKCS#11 vendor tools or the HSM administration console \
-                 to manage HSM key lifecycle."
-                    .to_owned(),
-            ));
-        }
+        reject_hsm_uid(uid_or_tags, "Re-Key Key Pair")?;
 
         let candidates = kms
             .retrieve_eligible_keys(uid_or_tags, ObjectType::PrivateKey)
@@ -235,28 +228,39 @@ impl RekeyOperation for SqlKeypairRekeyer {
         let sk_new_uid = replacements[0].new_uid.clone();
 
         let [sk_rep, pk_rep] = replacements;
-        sk_rep.prepare_for_keypair(
+
+        // Private key slot
+        sk_rep.finalize(
             &new_sk_attributes,
-            sk_candidate,
-            &pk_new_uid,
-            LinkType::PublicKeyLink,
             ObjectType::PrivateKey,
-            false,
+            &sk_candidate.uid,
+            Some((&pk_new_uid, LinkType::PublicKeyLink)),
             kms.vendor_id(),
         )?;
+        sk_candidate
+            .owm
+            .object()
+            .copy_wrapping_key_link_to(&mut sk_rep.attributes);
         sk_rep
             .attributes
             .set_rotation_metadata_from(sk_candidate.owm.attributes())?;
 
-        pk_rep.prepare_for_keypair(
+        // Public key slot — rewrap target: dependants wrapped by old PK get re-wrapped to new PK
+        pk_rep.finalize(
             &new_pk_attributes,
-            pk_candidate,
-            &sk_new_uid,
-            LinkType::PrivateKeyLink,
             ObjectType::PublicKey,
-            true,
+            &pk_candidate.uid,
+            Some((&sk_new_uid, LinkType::PrivateKeyLink)),
             kms.vendor_id(),
         )?;
+        pk_candidate
+            .owm
+            .object()
+            .copy_wrapping_key_link_to(&mut pk_rep.attributes);
+        pk_rep
+            .attributes
+            .set_rotation_metadata_from(pk_candidate.owm.attributes())?;
+        pk_rep.rewrap_to = Some(pk_rep.new_uid.clone());
 
         Ok(())
     }

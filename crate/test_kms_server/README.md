@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**461 vectors** across 15 categories (including KAT):
+**479 vectors** across 15 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -539,6 +539,27 @@ MAC, or derived-key values.
 | Mac | `kat/mac/hmac_sha3_384` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha3_512` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha512` | RFC 4231 §4.2 | Import, Mac | `MACData` |
+| **Recertify** | |  | | |
+| Recertify | `kat/recertify/replacement_and_replaced_links` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy |  |
+| Recertify | `kat/recertify/rotate_generation_counter` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateGeneration` |
+| Recertify | `kat/recertify/rotate_latest_flag` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateLatest` |
+| Recertify | `kat/recertify/state_transitions` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `State` |
+| **Rekey** | |  | | |
+| Rekey | `kat/rekey/deactivated_accepts_decrypt` |  | Create, Encrypt, ReKey, Decrypt, Destroy, Revoke, Destroy | `Data` |
+| Rekey | `kat/rekey/deactivated_rejects_encrypt` |  | Create, Encrypt, ReKey, Encrypt, Destroy, Revoke, Destroy |  |
+| Rekey | `kat/rekey/keyset_uid` |  | Create, ReKey, ReKey, Destroy, Destroy, Revoke, Destroy | `UniqueIdentifier` |
+| Rekey | `kat/rekey/replacement_and_replaced_links` |  | Create, ReKey, GetAttributes, GetAttributes, Destroy, Revoke, Destroy | `LinkedObjectIdentifier` |
+| Rekey | `kat/rekey/rotate_generation_counter` |  | Create, ReKey, ReKey, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy | `RotateGeneration` |
+| Rekey | `kat/rekey/rotate_interval_cleared` |  | Create, SetAttribute, GetAttributes, ReKey, GetAttributes, Destroy, Revoke, Destroy | `RotateInterval` |
+| Rekey | `kat/rekey/rotate_latest_flag` |  | Create, ReKey, GetAttributes, GetAttributes, Destroy, Revoke, Destroy | `RotateLatest` |
+| Rekey | `kat/rekey/state_transitions` |  | Create, ReKey, GetAttributes, GetAttributes, Destroy, Revoke, Destroy | `State` |
+| **Rekey_Keypair** | |  | | |
+| Rekey Keypair | `kat/rekey_keypair/old_pk_deactivated_accepts_verify` |  | CreateKeyPair, ReKeyKeyPair, Sign, SignatureVerify, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy |  |
+| Rekey Keypair | `kat/rekey_keypair/old_sk_deactivated_rejects_sign` |  | CreateKeyPair, Sign, ReKeyKeyPair, Sign, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy |  |
+| Rekey Keypair | `kat/rekey_keypair/replacement_links` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy |  |
+| Rekey Keypair | `kat/rekey_keypair/rotate_generation_counter` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy | `RotateGeneration` |
+| Rekey Keypair | `kat/rekey_keypair/rotate_latest_flag` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy | `RotateLatest` |
+| Rekey Keypair | `kat/rekey_keypair/state_transitions` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy | `State` |
 | **Symmetric** | | NIST SP 800-38A / SP 800-38D / RFC 8439 / RFC 7539 / RFC 3394 / RFC 5649 | | |
 | Symmetric | `kat/symmetric/aes128_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
 | Symmetric | `kat/symmetric/aes128_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
