@@ -634,6 +634,7 @@ Crate path: `crate/server_database`
 | `debug` | `[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}` | `src/stores/redis/redis_with_findex.rs` | `live_count`, `key_count` | — |
 | `debug` | `` [redis-metrics] bootstrapped {} live object(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
 | `debug` | `` [redis-metrics] bootstrapped {} non-destroyed key(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
+| `debug` | `[redis-scan-rotation] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 
 ### `cosmian_kms_crypto`
 

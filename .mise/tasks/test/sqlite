@@ -9,8 +9,13 @@
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
+# WITH_HSM=1 must be set before ensure_nix_shell so the Nix shellHook adds
+# the Nix-built SoftHSM2 (linked against Nix OpenSSL FIPS 3.1.2) to PATH.
+export WITH_HSM=1
+ensure_nix_shell
 
 require_cmd cargo
 

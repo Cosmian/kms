@@ -24,6 +24,7 @@ bench_start_server "$BENCH_PORT" "$TMP_DIR"
 
 "${CKMS_BIN}" --url "http://127.0.0.1:${BENCH_PORT}" bench \
   --speed "${BENCH_SPEED:-quick}" \
+  --format json \
   --load-baseline base
 
 print_success "Benchmark regression completed"
