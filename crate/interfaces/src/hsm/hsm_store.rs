@@ -558,6 +558,15 @@ impl ObjectsStore for HsmStore {
         }
         Ok(total)
     }
+
+    /// HSM keys are physically stored on the device and never wrapped in KMIP format.
+    async fn find_wrapped_by(
+        &self,
+        _wrapping_key_uid: &str,
+        _user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        Ok(vec![])
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

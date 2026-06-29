@@ -473,6 +473,9 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
             config.db.sqlite_path = workspace_clone.join("sqlite-data");
             config.workspace.root_data_path = workspace_clone.join("workspace");
             config.workspace.tmp_path = workspace_clone.join("tmp");
+            // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
+            // Falls back to the TOML default (SQLite) when KMS_TEST_DB is unset.
+            apply_test_db_override(config);
         },
         TestClientOptions {
             send_jwt: true,
@@ -542,6 +545,9 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
             config.workspace.root_data_path = workspace_dir.join("workspace");
             config.workspace.tmp_path = workspace_dir.join("tmp");
             config.key_encryption_key = Some(kek_id);
+            // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
+            // `clear_database = false` above ensures the KEK persists for non-SQLite.
+            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         }),
     )
@@ -586,6 +592,7 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     config.workspace.tmp_path = workspace_dir.join("tmp");
     config.key_encryption_key = Some(kek_id);
     config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
+    apply_test_db_override(&mut config);
     start_server_from_config(config, &config_path).await
 }
 

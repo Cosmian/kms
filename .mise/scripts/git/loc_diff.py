@@ -26,6 +26,8 @@ def main() -> None:
 
     root_stats: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     sub_stats: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    # file_stats[crate_sub] = list of (added, deleted, path)
+    file_stats: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
 
     for line in result.stdout.splitlines():
         parts = line.split('\t')
@@ -43,6 +45,7 @@ def main() -> None:
             sub = segs[1]
             sub_stats[sub][0] += added
             sub_stats[sub][1] += deleted
+            file_stats[sub].append((added, deleted, path))
 
     def _row(label: str, added: int, deleted: int) -> str:
         net = added - deleted
@@ -66,6 +69,27 @@ def main() -> None:
 
     total_added = sum(v[0] for v in root_stats.values())
     total_deleted = sum(v[1] for v in root_stats.values())
+
+    # Top-10 most significant files per crate subfolder (by net diff)
+    print(f"\n=== Top 10 files per crate/ subfolder (by net diff) ===")
+    file_header = f"  {'File':<60} {'Added':>7}  {'Deleted':>7}  {'Net':>8}"
+    file_sep = f"  {'-' * 60} {'-' * 7}  {'-' * 7}  {'-' * 8}"
+    for sub, (a, d) in sorted(sub_stats.items(), key=lambda x: -(x[1][0] - x[1][1])):
+        files = sorted(file_stats[sub], key=lambda t: -(t[0] - t[1]))[:10]
+        if not files:
+            continue
+        print(f"\n  crate/{sub}  (+{a} / -{d})")
+        print(file_header)
+        print(file_sep)
+        for fa, fd, fpath in files:
+            net = fa - fd
+            sign = '+' if net >= 0 else ''
+            # Trim path for display: strip leading "crate/<sub>/"
+            display = fpath[len(f"crate/{sub}/") :]
+            if len(display) > 60:
+                display = '…' + display[-59:]
+            print(f"  {display:<60} {fa:>7}  {fd:>7}  {sign}{net:>7}")
+
     print(f"\n  Lines changed: {total_added:,} additions & {total_deleted:,} deletions")
 
 

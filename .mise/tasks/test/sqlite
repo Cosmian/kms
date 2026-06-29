@@ -8,6 +8,7 @@
 #USAGE }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 
@@ -32,5 +33,6 @@ if [ "${CI:-false}" = "true" ] || [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
 fi
 
 run_db_tests "sqlite"
+run_db_softhsm2_tests "sqlite_softhsm2"
 
 print_success "SQLite tests completed"

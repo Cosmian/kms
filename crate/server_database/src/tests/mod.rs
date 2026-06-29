@@ -28,7 +28,10 @@ use crate::{
     error::DbResult,
     stores::{MySqlPool, PgPool, SqlitePool},
     tests::{
-        database_tests::{atomic, block_cipher_mode_migration_after_json_deserialization},
+        database_tests::{
+            atomic, block_cipher_mode_migration_after_json_deserialization,
+            find_due_for_rotation_test,
+        },
         list_uids_for_tags_test::list_uids_for_tags_test,
     },
 };
@@ -111,6 +114,7 @@ pub(crate) async fn test_db_redis_with_findex() -> DbResult<()> {
     crud(&get_redis_with_findex().await?).await?;
     list_uids_for_tags_test(&get_redis_with_findex().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_redis_with_findex().await?).await?;
+    find_due_for_rotation_test(&get_redis_with_findex().await?).await?;
     Ok(())
 }
 
@@ -142,6 +146,7 @@ pub(crate) async fn test_db_sqlite() -> DbResult<()> {
     crud(&get_sqlite(&db_file).await?).await?;
     list_uids_for_tags_test(&get_sqlite(&db_file).await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_sqlite(&db_file).await?).await?;
+    find_due_for_rotation_test(&get_sqlite(&db_file).await?).await?;
     Ok(())
 }
 
@@ -161,6 +166,7 @@ pub(crate) async fn test_db_postgresql() -> DbResult<()> {
     crud(&get_pgsql().await?).await?;
     list_uids_for_tags_test(&get_pgsql().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_pgsql().await?).await?;
+    find_due_for_rotation_test(&get_pgsql().await?).await?;
     Ok(())
 }
 
@@ -202,5 +208,6 @@ pub(crate) async fn test_db_mysql() -> DbResult<()> {
     crud(&get_mysql().await?).await?;
     list_uids_for_tags_test(&get_mysql().await?).await?;
     block_cipher_mode_migration_after_json_deserialization(&get_mysql().await?).await?;
+    find_due_for_rotation_test(&get_mysql().await?).await?;
     Ok(())
 }

@@ -18,7 +18,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
@@ -868,6 +869,21 @@ impl ObjectsStore for RedisWithFindex {
             out.push((uid, dbo.state, attrs));
         }
         Ok(out)
+    }
+
+    /// Scan all objects and return `(uid, owner)` pairs for `Active` objects
+    /// with `rotate_automatic = true` whose next rotation instant is ≤ `now`.
+    ///
+    /// Implemented as an O(N) Redis SCAN.  Acceptable cost because this method
+    /// is only called by the low-frequency auto-rotation cron scheduler.
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<(String, String)>> {
+        self.objects_db
+            .scan_due_for_rotation(now)
+            .await
+            .map_err(InterfaceError::from)
     }
 
     /// Return the count of live (non-destroyed) objects.

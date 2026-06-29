@@ -110,15 +110,14 @@ pub trait ObjectsStore {
     /// `wrapping_key_uid`. Used by key rotation to re-wrap all objects protected by
     /// the rotated key.
     ///
-    /// The default implementation returns an empty list; backends that support
-    /// JSON-based object storage should override this with an efficient query.
+    /// SQL backends should implement an efficient JSON-path query.
+    /// HSM backends should return an empty list (HSM keys are non-extractable and
+    /// are never wrapped in KMIP format).
     async fn find_wrapped_by(
         &self,
         _wrapping_key_uid: &str,
         _user: &str,
-    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
-        Ok(vec![])
-    }
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>>;
 
     /// Return UIDs of all Active objects that have a `rotate_interval > 0` and whose
     /// next rotation instant is ≤ `now`.
@@ -127,16 +126,14 @@ pub trait ObjectsStore {
     /// - `rotate_date + rotate_interval`  (if `rotate_date` is set), or
     /// - `initial_date + rotate_interval + rotate_offset` (if `rotate_date` is None)
     ///
-    /// The default implementation returns an empty list; backends should override.
-    ///
     /// Each entry is `(uid, owner)` so the auto-rotation scheduler can issue a
     /// Re-Key on behalf of the correct owner without an additional DB round-trip.
+    ///
+    /// Backends that do not support date-driven rotation should return an empty list.
     async fn find_due_for_rotation(
         &self,
         _now: OffsetDateTime,
-    ) -> InterfaceResult<Vec<(String, String)>> {
-        Ok(vec![])
-    }
+    ) -> InterfaceResult<Vec<(String, String)>>;
 
     /// Find objects by their `x-rotate-name` vendor attribute.
     ///
@@ -146,15 +143,12 @@ pub trait ObjectsStore {
     /// - `owner`: match the object owner
     ///
     /// Returns a list of `(uid, attributes)` pairs.
-    /// The default implementation returns an empty list; backends should override.
     async fn find_by_rotate_name(
         &self,
         _name: &str,
         _generation: Option<i32>,
         _owner: &str,
-    ) -> InterfaceResult<Vec<(String, Attributes)>> {
-        Ok(vec![])
-    }
+    ) -> InterfaceResult<Vec<(String, Attributes)>>;
 
     /// Set the human-readable label on a key object.
     ///

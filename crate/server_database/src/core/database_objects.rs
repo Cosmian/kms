@@ -524,8 +524,8 @@ impl Database {
     ///
     /// Because several stores may be registered simultaneously (e.g. one SQL store
     /// plus one or more HSM stores), the results are summed. Backends that have not
-    /// yet implemented `count_all_non_destroyed` return `0` via the trait default,
-    /// which is acceptable — the sum will still be a valid lower bound.
+    /// yet provided a real implementation will log a warning and contribute 0;
+    /// the sum will still be a valid lower bound.
     pub async fn count_all_non_destroyed_objects(&self) -> DbResult<u64> {
         let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
             let map = self.objects.read().await;
@@ -546,8 +546,8 @@ impl Database {
     /// `PublicKey`, `SplitKey`) across all registered stores.
     ///
     /// Aggregates results from every registered backend (SQL stores, HSM stores, etc.).
-    /// Backends that have not yet implemented `count_non_destroyed_keys` return `0` via
-    /// the trait default — the sum remains a valid lower bound.
+    /// Backends that have not yet provided a real implementation will log a warning
+    /// and contribute 0 — the sum remains a valid lower bound.
     pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
         let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
             let map = self.objects.read().await;

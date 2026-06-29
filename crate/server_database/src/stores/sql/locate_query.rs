@@ -14,6 +14,12 @@ use cosmian_kmip::{
 /// by implementation if needed
 pub(super) trait PlaceholderTrait {
     const NEEDS_INTEGER_CAST: bool = true;
+    /// SQL literal that equals `true` when compared with a JSON-extracted boolean.
+    ///
+    /// `SQLite` `json_extract` returns the integer `1` for a JSON `true` boolean,
+    /// while `PostgreSQL` (`->>`) and `MySQL` (`JSON_UNQUOTE(JSON_EXTRACT(...))`)
+    /// return the text string `'true'`.
+    const BOOL_TRUE_LITERAL: &'static str = "'true'";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
@@ -222,7 +228,10 @@ impl PlaceholderTrait for PgSqlPlaceholder {
 }
 
 pub(super) enum SqlitePlaceholder {}
-impl PlaceholderTrait for SqlitePlaceholder {}
+impl PlaceholderTrait for SqlitePlaceholder {
+    /// `SQLite` `json_extract` returns the integer `1` for a JSON `true` value.
+    const BOOL_TRUE_LITERAL: &'static str = "1";
+}
 
 // We build locate SQL dynamically across multiple DB engines (SQLite/Postgres/MySQL), but we must
 // *not* interpolate user-controlled values directly into the SQL string.
@@ -573,9 +582,10 @@ pub(super) fn find_due_for_rotation_query<P: PlaceholderTrait>() -> String {
     format!(
         "SELECT objects.id, objects.owner, objects.attributes FROM objects \
          WHERE objects.state = 'Active' \
-         AND {auto_extract} = 'true' \
+         AND {auto_extract} = {} \
          AND {interval_extract} IS NOT NULL \
-         AND {cast_and_compare}"
+         AND {cast_and_compare}",
+        P::BOOL_TRUE_LITERAL
     )
 }
 
@@ -587,7 +597,7 @@ pub(super) fn find_due_for_rotation_query<P: PlaceholderTrait>() -> String {
 /// - `initial_date + rotate_offset + rotate_interval` otherwise (first rotation from creation)
 ///
 /// Returns `true` if `now >= next_rotation_time`.
-pub(super) fn is_due_for_rotation(attrs: &Attributes, now: time::OffsetDateTime) -> bool {
+pub(crate) fn is_due_for_rotation(attrs: &Attributes, now: time::OffsetDateTime) -> bool {
     let interval_secs = match attrs.rotate_interval {
         Some(secs) if secs > 0 => secs,
         _ => return false,

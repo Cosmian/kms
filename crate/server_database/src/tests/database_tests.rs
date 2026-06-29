@@ -505,3 +505,124 @@ pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: O
 
     Ok(())
 }
+
+/// Verify that `find_due_for_rotation` returns exactly the objects that are
+/// `Active`, have `rotate_automatic = true`, and whose rotation deadline has
+/// already passed.
+///
+/// Three objects are created:
+/// - `obj_due`    — past deadline  → **must** appear in the result
+/// - `obj_not_due` — future deadline → must NOT appear
+/// - `obj_no_auto` — `rotate_automatic` absent → must NOT appear
+pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
+    let owner = "rotation_test_owner";
+    let now = time::OffsetDateTime::now_utc();
+
+    // Helper: create a minimal AES symmetric key object
+    let make_key = |rng: &mut CsRng| -> DbResult<Object> {
+        let mut bytes = vec![0_u8; 32];
+        rng.fill_bytes(&mut bytes);
+        create_symmetric_key_kmip_object(
+            VENDOR_ID_COSMIAN,
+            bytes.as_slice(),
+            &Attributes {
+                cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+                ..Default::default()
+            },
+        )
+        .map_err(|e| DbError::ServerError(e.to_string()))
+    };
+
+    let mut rng = CsRng::from_entropy();
+
+    // ── obj_due: initial_date 2 h ago, interval 1 h → overdue ────────────
+    let uid_due = Uuid::new_v4().to_string();
+    let attrs_due = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        state: Some(State::Active),
+        rotate_automatic: Some(true),
+        rotate_interval: Some(3600),                        // 1 hour
+        initial_date: Some(now - time::Duration::hours(2)), // 2 h ago
+        ..Default::default()
+    };
+    db.create(
+        Some(uid_due.clone()),
+        owner,
+        &make_key(&mut rng)?,
+        &attrs_due,
+        &HashSet::new(),
+    )
+    .await?;
+
+    // ── obj_not_due: initial_date 30 min ago, interval 1 h → not yet due ─
+    let uid_not_due = Uuid::new_v4().to_string();
+    let attrs_not_due = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        state: Some(State::Active),
+        rotate_automatic: Some(true),
+        rotate_interval: Some(3600),
+        initial_date: Some(now - time::Duration::minutes(30)),
+        ..Default::default()
+    };
+    db.create(
+        Some(uid_not_due.clone()),
+        owner,
+        &make_key(&mut rng)?,
+        &attrs_not_due,
+        &HashSet::new(),
+    )
+    .await?;
+
+    // ── obj_no_auto: rotate_automatic absent → never scheduled ────────────
+    let uid_no_auto = Uuid::new_v4().to_string();
+    let attrs_no_auto = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        state: Some(State::Active),
+        rotate_interval: Some(3600),
+        initial_date: Some(now - time::Duration::hours(2)),
+        ..Default::default()
+    };
+    db.create(
+        Some(uid_no_auto.clone()),
+        owner,
+        &make_key(&mut rng)?,
+        &attrs_no_auto,
+        &HashSet::new(),
+    )
+    .await?;
+
+    // ── Assert ────────────────────────────────────────────────────────────
+    let due = db.find_due_for_rotation(now).await?;
+    let due_uids: HashSet<&str> = due.iter().map(|(uid, _)| uid.as_str()).collect();
+
+    if !due_uids.contains(uid_due.as_str()) {
+        return Err(DbError::ServerError(format!(
+            "find_due_for_rotation: expected uid_due '{uid_due}' in result, got: {due_uids:?}"
+        )));
+    }
+    if due_uids.contains(uid_not_due.as_str()) {
+        return Err(DbError::ServerError(format!(
+            "find_due_for_rotation: uid_not_due '{uid_not_due}' must NOT be in result"
+        )));
+    }
+    if due_uids.contains(uid_no_auto.as_str()) {
+        return Err(DbError::ServerError(format!(
+            "find_due_for_rotation: uid_no_auto '{uid_no_auto}' must NOT be in result"
+        )));
+    }
+    // Verify the owner is correct
+    for (uid, owner_returned) in &due {
+        if uid == &uid_due && owner_returned != owner {
+            return Err(DbError::ServerError(format!(
+                "find_due_for_rotation: wrong owner '{owner_returned}' for uid_due, expected '{owner}'"
+            )));
+        }
+    }
+
+    // ── Cleanup ───────────────────────────────────────────────────────────
+    db.delete(&uid_due).await?;
+    db.delete(&uid_not_due).await?;
+    db.delete(&uid_no_auto).await?;
+
+    Ok(())
+}

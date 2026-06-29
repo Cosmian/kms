@@ -53,4 +53,7 @@ pub mod reexport {
 mod certify_tests;
 
 #[cfg(test)]
+mod db_hsm_tests;
+
+#[cfg(test)]
 mod openapi_validation;
