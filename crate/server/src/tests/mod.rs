@@ -20,6 +20,7 @@ mod migrate;
 mod ms_dke;
 mod mtls_db;
 mod rest_crypto;
+mod revoke_tests;
 mod secret_data_tests;
 mod security_regression;
 mod test_modify_attribute;

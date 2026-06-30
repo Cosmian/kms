@@ -234,11 +234,17 @@ dependants atomically.
 **What happens:**
 
 1. A new wrapping key is created and committed to the database (Phase 1).
-2. Every `Active` key whose `WrappingKeyLink` points to the old wrapping key
-   is fetched, unwrapped in memory (plaintext never stored), and re-wrapped
-   with the new wrapping key (Phase 2).
+2. **Every** key owned by the same user whose `WrappingKeyLink` points to the
+   old wrapping key is fetched — regardless of its state (Active, Deactivated,
+   Pre-Active, Compromised, …) — unwrapped in memory (plaintext never stored),
+   and re-wrapped with the new wrapping key (Phase 2).
 3. Each wrapped key's `WrappingKeyLink` is updated to the new wrapping key UID.
 4. Standard rotation metadata is applied; old wrapping key → Deactivated.
+
+> **No state filter on dependants.**  The server queries all keys with a
+> `wrapping_key_id` matching the rotated key, with no restriction on their
+> lifecycle state.  Only the **owner check** applies: dependants owned by a
+> different user are skipped (with a warning logged).
 
 ```mermaid
 sequenceDiagram

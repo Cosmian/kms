@@ -220,7 +220,7 @@ fn test_parse_import_ttlv_response() {
 
 #[wasm_bindgen_test]
 fn test_revoke_ttlv_request() {
-    let r = w::revoke_ttlv_request("kid", "test".to_string());
+    let r = w::revoke_ttlv_request("kid", "test".to_string(), None);
     assert!(r.is_ok() || r.is_err());
 }
 

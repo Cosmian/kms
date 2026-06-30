@@ -7,6 +7,7 @@ import { useActionState } from "../../hooks/useActionState";
 
 interface RevokeFormData {
     revocationReasonMessage: string;
+    revocationReasonCode: string;
     objectId?: string;
     tags?: string[];
 }
@@ -31,7 +32,7 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
             if (!id) {
                 throw new Error(`Missing ${label} identifier.`);
             }
-            const request = revoke_ttlv_request(id, values.revocationReasonMessage);
+            const request = revoke_ttlv_request(id, values.revocationReasonMessage, values.revocationReasonCode);
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: RevokeResponse = await parse_revoke_ttlv_response(result_str);
@@ -70,6 +71,23 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
             <Form form={form} onFinish={onFinish} layout="vertical">
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
                     <Card>
+                        <Form.Item
+                            name="revocationReasonCode"
+                            label="Revocation Reason Code"
+                            initialValue="unspecified"
+                            rules={[{ required: true, message: "Please select a revocation reason code" }]}
+                            help="Key Compromise and CA Compromise transition the object to the Compromised state; all other codes produce Deactivated"
+                        >
+                            <Select data-testid="revocation-reason-code">
+                                <Select.Option value="unspecified">Unspecified</Select.Option>
+                                <Select.Option value="key-compromise">Key Compromise → Compromised</Select.Option>
+                                <Select.Option value="ca-compromise">CA Compromise → Compromised</Select.Option>
+                                <Select.Option value="affiliation-changed">Affiliation Changed → Deactivated</Select.Option>
+                                <Select.Option value="superseded">Superseded → Deactivated</Select.Option>
+                                <Select.Option value="cessation-of-operation">Cessation of Operation → Deactivated</Select.Option>
+                                <Select.Option value="privilege-withdrawn">Privilege Withdrawn → Deactivated</Select.Option>
+                            </Select>
+                        </Form.Item>
                         <Form.Item
                             name="revocationReasonMessage"
                             label="Revocation Reason Message"

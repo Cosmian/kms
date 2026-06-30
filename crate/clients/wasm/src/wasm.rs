@@ -217,7 +217,7 @@ fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
 }
 
 #[cfg(not(feature = "non-fips"))]
-fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
+const fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
     vec![]
 }
 
@@ -255,7 +255,7 @@ fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
 }
 
 #[cfg(not(feature = "non-fips"))]
-fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
+const fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
     vec![]
 }
 
@@ -278,7 +278,7 @@ fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
 }
 
 #[cfg(not(feature = "non-fips"))]
-fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
+const fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
     vec![]
 }
 
@@ -1734,12 +1734,21 @@ wasm_response_parser!(parse_import_ttlv_response, ImportResponse);
 
 // Revoke request
 #[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)] // required by wasm_bindgen: Option<String> from JS
 pub fn revoke_ttlv_request(
     unique_identifier: &str,
     revocation_reason_message: String,
+    revocation_reason_code: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let reason_code =
+        revocation_reason_code
+            .as_deref()
+            .map_or(RevocationReasonCode::Unspecified, |s| {
+                cosmian_kms_client_utils::revoke_utils::try_parse_revocation_reason_code(s)
+                    .unwrap_or(RevocationReasonCode::Unspecified)
+            });
     let revocation_reason = RevocationReason {
-        revocation_reason_code: RevocationReasonCode::Unspecified,
+        revocation_reason_code: reason_code,
         revocation_message: Some(revocation_reason_message),
     };
     let request = build_revoke_key_request(unique_identifier, revocation_reason)

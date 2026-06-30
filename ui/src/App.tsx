@@ -27,7 +27,6 @@ import CovercryptUserKeyForm from "./actions/Covercrypt/CovercryptUserKey";
 import ECDecryptForm from "./actions/EC/ECDecrypt";
 import ECEncryptForm from "./actions/EC/ECEncrypt";
 import ECKeyCreateForm from "./actions/EC/ECKeysCreate";
-import ECReKeyForm from "./actions/EC/ECReKey";
 import ECSignForm from "./actions/EC/ECSign";
 import ECVerifyForm from "./actions/EC/ECVerify";
 import FpeDecryptForm from "./actions/FPE/FpeDecrypt";
@@ -37,12 +36,12 @@ import CseInfo from "./actions/Keys/CseInfo";
 import DeriveKeyForm from "./actions/Keys/DeriveKey";
 import KeyExportForm from "./actions/Keys/KeysExport";
 import KeyImportForm from "./actions/Keys/KeysImport";
-import KeysReKeyForm from "./actions/Keys/KeysReKey";
 import SymKeyCreateForm from "./actions/Keys/SymKeysCreate";
 import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
 import HsmStatus from "./actions/Objects/HsmStatus";
 import DestroyForm from "./actions/Objects/ObjectsDestroy";
+import ObjectsReKeyForm from "./actions/Objects/ObjectsReKey";
 import ObjectsOwnedList from "./actions/Objects/ObjectsOwned";
 import RevokeForm from "./actions/Objects/ObjectsRevoke";
 import OpaqueObjectForm from "./actions/Objects/OpaqueObject";
@@ -50,7 +49,6 @@ import SecretDataCreateForm from "./actions/Objects/SecretDataCreate";
 import PqcDecapsulateForm from "./actions/PQC/PqcDecapsulate";
 import PqcEncapsulateForm from "./actions/PQC/PqcEncapsulate";
 import PqcKeysCreateForm from "./actions/PQC/PqcKeysCreate";
-import PqcReKeyForm from "./actions/PQC/PqcReKey";
 import PqcSignForm from "./actions/PQC/PqcSign";
 import PqcVerifyForm from "./actions/PQC/PqcVerify";
 import GetRotationPolicyForm from "./actions/RotationPolicy/GetRotationPolicy";
@@ -58,7 +56,6 @@ import SetRotationPolicyForm from "./actions/RotationPolicy/SetRotationPolicy";
 import RsaDecryptForm from "./actions/RSA/RsaDecrypt";
 import RsaEncryptForm from "./actions/RSA/RsaEncrypt";
 import RsaKeyCreateForm from "./actions/RSA/RsaKeysCreate";
-import RsaReKeyForm from "./actions/RSA/RsaReKey";
 import RsaSignForm from "./actions/RSA/RsaSign";
 import RsaVerifyForm from "./actions/RSA/RsaVerify";
 import SymmetricDecryptForm from "./actions/Symmetric/SymmetricDecrypt";
@@ -268,7 +265,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
-                            <Route path="keys/rekey" element={<KeysReKeyForm />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="symmetric" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
                             <Route path="encrypt" element={<SymmetricEncryptForm />} />
@@ -279,7 +276,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<RsaKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"rsa"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="rsa" />} />
-                            <Route path="keys/rekey" element={<RsaReKeyForm />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="rsa" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="rsa" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="rsa" />} />
                             <Route path="encrypt" element={<RsaEncryptForm />} />
@@ -291,7 +288,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<ECKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"ec"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="ec" />} />
-                            <Route path="keys/rekey" element={<ECReKeyForm />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="ec" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="ec" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="ec" />} />
                             <Route path="encrypt" element={<ECEncryptForm />} />
@@ -303,7 +300,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<PqcKeysCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"pqc"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="pqc" />} />
-                            <Route path="keys/rekey" element={<PqcReKeyForm />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="pqc" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="pqc" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="pqc" />} />
                             <Route path="encapsulate" element={<PqcEncapsulateForm />} />

@@ -42,6 +42,13 @@ use crate::{
 pub(crate) struct CertificateRekey {
     /// The `offset` from the `ReCertify` request (date computation per KMIP §6.1.45).
     offset: Option<i64>,
+    /// Explicit issuer certificate link from the `ReCertify` request, if provided.
+    /// When present, overrides the old certificate's own `PrivateKeyLink` so that
+    /// CA-signed certificates are re-signed by the original issuer CA rather than
+    /// by the subject's private key.
+    issuer_cert_id: Option<String>,
+    /// Explicit issuer private key link from the `ReCertify` request, if provided.
+    issuer_private_key_id: Option<String>,
 }
 
 /// KMIP `ReCertify` operation — certificate rotation with new UID.
@@ -55,9 +62,21 @@ pub(crate) async fn recertify(
     owner: &str,
 ) -> KResult<ReCertifyResponse> {
     trace!("ReCertify: {}", serde_json::to_string(&request)?);
+    let (issuer_cert_id, issuer_private_key_id) =
+        request.attributes.as_ref().map_or((None, None), |attrs| {
+            let cert = attrs
+                .get_link(LinkType::CertificateLink)
+                .map(|id| id.to_string());
+            let key = attrs
+                .get_link(LinkType::PrivateKeyLink)
+                .map(|id| id.to_string());
+            (cert, key)
+        });
     Box::pin(execute_rekey(
         &CertificateRekey {
             offset: request.offset,
+            issuer_cert_id,
+            issuer_private_key_id,
         },
         kms,
         &request,
@@ -137,6 +156,31 @@ impl RekeyOperation for CertificateRekey {
 
         // Build a Certify request that references the existing certificate for renewal.
         // We pass the old certificate's UID so `get_subject` produces a `Subject::Certificate`.
+        //
+        // Base attributes come from the old certificate (preserves subject DN, validity, etc.).
+        // Explicit issuer links from the ReCertify request override the cert's own PrivateKeyLink
+        // so that CA-signed certificates are re-signed by the original issuer CA rather than by
+        // the subject's private key (which the cert's PrivateKeyLink points to).
+        let mut base_attrs = candidate.owm.attributes().clone();
+        if let Some(cert_id) = &self.issuer_cert_id {
+            base_attrs.set_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(cert_id.clone()),
+            );
+            // The old cert's PrivateKeyLink points to the SUBJECT's private key, not the
+            // issuer's.  When an explicit issuer cert is supplied, remove that link so
+            // `get_issuer` derives the issuer private key from the issuer cert's own links
+            // rather than misidentifying the subject key as the issuer key.
+            if self.issuer_private_key_id.is_none() {
+                base_attrs.remove_link(LinkType::PrivateKeyLink);
+            }
+        }
+        if let Some(key_id) = &self.issuer_private_key_id {
+            base_attrs.set_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::TextString(key_id.clone()),
+            );
+        }
         let certify_request = Certify {
             unique_identifier: Some(UniqueIdentifier::TextString(candidate.uid.clone())),
             certificate_request_type: None,
@@ -144,8 +188,7 @@ impl RekeyOperation for CertificateRekey {
             attributes: Some(Attributes {
                 // The new certificate UID is set in the attributes so `get_subject` uses it.
                 unique_identifier: Some(UniqueIdentifier::TextString(new_uid.clone())),
-                // Preserve issuer links from the old certificate's attributes
-                ..candidate.owm.attributes().clone()
+                ..base_attrs
             }),
             protection_storage_masks: None,
         };

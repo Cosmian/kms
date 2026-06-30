@@ -2,6 +2,7 @@ use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{kmip_types::UniqueIdentifier, requests::build_revoke_key_request},
+    reexport::cosmian_kms_client_utils::revoke_utils::try_parse_revocation_reason_code,
 };
 
 use crate::{
@@ -14,20 +15,7 @@ use crate::{
 ///
 /// Accepts `kebab-case`, `snake_case`, or `PascalCase` (case-insensitive).
 pub(crate) fn parse_revocation_reason_code(s: &str) -> Result<RevocationReasonCode, String> {
-    match s.to_lowercase().replace(['-', '_'], "").as_str() {
-        "unspecified" => Ok(RevocationReasonCode::Unspecified),
-        "keycompromise" => Ok(RevocationReasonCode::KeyCompromise),
-        "cacompromise" => Ok(RevocationReasonCode::CACompromise),
-        "affiliationchanged" => Ok(RevocationReasonCode::AffiliationChanged),
-        "superseded" => Ok(RevocationReasonCode::Superseded),
-        "cessationofoperation" => Ok(RevocationReasonCode::CessationOfOperation),
-        "privilegewithdrawn" => Ok(RevocationReasonCode::PrivilegeWithdrawn),
-        other => Err(format!(
-            "unknown revocation reason code: '{other}'. Valid values: unspecified, \
-             key-compromise, ca-compromise, affiliation-changed, superseded, \
-             cessation-of-operation, privilege-withdrawn"
-        )),
-    }
+    try_parse_revocation_reason_code(s)
 }
 
 pub(crate) async fn revoke(
