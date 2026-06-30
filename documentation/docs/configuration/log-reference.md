@@ -1087,8 +1087,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `error` | `C_GetAttributeValue: error: {e}, session: {:?}, object: {:?}, type: {:?}` | `src/pkcs11.rs` | `e`: caught error | - |
 | `error` | `certificate: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
 | `error` | `Data object: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
-| `error` | `Failed to extract RSA key parameters: {e:?}` | `src/core/object.rs` | `e`: caught error | ×3 in this file - Could not read RSA key components from HSM object. Key may be non-exportable. |
-| `error` | `Failed to parse RSA private key from PKCS#8 DER: {e:?}` | `src/core/object.rs` | `e`: caught error | ×3 in this file - HSM returned a malformed RSA PKCS#8 blob. Check HSM firmware and key type. |
+| `error` | `Failed to extract RSA key parameters: {e:?}` | `src/core/object.rs` | `e`: caught error | - Could not read RSA key components from HSM object. Key may be non-exportable. |
+| `error` | `Failed to parse RSA private key from PKCS#8 DER: {e:?}` | `src/core/object.rs` | `e`: caught error | - HSM returned a malformed RSA PKCS#8 blob. Check HSM firmware and key type. |
 | `error` | `pParameter incorrect: {} != {}` | `src/core/mechanism.rs` | - | PKCS#11 mechanism parameter size mismatch. Client sent the wrong parameter struct. |
 | `error` | `private_key: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
 | `error` | `profile: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
