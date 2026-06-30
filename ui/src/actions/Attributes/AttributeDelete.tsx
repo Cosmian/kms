@@ -3,24 +3,10 @@ import React from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import { delete_attribute_ttlv_request, parse_delete_attribute_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
+import { DELETE_ATTRIBUTES } from "./attributeRegistry";
 
 const { Title } = Typography;
 const { Option } = Select;
-
-const ALLOWED_ATTRIBUTES = [
-    { value: "ActivationDate", label: "Activation Date" },
-    { value: "CryptographicAlgorithm", label: "Cryptographic Algorithm" },
-    { value: "CryptographicLength", label: "Cryptographic Length" },
-    { value: "CryptographicUsageMask", label: "Key Usage" },
-    { value: "Name", label: "Name" },
-    { value: "public_key_id", label: "Public Key ID link" },
-    { value: "private_key_id", label: "Private Key ID link" },
-    { value: "certificate_id", label: "Certificate ID link" },
-    { value: "pkcs12_certificate_id", label: "PKCS12 Certificate ID link" },
-    { value: "pkcs12_password_certificate", label: "PKCS12 Password Certificate link" },
-    { value: "parent_id", label: "Parent ID link" },
-    { value: "child_id", label: "Child ID link" },
-];
 
 interface AttributeDeleteFormData {
     id?: string;
@@ -88,8 +74,8 @@ const DeleteAttribute: React.FC = () => {
                             help="Select the KMIP attribute you want to delete"
                         >
                             <Select data-testid="attribute-name-select" placeholder="Select attribute name">
-                                {ALLOWED_ATTRIBUTES.map((attr) => (
-                                    <Option key={attr.value} value={attr.value}>
+                                {DELETE_ATTRIBUTES.map((attr) => (
+                                    <Option key={attr.deleteValue ?? attr.value} value={attr.deleteValue ?? attr.value}>
                                         {attr.label}
                                     </Option>
                                 ))}

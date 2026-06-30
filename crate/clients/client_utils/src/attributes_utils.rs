@@ -530,6 +530,44 @@ pub fn parse_selected_attributes_flatten(
                 selected_attribute_name,
                 attributes.get_link(LinkType::ChildLink).as_ref()
             ),
+            "deactivation_date" => {
+                if let Some(v) = attributes.deactivation_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "description" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.description.as_ref()
+            ),
+            "comment" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.comment.as_ref()
+            ),
+            "contact_information" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.contact_information.as_ref()
+            ),
+            "object_group" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.object_group.as_ref()
+            ),
+            "sensitive" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.sensitive.as_ref()
+            ),
+            "extractable" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.extractable.as_ref()
+            ),
             _x => {}
         }
     }
@@ -563,10 +601,15 @@ pub fn build_selected_attribute(
             Attribute::CryptographicLength(cryptographic_length)
         }
         "key_usage" => {
-            let key_usage = attribute_value
-                .parse::<KeyUsage>()
-                .map_err(|e| UtilsError::Default(e.to_string()))?;
-            let Some(cryptographic_usage_mask) = build_usage_mask_from_key_usage(&[key_usage])
+            let key_usages = attribute_value
+                .split(',')
+                .map(|s| {
+                    s.trim()
+                        .parse::<KeyUsage>()
+                        .map_err(|e| UtilsError::Default(e.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let Some(cryptographic_usage_mask) = build_usage_mask_from_key_usage(&key_usages)
             else {
                 return Err(UtilsError::Default(
                     "Error building cryptographic usage mask".to_owned(),
@@ -606,6 +649,50 @@ pub fn build_selected_attribute(
             name_value: attribute_value,
             name_type: NameType::UninterpretedTextString,
         }),
+        "rotate_interval" => {
+            let v = attribute_value
+                .parse::<i64>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateInterval(v)
+        }
+        "rotate_name" => Attribute::RotateName(attribute_value),
+        "rotate_offset" => {
+            let v = attribute_value
+                .parse::<i64>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateOffset(v)
+        }
+        "rotate_automatic" => {
+            let v = attribute_value
+                .parse::<bool>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateAutomatic(v)
+        }
+        "deactivation_date" => {
+            let format = format_description::parse_borrowed::<2>(
+                "[year]-[month]-[day]T[hour]:[minute]:[second]Z",
+            )
+            .map_err(|e| UtilsError::Default(e.to_string()))?;
+            let deactivation_date = OffsetDateTime::parse(&attribute_value, &format)
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::DeactivationDate(deactivation_date)
+        }
+        "description" => Attribute::Description(attribute_value),
+        "comment" => Attribute::Comment(attribute_value),
+        "contact_information" => Attribute::ContactInformation(attribute_value),
+        "object_group" => Attribute::ObjectGroup(attribute_value),
+        "sensitive" => {
+            let v = attribute_value
+                .parse::<bool>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::Sensitive(v)
+        }
+        "extractable" => {
+            let v = attribute_value
+                .parse::<bool>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::Extractable(v)
+        }
 
         _ => {
             return Err(UtilsError::Default(format!(

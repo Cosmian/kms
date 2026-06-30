@@ -2324,8 +2324,18 @@ pub fn delete_attribute_ttlv_request(
         | "pkcs12_certificate_id"
         | "pkcs12_password_certificate"
         | "parent_id"
-        | "child_id" => {
+        | "child_id"
+        | "rotate_name" => {
             let attribute = build_selected_attribute(attribute_name, String::new())
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            DeleteAttribute {
+                unique_identifier: Some(unique_identifier),
+                current_attribute: Some(attribute),
+                attribute_references: None,
+            }
+        }
+        "rotate_interval" | "rotate_offset" => {
+            let attribute = build_selected_attribute(attribute_name, "0".to_owned())
                 .map_err(|e| JsValue::from(e.to_string()))?;
             DeleteAttribute {
                 unique_identifier: Some(unique_identifier),
