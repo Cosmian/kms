@@ -448,6 +448,11 @@ aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
 [kmip.allowlists]
+
+[jwks_endpoint]
+jwks_endpoint_enabled = false
+jwks_endpoint_max_keys = 50
+jwks_endpoint_auto_tag = true
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

@@ -116,9 +116,9 @@ async fn build_jwk_set(kms: &KMS) -> KResult<(JwkSet, bool)> {
 /// - Tagged [`JWKS_TAG`] (`"jwks"`)
 /// - `State` is `Active` or `Deactivated`
 ///
-/// **Key ordering**: keys are returned in database insertion order (for SQLite).
+/// **Key ordering**: keys are returned in database insertion order (for `SQLite`).
 /// The order is stable within a session but is not guaranteed to be stable across
-/// server restarts or across different database backends (PostgreSQL, MySQL).
+/// server restarts or across different database backends (`PostgreSQL`, `MySQL`).
 /// JWKS consumers **must not** rely on position — always match keys by `kid`.
 async fn discover_eligible_public_keys(kms: &KMS) -> KResult<Vec<(String, Object)>> {
     let mut filter = Attributes {

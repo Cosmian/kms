@@ -69,6 +69,7 @@ pub struct HttpConfig {
         default_value_t = false,
         verbatim_doc_comment
     )]
+    #[serde(skip)]
     pub jwks_enabled: bool,
 }
 
