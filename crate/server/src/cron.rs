@@ -36,8 +36,8 @@ pub fn spawn_auto_rotation_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
                 tokio::select! {
                     _ = interval.tick() => {
                         debug!("[auto-rotate-cron] Running scheduled key auto-rotation check");
-                        Box::pin(run_auto_rotation(&kms)).await;
-                        Box::pin(dispatch_renewal_warnings(&kms)).await;
+                        run_auto_rotation(&kms).await;
+                        dispatch_renewal_warnings(&kms).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[auto-rotate-cron] Shutdown signal received; stopping cron thread");

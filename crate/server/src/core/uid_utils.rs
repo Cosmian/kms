@@ -98,6 +98,22 @@ pub(crate) struct KeysetRef {
     pub version: KeysetVersion,
 }
 
+/// Parse a version suffix string (`latest`, `first`, `0`, `N`) into a `KeysetVersion`.
+/// Returns `None` if the suffix is not a valid version specifier.
+fn parse_version_suffix(version_str: &str) -> Option<KeysetVersion> {
+    match version_str {
+        "latest" => Some(KeysetVersion::Latest),
+        "first" => Some(KeysetVersion::First),
+        s => s.parse::<i32>().ok().map(|n| {
+            if n == 0 {
+                KeysetVersion::First
+            } else {
+                KeysetVersion::Generation(n)
+            }
+        }),
+    }
+}
+
 /// Returns `true` if the string looks like a UUID (8-4-4-4-12 hex pattern).
 fn looks_like_uuid(s: &str) -> bool {
     // Quick length check: standard UUID is 36 chars
@@ -157,22 +173,7 @@ pub(crate) fn parse_keyset_identifier(identifier: &str) -> Option<KeysetRef> {
             return None;
         }
 
-        let version = match version_str {
-            "latest" => KeysetVersion::Latest,
-            "first" => KeysetVersion::First,
-            s => {
-                if let Ok(n) = s.parse::<i32>() {
-                    if n == 0 {
-                        KeysetVersion::First
-                    } else {
-                        KeysetVersion::Generation(n)
-                    }
-                } else {
-                    // Invalid version specifier — not a keyset reference
-                    return None;
-                }
-            }
-        };
+        let version = parse_version_suffix(version_str)?;
 
         Some(KeysetRef {
             name: name.to_owned(),

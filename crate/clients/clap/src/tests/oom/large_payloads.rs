@@ -12,8 +12,11 @@ use cosmian_kms_client::cosmian_kmip::kmip_0::kmip_types::RevocationReasonCode;
 use test_kms_server::start_default_test_kms_server;
 
 use crate::{
-    actions::symmetric::keys::{
-        create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
+    actions::{
+        shared::RevokeReasonArgs,
+        symmetric::keys::{
+            create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
+        },
     },
     error::result::KmsCliResult,
 };
@@ -90,8 +93,10 @@ pub(crate) async fn m03_revoke_destroy_lifecycle_clean() -> KmsCliResult<()> {
 
     // Revoke
     RevokeKeyAction {
-        revocation_reason: "test".to_owned(),
-        reason_code: RevocationReasonCode::Unspecified,
+        reason: RevokeReasonArgs {
+            revocation_reason: "test".to_owned(),
+            reason_code: RevocationReasonCode::Unspecified,
+        },
         key_id: Some(key_id.clone()),
         tags: None,
     }
@@ -161,8 +166,10 @@ pub(crate) async fn m05_repeated_create_destroy_no_leak() -> KmsCliResult<()> {
             .to_string();
 
         RevokeKeyAction {
-            revocation_reason: "gc test".to_owned(),
-            reason_code: RevocationReasonCode::Unspecified,
+            reason: RevokeReasonArgs {
+                revocation_reason: "gc test".to_owned(),
+                reason_code: RevocationReasonCode::Unspecified,
+            },
             key_id: Some(key_id.clone()),
             tags: None,
         }

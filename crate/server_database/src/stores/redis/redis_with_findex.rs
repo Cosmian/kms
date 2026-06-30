@@ -807,10 +807,6 @@ impl ObjectsStore for RedisWithFindex {
                 continue;
             }
             let attrs = dbo.attributes.unwrap_or_default();
-            // Verify the rotate_name matches (double-check)
-            if attrs.rotate_name.as_deref() != Some(name) {
-                continue;
-            }
             // Filter by generation if requested
             if let Some(expected_gen) = generation {
                 if attrs.rotate_generation != Some(expected_gen) {

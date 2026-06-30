@@ -1,16 +1,10 @@
 use clap::Parser;
-use cosmian_kms_client::{
-    KmsClient, cosmian_kmip::kmip_0::kmip_types::RevocationReasonCode,
-    kmip_2_1::kmip_types::UniqueIdentifier,
-};
+use cosmian_kms_client::{KmsClient, kmip_2_1::kmip_types::UniqueIdentifier};
 
 use crate::{
     actions::{
         labels::KEY_ID,
-        shared::{
-            get_key_uid,
-            utils::{parse_revocation_reason_code, revoke},
-        },
+        shared::{RevokeReasonArgs, get_key_uid, utils::revoke},
     },
     error::result::KmsCliResult,
 };
@@ -20,18 +14,8 @@ use crate::{
 /// Once revoked, the object can typically only be exported by the owner when explicitly allowed.
 #[derive(Parser, Debug)]
 pub struct RevokeOpaqueObjectAction {
-    /// The reason for the revocation as a string
-    #[clap(required = true)]
-    pub(crate) revocation_reason: String,
-
-    /// The revocation reason code [default: unspecified]
-    ///
-    /// Valid values: unspecified, key-compromise, ca-compromise,
-    /// affiliation-changed, superseded, cessation-of-operation,
-    /// privilege-withdrawn
-    #[clap(long = "reason-code", short = 'r', default_value = "unspecified",
-           value_parser = parse_revocation_reason_code)]
-    pub(crate) reason_code: RevocationReasonCode,
+    #[clap(flatten)]
+    pub(crate) reason: RevokeReasonArgs,
 
     /// The opaque object unique identifier to revoke. If not specified, tags should be specified
     #[clap(long = KEY_ID, short = 'k', group = "key-tags")]
@@ -48,8 +32,8 @@ impl RevokeOpaqueObjectAction {
         revoke(
             kms_rest_client,
             &id,
-            &self.revocation_reason,
-            self.reason_code,
+            &self.reason.revocation_reason,
+            self.reason.reason_code,
         )
         .await
     }
