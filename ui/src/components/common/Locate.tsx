@@ -33,7 +33,12 @@ interface LocateObjectRow {
     object_id: string;
     state?: string;
     attributes?: { ObjectType?: string };
-    meta?: { key_format_type?: string; [key: string]: unknown };
+    meta?: {
+        key_format_type?: string;
+        cryptographic_algorithm?: string;
+        cryptographic_length?: number;
+        [key: string]: unknown;
+    };
 }
 
 interface LocateFormData {
@@ -89,7 +94,6 @@ const LocateForm: React.FC = () => {
         // If s already a textual state (possibly with hyphen), return as-is
         return s;
     };
-    // Details modal removed; tags are shown inline
     const { idToken, serverUrl } = useAuth();
     const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
     const responseRef = useRef<HTMLDivElement>(null);
@@ -788,6 +792,7 @@ const LocateForm: React.FC = () => {
                                     showSizeChanger: true,
                                     pageSizeOptions: [50, 100, 500, 1000],
                                 }}
+                                scroll={{ x: "max-content" }}
                                 className="border rounded"
                                 columns={
                                     [
@@ -795,6 +800,7 @@ const LocateForm: React.FC = () => {
                                             title: "Object UID",
                                             dataIndex: "object_id",
                                             key: "object_id",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) => a.object_id.localeCompare(b.object_id),
                                         },
                                         {
                                             title: "Type",
@@ -810,6 +816,23 @@ const LocateForm: React.FC = () => {
                                                 return record.attributes?.ObjectType === value;
                                             },
                                             render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
+                                        },
+                                        {
+                                            title: "Crypto Algorithm",
+                                            key: "cryptographic_algorithm",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.meta?.cryptographic_algorithm ?? "").localeCompare(b.meta?.cryptographic_algorithm ?? ""),
+                                            render: (record: LocateObjectRow) => record.meta?.cryptographic_algorithm || "N/A",
+                                        },
+                                        {
+                                            title: "Crypto Length",
+                                            key: "cryptographic_length",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                (a.meta?.cryptographic_length ?? 0) - (b.meta?.cryptographic_length ?? 0),
+                                            render: (record: LocateObjectRow) => {
+                                                const len = record.meta?.cryptographic_length;
+                                                return len != null ? `${len} bits` : "N/A";
+                                            },
                                         },
                                         {
                                             title: "Key Format Type",
@@ -867,7 +890,7 @@ const LocateForm: React.FC = () => {
                                                 const initialDate = row.meta?.["initial_date"] as number | undefined;
                                                 const activationDate = row.meta?.["activation_date"] as number | undefined;
                                                 const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
-                                                const dateValue = rotateDate ?? initialDate ?? activationDate ?? originalCreationDate;
+                                                const dateValue = rotateDate ?? initialDate ?? (activationDate ? activationDate * 1000 : undefined) ?? originalCreationDate;
                                                 if (!dateValue) {
                                                     if (/^hsm[0-9]*::/.test(row.object_id)) {
                                                         return (
@@ -940,7 +963,7 @@ const LocateForm: React.FC = () => {
             >
                 {detailsData && detailsData.size ? <HashMapDisplay data={detailsData} /> : <div>No attributes found.</div>}
             </Modal>
-            {/* Details modal no longer used after replacing Actions with Tags */}
+
         </div>
     );
 };

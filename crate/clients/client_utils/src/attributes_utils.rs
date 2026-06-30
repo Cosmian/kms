@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use clap::ValueEnum;
 use cosmian_kmip::kmip_2_1::{
-    extra::tagging::VENDOR_ATTR_TAG,
+    extra::tagging::{VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
     kmip_attributes::{Attribute, Attributes},
     kmip_types::{
         CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, Name, NameType, Tag,
@@ -488,6 +488,15 @@ pub fn parse_selected_attributes_flatten(
                 attributes.object_type.as_ref()
             ),
             "state" => insert_if_some!(results, selected_attribute_name, attributes.state.as_ref()),
+            "tags" | "user_tags" => {
+                let tags = attributes.get_tags(VENDOR_ID_COSMIAN);
+                if !tags.is_empty() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(tags).unwrap_or_default(),
+                    );
+                }
+            }
             "vendor_attributes" => insert_if_some!(
                 results,
                 selected_attribute_name,
