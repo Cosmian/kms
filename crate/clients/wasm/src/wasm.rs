@@ -189,78 +189,97 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
 }
 
 // Internal helpers to build algorithm option lists that reflect client_utils
-fn list_symmetric_algorithms() -> Vec<AlgoOption> {
-    // Provide UI labels independent of Display, with values matching `SymmetricAlgorithm::from_str`
-    #[allow(unused_mut)]
-    let mut algs: Vec<(SymmetricAlgorithm, &'static str)> = vec![
-        (SymmetricAlgorithm::Aes, "AES"),
-        (SymmetricAlgorithm::Sha3, "SHA3"),
-        (SymmetricAlgorithm::Shake, "SHAKE"),
-    ];
-    #[cfg(feature = "non-fips")]
-    {
-        algs.push((SymmetricAlgorithm::Chacha20, "ChaCha20"));
-    }
 
-    algs.into_iter()
-        .map(|(a, label)| {
-            // Values use PascalCase variant names expected by `from_str`
-            let value = match a {
-                SymmetricAlgorithm::Aes => "Aes",
-                #[cfg(feature = "non-fips")]
-                SymmetricAlgorithm::Chacha20 => "Chacha20",
-                SymmetricAlgorithm::Sha3 => "Sha3",
-                SymmetricAlgorithm::Shake => "Shake",
-            };
-            AlgoOption {
-                value: value.to_owned(),
-                label: label.to_owned(),
-            }
+fn list_symmetric_algorithms() -> Vec<AlgoOption> {
+    let mut algs = fips_symmetric_alg_options();
+    algs.extend(non_fips_symmetric_alg_options());
+    algs
+}
+
+/// FIPS-approved symmetric algorithms (always available).
+fn fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    [("Aes", "AES"), ("Sha3", "SHA3"), ("Shake", "SHAKE")]
+        .into_iter()
+        .map(|(value, label)| AlgoOption {
+            value: value.to_owned(),
+            label: label.to_owned(),
         })
         .collect()
 }
 
-fn list_ec_algorithms() -> Vec<AlgoOption> {
-    // Build from client_utils' Curve enum to ensure feature gating consistency
-    #[allow(unused_mut)]
-    let mut curves: Vec<Curve> = vec![Curve::NistP256, Curve::NistP384, Curve::NistP521];
-    #[cfg(feature = "non-fips")]
-    {
-        curves.insert(0, Curve::Secp224k1);
-        curves.push(Curve::Secp256k1);
-        curves.push(Curve::X25519);
-        curves.push(Curve::Ed25519);
-        curves.push(Curve::X448);
-        curves.push(Curve::Ed448);
-    }
+/// Extra symmetric algorithms only available in non-FIPS builds.
+#[cfg(feature = "non-fips")]
+fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    vec![AlgoOption {
+        value: "Chacha20".to_owned(),
+        label: "ChaCha20".to_owned(),
+    }]
+}
 
-    curves
+#[cfg(not(feature = "non-fips"))]
+fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    vec![]
+}
+
+fn list_ec_algorithms() -> Vec<AlgoOption> {
+    // In non-FIPS mode Secp224k1 is prepended before the NIST curves, so
+    // the final order is: [Secp224k1?], P-256, P-384, P-521, [non-FIPS curves…]
+    non_fips_ec_alg_options_prepend()
         .into_iter()
-        .map(|c| {
-            // Value must be kebab-case identifier that `Curve::from_str` accepts
-            let (value, label): (&'static str, &'static str) = match c {
-                Curve::NistP256 => ("nist-p256", "NIST P-256"),
-                Curve::NistP384 => ("nist-p384", "NIST P-384"),
-                Curve::NistP521 => ("nist-p521", "NIST P-521"),
-                #[cfg(feature = "non-fips")]
-                Curve::X25519 => ("x25519", "X25519"),
-                #[cfg(feature = "non-fips")]
-                Curve::Ed25519 => ("ed25519", "Ed25519"),
-                #[cfg(feature = "non-fips")]
-                Curve::X448 => ("x448", "X448"),
-                #[cfg(feature = "non-fips")]
-                Curve::Ed448 => ("ed448", "Ed448"),
-                #[cfg(feature = "non-fips")]
-                Curve::Secp256k1 => ("secp256k1", "SECP256k1"),
-                #[cfg(feature = "non-fips")]
-                Curve::Secp224k1 => ("secp224k1", "SECP224k1"),
-            };
-            AlgoOption {
-                value: value.to_owned(),
-                label: label.to_owned(),
-            }
-        })
+        .chain(fips_ec_alg_options())
+        .chain(non_fips_ec_alg_options_append())
         .collect()
+}
+
+/// FIPS-approved EC curves (always available).
+fn fips_ec_alg_options() -> impl Iterator<Item = AlgoOption> {
+    [
+        ("nist-p256", "NIST P-256"),
+        ("nist-p384", "NIST P-384"),
+        ("nist-p521", "NIST P-521"),
+    ]
+    .into_iter()
+    .map(|(value, label)| AlgoOption {
+        value: value.to_owned(),
+        label: label.to_owned(),
+    })
+}
+
+/// Non-FIPS EC curves that appear before the NIST curves in the list.
+#[cfg(feature = "non-fips")]
+fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
+    vec![AlgoOption {
+        value: "secp224k1".to_owned(),
+        label: "SECP224k1".to_owned(),
+    }]
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
+    vec![]
+}
+
+/// Non-FIPS EC curves appended after the NIST curves.
+#[cfg(feature = "non-fips")]
+fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
+    [
+        ("secp256k1", "SECP256k1"),
+        ("x25519", "X25519"),
+        ("ed25519", "Ed25519"),
+        ("x448", "X448"),
+        ("ed448", "Ed448"),
+    ]
+    .into_iter()
+    .map(|(value, label)| AlgoOption {
+        value: value.to_owned(),
+        label: label.to_owned(),
+    })
+    .collect()
+}
+
+#[cfg(not(feature = "non-fips"))]
+fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
+    vec![]
 }
 
 #[wasm_bindgen]

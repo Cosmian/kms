@@ -541,128 +541,99 @@ mod local_tests {
 
 /// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
 fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i32) {
-    // KMIP 1.1 and 1.2 Response Tweaks
     if major == 1 && minor <= 2 {
-        // Encrypt Response does not have the Authenticated Encryption Tag,
-        // so we must concatenate the value with the Data field
-        for batch_item in &mut response.batch_item {
-            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
-                continue; // Skip if not V14
-            };
-            // If the operation is Encrypt and the response payload is present,
-            // we need to concatenate the Authenticated Encryption Tag with the Data field
-            // Check if the operation is Encrypt
-            if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::EncryptResponse(
-                encrypt_response,
-            )) = item.response_payload.as_mut()
-            {
-                // Concatenate the Authenticated Encryption Tag with the Data field
-                if let Some(auth_tag) = encrypt_response.authenticated_encryption_tag.take() {
-                    if let Some(data) = encrypt_response.data.as_mut() {
-                        data.extend_from_slice(&auth_tag);
-                    }
+        append_auth_tag_to_encrypt_response(response);
+    }
+    if major == 1 {
+        strip_asymmetric_key_value_attributes(response);
+    }
+    if major == 1 && minor == 0 {
+        strip_kmip_10_unsupported_attrs(response);
+    }
+}
+
+/// KMIP 1.1/1.2: concatenate the AE tag into the Encrypt response `data` field,
+/// because those versions have no dedicated `authenticated_encryption_tag` field.
+fn append_auth_tag_to_encrypt_response(response: &mut ResponseMessage) {
+    use cosmian_kmip::kmip_1_4::kmip_operations::Operation::EncryptResponse;
+    for batch_item in &mut response.batch_item {
+        let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+            continue;
+        };
+        if let Some(EncryptResponse(resp)) = item.response_payload.as_mut() {
+            if let Some(auth_tag) = resp.authenticated_encryption_tag.take() {
+                if let Some(data) = resp.data.as_mut() {
+                    data.extend_from_slice(&auth_tag);
                 }
             }
         }
     }
+}
 
-    // KMIP 1.x interoperability for asymmetric keys:
-    // Some KMIP 1.x clients (e.g. Veeam Backup) do not support attributes
-    // embedded inside KeyValue for asymmetric keys (PublicKey / PrivateKey).
-    // In particular, the Link attribute (which contains a Structure-typed
-    // AttributeValue) and other object-metadata attributes inside KeyValue
-    // cause KMIP decode errors. Strip all KeyValue attributes for asymmetric
-    // keys so that only the key material is returned — cryptographic metadata
-    // (algorithm, length) is already present at the KeyBlock level.
-    if major == 1 {
-        for batch_item in &mut response.batch_item {
-            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
-                continue;
-            };
-            if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetResponse(gr)) =
-                item.response_payload.as_mut()
-            {
-                match &gr.object {
-                    cosmian_kmip::kmip_1_4::kmip_objects::Object::PublicKey(_)
-                    | cosmian_kmip::kmip_1_4::kmip_objects::Object::PrivateKey(_) => {
-                        if let Ok(kb) = gr.object.key_block_mut() {
-                            if let Some(
-                                cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
-                                    attribute,
-                                    ..
-                                },
-                            ) = kb.key_value.as_mut()
-                            {
+/// KMIP 1.x: strip all `KeyValue` attributes from asymmetric keys in Get responses.
+/// Some KMIP 1.x clients (e.g. Veeam Backup) cannot decode the `Link` structure
+/// attribute embedded in `KeyValue`; stripping it keeps the wire format compatible.
+fn strip_asymmetric_key_value_attributes(response: &mut ResponseMessage) {
+    use cosmian_kmip::kmip_1_4::{
+        kmip_data_structures::KeyValue, kmip_objects::Object,
+        kmip_operations::Operation::GetResponse,
+    };
+    for batch_item in &mut response.batch_item {
+        let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+            continue;
+        };
+        let Some(GetResponse(gr)) = item.response_payload.as_mut() else {
+            continue;
+        };
+        let is_asymmetric = matches!(&gr.object, Object::PublicKey(_) | Object::PrivateKey(_));
+        if !is_asymmetric {
+            continue;
+        }
+        if let Ok(kb) = gr.object.key_block_mut() {
+            if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
+                *attribute = None;
+            }
+        }
+    }
+}
+
+/// KMIP 1.0: strip attributes that do not exist in that version
+/// (`Fresh`, `InitialDate`) from `Get` and `GetAttributes` responses.
+fn strip_kmip_10_unsupported_attrs(response: &mut ResponseMessage) {
+    use cosmian_kmip::kmip_1_4::{
+        kmip_attributes::Attribute,
+        kmip_data_structures::KeyValue,
+        kmip_operations::Operation::{GetAttributesResponse, GetResponse},
+    };
+    for batch_item in &mut response.batch_item {
+        let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+            continue;
+        };
+        match item.response_payload.as_mut() {
+            Some(GetResponse(gr)) => {
+                if let Ok(kb) = gr.object.key_block_mut() {
+                    if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
+                        if let Some(attrs) = attribute {
+                            // KMIP 1.0: Fresh does not exist; InitialDate rejected by Percona.
+                            attrs.retain(|a| {
+                                !matches!(a, Attribute::Fresh(_) | Attribute::InitialDate(_))
+                            });
+                            if attrs.is_empty() {
                                 *attribute = None;
                             }
                         }
                     }
-                    _ => {}
                 }
             }
-        }
-    }
-
-    // KMIP 1.0 interoperability: the Fresh attribute does not exist in KMIP 1.0.
-    // Our internal models are KMIP 1.4/2.1, so strip it from any 1.0 response.
-    if major == 1 && minor == 0 {
-        for batch_item in &mut response.batch_item {
-            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
-                continue;
-            };
-
-            // GetResponse / ExportResponse may carry attributes inside the returned object.
-            // GetAttributesResponse carries attributes at top-level.
-            match item.response_payload.as_mut() {
-                Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetResponse(gr)) => {
-                    if let Ok(kb) = gr.object.key_block_mut() {
-                        if let Some(kv) = kb.key_value.as_mut() {
-                            if let cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
-                                attribute: Some(attrs),
-                                ..
-                            } = kv
-                            {
-                                // KMIP 1.0 interoperability: keep KeyValue attributes (known to
-                                // work with Percona), but drop attributes not supported in 1.0.
-                                // - Fresh does not exist in KMIP 1.0
-                                // - Initial Date is rejected by Percona in KMIP 1.0 sessions
-                                attrs.retain(|a| {
-                                    !matches!(
-                                        a,
-                                        cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
-                                            | cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::InitialDate(_)
-                                    )
-                                });
-                                if attrs.is_empty() {
-                                    if let cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
-                                        attribute,
-                                        ..
-                                    } = kv
-                                    {
-                                        *attribute = None;
-                                    }
-                                }
-                            }
-                        }
+            Some(GetAttributesResponse(gar)) => {
+                if let Some(attrs) = gar.attribute.as_mut() {
+                    attrs.retain(|a| !matches!(a, Attribute::Fresh(_)));
+                    if attrs.is_empty() {
+                        gar.attribute = None;
                     }
                 }
-                Some(
-                    cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetAttributesResponse(gar),
-                ) => {
-                    if let Some(attributes) = gar.attribute.as_mut() {
-                        attributes.retain(|a| {
-                            !matches!(
-                                a,
-                                cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
-                            )
-                        });
-                        if attributes.is_empty() {
-                            gar.attribute = None;
-                        }
-                    }
-                }
-                _ => {}
             }
+            _ => {}
         }
     }
 }
