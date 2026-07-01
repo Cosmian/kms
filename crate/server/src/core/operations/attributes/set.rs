@@ -95,15 +95,15 @@ pub(crate) async fn set_attribute(
     .await?;
     trace!("Set Attribute: Retrieved target object");
 
-    // For SQL keys (non-HSM): rotate_name must equal the key's UID.
+    // For SQL objects (non-HSM): rotate_name must equal the object's UID.
     // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
     if has_prefix(owm.id()).is_none() {
         if let Attribute::RotateName(name) = &request.new_attribute {
-            let key_uid = owm.id();
-            if name.as_str() != key_uid {
+            let object_uid = owm.id();
+            if name.as_str() != object_uid {
                 return Err(KmsError::InvalidRequest(format!(
-                    "SetAttribute: rotate_name ('{name}') must equal the key's UID \
-                     ('{key_uid}') — create the key with the keyset name as its ID"
+                    "SetAttribute: rotate_name ('{name}') must equal the object's UID \
+                     ('{object_uid}') — create the object with the keyset name as its ID"
                 )));
             }
         }
@@ -151,6 +151,11 @@ pub(crate) async fn set_attribute(
 
     // Capture before the macro runs (which may partially move request.new_attribute).
     let is_setting_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
+        && has_prefix(owm.id()).is_none();
+    // Detect a positive RotateInterval being set on a SQL (non-HSM) key.  Used below to
+    // implicitly enable `rotate_automatic` so the scheduler's `find_due_for_rotation` query
+    // picks up keys where the client only set the schedule (interval/offset) but not the flag.
+    let is_setting_positive_rotate_interval_on_sql = matches!(&request.new_attribute, Attribute::RotateInterval(v) if *v > 0)
         && has_prefix(owm.id()).is_none();
 
     // Check if the attribute is allowed to be set
@@ -262,6 +267,19 @@ pub(crate) async fn set_attribute(
         if attributes.rotate_latest.is_none() {
             attributes.rotate_latest = Some(true);
         }
+    }
+
+    // When the client sets RotateInterval > 0 on a SQL key without also setting
+    // RotateAutomatic, implicitly enable auto-rotation.  The scheduler's
+    // `find_due_for_rotation` query filters on `rotate_automatic = true`, so a key
+    // that only has an interval set would otherwise never be rotated.
+    // An explicit `rotate_automatic = Some(false)` is respected and not overridden.
+    if is_setting_positive_rotate_interval_on_sql && attributes.rotate_automatic.is_none() {
+        debug!(
+            "SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)",
+            owm.id()
+        );
+        attributes.rotate_automatic = Some(true);
     }
     // `HsmStore::update_object` is a no-op for attributes (the HSM has no
     // generic KV attribute storage), so we must explicitly write CKA_LABEL and

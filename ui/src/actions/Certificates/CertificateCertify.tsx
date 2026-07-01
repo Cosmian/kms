@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Form, Input, Radio, RadioChangeEvent, Select, Space } from "antd";
+import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Radio, RadioChangeEvent, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
 import { ActionResponse } from "../../components/common/ActionResponse";
 import { FormUploadDragger } from "../../components/common/FormUpload";
@@ -20,6 +20,9 @@ interface CertificateCertifyFormData {
     numberOfDays: number;
     certificateExtensions?: Uint8Array;
     tags: string[];
+    enrollKeyset: boolean;
+    rotateInterval?: number;
+    rotateOffset?: number;
 }
 
 type AlgoOption = { label: string; value: string };
@@ -78,7 +81,20 @@ const CertificateCertifyForm: React.FC = () => {
                 const result_str = await sendKmipRequest(request, idToken, serverUrl);
                 if (result_str) {
                     const response = await wasm.parse_re_certify_ttlv_response(result_str);
-                    return `Certificate successfully re-certified with new ID: ${response.UniqueIdentifier}`;
+                    const newCertId = response.UniqueIdentifier;
+                    if (values.enrollKeyset) {
+                        const req = wasm.set_rotate_name_ttlv_request(newCertId, newCertId);
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                    if (values.enrollKeyset && values.rotateInterval !== undefined) {
+                        const req = wasm.set_rotate_interval_ttlv_request(newCertId, BigInt(values.rotateInterval));
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                    if (values.enrollKeyset && values.rotateOffset !== undefined) {
+                        const req = wasm.set_rotate_offset_ttlv_request(newCertId, BigInt(values.rotateOffset));
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                    return `Certificate successfully re-certified with new ID: ${newCertId}`;
                 }
                 return;
             }
@@ -101,7 +117,20 @@ const CertificateCertifyForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_certify_ttlv_response(result_str);
-                return `Certificate successfully created with ID: ${response.UniqueIdentifier}`;
+                const newCertId = response.UniqueIdentifier;
+                if (values.enrollKeyset) {
+                    const req = wasm.set_rotate_name_ttlv_request(newCertId, newCertId);
+                    await sendKmipRequest(req, idToken, serverUrl);
+                }
+                if (values.enrollKeyset && values.rotateInterval !== undefined) {
+                    const req = wasm.set_rotate_interval_ttlv_request(newCertId, BigInt(values.rotateInterval));
+                    await sendKmipRequest(req, idToken, serverUrl);
+                }
+                if (values.enrollKeyset && values.rotateOffset !== undefined) {
+                    const req = wasm.set_rotate_offset_ttlv_request(newCertId, BigInt(values.rotateOffset));
+                    await sendKmipRequest(req, idToken, serverUrl);
+                }
+                return `Certificate successfully created with ID: ${newCertId}`;
             }
         });
     };
@@ -130,6 +159,7 @@ const CertificateCertifyForm: React.FC = () => {
                     numberOfDays: 365,
                     generateKeyPair: false,
                     tags: [],
+                    enrollKeyset: false,
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
@@ -306,6 +336,52 @@ const CertificateCertifyForm: React.FC = () => {
 
                         <Form.Item name="tags" label="Tags" help="Tags to associate with the certificate (optional)">
                             <Select mode="tags" placeholder="Enter tags" open={false} />
+                        </Form.Item>
+
+                        <Divider orientation="left" plain>
+                            Rotation Policy (optional)
+                        </Divider>
+
+                        <Form.Item
+                            name="enrollKeyset"
+                            valuePropName="checked"
+                            help="When enabled, sets the rotation name to the certificate ID so this certificate can be addressed via name@latest, name@first, name@N syntax. Also configures the rotation interval and offset below."
+                        >
+                            <Checkbox data-testid="cert-enroll-keyset">Enroll in keyset (rotation name = certificate ID)</Checkbox>
+                        </Form.Item>
+
+                        <Form.Item noStyle shouldUpdate={(prev, curr) => prev.enrollKeyset !== curr.enrollKeyset}>
+                            {({ getFieldValue }) =>
+                                getFieldValue("enrollKeyset") ? (
+                                    <>
+                                        <Form.Item
+                                            name="rotateInterval"
+                                            label="Rotation Interval (seconds)"
+                                            help="Auto-rotate the certificate every N seconds (e.g. 7776000 = 90 days)."
+                                        >
+                                            <InputNumber
+                                                className="w-[200px]"
+                                                min={1}
+                                                placeholder="e.g. 7776000"
+                                                data-testid="cert-rotation-interval"
+                                            />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            name="rotateOffset"
+                                            label="Rotation Offset (seconds)"
+                                            help="Delay before the first rotation occurs (optional)."
+                                        >
+                                            <InputNumber
+                                                className="w-[200px]"
+                                                min={0}
+                                                placeholder="e.g. 3600"
+                                                data-testid="cert-rotation-offset"
+                                            />
+                                        </Form.Item>
+                                    </>
+                                ) : null
+                            }
                         </Form.Item>
                     </Card>
 

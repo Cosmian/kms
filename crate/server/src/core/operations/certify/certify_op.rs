@@ -2,6 +2,7 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
         kmip_0::kmip_types::State,
         kmip_2_1::{
+            kmip_objects::ObjectType,
             kmip_operations::{Certify, CertifyResponse},
             kmip_types::{LinkType, LinkedObjectIdentifier},
         },
@@ -14,7 +15,12 @@ use super::{
     build_certificate::build_and_sign_certificate, resolve_issuer::get_issuer,
     resolve_subject::get_subject, subject::Subject,
 };
-use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{KMS, operations::key_ops::ObjectLifecycleExt},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 /// Certify a certificate.
 /// This operation is used to issue a certificate based on a public key, a CSR or a key pair.
@@ -99,6 +105,19 @@ pub(crate) async fn certify(kms: &KMS, request: Certify, user: &str) -> KResult<
             trace!(
                 "Certify KeypairAndSubjectName:{unique_identifier} : keypair data: {keypair_data}"
             );
+            // Initialise lifecycle attributes (state, initial_date, activation_date, digest)
+            // on both keys.  Without this call, `initial_date` is `None` in the stored
+            // `attributes_json`, which causes `is_due_for_rotation` to return `false`
+            // forever — the auto-rotation scheduler silently skips the key.
+            // Pass `Some(now)` so the embedded state matches the `State::Active` value
+            // supplied to `AtomicOperation::Upsert` below.
+            let now = time::OffsetDateTime::now_utc();
+            keypair_data
+                .private_key_object
+                .setup_with_lifecycle(ObjectType::PrivateKey, Some(now))?;
+            keypair_data
+                .public_key_object
+                .setup_with_lifecycle(ObjectType::PublicKey, Some(now))?;
             // update the private key attributes with the public key identifier
             keypair_data.private_key_object.attributes_mut()?.set_link(
                 LinkType::PublicKeyLink,

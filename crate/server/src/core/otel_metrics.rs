@@ -136,6 +136,16 @@ pub struct OtelMetrics {
 
     /// HSM operation counts (if HSM is enabled)
     pub hsm_operations_total: Counter<u64>,
+
+    /// Count of automatic key rotations triggered by the background scheduler.
+    ///
+    /// Labelled with `uid`, `algorithm`, and `outcome` (`"success"` / `"failure"`).
+    pub key_auto_rotation_total: Counter<u64>,
+
+    /// Count of rotation renewal warnings emitted by the background scheduler.
+    ///
+    /// Labelled with `uid`, `algorithm`, and `threshold` (1, 7, or 30 days).
+    pub key_rotation_warning_total: Counter<u64>,
 }
 
 impl OtelMetrics {
@@ -282,6 +292,20 @@ impl OtelMetrics {
             "Total number of HSM operations",
             "{operation}"
         );
+        let key_auto_rotation_total = metric!(
+            meter,
+            u64_counter,
+            "kms.key.auto_rotation",
+            "Total number of automatic key rotations triggered by the background scheduler",
+            "{rotation}"
+        );
+        let key_rotation_warning_total = metric!(
+            meter,
+            u64_counter,
+            "kms.key.rotation_warning",
+            "Total number of rotation renewal warnings emitted by the background scheduler",
+            "{warning}"
+        );
 
         // Seed server start time on startup
         let start_time = std::time::SystemTime::now()
@@ -317,6 +341,8 @@ impl OtelMetrics {
             active_keys_count,
             cache_operations_total,
             hsm_operations_total,
+            key_auto_rotation_total,
+            key_rotation_warning_total,
         })
     }
 
@@ -523,6 +549,38 @@ impl OtelMetrics {
             &[
                 KeyValue::new("operation", operation),
                 KeyValue::new("result", result),
+            ],
+        );
+    }
+
+    /// Record an automatic key rotation attempt.
+    ///
+    /// - `uid` — the key being rotated (high cardinality; use with care)
+    /// - `algorithm` — cryptographic algorithm label (e.g. `"Aes"`, `"Rsa"`)
+    /// - `outcome` — `"success"` or `"failure"`
+    pub fn record_key_auto_rotation(&self, uid: &str, algorithm: &str, outcome: &str) {
+        self.key_auto_rotation_total.add(
+            1,
+            &[
+                KeyValue::new("uid", uid.to_owned()),
+                KeyValue::new("algorithm", algorithm.to_owned()),
+                KeyValue::new("outcome", outcome.to_owned()),
+            ],
+        );
+    }
+
+    /// Record a rotation renewal warning.
+    ///
+    /// - `uid` — the key approaching its rotation deadline
+    /// - `algorithm` — cryptographic algorithm label (e.g. `"Aes"`, `"Rsa"`)
+    /// - `threshold` — the warning threshold that was matched (1, 7, or 30 days)
+    pub fn record_rotation_warning(&self, uid: &str, algorithm: &str, threshold: i64) {
+        self.key_rotation_warning_total.add(
+            1,
+            &[
+                KeyValue::new("uid", uid.to_owned()),
+                KeyValue::new("algorithm", algorithm.to_owned()),
+                KeyValue::new("threshold_days", threshold.to_string()),
             ],
         );
     }

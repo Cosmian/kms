@@ -2,6 +2,7 @@
 title: "ADR-0002: KMIP-Compliant Key Auto-Rotation with Keyset Chain Design"
 status: "Accepted"
 date: "2026-06-21"
+updated: "2026-06-30"
 authors: "contributors, security architects, HSM operators"
 tags: ["architecture", "decision", "cryptography", "kmip", "key-management"]
 supersedes: ""
@@ -138,14 +139,22 @@ No response header is added to the client response.
 
 `cron.rs` (`spawn_auto_rotation_cron`) spawns a dedicated native thread that owns a single-
 threaded Tokio runtime. On each tick (driven by `tokio::time::interval`) it calls
-`run_auto_rotation(kms)`, which queries `find_due_for_rotation(now)` and dispatches a
-`Re-Key` or `Re-Key Key Pair` for each due UID. The thread is started only when
-`auto_rotation_check_interval_secs > 0` (disabled by default); the minimum allowed interval
-is 60 s.
+`run_auto_rotation(kms)`, which queries `find_due_for_rotation(now)` and dispatches the
+appropriate KMIP rotation operation for each due UID:
 
-The cron wiring and scheduler infrastructure are fully implemented. The rotation dispatch
-inside `run_auto_rotation` (i.e. triggering the actual `Re-Key` operation per UID) is
-marked as a TODO stub and is not yet implemented.
+| `object_type` | Operation dispatched |
+|---|---|
+| `SymmetricKey` | `ReKey` → `rekey()` |
+| `PrivateKey` | `ReKeyKeyPair` → `rekey_keypair()` |
+| `Certificate` | `ReCertify` → `recertify()` |
+| `PublicKey` | Skipped — rotated atomically as a side-effect of its paired `PrivateKey` rotation |
+| All other types | Skipped — no KMIP rotation operation exists for these types |
+
+All three async dispatch branches (`rekey`, `rekey_keypair`, `recertify`) are wrapped with
+`Box::pin(…).await` to bound the generated future size and satisfy `clippy::large_futures`.
+
+The thread is started only when `auto_rotation_check_interval_secs > 0` (disabled by default);
+the minimum allowed interval is 60 s.
 
 ### 7 — Security guardrails enforced server-side
 
@@ -193,6 +202,11 @@ marked as a TODO stub and is not yet implemented.
   server.
 - **NEG-004**: HSM `rotate_offset` is not supported (HSM rotation scheduling uses
   `CKA_START_DATE`/`CKA_END_DATE`); attempting to set it returns `NotSupported`.
+- **NEG-005**: Certificate auto-rotation via `run_auto_rotation` uses the cert's stored
+  `PrivateKeyLink` as the issuer signing key. For CA-signed certificates this is the
+  subject's private key, not the issuer CA key. The self-signed case is handled correctly;
+  CA-signed auto-rotation produces a self-signed replacement and is a known limitation. Operators
+  who require true CA-chain renewal must invoke `ReCertify` directly with explicit issuer links.
 
 ## Alternatives Considered
 
@@ -245,6 +259,12 @@ marked as a TODO stub and is not yet implemented.
 - **IMP-004**: HSM keyset recovery after a `Re-Key` crash must update `CKA_LABEL` on both the
   old key (strip `::latest` suffix if present) and the new key; key ordering relies on the
   parsed `rotate_generation` integer in the label, not the `::latest` suffix.
+- **IMP-005**: `CertificateRekey::finalize_dependants` must issue both an
+  `AtomicOperation::UpdateObject` (to persist `ReplacementObjectLink` and `deactivation_date`
+  in the attributes JSON column) **and** an `AtomicOperation::UpdateState(Deactivated)` (to
+  update the separate `state` column). Omitting the latter leaves the old certificate `Active`
+  in SQL queries that filter on the `state` column — notably `find_due_for_rotation` — causing
+  the scheduler to attempt repeated re-certification of an already-rotated certificate.
 
 ## References
 
@@ -268,3 +288,7 @@ marked as a TODO stub and is not yet implemented.
 - **REF-009**: PKCS#11 specification v2.40 — `CKA_LABEL`, `CKA_START_DATE`, `CKA_END_DATE`
 - **REF-010**: PR #968 — auto-rotation feature implementation
   (`https://github.com/Cosmian/kms/pull/968`)
+- **REF-011**: Auto-rotation scheduler dispatch
+  (`crate/server/src/core/operations/auto_rotate.rs`)
+- **REF-012**: `ReCertify` rotation implementation and `Deactivated`-state fix
+  (`crate/server/src/core/operations/recertify.rs`)

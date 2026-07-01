@@ -5,9 +5,10 @@
 //! `ReCertify` creates a **new certificate with a fresh UID** and links it to the
 //! old certificate via `ReplacedObject` / `ReplacementObject` links.
 //!
-//! The old certificate remains Active but is marked with a `ReplacementObjectLink`
-//! pointing to the new certificate. Keys linked to the old certificate are updated
-//! to point to the new certificate via their `CertificateLink`.
+//! The old certificate is marked `Deactivated` (KMIP §4.57 transition 6) and
+//! receives a `ReplacementObjectLink` pointing to the new certificate. Keys linked
+//! to the old certificate are updated to point to the new certificate via their
+//! `CertificateLink`.
 
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -151,8 +152,14 @@ impl RekeyOperation for CertificateRekey {
         candidates: &[RotationCandidate; 1],
     ) -> KResult<[ReplacementObject; 1]> {
         let [candidate] = candidates;
-        // Certificates are never members of a named keyset — always use a fresh UUID.
-        let new_uid = UniqueIdentifier::rotation_successor(None, None);
+        // Derive the new UID: if the certificate is enrolled in a keyset
+        // (`rotate_name` is set), follow the SQL keyset UID scheme (`name@N`);
+        // otherwise generate a fresh UUID.
+        let old_attrs = candidate.owm.attributes();
+        let new_uid = UniqueIdentifier::rotation_successor(
+            old_attrs.rotate_name.as_deref(),
+            old_attrs.rotate_generation,
+        );
 
         // Build a Certify request that references the existing certificate for renewal.
         // We pass the old certificate's UID so `get_subject` produces a `Subject::Certificate`.
@@ -294,12 +301,19 @@ impl RekeyOperation for CertificateRekey {
             obj_attrs.retire_for_replacement(&replacement.new_uid)?;
         }
 
-        let mut operations = vec![AtomicOperation::UpdateObject((
-            candidate.uid.clone(),
-            old_object,
-            old_attributes,
-            None,
-        ))];
+        let mut operations = vec![
+            AtomicOperation::UpdateObject((
+                candidate.uid.clone(),
+                old_object,
+                old_attributes,
+                None,
+            )),
+            // KMIP §4.57 transition 6: old certificate becomes Deactivated after ReCertify.
+            // UpdateObject alone only rewrites the `attributes` JSON column; the `state`
+            // column must be updated separately so that subsequent queries (including
+            // `find_due_for_rotation`) see the correct lifecycle state.
+            AtomicOperation::UpdateState((candidate.uid.clone(), State::Deactivated)),
+        ];
 
         // Relink keys: update CertificateLink on linked PK/SK to point to new cert UID
         relink_keys_to_new_certificate(
