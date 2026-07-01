@@ -55,6 +55,18 @@ interface LocateFormData {
 
 type AlgoOption = { value: string; label: string };
 
+const ENRICH_ATTRS = [
+    "object_type",
+    "state",
+    "activation_date",
+    "cryptographic_algorithm",
+    "cryptographic_length",
+    "key_format_type",
+    "public_key_id",
+    "private_key_id",
+    "certificate_id",
+] as const;
+
 const LocateForm: React.FC = () => {
     const NO_FILTER: AlgoOption = { value: "", label: "— No filter —" };
     const [form] = Form.useForm<LocateFormData>();
@@ -152,17 +164,21 @@ const LocateForm: React.FC = () => {
         return (parsed || {}) as Record<string, unknown>;
     };
 
+    // Utility: fetch and parse KMIP attributes for a single UID
+    const fetchAttrs = async (uid: string, attrs: readonly string[], idToken: string | null, serverUrl: string): Promise<Record<string, unknown> | null> => {
+        const req = wasm.get_attributes_ttlv_request(uid);
+        const resp = await sendKmipRequest(req, idToken, serverUrl);
+        if (!resp) return null;
+        return extractMeta(await wasm.parse_get_attributes_ttlv_response(resp, [...attrs]));
+    };
+
     // Utility: enrich a list of UIDs via KMIP Get
     const enrichUids = async (uids: string[], idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
-        const rows = await Promise.all(
+        return Promise.all(
             uids.map(async (uid) => {
                 try {
-                    const getReq = wasm.get_attributes_ttlv_request(uid);
-                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
-                    if (getRespStr) {
-                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
-                        const m = extractMeta(parsed);
-                        // HSM keys are always Active; use that as default when state is missing
+                    const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
+                    if (m !== null) {
                         const isHsm = /^hsm[0-9]*::/.test(uid);
                         return {
                             object_id: uid,
@@ -174,11 +190,9 @@ const LocateForm: React.FC = () => {
                 } catch (e) {
                     console.error(`Error fetching Get for ${uid}:`, e);
                 }
-                // Fallback: HSM keys default to Active
                 return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : undefined } as LocatedRow;
             }),
         );
-        return rows;
     };
 
     // Utility: build state lookup from /access/owned
@@ -296,11 +310,16 @@ const LocateForm: React.FC = () => {
                             ownedFiltered.map(async (o) => {
                                 const uid = o.id;
                                 try {
+<<<<<<< HEAD
                                     const getReq = wasm.get_attributes_ttlv_request(uid);
                                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                     if (getRespStr) {
                                         const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                         const m = extractMeta(parsed);
+=======
+                                    const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
+                                    if (m !== null) {
+>>>>>>> 3072d229 (feat: final refactor and push)
                                         return {
                                             object_id: uid,
                                             attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -353,11 +372,16 @@ const LocateForm: React.FC = () => {
                     let enriched = await Promise.all(
                         intersection.map(async (uid: string) => {
                             try {
+<<<<<<< HEAD
                                 const getReq = wasm.get_attributes_ttlv_request(uid);
                                 const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                 if (getRespStr) {
                                     const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                     const m = extractMeta(parsed);
+=======
+                                const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
+                                if (m !== null) {
+>>>>>>> 3072d229 (feat: final refactor and push)
                                     return {
                                         object_id: uid,
                                         attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -514,6 +538,7 @@ const LocateForm: React.FC = () => {
                             const enriched = await Promise.all(
                                 ids.map(async (uid: string) => {
                                     try {
+<<<<<<< HEAD
                                         const getReq = wasm.get_attributes_ttlv_request(uid);
                                         const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                         if (getRespStr) {
@@ -522,6 +547,10 @@ const LocateForm: React.FC = () => {
                                                 getEnrichAttributeKeys(),
                                             );
                                             const m = extractMeta(parsed);
+=======
+                                        const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
+                                        if (m !== null) {
+>>>>>>> 3072d229 (feat: final refactor and push)
                                             return {
                                                 object_id: uid,
                                                 attributes: { ObjectType: m["object_type"] as string | undefined },
