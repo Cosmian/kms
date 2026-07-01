@@ -9,9 +9,9 @@ Create an ADR document for the Cosmian KMS repository.
 
 ## ADR Storage
 
-Save ADRs at: `documentation/docs/adr/adr-NNNN-[title-slug].md`
+Save ADRs at: `documentation/docs/adr/adr-YYYY-MM-DD-[title-slug].md`
 
-Where `NNNN` is the next sequential 4-digit number. Check existing files to determine the next number:
+Where `YYYY-MM-DD` is the current date. Check existing files to determine the next number:
 
 ```bash
 ls documentation/docs/adr/ 2>/dev/null | sort | tail -5
