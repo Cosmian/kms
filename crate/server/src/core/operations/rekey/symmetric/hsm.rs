@@ -41,6 +41,7 @@ impl ParsedHsmUid {
 ///
 /// Expected format: `{prefix}::{slot}::{base_id}` or `{prefix}::{slot}::{base_id}@{gen}`.
 fn parse_hsm_uid(uid: &str) -> KResult<ParsedHsmUid> {
+    // TODO(ecse): Parse HSM property with regex
     let prefix = has_prefix(uid)
         .ok_or_else(|| KmsError::InvalidRequest(format!("UID '{uid}' is not an HSM UID")))?
         .to_owned();
@@ -224,7 +225,7 @@ impl KMS {
         // Read rotation interval in days from the old key's attributes.
         // For HSM keys, rotate_interval is not stored in PKCS#11 as a KMIP attribute
         // (HsmStore::update_object is a no-op); instead it is reconstructed at
-        // retrieve-time from CKA_START_DATE / CKA_END_DATE as (end − start) × 86400 s.
+        // retrieve-time from CKA_START_DATE / CKA_END_DATE as (end − start) × (24 * 60 * 60) s.
         // If unavailable (key was never armed with SetAttribute RotateInterval),
         // interval_days is None and the new key will not be auto-scheduled.
         let interval_days: Option<i64> = old_attrs.rotate_interval.filter(|&i| i > 0).map(|secs| {
