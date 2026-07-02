@@ -204,7 +204,14 @@ pub(crate) async fn callback(
             .json(serde_json::json!({ "error": "No id_token in response" }));
     };
 
-    // Validate the id_token using the cached JwksManager (no fresh JWKS fetch).
+    // Validate the id_token using the JwksManager. The authorization_endpoint and
+    // token_endpoint were discovered and cached once at startup, but the signing
+    // keys themselves are looked up dynamically here: if the `kid` isn't found in
+    // the cached JWKS (e.g. the IdP rotated its signing keys since startup), force
+    // a refresh and retry once before failing. `JwksManager::refresh()` is
+    // internally throttled (60s) so this is safe even under repeated invalid-kid
+    // probing. Mirrors the retry pattern used by the Cosmian auth middleware
+    // (`cosmian_auth_token.rs`).
     let header = match decode_header(id_token_str) {
         Ok(h) => h,
         Err(e) => {
@@ -219,15 +226,31 @@ pub(crate) async fn callback(
     };
 
     let jwk = match discovered.jwks_manager.find(&kid) {
-        Ok(Some(k)) => k,
+        Ok(Some(k)) => Some(k),
         Ok(None) => {
-            return HttpResponse::Unauthorized()
-                .json(serde_json::json!({ "error": "Key not found in JWKS" }));
+            // Key unknown: the IdP may have rotated its signing keys since startup.
+            // Force a refresh (throttled to 60s) and retry once.
+            if let Err(e) = discovered.jwks_manager.refresh().await {
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": format!("JWKS refresh failed: {e}") }));
+            }
+            match discovered.jwks_manager.find(&kid) {
+                Ok(k) => k,
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(
+                        serde_json::json!({ "error": format!("JWKS lookup failed: {e}") }),
+                    );
+                }
+            }
         }
         Err(e) => {
             return HttpResponse::InternalServerError()
                 .json(serde_json::json!({ "error": format!("JWKS lookup failed: {e}") }));
         }
+    };
+    let Some(jwk) = jwk else {
+        return HttpResponse::Unauthorized()
+            .json(serde_json::json!({ "error": "Key not found in JWKS" }));
     };
 
     let decoding_key = match DecodingKey::from_jwk(&jwk) {

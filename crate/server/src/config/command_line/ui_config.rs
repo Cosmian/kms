@@ -111,15 +111,21 @@ pub struct OidcConfig {
 /// OIDC endpoints discovered at server startup from the `IdP`'s
 /// `.well-known/openid-configuration` document.
 ///
-/// WARNING: these values are cached at startup. Changes to the `IdP` configuration
-/// (issuer URL, JWKS URI, endpoint URLs) require a **server restart** to take effect.
+/// WARNING: `authorization_endpoint` and `token_endpoint` are cached at startup.
+/// Changes to the `IdP` configuration (issuer URL, endpoint URLs) require a
+/// **server restart** to take effect. The signing keys held by `jwks_manager`
+/// are *not* frozen at startup: the UI OIDC callback refreshes them on demand
+/// (refresh-on-miss) whenever an unknown `kid` is encountered, so `IdP` signing
+/// key rotation does **not** require a restart.
 #[derive(Clone, Debug)]
 pub struct OidcDiscoveredEndpoints {
     /// The `IdP`'s authorization endpoint URL.
     pub authorization_endpoint: String,
     /// The `IdP`'s token exchange endpoint URL.
     pub token_endpoint: String,
-    /// The `JwksManager` pre-loaded with the `IdP`'s signing keys.
+    /// The `JwksManager` pre-loaded with the `IdP`'s signing keys. Refreshed
+    /// on demand (refresh-on-miss) when the UI OIDC callback encounters an
+    /// unknown `kid`; see `crate::routes::ui_auth::callback`.
     pub jwks_manager: Arc<crate::middlewares::JwksManager>,
 }
 

@@ -26,7 +26,8 @@
 ## Refactor
 
 - **BFF (Backend for Frontend) OIDC pattern for the Web UI**: rework the OIDC authentication flow to eliminate token leakage to the browser.
-  - Discovery document and JWKS are fetched once at server startup (`build_oidc_runtime_config()`) and cached in `OidcRuntimeConfig`; no per-request fetches.
+  - Discovery document (`authorization_endpoint`/`token_endpoint`) and the initial JWKS are fetched once at server startup (`build_oidc_runtime_config()`) and cached in `OidcRuntimeConfig`; `authorization_endpoint`/`token_endpoint` require a server restart to pick up changes.
+  - JWKS signing keys use a "refresh-on-miss" strategy: if `/ui/callback` receives an `id_token` whose `kid` is not in the cached JWKS (e.g. the IdP rotated its signing keys), the `JwksManager` is refreshed on demand and the lookup retried once, so login succeeds without restarting the server. This mirrors the existing refresh-on-miss pattern used by the Cosmian auth middleware.
   - After OIDC callback, only `user_id` is stored in the actix-session cookie; `id_token` is never forwarded to the browser.
   - New `SessionAuth` middleware reads the session cookie on every request and injects `AuthenticatedUser` when a valid session exists; registered on `default_scope`, `crypto_scope`, and `tokenize_scope`.
   - `/ui/token` endpoint renamed to `/ui/whoami`; response is `{ user_id: String }` only (no token).
