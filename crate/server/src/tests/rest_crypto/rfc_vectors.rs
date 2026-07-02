@@ -212,7 +212,7 @@ async fn test_rfc7515_a4_es512_known_key_round_trip() -> KResult<()> {
 #[allow(clippy::many_single_char_names)]
 async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     // ── RFC 7516 §A.1.3 — RSA-2048 private key (JWK, verbatim) ──────────────
     // Source: https://www.rfc-editor.org/rfc/rfc7516#appendix-A.1

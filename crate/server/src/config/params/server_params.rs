@@ -366,7 +366,7 @@ impl ServerParams {
                 v
             },
             keyset_warn_depth: conf.keyset_warn_depth,
-            jwks_endpoint: conf.jwks_endpoint_config,
+            jwks_endpoint: conf.jwks_endpoint,
         };
 
         debug!("{res:#?}");

@@ -73,7 +73,7 @@ impl Default for ClapConfig {
             azure_ekm_config: AzureEkmConfig::default(),
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
-            jwks_endpoint_config: JwksEndpointConfig::default(),
+            jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
         }
     }

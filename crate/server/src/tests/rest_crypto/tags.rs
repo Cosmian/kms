@@ -98,7 +98,7 @@ fn extract_tags(body: &Value) -> Vec<String> {
 #[tokio::test]
 async fn test_add_tags_happy_path() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = post_tags(&app, &kid, &["jwks", "prod"]).await?;
@@ -116,7 +116,7 @@ async fn test_add_tags_happy_path() -> KResult<()> {
 #[tokio::test]
 async fn test_add_tags_idempotent() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     post_tags(&app, &kid, &["jwks"]).await?;
@@ -131,7 +131,7 @@ async fn test_add_tags_idempotent() -> KResult<()> {
 #[tokio::test]
 async fn test_remove_tags_happy_path() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     post_tags(&app, &kid, &["alpha", "beta"]).await?;
@@ -146,7 +146,7 @@ async fn test_remove_tags_happy_path() -> KResult<()> {
 #[tokio::test]
 async fn test_remove_nonexistent_tag_is_noop() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     post_tags(&app, &kid, &["keep"]).await?;
@@ -161,7 +161,7 @@ async fn test_remove_nonexistent_tag_is_noop() -> KResult<()> {
 #[tokio::test]
 async fn test_get_tags_empty() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = get_tags(&app, &kid).await?;
@@ -175,7 +175,7 @@ async fn test_get_tags_empty() -> KResult<()> {
 #[tokio::test]
 async fn test_system_tags_not_exposed() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = get_tags(&app, &kid).await?;
@@ -193,7 +193,7 @@ async fn test_system_tags_not_exposed() -> KResult<()> {
 #[tokio::test]
 async fn test_reject_system_tag_add() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let req = test::TestRequest::post()
@@ -210,7 +210,7 @@ async fn test_reject_system_tag_add() -> KResult<()> {
 #[tokio::test]
 async fn test_reject_system_tag_delete() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let req = test::TestRequest::delete()
@@ -227,7 +227,7 @@ async fn test_reject_system_tag_delete() -> KResult<()> {
 #[tokio::test]
 async fn test_reject_empty_tag() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let req = test::TestRequest::post()
@@ -244,7 +244,7 @@ async fn test_reject_empty_tag() -> KResult<()> {
 #[tokio::test]
 async fn test_unknown_kid_returns_404() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let ghost = "00000000-0000-0000-0000-000000000000";
 
     // GET
@@ -283,7 +283,7 @@ async fn test_unknown_kid_returns_404() -> KResult<()> {
 #[tokio::test]
 async fn test_add_jwks_tag_then_list() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = post_tags(&app, &kid, &["jwks"]).await?;
