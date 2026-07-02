@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use cosmian_logger::debug;
 use tokio::sync::oneshot;
@@ -31,13 +31,14 @@ pub fn spawn_auto_rotation_cron(kms: Arc<KMS>) -> oneshot::Sender<()> {
 
         rt.block_on(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+            let mut warned: HashMap<String, i64> = HashMap::new();
             let mut shutdown_rx = shutdown_rx;
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
                         debug!("[auto-rotate-cron] Running scheduled key auto-rotation check");
                         run_auto_rotation(&kms).await;
-                        dispatch_renewal_warnings(&kms).await;
+                        dispatch_renewal_warnings(&kms, &mut warned).await;
                     }
                     _ = &mut shutdown_rx => {
                         debug!("[auto-rotate-cron] Shutdown signal received; stopping cron thread");

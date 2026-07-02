@@ -548,9 +548,6 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate-cron] Failed to build runtime: {}` | `src/cron.rs` | - | - |
 | `debug` | `[auto-rotate-cron] Running scheduled key auto-rotation check` | `src/cron.rs` | - | - |
 | `debug` | `[auto-rotate-cron] Shutdown signal received; stopping cron thread` | `src/cron.rs` | - | - |
-| `debug` | `[auto-rotate] Failed to query keys due for rotation: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
-| `debug` | `[auto-rotate] Found {} key(s) due for rotation` | `src/core/operations/auto_rotate.rs` | - | - |
-| `debug` | `[auto-rotate] Renewal-warning dispatch complete (no-op stub)` | `src/core/operations/auto_rotate.rs` | - | - |
 | `trace` | `Auto-deactivating object {} (deactivation_date {} <= now {})` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
 | `trace` | `execute_keyset_try_each: key {} failed for {}: {}` | `src/core/operations/key_ops/crypto_op.rs` | - | - |
 | `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
@@ -594,8 +591,22 @@ Crate path: `crate/server`
 | `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `ReKeyKeyPair: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/keypair/mod.rs` | - | - |
 | `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
-| `debug` | `[auto-rotate] Rotating key {uid} (owner={owner})` | `src/core/operations/auto_rotate.rs` | `uid`, `owner` | - |
 | `warn` | `find_wrapped_by({old_uid}) failed — skipping re-wrap of dependants: {e}` | `src/core/operations/rekey/common.rs` | `old_uid`, `e` | - |
+| `warn` | `[auto-rotate] Failed to query keys due for rotation: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
+| `warn` | `[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}` | `src/core/operations/auto_rotate.rs` | `new_uid`, `e` | - |
+| `warn` | `[auto-rotate] Failed to retrieve key {uid}: {e}; skipping` | `src/core/operations/auto_rotate.rs` | `uid`, `e` | - |
+| `warn` | `[auto-rotate] Failed to rotate key {uid} (owner={owner}): {e}` | `src/core/operations/auto_rotate.rs` | `uid`, `owner`, `e` | - |
+| `warn` | `[auto-rotate] Key {uid} not found; skipping` | `src/core/operations/auto_rotate.rs` | `uid` | - |
+| `info` | `[auto-rotate] Found {} key(s) due for rotation` | `src/core/operations/auto_rotate.rs` | - | - |
+| `info` | `[auto-rotate] Key {uid} (owner={owner}) rotation due in {days} day(s)              (warning threshold: {threshold} days)` | `src/core/operations/auto_rotate.rs` | `uid`, `owner`, `days`, `threshold` | - |
+| `info` | `[auto-rotate] Key {uid} (owner={owner}, algo={algorithm}) rotated successfully` | `src/core/operations/auto_rotate.rs` | `uid`, `owner`, `algorithm` | - |
+| `debug` | `[auto-rotate] Failed to query keys for renewal warnings: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
+| `debug` | `[auto-rotate] No keys due for rotation at {now}` | `src/core/operations/auto_rotate.rs` | `now` | - |
+| `debug` | `[auto-rotate] rotate_one_key returned: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
+| `debug` | `[auto-rotate] Skipping HSM key {uid}` | `src/core/operations/auto_rotate.rs` | `uid` | - |
+| `debug` | `[auto-rotate] Skipping {uid}: object type {other:?} has no auto-rotation support` | `src/core/operations/auto_rotate.rs` | `uid`, `other` | - |
+| `debug` | `[auto-rotate] Skipping {uid}: PublicKey is rotated as part of its paired                  PrivateKey rotation` | `src/core/operations/auto_rotate.rs` | `uid` | - |
+| `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
