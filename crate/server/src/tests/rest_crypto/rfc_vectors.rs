@@ -32,11 +32,18 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_objects::{Object, PrivateKey},
         kmip_operations::{CreateKeyPairResponse, ImportResponse},
         kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
-        requests::{create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request},
+        requests::{
+            create_ec_key_pair_request, create_rsa_key_pair_request, import_object_request,
+        },
     },
 };
 use cosmian_logger::log_init;
-use openssl::{bn::BigNum, pkey::PKey, rsa::Rsa, symm::{Cipher, encrypt_aead}};
+use openssl::{
+    bn::BigNum,
+    pkey::PKey,
+    rsa::Rsa,
+    symm::{Cipher, encrypt_aead},
+};
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
@@ -202,6 +209,7 @@ async fn test_rfc7515_a4_es512_known_key_round_trip() -> KResult<()> {
 /// Note: RSA-OAEP is non-deterministic, so `encrypted_key` cannot be reproduced;
 /// AES-GCM is deterministic — the RFC plaintext is the fixed assertion.
 #[tokio::test]
+#[allow(clippy::many_single_char_names)]
 async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     log_init(None);
     let app = test_utils::test_app(None, None).await;
@@ -337,15 +345,18 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     // The `encrypted_key` is independent of the header (RSA-OAEP output depends
     // only on the RSA public key, not the JWE header).
     let protected_json = json!({"alg": "RSA-OAEP", "enc": "A256GCM", "kid": kid});
-    let protected_b64 =
-        URL_SAFE_NO_PAD.encode(serde_json::to_string(&protected_json).expect("JSON").as_bytes());
+    let protected_b64 = URL_SAFE_NO_PAD.encode(
+        serde_json::to_string(&protected_json)
+            .expect("JSON")
+            .as_bytes(),
+    );
 
     // ── Recompute AES-256-GCM ciphertext with the new AAD ────────────────────
     // AES-GCM is deterministic: RFC CEK + RFC IV + RFC plaintext + new AAD.
     // The KMS must recover the RFC plaintext to pass.
     let rfc_plaintext = b"The true sign of intelligence is not knowledge but imagination.";
     let aad = protected_b64.as_bytes();
-    let mut gcm_tag = [0u8; 16];
+    let mut gcm_tag = [0_u8; 16];
     let new_ciphertext = encrypt_aead(
         Cipher::aes_256_gcm(),
         &cek,
@@ -371,7 +382,9 @@ async fn test_rfc7516_a1_rsa_oaep_a256gcm_known_key() -> KResult<()> {
     .await?;
 
     // ── Assert RFC §A.1 plaintext ─────────────────────────────────────────────
-    let plaintext_b64 = dec_resp["data"].as_str().expect("missing 'data' field in response");
+    let plaintext_b64 = dec_resp["data"]
+        .as_str()
+        .expect("missing 'data' field in response");
     let plaintext = URL_SAFE_NO_PAD
         .decode(plaintext_b64)
         .expect("response data is valid base64url");
