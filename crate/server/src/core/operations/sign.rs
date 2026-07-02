@@ -21,10 +21,7 @@ use cosmian_logger::{debug, trace};
 use openssl::pkey::{Id, PKey, Private};
 
 use crate::{
-    core::{
-        KMS,
-        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
-    },
+    core::{KMS, operations::CryptoOpSpec},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -54,7 +51,7 @@ impl CryptoOpSpec for SignOp {
 
     fn is_key_eligible(owm: &ObjectWithMetadata, _vendor_id: &str) -> bool {
         if let Object::PrivateKey { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Sign, false);
+            return owm.has_usage_mask(CryptographicUsageMask::Sign, false);
         }
         false
     }
@@ -117,7 +114,7 @@ pub(crate) async fn sign(kms: &KMS, request: Sign, user: &str) -> KResult<SignRe
         ));
     }
 
-    Box::pin(perform_crypto_operation::<SignOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<SignOp>(request, user)).await
 }
 
 fn sign_with_private_key(request: &Sign, owm: &ObjectWithMetadata) -> KResult<SignResponse> {

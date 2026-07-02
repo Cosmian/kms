@@ -14,6 +14,7 @@ import CertificateDecryptForm from "./actions/Certificates/CertificateDecrypt";
 import CertificateEncryptForm from "./actions/Certificates/CertificateEncrypt";
 import CertificateExportForm from "./actions/Certificates/CertificateExport";
 import CertificateImportForm from "./actions/Certificates/CertificateImport";
+import CertificateReCertifyForm from "./actions/Certificates/CertificateReCertify";
 import CertificateValidateForm from "./actions/Certificates/CertificateValidate";
 import AwsExportKeyMaterialForm from "./actions/CloudProviders/AwsExportKeyMaterial";
 import ImportAwsKekForm from "./actions/CloudProviders/AwsImportKek";
@@ -40,6 +41,7 @@ import MacComputeForm from "./actions/MAC/MacCompute";
 import MacVerifyForm from "./actions/MAC/MacVerify";
 import HsmStatus from "./actions/Objects/HsmStatus";
 import DestroyForm from "./actions/Objects/ObjectsDestroy";
+import ObjectsReKeyForm from "./actions/Objects/ObjectsReKey";
 import ObjectsOwnedList from "./actions/Objects/ObjectsOwned";
 import RevokeForm from "./actions/Objects/ObjectsRevoke";
 import OpaqueObjectForm from "./actions/Objects/OpaqueObject";
@@ -49,6 +51,8 @@ import PqcEncapsulateForm from "./actions/PQC/PqcEncapsulate";
 import PqcKeysCreateForm from "./actions/PQC/PqcKeysCreate";
 import PqcSignForm from "./actions/PQC/PqcSign";
 import PqcVerifyForm from "./actions/PQC/PqcVerify";
+import GetRotationPolicyForm from "./actions/RotationPolicy/GetRotationPolicy";
+import SetRotationPolicyForm from "./actions/RotationPolicy/SetRotationPolicy";
 import RsaDecryptForm from "./actions/RSA/RsaDecrypt";
 import RsaEncryptForm from "./actions/RSA/RsaEncrypt";
 import RsaKeyCreateForm from "./actions/RSA/RsaKeysCreate";
@@ -67,8 +71,7 @@ import TokenizeWordPatternMask from "./actions/Tokenize/TokenizeWordPatternMask"
 import TokenizeWordTokenize from "./actions/Tokenize/TokenizeWordTokenize";
 import LocateForm from "./components/common/Locate";
 import MainLayout from "./components/layout/MainLayout";
-import { AuthProvider } from "./contexts/AuthContext";
-import { useAuth } from "./contexts/useAuth";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { useBranding } from "./contexts/useBranding";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -90,9 +93,8 @@ const isLoopbackHost = (host: string): boolean => LOOPBACK_HOSTS.has(host);
 
 const resolveServerUrl = (): string => {
     const configuredUrl = (import.meta.env.VITE_KMS_URL as string | undefined)?.trim();
-    const isDevMode = import.meta.env.DEV || import.meta.env.VITE_DEV_MODE === "true";
     const defaultDevUrl = `${window.location.protocol}//${window.location.hostname}:9998`;
-    const fallbackUrl = isDevMode ? defaultDevUrl : window.location.origin;
+    const fallbackUrl = import.meta.env.DEV ? defaultDevUrl : window.location.origin;
     const candidate = configuredUrl && configuredUrl.length > 0 ? configuredUrl : fallbackUrl;
 
     try {
@@ -263,6 +265,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<SymKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"symmetric"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="symmetric" />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="symmetric" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="symmetric" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="symmetric" />} />
                             <Route path="encrypt" element={<SymmetricEncryptForm />} />
@@ -273,6 +276,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<RsaKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"rsa"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="rsa" />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="rsa" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="rsa" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="rsa" />} />
                             <Route path="encrypt" element={<RsaEncryptForm />} />
@@ -284,6 +288,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<ECKeyCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"ec"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="ec" />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="ec" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="ec" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="ec" />} />
                             <Route path="encrypt" element={<ECEncryptForm />} />
@@ -295,6 +300,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="keys/create" element={<PqcKeysCreateForm />} />
                             <Route path="keys/export" element={<KeyExportForm key_type={"pqc"} />} />
                             <Route path="keys/import" element={<KeyImportForm key_type="pqc" />} />
+                            <Route path="keys/rekey" element={<ObjectsReKeyForm keyType="pqc" />} />
                             <Route path="keys/revoke" element={<RevokeForm objectType="pqc" />} />
                             <Route path="keys/destroy" element={<DestroyForm objectType="pqc" />} />
                             <Route path="encapsulate" element={<PqcEncapsulateForm />} />
@@ -305,6 +311,24 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                         <Route path="mac">
                             <Route path="compute" element={<MacComputeForm />} />
                             <Route path="verify" element={<MacVerifyForm />} />
+                        </Route>
+                        <Route path="rotation-policy">
+                            <Route path="sym">
+                                <Route path="set" element={<SetRotationPolicyForm />} />
+                                <Route path="get" element={<GetRotationPolicyForm />} />
+                            </Route>
+                            <Route path="rsa">
+                                <Route path="set" element={<SetRotationPolicyForm />} />
+                                <Route path="get" element={<GetRotationPolicyForm />} />
+                            </Route>
+                            <Route path="ec">
+                                <Route path="set" element={<SetRotationPolicyForm />} />
+                                <Route path="get" element={<GetRotationPolicyForm />} />
+                            </Route>
+                            <Route path="pqc">
+                                <Route path="set" element={<SetRotationPolicyForm />} />
+                                <Route path="get" element={<GetRotationPolicyForm />} />
+                            </Route>
                         </Route>
                         <Route path="fpe">
                             <Route path="keys/create" element={<FpeKeyCreateForm />} />
@@ -359,6 +383,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
                             <Route path="encrypt" element={<CertificateEncryptForm />} />
                             <Route path="decrypt" element={<CertificateDecryptForm />} />
                             <Route path="certs/certify" element={<CertificateCertifyForm />} />
+                            <Route path="certs/recertify" element={<CertificateReCertifyForm />} />
                         </Route>
                         <Route path="attributes">
                             <Route path="get" element={<AttributeGetForm />} />

@@ -6,14 +6,14 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 print_header "Checking log-reference.md"
 REPO_ROOT="$(get_repo_root)"
 
-if python3 "${REPO_ROOT}/scripts/update_log_index.py" --check --no-color; then
+if python3 "${REPO_ROOT}/.mise/scripts/docs/update_log_index.py" --check --no-color; then
   print_success "log-reference.md is up to date"
 else
   print_error "log-reference.md is out of sync with the source code."
   echo ""
   echo "  Fix it by running one of:"
   echo ""
-  echo "    python3 scripts/update_log_index.py --non-interactive --no-color"
+  echo "    python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color"
   echo "    mise run docs:generate"
   echo ""
   echo "  Then review, stage, and commit:"

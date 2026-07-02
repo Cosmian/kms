@@ -16,7 +16,7 @@ use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn test_unknown_encrypt_alg_returns_422() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -49,7 +49,7 @@ async fn test_unknown_encrypt_alg_returns_422() -> KResult<()> {
 #[tokio::test]
 async fn test_unknown_sign_alg_returns_422() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -82,7 +82,7 @@ async fn test_unknown_sign_alg_returns_422() -> KResult<()> {
 #[tokio::test]
 async fn test_nonexistent_key_id() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let req = test::TestRequest::post()
         .uri("/v1/crypto/encrypt")
@@ -105,7 +105,7 @@ async fn test_nonexistent_key_id() -> KResult<()> {
 #[tokio::test]
 async fn test_wrong_key_type_for_sign() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -136,7 +136,7 @@ async fn test_wrong_key_type_for_sign() -> KResult<()> {
 #[tokio::test]
 async fn test_alg_none_returns_422() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     // Build a protected header with alg=none and a valid kid
     let protected_json = r#"{"alg":"none","kid":"any-key"}"#;
@@ -165,7 +165,7 @@ async fn test_alg_none_returns_422() -> KResult<()> {
 #[tokio::test]
 async fn test_decrypt_invalid_iv_length_returns_400() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,
@@ -213,7 +213,7 @@ async fn test_decrypt_invalid_iv_length_returns_400() -> KResult<()> {
 #[tokio::test]
 async fn test_decrypt_short_tag_returns_400() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let create_req = symmetric_key_create_request(
         VENDOR_ID_COSMIAN,

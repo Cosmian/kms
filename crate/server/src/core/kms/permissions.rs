@@ -4,13 +4,14 @@ use actix_web::{HttpMessage, HttpRequest};
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
-use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-    KmipOperation, kmip_types::UniqueIdentifier,
+use cosmian_kms_server_database::reexport::{
+    cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
+    cosmian_kms_interfaces::ObjectWithMetadata,
 };
 use cosmian_logger::debug;
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, retrieve_object_utils::user_has_permission, uid_utils::has_prefix},
     error::KmsError,
     kms_bail,
     middlewares::AuthenticatedUser,
@@ -21,17 +22,12 @@ impl KMS {
     /// Grant access to a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub(crate) async fn grant_access(
-        &self,
-        access: &Access,
-        owner: &str,
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<()> {
+    pub(crate) async fn grant_access(&self, access: &Access, owner: &str) -> KResult<()> {
         // if create access right is set, grant access to Create for the * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            if let Some(users) = privileged_users {
+            if let Some(ref users) = self.params.privileged_users {
                 if !users.contains(&owner.to_owned()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."
@@ -114,18 +110,12 @@ impl KMS {
     /// Remove an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub(crate) async fn revoke_access(
-        &self,
-        access: &Access,
-        owner: &str,
-
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<()> {
+    pub(crate) async fn revoke_access(&self, access: &Access, owner: &str) -> KResult<()> {
         // if create access right is set, revoke access Create for * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
-            if let Some(users) = privileged_users {
+            if let Some(ref users) = self.params.privileged_users {
                 if !users.contains(&owner.to_owned()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."
@@ -247,6 +237,64 @@ impl KMS {
             })
             .collect();
         Ok(ids)
+    }
+
+    // ─── Operation-level authorization ─────────────────────────────────────
+
+    /// Enforce that the caller has `Create` access-right.
+    ///
+    /// When `privileged_users` is configured, the user must either:
+    /// - have been explicitly granted the `Create` operation on any object,
+    /// - be listed in `privileged_users`, or
+    /// - be the `default_username` (unauthenticated / local access).
+    ///
+    /// This check applies uniformly to `Create`, `CreateKeyPair`, `Import`, and `Register`.
+    pub(crate) async fn enforce_create_permission(&self, user: &str) -> KResult<()> {
+        if let Some(ref users) = self.params.privileged_users {
+            if user == self.params.default_username
+                || users.iter().any(|u| u == user)
+                || user_has_permission(user, None, &KmipOperation::Create, self).await?
+            {
+                return Ok(());
+            }
+            kms_bail!(KmsError::Unauthorized(
+                "User does not have create access-right.".to_owned()
+            ))
+        }
+        // If no privileged user was set, all users have the `Create` right.
+        Ok(())
+    }
+
+    /// Reject requests that specify `ProtectionStorageMasks`.
+    ///
+    /// KMIP defines this field but the server does not implement storage-level
+    /// masking.  Fail early rather than silently ignoring the field.
+    #[allow(clippy::missing_const_for_fn)] // kms_bail! is not const-compatible
+    pub(crate) fn reject_protection_storage_masks(has_masks: bool) -> KResult<()> {
+        if has_masks {
+            kms_bail!(KmsError::UnsupportedPlaceholder)
+        }
+        Ok(())
+    }
+
+    /// Check whether `user` is allowed to perform `operation` on this object.
+    ///
+    /// Returns `true` if the user is the owner or has been explicitly granted
+    /// the requested operation.
+    pub(crate) async fn user_can_perform_operation(
+        &self,
+        owm: &ObjectWithMetadata,
+        user: &str,
+        operation: &KmipOperation,
+    ) -> KResult<bool> {
+        if user == owm.owner() {
+            return Ok(true);
+        }
+        let permissions = self
+            .database
+            .list_user_operations_on_object(owm.id(), user, false)
+            .await?;
+        Ok(permissions.contains(operation))
     }
 
     /// Get the user from the request depending on the authentication method.

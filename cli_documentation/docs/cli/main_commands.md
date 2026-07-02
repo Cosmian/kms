@@ -1466,6 +1466,12 @@ Manage post-quantum keys (ML-KEM, ML-DSA)
 
 **`destroy`** [[8.1.8]](#818-ckms-pqc-keys-destroy)  Destroy a PQC public or private key
 
+**`re-key`** [[8.1.9]](#819-ckms-pqc-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+**`set-rotation-policy`** [[8.1.10]](#8110-ckms-pqc-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[8.1.11]](#8111-ckms-pqc-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 8.1.1 ckms pqc keys activate
@@ -1499,6 +1505,13 @@ Possible values:  `"ml-kem-512", "ml-kem-768", "ml-kem-1024", "ml-dsa-44", "ml-d
 `--sensitive <SENSITIVE>` Sensitive: if set, the private key will not be exportable
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
+Must not contain the `@` character.
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -1691,6 +1704,51 @@ Destroy a PQC public or private key
 `--remove <REMOVE>` Remove the key from the database entirely
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 8.1.9 ckms pqc keys re-key
+
+Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+### Usage
+`ckms pqc keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the private key to re-key
+
+
+
+---
+
+## 8.1.10 ckms pqc keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms pqc keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 8.1.11 ckms pqc keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms pqc keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 
@@ -2391,6 +2449,12 @@ Create, destroy, import, and export elliptic curve key pairs
 
 **`destroy`** [[13.1.8]](#1318-ckms-ec-keys-destroy)  Destroy a public or private key
 
+**`re-key`** [[13.1.9]](#1319-ckms-ec-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+**`set-rotation-policy`** [[13.1.10]](#13110-ckms-ec-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[13.1.11]](#13111-ckms-ec-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 13.1.1 ckms ec keys activate
@@ -2434,6 +2498,13 @@ If the wrapping key is:
 - a symmetric key, AES-GCM will be used
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
+
+`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
+Must not contain the `@` character.
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -2629,6 +2700,51 @@ but its metadata will still be available in the database.
 Please note that the KMIP specification does not support the removal of objects.
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 13.1.9 ckms ec keys re-key
+
+Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+### Usage
+`ckms ec keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the private key to re-key
+
+
+
+---
+
+## 13.1.10 ckms ec keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms ec keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 13.1.11 ckms ec keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms ec keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 
@@ -3321,6 +3437,12 @@ Create, destroy, import, and export RSA key pairs
 
 **`destroy`** [[22.1.8]](#2218-ckms-rsa-keys-destroy)  Destroy a public or private key
 
+**`re-key`** [[22.1.9]](#2219-ckms-rsa-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+**`set-rotation-policy`** [[22.1.10]](#22110-ckms-rsa-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[22.1.11]](#22111-ckms-rsa-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 22.1.1 ckms rsa keys activate
@@ -3362,6 +3484,13 @@ If the wrapping key is:
 - a symmetric key, AES-GCM will be used
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
+
+`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
+Must not contain the `@` character.
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -3557,6 +3686,51 @@ but its metadata will still be available in the database.
 Please note that the KMIP specification does not support the removal of objects.
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 22.1.9 ckms rsa keys re-key
+
+Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+### Usage
+`ckms rsa keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the private key to re-key
+
+
+
+---
+
+## 22.1.10 ckms rsa keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms rsa keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 22.1.11 ckms rsa keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms rsa keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 
@@ -4230,6 +4404,10 @@ Create, destroy, import, and export symmetric keys
 
 **`destroy`** [[26.1.9]](#2619-ckms-sym-keys-destroy)  Destroy a symmetric key
 
+**`set-rotation-policy`** [[26.1.10]](#26110-ckms-sym-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[26.1.11]](#26111-ckms-sym-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 26.1.1 ckms sym keys activate
@@ -4277,6 +4455,13 @@ If the wrapping key is:
 - a symmetric key, AES-GCM will be used
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
+
+`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
+Must not contain the `@` character.
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -4485,6 +4670,38 @@ but its metadata will still be available in the database.
 Please note that the KMIP specification does not support the removal of objects.
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 26.1.10 ckms sym keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms sym keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 26.1.11 ckms sym keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms sym keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 

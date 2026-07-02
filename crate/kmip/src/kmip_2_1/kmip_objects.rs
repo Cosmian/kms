@@ -16,12 +16,16 @@ use strum::{Display, VariantNames};
 use super::kmip_operations::Base64Display;
 use super::{
     kmip_attributes::Attributes,
-    kmip_data_structures::{KeyBlock, KeyWrappingData},
-    kmip_types::{CertificateRequestType, OpaqueDataType, SplitKeyMethod},
+    kmip_data_structures::{KeyBlock, KeyWrappingData, KeyWrappingSpecification},
+    kmip_types::{
+        CertificateRequestType, Digest, LinkType, LinkedObjectIdentifier, OpaqueDataType,
+        SplitKeyMethod,
+    },
 };
 use crate::{
     error::KmipError,
-    kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType},
+    kmip_0::kmip_types::{CertificateType, ErrorReason, SecretDataType, State},
+    time_normalize,
 };
 
 /// A Managed Cryptographic Object that is a digital certificate.
@@ -420,6 +424,92 @@ impl Object {
     pub fn is_wrapped(&self) -> bool {
         self.key_block()
             .is_ok_and(|kb| kb.key_wrapping_data.is_some())
+    }
+
+    /// Returns the UID of the wrapping (encryption) key embedded in this
+    /// object's `KeyWrappingData`, or `None` if the object is not wrapped.
+    #[must_use]
+    pub fn wrapping_key_uid(&self) -> Option<String> {
+        self.key_wrapping_data()
+            .and_then(|kwd| kwd.encryption_key_information.as_ref())
+            .map(|eki| eki.unique_identifier.to_string())
+    }
+
+    /// Build a [`KeyWrappingSpecification`] from this object's `KeyWrappingData`.
+    ///
+    /// Returns `None` if the object has no key block or is not wrapped.
+    #[must_use]
+    pub fn rewrap_spec(&self) -> Option<KeyWrappingSpecification> {
+        let kwd = self.key_wrapping_data()?;
+        Some(KeyWrappingSpecification {
+            wrapping_method: kwd.wrapping_method,
+            encryption_key_information: kwd.encryption_key_information.clone(),
+            mac_or_signature_key_information: kwd.mac_signature_key_information.clone(),
+            attribute_name: None,
+            encoding_option: kwd.encoding_option,
+        })
+    }
+
+    /// Copy the wrapping key link from this object to `new_attrs`.
+    ///
+    /// If this object was wrapped, its wrapping key UID is preserved as a
+    /// `LinkType::WrappingKeyLink` on `new_attrs` so that dependant re-wrapping
+    /// and attribute queries work correctly on the replacement object.
+    pub fn copy_wrapping_key_link_to(&self, new_attrs: &mut Attributes) {
+        if let Some(wrapping_key_uid) = self.wrapping_key_uid() {
+            new_attrs.set_link(
+                LinkType::WrappingKeyLink,
+                LinkedObjectIdentifier::TextString(wrapping_key_uid),
+            );
+        }
+    }
+
+    /// Initialize lifecycle attributes on a newly created or imported object.
+    ///
+    /// - No `requested_activation_date` → state `PreActive` (requires explicit
+    ///   Activate call or auto-activation via `effective_state()`).
+    /// - `requested_activation_date` ≤ now → state `Active` immediately.
+    /// - `requested_activation_date` > now → state `PreActive`, date stored for
+    ///   auto-transition by `effective_state()`.
+    ///
+    /// Sets `digest`, `initial_date`, `original_creation_date`,
+    /// `last_change_date`, and `object_type` on the object's embedded
+    /// attributes. Returns a clone of the final attributes.
+    ///
+    /// The caller must compute the `digest` externally (e.g. via
+    /// `openssl::sha::sha256`) and pass it in.
+    pub fn setup_lifecycle(
+        &mut self,
+        object_type: ObjectType,
+        requested_activation_date: Option<time::OffsetDateTime>,
+        digest: Option<Digest>,
+    ) -> Result<Attributes, KmipError> {
+        let now = time_normalize()?;
+        let attributes = self.attributes_mut()?;
+
+        // KMIP semantics: activation_date present and ≤ now → Active,
+        // otherwise PreActive (absent or future date).
+        let activation_allows_active = requested_activation_date.is_some_and(|d| d <= now);
+        let state = if activation_allows_active {
+            State::Active
+        } else {
+            State::PreActive
+        };
+
+        attributes.state = Some(state);
+        attributes.digest = digest;
+        attributes.object_type = Some(object_type);
+        attributes.initial_date = Some(now);
+        attributes.original_creation_date = Some(now);
+        attributes.last_change_date = Some(now);
+        if state == State::Active {
+            attributes.activation_date = Some(now);
+        } else if let Some(future_date) = requested_activation_date {
+            // PreActive with future date: store it so auto-transition works
+            attributes.activation_date = Some(future_date);
+        }
+
+        Ok(attributes.clone())
     }
 }
 

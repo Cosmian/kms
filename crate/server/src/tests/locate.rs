@@ -105,7 +105,7 @@ async fn test_locate() -> KResult<()> {
 #[actix_rt::test]
 async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
     // Use sqlite-backed test app
-    let app = test_app(None, None).await;
+    let app = test_app(None).await;
 
     // Create EC keypair (FIPS-approved curve and usage mask)
     let create = CreateKeyPair {
@@ -193,7 +193,7 @@ async fn test_locate_key_pair_and_sym_key() -> KResult<()> {
 #[actix_rt::test]
 async fn test_locate_filters_by_object_type_and_and_semantics() -> KResult<()> {
     // Start test app (KMIP 2.1 endpoint)
-    let app = test_app(None, None).await;
+    let app = test_app(None).await;
 
     // Create an EC key pair
     let create = CreateKeyPair {

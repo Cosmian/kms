@@ -11,7 +11,7 @@ use cosmian_kms_server_database::reexport::cosmian_kms_crypto::{
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod},
+        kmip_0::kmip_types::{CryptographicUsageMask, ErrorReason, PaddingMethod, State},
         kmip_2_1::{
             KmipOperation,
             extra::BulkData,
@@ -44,7 +44,7 @@ use crate::{
     config::ServerParams,
     core::{
         KMS,
-        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode},
     },
     error::KmsError,
     kms_bail,
@@ -67,6 +67,17 @@ impl CryptoOpSpec for DecryptOp {
         request.unique_identifier.as_ref()
     }
 
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::TryEach
+    }
+
+    /// Decrypt accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31:
+    /// "The object SHALL NOT be used for applying cryptographic protection [...]
+    /// The object SHOULD only be used to process cryptographically-protected information."
+    fn accepted_states() -> &'static [State] {
+        &[State::Active, State::Deactivated, State::Compromised]
+    }
+
     fn usage_data_len(request: &Self::Request) -> usize {
         request.data.as_ref().map_or(0, Vec::len)
     }
@@ -75,10 +86,10 @@ impl CryptoOpSpec for DecryptOp {
         #[cfg(not(feature = "non-fips"))]
         let _ = vendor_id;
         if let Object::SymmetricKey { .. } = owm.object() {
-            return has_usage_mask(owm, CryptographicUsageMask::Decrypt, false);
+            return owm.has_usage_mask(CryptographicUsageMask::Decrypt, false);
         }
         if let Object::PrivateKey { .. } = owm.object() {
-            if !has_usage_mask(owm, CryptographicUsageMask::Decrypt, false) {
+            if !owm.has_usage_mask(CryptographicUsageMask::Decrypt, false) {
                 return false;
             }
             #[cfg(feature = "non-fips")]
@@ -196,7 +207,7 @@ pub(crate) async fn decrypt(kms: &KMS, request: Decrypt, user: &str) -> KResult<
         request.unique_identifier,
         request.data.as_ref().map_or(0, Vec::len)
     );
-    Box::pin(perform_crypto_operation::<DecryptOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<DecryptOp>(request, user)).await
 }
 
 fn decrypt_bulk(

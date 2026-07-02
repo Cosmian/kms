@@ -141,8 +141,26 @@ impl ObjectsStore for HsmStore {
         let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
         match self.hsm.export(slot_id, key_id.as_bytes()).await {
             Ok(Some(hsm_object)) => {
-                let owm =
+                let mut owm =
                     to_object_with_metadata(&hsm_object, uid, self.owner_name(), &self.vendor_id)?;
+                // Enrich attributes with keyset metadata from CKA_LABEL and CKA dates.
+                if let Ok(Some(meta)) = self.hsm.get_key_metadata(slot_id, key_id.as_bytes()).await
+                {
+                    let attrs = owm.attributes_mut();
+                    attrs.rotate_name = meta.rotate_name;
+                    attrs.rotate_generation = meta.rotate_generation;
+                    // Reconstruct rotate_interval from CKA_START_DATE / CKA_END_DATE.
+                    // HsmStore::update_object is a no-op for KMIP attributes so there is
+                    // no persistent KMIP storage for rotate_interval on HSM keys; we
+                    // recover it as (end_date − start_date) × 86400 s so that downstream
+                    // operations (e.g. auto-rotation re-key) can propagate the schedule.
+                    if let (Some(start), Some(end)) = (meta.start_date, meta.end_date) {
+                        let days = (end - start).whole_days();
+                        if days > 0 {
+                            attrs.rotate_interval = Some(days * crate::SECS_PER_DAY);
+                        }
+                    }
+                }
                 Ok(Some(owm))
             }
             Ok(None) => Ok(None),
@@ -378,6 +396,128 @@ impl ObjectsStore for HsmStore {
         Ok(uids)
     }
 
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<(String, String)>> {
+        let today = now.date();
+        let slot_ids = self.hsm.get_available_slot_list().await?;
+        let mut due_uids = Vec::new();
+
+        for slot_id in slot_ids {
+            let found = self
+                .hsm
+                .find(slot_id, HsmObjectFilter::Any)
+                .await
+                .unwrap_or_default();
+            for object_id in found {
+                let Some(meta) = self
+                    .hsm
+                    .get_key_metadata(slot_id, &object_id)
+                    .await
+                    .unwrap_or_default()
+                else {
+                    continue;
+                };
+                // A key is due for rotation when end_date is set and today >= end_date
+                let Some(end_date) = meta.end_date else {
+                    continue;
+                };
+                if today >= end_date {
+                    let Ok(object_string) = std::str::from_utf8(&object_id) else {
+                        continue;
+                    };
+                    let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
+                    // HSM objects have no KMIP "owner" — the HSM instance is single-tenant.
+                    // Return an empty owner string; the scheduler must resolve ownership
+                    // from the KMS system metadata if multi-tenancy is needed in future.
+                    due_uids.push((uid, String::new()));
+                }
+            }
+        }
+
+        Ok(due_uids)
+    }
+
+    /// Find HSM keys by keyset name, with optional generation and latest filters.
+    ///
+    /// The keyset name is parsed from `CKA_LABEL` which carries the format
+    /// `rotate_name::generation::key_id[@latest]`. This allows keys to be
+    /// addressed by their logical name rather than their physical UID.
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        // PKCS#11 objects have no KMIP "owner" field — ownership cannot be filtered
+        // at the HSM layer.  The KMS server is assumed to be single-tenant with respect
+        // to a given HSM instance (each deployment's HSM is dedicated to one server).
+        // The `owner` parameter is intentionally unused here; the SQL implementation
+        // (which is multi-tenant) does filter by owner.
+        _owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        let slot_ids = self.hsm.get_available_slot_list().await?;
+        let mut results = Vec::new();
+
+        for slot_id in slot_ids {
+            let found = self
+                .hsm
+                .find(slot_id, HsmObjectFilter::Any)
+                .await
+                .unwrap_or_default();
+            for object_id in found {
+                let Some(meta) = self
+                    .hsm
+                    .get_key_metadata(slot_id, &object_id)
+                    .await
+                    .unwrap_or_default()
+                else {
+                    continue;
+                };
+                // Only consider keys that belong to this keyset
+                let Some(ref key_rotate_name) = meta.rotate_name else {
+                    continue;
+                };
+                if key_rotate_name != name {
+                    continue;
+                }
+                // Optional generation filter
+                if let Some(gen_filter) = generation {
+                    if meta.rotate_generation != Some(gen_filter) {
+                        continue;
+                    }
+                }
+                // Optional latest filter — removed: caller selects max generation instead
+                let Ok(object_string) = std::str::from_utf8(&object_id) else {
+                    continue;
+                };
+                let uid = format!("{}::{slot_id}::{object_string}", self.prefix);
+                let attrs = build_keyset_attributes(&meta);
+                results.push((uid, attrs));
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn set_key_label(&self, uid: &str, label: &str) -> InterfaceResult<()> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        self.hsm
+            .set_key_label(slot_id, key_id.as_bytes(), label)
+            .await
+    }
+
+    async fn set_key_rotation_dates(
+        &self,
+        uid: &str,
+        start_date: Option<time::Date>,
+        end_date: Option<time::Date>,
+    ) -> InterfaceResult<()> {
+        let (slot_id, key_id) = parse_uid_with_prefix(uid, &self.prefix)?;
+        self.hsm
+            .set_key_dates(slot_id, key_id.as_bytes(), start_date, end_date)
+            .await
+    }
+
     /// Count all non-destroyed objects on this HSM.
     ///
     /// On an HSM every object present in a slot is by definition non-destroyed:
@@ -417,6 +557,15 @@ impl ObjectsStore for HsmStore {
             }
         }
         Ok(total)
+    }
+
+    /// HSM keys are physically stored on the device and never wrapped in KMIP format.
+    async fn find_wrapped_by(
+        &self,
+        _wrapping_key_uid: &str,
+        _user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        Ok(vec![])
     }
 }
 
@@ -645,6 +794,20 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
             KeyFormatType::PKCS1,
         ),
     };
+    // Reconstruct rotate_interval from CKA_START_DATE / CKA_END_DATE.
+    // HsmStore::update_object is a no-op for KMIP attributes, so this is the only
+    // way to expose the scheduled interval to attribute-only callers (e.g. re-key).
+    let rotate_interval = match (meta.start_date, meta.end_date) {
+        (Some(start), Some(end)) => {
+            let days = (end - start).whole_days();
+            if days > 0 {
+                Some(days * crate::SECS_PER_DAY)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
     Attributes {
         cryptographic_algorithm: Some(algorithm),
         cryptographic_length: Some(i32::try_from(meta.key_length_in_bits).unwrap_or_default()),
@@ -652,6 +815,9 @@ fn build_sensitive_stub_attributes(meta: &KeyMetadata) -> Attributes {
         cryptographic_usage_mask: Some(usage_mask),
         key_format_type: Some(key_format_type),
         sensitive: Some(true),
+        rotate_name: meta.rotate_name.clone(),
+        rotate_generation: meta.rotate_generation,
+        rotate_interval,
         ..Attributes::default()
     }
 }
@@ -723,6 +889,15 @@ fn build_sensitive_stub_object(meta: &KeyMetadata) -> Object {
             })
         }
     }
+}
+
+/// Build an `Attributes` struct populated with keyset metadata from `KeyMetadata`.
+/// Used by `find_by_rotate_name` to return `rotate_name`/`generation`/`latest` to callers.
+fn build_keyset_attributes(meta: &KeyMetadata) -> Attributes {
+    let mut attrs = build_find_attributes(&Some(meta.clone()), &HsmObjectFilter::Any);
+    attrs.rotate_name.clone_from(&meta.rotate_name);
+    attrs.rotate_generation = meta.rotate_generation;
+    attrs
 }
 
 fn build_find_attributes(meta: &Option<KeyMetadata>, filter: &HsmObjectFilter) -> Attributes {
@@ -1236,6 +1411,19 @@ mod tests {
                 len: usize,
             ) -> InterfaceResult<Vec<u8>>;
             async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()>;
+            async fn set_key_dates(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                start_date: Option<time::Date>,
+                end_date: Option<time::Date>,
+            ) -> InterfaceResult<()>;
+            async fn set_key_label(
+                &self,
+                slot_id: usize,
+                key_id: &[u8],
+                label: &str,
+            ) -> InterfaceResult<()>;
             fn hsm_lib(&self) -> Option<&'static dyn std::any::Any> { None }
         }
     }

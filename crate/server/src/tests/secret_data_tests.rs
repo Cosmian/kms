@@ -50,7 +50,7 @@ async fn test_secret_data_create_basic() -> KResult<()> {
         None,
     )?;
 
-    let create_response = kms.create(create_request, owner, None).await?;
+    let create_response = kms.create(create_request, owner).await?;
     assert!(create_response.unique_identifier.as_str().is_some());
 
     // Test Get operation
@@ -137,7 +137,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
         None,
     )?;
 
-    let create_response = kms.create(create_request, owner, None).await?;
+    let create_response = kms.create(create_request, owner).await?;
     assert!(create_response.unique_identifier.as_str().is_some());
 
     // create the wrapping key
@@ -150,7 +150,7 @@ async fn test_secret_data_with_wrapping() -> KResult<()> {
         false,
         None,
     )?;
-    let create_wrapping_key_response = kms.create(create_wrapping_key_request, owner, None).await?;
+    let create_wrapping_key_response = kms.create(create_wrapping_key_request, owner).await?;
     assert!(
         create_wrapping_key_response
             .unique_identifier
@@ -226,7 +226,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         false,
         None,
     )?;
-    let create_wrapping_key_response = kms.create(create_wrapping_key_request, owner, None).await?;
+    let create_wrapping_key_response = kms.create(create_wrapping_key_request, owner).await?;
     assert!(
         create_wrapping_key_response
             .unique_identifier
@@ -272,7 +272,7 @@ async fn test_secret_data_import_export_with_kek() -> KResult<()> {
         object: secret_data,
     };
 
-    let import_response = kms.import(import_request, owner, None).await?;
+    let import_response = kms.import(import_request, owner).await?;
     assert_eq!(import_response.unique_identifier, secret_id);
 
     // Test Export operation with wrapping enabled

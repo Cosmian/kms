@@ -74,6 +74,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::PrivateKey),
         unique_identifier: private_key_id,
         sensitive: sensitive.then_some(true),
+        activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
 
@@ -85,6 +86,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         cryptographic_usage_mask: Some(public_key_mask),
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
+        activation_date: Some(time_normalize()?),
         ..Attributes::default()
     };
 
@@ -217,7 +219,6 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         unique_identifier: private_key_id,
         sensitive: sensitive.then_some(true),
         activation_date: Some(time_normalize()?),
-
         ..Attributes::default()
     };
 
@@ -233,7 +234,6 @@ pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         key_format_type: Some(KeyFormatType::TransparentECPublicKey),
         object_type: Some(ObjectType::PublicKey),
         activation_date: Some(time_normalize()?),
-
         ..Attributes::default()
     };
 

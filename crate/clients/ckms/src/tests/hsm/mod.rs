@@ -19,6 +19,7 @@ use crate::tests::hsm::encrypt_decrypt::{test_rsa_pkcs_oaep, test_rsa_pkcs_v15};
 
 mod encrypt_decrypt;
 mod multi_softhsm2;
+mod rekey;
 mod revoke_destroy;
 mod wrap_with_hsm_key;
 

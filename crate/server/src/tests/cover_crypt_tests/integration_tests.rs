@@ -34,7 +34,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // cosmian_logger::log_init(Some("debug"));
     cosmian_logger::log_init(None);
 
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
     let access_structure = r#"{"Security Level::<":["Protected","Confidential","Top Secret::+"],"Department":["RnD","HR","MKG","FIN"]}"#;
 
     // create Key Pair

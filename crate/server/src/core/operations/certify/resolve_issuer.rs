@@ -1,11 +1,14 @@
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attributes,
-        kmip_operations::Certify,
-        kmip_types::{LinkType, UniqueIdentifier},
+    cosmian_kmip::{
+        kmip_0::kmip_types::State,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attributes,
+            kmip_operations::Certify,
+            kmip_types::{LinkType, UniqueIdentifier},
+        },
     },
     cosmian_kms_crypto::openssl::{kmip_certificate_to_openssl, kmip_private_key_to_openssl},
     cosmian_kms_interfaces::ObjectWithMetadata,
@@ -25,9 +28,26 @@ use crate::{
     result::KResult,
 };
 
+/// Verify that the issuer private key is in the Active state before signing.
+///
+/// KMIP §4.57 mandates that a Deactivated key **SHALL NOT** be used for applying
+/// cryptographic protection (including signing). Using a non-Active issuer key
+/// to sign a certificate violates this constraint.
+fn ensure_issuer_key_active(private_key: &ObjectWithMetadata) -> KResult<()> {
+    if private_key.state() != State::Active {
+        return Err(KmsError::InvalidRequest(format!(
+            "Certify: the issuer private key '{}' is in state '{}' — only Active keys may sign \
+             certificates",
+            private_key.id(),
+            private_key.state()
+        )));
+    }
+    Ok(())
+}
+
 /// Determine the issuer of the issued certificate.
 /// The issuer can be recovered from different sources or be self-signed.
-pub(super) async fn get_issuer<'a>(
+pub(crate) async fn get_issuer<'a>(
     subject: &'a Subject,
     kms: &KMS,
     request: &Certify,
@@ -68,6 +88,8 @@ pub(super) async fn get_issuer<'a>(
         user,
     )
     .await?;
+    // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
+    ensure_issuer_key_active(&issuer_private_key)?;
     // The private key may be stored in wrapped form (e.g. when using an HSM with a KEK).
     // Unwrap it before converting to OpenSSL format for signing.
     let unwrapped_pk = kms
@@ -128,6 +150,8 @@ async fn issuer_for_self_signed_certificate<'a>(
                         .to_owned(),
                 )
             })?;
+            // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
+            ensure_issuer_key_active(&private_key)?;
             let unwrapped_pk = kms
                 .get_unwrapped(private_key.id(), private_key.object(), user)
                 .await?;
@@ -154,6 +178,8 @@ async fn issuer_for_self_signed_certificate<'a>(
                     .to_owned(),
                 )
             })?;
+            // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
+            ensure_issuer_key_active(&private_key)?;
             let unwrapped_pk = kms
                 .get_unwrapped(private_key.id(), private_key.object(), user)
                 .await?;

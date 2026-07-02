@@ -16,8 +16,11 @@ function Build-UI {
     rustup target add wasm32-unknown-unknown
 
     # Install wasm-bindgen-cli with matching version
+    # --locked pins the exact dependency versions shipped with the crate's Cargo.lock,
+    # preventing newly published transitive dependencies (e.g. brotli-decompressor v5)
+    # from breaking compilation on the current toolchain.
     Write-Host "Installing wasm-bindgen-cli 0.2.108..."
-    cargo install wasm-bindgen-cli --version 0.2.108 --force
+    cargo install wasm-bindgen-cli --version 0.2.108 --locked --force
 
     # Build WASM package
     Write-Host "Building WASM package..."

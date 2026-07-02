@@ -106,6 +106,7 @@ pub(crate) async fn message(
             Some(request.request_header.protocol_version),
         ))
         .await;
+
         // 3) Optionally enforce MaximumResponseSize for Query
         let forced_size_error =
             enforce_max_response_size_for_query(&response_operation, remaining_max_response_size)?;
@@ -338,6 +339,7 @@ fn get_operation_name(operation: &Operation) -> &'static str {
         Operation::MAC(_) => "MAC",
         Operation::Query(_) => "Query",
         Operation::Register(_) => "Register",
+        Operation::ReCertify(_) => "ReCertify",
         Operation::ReKey(_) => "ReKey",
         Operation::ReKeyKeyPair(_) => "ReKeyKeyPair",
         Operation::Revoke(_) => "Revoke",
@@ -361,8 +363,6 @@ async fn process_operation(
     trace!("Processing KMIP operation: {operation_name} with user: {user:?}");
 
     let start_time = std::time::Instant::now();
-
-    let privileged_users = kms.params.privileged_users.clone();
 
     // Process the operation and capture the result
     let result: Result<Operation, KmsError> = async {
@@ -433,19 +433,21 @@ async fn process_operation(
             Operation::CheckResponse(check(kms, kmip_request, user).await?)
         }
             Operation::Certify(kmip_request) => Operation::CertifyResponse(
-                kms.certify(*kmip_request, user, privileged_users)
+                kms.certify(*kmip_request, user)
                     .await?,
             ),
             Operation::Create(kmip_request) => Operation::CreateResponse(
-                kms.create(kmip_request, user, privileged_users)
+                kms.create(kmip_request, user)
                     .await?,
             ),
             Operation::CreateKeyPair(kmip_request) => Operation::CreateKeyPairResponse(
-                kms.create_key_pair(*kmip_request, user, privileged_users)
+                kms.create_key_pair(*kmip_request, user)
                     .await?,
             ),
             Operation::Decrypt(kmip_request) => {
-                Operation::DecryptResponse(kms.decrypt(*kmip_request, user).await?)
+                Operation::DecryptResponse(
+                    crate::core::operations::decrypt(kms, *kmip_request, user).await?,
+                )
             }
             Operation::DeleteAttribute(kmip_request) => Operation::DeleteAttributeResponse(
                 kms.delete_attribute(kmip_request, user).await?,
@@ -460,7 +462,9 @@ async fn process_operation(
                 kms.discover_versions(kmip_request, user).await,
             ),
             Operation::Encrypt(kmip_request) => {
-                Operation::EncryptResponse(kms.encrypt(*kmip_request, user).await?)
+                Operation::EncryptResponse(
+                    crate::core::operations::encrypt(kms, *kmip_request, user).await?,
+                )
             }
             Operation::Export(kmip_request) => {
                 Operation::ExportResponse(Box::new(kms.export(kmip_request, user).await?))
@@ -475,30 +479,38 @@ async fn process_operation(
                 Operation::HashResponse(kms.hash(kmip_request, user).await?)
             }
             Operation::Import(kmip_request) => Operation::ImportResponse(
-                kms.import(*kmip_request, user, privileged_users)
+                kms.import(*kmip_request, user)
                     .await?,
             ),
             Operation::Locate(kmip_request) => {
                 Operation::LocateResponse(kms.locate(*kmip_request, user).await?)
             }
             Operation::MAC(kmip_request) => {
-                Operation::MACResponse(kms.mac(kmip_request, user).await?)
+                Operation::MACResponse(
+                    crate::core::operations::mac(kms, kmip_request, user).await?,
+                )
             }
-        Operation::MACVerify(kmip_request) => Operation::MACVerifyResponse(
-            crate::core::operations::mac::mac_verify(kms, kmip_request, user).await?,
-        ),
+        Operation::MACVerify(kmip_request) => {
+            Operation::MACVerifyResponse(
+                crate::core::operations::mac_verify(kms, kmip_request, user).await?,
+            )
+        }
             Operation::Query(kmip_request) => {
                 Operation::QueryResponse(Box::new(kms.query(kmip_request).await?))
             }
             Operation::Register(kmip_request) => Operation::RegisterResponse(
-                kms.register(*kmip_request, user, privileged_users)
+                kms.register(*kmip_request, user)
+                    .await?,
+            ),
+            Operation::ReCertify(kmip_request) => Operation::ReCertifyResponse(
+                kms.recertify(*kmip_request, user)
                     .await?,
             ),
             Operation::ReKey(kmip_request) => {
-                Operation::ReKeyResponse(kms.rekey(kmip_request, user, privileged_users).await?)
+                Operation::ReKeyResponse(kms.rekey(kmip_request, user).await?)
             }
             Operation::ReKeyKeyPair(kmip_request) => Operation::ReKeyKeyPairResponse(
-                kms.rekey_keypair(*kmip_request, user, privileged_users)
+                kms.rekey_keypair(*kmip_request, user)
                     .await?,
             ),
             Operation::Revoke(kmip_request) => {
@@ -508,11 +520,15 @@ async fn process_operation(
                 kms.set_attribute(kmip_request, user).await?,
             ),
             Operation::Sign(kmip_request) => {
-                Operation::SignResponse(kms.sign(kmip_request, user).await?)
+                Operation::SignResponse(
+                    crate::core::operations::sign(kms, kmip_request, user).await?,
+                )
             }
-            Operation::SignatureVerify(kmip_request) => Operation::SignatureVerifyResponse(
-                kms.signature_verify(kmip_request, user).await?,
-            ),
+            Operation::SignatureVerify(kmip_request) => {
+                Operation::SignatureVerifyResponse(
+                    crate::core::operations::signature_verify(kms, kmip_request, user).await?,
+                )
+            }
             Operation::Validate(kmip_request) => {
                 Operation::ValidateResponse(kms.validate(kmip_request, user).await?)
             }
@@ -537,6 +553,7 @@ async fn process_operation(
             | Operation::MACResponse(_)
         | Operation::MACVerifyResponse(_)
             | Operation::QueryResponse(_)
+            | Operation::ReCertifyResponse(_)
             | Operation::RegisterResponse(_)
             | Operation::ReKeyKeyPairResponse(_)
             | Operation::ReKeyResponse(_)

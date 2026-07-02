@@ -11,7 +11,6 @@ import {
     KeyOutlined,
     LockOutlined,
     SafetyCertificateOutlined,
-    SafetyOutlined,
     SearchOutlined,
     SolutionOutlined,
     TeamOutlined,
@@ -52,8 +51,17 @@ const baseMenu: MenuItem[] = [
                     { key: "sym/keys/create", label: "Create" },
                     { key: "sym/keys/export", label: "Export" },
                     { key: "sym/keys/import", label: "Import" },
+                    { key: "sym/keys/rekey", label: "Re-Key" },
                     { key: "sym/keys/revoke", label: "Revoke" },
                     { key: "sym/keys/destroy", label: "Destroy" },
+                ],
+            },
+            {
+                key: "rotation-policy/sym",
+                label: "Rotation Policy",
+                children: [
+                    { key: "rotation-policy/sym/set", label: "Set Policy" },
+                    { key: "rotation-policy/sym/get", label: "Get Policy" },
                 ],
             },
             { key: "sym/encrypt", label: "Encrypt" },
@@ -64,7 +72,7 @@ const baseMenu: MenuItem[] = [
     {
         key: "rsa",
         label: "RSA",
-        icon: <SafetyOutlined />,
+        icon: <LockOutlined />,
         collapsedlabel: "RSA",
         children: [
             {
@@ -74,8 +82,17 @@ const baseMenu: MenuItem[] = [
                     { key: "rsa/keys/create", label: "Create" },
                     { key: "rsa/keys/export", label: "Export" },
                     { key: "rsa/keys/import", label: "Import" },
+                    { key: "rsa/keys/rekey", label: "Re-Key" },
                     { key: "rsa/keys/revoke", label: "Revoke" },
                     { key: "rsa/keys/destroy", label: "Destroy" },
+                ],
+            },
+            {
+                key: "rotation-policy/rsa",
+                label: "Rotation Policy",
+                children: [
+                    { key: "rotation-policy/rsa/set", label: "Set Policy" },
+                    { key: "rotation-policy/rsa/get", label: "Get Policy" },
                 ],
             },
             { key: "rsa/encrypt", label: "Encrypt" },
@@ -97,8 +114,17 @@ const baseMenu: MenuItem[] = [
                     { key: "ec/keys/create", label: "Create" },
                     { key: "ec/keys/export", label: "Export" },
                     { key: "ec/keys/import", label: "Import" },
+                    { key: "ec/keys/rekey", label: "Re-Key" },
                     { key: "ec/keys/revoke", label: "Revoke" },
                     { key: "ec/keys/destroy", label: "Destroy" },
+                ],
+            },
+            {
+                key: "rotation-policy/ec",
+                label: "Rotation Policy",
+                children: [
+                    { key: "rotation-policy/ec/set", label: "Set Policy" },
+                    { key: "rotation-policy/ec/get", label: "Get Policy" },
                 ],
             },
             { key: "ec/encrypt", label: "Encrypt" },
@@ -121,8 +147,17 @@ const baseMenu: MenuItem[] = [
                     { key: "pqc/keys/create", label: "Create" },
                     { key: "pqc/keys/export", label: "Export" },
                     { key: "pqc/keys/import", label: "Import" },
+                    { key: "pqc/keys/rekey", label: "Re-Key" },
                     { key: "pqc/keys/revoke", label: "Revoke" },
                     { key: "pqc/keys/destroy", label: "Destroy" },
+                ],
+            },
+            {
+                key: "rotation-policy/pqc",
+                label: "Rotation Policy",
+                children: [
+                    { key: "rotation-policy/pqc/set", label: "Set Policy" },
+                    { key: "rotation-policy/pqc/get", label: "Get Policy" },
                 ],
             },
             { key: "pqc/encapsulate", label: "Encapsulate" },
@@ -220,6 +255,7 @@ const baseMenu: MenuItem[] = [
                 label: "Certs",
                 children: [
                     { key: "certificates/certs/certify", label: "Certify" },
+                    { key: "certificates/certs/recertify", label: "ReCertify" },
                     { key: "certificates/certs/export", label: "Export" },
                     { key: "certificates/certs/import", label: "Import" },
                     { key: "certificates/certs/revoke", label: "Revoke" },
@@ -324,9 +360,13 @@ export function getMenuItems(options?: { enableCovercrypt?: boolean; pqcLabel?: 
     const pqcLabel = options?.pqcLabel ?? "PQC";
     const isFips = options?.isFips ?? false;
 
-    let menu = baseMenu.map((item) => (item.key === "pqc" ? { ...item, label: pqcLabel } : item));
+    let menu = baseMenu.map((item) => {
+        if (item.key === "pqc") return { ...item, label: pqcLabel };
+        return item;
+    });
 
     // Hide PQC, MAC, FPE, and Tokenize/Anonymize in FIPS mode (not approved / not available in FIPS build)
+    // Rotation Policy for PQC is removed automatically since it lives inside the PQC item.
     if (isFips) {
         menu = menu.filter((item) => item.key !== "pqc" && item.key !== "mac" && item.key !== "fpe" && item.key !== "tokenize");
     }

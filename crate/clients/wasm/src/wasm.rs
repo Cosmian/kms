@@ -2,8 +2,10 @@ use std::{cell::RefCell, str::FromStr};
 
 use base64::{Engine as _, engine::general_purpose};
 use cosmian_kms_client_utils::{
-    attributes_utils::{build_selected_attribute, parse_selected_attributes_flatten},
-    certificate_utils::{Algorithm, build_certify_request},
+    attributes_utils::{
+        LOCATE_ENRICH_ATTRIBUTE_KEYS, build_selected_attribute, parse_selected_attributes_flatten,
+    },
+    certificate_utils::{Algorithm, build_certify_request, build_re_certify_request},
     configurable_kem_utils::{KemAlgorithm, build_create_configurable_kem_keypair_request},
     cover_crypt_utils::{
         build_create_covercrypt_master_keypair_request, build_create_covercrypt_usk_request,
@@ -29,7 +31,7 @@ use cosmian_kms_client_utils::{
         kmip_2_1::{
             KmipOperation,
             extra::tagging::VENDOR_ID_COSMIAN,
-            kmip_attributes::Attributes,
+            kmip_attributes::{Attribute, Attributes},
             kmip_data_structures::{DerivationParameters, KeyMaterial, KeyValue},
             kmip_objects::{
                 Certificate as KmipCertificate, Object, ObjectType,
@@ -41,6 +43,7 @@ use cosmian_kms_client_utils::{
                 DeriveKeyResponse, Destroy, DestroyResponse, EncryptResponse, ExportResponse,
                 GetAttributes, GetAttributesResponse, Hash, HashResponse, ImportResponse,
                 LocateResponse, ModifyAttribute, ModifyAttributeResponse, Query, QueryResponse,
+                ReCertifyResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse,
                 RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse,
                 SignatureVerify, SignatureVerifyResponse, Validate, ValidateResponse,
             },
@@ -186,78 +189,97 @@ fn parse_key_format_type_flexible(s: &str) -> Result<KeyFormatType, JsValue> {
 }
 
 // Internal helpers to build algorithm option lists that reflect client_utils
-fn list_symmetric_algorithms() -> Vec<AlgoOption> {
-    // Provide UI labels independent of Display, with values matching `SymmetricAlgorithm::from_str`
-    #[allow(unused_mut)]
-    let mut algs: Vec<(SymmetricAlgorithm, &'static str)> = vec![
-        (SymmetricAlgorithm::Aes, "AES"),
-        (SymmetricAlgorithm::Sha3, "SHA3"),
-        (SymmetricAlgorithm::Shake, "SHAKE"),
-    ];
-    #[cfg(feature = "non-fips")]
-    {
-        algs.push((SymmetricAlgorithm::Chacha20, "ChaCha20"));
-    }
 
-    algs.into_iter()
-        .map(|(a, label)| {
-            // Values use PascalCase variant names expected by `from_str`
-            let value = match a {
-                SymmetricAlgorithm::Aes => "Aes",
-                #[cfg(feature = "non-fips")]
-                SymmetricAlgorithm::Chacha20 => "Chacha20",
-                SymmetricAlgorithm::Sha3 => "Sha3",
-                SymmetricAlgorithm::Shake => "Shake",
-            };
-            AlgoOption {
-                value: value.to_owned(),
-                label: label.to_owned(),
-            }
+fn list_symmetric_algorithms() -> Vec<AlgoOption> {
+    let mut algs = fips_symmetric_alg_options();
+    algs.extend(non_fips_symmetric_alg_options());
+    algs
+}
+
+/// FIPS-approved symmetric algorithms (always available).
+fn fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    [("Aes", "AES"), ("Sha3", "SHA3"), ("Shake", "SHAKE")]
+        .into_iter()
+        .map(|(value, label)| AlgoOption {
+            value: value.to_owned(),
+            label: label.to_owned(),
         })
         .collect()
 }
 
-fn list_ec_algorithms() -> Vec<AlgoOption> {
-    // Build from client_utils' Curve enum to ensure feature gating consistency
-    #[allow(unused_mut)]
-    let mut curves: Vec<Curve> = vec![Curve::NistP256, Curve::NistP384, Curve::NistP521];
-    #[cfg(feature = "non-fips")]
-    {
-        curves.insert(0, Curve::Secp224k1);
-        curves.push(Curve::Secp256k1);
-        curves.push(Curve::X25519);
-        curves.push(Curve::Ed25519);
-        curves.push(Curve::X448);
-        curves.push(Curve::Ed448);
-    }
+/// Extra symmetric algorithms only available in non-FIPS builds.
+#[cfg(feature = "non-fips")]
+fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    vec![AlgoOption {
+        value: "Chacha20".to_owned(),
+        label: "ChaCha20".to_owned(),
+    }]
+}
 
-    curves
+#[cfg(not(feature = "non-fips"))]
+const fn non_fips_symmetric_alg_options() -> Vec<AlgoOption> {
+    vec![]
+}
+
+fn list_ec_algorithms() -> Vec<AlgoOption> {
+    // In non-FIPS mode Secp224k1 is prepended before the NIST curves, so
+    // the final order is: [Secp224k1?], P-256, P-384, P-521, [non-FIPS curves…]
+    non_fips_ec_alg_options_prepend()
         .into_iter()
-        .map(|c| {
-            // Value must be kebab-case identifier that `Curve::from_str` accepts
-            let (value, label): (&'static str, &'static str) = match c {
-                Curve::NistP256 => ("nist-p256", "NIST P-256"),
-                Curve::NistP384 => ("nist-p384", "NIST P-384"),
-                Curve::NistP521 => ("nist-p521", "NIST P-521"),
-                #[cfg(feature = "non-fips")]
-                Curve::X25519 => ("x25519", "X25519"),
-                #[cfg(feature = "non-fips")]
-                Curve::Ed25519 => ("ed25519", "Ed25519"),
-                #[cfg(feature = "non-fips")]
-                Curve::X448 => ("x448", "X448"),
-                #[cfg(feature = "non-fips")]
-                Curve::Ed448 => ("ed448", "Ed448"),
-                #[cfg(feature = "non-fips")]
-                Curve::Secp256k1 => ("secp256k1", "SECP256k1"),
-                #[cfg(feature = "non-fips")]
-                Curve::Secp224k1 => ("secp224k1", "SECP224k1"),
-            };
-            AlgoOption {
-                value: value.to_owned(),
-                label: label.to_owned(),
-            }
-        })
+        .chain(fips_ec_alg_options())
+        .chain(non_fips_ec_alg_options_append())
         .collect()
+}
+
+/// FIPS-approved EC curves (always available).
+fn fips_ec_alg_options() -> impl Iterator<Item = AlgoOption> {
+    [
+        ("nist-p256", "NIST P-256"),
+        ("nist-p384", "NIST P-384"),
+        ("nist-p521", "NIST P-521"),
+    ]
+    .into_iter()
+    .map(|(value, label)| AlgoOption {
+        value: value.to_owned(),
+        label: label.to_owned(),
+    })
+}
+
+/// Non-FIPS EC curves that appear before the NIST curves in the list.
+#[cfg(feature = "non-fips")]
+fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
+    vec![AlgoOption {
+        value: "secp224k1".to_owned(),
+        label: "SECP224k1".to_owned(),
+    }]
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn non_fips_ec_alg_options_prepend() -> Vec<AlgoOption> {
+    vec![]
+}
+
+/// Non-FIPS EC curves appended after the NIST curves.
+#[cfg(feature = "non-fips")]
+fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
+    [
+        ("secp256k1", "SECP256k1"),
+        ("x25519", "X25519"),
+        ("ed25519", "Ed25519"),
+        ("x448", "X448"),
+        ("ed448", "Ed448"),
+    ]
+    .into_iter()
+    .map(|(value, label)| AlgoOption {
+        value: value.to_owned(),
+        label: label.to_owned(),
+    })
+    .collect()
+}
+
+#[cfg(not(feature = "non-fips"))]
+const fn non_fips_ec_alg_options_append() -> Vec<AlgoOption> {
+    vec![]
 }
 
 #[wasm_bindgen]
@@ -1712,12 +1734,21 @@ wasm_response_parser!(parse_import_ttlv_response, ImportResponse);
 
 // Revoke request
 #[wasm_bindgen]
+#[allow(clippy::needless_pass_by_value)] // required by wasm_bindgen: Option<String> from JS
 pub fn revoke_ttlv_request(
     unique_identifier: &str,
     revocation_reason_message: String,
+    revocation_reason_code: Option<String>,
 ) -> Result<JsValue, JsValue> {
+    let reason_code =
+        revocation_reason_code
+            .as_deref()
+            .map_or(RevocationReasonCode::Unspecified, |s| {
+                cosmian_kms_client_utils::revoke_utils::try_parse_revocation_reason_code(s)
+                    .unwrap_or(RevocationReasonCode::Unspecified)
+            });
     let revocation_reason = RevocationReason {
-        revocation_reason_code: RevocationReasonCode::Unspecified,
+        revocation_reason_code: reason_code,
         revocation_message: Some(revocation_reason_message),
     };
     let request = build_revoke_key_request(unique_identifier, revocation_reason)
@@ -2145,7 +2176,50 @@ pub fn certify_ttlv_request(
 
 wasm_response_parser!(parse_certify_ttlv_response, CertifyResponse);
 
+/// Build a KMIP `ReCertify` TTLV request.
+///
+/// Unlike `certify_ttlv_request` with an existing certificate UID (which
+/// replaces in-place), this sends the dedicated KMIP `ReCertify` operation
+/// that creates a **new certificate** with a fresh UID and links the old and
+/// new certificates via `ReplacedObjectLink` / `ReplacementObjectLink`.
+#[allow(clippy::needless_pass_by_value)]
+#[wasm_bindgen]
+pub fn re_certify_ttlv_request(
+    certificate_id_to_re_certify: String,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
+    number_of_days: usize,
+    tags: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    let vendor_id = get_vendor_id();
+    let vendor_id = vendor_id.as_str();
+    let issuer_private_key_id = none_if_empty(issuer_private_key_id);
+    let issuer_certificate_id = none_if_empty(issuer_certificate_id);
+    let request = build_re_certify_request(
+        vendor_id,
+        &certificate_id_to_re_certify,
+        &issuer_private_key_id,
+        &issuer_certificate_id,
+        number_of_days,
+        &tags,
+    )
+    .map_err(|e| JsValue::from(e.to_string()))?;
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_re_certify_ttlv_response, ReCertifyResponse);
+
 // Attributes request
+
+/// Returns the canonical list of attribute key strings used to enrich KMIP Locate results.
+/// Sourced from [`cosmian_kms_client_utils::attributes_utils::LOCATE_ENRICH_ATTRIBUTE_KEYS`] —
+/// single source of truth defined next to `parse_selected_attributes_flatten`.
+#[wasm_bindgen]
+pub fn get_locate_enrich_attribute_keys() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(LOCATE_ENRICH_ATTRIBUTE_KEYS)
+        .map_err(|e| JsValue::from(e.to_string()))
+}
+
 #[wasm_bindgen]
 pub fn get_attributes_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
     let unique_identifier = UniqueIdentifier::TextString(unique_identifier);
@@ -2250,8 +2324,18 @@ pub fn delete_attribute_ttlv_request(
         | "pkcs12_certificate_id"
         | "pkcs12_password_certificate"
         | "parent_id"
-        | "child_id" => {
+        | "child_id"
+        | "rotate_name" => {
             let attribute = build_selected_attribute(attribute_name, String::new())
+                .map_err(|e| JsValue::from(e.to_string()))?;
+            DeleteAttribute {
+                unique_identifier: Some(unique_identifier),
+                current_attribute: Some(attribute),
+                attribute_references: None,
+            }
+        }
+        "rotate_interval" | "rotate_offset" => {
+            let attribute = build_selected_attribute(attribute_name, "0".to_owned())
                 .map_err(|e| JsValue::from(e.to_string()))?;
             DeleteAttribute {
                 unique_identifier: Some(unique_identifier),
@@ -2450,3 +2534,109 @@ pub fn derive_key_ttlv_request(
 }
 
 wasm_response_parser!(parse_derive_key_ttlv_response, DeriveKeyResponse);
+
+// ── ReKey (symmetric key rotation) ───────────────────────────────────────────
+
+/// Build a KMIP `ReKey` TTLV request for a symmetric key.
+#[wasm_bindgen]
+pub fn rekey_ttlv_request(unique_identifier: String) -> Result<JsValue, JsValue> {
+    let request = ReKey {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        ..ReKey::default()
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_rekey_ttlv_response, ReKeyResponse);
+
+// ── ReKey Key Pair (asymmetric key rotation) ─────────────────────────────────
+
+/// Build a KMIP `ReKeyKeyPair` TTLV request for an asymmetric key pair.
+#[wasm_bindgen]
+pub fn rekey_keypair_ttlv_request(
+    private_key_unique_identifier: String,
+) -> Result<JsValue, JsValue> {
+    let request = ReKeyKeyPair {
+        private_key_unique_identifier: Some(UniqueIdentifier::TextString(
+            private_key_unique_identifier,
+        )),
+        ..ReKeyKeyPair::default()
+    };
+    to_wasm_ttlv(&request)
+}
+
+wasm_response_parser!(parse_rekey_keypair_ttlv_response, ReKeyKeyPairResponse);
+
+// ── Rotation policy helpers ──────────────────────────────────────────────────
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateInterval` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_interval_ttlv_request(
+    unique_identifier: String,
+    interval_secs: i64,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateInterval(interval_secs),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateOffset` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_offset_ttlv_request(
+    unique_identifier: String,
+    offset_secs: i64,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateOffset(offset_secs),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Build a KMIP `SetAttribute` TTLV request to set `RotateName` on a key.
+#[wasm_bindgen]
+pub fn set_rotate_name_ttlv_request(
+    unique_identifier: String,
+    name: String,
+) -> Result<JsValue, JsValue> {
+    let request = SetAttribute {
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier)),
+        new_attribute: Attribute::RotateName(name),
+    };
+    to_wasm_ttlv(&request)
+}
+
+/// Rotation-policy fields extracted from a `GetAttributes` response.
+#[derive(Serialize)]
+struct RotationPolicyDto {
+    interval: i64,
+    offset: i64,
+    name: Option<String>,
+    generation: i32,
+    date: Option<String>,
+}
+
+/// Parse a `GetAttributes` response and extract only the rotation-policy fields.
+///
+/// Returns a JS object with keys: `interval`, `offset`,
+/// `name`, `generation`, `date` (string or null).
+#[wasm_bindgen]
+pub fn parse_rotation_policy_response(response: &str) -> Result<JsValue, JsValue> {
+    let ttlv: TTLV = serde_json::from_str(response).map_err(|e| JsValue::from(e.to_string()))?;
+    let GetAttributesResponse {
+        unique_identifier: _,
+        attributes,
+    } = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
+
+    let policy = RotationPolicyDto {
+        interval: attributes.rotate_interval.unwrap_or(0),
+        offset: attributes.rotate_offset.unwrap_or(0),
+        name: attributes.rotate_name.clone(),
+        generation: attributes.rotate_generation.unwrap_or(0),
+        date: attributes.rotate_date.map(|d| d.to_string()),
+    };
+
+    Ok(serde_wasm_bindgen::to_value(&policy)?)
+}

@@ -35,7 +35,7 @@ use crate::{result::KResult, tests::test_utils};
 #[tokio::test]
 async fn test_rfc7515_a1_hs256_known_answer() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     // RFC 7515 §A.1 — 512-bit key (base64url):
     //   AyM1SysPpbyDfgZld3umj1qzKObwVMkoqQ-EstJQLr_T-1qS0gZH75aKtMN3Yj0iPS4hcgUuTwjAzZr1Z9CAow
@@ -100,7 +100,7 @@ async fn test_rfc7515_a1_hs256_known_answer() -> KResult<()> {
 #[tokio::test]
 async fn test_rfc7515_a2_rs256_known_key_round_trip() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let kp_req =
         create_rsa_key_pair_request(VENDOR_ID_COSMIAN, None, EMPTY_TAGS, 2048, false, None)?;
@@ -123,7 +123,7 @@ async fn test_rfc7515_a2_rs256_known_key_round_trip() -> KResult<()> {
 #[tokio::test]
 async fn test_rfc7515_a3_es256_known_key_round_trip() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let kp_req = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
@@ -150,7 +150,7 @@ async fn test_rfc7515_a3_es256_known_key_round_trip() -> KResult<()> {
 #[tokio::test]
 async fn test_rfc7515_a4_es512_known_key_round_trip() -> KResult<()> {
     log_init(None);
-    let app = test_utils::test_app(None, None).await;
+    let app = test_utils::test_app(None).await;
 
     let kp_req = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,

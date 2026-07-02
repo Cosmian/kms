@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use actix_web::{
     HttpRequest, get, post,
-    web::{self, Data, Json, Path},
+    web::{Data, Json, Path},
 };
 use cosmian_kms_access::access::{
     Access, AccessRightsObtainedResponse, CreatePermissionResponse, ObjectOwnedResponse,
@@ -98,7 +98,6 @@ pub(crate) async fn grant_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMS>>,
-    privileged_users: web::Data<Option<Vec<String>>>,
 ) -> KResult<Json<SuccessResponse>> {
     let span = tracing::span!(tracing::Level::ERROR, "grant_access");
     let _enter = span.enter();
@@ -111,8 +110,7 @@ pub(crate) async fn grant_access(
         "POST /access/grant"
     );
 
-    kms.grant_access(&access, &user, privileged_users.as_ref().clone())
-        .await?;
+    kms.grant_access(&access, &user).await?;
     debug!("Access granted on {}", access.user_id);
 
     Ok(Json(SuccessResponse {
@@ -126,7 +124,6 @@ pub(crate) async fn revoke_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMS>>,
-    privileged_users: Data<Option<Vec<String>>>,
 ) -> KResult<Json<SuccessResponse>> {
     let span = tracing::span!(tracing::Level::ERROR, "revoke_access");
     let _enter = span.enter();
@@ -139,8 +136,7 @@ pub(crate) async fn revoke_access(
         "POST /access/revoke"
     );
 
-    kms.revoke_access(&access, &user, privileged_users.as_ref().clone())
-        .await?;
+    kms.revoke_access(&access, &user).await?;
     debug!("Access revoke for {}", access.user_id);
 
     Ok(Json(SuccessResponse {
@@ -153,14 +149,13 @@ pub(crate) async fn revoke_access(
 pub(crate) async fn get_create_access(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
-    privileged_users: web::Data<Option<Vec<String>>>,
 ) -> KResult<Json<CreatePermissionResponse>> {
     let span = tracing::span!(tracing::Level::INFO, "get_create_access");
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
 
-    let has_create_permission = match privileged_users.as_ref() {
+    let has_create_permission = match kms.params.privileged_users.as_ref() {
         Some(users) if users.contains(&user) => true,
         Some(_) => {
             user_has_permission(
@@ -183,15 +178,15 @@ pub(crate) async fn get_create_access(
 pub(crate) async fn get_privileged_access(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
-    privileged_users: web::Data<Option<Vec<String>>>,
 ) -> KResult<Json<PrivilegedAccessResponse>> {
     let span = tracing::span!(tracing::Level::INFO, "get_create_access");
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
 
-    let has_privileged_access = privileged_users
-        .as_ref()
+    let has_privileged_access = kms
+        .params
+        .privileged_users
         .as_ref()
         .is_some_and(|users| users.contains(&user));
     Ok(Json(PrivilegedAccessResponse {

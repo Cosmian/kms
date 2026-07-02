@@ -237,7 +237,6 @@ impl KMS {
         &self,
         create_request: &Create,
         _owner: &str,
-        _privileged_users: Option<Vec<String>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key (FIPS build)");
         let attributes = &create_request.attributes;
@@ -351,7 +350,6 @@ impl KMS {
         &self,
         create_request: &Create,
         owner: &str,
-        privileged_users: Option<Vec<String>>,
     ) -> KResult<(Option<String>, Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -371,7 +369,6 @@ impl KMS {
                     create_request,
                     owner,
                     create_request.attributes.sensitive.unwrap_or(false),
-                    privileged_users,
                 )
                 .await?;
                 // Update the attributes with state Active
@@ -517,5 +514,20 @@ impl KMS {
     ) {
         let mut oracles = self.crypto_oracles.write().await;
         oracles.insert(prefix.to_owned(), oracle);
+    }
+
+    /// Record metrics for a cascading (linked-object) operation.
+    ///
+    /// Used by `destroy` and `revoke` when they cascade to related keys.
+    pub(crate) fn record_cascading_metrics(
+        &self,
+        op_name: &str,
+        op_start: std::time::Instant,
+        user: &str,
+    ) {
+        if let Some(metrics) = &self.metrics {
+            metrics.record_kmip_operation(op_name, user);
+            metrics.record_kmip_operation_duration(op_name, op_start.elapsed().as_secs_f64());
+        }
     }
 }

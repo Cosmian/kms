@@ -71,6 +71,8 @@ impl Default for ClapConfig {
             aws_xks_config: AwsXksConfig::default(),
             kmip_policy: KmipPolicyConfig::default(),
             azure_ekm_config: AzureEkmConfig::default(),
+            auto_rotation_check_interval_secs: 0,
+            keyset_warn_depth: 5,
             secret_backends: SecretBackendConfig::default(),
         }
     }
@@ -215,6 +217,19 @@ pub struct ClapConfig {
     #[command(flatten)]
     #[serde(rename = "kmip")]
     pub kmip_policy: KmipPolicyConfig,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// Set to 0 (default) to disable the auto-rotation background task.
+    /// When enabled, must be at least 60 seconds to avoid excessive database churn.
+    #[clap(long, default_value = "0", verbatim_doc_comment)]
+    pub auto_rotation_check_interval_secs: u64,
+
+    /// Depth at which a successful keyset chain decryption triggers a server-side warning.
+    /// Keyset chain traversal is unbounded (stopped only by cycle detection);
+    /// this threshold emits a warning log so operators can flag stale ciphertexts.
+    /// Default: 5.
+    #[clap(long, default_value = "5", verbatim_doc_comment)]
+    pub keyset_warn_depth: u32,
 
     /// Authentication credentials for secret URI resolution backends.
     ///
@@ -681,6 +696,11 @@ impl fmt::Debug for ClapConfig {
             x.field("aws_xks_enable", &self.aws_xks_config.aws_xks_enable)
         };
         let x = x.field("kmip", &self.kmip_policy);
+        let x = x.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
+        let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
 
         x.finish()
     }

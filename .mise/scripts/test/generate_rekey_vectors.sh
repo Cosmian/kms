@@ -1302,7 +1302,7 @@ cat >"$DIR/manifest.toml" <<'EOF'
 name = "ReKeyKeyPair With Offset"
 description = """
 Verifies that ReKeyKeyPair with an Offset parameter correctly \
-applies date arithmetic on the replacement key pair.
+applies date computation on the replacement key pair.
 """
 
 [[steps]]

@@ -40,7 +40,39 @@ pub(crate) const MAX_TRACKED_CARDINALITY: usize = 10_000;
 /// Sentinel label value emitted when the cardinality cap is reached.
 const OVERFLOW_USER_LABEL: &str = "__overflow__";
 
-/// OpenTelemetry metrics for KMS operations
+/// One-liner builder for an OpenTelemetry metric instrument.
+/// Usage: `metric!(meter, u64_counter, "name", "description", "unit")`
+macro_rules! metric {
+    ($meter:expr,u64_counter, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .u64_counter($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+    ($meter:expr,f64_histogram, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .f64_histogram($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+    ($meter:expr,i64_up_down_counter, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .i64_up_down_counter($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+    ($meter:expr,i64_gauge, $name:literal, $desc:literal, $unit:literal) => {
+        $meter
+            .i64_gauge($name)
+            .with_description($desc)
+            .with_unit($unit)
+            .build()
+    };
+}
+
 pub struct OtelMetrics {
     /// The meter used to create instruments
     meter: Meter,
@@ -104,6 +136,16 @@ pub struct OtelMetrics {
 
     /// HSM operation counts (if HSM is enabled)
     pub hsm_operations_total: Counter<u64>,
+
+    /// Count of automatic key rotations triggered by the background scheduler.
+    ///
+    /// Labelled with `uid`, `algorithm`, and `outcome` (`"success"` / `"failure"`).
+    pub key_auto_rotation_total: Counter<u64>,
+
+    /// Count of rotation renewal warnings emitted by the background scheduler.
+    ///
+    /// Labelled with `uid`, `algorithm`, and `threshold` (1, 7, or 30 days).
+    pub key_rotation_warning_total: Counter<u64>,
 }
 
 impl OtelMetrics {
@@ -120,156 +162,162 @@ impl OtelMetrics {
     /// # Panics
     ///
     /// May panic if system time is before `UNIX_EPOCH`
-    #[allow(
-        clippy::too_many_lines,
-        clippy::cast_precision_loss,
-        clippy::as_conversions
-    )]
+    #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
     pub fn new(meter_provider: SdkMeterProvider) -> KResult<Self> {
-        // Get a meter from the provider - use meter() method from MeterProvider trait
         let meter = MeterProvider::meter(&meter_provider, "cosmian_kms");
 
-        // KMIP operations total
-        let kmip_operations_total = meter
-            .u64_counter("kms.kmip.operations.total")
-            .with_description("Total number of KMIP operations executed")
-            .with_unit("{operation}")
-            .build();
+        let kmip_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.kmip.operations.total",
+            "Total number of KMIP operations executed",
+            "{operation}"
+        );
+        let kmip_operations_per_user = metric!(
+            meter,
+            u64_counter,
+            "kms.kmip.operations.per_user.total",
+            "Total number of KMIP operations executed per user",
+            "{operation}"
+        );
+        let kmip_operation_duration = metric!(
+            meter,
+            f64_histogram,
+            "kms.kmip.operation.duration",
+            "Duration of KMIP operations in seconds",
+            "s"
+        );
+        let permissions_granted_per_user = metric!(
+            meter,
+            u64_counter,
+            "kms.permissions.granted.per_user.total",
+            "Total number of permissions granted per user",
+            "{permission}"
+        );
+        let permissions_granted_total = metric!(
+            meter,
+            u64_counter,
+            "kms.permissions.granted.total",
+            "Total number of permissions granted",
+            "{permission}"
+        );
+        let active_users = metric!(
+            meter,
+            i64_up_down_counter,
+            "kms.active.users",
+            "Number of unique active users",
+            "{user}"
+        );
+        let database_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.database.operations.total",
+            "Total number of database operations",
+            "{operation}"
+        );
+        let database_operation_duration = metric!(
+            meter,
+            f64_histogram,
+            "kms.database.operation.duration",
+            "Duration of database operations in seconds",
+            "s"
+        );
+        let http_requests_total = metric!(
+            meter,
+            u64_counter,
+            "kms.http.requests.total",
+            "Total number of HTTP requests",
+            "{request}"
+        );
+        let http_request_duration = metric!(
+            meter,
+            f64_histogram,
+            "kms.http.request.duration",
+            "Duration of HTTP requests in seconds",
+            "s"
+        );
+        let server_uptime_seconds = metric!(
+            meter,
+            u64_counter,
+            "kms.server.uptime",
+            "Server uptime in seconds",
+            "s"
+        );
+        let server_start_time = metric!(
+            meter,
+            i64_up_down_counter,
+            "kms.server.start_time",
+            "Server start time as Unix timestamp",
+            "s"
+        );
+        let errors_total = metric!(
+            meter,
+            u64_counter,
+            "kms.errors.total",
+            "Total number of errors by type",
+            "{error}"
+        );
+        let active_connections = metric!(
+            meter,
+            i64_up_down_counter,
+            "kms.active.connections",
+            "Current number of active connections",
+            "{connection}"
+        );
+        let kms_objects_total = metric!(
+            meter,
+            i64_gauge,
+            "kms.objects.total",
+            "Total number of objects in the KMS",
+            "{object}"
+        );
+        let active_keys_count = metric!(
+            meter,
+            i64_gauge,
+            "kms.keys.active.count",
+            "Number of non-destroyed key objects across all backends",
+            "{key}"
+        );
+        let cache_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.cache.operations.total",
+            "Total number of cache operations",
+            "{operation}"
+        );
+        let hsm_operations_total = metric!(
+            meter,
+            u64_counter,
+            "kms.hsm.operations.total",
+            "Total number of HSM operations",
+            "{operation}"
+        );
+        let key_auto_rotation_total = metric!(
+            meter,
+            u64_counter,
+            "kms.key.auto_rotation",
+            "Total number of automatic key rotations triggered by the background scheduler",
+            "{rotation}"
+        );
+        let key_rotation_warning_total = metric!(
+            meter,
+            u64_counter,
+            "kms.key.rotation_warning",
+            "Total number of rotation renewal warnings emitted by the background scheduler",
+            "{warning}"
+        );
 
-        // KMIP operations per user
-        let kmip_operations_per_user = meter
-            .u64_counter("kms.kmip.operations.per_user.total")
-            .with_description("Total number of KMIP operations executed per user")
-            .with_unit("{operation}")
-            .build();
-
-        // KMIP operation duration
-        let kmip_operation_duration = meter
-            .f64_histogram("kms.kmip.operation.duration")
-            .with_description("Duration of KMIP operations in seconds")
-            .with_unit("s")
-            .build();
-
-        // Permissions granted per user
-        let permissions_granted_per_user = meter
-            .u64_counter("kms.permissions.granted.per_user.total")
-            .with_description("Total number of permissions granted per user")
-            .with_unit("{permission}")
-            .build();
-
-        // Permissions granted total
-        let permissions_granted_total = meter
-            .u64_counter("kms.permissions.granted.total")
-            .with_description("Total number of permissions granted")
-            .with_unit("{permission}")
-            .build();
-
-        // Active users
-        let active_users = meter
-            .i64_up_down_counter("kms.active.users")
-            .with_description("Number of unique active users")
-            .with_unit("{user}")
-            .build();
-
-        // Database operations
-        let database_operations_total = meter
-            .u64_counter("kms.database.operations.total")
-            .with_description("Total number of database operations")
-            .with_unit("{operation}")
-            .build();
-
-        // Database operation duration
-        let database_operation_duration = meter
-            .f64_histogram("kms.database.operation.duration")
-            .with_description("Duration of database operations in seconds")
-            .with_unit("s")
-            .build();
-
-        // HTTP requests
-        let http_requests_total = meter
-            .u64_counter("kms.http.requests.total")
-            .with_description("Total number of HTTP requests")
-            .with_unit("{request}")
-            .build();
-
-        // HTTP request duration
-        let http_request_duration = meter
-            .f64_histogram("kms.http.request.duration")
-            .with_description("Duration of HTTP requests in seconds")
-            .with_unit("s")
-            .build();
-
-        // Server uptime
-        let server_uptime_seconds = meter
-            .u64_counter("kms.server.uptime")
-            .with_description("Server uptime in seconds")
-            .with_unit("s")
-            .build();
-
-        // Server start time
-        let server_start_time = meter
-            .i64_up_down_counter("kms.server.start_time")
-            .with_description("Server start time as Unix timestamp")
-            .with_unit("s")
-            .build();
-
-        // Set initial server start time
+        // Seed server start time on startup
         let start_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| KmsError::ServerError(format!("System time error: {e}")))?
             .as_secs();
-        // Use try_into to safely convert u64 to i64
         let start_time_i64 = i64::try_from(start_time)
             .map_err(|e| KmsError::ServerError(format!("Start time conversion error: {e}")))?;
         server_start_time.add(start_time_i64, &[]);
 
-        // Errors total
-        let errors_total = meter
-            .u64_counter("kms.errors.total")
-            .with_description("Total number of errors by type")
-            .with_unit("{error}")
-            .build();
-
-        // Active connections
-        let active_connections = meter
-            .i64_up_down_counter("kms.active.connections")
-            .with_description("Current number of active connections")
-            .with_unit("{connection}")
-            .build();
-
-        // KMS objects — gauge records the current absolute count directly
-        let kms_objects_total = meter
-            .i64_gauge("kms.objects.total")
-            .with_description("Total number of objects in the KMS")
-            .with_unit("{object}")
-            .build();
-
-        // Active keys count — gauge records the current absolute count directly
-        let active_keys_count = meter
-            .i64_gauge("kms.keys.active.count")
-            .with_description(
-                "Number of non-destroyed key objects (SymmetricKey, PrivateKey, PublicKey, \
-                 SplitKey) across all backends. Counts keys in all non-terminal states: \
-                 PreActive, Active, Deactivated, Compromised.",
-            )
-            .with_unit("{key}")
-            .build();
         // Seed the time series so it is visible in the backend from server start.
         active_keys_count.record(0, &[]);
-
-        // Cache operations
-        let cache_operations_total = meter
-            .u64_counter("kms.cache.operations.total")
-            .with_description("Total number of cache operations")
-            .with_unit("{operation}")
-            .build();
-
-        // HSM operations
-        let hsm_operations_total = meter
-            .u64_counter("kms.hsm.operations.total")
-            .with_description("Total number of HSM operations")
-            .with_unit("{operation}")
-            .build();
 
         Ok(Self {
             meter,
@@ -293,6 +341,8 @@ impl OtelMetrics {
             active_keys_count,
             cache_operations_total,
             hsm_operations_total,
+            key_auto_rotation_total,
+            key_rotation_warning_total,
         })
     }
 
@@ -499,6 +549,38 @@ impl OtelMetrics {
             &[
                 KeyValue::new("operation", operation),
                 KeyValue::new("result", result),
+            ],
+        );
+    }
+
+    /// Record an automatic key rotation attempt.
+    ///
+    /// - `uid` — the key being rotated (high cardinality; use with care)
+    /// - `algorithm` — cryptographic algorithm label (e.g. `"Aes"`, `"Rsa"`)
+    /// - `outcome` — `"success"` or `"failure"`
+    pub fn record_key_auto_rotation(&self, uid: &str, algorithm: &str, outcome: &str) {
+        self.key_auto_rotation_total.add(
+            1,
+            &[
+                KeyValue::new("uid", uid.to_owned()),
+                KeyValue::new("algorithm", algorithm.to_owned()),
+                KeyValue::new("outcome", outcome.to_owned()),
+            ],
+        );
+    }
+
+    /// Record a rotation renewal warning.
+    ///
+    /// - `uid` — the key approaching its rotation deadline
+    /// - `algorithm` — cryptographic algorithm label (e.g. `"Aes"`, `"Rsa"`)
+    /// - `threshold` — the warning threshold that was matched (1, 7, or 30 days)
+    pub fn record_rotation_warning(&self, uid: &str, algorithm: &str, threshold: i64) {
+        self.key_rotation_warning_total.add(
+            1,
+            &[
+                KeyValue::new("uid", uid.to_owned()),
+                KeyValue::new("algorithm", algorithm.to_owned()),
+                KeyValue::new("threshold_days", threshold.to_string()),
             ],
         );
     }

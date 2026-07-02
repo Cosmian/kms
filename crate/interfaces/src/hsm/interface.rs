@@ -336,6 +336,43 @@ pub trait HSM: Send + Sync {
     /// can return an error; callers may choose to ignore such errors.
     async fn seed_random(&self, slot_id: usize, seed: &[u8]) -> InterfaceResult<()>;
 
+    /// Set `CKA_START_DATE` and `CKA_END_DATE` on a key object.
+    ///
+    /// These PKCS#11 attributes are used to track rotation scheduling:
+    /// - `start_date` — when the current rotation interval began.
+    /// - `end_date` — when the key is due for rotation.
+    ///
+    /// Passing `None` for either date clears that attribute (sets to empty `CK_DATE`).
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the ID of the key
+    /// * `start_date` - optional start date
+    /// * `end_date` - optional end date
+    async fn set_key_dates(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        start_date: Option<time::Date>,
+        end_date: Option<time::Date>,
+    ) -> InterfaceResult<()>;
+
+    /// Set `CKA_LABEL` on a key object.
+    ///
+    /// The label encodes keyset metadata in the format
+    /// `rotate_name::generation::key_id[@latest]`.
+    ///
+    /// # Arguments
+    /// * `slot_id` - the slot ID of the HSM
+    /// * `key_id` - the `CKA_ID` bytes of the key to update
+    /// * `label` - the new label string to set
+    async fn set_key_label(
+        &self,
+        slot_id: usize,
+        key_id: &[u8],
+        label: &str,
+    ) -> InterfaceResult<()>;
+
     /// Get a reference to the underlying PKCS#11 library for direct function calls.
     ///
     /// This method provides access to the raw PKCS#11 library (`HsmLib`) to enable

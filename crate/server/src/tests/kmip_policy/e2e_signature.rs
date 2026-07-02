@@ -22,7 +22,7 @@ async fn e2e_signature_algorithm_allowlist_is_enforced_on_sign() {
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
     conf.kmip_policy.allowlists.signature_algorithms =
         Some(vec![DigitalSignatureAlgorithm::SHA256WithRSAEncryption]);
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let create_kp = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,

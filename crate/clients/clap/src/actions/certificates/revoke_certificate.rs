@@ -4,7 +4,7 @@ use cosmian_kms_client::{KmsClient, kmip_2_1::kmip_types::UniqueIdentifier};
 use crate::{
     actions::{
         labels::{CERTIFICATE_ID, TAG},
-        shared::{get_key_uid, utils::revoke},
+        shared::{RevokeReasonArgs, get_key_uid, utils::revoke},
     },
     error::result::KmsCliResult,
 };
@@ -15,9 +15,8 @@ use crate::{
 /// using the --allow-revoked flag on the export function.
 #[derive(Parser, Debug)]
 pub struct RevokeCertificateAction {
-    /// The reason for the revocation as a string
-    #[clap(required = true)]
-    pub(crate) revocation_reason: String,
+    #[clap(flatten)]
+    pub(crate) reason: RevokeReasonArgs,
 
     /// The certificate unique identifier of the certificate to revoke.
     /// If not specified, tags should be specified
@@ -42,6 +41,12 @@ impl RevokeCertificateAction {
             self.tags.as_ref(),
             CERTIFICATE_ID,
         )?;
-        revoke(kms_rest_client, &id, &self.revocation_reason).await
+        revoke(
+            kms_rest_client,
+            &id,
+            &self.reason.revocation_reason,
+            self.reason.reason_code,
+        )
+        .await
     }
 }

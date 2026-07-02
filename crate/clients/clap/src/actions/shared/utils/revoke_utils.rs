@@ -2,6 +2,7 @@ use cosmian_kms_client::{
     KmsClient,
     cosmian_kmip::kmip_0::kmip_types::{RevocationReason, RevocationReasonCode},
     kmip_2_1::{kmip_types::UniqueIdentifier, requests::build_revoke_key_request},
+    reexport::cosmian_kms_client_utils::revoke_utils::try_parse_revocation_reason_code,
 };
 
 use crate::{
@@ -10,16 +11,24 @@ use crate::{
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
+/// Parse a CLI string into a `RevocationReasonCode`.
+///
+/// Accepts `kebab-case`, `snake_case`, or `PascalCase` (case-insensitive).
+pub(crate) fn parse_revocation_reason_code(s: &str) -> Result<RevocationReasonCode, String> {
+    try_parse_revocation_reason_code(s)
+}
+
 pub(crate) async fn revoke(
     kms_rest_client: KmsClient,
     key_id: &str,
     revocation_reason: &str,
+    reason_code: RevocationReasonCode,
 ) -> KmsCliResult<UniqueIdentifier> {
     // Create the kmip query
     let revoke_query = build_revoke_key_request(
         key_id,
         RevocationReason {
-            revocation_reason_code: RevocationReasonCode::Unspecified,
+            revocation_reason_code: reason_code,
             revocation_message: Some(revocation_reason.to_owned()),
         },
     )?;

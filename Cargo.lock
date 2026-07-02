@@ -1188,6 +1188,7 @@ dependencies = [
  "pkcs11-sys",
  "rand 0.10.1",
  "thiserror 2.0.18",
+ "time",
  "uuid",
  "zeroize",
 ]
@@ -1351,6 +1352,7 @@ dependencies = [
  "num-bigint-dig",
  "serde_json",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "zeroize",
 ]
@@ -1442,6 +1444,7 @@ dependencies = [
  "strum 0.27.2",
  "tempfile",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tokio-postgres",
  "tokio-rusqlite",
@@ -4222,9 +4225,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quick-xml"
-version = "0.31.0"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1004a344b30a54e2ee58d66a71b32d2db2feb0a31f9a2d302bf0536f15de2a33"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
  "serde",
@@ -4252,9 +4255,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.14"
+version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
+checksum = "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e"
 dependencies = [
  "bytes",
  "getrandom 0.3.4",

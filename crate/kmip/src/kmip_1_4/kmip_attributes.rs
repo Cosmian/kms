@@ -961,6 +961,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             | kmip_2_1::kmip_attributes::Attribute::ProtectionPeriod(_)
             | kmip_2_1::kmip_attributes::Attribute::ProtectionStorageMasks(_)
             | kmip_2_1::kmip_attributes::Attribute::QuantumSafe(_)
+            | kmip_2_1::kmip_attributes::Attribute::RotateAutomatic(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateDate(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateGeneration(_)
             | kmip_2_1::kmip_attributes::Attribute::RotateInterval(_)

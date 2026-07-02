@@ -1751,6 +1751,22 @@ impl UniqueIdentifier {
             _ => None,
         }
     }
+
+    /// Compute a fresh UID for a rotation replacement key.
+    ///
+    /// For keyset keys (`rotate_name` is `Some`): returns `"{name}@{gen+1}"`,
+    /// e.g. `"my-keyset@1"` for the first rotation of `"my-keyset"`.
+    /// For standalone keys (no `rotate_name`): returns a fresh UUID.
+    ///
+    /// The `prefix_uuid` pattern (`"name_<uuid>"`) is intentionally dropped;
+    /// keyset membership is the only path to deterministic successor UIDs.
+    #[must_use]
+    pub fn rotation_successor(rotate_name: Option<&str>, rotate_generation: Option<i32>) -> String {
+        rotate_name.map_or_else(
+            || Uuid::new_v4().to_string(),
+            |name| format!("{name}@{}", rotate_generation.unwrap_or(0) + 1),
+        )
+    }
 }
 
 impl TryFrom<LinkedObjectIdentifier> for UniqueIdentifier {

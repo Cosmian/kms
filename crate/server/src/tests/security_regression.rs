@@ -40,7 +40,7 @@ async fn create_aes_key(kms: &KMS, user: &str) -> KResult<UniqueIdentifier> {
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let response = kms.create(request, user, None).await?;
+    let response = kms.create(request, user).await?;
     Ok(response.unique_identifier)
 }
 
@@ -195,10 +195,7 @@ async fn test_mac_no_hmac_value_in_traces() -> KResult<()> {
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let key_id = kms
-        .create(request, "test_user", None)
-        .await?
-        .unique_identifier;
+    let key_id = kms.create(request, "test_user").await?.unique_identifier;
 
     let message = b"MESSAGE_WHOSE_MAC_MUST_NOT_BE_LOGGED_IN_FULL";
 
@@ -251,10 +248,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let kek_id = kms
-        .create(kek_request, owner, None)
-        .await?
-        .unique_identifier;
+    let kek_id = kms.create(kek_request, owner).await?.unique_identifier;
     drop(kms);
 
     // Phase 2: re-instantiate KMS with KEK configured
@@ -279,10 +273,7 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
         usage_limits_count: None,
         usage_limits_total: 100,
     });
-    let dek_id = kms
-        .create(dek_request, owner, None)
-        .await?
-        .unique_identifier;
+    let dek_id = kms.create(dek_request, owner).await?.unique_identifier;
 
     // Verify the DEK is stored wrapped
     let raw_object_before = kms
@@ -294,6 +285,26 @@ async fn test_decrypt_preserves_kek_wrapping_with_usage_limits() -> KResult<()> 
         raw_object_before.object().is_wrapped(),
         "DEK must be KEK-wrapped after creation"
     );
+
+    // Verify WrappingKeyLink attribute is populated in stored metadata (KMIP 2.1 §4.31 Link).
+    // Guards: bug where wrap_and_cache set key_block.key_wrapping_data but never
+    // propagated the wrapping key UID to the separate Attributes struct used by
+    // GetAttributes for wrapped (ByteString) key values.
+    {
+        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::LinkType;
+        let wrapping_link = raw_object_before
+            .attributes()
+            .get_link(LinkType::WrappingKeyLink);
+        assert!(
+            wrapping_link.is_some(),
+            "WrappingKeyLink must be set in stored attributes after KEK-wrapped creation"
+        );
+        assert_eq!(
+            wrapping_link.unwrap().to_string(),
+            kek_id.to_string(),
+            "WrappingKeyLink must point to the KEK"
+        );
+    }
 
     // Phase 3: Encrypt → Decrypt cycle (Decrypt triggers decrement_usage_limits)
     let plaintext = b"Regression test: KEK wrapping must survive decrypt";
@@ -383,10 +394,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
         None,
     )
     .map_err(|e| crate::error::KmsError::InvalidRequest(e.to_string()))?;
-    let kek_id = kms
-        .create(kek_request, owner, None)
-        .await?
-        .unique_identifier;
+    let kek_id = kms.create(kek_request, owner).await?.unique_identifier;
     drop(kms);
 
     // Phase 2: re-instantiate KMS with KEK
@@ -413,7 +421,7 @@ async fn test_sign_preserves_kek_wrapping_with_usage_limits() -> KResult<()> {
             usage_limits_total: 100,
         });
     }
-    let create_response = kms.create_key_pair(create_request, owner, None).await?;
+    let create_response = kms.create_key_pair(create_request, owner).await?;
     let private_key_id = create_response.private_key_unique_identifier;
 
     // Verify the private key is stored wrapped

@@ -24,12 +24,16 @@ CREATE TABLE IF NOT EXISTS objects (
         object VARCHAR NOT NULL,
         attributes jsonb NOT NULL,
         state VARCHAR(32),
-        owner VARCHAR(255)
+        owner VARCHAR(255),
+        wrapping_key_id VARCHAR(128)
 );
 -- name: add-column-attributes
 ALTER TABLE objects ADD COLUMN attributes json;
 -- name: has-column-attributes
 SELECT attributes from objects;
+
+-- name: add-column-wrapping-key-id
+ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (
@@ -56,7 +60,7 @@ DELETE FROM read_access;
 DELETE FROM tags;
 
 -- name: insert-objects
-INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5);
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6);
 
 -- name: select-object
 SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state
@@ -64,7 +68,7 @@ SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.st
         WHERE objects.id=$1;
 
 -- name: update-object-with-object
-UPDATE objects SET object=$1, attributes=$2 WHERE id=$3;
+UPDATE objects SET object=$1, attributes=$2, wrapping_key_id=$3 WHERE id=$4;
 
 -- name: update-object-with-state
 UPDATE objects SET state=$1 WHERE id=$2;
@@ -73,9 +77,9 @@ UPDATE objects SET state=$1 WHERE id=$2;
 DELETE FROM objects WHERE id=$1;
 
 -- name: upsert-object
-INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5)
+INSERT INTO objects (id, object, attributes, state, owner, wrapping_key_id) VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT(id)
-        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5
+        DO UPDATE SET object=$2, attributes=$3, state=$4, owner=$5, wrapping_key_id=$6
         WHERE objects.owner=$5;
 
 -- name: count-non-destroyed-objects
@@ -155,3 +159,16 @@ SELECT id FROM tags WHERE tag IN (@TAGS) GROUP BY id HAVING COUNT(DISTINCT tag) 
 
 -- name: list-uids-for-tags
 SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int;
+
+-- name: find-wrapped-by
+SELECT DISTINCT objects.id, objects.state, objects.attributes
+FROM objects
+LEFT JOIN read_access ON objects.id = read_access.id AND read_access.userid = $2
+WHERE (objects.owner = $2 OR read_access.userid = $2)
+  AND objects.wrapping_key_id = $1;
+
+-- name: select-objects-null-wrapping-key
+SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
+
+-- name: update-wrapping-key-id
+UPDATE objects SET wrapping_key_id = $1 WHERE id = $2;

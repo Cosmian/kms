@@ -10,6 +10,7 @@ use cosmian_kmip::{
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
 use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore};
+use time::Date;
 
 use crate::{
     Database,
@@ -384,6 +385,83 @@ impl Database {
         .await
     }
 
+    /// Return (uid, state, attributes) for every object wrapped by the given wrapping key.
+    pub async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> DbResult<Vec<(String, State, Attributes)>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, State, Attributes)> = Vec::new();
+        for db in map.values() {
+            results.extend(
+                db.find_wrapped_by(wrapping_key_uid, user)
+                    .await
+                    .unwrap_or_default(),
+            );
+        }
+        Ok(results)
+    }
+
+    /// Find all Active objects that have a `rotate_interval > 0` and whose next
+    /// rotation instant is ≤ `now`. Returns `(uid, owner)` pairs.
+    pub async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> DbResult<Vec<(String, String)>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, String)> = Vec::new();
+        for db in map.values() {
+            results.extend(db.find_due_for_rotation(now).await.unwrap_or_default());
+        }
+        Ok(results)
+    }
+
+    /// Find objects by their `x-rotate-name` vendor attribute.
+    ///
+    /// Queries all registered object stores and returns matching `(uid, attributes)` pairs.
+    pub async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        owner: &str,
+    ) -> DbResult<Vec<(String, Attributes)>> {
+        let map = self.objects.read().await;
+        let mut results: Vec<(String, Attributes)> = Vec::new();
+        for db in map.values() {
+            results.extend(
+                db.find_by_rotate_name(name, generation, owner)
+                    .await
+                    .unwrap_or_default(),
+            );
+        }
+        Ok(results)
+    }
+
+    /// Set the `CKA_LABEL` (or equivalent) on a key identified by `uid`.
+    ///
+    /// Routes to the object store responsible for `uid`. SQL stores silently ignore this.
+    pub async fn set_key_label(&self, uid: &str, label: &str) -> DbResult<()> {
+        let store = self.get_object_store(uid).await?;
+        store.set_key_label(uid, label).await.map_err(Into::into)
+    }
+
+    /// Rewrite the PKCS#11 rotation dates on an HSM key identified by `uid`.
+    ///
+    /// Routes to the object store responsible for `uid`. SQL stores silently ignore this.
+    pub async fn set_key_rotation_dates(
+        &self,
+        uid: &str,
+        start_date: Option<Date>,
+        end_date: Option<Date>,
+    ) -> DbResult<()> {
+        let store = self.get_object_store(uid).await?;
+        store
+            .set_key_rotation_dates(uid, start_date, end_date)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Perform an atomic set of operations on the database.
     ///
     /// This function executes a series of operations (typically in a transaction) atomically.
@@ -446,8 +524,8 @@ impl Database {
     ///
     /// Because several stores may be registered simultaneously (e.g. one SQL store
     /// plus one or more HSM stores), the results are summed. Backends that have not
-    /// yet implemented `count_all_non_destroyed` return `0` via the trait default,
-    /// which is acceptable — the sum will still be a valid lower bound.
+    /// yet provided a real implementation will log a warning and contribute 0;
+    /// the sum will still be a valid lower bound.
     pub async fn count_all_non_destroyed_objects(&self) -> DbResult<u64> {
         let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
             let map = self.objects.read().await;
@@ -468,8 +546,8 @@ impl Database {
     /// `PublicKey`, `SplitKey`) across all registered stores.
     ///
     /// Aggregates results from every registered backend (SQL stores, HSM stores, etc.).
-    /// Backends that have not yet implemented `count_non_destroyed_keys` return `0` via
-    /// the trait default — the sum remains a valid lower bound.
+    /// Backends that have not yet provided a real implementation will log a warning
+    /// and contribute 0 — the sum remains a valid lower bound.
     pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
         let stores: Vec<Arc<dyn ObjectsStore + Sync + Send>> = {
             let map = self.objects.read().await;

@@ -3,12 +3,15 @@ use std::{cmp::min, collections::HashSet, default::Default};
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        extra::{VENDOR_ATTR_X509_EXTENSION, tagging::SYSTEM_TAG_CERTIFICATE},
-        kmip_attributes::Attributes,
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::Certify,
-        kmip_types::{KeyFormatType, LinkType, VendorAttributeValue},
+    cosmian_kmip::{
+        kmip_2_1::{
+            extra::{VENDOR_ATTR_X509_EXTENSION, tagging::SYSTEM_TAG_CERTIFICATE},
+            kmip_attributes::Attributes,
+            kmip_objects::{Object, ObjectType},
+            kmip_operations::Certify,
+            kmip_types::{KeyFormatType, LinkType, VendorAttributeValue},
+        },
+        time_normalize,
     },
     cosmian_kms_crypto::openssl::{
         openssl_certificate_to_kmip, openssl_x509_to_certificate_attributes, x509_extensions,
@@ -37,7 +40,7 @@ use crate::{
 
 const X509_VERSION3: i32 = 2;
 
-pub(super) fn build_and_sign_certificate(
+pub(crate) fn build_and_sign_certificate(
     vendor_id: &str,
     issuer: &Issuer,
     subject: &Subject,
@@ -147,6 +150,11 @@ pub(super) fn build_and_sign_certificate(
     // Add certificate attributes
     let certificate_attributes = openssl_x509_to_certificate_attributes(&x509);
     attributes.certificate_attributes = Some(certificate_attributes);
+
+    // KMIP §4.48 / §4.51: set initial_date so the auto-rotation scheduler can
+    // compute the first rotation deadline via `initial_date + rotate_offset + interval`
+    // without requiring a prior `rotate_date` (which is only set after the first rotation).
+    attributes.initial_date = Some(time_normalize()?);
 
     Ok((
         openssl_certificate_to_kmip(&x509).map_err(KmsError::from)?,

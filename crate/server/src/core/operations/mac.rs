@@ -1,6 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_0::kmip_types::{HashingAlgorithm, State},
         kmip_2_1::{
             KmipOperation,
             kmip_attributes::Attributes,
@@ -18,7 +18,7 @@ use openssl::{md::Md, md_ctx::MdCtx, pkey::PKey};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode},
     },
     error::KmsError,
     kms_bail,
@@ -123,6 +123,15 @@ impl CryptoOpSpec for MacVerifyOp {
         Some(&request.unique_identifier)
     }
 
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::TryEach
+    }
+
+    /// `MACVerify` accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31.
+    fn accepted_states() -> &'static [State] {
+        &[State::Active, State::Deactivated, State::Compromised]
+    }
+
     fn usage_data_len(request: &Self::Request) -> usize {
         request.data.len()
     }
@@ -196,7 +205,7 @@ impl CryptoOpSpec for MacVerifyOp {
 
 pub(crate) async fn mac(kms: &KMS, request: MAC, user: &str) -> KResult<MACResponse> {
     trace!("uid={:?}", request.unique_identifier);
-    Box::pin(perform_crypto_operation::<MacOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<MacOp>(request, user)).await
 }
 
 pub(crate) async fn mac_verify(
@@ -205,7 +214,7 @@ pub(crate) async fn mac_verify(
     user: &str,
 ) -> KResult<MACVerifyResponse> {
     trace!("uid={}", request.unique_identifier);
-    Box::pin(perform_crypto_operation::<MacVerifyOp>(kms, request, user)).await
+    Box::pin(kms.perform_crypto_operation::<MacVerifyOp>(request, user)).await
 }
 
 // ─── Helper functions ────────────────────────────────────────────────────────
@@ -368,7 +377,6 @@ mod tests {
                     None,
                 )?,
                 "user",
-                None,
             )
             .await?
             .unique_identifier,

@@ -4,11 +4,12 @@ This page lists every production log call-site across all Cosmian KMS components
 grouped by domain and crate.
 
 It is not listed in the navigation menu but is accessible via
+It is not listed in the navigation menu but is accessible via
 [Logging and telemetry](./logging.md).
 
 ## How to read this page
 
-The index is organised by usage-domains. Withing each domain, each table covers one crate (the UI section is an exception). All tables, ui inluded, have 5 columns:
+The index is organised by usage-domains. Within each domain, each table covers one crate (the UI section is an exception). All tables, ui included, have 5 columns:
 
 | Column | Meaning |
 |---|---|
@@ -30,7 +31,7 @@ alphabetically by message. Test files are excluded.
 
 ### `cosmian_kms_server`
 
-Crate path: `crate/server`  
+Crate path: `crate/server`
 `RUST_LOG` target: `cosmian_kms_server`
 
 | Level | Message | File | Variables | Notes |
@@ -54,7 +55,6 @@ Crate path: `crate/server`
 | `warn` | `Could not insert: certificate: AKI: {}, SKI: {}` | `src/core/operations/validate.rs` | - | - |
 | `warn` | `Failed to persist auto-activation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | - |
 | `warn` | `Fetch JWKS: {e}` | `src/middlewares/jwt/jwks.rs` | `e`: caught error | - |
-| `warn` | `Key {wrapping_key_id} attempted to wrap itself` | `src/core/wrapping/wrap.rs` | `wrapping_key_id`: UID of the wrapping key | - |
 | `warn` | `SigV4 failure: {signature_error}` | `src/routes/aws_xks/sigv4_middleware.rs` | `signature_error`: SigV4 signature validation error | - |
 | `warn` | `Socket server: connection failed: {e}` | `src/socket_server.rs` | `e`: caught error | - |
 | `warn` | `UI folder invalid or Linux default detected, falling back to: {fallback:#?}` | `src/config/params/server_params.rs` | `fallback`: fallback UI folder path | - |
@@ -110,8 +110,6 @@ Crate path: `crate/server`
 | `info` | `POST /kms/xks/v1/keys/{key_id}/decrypt - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/encrypt_decrypt/decrypt_.rs` | `key_id`: XKS key identifier | - |
 | `info` | `POST /kms/xks/v1/keys/{key_id}/encrypt - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | `key_id`: XKS key identifier | - |
 | `info` | `POST /kms/xks/v1/keys/{key_id}/metadata - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/key_metadata.rs` | `key_id`: XKS key identifier | - |
-| `info` | `Re-keyed key pair: new replacement keys created, old keys remain Active` | `src/core/operations/rekey_keypair.rs` | - | - |
-| `info` | `Re-keyed symmetric key: new replacement key created, old key remains Active` | `src/core/operations/rekey.rs` | - | - |
 | `info` | `Refreshing JWKS` | `src/middlewares/jwt/jwks.rs` | - | - |
 | `info` | `Response TTLV: {ttlv:?}` | `src/routes/kmip.rs` | `ttlv`: TTLV-encoded response | - |
 | `info` | `Revoked object type: {}` | `src/core/operations/revoke.rs` | - | - |
@@ -409,8 +407,8 @@ Crate path: `crate/server`
 | `trace` | `Processing PKCS12 import` | `src/core/operations/import.rs` | — | — |
 | `trace` | `Public key attributes after lifecycle update: {}` | `src/core/operations/create_key_pair.rs` | — | — |
 | `trace` | `Public key extracted from PKCS12` | `src/core/operations/import.rs` | — | — |
-| `trace` | `ReKey: {}` | `src/core/operations/rekey.rs` | — | — |
-| `trace` | `ReKeyKeyPair: {}` | `src/core/operations/rekey_keypair.rs` | — | — |
+| `trace` | `ReKey: {}` | `src/core/operations/rekey/symmetric/mod.rs` | — | — |
+| `trace` | `ReKeyKeyPair: {}` | `src/core/operations/rekey/keypair/mod.rs` | — | — |
 | `trace` | `Request: {:?}` | `src/routes/azure_ekm/mod.rs` | — | ×4 in this file |
 | `trace` | `request: {username} {}` | `src/start_kms_server.rs` | `username` — … | — |
 | `trace` | `Response message: {response_message}` | `src/core/operations/message.rs` | `response_message` — … | — |
@@ -490,14 +488,10 @@ Crate path: `crate/server`
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `CRL signature could not be verified against chain issuers; issuer: {:?}.                          Continuing with status checks.` | `src/core/operations/validate.rs` | — | — |
-| `warn` | `Failed to process request:
-{response_message}` | `src/routes/kmip.rs` | `response_message` | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
 | `warn` | `User-supplied keyUsage in extension config overrides the RFC-mandated PQC keyUsage              extension (RFC 9881/9909/9935)` | `src/core/operations/certify/build_certificate.rs` | — | — |
-| `info` | `
-{:?}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `info` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
@@ -527,10 +521,6 @@ Crate path: `crate/server`
 | `trace` | `ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?},              padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext`, `nonce`, `aad`, `tag`, `padding_method` | — |
 | `trace` | `enter export_get op={:?} req={}` | `src/core/operations/export_get.rs` | — | ×2 in this file |
 | `trace` | `get_attribute_list uid={} refs=[{}]` | `src/core/operations/attributes/get_list.rs` | — | — |
-| `trace` | `JWK has been found:
-{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
-| `trace` | `JWK has been found:
-{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
 | `trace` | `post-process symmetric key uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key enter uid={} requested_format={:?} wrap_type={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key exit uid={} final_format={:?}` | `src/core/operations/export_get.rs` | — | — |
@@ -548,7 +538,25 @@ Crate path: `crate/server`
 | `info` | `\n{:?}` | `src/routes/kmip.rs` | — | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
-| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
+| `warn` | `Failed to persist auto-deactivation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
+| `warn` | `failed to re-wrap dependant {dep_uid} with new key: {e}, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid`, `e` | - |
+| `warn` | `failed to unwrap dependant {dep_uid}: {e}, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid`, `e` | - |
+| `warn` | `skipping re-wrap of dependant {dep_uid}: owned by '{}', not by '{owner}'` | `src/core/operations/rekey/common.rs` | `dep_uid`, `owner` | - |
+| `warn` | `wrapped dependant {dep_uid} not found, skipping` | `src/core/operations/rekey/common.rs` | `dep_uid` | - |
+| `warn` | `{}: keyset chain depth {} ≥ warn threshold {} for uid {};                              consider re-encrypting with the latest key` | `src/core/operations/key_ops/crypto_op.rs` | - | - |
+| `info` | `Rekey finalized: old={} → new={}, user={user}` | `src/core/operations/rekey/common.rs` | `user` | - |
+| `debug` | `[auto-rotate-cron] Failed to build runtime: {}` | `src/cron.rs` | - | - |
+| `debug` | `[auto-rotate-cron] Running scheduled key auto-rotation check` | `src/cron.rs` | - | - |
+| `debug` | `[auto-rotate-cron] Shutdown signal received; stopping cron thread` | `src/cron.rs` | - | - |
+| `trace` | `Auto-deactivating object {} (deactivation_date {} <= now {})` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
+| `trace` | `execute_keyset_try_each: key {} failed for {}: {}` | `src/core/operations/key_ops/crypto_op.rs` | - | - |
+| `trace` | `HSM ReKey: old={uid} → new={new_uid} (slot={slot_id}, gen={new_gen}), user={user}` | `src/core/operations/rekey/symmetric/hsm.rs` | `uid`, `new_uid`, `slot_id`, `new_gen`, `user` | - |
+| `trace` | `ReCertify: {}` | `src/core/operations/recertify.rs` | - | - |
+| `trace` | `ReKey: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/symmetric/mod.rs` | - | - |
+| `trace` | `SetAttribute: clearing CKA_START_DATE / CKA_END_DATE on HSM key '{}' (rotation disabled)` | `src/core/operations/attributes/set.rs` | - | - |
+| `trace` | `SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
+| `trace` | `SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'` | `src/core/operations/attributes/set.rs` | - | - |
+| `trace` | `walk_keyset_chain: keyset '{}' has {} keys in chain` | `src/core/uid_utils.rs` | - | - |
 | `warn` | `` ui_session_salt is not configured — using a randomly generated ephemeral              session key. Sessions will be invalidated on server restart and are not              portable across instances. For persistent sessions and load-balanced              deployments, set `ui_session_salt` (or KMS_UI_SESSION_SALT) to a strong              random secret value. `` | `src/start_kms_server.rs` | - | - |
 | `trace` | `` Found valid JWK in JWKS at `{jwks_uri}`: {jwk:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `jwk` | - |
 | `trace` | `` Ignoring invalid JWK in JWKS at `{jwks_uri}`: {e}: {v:#?} `` | `src/middlewares/jwt/jwks.rs` | `jwks_uri`, `e`, `v` | - |
@@ -581,10 +589,28 @@ Crate path: `crate/server`
 | `trace` | `` PKCS#11 `C_SeedRandom` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_UnwrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
+| `trace` | `ReKeyKeyPair: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/keypair/mod.rs` | - | - |
+| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
+| `warn` | `find_wrapped_by({old_uid}) failed — skipping re-wrap of dependants: {e}` | `src/core/operations/rekey/common.rs` | `old_uid`, `e` | - |
+| `warn` | `[auto-rotate] Failed to query keys due for rotation: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
+| `warn` | `[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}` | `src/core/operations/auto_rotate.rs` | `new_uid`, `e` | - |
+| `warn` | `[auto-rotate] Failed to retrieve key {uid}: {e}; skipping` | `src/core/operations/auto_rotate.rs` | `uid`, `e` | - |
+| `warn` | `[auto-rotate] Failed to rotate key {uid} (owner={owner}): {e}` | `src/core/operations/auto_rotate.rs` | `uid`, `owner`, `e` | - |
+| `warn` | `[auto-rotate] Key {uid} not found; skipping` | `src/core/operations/auto_rotate.rs` | `uid` | - |
+| `info` | `[auto-rotate] Found {} key(s) due for rotation` | `src/core/operations/auto_rotate.rs` | - | - |
+| `info` | `[auto-rotate] Key {uid} (owner={owner}) rotation due in {days} day(s)              (warning threshold: {threshold} days)` | `src/core/operations/auto_rotate.rs` | `uid`, `owner`, `days`, `threshold` | - |
+| `info` | `[auto-rotate] Key {uid} (owner={owner}, algo={algorithm}) rotated successfully` | `src/core/operations/auto_rotate.rs` | `uid`, `owner`, `algorithm` | - |
+| `debug` | `[auto-rotate] Failed to query keys for renewal warnings: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
+| `debug` | `[auto-rotate] No keys due for rotation at {now}` | `src/core/operations/auto_rotate.rs` | `now` | - |
+| `debug` | `[auto-rotate] rotate_one_key returned: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
+| `debug` | `[auto-rotate] Skipping HSM key {uid}` | `src/core/operations/auto_rotate.rs` | `uid` | - |
+| `debug` | `[auto-rotate] Skipping {uid}: object type {other:?} has no auto-rotation support` | `src/core/operations/auto_rotate.rs` | `uid`, `other` | - |
+| `debug` | `[auto-rotate] Skipping {uid}: PublicKey is rotated as part of its paired                  PrivateKey rotation` | `src/core/operations/auto_rotate.rs` | `uid` | - |
+| `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
-Crate path: `crate/server_database`  
+Crate path: `crate/server_database`
 `RUST_LOG` target: `cosmian_kms_server_database`
 
 | Level | Message | File | Variables | Notes |
@@ -619,10 +645,11 @@ Crate path: `crate/server_database`
 | `debug` | `[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}` | `src/stores/redis/redis_with_findex.rs` | `live_count`, `key_count` | — |
 | `debug` | `` [redis-metrics] bootstrapped {} live object(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
 | `debug` | `` [redis-metrics] bootstrapped {} non-destroyed key(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
+| `debug` | `[redis-scan-rotation] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 
 ### `cosmian_kms_crypto`
 
-Crate path: `crate/crypto`  
+Crate path: `crate/crypto`
 `RUST_LOG` target: `cosmian_kms_crypto`
 
 | Level | Message | File | Variables | Notes |
@@ -689,7 +716,7 @@ Crate path: `crate/crypto`
 
 ### `cosmian_kmip`
 
-Crate path: `crate/kmip`  
+Crate path: `crate/kmip`
 `RUST_LOG` target: `cosmian_kmip`
 
 | Level | Message | File | Variables | Notes |
@@ -836,7 +863,7 @@ Crate path: `crate/kmip`
 
 ### `cosmian_kms_interfaces`
 
-Crate path: `crate/interfaces`  
+Crate path: `crate/interfaces`
 `RUST_LOG` target: `cosmian_kms_interfaces`
 
 | Level | Message | File | Variables | Notes |
@@ -864,14 +891,14 @@ Crate path: `crate/interfaces`
 
 ### `cosmian_kms_access`
 
-Crate path: `crate/access`  
+Crate path: `crate/access`
 `RUST_LOG` target: `cosmian_kms_access`
 
 _No production log call-sites in this crate._
 
 ### `cosmian_kms_base_hsm`
 
-Crate path: `crate/hsm/base_hsm`  
+Crate path: `crate/hsm/base_hsm`
 `RUST_LOG` target: `cosmian_kms_base_hsm`
 
 | Level | Message | File | Variables | Notes |
@@ -879,7 +906,6 @@ Crate path: `crate/hsm/base_hsm`
 | `warn` | `HSM library already initialized (CKR_CRYPTOKI_ALREADY_INITIALIZED); continuing` | `src/hsm_lib.rs` | - | - |
 | `warn` | `user already logged in, ignoring logging` | `src/slots.rs` | - | - |
 | `debug` | `Creating new session: {session_handle}. Logging in? {logging_in}` | `src/session/session_impl.rs` | `session_handle`: session handle<br>`logging_in`: logging in | - |
-| `debug` | `Failed to encrypt data with hash {hash}: {rv}` | `src/session/session_impl.rs` | `hash`: hash<br>`rv`: PKCS#11 return code | - |
 | `debug` | `Found {} possible handles` | `src/session/session_impl.rs` | - | - |
 | `debug` | `Invalid object, skipping` | `src/kms_hsm.rs` | - | - |
 | `debug` | `Logging in session {session_handle} with password` | `src/slots.rs` | `session_handle`: session handle | - |
@@ -892,6 +918,7 @@ Crate path: `crate/hsm/base_hsm`
 | `debug` | `Using PKCS#11 library with {:?}` | `src/base_hsm.rs` | - | - |
 | `trace` | `Doing round with {round_length} bytes. {processed_length} of {total_length} done` | `src/session/session_impl.rs` | `round_length` — …<br>`processed_length` — …<br>`total_length` — … | ×2 in this file |
 | `trace` | `Found {object_count} objects` | `src/session/session_impl.rs` | `object_count` — … | — |
+| `debug` | `OAEP hash {hash} not supported: {e}` | `src/session/session_impl.rs` | `hash`, `e` | - |
 
 ---
 
@@ -899,7 +926,7 @@ Crate path: `crate/hsm/base_hsm`
 
 ### `cosmian_kms_cli_actions`
 
-Crate path: `crate/clients/clap`  
+Crate path: `crate/clients/clap`
 `RUST_LOG` target: `cosmian_kms_cli_actions`
 
 | Level | Message | File | Variables | Notes |
@@ -944,7 +971,7 @@ Crate path: `crate/clients/clap`
 
 ### `ckms`
 
-Crate path: `crate/clients/ckms`  
+Crate path: `crate/clients/ckms`
 `RUST_LOG` target: `ckms`
 
 | Level | Message | File | Variables | Notes |
@@ -959,7 +986,7 @@ Crate path: `crate/clients/ckms`
 
 ### `cosmian_kms_client`
 
-Crate path: `crate/clients/client`  
+Crate path: `crate/clients/client`
 `RUST_LOG` target: `cosmian_kms_client`
 
 | Level | Message | File | Variables | Notes |
@@ -978,16 +1005,12 @@ Crate path: `crate/clients/client`
 | `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
-| `trace` | `<==
-{}` | `src/kms_rest_client.rs` | — | ×3 in this file |
-| `trace` | `==>
-{}` | `src/kms_rest_client.rs` | — | ×3 in this file |
 
 ---
 
 ### `cosmian_kms_client_utils`
 
-Crate path: `crate/clients/client_utils`  
+Crate path: `crate/clients/client_utils`
 `RUST_LOG` target: `cosmian_kms_client_utils`
 
 | Level | Message | File | Variables | Notes |
@@ -1000,7 +1023,7 @@ Crate path: `crate/clients/client_utils`
 
 ### `cosmian_pkcs11`
 
-Crate path: `crate/clients/pkcs11/provider`  
+Crate path: `crate/clients/pkcs11/provider`
 `RUST_LOG` target: `cosmian_pkcs11`
 
 | Level | Message | File | Variables | Notes |
@@ -1067,7 +1090,7 @@ Crate path: `crate/clients/pkcs11/provider`
 
 ### `cosmian_pkcs11_module`
 
-Crate path: `crate/clients/pkcs11/module`  
+Crate path: `crate/clients/pkcs11/module`
 `RUST_LOG` target: `cosmian_pkcs11_module`
 
 | Level | Message | File | Variables | Notes |
@@ -1075,8 +1098,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `error` | `C_GetAttributeValue: error: {e}, session: {:?}, object: {:?}, type: {:?}` | `src/pkcs11.rs` | `e`: caught error | - |
 | `error` | `certificate: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
 | `error` | `Data object: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
-| `error` | `Failed to extract RSA key parameters: {e:?}` | `src/core/object.rs` | `e`: caught error | ×3 in this file - Could not read RSA key components from HSM object. Key may be non-exportable. |
-| `error` | `Failed to parse RSA private key from PKCS#8 DER: {e:?}` | `src/core/object.rs` | `e`: caught error | ×3 in this file - HSM returned a malformed RSA PKCS#8 blob. Check HSM firmware and key type. |
+| `error` | `Failed to extract RSA key parameters: {e:?}` | `src/core/object.rs` | `e`: caught error | - Could not read RSA key components from HSM object. Key may be non-exportable. |
+| `error` | `Failed to parse RSA private key from PKCS#8 DER: {e:?}` | `src/core/object.rs` | `e`: caught error | - HSM returned a malformed RSA PKCS#8 blob. Check HSM firmware and key type. |
 | `error` | `pParameter incorrect: {} != {}` | `src/core/mechanism.rs` | - | PKCS#11 mechanism parameter size mismatch. Client sent the wrong parameter struct. |
 | `error` | `private_key: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
 | `error` | `profile: type_ unimplemented: {type_:?}` | `src/core/object.rs` | `type_`: type  | - |
@@ -1142,7 +1165,7 @@ Crate path: `crate/clients/pkcs11/module`
 
 ### `cosmian_cng`
 
-Crate path: `crate/clients/cng`  
+Crate path: `crate/clients/cng`
 `RUST_LOG` target: `cosmian_cng`
 
 | Level | Message | File | Variables | Notes |

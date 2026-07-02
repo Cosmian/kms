@@ -64,6 +64,7 @@ No external OpenSSL needed — `crate/crypto/build.rs` downloads and builds Open
 | `/standards-review` | Verify code against exact text of applicable standards |
 | `/kmip-compliance` | When adding/modifying a KMIP operation |
 | `/rust-patterns` | Rust design patterns for this codebase |
+| `/rust-simplify` | Find simplification opportunities in Rust code |
 | `/react-ant-patterns` | UI coding conventions |
 | `/kms-changelog` | Writing the branch CHANGELOG entry |
 | `/threat-model` | STRIDE-A threat model |

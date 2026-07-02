@@ -1,15 +1,33 @@
-import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Tooltip } from "antd";
 import type { TableColumnsType } from "antd";
+import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/useAuth";
-import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
+import HashMapDisplay from "./HashMapDisplay";
 
 const formatUnixDate = (unixMs: number): string => {
     const d = new Date(unixMs);
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
+
+/** Attribute keys fetched for every located row — sourced from WASM (single source of truth).
+ *  Lazily initialised on first access so the WASM module is guaranteed to be
+ *  ready (eager module-level evaluation can race with async WASM loading). */
+let _enrichAttributeKeysCache: string[] | null = null;
+function getEnrichAttributeKeys(): string[] {
+    if (_enrichAttributeKeysCache === null || _enrichAttributeKeysCache.length === 0) {
+        try {
+            const keys = wasm.get_locate_enrich_attribute_keys();
+            if (Array.isArray(keys) && keys.length > 0) {
+                _enrichAttributeKeysCache = keys as string[];
+            }
+        } catch {
+            // WASM not ready yet; will retry on next call
+        }
+    }
+    return _enrichAttributeKeysCache ?? [];
+}
 
 interface LocateObjectRow {
     object_id: string;
@@ -138,18 +156,7 @@ const LocateForm: React.FC = () => {
                     const getReq = wasm.get_attributes_ttlv_request(uid);
                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                     if (getRespStr) {
-                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
-                            "object_type",
-                            "state",
-                            "tags",
-                            "user_tags",
-                            "cryptographic_algorithm",
-                            "cryptographic_length",
-                            "key_format_type",
-                            "public_key_id",
-                            "private_key_id",
-                            "certificate_id",
-                        ]);
+                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                         const m = extractMeta(parsed);
                         // HSM keys are always Active; use that as default when state is missing
                         const isHsm = /^hsm[0-9]*::/.test(uid);
@@ -288,18 +295,7 @@ const LocateForm: React.FC = () => {
                                     const getReq = wasm.get_attributes_ttlv_request(uid);
                                     const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                     if (getRespStr) {
-                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
-                                            "object_type",
-                                            "state",
-                                            "tags",
-                                            "user_tags",
-                                            "cryptographic_algorithm",
-                                            "cryptographic_length",
-                                            "key_format_type",
-                                            "public_key_id",
-                                            "private_key_id",
-                                            "certificate_id",
-                                        ]);
+                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                         const m = extractMeta(parsed);
                                         return {
                                             object_id: uid,
@@ -356,18 +352,7 @@ const LocateForm: React.FC = () => {
                                 const getReq = wasm.get_attributes_ttlv_request(uid);
                                 const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                 if (getRespStr) {
-                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
-                                        "object_type",
-                                        "state",
-                                        "tags",
-                                        "user_tags",
-                                        "cryptographic_algorithm",
-                                        "cryptographic_length",
-                                        "key_format_type",
-                                        "public_key_id",
-                                        "private_key_id",
-                                        "certificate_id",
-                                    ]);
+                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
                                     const m = extractMeta(parsed);
                                     return {
                                         object_id: uid,
@@ -528,15 +513,10 @@ const LocateForm: React.FC = () => {
                                         const getReq = wasm.get_attributes_ttlv_request(uid);
                                         const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
                                         if (getRespStr) {
-                                            const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
-                                                "object_type",
-                                                "state",
-                                                "tags",
-                                                "user_tags",
-                                                "cryptographic_algorithm",
-                                                "cryptographic_length",
-                                                "key_format_type",
-                                            ]);
+                                            const parsed = await wasm.parse_get_attributes_ttlv_response(
+                                                getRespStr,
+                                                getEnrichAttributeKeys(),
+                                            );
                                             const m = extractMeta(parsed);
                                             return {
                                                 object_id: uid,
@@ -611,15 +591,15 @@ const LocateForm: React.FC = () => {
             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, []);
+                let m: Map<string, unknown>;
                 if (parsed instanceof Map) {
-                    setDetailsData(parsed);
+                    m = new Map(parsed as Map<string, unknown>);
                 } else if (parsed && typeof parsed === "object") {
-                    // Convert record to Map
-                    const m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
-                    setDetailsData(m);
+                    m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
                 } else {
-                    setDetailsData(new Map());
+                    m = new Map();
                 }
+                setDetailsData(m);
                 setDetailsForId(uid);
                 setDetailsVisible(true);
             }
@@ -804,9 +784,9 @@ const LocateForm: React.FC = () => {
                                 dataSource={objects || []}
                                 rowKey="object_id"
                                 pagination={{
-                                    defaultPageSize: 10,
+                                    defaultPageSize: 50,
                                     showSizeChanger: true,
-                                    pageSizeOptions: [10, 20, 50, 100],
+                                    pageSizeOptions: [50, 100, 500, 1000],
                                 }}
                                 className="border rounded"
                                 columns={

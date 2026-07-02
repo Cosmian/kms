@@ -11,7 +11,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::console,
+    actions::{console, shared::RotationPolicyArgs},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -152,6 +152,10 @@ pub struct CreatePqcKeyPairAction {
     /// Sensitive: if set, the private key will not be exportable
     #[clap(long = "sensitive", default_value = "false")]
     pub(crate) sensitive: bool,
+
+    /// Optional rotation policy to apply immediately after key pair creation.
+    #[clap(flatten)]
+    pub(crate) rotation_policy: RotationPolicyArgs,
 }
 
 impl CreatePqcKeyPairAction {
@@ -183,6 +187,15 @@ impl CreatePqcKeyPairAction {
             .create_key_pair(request)
             .await
             .with_context(|| "failed creating a PQC key pair")?;
+
+        // Apply rotation policy on the private key (which is the keyset anchor)
+        if self.rotation_policy.is_set() {
+            let sk_id = response
+                .private_key_unique_identifier
+                .as_str()
+                .with_context(|| "the server did not return a private key id as a string")?;
+            self.rotation_policy.apply(&kms_rest_client, sk_id).await?;
+        }
 
         let mut stdout = console::Stdout::new("The PQC key pair has been properly generated.");
         stdout.set_tags(Some(&self.tags));

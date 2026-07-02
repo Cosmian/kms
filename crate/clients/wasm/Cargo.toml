@@ -1,7 +1,6 @@
 [package]
 name = "cosmian_kms_client_wasm"
 version.workspace = true
-authors.workspace = true
 build = "build.rs"
 categories.workspace = true
 edition.workspace = true

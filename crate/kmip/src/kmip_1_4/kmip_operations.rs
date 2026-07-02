@@ -274,7 +274,7 @@ pub struct ReKey {
     pub unique_identifier: String,
     /// Offset from the initialization date of the new key
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<i32>,
+    pub offset: Option<i64>,
     /// Template attributes for the new key
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
@@ -322,7 +322,7 @@ pub struct ReKeyKeyPair {
     pub private_key_unique_identifier: String,
     /// Offset from the initialization date of the new key pair
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<i32>,
+    pub offset: Option<i64>,
     /// Common template attributes for both public and private key
     #[serde(skip_serializing_if = "Option::is_none")]
     pub common_template_attribute: Option<TemplateAttribute>,
@@ -479,12 +479,19 @@ pub struct CertifyResponse {
 
 /// 4.8 Re-certify
 /// This operation requests the server to generate a new Certificate object for an existing public key.
+/// Per KMIP 1.4 §4.8 Table 188, all fields are optional.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReCertify {
-    pub unique_identifier: String,
-    pub certificate_request_type: CertificateRequestType,
-    pub certificate_request_value: Vec<u8>,
+    /// If omitted, then the ID Placeholder value is used by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<String>,
+    /// REQUIRED if the Certificate Request is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_type: Option<CertificateRequestType>,
+    /// A Byte String object with the certificate request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_value: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
 }
@@ -496,6 +503,54 @@ pub struct ReCertifyResponse {
     pub unique_identifier: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub template_attribute: Option<TemplateAttribute>,
+}
+
+impl From<ReCertify> for kmip_2_1::kmip_operations::ReCertify {
+    fn from(recertify: ReCertify) -> Self {
+        let cert_req_type = recertify.certificate_request_type.map(|t| match t {
+            CertificateRequestType::CRMF => kmip_2_1::kmip_types::CertificateRequestType::CRMF,
+            CertificateRequestType::PKCS10 => kmip_2_1::kmip_types::CertificateRequestType::PKCS10,
+            CertificateRequestType::PEM => kmip_2_1::kmip_types::CertificateRequestType::PEM,
+        });
+        Self {
+            unique_identifier: recertify.unique_identifier.map(Into::into),
+            certificate_request_type: cert_req_type,
+            certificate_request_value: recertify.certificate_request_value,
+            offset: None,
+            attributes: recertify.template_attribute.map(Into::into),
+            protection_storage_masks: None,
+        }
+    }
+}
+
+impl TryFrom<kmip_2_1::kmip_operations::ReCertifyResponse> for ReCertifyResponse {
+    type Error = KmipError;
+
+    fn try_from(value: kmip_2_1::kmip_operations::ReCertifyResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unique_identifier: value.unique_identifier.to_string(),
+            template_attribute: None,
+        })
+    }
+}
+
+impl From<kmip_2_1::kmip_operations::ReCertify> for ReCertify {
+    fn from(recertify: kmip_2_1::kmip_operations::ReCertify) -> Self {
+        // Per KMIP 1.4 §4.8 Table 188, all fields are optional.
+        // Certificate Request Type is "REQUIRED if the Certificate Request is present".
+        let cert_req_type = recertify.certificate_request_type.map(|t| match t {
+            kmip_2_1::kmip_types::CertificateRequestType::CRMF => CertificateRequestType::CRMF,
+            kmip_2_1::kmip_types::CertificateRequestType::PKCS10 => CertificateRequestType::PKCS10,
+            kmip_2_1::kmip_types::CertificateRequestType::PEM => CertificateRequestType::PEM,
+        });
+        Self {
+            unique_identifier: recertify.unique_identifier.map(|u| u.to_string()),
+            certificate_request_type: cert_req_type,
+            certificate_request_value: recertify.certificate_request_value,
+            template_attribute: None,
+            // KMIP 1.4 does not support offset; it is dropped during downgrade.
+        }
+    }
 }
 
 /// 4.9 Locate
@@ -2647,9 +2702,7 @@ impl TryFrom<Operation> for kmip_2_1::kmip_operations::Operation {
             // }
             // Operation::Poll(poll) => Self::Poll(poll.into()),
             Operation::Query(query) => Self::Query(query.into()),
-            // Operation::ReCertify(recertify) => {
-            //     Self::ReCertify(recertify.into())
-            // }
+            Operation::ReCertify(recertify) => Self::ReCertify(Box::new(recertify.into())),
             // Operation::Recover(recover) => {
             //     Self::Recover(recover.into())
             // }
@@ -2803,9 +2856,9 @@ impl TryFrom<kmip_2_1::kmip_operations::Operation> for Operation {
                     (*query_response).try_into().context("QueryResponse")?,
                 ))
             }
-            // Operation::ReCertifyResponse(recertify_response) => {
-            //     Self::ReCertifyResponse(recertify_response.into())
-            // }
+            kmip_2_1::kmip_operations::Operation::ReCertifyResponse(recertify_response) => {
+                Self::ReCertifyResponse(recertify_response.try_into().context("ReCertifyResponse")?)
+            }
             // Operation::RecoverResponse(recover_response) => {
             //     Self::RecoverResponse(recover_response.into())
             // }

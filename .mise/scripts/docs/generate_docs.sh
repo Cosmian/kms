@@ -176,7 +176,7 @@ fi
 # ─── Step 6: Log call-site index ────────────────────────────────────────────────────
 if [[ "$SKIP_LOG_INDEX" == false ]]; then
   banner "6/6 — Log call-site index (log-reference.md)"
-  if python3 "${REPO_ROOT}/scripts/update_log_index.py" --non-interactive --no-color; then
+  if python3 "${REPO_ROOT}/.mise/scripts/docs/update_log_index.py" --non-interactive --no-color; then
     ok "log-reference.md synced"
   else
     fail "update_log_index.py failed"

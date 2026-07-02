@@ -7,7 +7,10 @@ use self::{
     export_certificate::ExportCertificateAction, import_certificate::ImportCertificateAction,
     revoke_certificate::RevokeCertificateAction, validate_certificate::ValidateCertificatesAction,
 };
-use crate::{actions::shared::ActivateKeyAction, error::result::KmsCliResult};
+use crate::{
+    actions::shared::{ActivateKeyAction, SetRotationPolicyAction},
+    error::result::KmsCliResult,
+};
 
 pub(crate) mod certify;
 pub(crate) mod decrypt_certificate;
@@ -29,6 +32,8 @@ pub enum CertificatesCommands {
     Import(ImportCertificateAction),
     Revoke(RevokeCertificateAction),
     Destroy(DestroyCertificateAction),
+    /// Set the automatic rotation policy on a certificate (interval, offset, keyset name).
+    SetRotationPolicy(SetRotationPolicyAction),
     Validate(ValidateCertificatesAction),
 }
 
@@ -70,6 +75,7 @@ impl CertificatesCommands {
                 action.run(kms_rest_client).await?;
                 Ok(())
             }
+            Self::SetRotationPolicy(action) => action.run(kms_rest_client).await,
             Self::Validate(action) => {
                 action.run(kms_rest_client).await?;
                 Ok(())

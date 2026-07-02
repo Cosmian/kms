@@ -31,7 +31,10 @@ use crate::{
         migrate::{DbState, Migrate},
         sql::{
             database::SqlDatabase,
-            locate_query::{MySqlPlaceholder, query_from_attributes},
+            locate_query::{
+                MySqlPlaceholder, find_by_rotate_name_query, find_due_for_rotation_query,
+                query_from_attributes,
+            },
         },
     },
 };
@@ -265,6 +268,50 @@ impl MySqlPool {
             ] {
                 if let Some(sql) = MYSQL_QUERIES.get(name) {
                     conn.query_drop(sql).await.map_err(DbError::from)?;
+                }
+            }
+        }
+
+        // Add wrapping_key_id column if not present, then backfill existing wrapped objects.
+        // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
+        // so we check with SHOW COLUMNS first.
+        let has_col_sql = MYSQL_QUERIES
+            .get("has-column-wrapping-key-id")
+            .ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: has-column-wrapping-key-id".to_owned())
+            })?;
+        let rows: Vec<mysql_async::Row> = conn.query(has_col_sql).await.map_err(DbError::from)?;
+        if rows.is_empty() {
+            let add_col = MYSQL_QUERIES
+                .get("add-column-wrapping-key-id")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: add-column-wrapping-key-id".to_owned(),
+                    )
+                })?;
+            conn.query_drop(add_col).await.map_err(DbError::from)?;
+        }
+        // Backfill: deserialize each object in Rust and extract wrapping key UID
+        let select_sql = MYSQL_QUERIES
+            .get("select-objects-null-wrapping-key")
+            .ok_or_else(|| {
+                DbError::DatabaseError(
+                    "Missing SQL query: select-objects-null-wrapping-key".to_owned(),
+                )
+            })?;
+        let update_sql = MYSQL_QUERIES.get("update-wrapping-key-id").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: update-wrapping-key-id".to_owned())
+        })?;
+        let null_rows: Vec<(String, String)> =
+            conn.query(select_sql).await.map_err(DbError::from)?;
+        for (id, object_json) in &null_rows {
+            if let Ok(obj) =
+                serde_json::from_str::<cosmian_kmip::kmip_2_1::kmip_objects::Object>(object_json)
+            {
+                if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                    conn.exec_drop(update_sql, (&wrapping_uid, id))
+                        .await
+                        .map_err(DbError::from)?;
                 }
             }
         }
@@ -626,6 +673,90 @@ impl ObjectsStore for MySqlPool {
         .await?)
     }
 
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let sql = get_mysql_query!("find-wrapped-by");
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
+        let rows: Vec<(String, String, Value)> = conn
+            .exec(sql, (user, user, user, wrapping_key_uid))
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
+        let mut out = Vec::new();
+        for (uid, state_str, attrs_val) in rows {
+            let state = State::try_from(state_str.as_str())
+                .map_err(|e| InterfaceError::Db(format!("invalid state: {e}")))?;
+            let attrs: Attributes = serde_json::from_value(attrs_val)
+                .map_err(|e| InterfaceError::Db(format!("invalid attributes: {e}")))?;
+            out.push((uid, state, attrs));
+        }
+        Ok(out)
+    }
+
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<(String, String)>> {
+        let sql = find_due_for_rotation_query::<MySqlPlaceholder>();
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
+        let rows: Vec<(String, String, serde_json::Value)> = conn
+            .exec(&sql, ())
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
+        let mut due = Vec::new();
+        for (uid, owner, attrs_val) in rows {
+            let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+            if crate::stores::sql::locate_query::is_due_for_rotation(&attrs, now) {
+                due.push((uid, owner));
+            }
+        }
+        Ok(due)
+    }
+
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        let mut conn = self
+            .pool
+            .get_conn()
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL connection error: {e}")))?;
+        let locate = find_by_rotate_name_query::<MySqlPlaceholder>(name, generation, owner);
+        let params: Vec<mysql_async::Value> = locate
+            .params
+            .into_iter()
+            .map(|p| match p {
+                crate::stores::sql::locate_query::LocateParam::Text(s) => {
+                    mysql_async::Value::Bytes(s.into_bytes())
+                }
+                crate::stores::sql::locate_query::LocateParam::I64(i) => mysql_async::Value::Int(i),
+            })
+            .collect();
+        let rows: Vec<(String, serde_json::Value)> = conn
+            .exec(locate.sql, params)
+            .await
+            .map_err(|e| InterfaceError::Db(format!("MySQL query error: {e}")))?;
+        let mut results = Vec::new();
+        for (uid, attrs_val) in rows {
+            let attrs: Attributes = serde_json::from_value(attrs_val).unwrap_or_default();
+            results.push((uid, attrs));
+        }
+        Ok(results)
+    }
+
     /// Returns the total count of live (non-destroyed) objects in this `MySQL` store.
     ///
     /// This is a **metrics-only** privileged query: it scans the full `objects` table
@@ -770,6 +901,7 @@ pub(super) async fn create_(
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let wrapping_key_id = object.wrapping_key_uid();
     tx.exec_drop(
         get_mysql_query!("insert-objects"),
         (
@@ -778,6 +910,7 @@ pub(super) async fn create_(
             attributes_json,
             attributes.state.unwrap_or(State::PreActive).to_string(),
             owner.to_owned(),
+            wrapping_key_id,
         ),
     )
     .await
@@ -828,9 +961,11 @@ pub(super) async fn update_object_(
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
 
+    let wrapping_key_id = object.wrapping_key_uid();
+
     tx.exec_drop(
         get_mysql_query!("update-object-with-object"),
-        (object_json, attributes_json, uid),
+        (object_json, attributes_json, wrapping_key_id, uid),
     )
     .await
     .map_err(DbError::from)?;
@@ -903,9 +1038,17 @@ pub(super) async fn upsert_(
     let attributes_json = serde_json::to_value(attributes).map_err(|e| {
         DbError::ConversionError(format!("failed serializing the attributes to JSON: {e}").into())
     })?;
+    let wrapping_key_id = object.wrapping_key_uid();
     tx.exec_drop(
         get_mysql_query!("upsert-object"),
-        (uid, object_json, attributes_json, state.to_string(), owner),
+        (
+            uid,
+            object_json,
+            attributes_json,
+            state.to_string(),
+            owner,
+            wrapping_key_id,
+        ),
     )
     .await
     .map_err(DbError::from)?;

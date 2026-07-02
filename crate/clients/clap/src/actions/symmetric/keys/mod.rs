@@ -7,8 +7,9 @@ use self::{
 };
 use crate::{
     actions::shared::{
-        ActivateKeyAction, ExportSecretDataOrKeyAction, ImportSecretDataOrKeyAction,
-        UnwrapSecretDataOrKeyAction, WrapSecretDataOrKeyAction,
+        ActivateKeyAction, ExportSecretDataOrKeyAction, GetRotationPolicyAction,
+        ImportSecretDataOrKeyAction, SetRotationPolicyAction, UnwrapSecretDataOrKeyAction,
+        WrapSecretDataOrKeyAction,
     },
     error::result::KmsCliResult,
 };
@@ -30,6 +31,8 @@ pub enum KeysCommands {
     Unwrap(UnwrapSecretDataOrKeyAction),
     Revoke(RevokeKeyAction),
     Destroy(DestroyKeyAction),
+    SetRotationPolicy(SetRotationPolicyAction),
+    GetRotationPolicy(GetRotationPolicyAction),
 }
 
 impl KeysCommands {
@@ -60,6 +63,12 @@ impl KeysCommands {
                 action.run(kms_rest_client).await?;
             }
             Self::Destroy(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::SetRotationPolicy(action) => {
+                action.run(kms_rest_client).await?;
+            }
+            Self::GetRotationPolicy(action) => {
                 action.run(kms_rest_client).await?;
             }
         }

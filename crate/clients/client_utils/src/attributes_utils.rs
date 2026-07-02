@@ -114,7 +114,7 @@ pub fn parse_selected_attributes(
                 if let Some(v) = attributes.activation_date.as_ref() {
                     results.insert(
                         tag.to_string(),
-                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
                     );
                 }
             }
@@ -346,6 +346,33 @@ pub fn parse_selected_attributes(
     Ok(results)
 }
 
+/// Attribute key names recognised by [`parse_selected_attributes_flatten`].
+///
+/// This is the canonical list used by the WASM layer to enrich KMIP Locate
+/// results.  Add an entry here whenever a new match arm is added to
+/// `parse_selected_attributes_flatten` and the attribute should be surfaced in
+/// the UI.
+pub const LOCATE_ENRICH_ATTRIBUTE_KEYS: &[&str] = &[
+    "object_type",
+    "state",
+    "tags",
+    "user_tags",
+    "cryptographic_algorithm",
+    "cryptographic_length",
+    "key_format_type",
+    "public_key_id",
+    "private_key_id",
+    "certificate_id",
+    "initial_date",
+    "activation_date",
+    "original_creation_date",
+    "rotate_date",
+    "rotate_name",
+    "rotate_interval",
+    "rotate_offset",
+    "rotate_generation",
+];
+
 pub fn parse_selected_attributes_flatten(
     attributes: &Attributes,
     selected_attributes: &[&str],
@@ -377,10 +404,64 @@ pub fn parse_selected_attributes_flatten(
                 if let Some(v) = attributes.activation_date.as_ref() {
                     results.insert(
                         selected_attribute_name.to_owned(),
-                        serde_json::to_value(v.unix_timestamp()).unwrap_or_default(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
                     );
                 }
             }
+            "initial_date" => {
+                if let Some(v) = attributes.initial_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "original_creation_date" => {
+                if let Some(v) = attributes.original_creation_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_automatic" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_automatic.as_ref()
+            ),
+            "rotate_date" => {
+                if let Some(v) = attributes.rotate_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "rotate_generation" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_generation.as_ref()
+            ),
+            "rotate_interval" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_interval.as_ref()
+            ),
+            "rotate_latest" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_latest.as_ref()
+            ),
+            "rotate_name" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_name.as_ref()
+            ),
+            "rotate_offset" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.rotate_offset.as_ref()
+            ),
             "cryptographic_algorithm" => insert_if_some!(
                 results,
                 selected_attribute_name,
@@ -449,6 +530,44 @@ pub fn parse_selected_attributes_flatten(
                 selected_attribute_name,
                 attributes.get_link(LinkType::ChildLink).as_ref()
             ),
+            "deactivation_date" => {
+                if let Some(v) = attributes.deactivation_date.as_ref() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(v.unix_timestamp() * 1000_i64).unwrap_or_default(),
+                    );
+                }
+            }
+            "description" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.description.as_ref()
+            ),
+            "comment" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.comment.as_ref()
+            ),
+            "contact_information" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.contact_information.as_ref()
+            ),
+            "object_group" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.object_group.as_ref()
+            ),
+            "sensitive" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.sensitive.as_ref()
+            ),
+            "extractable" => insert_if_some!(
+                results,
+                selected_attribute_name,
+                attributes.extractable.as_ref()
+            ),
             _x => {}
         }
     }
@@ -482,10 +601,15 @@ pub fn build_selected_attribute(
             Attribute::CryptographicLength(cryptographic_length)
         }
         "key_usage" => {
-            let key_usage = attribute_value
-                .parse::<KeyUsage>()
-                .map_err(|e| UtilsError::Default(e.to_string()))?;
-            let Some(cryptographic_usage_mask) = build_usage_mask_from_key_usage(&[key_usage])
+            let key_usages = attribute_value
+                .split(',')
+                .map(|s| {
+                    s.trim()
+                        .parse::<KeyUsage>()
+                        .map_err(|e| UtilsError::Default(e.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let Some(cryptographic_usage_mask) = build_usage_mask_from_key_usage(&key_usages)
             else {
                 return Err(UtilsError::Default(
                     "Error building cryptographic usage mask".to_owned(),
@@ -525,6 +649,50 @@ pub fn build_selected_attribute(
             name_value: attribute_value,
             name_type: NameType::UninterpretedTextString,
         }),
+        "rotate_interval" => {
+            let v = attribute_value
+                .parse::<i64>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateInterval(v)
+        }
+        "rotate_name" => Attribute::RotateName(attribute_value),
+        "rotate_offset" => {
+            let v = attribute_value
+                .parse::<i64>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateOffset(v)
+        }
+        "rotate_automatic" => {
+            let v = attribute_value
+                .parse::<bool>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::RotateAutomatic(v)
+        }
+        "deactivation_date" => {
+            let format = format_description::parse_borrowed::<2>(
+                "[year]-[month]-[day]T[hour]:[minute]:[second]Z",
+            )
+            .map_err(|e| UtilsError::Default(e.to_string()))?;
+            let deactivation_date = OffsetDateTime::parse(&attribute_value, &format)
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::DeactivationDate(deactivation_date)
+        }
+        "description" => Attribute::Description(attribute_value),
+        "comment" => Attribute::Comment(attribute_value),
+        "contact_information" => Attribute::ContactInformation(attribute_value),
+        "object_group" => Attribute::ObjectGroup(attribute_value),
+        "sensitive" => {
+            let v = attribute_value
+                .parse::<bool>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::Sensitive(v)
+        }
+        "extractable" => {
+            let v = attribute_value
+                .parse::<bool>()
+                .map_err(|e| UtilsError::Default(e.to_string()))?;
+            Attribute::Extractable(v)
+        }
 
         _ => {
             return Err(UtilsError::Default(format!(

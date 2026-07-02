@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use cosmian_logger::trace;
 use serde::{Deserialize, Serialize};
 use strum::Display;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 
 use super::kmip_types::{Digest, UsageLimits, VendorAttributeValue};
 use crate::{
@@ -22,6 +22,7 @@ use crate::{
             VENDOR_ATTR_AAD, VendorAttribute,
         },
     },
+    time_utils::time_normalize,
 };
 
 /// The following subsections describe the attributes that are associated with
@@ -366,6 +367,12 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revocation_reason: Option<RevocationReason>,
 
+    /// If set to True, specifies the Managed Object will be automatically rotated by the server
+    /// using the Rotate Interval via the equivalent of the `ReKey`, `ReKeyKeyPair` or `ReCertify`
+    /// operation performed by the server (KMIP 2.1 §4.48).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotate_automatic: Option<bool>,
+
     /// The Rotate Date attribute specifies the date and time for the last rotation
     /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
     /// the server when the Rotate operation successfully completes.
@@ -381,11 +388,10 @@ pub struct Attributes {
     /// The Rotate Interval attribute specifies the interval between rotations of a
     /// Managed Cryptographic Object, measured in seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotate_interval: Option<i32>,
+    pub rotate_interval: Option<i64>,
 
-    /// The Rotate Latest attribute is a Boolean that indicates whether the latest
-    /// rotation time should be recalculated based on the Rotation Interval and
-    /// the Initial Date.
+    /// If set to True, specifies the Managed Object is the most recent object of the set of
+    /// rotated Managed Objects. Set by the server when the object is rotated (KMIP 2.1 §4.52).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotate_latest: Option<bool>,
 
@@ -399,7 +405,7 @@ pub struct Attributes {
     /// Date and the Rotation Date of a Managed Cryptographic Object, measured in
     /// seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotate_offset: Option<i32>,
+    pub rotate_offset: Option<i64>,
 
     /// If True then the server SHALL prevent the object value being retrieved
     /// (via the Get operation) unless it is wrapped by another key. The server
@@ -728,6 +734,7 @@ impl Attributes {
         merge_option_field!(quantum_safe);
         merge_option_field!(random_number_generator);
         merge_option_field!(revocation_reason);
+        merge_option_field!(rotate_automatic);
         merge_option_field!(rotate_date);
         merge_option_field!(rotate_generation);
         merge_option_field!(rotate_interval);
@@ -945,6 +952,9 @@ impl Display for Attributes {
         }
         if let Some(value) = &self.revocation_reason {
             writeln!(f, "  Revocation Reason: {value}")?;
+        }
+        if let Some(value) = &self.rotate_automatic {
+            writeln!(f, "  Rotate Automatic: {value}")?;
         }
         if let Some(value) = &self.rotate_date {
             writeln!(f, "  Rotate Date: {value}")?;
@@ -1238,6 +1248,10 @@ pub enum Attribute {
     /// Managed Object was revoked.
     RevocationReason(RevocationReason),
 
+    /// If set to True, specifies the Managed Object will be automatically rotated by the server
+    /// using the Rotate Interval (KMIP 2.1 §4.48).
+    RotateAutomatic(bool),
+
     /// The Rotate Date attribute specifies the date and time for the last rotation
     /// of a Managed Cryptographic Object. The Rotate Date attribute SHALL be set by
     /// the server when the Rotate operation successfully completes.
@@ -1250,11 +1264,10 @@ pub enum Attribute {
 
     /// The Rotate Interval attribute specifies the interval between rotations of a
     /// Managed Cryptographic Object, measured in seconds.
-    RotateInterval(i32),
+    RotateInterval(i64),
 
-    /// The Rotate Latest attribute is a Boolean that indicates whether the latest
-    /// rotation time should be recalculated based on the Rotation Interval and
-    /// the Initial Date.
+    /// If set to True, specifies the Managed Object is the most recent object of the set of
+    /// rotated Managed Objects (KMIP 2.1 §4.52). Set by the server; not modifiable by client.
     RotateLatest(bool),
 
     /// The Rotate Name attribute specifies the name of the rotation. This attribute
@@ -1265,7 +1278,7 @@ pub enum Attribute {
     /// The Rotate Offset attribute specifies the time offset between the Creation
     /// Date and the Rotation Date of a Managed Cryptographic Object, measured in
     /// seconds.
-    RotateOffset(i32),
+    RotateOffset(i64),
 
     /// If True then the server SHALL prevent the object value being retrieved (via the Get operation) unless it is
     /// wrapped by another key. The server SHALL set the value to False if the value is not provided by the
@@ -1471,6 +1484,9 @@ impl From<Attributes> for Vec<Attribute> {
         if let Some(revocation_reason) = attributes.revocation_reason {
             vec.push(Attribute::RevocationReason(revocation_reason));
         }
+        if let Some(rotate_automatic) = attributes.rotate_automatic {
+            vec.push(Attribute::RotateAutomatic(rotate_automatic));
+        }
         if let Some(rotate_date) = attributes.rotate_date {
             vec.push(Attribute::RotateDate(rotate_date));
         }
@@ -1604,6 +1620,7 @@ impl From<Vec<Attribute>> for Attributes {
                     attrs.random_number_generator = Some(value);
                 }
                 Attribute::RevocationReason(value) => attrs.revocation_reason = Some(value),
+                Attribute::RotateAutomatic(value) => attrs.rotate_automatic = Some(value),
                 Attribute::RotateDate(value) => attrs.rotate_date = Some(value),
                 Attribute::RotateGeneration(value) => attrs.rotate_generation = Some(value),
                 Attribute::RotateInterval(value) => attrs.rotate_interval = Some(value),
@@ -1639,5 +1656,205 @@ impl From<Vec<Attribute>> for Attributes {
             }
         }
         attrs
+    }
+}
+
+impl Attributes {
+    // ─── Key rotation helpers ──────────────────────────────────────────────────
+
+    /// Return a clean copy of these attributes suitable for use as input to
+    /// `Create` / `CreateKeyPair` when generating a rotation replacement.
+    ///
+    /// Strips identity fields, lifecycle dates, rotation metadata, and vendor
+    /// tags that must not leak from the old key into the new key's generation
+    /// request. Cryptographic parameters (algorithm, length, domain parameters)
+    /// are preserved so the replacement key has identical cryptographic properties.
+    #[must_use]
+    pub fn clean_for_generation(&self, vendor_id: &str) -> Self {
+        let mut attrs = self.clone();
+        // Identity — the new key gets its own UID and links
+        attrs.unique_identifier = None;
+        attrs.link = None;
+        attrs.name = None;
+        // Lifecycle dates — must not leak from old key
+        attrs.initial_date = None;
+        attrs.last_change_date = None;
+        attrs.activation_date = None;
+        attrs.deactivation_date = None;
+        attrs.destroy_date = None;
+        attrs.compromise_date = None;
+        attrs.compromise_occurrence_date = None;
+        // Generation format — let Create/CreateKeyPair choose
+        attrs.key_format_type = None;
+        // Rotation metadata — new key starts fresh; server re-stamps these
+        attrs.rotate_interval = None;
+        attrs.rotate_name = None;
+        attrs.rotate_offset = None;
+        // rotate_generation / rotate_latest / rotate_date are server-managed:
+        // clear them so the outer-metadata values set by set_rotation_metadata_from
+        // are not blocked by the merge(overwrite=false) in GetAttributes.
+        attrs.rotate_generation = None;
+        attrs.rotate_latest = None;
+        attrs.rotate_date = None;
+        // Vendor tags — assigned fresh by Create
+        drop(attrs.remove_tags(vendor_id));
+        attrs
+    }
+
+    /// Update these (old) attributes to record that they have been replaced.
+    ///
+    /// Per KMIP 1.4 §4.4 Table 173 / §4.5 Table 177 / §4.8 Table 187:
+    /// - Sets `ReplacementObjectLink` → new key UID
+    /// - Removes the Name attribute (transferred to the replacement)
+    /// - Updates Last Change Date to now
+    pub fn retire_for_replacement(&mut self, new_uid: &str) -> Result<(), KmipError> {
+        let now = time_normalize()?;
+        self.set_link(
+            LinkType::ReplacementObjectLink,
+            LinkedObjectIdentifier::TextString(new_uid.to_owned()),
+        );
+        self.name = None;
+        self.deactivation_date = Some(now);
+        self.last_change_date = Some(now);
+        Ok(())
+    }
+
+    /// Set rotation metadata on these (new) attributes based on the old key's attributes.
+    ///
+    /// Per the auto-rotation spec (Manual rekey table):
+    /// - `rotate_generation` = old value + 1
+    /// - `rotate_date` = now
+    /// - `rotate_interval` = 0 (manual rekey does not inherit the policy)
+    /// - `rotate_name` = inherited from old key (required for keyset resolution)
+    /// - `rotate_offset` = None (cleared for manual rekey)
+    /// - `rotate_latest` = true (new key is the latest in the keyset)
+    pub fn set_rotation_metadata_from(&mut self, old: &Self) -> Result<(), KmipError> {
+        self.rotate_generation = Some(old.rotate_generation.unwrap_or(0) + 1);
+        self.rotate_date = Some(time_normalize()?);
+        // Manual rekey: do not inherit the rotation policy — user must re-arm explicitly
+        self.rotate_interval = Some(0);
+        // Inherit rotate_name so keyset resolution can find the new key
+        self.rotate_name.clone_from(&old.rotate_name);
+        self.rotate_offset = None;
+        // Mark the new key as the latest in the keyset
+        self.rotate_latest = Some(true);
+        Ok(())
+    }
+
+    /// Clear rotation flags after this key is retired as part of a rekey.
+    ///
+    /// - `rotate_interval` = 0 (prevent the scheduler from picking it up again)
+    /// - `rotate_latest` = false (the old key is no longer the latest in the keyset)
+    /// - `rotate_generation` = 0 if unset (ensure gen-0 is queryable)
+    pub const fn clear_rotation_flags(&mut self) {
+        self.rotate_interval = Some(0);
+        self.rotate_latest = Some(false);
+        if self.rotate_generation.is_none() {
+            self.rotate_generation = Some(0);
+        }
+    }
+
+    /// Validate that the request attributes do not attempt to change cryptographic parameters.
+    ///
+    /// Per KMIP §4.4 / §4.5, a rekey operation must preserve the algorithm, curve,
+    /// and key length of the original key. Changing these requires a new `Create` or
+    /// `CreateKeyPair` operation instead.
+    ///
+    /// The `attrs_iter` yields each `Option<&Attributes>` from the request (one for
+    /// symmetric `ReKey`, up to three for `ReKeyKeyPair`).
+    pub fn validate_no_crypto_param_change<'a>(
+        &self,
+        attrs_iter: impl IntoIterator<Item = Option<&'a Self>>,
+        operation_name: &str,
+    ) -> Result<(), KmipError> {
+        for req_attrs in attrs_iter.into_iter().flatten() {
+            if let Some(algo) = req_attrs.cryptographic_algorithm {
+                if self.cryptographic_algorithm != Some(algo) {
+                    return Err(KmipError::InvalidKmip21Value(
+                        ErrorReason::Constraint_Violation,
+                        format!(
+                            "{operation_name}: changing the cryptographic algorithm is not \
+                             allowed. Use Create/CreateKeyPair for a different algorithm."
+                        ),
+                    ));
+                }
+            }
+            if let Some(ref cdp) = req_attrs.cryptographic_domain_parameters {
+                if let Some(ref existing_cdp) = self.cryptographic_domain_parameters {
+                    if cdp.recommended_curve.is_some()
+                        && cdp.recommended_curve != existing_cdp.recommended_curve
+                    {
+                        return Err(KmipError::InvalidKmip21Value(
+                            ErrorReason::Constraint_Violation,
+                            format!(
+                                "{operation_name}: changing the recommended curve is not allowed. \
+                                 Use Create/CreateKeyPair for a different curve."
+                            ),
+                        ));
+                    }
+                }
+            }
+            if let Some(len) = req_attrs.cryptographic_length {
+                if self.cryptographic_length.is_some() && self.cryptographic_length != Some(len) {
+                    return Err(KmipError::InvalidKmip21Value(
+                        ErrorReason::Constraint_Violation,
+                        format!(
+                            "{operation_name}: changing the cryptographic length is not allowed. \
+                             Use Create/CreateKeyPair for a different key size."
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Create replacement attributes for a new key based on these (old) attributes.
+    ///
+    /// Per KMIP 1.4 §4.4 Table 173 / §4.5 Table 177 / §4.8 Table 187:
+    /// - Copies attributes from the existing key
+    /// - Removes stale unique identifier and links
+    /// - Sets `ReplacedObjectLink` → old key UID
+    /// - Applies offset-based date computation
+    pub fn for_replacement(&self, old_uid: &str, offset: Option<i64>) -> Result<Self, KmipError> {
+        let now = time_normalize()?;
+        let activation_date = Some(offset.map_or(now, |secs| now + Duration::seconds(secs)));
+        let deactivation_date = match (self.deactivation_date, self.activation_date) {
+            (Some(old_deactivation), Some(old_activation)) => {
+                activation_date.map(|new_activation| {
+                    let shift = new_activation - old_activation;
+                    old_deactivation + shift
+                })
+            }
+            _ => None,
+        };
+
+        let mut new_attrs = self.clone();
+
+        // Clear fields that must not be set on the replacement key
+        new_attrs.unique_identifier = None;
+        new_attrs.destroy_date = None;
+        new_attrs.compromise_date = None;
+        new_attrs.compromise_occurrence_date = None;
+
+        // Remove any existing replacement/replaced links (from a previous rekey)
+        new_attrs.remove_link(LinkType::ReplacementObjectLink);
+        new_attrs.remove_link(LinkType::ReplacedObjectLink);
+
+        // Set the ReplacedObjectLink on the new key pointing to the old key
+        new_attrs.set_link(
+            LinkType::ReplacedObjectLink,
+            LinkedObjectIdentifier::TextString(old_uid.to_owned()),
+        );
+
+        // Set dates per spec
+        new_attrs.initial_date = Some(now);
+        new_attrs.last_change_date = Some(now);
+        new_attrs.activation_date = activation_date;
+        if deactivation_date.is_some() {
+            new_attrs.deactivation_date = deactivation_date;
+        }
+
+        Ok(new_attrs)
     }
 }

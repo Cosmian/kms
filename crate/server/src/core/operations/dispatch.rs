@@ -3,8 +3,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::kmip_operations::{
         Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt, DeleteAttribute,
         DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList, GetAttributes, Hash, Import,
-        Locate, MAC, MACVerify, ModifyAttribute, Operation, Query, RNGRetrieve, RNGSeed, ReKey,
-        ReKeyKeyPair, Register, Revoke, SetAttribute, Sign, SignatureVerify, Validate,
+        Locate, MAC, MACVerify, ModifyAttribute, Operation, Query, RNGRetrieve, RNGSeed, ReCertify,
+        ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute, Sign, SignatureVerify, Validate,
     },
     ttlv::{TTLV, from_ttlv},
 };
@@ -28,13 +28,6 @@ macro_rules! op {
     ($ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
         let req = from_ttlv::<$Req>($ttlv)?;
         let resp = $kms.$method(req, $user).await?;
-        Operation::$Resp(resp)
-    }};
-    // Variant for operations that also need privileged_users
-    (priv $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
-        let privileged_users = $kms.params.privileged_users.clone();
-        let resp = $kms.$method(req, $user, privileged_users).await?;
         Operation::$Resp(resp)
     }};
     // Variant for operations returning a boxed response
@@ -117,13 +110,20 @@ async fn dispatch_inner(
             add_attribute,
             AddAttributeResponse
         ),
-        "Certify" => op!(priv ttlv, kms, user, Certify, certify, CertifyResponse),
+        "Certify" => op!(ttlv, kms, user, Certify, certify, CertifyResponse),
         "Check" => {
             op!(fn ttlv, kms, user, Check, check, CheckResponse)
         }
-        "Create" => op!(priv ttlv, kms, user, Create, create, CreateResponse),
+        "Create" => op!(ttlv, kms, user, Create, create, CreateResponse),
         "CreateKeyPair" => {
-            op!(priv ttlv, kms, user, CreateKeyPair, create_key_pair, CreateKeyPairResponse)
+            op!(
+                ttlv,
+                kms,
+                user,
+                CreateKeyPair,
+                create_key_pair,
+                CreateKeyPairResponse
+            )
         }
         "Decrypt" => op!(ttlv, kms, user, Decrypt, decrypt, DecryptResponse),
         "DeleteAttribute" => {
@@ -160,7 +160,7 @@ async fn dispatch_inner(
             RNGRetrieveResponse
         ),
         "RNGSeed" => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
-        "Import" => op!(priv ttlv, kms, user, Import, import, ImportResponse),
+        "Import" => op!(ttlv, kms, user, Import, import, ImportResponse),
         "Locate" => op!(ttlv, kms, user, Locate, locate, LocateResponse),
         "Mac" | "MAC" => op!(ttlv, kms, user, MAC, mac, MACResponse),
         "MACVerify" => {
@@ -177,11 +177,21 @@ async fn dispatch_inner(
                 ModifyAttributeResponse
             )
         }
-        "ReKey" => op!(priv ttlv, kms, user, ReKey, rekey, ReKeyResponse),
+        "ReKey" => op!(ttlv, kms, user, ReKey, rekey, ReKeyResponse),
         "ReKeyKeyPair" => {
-            op!(priv ttlv, kms, user, ReKeyKeyPair, rekey_keypair, ReKeyKeyPairResponse)
+            op!(
+                ttlv,
+                kms,
+                user,
+                ReKeyKeyPair,
+                rekey_keypair,
+                ReKeyKeyPairResponse
+            )
         }
-        "Register" => op!(priv ttlv, kms, user, Register, register, RegisterResponse),
+        "ReCertify" => {
+            op!(ttlv, kms, user, ReCertify, recertify, ReCertifyResponse)
+        }
+        "Register" => op!(ttlv, kms, user, Register, register, RegisterResponse),
         "Revoke" => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
         "SetAttribute" => op!(
             ttlv,

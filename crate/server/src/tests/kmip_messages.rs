@@ -46,7 +46,7 @@ async fn test_kmip_mac_messages() -> KResult<()> {
     )?;
 
     let unique_identifier = Some(
-        kms.create(symmetric_key_request, owner, None)
+        kms.create(symmetric_key_request, owner)
             .await?
             .unique_identifier,
     );
@@ -126,7 +126,7 @@ async fn test_encrypt_kmip_messages() -> KResult<()> {
     )?;
 
     let unique_identifier = Some(
-        kms.create(symmetric_key_request, owner, None)
+        kms.create(symmetric_key_request, owner)
             .await?
             .unique_identifier,
     );

@@ -4,7 +4,7 @@ use cosmian_kms_client::{KmsClient, kmip_2_1::kmip_types::UniqueIdentifier};
 use crate::{
     actions::{
         labels::KEY_ID,
-        shared::{get_key_uid, utils::revoke},
+        shared::{RevokeReasonArgs, get_key_uid, utils::revoke},
     },
     error::result::KmsCliResult,
 };
@@ -18,9 +18,8 @@ use crate::{
 /// (the two keys need to be stored in the KMS).
 #[derive(Parser, Debug)]
 pub struct RevokeKeyAction {
-    /// The reason for the revocation as a string
-    #[clap(required = true)]
-    revocation_reason: String,
+    #[clap(flatten)]
+    reason: RevokeReasonArgs,
 
     /// The key unique identifier of the key to revoke.
     /// If not specified, tags should be specified
@@ -36,6 +35,12 @@ pub struct RevokeKeyAction {
 impl RevokeKeyAction {
     pub async fn run(&self, kms_rest_client: KmsClient) -> KmsCliResult<UniqueIdentifier> {
         let id = get_key_uid(self.key_id.as_ref(), self.tags.as_ref(), KEY_ID)?;
-        revoke(kms_rest_client, &id, &self.revocation_reason).await
+        revoke(
+            kms_rest_client,
+            &id,
+            &self.reason.revocation_reason,
+            self.reason.reason_code,
+        )
+        .await
     }
 }

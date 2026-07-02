@@ -203,7 +203,7 @@ impl TTLVXMLDeserializer {
 
     pub fn from_xml(xml: &str) -> Result<TTLV, KmipError> {
         let mut reader = Reader::from_str(xml);
-        reader.trim_text(true);
+        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let mut stack: Vec<TTLV> = Vec::new();
         loop {
@@ -325,7 +325,8 @@ impl TTLVXMLDeserializer {
                     | Event::Comment(_)
                     | Event::Decl(_)
                     | Event::PI(_)
-                    | Event::DocType(_),
+                    | Event::DocType(_)
+                    | Event::GeneralRef(_),
                 ) => {}
                 Err(e) => return Err(KmipError::Default(format!("XML parse error: {e}"))),
             }

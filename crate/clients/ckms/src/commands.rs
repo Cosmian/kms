@@ -213,7 +213,7 @@ pub async fn ckms_main() -> CosmianResult<()> {
 fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()> {
     println!("-- {label} HTTP settings --");
 
-    let server_url: String = Input::new()
+    http.server_url = Input::new()
         .with_prompt("Server URL")
         .default(http.server_url.clone())
         .validate_with(|input: &String| -> Result<(), String> {
@@ -223,16 +223,13 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
         })
         .interact_text()
         .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-    http.server_url = server_url;
 
-    let accept_invalid_certs: bool = Confirm::new()
+    http.accept_invalid_certs = Confirm::new()
         .with_prompt("Accept invalid TLS certificates?")
         .default(http.accept_invalid_certs)
         .interact()
         .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-    http.accept_invalid_certs = accept_invalid_certs;
 
-    // Authentication method selection
     let current_auth_index = match (
         http.tls_client_pem_cert_path.is_some(),
         http.tls_client_pkcs12_path.is_some(),
@@ -243,24 +240,23 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
         (false, true, false) => 3,
         (true, false, true) => 4,
         (false, true, true) => 5,
-        _ => 0, // None, or ambiguous state (both PEM and PKCS#12 set)
+        _ => 0,
     };
-    let auth_methods = vec![
-        "None",
-        "Bearer token",
-        "Client certificate (PEM)",
-        "Client certificate (PKCS#12)",
-        "Both (PEM cert + token)",
-        "Both (PKCS#12 cert + token)",
-    ];
     let choice = Select::new()
         .with_prompt("Authentication method")
-        .items(&auth_methods)
+        .items(&[
+            "None",
+            "Bearer token",
+            "Client certificate (PEM)",
+            "Client certificate (PKCS#12)",
+            "Both (PEM cert + token)",
+            "Both (PKCS#12 cert + token)",
+        ])
         .default(current_auth_index)
         .interact()
         .map_err(|e| cli_error!("Prompt failed: {e}"))?;
 
-    // Reset auth fields
+    // Reset auth fields before applying the chosen method
     http.access_token = None;
     http.tls_client_pkcs12_path = None;
     http.tls_client_pkcs12_password = None;
@@ -270,226 +266,76 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
     match choice {
         0 => {}
         1 => {
-            let token: String = Input::new()
-                .with_prompt("Bearer token (leave empty to skip)")
-                .allow_empty(true)
-                .with_initial_text(http.access_token.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            if !token.is_empty() {
-                http.access_token = Some(token);
-            }
+            http.access_token = prompt_optional_text("Bearer token (leave empty to skip)", "")?;
         }
         2 => {
-            let cert_path: String = Input::new()
-                .with_prompt("Client PEM certificate path (.crt / .pem)")
-                .allow_empty(true)
-                .with_initial_text(http.tls_client_pem_cert_path.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            if !cert_path.is_empty() {
-                http.tls_client_pem_cert_path = Some(cert_path);
-                let key_path: String = Input::new()
-                    .with_prompt("Client PEM key path (.key / .pem)")
-                    .allow_empty(false)
-                    .with_initial_text(http.tls_client_pem_key_path.clone().unwrap_or_default())
-                    .interact_text()
-                    .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-                http.tls_client_pem_key_path = Some(key_path);
+            if let Some(cert) =
+                prompt_optional_text("Client PEM certificate path (.crt / .pem)", "")?
+            {
+                http.tls_client_pem_key_path = Some(prompt_required_text(
+                    "Client PEM key path (.key / .pem)",
+                    "",
+                )?);
+                http.tls_client_pem_cert_path = Some(cert);
             }
         }
         3 => {
-            let pkcs12_path: String = Input::new()
-                .with_prompt("Client PKCS#12 path (.p12)")
-                .allow_empty(true)
-                .with_initial_text(http.tls_client_pkcs12_path.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            if !pkcs12_path.is_empty() {
-                http.tls_client_pkcs12_path = Some(pkcs12_path);
-                let pw: String = Password::new()
-                    .with_prompt("Client PKCS#12 password (leave empty if none)")
-                    .allow_empty_password(true)
-                    .interact()
-                    .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-                if !pw.is_empty() {
-                    http.tls_client_pkcs12_password = Some(pw);
-                }
+            if let Some(path) = prompt_optional_text("Client PKCS#12 path (.p12)", "")? {
+                http.tls_client_pkcs12_password =
+                    prompt_optional_password("Client PKCS#12 password (leave empty if none)")?;
+                http.tls_client_pkcs12_path = Some(path);
             }
         }
         4 => {
-            let token: String = Input::new()
-                .with_prompt("Bearer token")
-                .allow_empty(false)
-                .with_initial_text(http.access_token.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.access_token = Some(token);
-
-            let cert_path: String = Input::new()
-                .with_prompt("Client PEM certificate path (.crt / .pem)")
-                .allow_empty(false)
-                .with_initial_text(http.tls_client_pem_cert_path.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.tls_client_pem_cert_path = Some(cert_path);
-            let key_path: String = Input::new()
-                .with_prompt("Client PEM key path (.key / .pem)")
-                .allow_empty(false)
-                .with_initial_text(http.tls_client_pem_key_path.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.tls_client_pem_key_path = Some(key_path);
+            http.access_token = Some(prompt_required_text("Bearer token", "")?);
+            http.tls_client_pem_cert_path = Some(prompt_required_text(
+                "Client PEM certificate path (.crt / .pem)",
+                "",
+            )?);
+            http.tls_client_pem_key_path = Some(prompt_required_text(
+                "Client PEM key path (.key / .pem)",
+                "",
+            )?);
         }
         5 => {
-            let token: String = Input::new()
-                .with_prompt("Bearer token")
-                .allow_empty(false)
-                .with_initial_text(http.access_token.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.access_token = Some(token);
-
-            let pkcs12_path: String = Input::new()
-                .with_prompt("Client PKCS#12 path (.p12)")
-                .allow_empty(false)
-                .with_initial_text(http.tls_client_pkcs12_path.clone().unwrap_or_default())
-                .interact_text()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            http.tls_client_pkcs12_path = Some(pkcs12_path);
-            let pw: String = Password::new()
-                .with_prompt("Client PKCS#12 password (leave empty if none)")
-                .allow_empty_password(true)
-                .interact()
-                .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-            if !pw.is_empty() {
-                http.tls_client_pkcs12_password = Some(pw);
-            }
+            http.access_token = Some(prompt_required_text("Bearer token", "")?);
+            http.tls_client_pkcs12_path =
+                Some(prompt_required_text("Client PKCS#12 path (.p12)", "")?);
+            http.tls_client_pkcs12_password =
+                prompt_optional_password("Client PKCS#12 password (leave empty if none)")?;
         }
         #[allow(clippy::unreachable)]
         _ => unreachable!(),
     }
 
-    // Proxy settings prompt
-    let use_proxy = Confirm::new()
-        .with_prompt("Use an HTTP proxy?")
-        .default(http.proxy_params.is_some())
-        .interact()
-        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-    if use_proxy {
-        let current = http.proxy_params.clone();
-        let url_s: String = Input::new()
-            .with_prompt("Proxy URL (e.g., http://host:port)")
-            .with_initial_text(
-                current
-                    .as_ref()
-                    .map(|p| p.url.as_str().to_owned())
-                    .unwrap_or_default(),
-            )
-            .interact_text()
-            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-        let url = Url::parse(&url_s).map_err(|e| cli_error!("Invalid proxy URL: {e}"))?;
+    configure_proxy(http)?;
 
-        let exclusion_list_s: String = Input::new()
-            .with_prompt("Proxy exclusion list (comma-separated hosts) [optional]")
-            .allow_empty(true)
-            .with_initial_text(
-                current
-                    .as_ref()
-                    .map(|p| p.exclusion_list.join(","))
-                    .unwrap_or_default(),
-            )
-            .interact_text()
-            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-        let exclusion_list: Vec<String> = exclusion_list_s
-            .split(',')
-            .map(|s| s.trim().to_owned())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        let basic_auth_username: String = Input::new()
-            .with_prompt("Proxy basic auth username [optional]")
-            .allow_empty(true)
-            .with_initial_text(
-                current
-                    .as_ref()
-                    .and_then(|p| p.basic_auth_username.clone())
-                    .unwrap_or_default(),
-            )
-            .interact_text()
-            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-        let basic_auth_password: String = Password::new()
-            .with_prompt("Proxy basic auth password [optional]")
-            .allow_empty_password(true)
-            .interact()
-            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-        let custom_auth_header: String = Input::new()
-            .with_prompt("Proxy custom auth header [optional]")
-            .allow_empty(true)
-            .with_initial_text(
-                current
-                    .as_ref()
-                    .and_then(|p| p.custom_auth_header.clone())
-                    .unwrap_or_default(),
-            )
-            .interact_text()
-            .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-
-        http.proxy_params = Some(ProxyParams {
-            url,
-            basic_auth_username: if basic_auth_username.is_empty() {
-                None
-            } else {
-                Some(basic_auth_username)
-            },
-            basic_auth_password: if basic_auth_password.is_empty() {
-                None
-            } else {
-                Some(basic_auth_password)
-            },
-            custom_auth_header: if custom_auth_header.is_empty() {
-                None
-            } else {
-                Some(custom_auth_header)
-            },
-            exclusion_list,
-        });
-    } else {
-        http.proxy_params = None;
-    }
-
-    // CA certificate for server TLS verification
     prompt_optional!(
         http.verified_cert,
         "CA certificate for server TLS verification (PEM path, leave empty to use system roots)"
     );
-
-    // Database secret (Redis-findex client-side encryption key)
     prompt_password!(
         http.database_secret,
         "Database secret (Redis-findex client-side encryption key, leave empty to skip)"
     );
-
-    // TLS cipher suites
     prompt_optional!(
         http.cipher_suites,
         "TLS cipher suites (colon-separated, e.g. TLS_AES_256_GCM_SHA384, leave empty for default)"
     );
 
-    // Custom HTTP headers
     let add_headers = Confirm::new()
         .with_prompt("Add custom HTTP headers to every request?")
         .default(http.custom_headers.as_ref().is_some_and(|h| !h.is_empty()))
         .interact()
         .map_err(|e| cli_error!("Prompt failed: {e}"))?;
     if add_headers {
-        let headers_s: String = Input::new()
+        let raw: String = Input::new()
             .with_prompt("Custom headers (comma-separated \"Header-Name: value\" entries)")
             .allow_empty(true)
             .with_initial_text(http.custom_headers.clone().unwrap_or_default().join(", "))
             .interact_text()
             .map_err(|e| cli_error!("Prompt failed: {e}"))?;
-        let headers: Vec<String> = headers_s
+        let headers: Vec<String> = raw
             .split(',')
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty())
@@ -504,6 +350,98 @@ fn configure_http(label: &str, http: &mut HttpClientConfig) -> CosmianResult<()>
     }
 
     Ok(())
+}
+
+/// Prompt the user for proxy settings and update `http.proxy_params`.
+fn configure_proxy(http: &mut HttpClientConfig) -> CosmianResult<()> {
+    let use_proxy = Confirm::new()
+        .with_prompt("Use an HTTP proxy?")
+        .default(http.proxy_params.is_some())
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+
+    if !use_proxy {
+        http.proxy_params = None;
+        return Ok(());
+    }
+
+    let current = http.proxy_params.clone();
+    let init_url = current
+        .as_ref()
+        .map(|p| p.url.as_str().to_owned())
+        .unwrap_or_default();
+    let url_s = prompt_required_text("Proxy URL (e.g., http://host:port)", &init_url)?;
+    let url = Url::parse(&url_s).map_err(|e| cli_error!("Invalid proxy URL: {e}"))?;
+
+    let init_excl = current
+        .as_ref()
+        .map(|p| p.exclusion_list.join(","))
+        .unwrap_or_default();
+    let excl_s = prompt_optional_text(
+        "Proxy exclusion list (comma-separated hosts) [optional]",
+        &init_excl,
+    )?
+    .unwrap_or_default();
+    let exclusion_list: Vec<String> = excl_s
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let init_user = current
+        .as_ref()
+        .and_then(|p| p.basic_auth_username.clone())
+        .unwrap_or_default();
+    let basic_auth_username =
+        prompt_optional_text("Proxy basic auth username [optional]", &init_user)?;
+    let basic_auth_password = prompt_optional_password("Proxy basic auth password [optional]")?;
+
+    let init_header = current
+        .as_ref()
+        .and_then(|p| p.custom_auth_header.clone())
+        .unwrap_or_default();
+    let custom_auth_header =
+        prompt_optional_text("Proxy custom auth header [optional]", &init_header)?;
+
+    http.proxy_params = Some(ProxyParams {
+        url,
+        basic_auth_username,
+        basic_auth_password,
+        custom_auth_header,
+        exclusion_list,
+    });
+    Ok(())
+}
+
+/// Prompt for a required (non-empty) text field.
+fn prompt_required_text(prompt: &str, initial: &str) -> CosmianResult<String> {
+    Input::new()
+        .with_prompt(prompt)
+        .allow_empty(false)
+        .with_initial_text(initial)
+        .interact_text()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))
+}
+
+/// Prompt for an optional text field; returns `None` if the user leaves it empty.
+fn prompt_optional_text(prompt: &str, initial: &str) -> CosmianResult<Option<String>> {
+    let value: String = Input::new()
+        .with_prompt(prompt)
+        .allow_empty(true)
+        .with_initial_text(initial)
+        .interact_text()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    Ok(if value.is_empty() { None } else { Some(value) })
+}
+
+/// Prompt for an optional password; returns `None` if the user leaves it empty.
+fn prompt_optional_password(prompt: &str) -> CosmianResult<Option<String>> {
+    let pw: String = Password::new()
+        .with_prompt(prompt)
+        .allow_empty_password(true)
+        .interact()
+        .map_err(|e| cli_error!("Prompt failed: {e}"))?;
+    Ok(if pw.is_empty() { None } else { Some(pw) })
 }
 
 #[allow(clippy::print_stdout)]

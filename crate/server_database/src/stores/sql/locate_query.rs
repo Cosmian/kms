@@ -14,6 +14,12 @@ use cosmian_kmip::{
 /// by implementation if needed
 pub(super) trait PlaceholderTrait {
     const NEEDS_INTEGER_CAST: bool = true;
+    /// SQL literal that equals `true` when compared with a JSON-extracted boolean.
+    ///
+    /// `SQLite` `json_extract` returns the integer `1` for a JSON `true` boolean,
+    /// while `PostgreSQL` (`->>`) and `MySQL` (`JSON_UNQUOTE(JSON_EXTRACT(...))`)
+    /// return the text string `'true'`.
+    const BOOL_TRUE_LITERAL: &'static str = "'true'";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
@@ -222,7 +228,10 @@ impl PlaceholderTrait for PgSqlPlaceholder {
 }
 
 pub(super) enum SqlitePlaceholder {}
-impl PlaceholderTrait for SqlitePlaceholder {}
+impl PlaceholderTrait for SqlitePlaceholder {
+    /// `SQLite` `json_extract` returns the integer `1` for a JSON `true` value.
+    const BOOL_TRUE_LITERAL: &'static str = "1";
+}
 
 // We build locate SQL dynamically across multiple DB engines (SQLite/Postgres/MySQL), but we must
 // *not* interpolate user-controlled values directly into the SQL string.
@@ -513,4 +522,97 @@ ON objects.id = matched_tags.id"
     }
 
     qb.finish(query)
+}
+
+/// Build the SQL query to find objects by their `RotateName` vendor attribute.
+///
+/// Optionally filters by `RotateGeneration` (integer equality) directly in SQL.
+///
+/// Returns a `LocateQuery` with parameterized bindings suitable for all SQL backends.
+pub(super) fn find_by_rotate_name_query<P: PlaceholderTrait>(
+    name: &str,
+    generation: Option<i32>,
+    owner: &str,
+) -> LocateQuery {
+    let mut qb = LocateQueryBuilder::<P>::new();
+
+    let owner_bind = qb.bind_text(owner);
+    let name_bind = qb.bind_text(name);
+    let rotate_name_extract = P::extract_attribute_path(&["RotateName"]);
+
+    let mut query = format!(
+        "SELECT objects.id, objects.attributes FROM objects \
+         WHERE objects.owner = {owner_bind} \
+         AND {rotate_name_extract} = {name_bind}"
+    );
+
+    if let Some(g) = generation {
+        let gen_extract = P::extract_attribute_path(&["RotateGeneration"]);
+        let gen_bind = qb.bind_i64(i64::from(g));
+        if P::NEEDS_INTEGER_CAST {
+            query = format!(
+                "{query} AND CAST({gen_extract} AS {}) = {gen_bind}",
+                P::TYPE_INTEGER
+            );
+        } else {
+            query = format!("{query} AND CAST({gen_extract} AS SIGNED) = {gen_bind}");
+        }
+    }
+
+    qb.finish(query)
+}
+
+/// Build the SQL query to find objects that are candidates for rotation.
+/// Selects active objects where `RotateAutomatic = true` and `RotateInterval > 0`.
+/// Per KMIP 2.1 §4.48, automatic rotation only occurs when explicitly enabled by the client.
+/// The actual "due" check (comparing timestamps) is done in Rust via `is_due_for_rotation`.
+///
+/// Returns `(id, owner, attributes)` rows so the auto-rotation scheduler can issue a
+/// Re-Key on behalf of the correct owner without needing an additional DB round-trip.
+#[must_use]
+pub(super) fn find_due_for_rotation_query<P: PlaceholderTrait>() -> String {
+    let interval_extract = P::extract_attribute_path(&["RotateInterval"]);
+    let auto_extract = P::extract_attribute_path(&["RotateAutomatic"]);
+    let cast_and_compare = if P::NEEDS_INTEGER_CAST {
+        format!("CAST({interval_extract} AS {}) > 0", P::TYPE_INTEGER)
+    } else {
+        // MySQL: CAST with SIGNED for correct numeric comparison
+        format!("CAST({interval_extract} AS SIGNED) > 0")
+    };
+    format!(
+        "SELECT objects.id, objects.owner, objects.attributes FROM objects \
+         WHERE objects.state = 'Active' \
+         AND {auto_extract} = {} \
+         AND {interval_extract} IS NOT NULL \
+         AND {cast_and_compare}",
+        P::BOOL_TRUE_LITERAL
+    )
+}
+
+/// Determine whether a key object (already known to have `rotate_interval > 0`)
+/// is past its scheduled rotation time.
+///
+/// The next rotation time is computed as:
+/// - `rotate_date + rotate_interval` if `rotate_date` is set (last rotation timestamp)
+/// - `initial_date + rotate_offset + rotate_interval` otherwise (first rotation from creation)
+///
+/// Returns `true` if `now >= next_rotation_time`.
+pub(crate) fn is_due_for_rotation(attrs: &Attributes, now: time::OffsetDateTime) -> bool {
+    let interval_secs = match attrs.rotate_interval {
+        Some(secs) if secs > 0 => secs,
+        _ => return false,
+    };
+    let interval = time::Duration::seconds(interval_secs);
+
+    let next_rotation = if let Some(last_rotate) = attrs.rotate_date {
+        last_rotate + interval
+    } else if let Some(initial) = attrs.initial_date {
+        let offset = time::Duration::seconds(attrs.rotate_offset.unwrap_or(0));
+        initial + offset + interval
+    } else {
+        // No anchor date available — cannot determine schedule
+        return false;
+    };
+
+    now >= next_rotation
 }

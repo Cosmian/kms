@@ -50,16 +50,16 @@ use cosmian_kms_interfaces::{
 };
 use cosmian_logger::{debug, trace};
 use pkcs11_sys::{
-    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
+    CK_AES_GCM_PARAMS, CK_ATTRIBUTE, CK_BBOOL, CK_DATE, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_RSA_PKCS_MGF_TYPE,
     CK_RSA_PKCS_OAEP_PARAMS, CK_SESSION_HANDLE, CK_TRUE, CK_ULONG, CKA_CLASS, CKA_COEFFICIENT,
-    CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS, CKA_PRIME_1,
-    CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE, CKA_VALUE,
-    CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKK_AES,
-    CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS, CKM_RSA_PKCS_OAEP,
-    CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384, CKM_SHA384_RSA_PKCS,
-    CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKO_SECRET_KEY,
-    CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
+    CKA_END_DATE, CKA_EXPONENT_1, CKA_EXPONENT_2, CKA_ID, CKA_KEY_TYPE, CKA_LABEL, CKA_MODULUS,
+    CKA_PRIME_1, CKA_PRIME_2, CKA_PRIVATE_EXPONENT, CKA_PUBLIC_EXPONENT, CKA_SENSITIVE,
+    CKA_START_DATE, CKA_VALUE, CKA_VALUE_LEN, CKG_MGF1_SHA1, CKG_MGF1_SHA256, CKG_MGF1_SHA384,
+    CKG_MGF1_SHA512, CKK_AES, CKK_RSA, CKK_VENDOR_DEFINED, CKM_AES_CBC, CKM_AES_GCM, CKM_RSA_PKCS,
+    CKM_RSA_PKCS_OAEP, CKM_SHA_1, CKM_SHA1_RSA_PKCS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384,
+    CKM_SHA384_RSA_PKCS, CKM_SHA512, CKM_SHA512_RSA_PKCS, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
+    CKO_SECRET_KEY, CKO_VENDOR_DEFINED, CKR_ATTRIBUTE_SENSITIVE, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
     CKZ_DATA_SPECIFIED,
 };
 use rand::{TryRng, rngs::SysRng};
@@ -311,6 +311,13 @@ impl Session {
 
         let mut supported = Vec::new();
 
+        // Probe each hash by performing a real (dummy) single-part encryption.
+        // Using encrypt_with_mechanism (C_EncryptInit + C_Encrypt) guarantees the
+        // session returns to a clean state after each probe: per PKCS#11, C_Encrypt
+        // terminates the active encryption operation on completion.  Stopping at
+        // C_EncryptInit would leave `self.handle` in ENCRYPT state, causing
+        // CKR_OPERATION_ACTIVE (130) for the next hash and for any later operations
+        // (including C_DestroyObject on the temp key and keys created by other tests).
         for (hash, mgf) in candidates {
             let mut params = CK_RSA_PKCS_OAEP_PARAMS {
                 hashAlg: *hash,
@@ -326,20 +333,11 @@ impl Session {
                 ulParameterLen: CK_ULONG::try_from(size_of::<CK_RSA_PKCS_OAEP_PARAMS>())?,
             };
 
-            // We don't actually encrypt, just see if init succeeds
-            #[expect(unsafe_code)]
-            let rv = unsafe {
-                self.hsm.C_EncryptInit.ok_or_else(|| {
-                    drop(self.destroy_object(sk_handle));
-                    drop(self.destroy_object(pk_handle));
-                    HError::Default("C_EncryptInit not available on library".to_owned())
-                })?(self.handle, &raw mut mechanism, pk_handle)
-            };
-
-            if rv == CKR_OK {
-                supported.push(*hash);
-            } else {
-                debug!("Failed to encrypt data with hash {hash}: {rv}");
+            // A 1-byte plaintext is minimal but valid for RSA-1024 OAEP.
+            let dummy_plaintext = [0_u8; 1];
+            match self.encrypt_with_mechanism(pk_handle, &mut mechanism, &dummy_plaintext) {
+                Ok(_) => supported.push(*hash),
+                Err(e) => debug!("OAEP hash {hash} not supported: {e}"),
             }
         }
         self.destroy_object(sk_handle)?;
@@ -1730,6 +1728,246 @@ impl Session {
         Ok(Some(()))
     }
 
+    /// Parse a `CK_DATE` (8-byte ASCII "YYYYMMDD") into a `time::Date`.
+    /// Returns `None` if the date is empty/zeroed.
+    fn parse_ck_date(date: CK_DATE) -> Option<time::Date> {
+        let year_str = std::str::from_utf8(&date.year).ok()?;
+        let month_str = std::str::from_utf8(&date.month).ok()?;
+        let day_str = std::str::from_utf8(&date.day).ok()?;
+        let year: i32 = year_str.trim().parse().ok()?;
+        let month: u8 = month_str.trim().parse().ok()?;
+        let day: u8 = day_str.trim().parse().ok()?;
+        if year == 0 && month == 0 && day == 0 {
+            return None;
+        }
+        let month = time::Month::try_from(month).ok()?;
+        time::Date::from_calendar_date(year, month, day).ok()
+    }
+
+    /// Read `CKA_START_DATE` and `CKA_END_DATE` from a key handle.
+    /// Returns `(start_date, end_date)`. Attributes that are absent or empty
+    /// (zeroed) are returned as `None`.
+    fn get_key_dates(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+    ) -> HResult<(Option<time::Date>, Option<time::Date>)> {
+        let mut start_date = CK_DATE {
+            year: [0; 4],
+            month: [0; 2],
+            day: [0; 2],
+        };
+        let mut end_date = CK_DATE {
+            year: [0; 4],
+            month: [0; 2],
+            day: [0; 2],
+        };
+        let mut template = vec![
+            CK_ATTRIBUTE {
+                type_: CKA_START_DATE,
+                pValue: (&raw mut start_date).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_END_DATE,
+                pValue: (&raw mut end_date).cast::<std::ffi::c_void>(),
+                ulValueLen: CK_ULONG::try_from(size_of::<CK_DATE>())?,
+            },
+        ];
+        // If the HSM doesn't support these attributes, just return None for both
+        if self
+            .call_get_attributes(key_handle, &mut template)?
+            .is_none()
+        {
+            return Ok((None, None));
+        }
+        // Check if the returned length is 0 (attribute present but empty)
+        let start = if template.first().is_none_or(|t| t.ulValueLen == 0) {
+            None
+        } else {
+            Self::parse_ck_date(start_date)
+        };
+        let end = if template.get(1).is_none_or(|t| t.ulValueLen == 0) {
+            None
+        } else {
+            Self::parse_ck_date(end_date)
+        };
+        Ok((start, end))
+    }
+
+    /// Format a `time::Date` into a `CK_DATE` (8-byte ASCII "YYYYMMDD").
+    fn format_ck_date(date: time::Date) -> CK_DATE {
+        let year = date.year();
+        let month: u8 = date.month().into();
+        let day = date.day();
+        // These format! calls always produce exactly the right number of bytes
+        let mut year_bytes = [b'0'; 4];
+        let mut month_bytes = [b'0'; 2];
+        let mut day_bytes = [b'0'; 2];
+        let year_str = format!("{year:04}");
+        let month_str = format!("{month:02}");
+        let day_str = format!("{day:02}");
+        year_bytes.copy_from_slice(year_str.as_bytes().get(..4).unwrap_or(&[b'0'; 4]));
+        month_bytes.copy_from_slice(month_str.as_bytes().get(..2).unwrap_or(&[b'0'; 2]));
+        day_bytes.copy_from_slice(day_str.as_bytes().get(..2).unwrap_or(&[b'0'; 2]));
+        CK_DATE {
+            year: year_bytes,
+            month: month_bytes,
+            day: day_bytes,
+        }
+    }
+
+    /// Set `CKA_START_DATE` and/or `CKA_END_DATE` on a key object.
+    /// Passing `None` clears the attribute (sets to empty `CK_DATE`).
+    pub fn set_key_dates(
+        &self,
+        key_handle: CK_OBJECT_HANDLE,
+        start_date: Option<time::Date>,
+        end_date: Option<time::Date>,
+    ) -> HResult<()> {
+        let start_ck = start_date.map_or(
+            CK_DATE {
+                year: [0; 4],
+                month: [0; 2],
+                day: [0; 2],
+            },
+            Self::format_ck_date,
+        );
+        let end_ck = end_date.map_or(
+            CK_DATE {
+                year: [0; 4],
+                month: [0; 2],
+                day: [0; 2],
+            },
+            Self::format_ck_date,
+        );
+
+        let mut template = vec![
+            CK_ATTRIBUTE {
+                type_: CKA_START_DATE,
+                pValue: ptr::addr_of!(start_ck).cast_mut().cast(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
+            },
+            CK_ATTRIBUTE {
+                type_: CKA_END_DATE,
+                pValue: ptr::addr_of!(end_ck).cast_mut().cast(),
+                ulValueLen: CK_ULONG::try_from(std::mem::size_of::<CK_DATE>())?,
+            },
+        ];
+
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_SetAttributeValue {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    key_handle,
+                    template.as_mut_ptr(),
+                    CK_ULONG::try_from(template.len())?,
+                )
+            },
+            None => {
+                return Err(HError::Default(
+                    "C_SetAttributeValue not available on library".to_owned(),
+                ));
+            }
+        };
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to set key dates for key handle: {key_handle}. Return code: {rv}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Parse keyset metadata from a `CKA_LABEL` value.
+    ///
+    /// Format: `rotate_name::generation::key_id[@latest]`
+    /// The optional `@latest` suffix is accepted for backward compatibility with
+    /// existing HSM keys (older format used `::latest`) but is not used for
+    /// determining the latest generation; callers compare `rotate_generation` values.
+    ///
+    /// Returns `(rotate_name, rotate_generation)`.
+    /// Returns `(None, None)` if the label does not match the format
+    /// (e.g. plain keys whose label is just an identifier).
+    pub(crate) fn parse_label_metadata(label: &str) -> (Option<String>, Option<i32>) {
+        // Format: "rotate_name::generation::key_id[@latest]"
+        //
+        // `rotate_name` may itself contain "::" — for HSM-resident keys the convention is
+        // rotate_name = "hsm::<model>::<slot>::<key_id>" (the full base UID, including the
+        // model segment), which is unique across slots.  Split from the RIGHT so the
+        // variable-length rotate_name is always the residual left segment, regardless of
+        // how many "::" it contains.
+        //
+        // rsplitn(3, "::") yields (from right to left):
+        //   index 0 → key_id[@latest]
+        //   index 1 → generation (must parse as i32)
+        //   index 2 → rotate_name  (may contain "::")
+        let mut rparts = label.rsplitn(3, "::");
+        let Some(_key_id) = rparts.next() else {
+            return (None, None);
+        };
+        let Some(gen_str) = rparts.next() else {
+            return (None, None);
+        };
+        let Some(rotate_name) = rparts.next() else {
+            return (None, None);
+        };
+        let Ok(generation) = gen_str.parse::<i32>() else {
+            return (None, None);
+        };
+        (Some(rotate_name.to_owned()), Some(generation))
+    }
+
+    /// Build the `CKA_LABEL` value for a keyset key.
+    ///
+    /// Format: `rotate_name::generation::key_id` (retired) or
+    ///         `rotate_name::generation::key_id@latest` (current latest).
+    // Used by the HSM ReKey flow (Phase 3).
+    #[allow(dead_code)]
+    pub(crate) fn build_keyset_label(
+        rotate_name: &str,
+        generation: i32,
+        key_id: &str,
+        latest: bool,
+    ) -> String {
+        if latest {
+            format!("{rotate_name}::{generation}::{key_id}@latest")
+        } else {
+            format!("{rotate_name}::{generation}::{key_id}")
+        }
+    }
+
+    /// Set `CKA_LABEL` on a key object via `C_SetAttributeValue`.
+    pub fn set_label(&self, key_handle: CK_OBJECT_HANDLE, label: &str) -> HResult<()> {
+        let label_bytes = label.as_bytes();
+        let mut template = vec![CK_ATTRIBUTE {
+            type_: CKA_LABEL,
+            pValue: label_bytes.as_ptr().cast_mut().cast(),
+            ulValueLen: CK_ULONG::try_from(label_bytes.len())?,
+        }];
+        #[expect(unsafe_code)]
+        let rv = match self.hsm.C_SetAttributeValue {
+            Some(func) => unsafe {
+                func(
+                    self.handle,
+                    key_handle,
+                    template.as_mut_ptr(),
+                    CK_ULONG::try_from(template.len())?,
+                )
+            },
+            None => {
+                return Err(HError::Default(
+                    "C_SetAttributeValue not available on library".to_owned(),
+                ));
+            }
+        };
+        if rv != CKR_OK {
+            return Err(HError::Default(format!(
+                "Failed to set label for key handle: {key_handle}. Return code: {rv}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Get the metadata for a key
     pub fn get_key_metadata(&self, key_handle: CK_OBJECT_HANDLE) -> HResult<Option<KeyMetadata>> {
         let Some(key_type) = self.get_key_type(key_handle)? else {
@@ -1786,6 +2024,8 @@ impl Session {
                         HError::Default(format!("Failed to convert label to string: {e}"))
                     })?
                 };
+                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits: usize::try_from(key_size).map_err(|e| {
@@ -1793,6 +2033,10 @@ impl Session {
                     })? * 8,
                     sensitive: sensitive == CK_TRUE,
                     id: label,
+                    start_date,
+                    end_date,
+                    rotate_name,
+                    rotate_generation,
                 }))
             }
             KeyType::RsaPrivateKey | KeyType::RsaPublicKey => {
@@ -1856,11 +2100,17 @@ impl Session {
                     label = label.trim().to_owned().add("_pk");
                 }
                 let sensitive = sensitive == CK_TRUE;
+                let (start_date, end_date) = self.get_key_dates(key_handle).unwrap_or((None, None));
+                let (rotate_name, rotate_generation) = Self::parse_label_metadata(&label);
                 Ok(Some(KeyMetadata {
                     key_type,
                     key_length_in_bits,
                     sensitive,
                     id: label,
+                    start_date,
+                    end_date,
+                    rotate_name,
+                    rotate_generation,
                 }))
             }
         }

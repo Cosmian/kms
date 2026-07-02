@@ -95,7 +95,7 @@ async fn e2e_override_allowlists_can_tighten_policy() {
     conf.kmip_policy.allowlists.padding_methods = Some(vec![PaddingMethod::OAEP]);
     conf.kmip_policy.allowlists.mgf_hashes = Some(vec![HashingAlgorithm::SHA512]);
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let create_aes = Operation::Create(Create {
         object_type: ObjectType::SymmetricKey,
