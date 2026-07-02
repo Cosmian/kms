@@ -608,6 +608,15 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate] Skipping {uid}: PublicKey is rotated as part of its paired                  PrivateKey rotation` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | - | - |
 | `warn` | `Azure EKM JSON deserialization error: {err}` | `src/routes/azure_ekm/mod.rs` | `err` | - |
+| `warn` | `` JWKS endpoint enabled — all active public keys with the "jwks" tag will be publicly exposed (unauthenticated) at                  `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served.                  Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file. `` | `src/start_kms_server.rs` | `kms_public_url` | - |
+| `warn` | `JWKS response truncated: more than {} eligible public keys found` | `src/routes/jwks.rs` | - | - |
+| `warn` | `Key uid={uid} found by Locate but missing on retrieve — skipping` | `src/routes/jwks.rs` | `uid` | - |
+| `warn` | `Skipping key uid={uid} from JWKS (conversion failed): {e}` | `src/routes/jwks.rs` | `uid`, `e` | - |
+| `info` | `GET /.well-known/jwks.json` | `src/routes/jwks.rs` | - | - |
+| `trace` | `DELETE /v1/crypto/keys/{kid}/tags` | `src/routes/crypto/tags.rs` | `kid` | - |
+| `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/crypto/tags.rs` | `kid` | - |
+| `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
+| `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/crypto/tags.rs` | `kid` | - |
 
 ### `cosmian_kms_server_database`
 
