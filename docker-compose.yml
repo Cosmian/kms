@@ -12,6 +12,35 @@ services:
       - POSTGRES_DB=kms
       - POSTGRES_PASSWORD=kms
       - PGDATA=/tmp/postgres2
+
+  # ── PostgreSQL failover-retry test nodes ────────────────────────────────────
+  # Two independent PostgreSQL instances used by test_db_postgresql_failover.
+  # Start with: docker compose --profile pg-failover up -d
+  # The container names (pg1, pg2) are referenced by docker stop/start inside
+  # the test to simulate a primary failure and recovery.
+  pg-failover-1:
+    image: postgres:16
+    container_name: pg1
+    profiles: [pg-failover]
+    ports:
+      - ${KMS_SLOT_PG_FAILOVER_1_PORT:-5434}:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/tmp/postgres-fo1
+
+  pg-failover-2:
+    image: postgres:16
+    container_name: pg2
+    profiles: [pg-failover]
+    ports:
+      - ${KMS_SLOT_PG_FAILOVER_2_PORT:-5435}:5432
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/tmp/postgres-fo2
   mysql:
     image: mysql:8.0
     ports:

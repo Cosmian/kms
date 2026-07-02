@@ -656,6 +656,11 @@ Crate path: `crate/server_database`
 | `debug` | `` [redis-metrics] bootstrapped {} live object(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
 | `debug` | `` [redis-metrics] bootstrapped {} non-destroyed key(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |
 | `debug` | `[redis-scan-rotation] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
+| `warn` | `PostgreSQL BEGIN failed — retrying` | `src/stores/sql/pgsql.rs` | - | - |
+| `warn` | `PostgreSQL COMMIT failed — discarding connection and retrying` | `src/stores/sql/pgsql.rs` | - | - |
+| `warn` | `PostgreSQL pool error — retrying` | `src/stores/sql/pgsql.rs` | - | - |
+| `warn` | `PostgreSQL retryable error — discarding connection and retrying` | `src/stores/sql/pgsql.rs` | - | - |
+| `warn` | `PostgreSQL transaction body failed — discarding connection and retrying` | `src/stores/sql/pgsql.rs` | - | - |
 
 ### `cosmian_kms_crypto`
 

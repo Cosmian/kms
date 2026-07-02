@@ -6,7 +6,7 @@
 )]
 use std::path::Path;
 
-use cosmian_logger::log_init;
+use cosmian_logger::{log_init, reexport::tracing};
 use tempfile::TempDir;
 
 use self::{
@@ -25,7 +25,7 @@ use crate::stores::additional_redis_findex_tests::{
     test_permissions_db,
 };
 use crate::{
-    error::DbResult,
+    error::{DbError, DbResult},
     stores::{MySqlPool, PgPool, SqlitePool},
     tests::{
         database_tests::{
@@ -190,6 +190,131 @@ pub(crate) async fn test_db_postgresql_multihost() -> DbResult<()> {
     crud(&pg).await?;
     Box::pin(atomic(&pg)).await?;
     upsert(&pg).await?;
+    Ok(())
+}
+
+/// `PostgreSQL` failover retry test.
+///
+/// Verifies that when one node in a multi-host `PostgreSQL` cluster goes down, the
+/// `pg_retry!` and `pg_retry_tx!` macros detect the connection-level error,
+/// **discard** the stale pool connection, and successfully complete the operation
+/// via the surviving node.
+///
+/// # Setup
+/// This test is orchestrated by the MISE task `test:db:psql`.  Run it with:
+/// ```bash
+/// mise run test:db:psql
+/// ```
+/// The MISE task starts the `pg-failover` Docker Compose profile (containers
+/// **pg1** on port 5434 and **pg2** on port 5435), then coordinates the pg1
+/// stop/restart via two signal files whose paths it exports as:
+/// - `KMS_PG_FAILOVER_READY_FILE` — the test writes this when the pool is warm
+/// - `KMS_PG_FAILOVER_STOP_FILE`  — the MISE task writes this after stopping pg1
+///
+/// If neither env var is set the test returns `Ok(())` immediately (silently
+/// skipped when running under `check_and_test_db`).
+///
+/// # How the test works
+/// 1. Initialises the schema on both nodes independently (simulates streaming
+///    replication in a real HA setup).
+/// 2. Opens a dual-host pool and runs `crud()` while both nodes are up.
+/// 3. Signals readiness → waits for the external stop signal.
+/// 4. Re-runs `crud()` + `tx_and_list()` through the same pool.  The pool
+///    holds stale connections to pg1; the retry macros must detect the IO error,
+///    discard the stale connections, and reconnect to pg2.
+/// 5. Asserts success within a reasonable elapsed time.
+///
+/// The test uses `target_session_attrs=any` so two completely independent
+/// (non-replicated) `PostgreSQL` instances satisfy the connection requirements.
+#[ignore = "Orchestrated by `mise run test:db:psql` (requires the pg-failover \
+             Docker Compose profile and the KMS_PG_FAILOVER_* signal-file env vars)."]
+#[tokio::test]
+pub(crate) async fn test_db_postgresql_failover() -> DbResult<()> {
+    log_init(Some("warn,cosmian_kms_server_database=warn"));
+
+    // ── Guard: skip unless orchestrated by the MISE task ─────────────────────
+    // The MISE psql task sets KMS_PG_FAILOVER_READY_FILE before running this
+    // test.  When absent (e.g. called by check_and_test_db with only the
+    // standard test_db_postgresql filter), we return Ok to avoid hanging.
+    let ready_file = {
+        let Ok(p) = std::env::var("KMS_PG_FAILOVER_READY_FILE") else {
+            tracing::info!(
+                "test_db_postgresql_failover: KMS_PG_FAILOVER_READY_FILE not set — skipped"
+            );
+            return Ok(());
+        };
+        p
+    };
+    let stop_file = std::env::var("KMS_PG_FAILOVER_STOP_FILE")
+        .map_err(|e| DbError::ServerError(format!("KMS_PG_FAILOVER_STOP_FILE must be set: {e}")))?;
+
+    // ── URL configuration ─────────────────────────────────────────────────────
+    // Default ports match the docker-compose pg-failover profile (5434/5435).
+    let pg1_url = option_env!("KMS_PG_FAILOVER_PRIMARY_URL")
+        .unwrap_or("postgresql://kms:kms@127.0.0.1:5434/kms");
+    let pg2_url = option_env!("KMS_PG_FAILOVER_SECONDARY_URL")
+        .unwrap_or("postgresql://kms:kms@127.0.0.1:5435/kms");
+    let multihost_url = option_env!("KMS_PG_FAILOVER_MULTIHOST_URL").unwrap_or(
+        "postgresql://kms:kms@127.0.0.1:5434,127.0.0.1:5435/kms?target_session_attrs=any",
+    );
+
+    // ── Schema initialisation ─────────────────────────────────────────────────
+    // pg1 (port 5434) — will be stopped to simulate a primary failure.
+    PgPool::instantiate(pg1_url, true, None).await?;
+    // pg2 (port 5435) — the surviving node the pool must fail over to.
+    PgPool::instantiate(pg2_url, true, None).await?;
+
+    // ── Pool setup ────────────────────────────────────────────────────────────
+    let pg = PgPool::instantiate(multihost_url, false, None).await?;
+
+    // ── Baseline: both nodes up ───────────────────────────────────────────────
+    // Warm up the pool: creates a connection to pg1 (first host in the URL).
+    crud(&pg).await?;
+
+    // ── Signal readiness to the MISE orchestrator ─────────────────────────────
+    std::fs::write(&ready_file, b"")
+        .map_err(|e| DbError::ServerError(format!("write ready-file {ready_file}: {e}")))?;
+
+    // ── Wait for the MISE orchestrator to stop pg1 ────────────────────────────
+    // The orchestrator runs `docker stop pg1` then writes to stop_file.
+    // We poll using spawn_blocking to avoid blocking the async runtime.
+    let stop_file_clone = stop_file.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while !Path::new(&stop_file_clone).exists() {
+            if std::time::Instant::now() >= deadline {
+                return Err(format!(
+                    "Timed out (60s) waiting for stop signal at {stop_file_clone}"
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| DbError::ServerError(format!("spawn_blocking join: {e}")))?
+    .map_err(DbError::ServerError)?;
+
+    // Small grace period so tokio-postgres background tasks process the TCP RST.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // ── Failover: operations MUST succeed via pg2 ─────────────────────────────
+    let before = std::time::Instant::now();
+
+    // create() → pg_retry_tx! (transactional retry path)
+    crud(&pg).await?;
+    // retrieve() / find() → pg_retry! (non-transactional retry path)
+    Box::pin(tx_and_list(&pg)).await?;
+
+    let elapsed = before.elapsed();
+
+    // ── Assertions ────────────────────────────────────────────────────────────
+    if elapsed >= std::time::Duration::from_secs(5) {
+        return Err(DbError::ServerError(format!(
+            "Expected failover to complete within 5s but took {elapsed:?}"
+        )));
+    }
+
     Ok(())
 }
 
