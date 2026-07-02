@@ -571,12 +571,16 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
 
 /// Fetch the OIDC discovery document and build an `OidcRuntimeConfig`.
 ///
-/// Called once at server startup. The discovered endpoints (`authorization_endpoint`,
-/// `token_endpoint`, `jwks_uri`) are **cached for the lifetime of the server process**.
+/// Called once at server startup. The discovered `authorization_endpoint` and
+/// `token_endpoint` are **cached for the lifetime of the server process**. The
+/// `jwks_uri` is fetched once here to seed the `JwksManager`, but signing keys
+/// are refreshed on demand afterward (refresh-on-miss on an unknown `kid` in
+/// `crate::routes::ui_auth::callback`) — key rotation at the `IdP` does not
+/// require a restart.
 ///
-/// WARNING: OIDC discovery endpoints are cached at startup.
-/// Changes to the `IdP` configuration (issuer URL, JWKS URI, endpoint URLs)
-/// require a **server restart** to take effect.
+/// WARNING: `authorization_endpoint`/`token_endpoint` are cached at startup.
+/// Changes to the `IdP` configuration (issuer URL, endpoint URLs) require a
+/// **server restart** to take effect.
 async fn build_oidc_runtime_config(
     oidc_config: crate::config::OidcConfig,
     proxy_params: Option<&ProxyParams>,
