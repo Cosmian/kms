@@ -1,27 +1,32 @@
 ## Features
 
-| Feature              | Before                         | After                                                       |
-| -------------------- | ------------------------------ | ----------------------------------------------------------- |
-| **Crypto Algorithm** | Not shown in results           | New column — displays algorithm (AES, RSA, ECDH…) with sort |
-| **Crypto Length**    | Not shown in results           | New column — displays key size in bits with numeric sort    |
-| **Column sorting**   | No sort controls on any column | All columns sortable (click header to sort)                 |
-| **Table Overflow**   | Clipped on narrow viewports    | Horizontal scroll with `scroll={{ x: "max-content" }}`      |
+### Locate — new columns and sorting (`ui/src/components/common/Locate.tsx`)
+
+- **Crypto Algorithm column** — displays the algorithm (AES, RSA, ECDH, …) for each located object; sortable.
+- **Crypto Length column** — displays the key size formatted as `N bits`; numerically sortable.
+- **Sort controls on all columns** — Object UID, Type, Key Format Type, State, and Date columns now have sorters. Date column defaults to descending (most recent first).
+- **Horizontal scroll** — table no longer clips on narrow viewports (`scroll={{ x: "max-content" }}`).
+- **Pagination** — default page size raised from 10 to 50; options are now [50, 100, 500, 1000].
+
+### HashMapDisplay — omit empty fields (`ui/src/components/common/HashMapDisplay.tsx`)
+
+Empty-string, null, and undefined entries are filtered out before rendering. Certificate attribute maps (which contain many blank issuer/subject fields) now show only the populated values.
 
 ## Bug Fixes
 
-### Locate table clipped on narrow viewports
+### Date column was always blank
 
-Table had no horizontal overflow handling; columns were cut off. Fixed with scroll={{ x: "max-content" }}.
+Two independent bugs:
 
-### Date column always showed —
+1. `activation_date`, `rotate_date`, `initial_date`, and `original_creation_date` were not included in the WASM `GetAttributes` request — the server never returned them, so every date field was `undefined`.
+2. KMIP returns `activation_date` in seconds (i64); the renderer needs milliseconds. Without the `* 1000` conversion every date rendered as 1 Jan 1970.
 
-Two bugs combined:
+Fixed by adding all four date fields to all four `parse_get_attributes_ttlv_response` call sites, and multiplying `activation_date` by 1000 before constructing the `Date` object.
 
-1. activation_date was never in the GetAttributes request — the WASM layer never fetched it, so the value was always undefined.
-2. KMIP returns the timestamp in seconds (i64); new Date() needs milliseconds. The raw value placed every date in January 1970.
+### Date column sort order was incorrect
 
-Fixed by adding activation_date to all four attribute fetch calls and multiplying the result by 1000 before constructing the Date object.
+The sorter compared `activation_date` (seconds) directly against `rotate_date` / `initial_date` / `original_creation_date` (milliseconds). The sorter now applies the same `* 1000` conversion as the renderer, so all values are in the same unit before subtraction.
 
-## Code Quality
+### Epoch-0 treated as missing date
 
-- Refactored repeated WASM call chains in Locate.tsx: extracted `ENRICH_ATTRS` constant and `fetchAttrs()` helper; consolidated 4 inline call sites; result: -32 lines (987→955), zero regressions.
+`activationDate ? activationDate * 1000 : undefined` treated timestamp 0 as absent. Changed to `activationDate != null ? activationDate * 1000 : undefined`, consistent with the `??` guards used elsewhere.

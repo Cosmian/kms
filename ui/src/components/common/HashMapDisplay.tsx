@@ -61,23 +61,26 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
     };
 
     // Create Map preview with syntax highlighting
-    const renderMapPreview = (map: Map<any, any>): React.ReactNode => (
-        <div className="p-2 rounded-md overflow-auto text-sm font-mono border border-gray-300 bg-gray-100">
-            <div className="space-y-2">
-                {Array.from(map.entries()).map(([key, value], index) => (
-                    <div key={index} className="flex">
-                        <span className="text-blue-600">{"{"}</span>
-                        <div className="ml-2">
-                            {formatDisplayKey(key)}
-                            <span className="text-blue-600 mx-2">{" => "}</span>
-                            {renderValueWithColor(value)}
+    const renderMapPreview = (map: Map<any, any>): React.ReactNode => {
+        const entries = Array.from(map.entries()).filter(([, value]) => value !== "" && value !== null && value !== undefined);
+        return (
+            <div className="p-2 rounded-md overflow-auto text-sm font-mono border border-gray-300 bg-gray-100">
+                <div className="space-y-2">
+                    {entries.map(([key, value], index) => (
+                        <div key={index} className="flex">
+                            <span className="text-blue-600">{"{"}</span>
+                            <div className="ml-2">
+                                {formatDisplayKey(key)}
+                                <span className="text-blue-600 mx-2">{" => "}</span>
+                                {renderValueWithColor(value)}
+                            </div>
+                            <span className="text-blue-600">{"}"}</span>
                         </div>
-                        <span className="text-blue-600">{"}"}</span>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <>

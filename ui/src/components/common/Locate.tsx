@@ -1,44 +1,20 @@
-import type { TableColumnsType } from "antd";
-import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Tooltip } from "antd";
+import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, TableColumnsType, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/useAuth";
+import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
-import HashMapDisplay from "./HashMapDisplay";
 
 const formatUnixDate = (unixMs: number): string => {
     const d = new Date(unixMs);
     return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
 
-/** Attribute keys fetched for every located row — sourced from WASM (single source of truth).
- *  Lazily initialised on first access so the WASM module is guaranteed to be
- *  ready (eager module-level evaluation can race with async WASM loading). */
-let _enrichAttributeKeysCache: string[] | null = null;
-function getEnrichAttributeKeys(): string[] {
-    if (_enrichAttributeKeysCache === null || _enrichAttributeKeysCache.length === 0) {
-        try {
-            const keys = wasm.get_locate_enrich_attribute_keys();
-            if (Array.isArray(keys) && keys.length > 0) {
-                _enrichAttributeKeysCache = keys as string[];
-            }
-        } catch {
-            // WASM not ready yet; will retry on next call
-        }
-    }
-    return _enrichAttributeKeysCache ?? [];
-}
-
 interface LocateObjectRow {
     object_id: string;
     state?: string;
     attributes?: { ObjectType?: string };
-    meta?: {
-        key_format_type?: string;
-        cryptographic_algorithm?: string;
-        cryptographic_length?: number;
-        [key: string]: unknown;
-    };
+    meta?: { key_format_type?: string; [key: string]: unknown };
 }
 
 interface LocateFormData {
@@ -54,18 +30,6 @@ interface LocateFormData {
 }
 
 type AlgoOption = { value: string; label: string };
-
-const ENRICH_ATTRS = [
-    "object_type",
-    "state",
-    "activation_date",
-    "cryptographic_algorithm",
-    "cryptographic_length",
-    "key_format_type",
-    "public_key_id",
-    "private_key_id",
-    "certificate_id",
-] as const;
 
 const LocateForm: React.FC = () => {
     const NO_FILTER: AlgoOption = { value: "", label: "— No filter —" };
@@ -164,21 +128,32 @@ const LocateForm: React.FC = () => {
         return (parsed || {}) as Record<string, unknown>;
     };
 
-    // Utility: fetch and parse KMIP attributes for a single UID
-    const fetchAttrs = async (uid: string, attrs: readonly string[], idToken: string | null, serverUrl: string): Promise<Record<string, unknown> | null> => {
-        const req = wasm.get_attributes_ttlv_request(uid);
-        const resp = await sendKmipRequest(req, idToken, serverUrl);
-        if (!resp) return null;
-        return extractMeta(await wasm.parse_get_attributes_ttlv_response(resp, [...attrs]));
-    };
-
     // Utility: enrich a list of UIDs via KMIP Get
     const enrichUids = async (uids: string[], idToken: string | null, serverUrl: string): Promise<LocatedRow[]> => {
-        return Promise.all(
+        const rows = await Promise.all(
             uids.map(async (uid) => {
                 try {
-                    const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
-                    if (m !== null) {
+                    const getReq = wasm.get_attributes_ttlv_request(uid);
+                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                    if (getRespStr) {
+                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
+                            "object_type",
+                            "state",
+                            "tags",
+                            "user_tags",
+                            "cryptographic_algorithm",
+                            "cryptographic_length",
+                            "key_format_type",
+                            "public_key_id",
+                            "private_key_id",
+                            "certificate_id",
+                            "activation_date",
+                            "rotate_date",
+                            "initial_date",
+                            "original_creation_date",
+                        ]);
+                        const m = extractMeta(parsed);
+                        // HSM keys are always Active; use that as default when state is missing
                         const isHsm = /^hsm[0-9]*::/.test(uid);
                         return {
                             object_id: uid,
@@ -190,9 +165,11 @@ const LocateForm: React.FC = () => {
                 } catch (e) {
                     console.error(`Error fetching Get for ${uid}:`, e);
                 }
+                // Fallback: HSM keys default to Active
                 return { object_id: uid, state: /^hsm[0-9]*::/.test(uid) ? "Active" : undefined } as LocatedRow;
             }),
         );
+        return rows;
     };
 
     // Utility: build state lookup from /access/owned
@@ -310,8 +287,26 @@ const LocateForm: React.FC = () => {
                             ownedFiltered.map(async (o) => {
                                 const uid = o.id;
                                 try {
-                                    const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
-                                    if (m !== null) {
+                                    const getReq = wasm.get_attributes_ttlv_request(uid);
+                                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                    if (getRespStr) {
+                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
+                                            "object_type",
+                                            "state",
+                                            "tags",
+                                            "user_tags",
+                                            "cryptographic_algorithm",
+                                            "cryptographic_length",
+                                            "key_format_type",
+                                            "public_key_id",
+                                            "private_key_id",
+                                            "certificate_id",
+                                            "activation_date",
+                                            "rotate_date",
+                                            "initial_date",
+                                            "original_creation_date",
+                                        ]);
+                                        const m = extractMeta(parsed);
                                         return {
                                             object_id: uid,
                                             attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -364,8 +359,26 @@ const LocateForm: React.FC = () => {
                     let enriched = await Promise.all(
                         intersection.map(async (uid: string) => {
                             try {
-                                const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
-                                if (m !== null) {
+                                const getReq = wasm.get_attributes_ttlv_request(uid);
+                                const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                if (getRespStr) {
+                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
+                                        "object_type",
+                                        "state",
+                                        "tags",
+                                        "user_tags",
+                                        "cryptographic_algorithm",
+                                        "cryptographic_length",
+                                        "key_format_type",
+                                        "public_key_id",
+                                        "private_key_id",
+                                        "certificate_id",
+                                        "activation_date",
+                                        "rotate_date",
+                                        "initial_date",
+                                        "original_creation_date",
+                                    ]);
+                                    const m = extractMeta(parsed);
                                     return {
                                         object_id: uid,
                                         attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -522,8 +535,23 @@ const LocateForm: React.FC = () => {
                             const enriched = await Promise.all(
                                 ids.map(async (uid: string) => {
                                     try {
-                                        const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
-                                        if (m !== null) {
+                                        const getReq = wasm.get_attributes_ttlv_request(uid);
+                                        const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
+                                        if (getRespStr) {
+                                            const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, [
+                                                "object_type",
+                                                "state",
+                                                "tags",
+                                                "user_tags",
+                                                "cryptographic_algorithm",
+                                                "cryptographic_length",
+                                                "key_format_type",
+                                                "activation_date",
+                                                "rotate_date",
+                                                "initial_date",
+                                                "original_creation_date",
+                                            ]);
+                                            const m = extractMeta(parsed);
                                             return {
                                                 object_id: uid,
                                                 attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -597,15 +625,15 @@ const LocateForm: React.FC = () => {
             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, []);
-                let m: Map<string, unknown>;
                 if (parsed instanceof Map) {
-                    m = new Map(parsed as Map<string, unknown>);
+                    setDetailsData(parsed);
                 } else if (parsed && typeof parsed === "object") {
-                    m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
+                    // Convert record to Map
+                    const m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
+                    setDetailsData(m);
                 } else {
-                    m = new Map();
+                    setDetailsData(new Map());
                 }
-                setDetailsData(m);
                 setDetailsForId(uid);
                 setDetailsVisible(true);
             }
@@ -823,16 +851,20 @@ const LocateForm: React.FC = () => {
                                             title: "Crypto Algorithm",
                                             key: "cryptographic_algorithm",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
-                                                (a.meta?.cryptographic_algorithm ?? "").localeCompare(b.meta?.cryptographic_algorithm ?? ""),
-                                            render: (record: LocateObjectRow) => record.meta?.cryptographic_algorithm || "N/A",
+                                                ((a.meta?.cryptographic_algorithm as string | undefined) ?? "").localeCompare(
+                                                    (b.meta?.cryptographic_algorithm as string | undefined) ?? "",
+                                                ),
+                                            render: (record: LocateObjectRow) =>
+                                                (record.meta?.cryptographic_algorithm as string | undefined) || "N/A",
                                         },
                                         {
                                             title: "Crypto Length",
                                             key: "cryptographic_length",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
-                                                (a.meta?.cryptographic_length ?? 0) - (b.meta?.cryptographic_length ?? 0),
+                                                ((a.meta?.cryptographic_length as number | undefined) ?? 0) -
+                                                ((b.meta?.cryptographic_length as number | undefined) ?? 0),
                                             render: (record: LocateObjectRow) => {
-                                                const len = record.meta?.cryptographic_length;
+                                                const len = record.meta?.cryptographic_length as number | undefined;
                                                 return len != null ? `${len} bits` : "N/A";
                                             },
                                         },
@@ -876,15 +908,21 @@ const LocateForm: React.FC = () => {
                                             title: "Date",
                                             key: "date",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) => {
-                                                const da = (a.meta?.["rotate_date"] ??
-                                                    a.meta?.["initial_date"] ??
-                                                    a.meta?.["activation_date"] ??
-                                                    a.meta?.["original_creation_date"]) as number | undefined;
-                                                const db = (b.meta?.["rotate_date"] ??
-                                                    b.meta?.["initial_date"] ??
-                                                    b.meta?.["activation_date"] ??
-                                                    b.meta?.["original_creation_date"]) as number | undefined;
-                                                return (da ?? 0) - (db ?? 0);
+                                                const getDate = (row: LocateObjectRow) => {
+                                                    const rotateDate = row.meta?.["rotate_date"] as number | undefined;
+                                                    const initialDate = row.meta?.["initial_date"] as number | undefined;
+                                                    const activationDate = row.meta?.["activation_date"] as number | undefined;
+                                                    const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
+                                                    return (
+                                                        rotateDate ??
+                                                        initialDate ??
+                                                        (activationDate != null ? activationDate * 1000 : undefined) ??
+                                                        originalCreationDate
+                                                    );
+                                                };
+                                                const da = getDate(a) ?? 0;
+                                                const db = getDate(b) ?? 0;
+                                                return da - db;
                                             },
                                             defaultSortOrder: "descend" as const,
                                             render: (row: LocateObjectRow) => {
@@ -892,7 +930,11 @@ const LocateForm: React.FC = () => {
                                                 const initialDate = row.meta?.["initial_date"] as number | undefined;
                                                 const activationDate = row.meta?.["activation_date"] as number | undefined;
                                                 const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
-                                                const dateValue = rotateDate ?? initialDate ?? (activationDate ? activationDate * 1000 : undefined) ?? originalCreationDate;
+                                                const dateValue =
+                                                    rotateDate ??
+                                                    initialDate ??
+                                                    (activationDate != null ? activationDate * 1000 : undefined) ??
+                                                    originalCreationDate;
                                                 if (!dateValue) {
                                                     if (/^hsm[0-9]*::/.test(row.object_id)) {
                                                         return (
@@ -965,7 +1007,6 @@ const LocateForm: React.FC = () => {
             >
                 {detailsData && detailsData.size ? <HashMapDisplay data={detailsData} /> : <div>No attributes found.</div>}
             </Modal>
-
         </div>
     );
 };
