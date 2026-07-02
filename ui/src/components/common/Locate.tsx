@@ -310,16 +310,8 @@ const LocateForm: React.FC = () => {
                             ownedFiltered.map(async (o) => {
                                 const uid = o.id;
                                 try {
-<<<<<<< HEAD
-                                    const getReq = wasm.get_attributes_ttlv_request(uid);
-                                    const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
-                                    if (getRespStr) {
-                                        const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
-                                        const m = extractMeta(parsed);
-=======
                                     const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
                                     if (m !== null) {
->>>>>>> 3072d229 (feat: final refactor and push)
                                         return {
                                             object_id: uid,
                                             attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -372,16 +364,8 @@ const LocateForm: React.FC = () => {
                     let enriched = await Promise.all(
                         intersection.map(async (uid: string) => {
                             try {
-<<<<<<< HEAD
-                                const getReq = wasm.get_attributes_ttlv_request(uid);
-                                const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
-                                if (getRespStr) {
-                                    const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, getEnrichAttributeKeys());
-                                    const m = extractMeta(parsed);
-=======
                                 const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
                                 if (m !== null) {
->>>>>>> 3072d229 (feat: final refactor and push)
                                     return {
                                         object_id: uid,
                                         attributes: { ObjectType: m["object_type"] as string | undefined },
@@ -538,19 +522,8 @@ const LocateForm: React.FC = () => {
                             const enriched = await Promise.all(
                                 ids.map(async (uid: string) => {
                                     try {
-<<<<<<< HEAD
-                                        const getReq = wasm.get_attributes_ttlv_request(uid);
-                                        const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
-                                        if (getRespStr) {
-                                            const parsed = await wasm.parse_get_attributes_ttlv_response(
-                                                getRespStr,
-                                                getEnrichAttributeKeys(),
-                                            );
-                                            const m = extractMeta(parsed);
-=======
                                         const m = await fetchAttrs(uid, ENRICH_ATTRS, idToken, serverUrl);
                                         if (m !== null) {
->>>>>>> 3072d229 (feat: final refactor and push)
                                             return {
                                                 object_id: uid,
                                                 attributes: { ObjectType: m["object_type"] as string | undefined },
