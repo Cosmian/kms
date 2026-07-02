@@ -59,7 +59,7 @@ fn reconstruct_tag(
     out.push('<');
     out.push_str(name);
     for attr in attrs.flatten() {
-        if let Ok(val) = attr.unescape_value() {
+        if let Ok(val) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
             out.push(' ');
             out.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
             out.push_str("=\"");
@@ -200,7 +200,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
 
     // Stream over XML bytes to extract top-level RequestMessage / ResponseMessage snippets
     let mut reader = Reader::from_str(xml);
-    reader.trim_text(true);
+    reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut depth: i32 = 0;
     let mut capturing = false;
@@ -250,7 +250,7 @@ fn parse_internal(xml: &str) -> Result<KmipXmlDoc, KmipError> {
                 }
             }
             Ok(Event::Text(e)) if capturing => {
-                if let Ok(txt) = e.unescape() {
+                if let Ok(txt) = e.decode() {
                     current.push_str(&txt);
                 } else {
                     current.push_str(&String::from_utf8_lossy(e.as_ref()));
