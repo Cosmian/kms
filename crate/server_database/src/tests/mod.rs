@@ -295,8 +295,9 @@ pub(crate) async fn test_db_postgresql_failover() -> DbResult<()> {
     .map_err(|e| DbError::ServerError(format!("spawn_blocking join: {e}")))?
     .map_err(DbError::ServerError)?;
 
-    // Small grace period so tokio-postgres background tasks process the TCP RST.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // No grace period: RecyclingMethod::Verified detects dead connections during
+    // pool.get() itself (via simple_query("")) — no sleep needed before the
+    // failover operations.
 
     // ── Failover: operations MUST succeed via pg2 ─────────────────────────────
     let before = std::time::Instant::now();

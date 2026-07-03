@@ -10,9 +10,7 @@ use cosmian_kms_interfaces::{
     PermissionsStore,
 };
 use cosmian_logger::reexport::tracing;
-use deadpool_postgres::{
-    Config as PgConfig, GenericClient, ManagerConfig, Object as PgObject, Pool, RecyclingMethod,
-};
+use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
 use rawsql::Loader;
@@ -98,23 +96,6 @@ async fn pg_get_client(pool: &deadpool_postgres::Pool) -> DbResult<deadpool_post
     Err(DbError::DatabaseError("too many retry attempts".to_owned()))
 }
 
-/// Remove a pool connection permanently so it is never recycled as "healthy".
-///
-/// Called when an operation fails with a connection-level error to guarantee the next
-/// `pool.get()` opens a fresh connection — potentially to another host in a multi-host
-/// URL — rather than reusing the stale one.
-///
-/// # Why this is necessary
-/// `deadpool`'s `RecyclingMethod::Fast` calls `tokio_postgres::Client::is_closed()` to
-/// decide whether a returned connection is still usable. After a connection IO error the
-/// tokio-postgres background task (which sets `is_closed = true`) may not have been
-/// scheduled yet, so the check returns `false` and the dead connection is returned to the
-/// pool. Without this helper the next `pool.get()` call can hand out the same dead
-/// connection again, causing all retry attempts to fail against the downed host.
-fn pg_discard(client: PgObject) {
-    drop(PgObject::take(client));
-}
-
 /// Single-attempt connection acquisition for use inside `pg_retry_tx!`.
 /// On retryable failure, sleeps (backoff) then returns Err so the outer loop
 /// can check retryability and continue. On non-retryable failure, returns Err
@@ -136,10 +117,8 @@ async fn pg_get_client_for_tx(
 
 /// Retry an operation on transient connection errors (e.g. during failover).
 /// Each attempt gets a fresh connection from the pool so multi-host URLs can resolve
-/// to the new primary.
-///
-/// On a retryable body error the dead connection is **discarded** from the pool via
-/// [`pg_discard`] before the next attempt, guaranteeing a fresh connection.
+/// to the new primary. With `RecyclingMethod::Verified` the pool itself discards
+/// dead connections during `pool.get()`, so every retry receives a live connection.
 macro_rules! pg_retry {
     ($pool:expr, | $client:ident | $body:expr) => {{
         let mut last_err: Option<InterfaceError> = None;
@@ -152,17 +131,12 @@ macro_rules! pg_retry {
                         Err(e) => {
                             if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES
                             {
-                                // Discard the dead connection so the pool never recycles it
-                                // as healthy on the next attempt. Without this, Fast recycling
-                                // can race with the tokio-postgres background task and hand out
-                                // the same stale connection again.
-                                pg_discard($client);
                                 let delay_ms = pg_retry_backoff_ms(attempt);
                                 tracing::warn!(
                                     attempt,
                                     delay_ms,
                                     error = %e,
-                                    "PostgreSQL retryable error — discarding connection and retrying"
+                                    "PostgreSQL retryable error — retrying"
                                 );
                                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms))
                                     .await;
@@ -200,10 +174,8 @@ macro_rules! pg_retry {
 /// Retry a transactional operation on transient errors.
 /// Gets a fresh connection and starts a new transaction on each retry.
 /// Uses `pg_get_client_for_tx` for connection acquisition with backoff.
-///
-/// On any retryable failure the connection is **discarded** from the pool via
-/// [`pg_discard`] before sleeping, ensuring the next attempt gets a fresh
-/// connection (possibly to a different host in a multi-host URL).
+/// With `RecyclingMethod::Verified` the pool discards dead connections at
+/// `pool.get()` time, guaranteeing a live connection for every retry.
 macro_rules! pg_retry_tx {
     ($pool:expr, | $tx:ident | $body:expr) => {{
         for attempt in 0..PG_MAX_RETRIES {
@@ -211,7 +183,6 @@ macro_rules! pg_retry_tx {
                 Ok(c) => c,
                 Err(e) => {
                     if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        // pg_get_client_for_tx already slept the backoff; no client to discard.
                         continue;
                     }
                     return Err(InterfaceError::from(e));
@@ -221,11 +192,6 @@ macro_rules! pg_retry_tx {
                 Ok(tx) => tx,
                 Err(e) => {
                     if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        // `client` borrows through Transaction<'_>'s lifetime so we cannot
-                        // call pg_discard() here. We rely on the sleep below giving the
-                        // tokio-postgres background task time to terminate, which closes the
-                        // mpsc channel and makes `is_closed()` return `true`.  The pool will
-                        // then discard this connection at the next `recycle()` call.
                         let delay_ms = pg_retry_backoff_ms(attempt);
                         tracing::warn!(
                             attempt,
@@ -245,14 +211,12 @@ macro_rules! pg_retry_tx {
                     Err(e) => {
                         let msg = e.to_string();
                         if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
-                            // $tx was consumed by commit(); discard the underlying connection.
-                            pg_discard(client);
                             let delay_ms = pg_retry_backoff_ms(attempt);
                             tracing::warn!(
                                 attempt,
                                 delay_ms,
                                 error = %msg,
-                                "PostgreSQL COMMIT failed — discarding connection and retrying"
+                                "PostgreSQL COMMIT failed — retrying"
                             );
                             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                             continue;
@@ -262,16 +226,12 @@ macro_rules! pg_retry_tx {
                 },
                 Err(e) => {
                     if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
-                        // Drop the transaction explicitly (issues a rollback) to release its
-                        // borrow on `client`, then discard the connection from the pool.
-                        drop($tx);
-                        pg_discard(client);
                         let delay_ms = pg_retry_backoff_ms(attempt);
                         tracing::warn!(
                             attempt,
                             delay_ms,
                             error = %e,
-                            "PostgreSQL transaction body failed — discarding connection and retrying"
+                            "PostgreSQL transaction body failed — retrying"
                         );
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
@@ -317,7 +277,15 @@ impl PgPool {
         let mut cfg = PgConfig::new();
         cfg.url = Some(clean_url_str);
         cfg.manager = Some(ManagerConfig {
-            recycling_method: RecyclingMethod::Fast,
+            // Verified runs `simple_query("")` on every recycled connection.
+            // This fails immediately at the OS level (ECONNRESET) for any dead
+            // connection, even in the race window where `is_closed()` still
+            // returns `false`. Without this, a dropped dead connection is pushed
+            // back to the idle pool without any check, and the next `pool.get()`
+            // re-validates only via `is_closed()`—which races against the
+            // tokio-postgres background task that sets the flag. Verified
+            // eliminates that race and ensures failover to a live host.
+            recycling_method: RecyclingMethod::Verified,
         });
 
         // Pool sizing defaults: conservative pool tuned to CPU.
