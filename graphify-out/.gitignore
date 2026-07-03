@@ -1,0 +1,3 @@
+# System-specific graphify runtime files — do not commit
+.graphify_python
+.graphify_root
