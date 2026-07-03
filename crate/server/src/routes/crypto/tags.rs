@@ -1,12 +1,14 @@
-use super::{CryptoApiError, TagsRequest, TagsResponse};
-use crate::{core::KMS, error::KmsError};
+use std::{collections::HashSet, sync::Arc};
+
 use actix_web::{
     HttpRequest, delete, get, post,
     web::{Data, Json, Path},
 };
 use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::GetAttributes;
 use cosmian_logger::trace;
-use std::{collections::HashSet, sync::Arc};
+
+use super::{CryptoApiError, TagsRequest, TagsResponse};
+use crate::{core::KMS, error::KmsError};
 
 /// `POST /v1/crypto/keys/{kid}/tags` — add user tags to a key.
 ///

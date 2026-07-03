@@ -807,13 +807,20 @@ where
 /// {
 ///   "type": "expect_error",
 ///   "endpoint": "/v1/crypto/encrypt",
-///   "method": "POST",            // optional, defaults to POST
-///   "body": { ... },             // raw JSON body to send (or null for no body)
-///   "setup_key": { ... },        // optional: create a key first, inject kid into body
-///   "expected_status": 400,      // expected HTTP status code
-///   "expected_error": "bad_request"  // optional: assert error field in response
+///   "method": "POST",              // optional, defaults to POST
+///   "body": { ... },               // raw JSON body to send (or null for no body)
+///   "setup_key": { ... },          // optional: create a key first, inject $KID/$KID_PUBLIC
+///   "protected_json": { ... },     // optional: JSON object to base64url-encode and inject
+///                                   //   as "$PROTECTED" in body. Supports $KID/$KID_PUBLIC.
+///   "expected_status": 400,        // expected HTTP status code
+///   "expected_error": "bad_request" // optional: assert error field in response
 /// }
 /// ```
+///
+/// `protected_json` is serialised to compact JSON, base64url-encoded (RFC 7516 §4), and
+/// substituted wherever the string `"$PROTECTED"` appears in `body`.  This avoids
+/// pre-computing base64url values in the vector files and makes the kid relationship
+/// explicit.
 async fn run_expect_error<S, B>(app: &S, v: &Value, filename: &str) -> KResult<()>
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
@@ -833,14 +840,35 @@ where
     // Optionally provision a key and inject kid into body
     let mut body = v["body"].clone();
     let mut kid_to_cleanup: Option<String> = None;
+    let mut kid_public_provisioned: Option<String> = None;
 
     if let Some(setup_key) = v.get("setup_key") {
         if !setup_key.is_null() {
             let (kid, kid_public) = provision_key(app, setup_key).await?;
-            // Inject kid into body where "$KID" placeholder appears
+            // Inject kid into body where "$KID" / "$KID_PUBLIC" placeholders appear
             inject_kid(&mut body, &kid, kid_public.as_deref());
+            kid_public_provisioned = kid_public;
             kid_to_cleanup = Some(kid);
         }
+    }
+
+    // Optionally build a base64url-encoded protected header from a JSON template.
+    // The result is injected wherever the string "$PROTECTED" appears in `body`.
+    if let Some(protected_template) = v.get("protected_json") {
+        let mut pt = protected_template.clone();
+        if let Some(ref kid) = kid_to_cleanup {
+            inject_placeholder(&mut pt, "$KID", kid);
+            inject_placeholder(
+                &mut pt,
+                "$KID_PUBLIC",
+                kid_public_provisioned.as_deref().unwrap_or(kid),
+            );
+        }
+        let pt_json = serde_json::to_string(&pt).unwrap_or_else(|e| {
+            panic!("Vector {filename}: failed to serialize protected_json: {e}")
+        });
+        let pt_b64 = URL_SAFE_NO_PAD.encode(pt_json.as_bytes());
+        inject_placeholder(&mut body, "$PROTECTED", &pt_b64);
     }
 
     // Build and send request
@@ -891,6 +919,26 @@ where
     }
 
     Ok(())
+}
+
+/// Replace a string placeholder with an exact value, recursively through a JSON tree.
+fn inject_placeholder(body: &mut Value, placeholder: &str, replacement: &str) {
+    match body {
+        Value::String(s) if s.as_str() == placeholder => {
+            *body = Value::String(replacement.to_owned());
+        }
+        Value::Object(map) => {
+            for val in map.values_mut() {
+                inject_placeholder(val, placeholder, replacement);
+            }
+        }
+        Value::Array(arr) => {
+            for val in arr {
+                inject_placeholder(val, placeholder, replacement);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Replace `"$KID"` and `"$KID_PUBLIC"` placeholders in a JSON body with actual key IDs.

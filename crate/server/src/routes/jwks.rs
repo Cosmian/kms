@@ -4,7 +4,6 @@
 //! `default_username` that are tagged [`JWKS_TAG`] and in `Active` or
 //! `Deactivated` state (rotation-overlap support).  The endpoint is
 //! intentionally **unauthenticated**.
-//!
 
 use std::sync::Arc;
 

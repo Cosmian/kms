@@ -1,8 +1,8 @@
 //! Tag management endpoint tests for `POST/DELETE/GET /v1/crypto/keys/{kid}/tags`.
 
 use actix_http::Request;
-use actix_web::body::MessageBody;
 use actix_web::{
+    body::MessageBody,
     dev::{Service, ServiceResponse},
     http::StatusCode,
     test,

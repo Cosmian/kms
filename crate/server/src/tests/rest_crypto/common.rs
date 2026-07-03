@@ -186,3 +186,30 @@ where
     let resp: ImportResponse = test_utils::post_2_1(app, import_req).await?;
     Ok(resp.unique_identifier.to_string())
 }
+
+/// Generate an RSA key pair via `POST /v1/crypto/keys` and return `(kid_private, kid_public)`.
+///
+/// Uses the REST endpoint (dogfoods `/v1/crypto/keys`) rather than the KMIP pipeline directly.
+/// Defaults to 2048-bit RSA — the minimum allowed by the FIPS-mode key validation in the
+/// encrypt/decrypt handlers.
+pub(super) async fn create_rsa_key_pair_rest<S, B>(app: &S) -> KResult<(String, String)>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: actix_web::body::MessageBody,
+{
+    use serde_json::{Value, json};
+
+    let resp: Value =
+        test_utils::post_json_with_uri(app, json!({"kty": "RSA", "bits": 2048}), "/v1/crypto/keys")
+            .await?;
+
+    let kid = resp["kid"]
+        .as_str()
+        .expect("POST /v1/crypto/keys must return 'kid'")
+        .to_owned();
+    let kid_public = resp["kid_public"]
+        .as_str()
+        .expect("RSA key generation must return 'kid_public'")
+        .to_owned();
+    Ok((kid, kid_public))
+}

@@ -92,9 +92,14 @@ pub(crate) struct KeyCreateResponse {
 /// POST /v1/crypto/encrypt — request
 #[derive(Debug, Deserialize)]
 pub(crate) struct EncryptRequest {
-    /// KMS object UID of the symmetric key
+    /// KMS object UID of the key (symmetric for `dir`; RSA private or public key for `RSA-OAEP` / `RSA-OAEP-256`)
     pub(crate) kid: String,
-    /// JOSE `alg` identifier — `/v1/crypto` currently supports only `"dir"` (direct key agreement)
+    /// JOSE `alg` key-management identifier.
+    ///
+    /// Supported values:
+    /// - `"dir"` — direct AES-GCM encryption with the symmetric key referenced by `kid`
+    /// - `"RSA-OAEP"` — RSA-OAEP key wrapping (SHA-1 / MGF1-SHA-1) + AES-GCM content encryption
+    /// - `"RSA-OAEP-256"` — RSA-OAEP-256 key wrapping (SHA-256 / MGF1-SHA-256) + AES-GCM content encryption
     pub(crate) alg: JoseAlgorithm,
     /// JOSE `enc` content-encryption algorithm identifier (e.g. `"A256GCM"`)
     pub(crate) enc: JoseEncAlgorithm,
@@ -109,7 +114,7 @@ pub(crate) struct EncryptRequest {
 pub(crate) struct EncryptResponse {
     /// BASE64URL(UTF8(JWE Protected Header))
     pub(crate) protected: String,
-    /// Empty string for `dir` key management (no key wrapping)
+    /// RSA-OAEP wrapped CEK as base64url; empty string for `dir` (no key wrapping)
     pub(crate) encrypted_key: String,
     /// Initialization vector as base64url
     pub(crate) iv: String,
@@ -127,7 +132,7 @@ pub(crate) struct EncryptResponse {
 pub(crate) struct DecryptRequest {
     /// BASE64URL(UTF8(JWE Protected Header))
     pub(crate) protected: String,
-    /// Ignored for `dir` — must be empty string or absent
+    /// RSA-OAEP wrapped CEK as base64url (required and non-empty for `RSA-OAEP` / `RSA-OAEP-256`); absent or empty for `dir`
     pub(crate) encrypted_key: Option<String>,
     /// Initialization vector as base64url
     pub(crate) iv: String,
