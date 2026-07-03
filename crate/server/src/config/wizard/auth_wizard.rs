@@ -138,6 +138,20 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             .default(false)
             .interact()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let enable_ui_login: bool = Confirm::with_theme(&theme)
+            .with_prompt("Enable the Web UI login form for the Cosmian authentication server?")
+            .default(false)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let realm: Option<String> = if enable_ui_login {
+            let realm: String = Input::with_theme(&theme)
+                .with_prompt("Realm to authenticate the Web UI against")
+                .interact_text()
+                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            Some(realm)
+        } else {
+            None
+        };
         cosmian_auth = CosmianAuthConfig {
             cosmian_auth_server_url: Some(server_url),
             cosmian_auth_jwks_uri: if jwks_uri.trim().is_empty() {
@@ -145,6 +159,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             } else {
                 Some(jwks_uri)
             },
+            cosmian_auth_realm: realm,
             cosmian_auth_accept_invalid_certs: accept_invalid_certs,
         };
     }

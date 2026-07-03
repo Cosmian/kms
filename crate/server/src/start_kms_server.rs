@@ -48,7 +48,10 @@ use url::Url;
 #[cfg(feature = "non-fips")]
 use crate::routes::tokenize;
 use crate::{
-    config::{IdpAuthConfig, OidcRuntimeConfig, ProxyParams, ServerParams, TlsParams},
+    config::{
+        CosmianAuthConfig, CosmianAuthRuntimeConfig, IdpAuthConfig, OidcRuntimeConfig, ProxyParams,
+        ServerParams, TlsParams,
+    },
     core::KMS,
     cron,
     error::KmsError,
@@ -588,7 +591,10 @@ async fn build_oidc_runtime_config(
     use crate::config::OidcDiscoveredEndpoints;
 
     let Some(ref issuer) = oidc_config.ui_oidc_issuer_url else {
-        return OidcRuntimeConfig { config: oidc_config, discovered: None };
+        return OidcRuntimeConfig {
+            config: oidc_config,
+            discovered: None,
+        };
     };
 
     let base = issuer.trim_end_matches('/');
@@ -601,7 +607,10 @@ async fn build_oidc_runtime_config(
         Ok(c) => c,
         Err(e) => {
             warn!("OIDC: failed to build HTTP client for discovery: {e}");
-            return OidcRuntimeConfig { config: oidc_config, discovered: None };
+            return OidcRuntimeConfig {
+                config: oidc_config,
+                discovered: None,
+            };
         }
     };
 
@@ -610,12 +619,18 @@ async fn build_oidc_runtime_config(
             Ok(v) => v,
             Err(e) => {
                 warn!("OIDC: failed to parse discovery document from {discovery_url}: {e}");
-                return OidcRuntimeConfig { config: oidc_config, discovered: None };
+                return OidcRuntimeConfig {
+                    config: oidc_config,
+                    discovered: None,
+                };
             }
         },
         Err(e) => {
             warn!("OIDC: failed to fetch discovery document from {discovery_url}: {e}");
-            return OidcRuntimeConfig { config: oidc_config, discovered: None };
+            return OidcRuntimeConfig {
+                config: oidc_config,
+                discovered: None,
+            };
         }
     };
 
@@ -632,7 +647,10 @@ async fn build_oidc_runtime_config(
         get_str("jwks_uri"),
     ) else {
         warn!("OIDC: discovery document at {discovery_url} is missing required fields");
-        return OidcRuntimeConfig { config: oidc_config, discovered: None };
+        return OidcRuntimeConfig {
+            config: oidc_config,
+            discovered: None,
+        };
     };
 
     info!("OIDC: discovered endpoints from {discovery_url}");
@@ -640,16 +658,14 @@ async fn build_oidc_runtime_config(
     debug!("OIDC: token_endpoint={token_endpoint}");
     debug!("OIDC: jwks_uri={jwks_uri}");
 
-    let jwks_manager = match JwksManager::new(
-        vec![jwks_uri],
-        proxy_params,
-    )
-    .await
-    {
+    let jwks_manager = match JwksManager::new(vec![jwks_uri], proxy_params).await {
         Ok(mgr) => Arc::new(mgr),
         Err(e) => {
             warn!("OIDC: failed to build JwksManager for UI OIDC: {e}");
-            return OidcRuntimeConfig { config: oidc_config, discovered: None };
+            return OidcRuntimeConfig {
+                config: oidc_config,
+                discovered: None,
+            };
         }
     };
 
@@ -1300,8 +1316,28 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 Some("JWT".to_owned())
             } else if use_cert_auth {
                 Some("CERT".to_owned())
+            } else if use_cosmian_auth
+                && kms_server_for_http
+                    .params
+                    .cosmian_auth_config
+                    .as_ref()
+                    .is_some_and(CosmianAuthConfig::ui_login_enabled)
+            {
+                Some("COSMIAN".to_owned())
             } else {
                 None
+            };
+
+            // BFF runtime config for the Cosmian authentication server Web UI login
+            // (`/ui/login_as`). Reuses the JWKS manager already built above for the
+            // bearer-token `CosmianAuth` middleware — no second JWKS fetch.
+            let cosmian_auth_runtime_config = CosmianAuthRuntimeConfig {
+                config: kms_server_for_http
+                    .params
+                    .cosmian_auth_config
+                    .clone()
+                    .unwrap_or_default(),
+                jwks_manager: cosmian_auth_jwks_manager.clone(),
             };
 
             // These paths mirror the React application's client-side routes
@@ -1333,6 +1369,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_runtime_config))
+                .app_data(Data::new(cosmian_auth_runtime_config))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_type))

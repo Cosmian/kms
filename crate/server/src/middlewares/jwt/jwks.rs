@@ -413,7 +413,7 @@ mod tests {
     /// `initial_body` for every request until `rotated` is set to `true` (using
     /// `Ordering::SeqCst`), after which it serves `rotated_body`.
     ///
-    /// Used to simulate an IdP rotating its JWKS signing keys between the initial
+    /// Used to simulate an `IdP` rotating its JWKS signing keys between the initial
     /// `JwksManager::new()` fetch and a later `refresh()` call.
     async fn rotating_jwks_http_server(
         initial_body: &'static str,
@@ -446,7 +446,7 @@ mod tests {
     }
 
     /// Regression test for the "refresh-on-miss" behavior relied upon by
-    /// `routes::ui_auth::callback`: when the IdP rotates its signing keys, a
+    /// `routes::ui_auth::callback`: when the `IdP` rotates its signing keys, a
     /// `JwksManager::refresh()` call must be able to pick up the new key so that
     /// login succeeds without restarting the server.
     #[actix_web::test]

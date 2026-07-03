@@ -10,12 +10,15 @@ use serde::{Deserialize, Serialize};
 /// Provide the address of the Cosmian auth server:
 /// ```toml
 /// [cosmian_auth]
-/// server_url            = "https://localhost:8443"
-/// accept_invalid_certs  = false   # set true only for dev/test
+/// cosmian_auth_server_url           = "https://localhost:8443"
+/// cosmian_auth_accept_invalid_certs = false   # set true only for dev/test
+/// # Required in addition to the above to enable the Web UI login form:
+/// cosmian_auth_realm                = "kms"
 /// ```
 ///
-/// The JWKS endpoint is derived automatically from `server_url` as
-/// `{server_url}/.well-known/jwks.json` unless overridden via `jwks_uri`.
+/// The JWKS endpoint is derived automatically from `cosmian_auth_server_url` as
+/// `{cosmian_auth_server_url}/.well-known/jwks.json` unless overridden via
+/// `cosmian_auth_jwks_uri`.
 #[derive(Args, Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct CosmianAuthConfig {
@@ -31,6 +34,15 @@ pub struct CosmianAuthConfig {
     /// Defaults to `{cosmian_auth_server_url}/.well-known/jwks.json` when not set.
     #[clap(long, env = "KMS_COSMIAN_AUTH_JWKS_URI", verbatim_doc_comment)]
     pub cosmian_auth_jwks_uri: Option<String>,
+
+    /// Realm to authenticate the Web UI against on the Cosmian authentication server.
+    ///
+    /// Required only to enable the Web UI login form for the Cosmian authentication
+    /// server (`POST /ui/login_as`); bearer-token validation of already-issued tokens
+    /// does not need a realm. When unset, the UI falls back to any other configured
+    /// authentication method (OIDC/JWT or client certificate).
+    #[clap(long, env = "KMS_COSMIAN_AUTH_REALM", verbatim_doc_comment)]
+    pub cosmian_auth_realm: Option<String>,
 
     /// Accept invalid or self-signed TLS certificates when fetching the JWKS.
     ///
@@ -49,6 +61,14 @@ impl CosmianAuthConfig {
     #[must_use]
     pub const fn is_enabled(&self) -> bool {
         self.cosmian_auth_server_url.is_some()
+    }
+
+    /// Returns `true` if the Web UI login form for the Cosmian authentication server
+    /// should be enabled, i.e. both `cosmian_auth_server_url` and `cosmian_auth_realm`
+    /// are configured.
+    #[must_use]
+    pub const fn ui_login_enabled(&self) -> bool {
+        self.cosmian_auth_server_url.is_some() && self.cosmian_auth_realm.is_some()
     }
 
     /// Returns the effective JWKS URI:
@@ -75,6 +95,7 @@ mod tests {
         let cfg = CosmianAuthConfig {
             cosmian_auth_server_url: Some("https://auth.example.com".to_owned()),
             cosmian_auth_jwks_uri: None,
+            cosmian_auth_realm: None,
             cosmian_auth_accept_invalid_certs: false,
         };
         assert_eq!(
@@ -88,6 +109,7 @@ mod tests {
         let cfg = CosmianAuthConfig {
             cosmian_auth_server_url: Some("https://auth.example.com".to_owned()),
             cosmian_auth_jwks_uri: Some("https://auth.example.com/custom/jwks".to_owned()),
+            cosmian_auth_realm: None,
             cosmian_auth_accept_invalid_certs: false,
         };
         assert_eq!(
@@ -101,6 +123,7 @@ mod tests {
         let cfg = CosmianAuthConfig {
             cosmian_auth_server_url: Some("https://auth.example.com/".to_owned()),
             cosmian_auth_jwks_uri: None,
+            cosmian_auth_realm: None,
             cosmian_auth_accept_invalid_certs: false,
         };
         assert_eq!(
@@ -114,5 +137,17 @@ mod tests {
         let cfg = CosmianAuthConfig::default();
         assert!(!cfg.is_enabled());
         assert_eq!(cfg.jwks_uri(), None);
+    }
+
+    #[test]
+    fn test_ui_login_enabled_requires_both_url_and_realm() {
+        let mut cfg = CosmianAuthConfig::default();
+        assert!(!cfg.ui_login_enabled());
+
+        cfg.cosmian_auth_server_url = Some("https://auth.example.com".to_owned());
+        assert!(!cfg.ui_login_enabled());
+
+        cfg.cosmian_auth_realm = Some("kms".to_owned());
+        assert!(cfg.ui_login_enabled());
     }
 }
