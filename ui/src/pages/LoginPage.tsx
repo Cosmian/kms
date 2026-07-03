@@ -161,7 +161,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                     ) : isLoading ? (
                         <Spin size="large" />
                     ) : auth ? (
-                        <Button type="primary" block onClick={handleLogin} loading={isLoading}>
+                        <Button type="primary" block onClick={handleLogin} loading={isLoading} data-testid="oidc-login-btn">
                             LOGIN
                         </Button>
                     ) : (
