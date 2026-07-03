@@ -915,6 +915,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             info!("azure EKM API enabled at {}", base_path);
 
             let azure_ekm_scope = web::scope(&base_path)
+                .app_data(azure_ekm::ekm_json_config())
                 .wrap(Condition::new(
                     !kms_server.params.azure_ekm.azure_ekm_disable_client_auth,
                     EnsureAuth::new(kms_server_for_http.clone(), use_cert_auth),
