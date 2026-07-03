@@ -107,7 +107,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                         />
                     )}
                     {authMethod === "COSMIAN" ? (
-                        <div className="space-y-4 text-left">
+                        <div className="space-y-4 text-left" data-testid="cosmian-login-form">
                             {cosmianError && (
                                 <Alert
                                     type="error"
@@ -115,6 +115,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                     message="Authentication failed"
                                     description={cosmianError}
                                     className="text-left mb-4"
+                                    data-testid="cosmian-login-error"
                                 />
                             )}
                             {cosmianTotpRequired ? (
@@ -124,6 +125,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                     value={cosmianTotpCode}
                                     onChange={(e) => setCosmianTotpCode(e.target.value)}
                                     onPressEnter={handleCosmianLogin}
+                                    data-testid="cosmian-totp-input"
                                 />
                             ) : (
                                 <>
@@ -134,6 +136,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                         value={cosmianUsername}
                                         onChange={(e) => setCosmianUsername(e.target.value)}
                                         onPressEnter={handleCosmianLogin}
+                                        data-testid="cosmian-username-input"
                                     />
                                     <Input.Password
                                         placeholder="Password"
@@ -141,10 +144,17 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                         value={cosmianPassword}
                                         onChange={(e) => setCosmianPassword(e.target.value)}
                                         onPressEnter={handleCosmianLogin}
+                                        data-testid="cosmian-password-input"
                                     />
                                 </>
                             )}
-                            <Button type="primary" block onClick={handleCosmianLogin} loading={isLoading}>
+                            <Button
+                                type="primary"
+                                block
+                                onClick={handleCosmianLogin}
+                                loading={isLoading}
+                                data-testid="cosmian-login-submit"
+                            >
                                 {cosmianTotpRequired ? "VERIFY CODE" : "LOGIN"}
                             </Button>
                         </div>
