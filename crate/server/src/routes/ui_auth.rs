@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
 use actix_session::Session;
-use actix_web::{HttpRequest, HttpResponse, get, web};
+use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::config::OidcRuntimeConfig;
+use crate::config::{CosmianAuthRuntimeConfig, OidcRuntimeConfig};
 
 fn random_b64url(len_bytes: usize) -> Result<String, ()> {
     let mut buf = vec![0_u8; len_bytes];
@@ -215,8 +216,9 @@ pub(crate) async fn callback(
     let header = match decode_header(id_token_str) {
         Ok(h) => h,
         Err(e) => {
-            return HttpResponse::Unauthorized()
-                .json(serde_json::json!({ "error": format!("Failed to decode token header: {e}") }));
+            return HttpResponse::Unauthorized().json(
+                serde_json::json!({ "error": format!("Failed to decode token header: {e}") }),
+            );
         }
     };
 
@@ -237,9 +239,8 @@ pub(crate) async fn callback(
             match discovered.jwks_manager.find(&kid) {
                 Ok(k) => k,
                 Err(e) => {
-                    return HttpResponse::InternalServerError().json(
-                        serde_json::json!({ "error": format!("JWKS lookup failed: {e}") }),
-                    );
+                    return HttpResponse::InternalServerError()
+                        .json(serde_json::json!({ "error": format!("JWKS lookup failed: {e}") }));
                 }
             }
         }
@@ -256,8 +257,9 @@ pub(crate) async fn callback(
     let decoding_key = match DecodingKey::from_jwk(&jwk) {
         Ok(key) => key,
         Err(e) => {
-            return HttpResponse::Unauthorized()
-                .json(serde_json::json!({ "error": format!("Failed to build decoding key: {e}") }));
+            return HttpResponse::Unauthorized().json(
+                serde_json::json!({ "error": format!("Failed to build decoding key: {e}") }),
+            );
         }
     };
 
@@ -287,14 +289,17 @@ pub(crate) async fn callback(
     // Validate nonce to prevent authorization code injection.
     let nonce_claim = claims.get("nonce").and_then(|v| v.as_str());
     if nonce_claim != Some(stored_nonce.as_str()) {
-        return HttpResponse::BadRequest()
-            .json(serde_json::json!({ "error": "Nonce mismatch" }));
+        return HttpResponse::BadRequest().json(serde_json::json!({ "error": "Nonce mismatch" }));
     }
 
     // Extract the user identity (email claim). The id_token is intentionally not
     // stored in the session — the BFF pattern requires only the user_id to be kept.
     // All subsequent API requests from the UI are authenticated via the session cookie.
-    let Some(user_id) = claims.get("email").and_then(|v| v.as_str()).map(str::to_owned) else {
+    let Some(user_id) = claims
+        .get("email")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+    else {
         return HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Missing email claim in id_token" }));
     };
@@ -309,14 +314,192 @@ pub(crate) async fn callback(
         .finish()
 }
 
+/// Session cookie name set by the Cosmian authentication server on a successful
+/// `/login` call. Carries a JWT (`sub` = username); mirrors the constant of the same
+/// name in `ckms login cosmian` (`kms/crate/clients/client/src/http_client/login.rs`).
+const COSMIAN_SESSION_COOKIE: &str = "_ea_";
+
+/// Request body for `POST /ui/login_as`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct CosmianLoginRequest {
+    username: String,
+    password: String,
+    #[serde(default)]
+    totp_code: Option<String>,
+}
+
+/// Mirrors the Cosmian authentication server's `AuthenticationResult` shape
+/// (see `authentication/client/src/models/login.rs`). Duplicated here — rather than
+/// depending on the `authentication` crate — the same way `ckms login cosmian`
+/// (`kms/crate/clients/client/src/http_client/login.rs`) already does.
+#[derive(Debug, Deserialize)]
+struct CosmianAuthenticationResult {
+    next_step: CosmianAuthenticationNextStep,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+enum CosmianAuthenticationNextStep {
+    Authenticated,
+    TotpRequired,
+    ChangePassword,
+}
+
+/// Response body for `POST /ui/login_as`. Mirrors the AS's `next_step` values so the
+/// frontend can reuse the same state machine as `ckms login cosmian`'s TOTP handling.
+#[derive(Debug, Serialize)]
+struct CosmianLoginResponse {
+    next_step: &'static str,
+}
+
+/// BFF proxy login for the Cosmian authentication server ("AS" / "SA").
+///
+/// The browser posts `{ username, password, totp_code? }`; this handler replays the
+/// login as HTTP Basic auth against `{cosmian_auth_server_url}/login?realm={realm}` —
+/// mirroring `cosmian_login()` in `kms/crate/clients/client/src/http_client/login.rs` —
+/// then validates the JWT the AS returns via `Set-Cookie: _ea_=<jwt>` using the same
+/// JWKS-backed trust logic as the bearer-token `CosmianAuth` middleware
+/// (`verify_cosmian_jwt_subject`). Only the resulting `sub` (username) is stored in the
+/// session; the JWT itself never reaches the browser, keeping the same BFF guarantee
+/// as the OIDC flow (`callback`, above).
+#[post("/login_as")]
+pub(crate) async fn login_as(
+    session: Session,
+    body: web::Json<CosmianLoginRequest>,
+    cosmian_runtime: web::Data<CosmianAuthRuntimeConfig>,
+) -> HttpResponse {
+    let config = &cosmian_runtime.config;
+    if !config.ui_login_enabled() {
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "The Cosmian authentication server is not configured for the Web UI" }),
+        );
+    }
+    let Some(ref jwks_manager) = cosmian_runtime.jwks_manager else {
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "The Cosmian authentication server JWKS manager is not available" }),
+        );
+    };
+    // Guaranteed non-empty by `ui_login_enabled()`.
+    let (Some(server_url), Some(realm)) = (
+        config.cosmian_auth_server_url.as_deref(),
+        config.cosmian_auth_realm.as_deref(),
+    ) else {
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "The Cosmian authentication server is not configured for the Web UI" }),
+        );
+    };
+
+    let url = format!("{}/login?realm={realm}", server_url.trim_end_matches('/'));
+
+    let client = match Client::builder()
+        .danger_accept_invalid_certs(config.cosmian_auth_accept_invalid_certs)
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({ "error": format!("Failed to build HTTP client: {e}") }));
+        }
+    };
+
+    let request_body = body.totp_code.as_deref().map_or_else(
+        || "{}".to_owned(),
+        |code| serde_json::json!({ "totp_code": code }).to_string(),
+    );
+
+    let response = match client
+        .post(&url)
+        .basic_auth(&body.username, Some(&body.password))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(request_body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return HttpResponse::BadGateway().json(
+                serde_json::json!({ "error": format!("Failed to reach the Cosmian authentication server: {e}") }),
+            );
+        }
+    };
+
+    if !response.status().is_success() {
+        let status = response.status();
+        return HttpResponse::Unauthorized().json(
+            serde_json::json!({ "error": format!("Cosmian authentication server rejected the login ({status})") }),
+        );
+    }
+
+    // Extract the session JWT from Set-Cookie before consuming the body.
+    let session_token = response
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let raw = value.to_str().ok()?;
+            let (name, cookie_value) = raw.split(';').next()?.split_once('=')?;
+            (name.trim() == COSMIAN_SESSION_COOKIE).then(|| cookie_value.trim().to_owned())
+        });
+
+    let body_bytes = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": format!("Failed to read login response: {e}") }),
+            );
+        }
+    };
+    let result: CosmianAuthenticationResult = match serde_json::from_slice(&body_bytes) {
+        Ok(r) => r,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": format!("Failed to parse login response: {e}") }),
+            );
+        }
+    };
+
+    match result.next_step {
+        CosmianAuthenticationNextStep::TotpRequired => HttpResponse::Ok().json(CosmianLoginResponse {
+            next_step: "TotpRequired",
+        }),
+        CosmianAuthenticationNextStep::ChangePassword => HttpResponse::Forbidden().json(
+            serde_json::json!({ "error": "Your password has expired. Please change it via the Cosmian authentication server before logging in." }),
+        ),
+        CosmianAuthenticationNextStep::Authenticated => {
+            let Some(token) = session_token else {
+                return HttpResponse::InternalServerError().json(
+                    serde_json::json!({ "error": format!("Cosmian authentication server did not set the `{COSMIAN_SESSION_COOKIE}` session cookie") }),
+                );
+            };
+
+            let user_id = match crate::middlewares::verify_cosmian_jwt_subject(jwks_manager, &token).await
+            {
+                Ok(sub) => sub,
+                Err(e) => {
+                    return HttpResponse::Unauthorized().json(
+                        serde_json::json!({ "error": format!("Failed to validate the Cosmian authentication server token: {e}") }),
+                    );
+                }
+            };
+
+            if session.insert("user_id", &user_id).is_err() {
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
+            }
+
+            HttpResponse::Ok().json(CosmianLoginResponse {
+                next_step: "Authenticated",
+            })
+        }
+    }
+}
+
 #[get("/whoami")]
 pub(crate) async fn whoami(session: Session) -> HttpResponse {
     match session.get::<String>("user_id") {
-        Ok(Some(user_id)) => {
-            HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id }))
+        Ok(Some(user_id)) => HttpResponse::Ok().json(serde_json::json!({ "user_id": user_id })),
+        Ok(None) => {
+            HttpResponse::Unauthorized().json(serde_json::json!({ "error": "No active session" }))
         }
-        Ok(None) => HttpResponse::Unauthorized()
-            .json(serde_json::json!({ "error": "No active session" })),
         Err(_) => HttpResponse::InternalServerError()
             .json(serde_json::json!({ "error": "Failed to read session" })),
     }
@@ -330,10 +513,14 @@ pub(crate) async fn logout(
 ) -> HttpResponse {
     session.purge();
 
-    // TODO: when ui_oidc_logout_url is None (e.g. Cosmian auth or unconfigured OIDC),
-    // purge session and redirect to /ui/login instead of returning 500.
+    // When no OIDC logout URL is configured (e.g. the session was established via the
+    // Cosmian authentication server, or OIDC simply isn't set up), there is no external
+    // IdP session to terminate: just drop the local session (done above) and send the
+    // browser back to the login page.
     let Some(url) = &oidc_runtime.config.ui_oidc_logout_url else {
-        return HttpResponse::InternalServerError().body("Logout URL is missing");
+        return HttpResponse::Found()
+            .append_header(("Location", "/ui/login"))
+            .finish();
     };
     let mut logout_url = match Url::parse(url) {
         Ok(parsed_url) => parsed_url,
@@ -372,6 +559,7 @@ pub(crate) async fn get_auth_method(auth_type: web::Data<Option<String>>) -> Htt
 pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(login)
         .service(callback)
+        .service(login_as)
         .service(whoami)
         .service(logout)
         .service(get_auth_method);

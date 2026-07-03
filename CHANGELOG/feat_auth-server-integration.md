@@ -23,6 +23,14 @@
   - Auth wizard updated with "Cosmian authentication server" option.
   - Test server config: `test_data/configs/server/test/auth_cosmian.toml`.
 
+- **Web UI login for the Cosmian authentication server ("AS")**: the KMS Web UI can now authenticate end users against the proprietary Cosmian authentication server, mirroring `ckms login cosmian` CLI parity, using the same BFF session-cookie pattern as the OIDC flow below — the AS's JWT never reaches the browser.
+  - New `POST /ui/login_as` route: accepts `{ username, password, totp_code? }` from the browser, replays it as HTTP Basic auth against `{cosmian_auth_server_url}/login?realm={realm}` (same request `ckms login cosmian` makes), extracts the `_ea_` session JWT from the AS's `Set-Cookie` response header, validates it via the JWKS-backed `verify_cosmian_jwt_subject` (shared with the bearer-token `CosmianAuth` middleware), then stores only the resulting `sub` (username) in the actix session — never the JWT itself.
+  - Handles the AS's `next_step` state machine (`Authenticated` / `TotpRequired` / `ChangePassword`), matching `ckms login cosmian`'s TOTP support: the frontend re-submits with `totp_code` when `TotpRequired` is returned, and surfaces an actionable error on `ChangePassword`.
+  - New `cosmian_auth_realm` config field (`--cosmian-auth-realm` / env `KMS_COSMIAN_AUTH_REALM`) and `CosmianAuthConfig::ui_login_enabled()` (`true` only when both `cosmian_auth_server_url` and `cosmian_auth_realm` are set) — bearer-token validation of already-issued tokens continues to work without a realm.
+  - `GET /ui/auth_method` now returns `"COSMIAN"` when UI login for the Cosmian auth server is enabled (new `auth_type` branch in `start_kms_server.rs`), alongside the existing `"JWT"`/`"CERT"`/`None`.
+  - Auth wizard (`--config-wizard`) prompts to enable the Web UI login form and set the realm when the Cosmian authentication server option is selected.
+  - Frontend: `AuthMethod` extended with `"COSMIAN"`; new `loginCosmian()` helper (`src/utils/utils.ts`) posting to `/ui/login_as`; `LoginPage` renders a username/password form (switching to a one-time-code prompt on `TotpRequired`) when `authMethod === "COSMIAN"`; `App.tsx`'s auth bootstrap and route guard, and `MainLayout`'s header (session user tag + Logout button), now treat `"COSMIAN"` the same as `"JWT"` since both are session-cookie-based.
+
 ## Refactor
 
 - **BFF (Backend for Frontend) OIDC pattern for the Web UI**: rework the OIDC authentication flow to eliminate token leakage to the browser.
@@ -34,3 +42,15 @@
   - UI updated: `fetchIdToken` → `fetchWhoAmI`, `idToken` state removed from `AuthContext` and all action components; Bearer `Authorization` headers removed from all client-side API calls.
   - `getNoTTLVRequest`, `sendKmipRequest`, `postNoTTLVRequest`, `getNoTTLVRequestWithTimeout` signatures drop the `idToken` parameter.
   - `useActionState` hook no longer exposes `idToken`.
+
+- Extracted `validate_cosmian_token` into `pub(crate) async fn verify_cosmian_jwt_subject(jwks_manager, token) -> KResult<String>`, returning just the validated `sub` claim instead of an `AuthenticatedUser`, so it can be shared between the bearer-token `CosmianAuth` middleware and the new `/ui/login_as` handler without duplicating JWT/JWKS trust logic.
+- Added `CosmianAuthRuntimeConfig` (mirrors `OidcRuntimeConfig`): bundles the static `CosmianAuthConfig` with the already-built `JwksManager` `Arc` and is injected as `app_data` on the `/ui` scope — no second JWKS manager/fetch is created for the UI login path.
+- `logout()` no longer falls back to a `500 "Logout URL is missing"` response when no OIDC logout URL is configured (e.g. a Cosmian-auth-only or unconfigured-OIDC session): it now purges the session and redirects to `/ui/login`, same as a normal OIDC logout's final hop.
+
+## Bug Fixes
+
+- Fixed a pre-existing `cfg` mismatch in `cosmian_auth_token.rs`: the `ALLOWED_ALGORITHMS` const (and its `Algorithm` import) were gated on `not(feature = "insecure")` but only ever read under `all(not(test), not(feature = "insecure"))`, making `cargo test -p cosmian_kms_server` fail to compile (`error: constant ALLOWED_ALGORITHMS is never used`) on any normal test build. Aligned both `cfg` attributes.
+
+## Documentation
+
+- Added `CHANGELOG/test_plan_cosmian-auth-ui-login.md`: manual end-to-end test plan for the new Web UI login flow (happy path, TOTP, bad credentials, `ChangePassword`, logout, no-token-in-browser check), following the precedent set by `test_plan_oidc-session-auth.md` since there is no mock/wiremock harness for a live external Cosmian authentication server in this repo.

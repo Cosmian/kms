@@ -5,7 +5,7 @@ mod api_token;
 pub(crate) use api_token::api_token_middleware;
 
 mod cosmian_auth;
-pub(crate) use cosmian_auth::CosmianAuth;
+pub(crate) use cosmian_auth::{CosmianAuth, verify_cosmian_jwt_subject};
 
 mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;

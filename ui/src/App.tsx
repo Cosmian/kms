@@ -161,7 +161,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
         const fetchUser = async () => {
             const authMethod = await fetchAuthMethod(location);
             setAuthMethod(authMethod);
-            if (authMethod == "JWT") {
+            if (authMethod == "JWT" || authMethod === "COSMIAN") {
                 const data = await fetchWhoAmI(location);
                 if (data) {
                     try {
@@ -238,7 +238,7 @@ const AppContent: React.FC<AppContentProps> = ({ isDarkMode, setIsDarkMode, wasm
 
     return (
         <Routes>
-            {!isAuthenticated && (authMethod === "JWT" || authMethod === "CERT") ? (
+            {!isAuthenticated && (authMethod === "JWT" || authMethod === "CERT" || authMethod === "COSMIAN") ? (
                 <>
                     <Route path="/login" element={<LoginPage auth={authMethod === "JWT"} authMethod={authMethod} error={loginError} />} />
                     <Route path="*" element={<Navigate to="/login" replace />} />

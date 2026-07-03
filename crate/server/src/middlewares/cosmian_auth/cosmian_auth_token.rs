@@ -18,7 +18,7 @@
 use std::sync::Arc;
 
 use actix_web::{dev::ServiceRequest, http::header};
-#[cfg(not(feature = "insecure"))]
+#[cfg(all(not(test), not(feature = "insecure")))]
 use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
 use jsonwebtoken::dangerous;
@@ -36,7 +36,7 @@ use crate::{
 ///
 /// HS* algorithms are excluded: they use a shared secret and an attacker who
 /// obtains the JWKS public key could forge tokens.
-#[cfg(not(feature = "insecure"))]
+#[cfg(all(not(test), not(feature = "insecure")))]
 const ALLOWED_ALGORITHMS: &[Algorithm] = &[
     Algorithm::RS256,
     Algorithm::RS384,
@@ -84,28 +84,35 @@ pub(super) async fn handle_cosmian_auth(
         ));
     }
 
-    validate_cosmian_token(jwks_manager, token).await
+    let username = verify_cosmian_jwt_subject(jwks_manager, token).await?;
+    Ok(AuthenticatedUser { username })
 }
 
-/// Validate the JWT and return the authenticated user.
+/// Validate a Cosmian auth server JWT and return its `sub` claim (the
+/// authenticated username).
+///
+/// Shared between the bearer-token `CosmianAuth` middleware
+/// (`handle_cosmian_auth`) and the UI's BFF login proxy
+/// (`crate::routes::ui_auth::login_as`), which validates the JWT the Cosmian
+/// authentication server returns via `Set-Cookie: _ea_=<jwt>` before storing
+/// the resulting username in the actix session. Keeping a single
+/// implementation avoids the two call sites drifting apart on trust logic.
 ///
 /// In test / insecure builds the signature check is skipped (same behaviour
 /// as the existing `JwtAuth` middleware).
 #[cfg_attr(any(test, feature = "insecure"), allow(unused_variables))]
 #[cfg_attr(any(test, feature = "insecure"), allow(clippy::unused_async))]
-async fn validate_cosmian_token(
+pub(crate) async fn verify_cosmian_jwt_subject(
     jwks_manager: &Arc<JwksManager>,
     token: &str,
-) -> KResult<AuthenticatedUser> {
+) -> KResult<String> {
     // In test/insecure builds skip signature validation — decode only.
     #[cfg(any(test, feature = "insecure"))]
     {
         let token_data = dangerous::insecure_decode::<CosmianClaims>(token).map_err(|e| {
             KmsError::Unauthorized(format!("Cosmian auth: cannot decode token: {e}"))
         })?;
-        Ok(AuthenticatedUser {
-            username: token_data.claims.sub,
-        })
+        Ok(token_data.claims.sub)
     }
 
     // Production: full validation.
@@ -152,9 +159,7 @@ async fn validate_cosmian_token(
 
             match decode::<CosmianClaims>(token, &decoding_key, &validation) {
                 Ok(data) => {
-                    return Ok(AuthenticatedUser {
-                        username: data.claims.sub,
-                    });
+                    return Ok(data.claims.sub);
                 }
                 Err(e) => {
                     last_error = Some(format!("{e}"));
