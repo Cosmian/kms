@@ -128,11 +128,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                         {authMethod === "JWT" || authMethod === "COSMIAN" ? (
                             <div className="flex justify-center items-center h-full overflow-hidden ml-4">
                                 {userId && (
-                                    <Tag className="truncate text-sm leading-tight" color="purple">
+                                    <Tag className="truncate text-sm leading-tight" color="purple" data-testid="session-user-tag">
                                         {userId}
                                     </Tag>
                                 )}
-                                <Button onClick={handleLogout} className="w-18 ml-4">
+                                <Button onClick={handleLogout} className="w-18 ml-4" data-testid="logout-btn">
                                     Logout
                                 </Button>
                             </div>
