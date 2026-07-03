@@ -107,6 +107,7 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 | A256KW       | AES-256  | AES Key Wrap (RFC 3394)              |
 | A256KWP      | AES-256  | AES Key Wrap with Padding (RFC 5649) |
 | RSA-OAEP-256 | RSA      | RSA-OAEP using SHA-256 and MGF1      |
+| RSA-OAEP     | RSA      | RSA-OAEP using SHA-1 and MGF1        |
 
 > **⚠️ Notice:** For RSA operations, always use the **private key reference** as `{key-name}` in **all** endpoints, including wrap operations. The KMS will automatically derive and use the associated public key for encryption (wrap) operations. Passing the public key ID might lead to errors.
 
@@ -189,6 +190,65 @@ azure_ekm_disable_client_auth = false
 | `azure_ekm_ekm_product` | string | `"Eviden KMS v{CARGO_PKG_VERSION}"` | EKMS product name and version reported in `/info` endpoint. |
 | `azure_ekm_disable_client_auth` | boolean | `false` | ⚠️ Bypasses mTLS authentication. Only use for testing. |
 
+### Grant the Managed HSM identity access rights on the KMS
+
+When Azure Managed HSM connects to the EKM proxy over mTLS, Eviden KMS authenticates it as a regular KMIP user, using the **Subject CN of the client certificate** as the username (see [TLS Client Certificate configuration](../../../configuration/configurations.md#tls-client-cert) and the [Authentication guide](../../../configuration/authentication.md)). This identity is generally of the form `<hsm-name>.managedhsmclient.azure.net` — check your own Managed HSM client certificate to confirm its exact Subject CN.
+
+Because the external key is owned by whichever KMS user created it, you must explicitly grant this Managed HSM identity the rights to read and use that key, using [`ckms access-rights grant`](../../../configuration/authorization.md):
+
+```bash
+ckms access-rights grant <hsm-name>.managedhsmclient.azure.net -i <kms-key-uid> get get_attributes encrypt decrypt
+```
+
+Without this step, Azure's key registration call (see below) fails with a `KeyNotFound`-type error, because the KMS rejects the Managed HSM identity's request for an object it does not own and has not been granted access to.
+
+### Connect Azure Managed HSM to the EKM proxy
+
+The following `az keyvault ekm-connection` commands configure the Managed HSM side of the connection to your Eviden KMS.
+
+First, create the EKM connection on the Managed HSM, pointing it at your Eviden KMS:
+
+```bash
+az keyvault ekm-connection create \
+  --hsm-name <hsm-name> \
+  --host <kms-fqdn>:443 \
+  --path-prefix /azureekm/<azure_ekm_path_prefix> \
+  --server-ca-certificate <path-to-kms-tls-ca-or-server-cert.pem>
+```
+
+> **⚠️ Port 443 is required.** The `--host` argument's own help text states: *"EKM proxy host (FQDN or FQDN:port). If port is omitted, 443 is assumed."* In practice, the Managed HSM EKM proxy calls have been observed to require port 443 — make sure your Eviden KMS is reachable on port 443 (in addition to any other port you use for KMIP/administrative access), even if `[http] port` in your KMS configuration is set to a different value.
+
+> **`--path-prefix` must match `azure_ekm_path_prefix`.** If you configured `azure_ekm_path_prefix = "cosmian0"` on the KMS side, the Azure-side `--path-prefix` must be the corresponding path (e.g. `/azureekm/cosmian0`). A mismatch here causes requests to fail to route, without necessarily producing an obvious error on the Azure side.
+
+Verify the connection:
+
+```bash
+az keyvault ekm-connection check --hsm-name <hsm-name>
+```
+
+A successful check returns the `/info` payload reported by the KMS (`apiVersion`, `proxyVendor`, `proxyName`, `ekmVendor`, `ekmProduct`).
+
+### Register the external key and grant Azure RBAC
+
+Register the KMS key as an external Managed HSM key, referencing its KMS UID:
+
+```bash
+az keyvault key create \
+  --hsm-name <hsm-name> \
+  --name <azure-key-name> \
+  --external-key-id <kms-key-uid>
+```
+
+The consuming Azure service (for example, a Storage account's managed identity) then needs the **Managed HSM Crypto Service Encryption User** role ([built-in Managed HSM local RBAC role](https://learn.microsoft.com/en-us/azure/key-vault/managed-hsm/built-in-roles), which grants the `keys/wrap`, `keys/unwrap`, and `keys/read` data actions) on that key:
+
+```bash
+az keyvault role assignment create \
+  --hsm-name <hsm-name> \
+  --role "Managed HSM Crypto Service Encryption User" \
+  --assignee <consuming-service-principal-id> \
+  --scope /keys/<azure-key-name>
+```
+
 ## Testing the integration
 
 For testing purposes or for debugging, you can temporarily disable client authentication by commenting out the following configuration fields:
@@ -234,3 +294,12 @@ Expected response (if you used the config above):
   "ekm_product": "Eviden KMS v5.15.0"
 }
 ```
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| ------- | ------------ | --- |
+| `az keyvault ekm-connection create` succeeds, but Azure later fails to reach the proxy | KMS not reachable on port 443 | Expose the KMS on port 443, in addition to any other configured port — see the [port 443 note above](#connect-azure-managed-hsm-to-the-ekm-proxy). |
+| Requests never reach the KMS logs, or Azure reports a connectivity/routing error | `--path-prefix` used in `az keyvault ekm-connection create` does not match `azure_ekm_path_prefix` in the KMS configuration | Make both values match exactly, including the `/azureekm/` prefix. |
+| `az keyvault key create --external-key-id ...` fails with a `KeyNotFound`-type error | The Managed HSM's mTLS identity has not been granted access rights on the KMS key | Grant `get`, `get_attributes`, `encrypt`, `decrypt` to the Managed HSM identity with `ckms access-rights grant` — see [above](#grant-the-managed-hsm-identity-access-rights-on-the-kms). |
+| Wrap/unwrap fails during a CMK-enabling operation (for example Azure Storage CMK) with a generic error on the Azure side | The client sent a wrapping algorithm not currently listed under [Supported algorithms](#supported-algorithms) | Check the KMS server logs for the exact `alg` value received, and confirm it is one of the algorithms in the table above. |
