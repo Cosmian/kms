@@ -57,6 +57,20 @@ pub struct HttpConfig {
     /// Set to a fixed value for predictable resource usage or performance benchmarking.
     #[clap(long, env = "KMS_SERVER_WORKERS", verbatim_doc_comment)]
     pub server_workers: Option<usize>,
+
+    /// Enable the `GET /.well-known/jwks.json` endpoint.
+    ///
+    /// When set, the server exposes all public keys with the `Verify` usage mask as a
+    /// RFC 7517 JSON Web Key Set. Defaults to `false`; set to `true` to enable public key
+    /// discovery for JWT verification.
+    #[clap(
+        long,
+        env = "KMS_JWKS_ENABLED",
+        default_value_t = false,
+        verbatim_doc_comment
+    )]
+    #[serde(skip)]
+    pub jwks_enabled: bool,
 }
 
 impl HttpConfig {
@@ -107,6 +121,7 @@ impl Default for HttpConfig {
             rate_limit_per_second: None,
             cors_allowed_origins: None,
             server_workers: None,
+            jwks_enabled: false,
         }
     }
 }

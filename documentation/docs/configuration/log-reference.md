@@ -11,13 +11,13 @@ It is not listed in the navigation menu but is accessible via
 
 The index is organised by usage-domains. Within each domain, each table covers one crate (the UI section is an exception). All tables, ui included, have 5 columns:
 
-| Column | Meaning |
-|---|---|
-| **Level** | `error` `warn` `info` `debug` `trace` |
-| **Message** | Constant log string; interpolated values shown as `{name}` |
-| **File** | Source file relative to the crate root |
-| **Variables** | Each `{name}` — description; `—` when none |
-| **Notes** | Reserved for security flags and operator guidance |
+| Column        | Meaning                                                    |
+| ------------- | ---------------------------------------------------------- |
+| **Level**     | `error` `warn` `info` `debug` `trace`                      |
+| **Message**   | Constant log string; interpolated values shown as `{name}` |
+| **File**      | Source file relative to the crate root                     |
+| **Variables** | Each `{name}` — description; `—` when none                 |
+| **Notes**     | Reserved for security flags and operator guidance          |
 
 Rows are ordered by severity (`error` → `warn` → `info` → `debug` → `trace`), then
 alphabetically by message. Test files are excluded.
@@ -62,7 +62,7 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
-| `warn` | `{status} - {}` | `src/routes/crypto/error.rs` | `status`: HTTP response status | - |
+| `warn` | `{status} - {}` | `src/routes/jose/error.rs` | `status`: HTTP response status | - |
 | `info` | `AUTHENTICATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
 | `info` | `AUTHORIZATION token headers: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
 | `info` | `AUTHORIZATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
@@ -142,7 +142,7 @@ Crate path: `crate/server`
 | `debug` | `Access revoke for {}` | `src/routes/access.rs` | - | - |
 | `debug` | `Activate: object {} current state = {:?}` | `src/core/operations/activate.rs` | - | - |
 | `debug` | `Add Attribute: {}` | `src/core/operations/attributes/add.rs` | - | - |
-| `debug` | `AES-GCM decryption failed (expected for implicit rejection): {e}` | `src/routes/crypto/aes_gcm.rs` | `e`: caught error | - |
+| `debug` | `AES-GCM decryption failed (expected for implicit rejection): {e}` | `src/routes/jose/aes_gcm.rs` | `e`: caught error | - |
 | `debug` | `after getting CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `algorithm: {ca:?}, ciphertext length: {}` | `src/core/operations/encrypt.rs` | `ca`: cryptographic algorithm | - |
 | `debug` | `allocation_size: {allocation_size}` | `src/routes/google_cse/operations.rs` | `allocation_size`: allocated buffer size | ×2 in this file |
@@ -232,8 +232,8 @@ Crate path: `crate/server`
 | `debug` | `retrieving RSA private key from KMS` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Revocation status: result: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
 | `debug` | `RSA key pair generation: size in bits: {key_size_in_bits}` | `src/core/operations/create_key_pair.rs` | `key_size_in_bits`: RSA key size in bits | - |
-| `debug` | `RSA-OAEP encrypt: wrapped CEK ({} bytes) with {} ({} bit key)` | `src/routes/crypto/encrypt.rs` | - | - |
-| `debug` | `RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection` | `src/routes/crypto/decrypt.rs` | - | - |
+| `debug` | `RSA-OAEP encrypt: wrapped CEK ({} bytes) with {} ({} bit key)` | `src/routes/jose/encrypt.rs` | - | - |
+| `debug` | `RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection` | `src/routes/jose/decrypt.rs` | - | - |
 | `debug` | `Set Attribute: {}` | `src/core/operations/attributes/set.rs` | - | - |
 | `debug` | `Set Object Attribute: {}` | `src/core/operations/attributes/add.rs` | - | - |
 | `debug` | `Set Object Attribute: {}` | `src/core/operations/attributes/set.rs` | - | - |
@@ -312,7 +312,7 @@ Crate path: `crate/server`
 | `trace` | `cryptographic_algorithm: {cryptographic_algorithm}` | `src/core/operations/create_key_pair.rs` | `cryptographic_algorithm` — … | — |
 | `trace` | `curve: {curve}` | `src/core/operations/create_key_pair.rs` | `curve` — … | — |
 | `trace` | `Decrypt: uid={:?}, data_len={}` | `src/core/operations/decrypt.rs` | — | — |
-| `trace` | `DELETE /v1/crypto/keys/{kid}` | `src/routes/crypto/keys.rs` | `kid` — … | — |
+| `trace` | `DELETE /v1/crypto/keys/{kid}` | `src/routes/jose/keys.rs` | `kid` — … | — |
 | `trace` | `Description: {:?}` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `Discover versions: {}` | `src/core/operations/discover_versions.rs` | — | — |
 | `trace` | `ECB encrypt result: ciphertext_len={}` | `src/core/operations/encrypt.rs` | — | — |
@@ -386,13 +386,13 @@ Crate path: `crate/server`
 | `trace` | `PKCS12 parsed successfully` | `src/core/operations/import.rs` | — | — |
 | `trace` | `plaintext length: {} bytes` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}` | `src/core/operations/encrypt.rs` | `padding_method` — … | — |
-| `trace` | `POST /v1/crypto/decrypt` | `src/routes/crypto/decrypt.rs` | — | — |
-| `trace` | `POST /v1/crypto/encrypt kid={} alg={}` | `src/routes/crypto/encrypt.rs` | — | — |
-| `trace` | `POST /v1/crypto/keys kty={}` | `src/routes/crypto/keys.rs` | — | — |
-| `trace` | `POST /v1/crypto/keys/unwrap` | `src/routes/crypto/unwrap.rs` | — | — |
-| `trace` | `POST /v1/crypto/mac kid={}` | `src/routes/crypto/mac.rs` | — | — |
-| `trace` | `POST /v1/crypto/sign kid={}` | `src/routes/crypto/sign.rs` | — | — |
-| `trace` | `POST /v1/crypto/verify` | `src/routes/crypto/verify.rs` | — | — |
+| `trace` | `POST /v1/crypto/decrypt` | `src/routes/jose/decrypt.rs` | — | — |
+| `trace` | `POST /v1/crypto/encrypt kid={} alg={}` | `src/routes/jose/encrypt.rs` | — | — |
+| `trace` | `POST /v1/crypto/keys kty={}` | `src/routes/jose/keys.rs` | — | — |
+| `trace` | `POST /v1/crypto/keys/unwrap` | `src/routes/jose/unwrap.rs` | — | — |
+| `trace` | `POST /v1/crypto/mac kid={}` | `src/routes/jose/mac.rs` | — | — |
+| `trace` | `POST /v1/crypto/sign kid={}` | `src/routes/jose/sign.rs` | — | — |
+| `trace` | `POST /v1/crypto/verify` | `src/routes/jose/verify.rs` | — | — |
 | `trace` | `POST /{key_name}/{key_id}/Decrypt {encrypted_data:?}` | `src/routes/ms_dke/mod.rs` | `key_name` — …<br>`key_id` — …<br>`encrypted_data` — … | — |
 | `trace` | `post_process_private_key: operation type: {operation_type:?}` | `src/core/operations/export_get.rs` | `operation_type` — … | — |
 | `trace` | `Private key attributes after lifecycle update: {}` | `src/core/operations/create_key_pair.rs` | — | — |
@@ -608,6 +608,15 @@ Crate path: `crate/server`
 | `debug` | `[auto-rotate] Skipping {uid}: PublicKey is rotated as part of its paired                  PrivateKey rotation` | `src/core/operations/auto_rotate.rs` | `uid` | - |
 | `debug` | `SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)` | `src/core/operations/attributes/set.rs` | - | - |
 | `warn` | `Azure EKM JSON deserialization error: {err}` | `src/routes/azure_ekm/mod.rs` | `err` | - |
+| `warn` | `` JWKS endpoint enabled — all active public keys with the "jwks" tag will be publicly exposed (unauthenticated) at                  `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served.                  Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file. `` | `src/start_kms_server.rs` | `kms_public_url` | - |
+| `warn` | `JWKS response truncated: more than {} eligible public keys found` | `src/routes/jwks.rs` | - | - |
+| `warn` | `Key uid={uid} found by Locate but missing on retrieve — skipping` | `src/routes/jwks.rs` | `uid` | - |
+| `warn` | `Skipping key uid={uid} from JWKS (conversion failed): {e}` | `src/routes/jwks.rs` | `uid`, `e` | - |
+| `info` | `GET /.well-known/jwks.json` | `src/routes/jwks.rs` | - | - |
+| `trace` | `DELETE /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
+| `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
+| `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
+| `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -653,65 +662,65 @@ Crate path: `crate/server_database`
 Crate path: `crate/crypto`
 `RUST_LOG` target: `cosmian_kms_crypto`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `error` | `Error verifying ({:?}) signature: {:?}, data: {:?}, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err`: error detail | - |
-| `error` | `Error verifying digest ({:?}) signature: {:?}, data: {:?}, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err`: error detail | ×2 in this file |
-| `error` | `Error verifying raw ({:?}) signature: {:?}, data: {:?}, error: {err:?}` | `src/crypto/rsa/verify.rs` | `err`: error detail | - |
-| `warn` | `test_openssl_cli_compat: openssl CLI call failed, skipping test: {output:#?}` | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs` | `output`: output | - |
-| `warn` | `test_openssl_cli_compat: openssl CLI not found, skipping test` | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs` | - | - |
-| `warn` | `test_openssl_cli_compat: openssl CLI output is not valid UTF-8` | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs` | - | - |
-| `info` | `===> Wrapping asymmetric key with asymmetric key` | `src/crypto/wrap/tests.rs` | - | - |
-| `info` | `===> Wrapping asymmetric key with symmetric key` | `src/crypto/wrap/tests.rs` | - | - |
-| `info` | `===> Wrapping symmetric key with asymmetric key` | `src/crypto/wrap/tests.rs` | - | - |
-| `info` | `===> Wrapping symmetric key with symmetric key` | `src/crypto/wrap/tests.rs` | - | - |
-| `info` | `value is: {:?}` | `src/openssl/x509_extensions.rs` | - | ×2 in this file |
-| `debug` | `attribute: {attribute:?}, encryption_hint: {encryption_hint:?}` | `src/crypto/cover_crypt/access_structure.rs` | `attribute`: KMIP attribute (debug display)<br>`encryption_hint`: encryption hint | - |
-| `debug` | `create_dk_object: key len: {}, attributes: {attributes}` | `src/crypto/kem.rs` | `attributes`: KMIP attribute (debug display)s | - |
-| `debug` | `create_msk_object: key len: {}, attributes: {attributes}` | `src/crypto/cover_crypt/master_keys.rs` | `attributes`: KMIP attribute (debug display)s | - |
-| `debug` | `Decrypted data with user key {} of len (Plain/Enc): {}/{}` | `src/crypto/cover_crypt/decryption.rs` | - | - |
-| `debug` | `Encrypted data with auth data {:?} of len (Plain/Enc): {}/{}` | `src/crypto/cover_crypt/encryption.rs` | - | - |
-| `debug` | `RSA key pair generated: private key id: {private_key_uid}` | `src/crypto/rsa/operation.rs` | `private_key_uid`: private key uid | - |
-| `debug` | `RSA key pair generation: size in bits: {key_size_in_bits}` | `src/crypto/rsa/operation.rs` | `key_size_in_bits`: RSA key size in bits | - |
-| `debug` | `server: access_structure: {access_structure:?}` | `src/crypto/cover_crypt/master_keys.rs` | `access_structure`: Covercrypt access structure | - |
-| `debug` | `using GCM` | `src/crypto/wrap/wrap_key.rs` | - | - |
-| `debug` | `wrapping with CKM_RSA (v1.5)` | `src/crypto/wrap/wrap_key.rs` | - | - |
-| `debug` | `wrapping with CKM_RSA_AES_KEY_WRAP and hashing function: {hashing_fn}` | `src/crypto/wrap/wrap_key.rs` | `hashing_fn`: hash function | - |
-| `debug` | `wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}` | `src/crypto/wrap/wrap_key.rs` | `hashing_fn`: hash function | - |
-| `trace` | `Access Policy: {access_policy:?}` | `src/crypto/cover_crypt/user_key.rs` | `access_policy` — … | — |
-| `trace` | `authenticated_encryption_additional_data: {ad:?}` | `src/crypto/cover_crypt/encryption.rs` | `ad` — … | — |
-| `trace` | `bytes len: {:?}, bits: {}` | `src/crypto/elliptic_curves/operation.rs` | — | ×2 in this file |
-| `trace` | `bytes len: {}, bits: {}` | `src/crypto/rsa/operation.rs` | — | ×2 in this file |
-| `trace` | `ChaCha20 (pure) encryption: key_len={}, nonce_len={}, pt_len={}` | `src/crypto/symmetric/symmetric_ciphers.rs` | — | — |
-| `trace` | `Created user decryption key with access policy: {access_policy:?}` | `src/crypto/cover_crypt/user_key.rs` | `access_policy` — … | — |
-| `trace` | `decrypt: ad: {ad:?}` | `src/crypto/cover_crypt/decryption.rs` | `ad` — … | — |
-| `trace` | `Ed25519` | `src/crypto/elliptic_curves/ecies/salsa_sealbox.rs` | — | — |
-| `trace` | `encrypted_bytes len: {}` | `src/crypto/cover_crypt/decryption.rs` | — | — |
-| `trace` | `encrypted_header parsed` | `src/crypto/cover_crypt/decryption.rs` | — | — |
-| `trace` | `encryption_policy: {ap:?}` | `src/crypto/cover_crypt/encryption.rs` | `ap` — … | ×2 in this file |
-| `trace` | `instantiate entering` | `src/crypto/cover_crypt/decryption.rs` | — | — |
-| `trace` | `Instantiated hybrid Covercrypt encipher for public key id: {public_key_uid}` | `src/crypto/cover_crypt/encryption.rs` | `public_key_uid` — … | — |
-| `trace` | `Key format type: convert Rsa<Public> openssl object` | `src/openssl/public_key.rs` | — | — |
-| `trace` | `Key format type: TransparentDSAPublicKey` | `src/openssl/public_key.rs` | — | — |
-| `trace` | `Key format type: TransparentRSAPublicKey` | `src/openssl/public_key.rs` | — | — |
-| `trace` | `key_wrapping_specification: {}` | `src/crypto/wrap/wrap_key.rs` | — | — |
-| `trace` | `nonce_len={}, tag_len={}` | `src/crypto/wrap/wrap_key.rs` | — | — |
-| `trace` | `output object: {output}` | `src/crypto/rsa/operation.rs` | `output` — … | — |
-| `trace` | `private key converted OK` | `src/crypto/elliptic_curves/operation.rs` | — | — |
-| `trace` | `public key converted OK` | `src/crypto/elliptic_curves/operation.rs` | — | — |
-| `trace` | `Refreshed user decryption key {usk:?}` | `src/crypto/cover_crypt/user_key.rs` | `usk` — … | — |
-| `trace` | `using RFC-3394 (AES Key Wrap, no padding)` | `src/crypto/wrap/wrap_key.rs` | — | — |
-| `trace` | `using RFC-5649 (AES Key Wrap with Padding)` | `src/crypto/wrap/wrap_key.rs` | — | — |
-| `trace` | `with object type: {:?}` | `src/crypto/wrap/wrap_key.rs` | — | — |
-| `trace` | `wrapping key: format={}` | `src/crypto/wrap/wrap_key.rs` | — | — |
-| `trace` | `X25519` | `src/crypto/elliptic_curves/ecies/salsa_sealbox.rs` | — | — |
-| `trace` | `{}` | `src/openssl/public_key.rs` | — | — |
-| `warn` | `test_openssl_cli_compat: openssl version is not OpenSSL 3: {res}, skipping                      test` | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs` | `res` | — |
-| `info` | `\n\next: {:?}` | `src/openssl/x509_extensions.rs` | — | ×2 in this file |
-| `debug` | `Instantiated hybrid CoverCrypt decipher for user decryption key id:              {user_decryption_key_uid}` | `src/crypto/cover_crypt/decryption.rs` | `user_decryption_key_uid` | — |
-| `debug` | `symmetric wrapping using {cryptographic_algorithm} and                          block_cipher_mode: {:?}, padding_method: {:?}` | `src/crypto/wrap/wrap_key.rs` | `cryptographic_algorithm` | — |
-| `trace` | `algorithm: {algorithm:?}, block_cipher_mode: {block_cipher_mode:?}, key_size:              {key_size}` | `src/crypto/symmetric/symmetric_ciphers.rs` | `algorithm`, `block_cipher_mode`, `key_size` | — |
-| `trace` | `encrypt: sym_cipher: {sym_cipher:?}, key length: {}, nonce length: {}, aad length: {},          plaintext length: {}, padding_method: {padding_method:?}` | `src/crypto/symmetric/symmetric_ciphers.rs` | `sym_cipher`, `padding_method` | — |
+| Level   | Message                                                                                                                                                                                                                                | File                                                | Variables                                                                         | Notes           |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- |
+| `error` | `Error verifying ({:?}) signature: {:?}, data: {:?}, error: {err:?}`                                                                                                                                                                   | `src/crypto/rsa/verify.rs`                          | `err`: error detail                                                               | -               |
+| `error` | `Error verifying digest ({:?}) signature: {:?}, data: {:?}, error: {err:?}`                                                                                                                                                            | `src/crypto/rsa/verify.rs`                          | `err`: error detail                                                               | ×2 in this file |
+| `error` | `Error verifying raw ({:?}) signature: {:?}, data: {:?}, error: {err:?}`                                                                                                                                                               | `src/crypto/rsa/verify.rs`                          | `err`: error detail                                                               | -               |
+| `warn`  | `test_openssl_cli_compat: openssl CLI call failed, skipping test: {output:#?}`                                                                                                                                                         | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs`            | `output`: output                                                                  | -               |
+| `warn`  | `test_openssl_cli_compat: openssl CLI not found, skipping test`                                                                                                                                                                        | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs`            | -                                                                                 | -               |
+| `warn`  | `test_openssl_cli_compat: openssl CLI output is not valid UTF-8`                                                                                                                                                                       | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs`            | -                                                                                 | -               |
+| `info`  | `===> Wrapping asymmetric key with asymmetric key`                                                                                                                                                                                     | `src/crypto/wrap/tests.rs`                          | -                                                                                 | -               |
+| `info`  | `===> Wrapping asymmetric key with symmetric key`                                                                                                                                                                                      | `src/crypto/wrap/tests.rs`                          | -                                                                                 | -               |
+| `info`  | `===> Wrapping symmetric key with asymmetric key`                                                                                                                                                                                      | `src/crypto/wrap/tests.rs`                          | -                                                                                 | -               |
+| `info`  | `===> Wrapping symmetric key with symmetric key`                                                                                                                                                                                       | `src/crypto/wrap/tests.rs`                          | -                                                                                 | -               |
+| `info`  | `value is: {:?}`                                                                                                                                                                                                                       | `src/openssl/x509_extensions.rs`                    | -                                                                                 | ×2 in this file |
+| `debug` | `attribute: {attribute:?}, encryption_hint: {encryption_hint:?}`                                                                                                                                                                       | `src/crypto/cover_crypt/access_structure.rs`        | `attribute`: KMIP attribute (debug display)<br>`encryption_hint`: encryption hint | -               |
+| `debug` | `create_dk_object: key len: {}, attributes: {attributes}`                                                                                                                                                                              | `src/crypto/kem.rs`                                 | `attributes`: KMIP attribute (debug display)s                                     | -               |
+| `debug` | `create_msk_object: key len: {}, attributes: {attributes}`                                                                                                                                                                             | `src/crypto/cover_crypt/master_keys.rs`             | `attributes`: KMIP attribute (debug display)s                                     | -               |
+| `debug` | `Decrypted data with user key {} of len (Plain/Enc): {}/{}`                                                                                                                                                                            | `src/crypto/cover_crypt/decryption.rs`              | -                                                                                 | -               |
+| `debug` | `Encrypted data with auth data {:?} of len (Plain/Enc): {}/{}`                                                                                                                                                                         | `src/crypto/cover_crypt/encryption.rs`              | -                                                                                 | -               |
+| `debug` | `RSA key pair generated: private key id: {private_key_uid}`                                                                                                                                                                            | `src/crypto/rsa/operation.rs`                       | `private_key_uid`: private key uid                                                | -               |
+| `debug` | `RSA key pair generation: size in bits: {key_size_in_bits}`                                                                                                                                                                            | `src/crypto/rsa/operation.rs`                       | `key_size_in_bits`: RSA key size in bits                                          | -               |
+| `debug` | `server: access_structure: {access_structure:?}`                                                                                                                                                                                       | `src/crypto/cover_crypt/master_keys.rs`             | `access_structure`: Covercrypt access structure                                   | -               |
+| `debug` | `using GCM`                                                                                                                                                                                                                            | `src/crypto/wrap/wrap_key.rs`                       | -                                                                                 | -               |
+| `debug` | `wrapping with CKM_RSA (v1.5)`                                                                                                                                                                                                         | `src/crypto/wrap/wrap_key.rs`                       | -                                                                                 | -               |
+| `debug` | `wrapping with CKM_RSA_AES_KEY_WRAP and hashing function: {hashing_fn}`                                                                                                                                                                | `src/crypto/wrap/wrap_key.rs`                       | `hashing_fn`: hash function                                                       | -               |
+| `debug` | `wrapping with CKM_RSA_OAEP and hashing function: {hashing_fn}`                                                                                                                                                                        | `src/crypto/wrap/wrap_key.rs`                       | `hashing_fn`: hash function                                                       | -               |
+| `trace` | `Access Policy: {access_policy:?}`                                                                                                                                                                                                     | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
+| `trace` | `authenticated_encryption_additional_data: {ad:?}`                                                                                                                                                                                     | `src/crypto/cover_crypt/encryption.rs`              | `ad` — …                                                                          | —               |
+| `trace` | `bytes len: {:?}, bits: {}`                                                                                                                                                                                                            | `src/crypto/elliptic_curves/operation.rs`           | —                                                                                 | ×2 in this file |
+| `trace` | `bytes len: {}, bits: {}`                                                                                                                                                                                                              | `src/crypto/rsa/operation.rs`                       | —                                                                                 | ×2 in this file |
+| `trace` | `ChaCha20 (pure) encryption: key_len={}, nonce_len={}, pt_len={}`                                                                                                                                                                      | `src/crypto/symmetric/symmetric_ciphers.rs`         | —                                                                                 | —               |
+| `trace` | `Created user decryption key with access policy: {access_policy:?}`                                                                                                                                                                    | `src/crypto/cover_crypt/user_key.rs`                | `access_policy` — …                                                               | —               |
+| `trace` | `decrypt: ad: {ad:?}`                                                                                                                                                                                                                  | `src/crypto/cover_crypt/decryption.rs`              | `ad` — …                                                                          | —               |
+| `trace` | `Ed25519`                                                                                                                                                                                                                              | `src/crypto/elliptic_curves/ecies/salsa_sealbox.rs` | —                                                                                 | —               |
+| `trace` | `encrypted_bytes len: {}`                                                                                                                                                                                                              | `src/crypto/cover_crypt/decryption.rs`              | —                                                                                 | —               |
+| `trace` | `encrypted_header parsed`                                                                                                                                                                                                              | `src/crypto/cover_crypt/decryption.rs`              | —                                                                                 | —               |
+| `trace` | `encryption_policy: {ap:?}`                                                                                                                                                                                                            | `src/crypto/cover_crypt/encryption.rs`              | `ap` — …                                                                          | ×2 in this file |
+| `trace` | `instantiate entering`                                                                                                                                                                                                                 | `src/crypto/cover_crypt/decryption.rs`              | —                                                                                 | —               |
+| `trace` | `Instantiated hybrid Covercrypt encipher for public key id: {public_key_uid}`                                                                                                                                                          | `src/crypto/cover_crypt/encryption.rs`              | `public_key_uid` — …                                                              | —               |
+| `trace` | `Key format type: convert Rsa<Public> openssl object`                                                                                                                                                                                  | `src/openssl/public_key.rs`                         | —                                                                                 | —               |
+| `trace` | `Key format type: TransparentDSAPublicKey`                                                                                                                                                                                             | `src/openssl/public_key.rs`                         | —                                                                                 | —               |
+| `trace` | `Key format type: TransparentRSAPublicKey`                                                                                                                                                                                             | `src/openssl/public_key.rs`                         | —                                                                                 | —               |
+| `trace` | `key_wrapping_specification: {}`                                                                                                                                                                                                       | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
+| `trace` | `nonce_len={}, tag_len={}`                                                                                                                                                                                                             | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
+| `trace` | `output object: {output}`                                                                                                                                                                                                              | `src/crypto/rsa/operation.rs`                       | `output` — …                                                                      | —               |
+| `trace` | `private key converted OK`                                                                                                                                                                                                             | `src/crypto/elliptic_curves/operation.rs`           | —                                                                                 | —               |
+| `trace` | `public key converted OK`                                                                                                                                                                                                              | `src/crypto/elliptic_curves/operation.rs`           | —                                                                                 | —               |
+| `trace` | `Refreshed user decryption key {usk:?}`                                                                                                                                                                                                | `src/crypto/cover_crypt/user_key.rs`                | `usk` — …                                                                         | —               |
+| `trace` | `using RFC-3394 (AES Key Wrap, no padding)`                                                                                                                                                                                            | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
+| `trace` | `using RFC-5649 (AES Key Wrap with Padding)`                                                                                                                                                                                           | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
+| `trace` | `with object type: {:?}`                                                                                                                                                                                                               | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
+| `trace` | `wrapping key: format={}`                                                                                                                                                                                                              | `src/crypto/wrap/wrap_key.rs`                       | —                                                                                 | —               |
+| `trace` | `X25519`                                                                                                                                                                                                                               | `src/crypto/elliptic_curves/ecies/salsa_sealbox.rs` | —                                                                                 | —               |
+| `trace` | `{}`                                                                                                                                                                                                                                   | `src/openssl/public_key.rs`                         | —                                                                                 | —               |
+| `warn`  | `test_openssl_cli_compat: openssl version is not OpenSSL 3: {res}, skipping                      test`                                                                                                                                 | `src/crypto/rsa/ckm_rsa_aes_key_wrap.rs`            | `res`                                                                             | —               |
+| `info`  | `\n\next: {:?}`                                                                                                                                                                                                                        | `src/openssl/x509_extensions.rs`                    | —                                                                                 | ×2 in this file |
+| `debug` | `Instantiated hybrid CoverCrypt decipher for user decryption key id:              {user_decryption_key_uid}`                                                                                                                           | `src/crypto/cover_crypt/decryption.rs`              | `user_decryption_key_uid`                                                         | —               |
+| `debug` | `symmetric wrapping using {cryptographic_algorithm} and                          block_cipher_mode: {:?}, padding_method: {:?}`                                                                                                        | `src/crypto/wrap/wrap_key.rs`                       | `cryptographic_algorithm`                                                         | —               |
+| `trace` | `algorithm: {algorithm:?}, block_cipher_mode: {block_cipher_mode:?}, key_size:              {key_size}`                                                                                                                                | `src/crypto/symmetric/symmetric_ciphers.rs`         | `algorithm`, `block_cipher_mode`, `key_size`                                      | —               |
+| `trace` | `encrypt: sym_cipher: {sym_cipher:?}, key length: {}, nonce length: {}, aad length: {},          plaintext length: {}, padding_method: {padding_method:?}`                                                                             | `src/crypto/symmetric/symmetric_ciphers.rs`         | `sym_cipher`, `padding_method`                                                    | —               |
 | `warn` | `` ignored `basicConstraints` extension's value: {value} `` | `src/openssl/x509_extensions.rs` | `value` | - |
 | `info` | `` RFC 3394 is deprecated in favor of RFC 5649 and is supported only for legacy compatibility. Please consider using `BlockCipherMode::AESKeyWrapPadding` (RFC 5649) for new applications instead of `BlockCipherMode::NISTKeyWrap `. `` | `src/crypto/symmetric/symmetric_ciphers.rs` | - | ×2 in this file |
 
@@ -720,175 +729,175 @@ Crate path: `crate/crypto`
 Crate path: `crate/kmip`
 `RUST_LOG` target: `cosmian_kmip`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `warn` | `Custom attribute name does not start with 'x-' or 'y-': {}` | `src/kmip_1_4/kmip_attributes.rs` | - | - |
-| `warn` | `Failed to deserialize KMIP 2.1 attribute: {}` | `src/kmip_1_4/kmip_attributes.rs` | - | - |
-| `warn` | `KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}` | `src/kmip_1_4/kmip_attributes.rs` | `v`: parsed value | ×2 in this file |
-| `warn` | `KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}` | `src/kmip_1_4/kmip_attributes.rs` | `attribute`: KMIP attribute (debug display) | ×9 in this file |
-| `warn` | `Unexpected value type for y-unsupported-2_1-attribute: {:?}` | `src/kmip_1_4/kmip_attributes.rs` | - | - |
-| `debug` | `[serialize] writing tag: {}` | `src/ttlv/wire/ttlv_bytes_serializer.rs` | - | - |
-| `debug` | `Converting KMIP 2.1 QueryResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value`: value | - |
-| `trace` | `... => This is an Object => identifier: key: Object` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... added a struct field: {key}, the parent struct is now: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `key` — … | — |
-| `trace` | `... assuming deserialization of BigInteger: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... assuming deserialization of ByteString: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... coerced ShortUniqueIdentifier ByteString -> hex string: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... coerced {} Enumeration(code={}) -> string` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... coerced {} Enumeration(name={}) -> string` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... coerced {} Integer({}) -> string` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... deserializing an adjacently tagged structure` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... deserializing enum at root` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... deserializing enum that is the only child of the current element` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... deserializing transparent seq with tag: {tag}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `tag` — … | — |
-| `trace` | `... detected VendorAttribute triple children; deserializing element itself as enum variant` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... enum: index: {:#x}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... enum: name: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... identifier: key: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... Seq element added, the current parent value is: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | — | — |
-| `trace` | `... str: key: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... structure recognized as byte-like; concatenated len={} for tag {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... structure: 1.4 Object` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... structure: 2.1 Object` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... structure: tag: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... tag: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `... text string: value: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `===> KeyMaterial: Deserializing Bytes String for key format type: {:?}` | `src/kmip_2_1/kmip_data_structures.rs` | — | ×2 in this file |
-| `trace` | `===> KeyMaterial: Deserializing key format type: {f:?} as struct` | `src/kmip_1_4/kmip_data_structures.rs` | `f` — … | — |
-| `trace` | `===> KeyMaterial: Deserializing Structure for key format type: {f:?}` | `src/kmip_2_1/kmip_data_structures.rs` | `f` — … | — |
-| `trace` | `===> KeyMaterial: Deserializing {:?} key format type as seq` | `src/kmip_1_4/kmip_data_structures.rs` | — | — |
-| `trace` | `==> Deserializing KeyBlock` | `src/kmip_1_4/kmip_data_structures.rs` | — | — |
-| `trace` | `==> Deserializing KeyBlock` | `src/kmip_2_1/kmip_data_structures.rs` | — | — |
-| `trace` | `array_access: next_element_seed in seq: {}, current index: {}, elem at index:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/array_deserializer.rs` | — | — |
-| `trace` | `Checking usage mask authorization {:?} for flag: {:?}` | `src/kmip_2_1/kmip_attributes.rs` | — | — |
-| `trace` | `Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 DecryptResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 EncryptResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 GetAttributesResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 GetResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `Converting KMIP 2.1 SignResponse to KMIP 1.4: {value}` | `src/kmip_1_4/kmip_operations.rs` | `value` — … | — |
-| `trace` | `current struct: {}, num children: {}, next child {:?}` | `src/ttlv/kmip_ttlv_deserializer/structure_walker.rs` | — | — |
-| `trace` | `deserialize_any of enum variant: name: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_any of enum variant: value: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_any value of BigInt: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_any value of Structure: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_any: map access state: key, tag: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_any: map access state: {:?}, index: {}, child: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_any: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs` | — | — |
-| `trace` | `deserialize_bool: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_bytes: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_bytes_buff: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_char: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_enum: name {name}, element: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `name` — … | — |
-| `trace` | `deserialize_f32: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_f64: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_i128: element: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_i16 state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_i32: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_i64: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_identifier: map state: {:?}, element: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_ignored_any: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_map: calling Untagged Enum deserializer for: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_new_type_struct with name: {name}, state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `name` — … | — |
-| `trace` | `deserialize_option: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_seq: child index: {}: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_seq: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs` | — | — |
-| `trace` | `deserialize_str: map state: {:?}, element tag: {}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_string: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_struct: name {name}, fields: {fields:?}, element: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `name` — …<br>`fields` — … | — |
-| `trace` | `deserialize_tuple: child index: {}, current :  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_tuple: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs` | — | — |
-| `trace` | `deserialize_tuple_struct: name: {name}, len: {len},  state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `name` — …<br>`len` — … | — |
-| `trace` | `deserialize_u16: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_u32: state: {}: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_u64: state:  {}: {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_u8: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_unit: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | — | — |
-| `trace` | `deserialize_unit_struct with name: {name}, state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `name` — … | — |
-| `trace` | `deserializing bytes string at tag: {}, of len: {}` | `src/ttlv/kmip_ttlv_deserializer/byte_string_deserializer.rs` | — | — |
-| `trace` | `deserializing OffsetDateTime at tag: {}, value: {}, index: {}` | `src/ttlv/kmip_ttlv_deserializer/offset_date_time_deserializer.rs` | — | — |
-| `trace` | `element:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs` | — | — |
-| `trace` | `element: {:?}` | `src/ttlv/kmip_ttlv_deserializer/structure_walker.rs` | — | — |
-| `trace` | `Finished serializing byte sequence as ByteString, parent: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | — | — |
-| `trace` | `Finished serializing the sequence, the parent is: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | — | — |
-| `trace` | `from_ttlv: {s:?}` | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs` | `s` — … | — |
-| `trace` | `Key: State ? {:?}` | `src/ttlv/kmip_ttlv_deserializer/adjacently_tagged_structure.rs` | — | — |
-| `trace` | `key_wrap_type: {key_wrap_type:?}, attributes: {attributes}` | `src/kmip_2_1/requests/import.rs` | `key_wrap_type` — …<br>`attributes` — … | — |
-| `trace` | `MessageBatchItem operation: {operation:?}` | `src/kmip_1_4/kmip_messages.rs` | `operation` — … | — |
-| `trace` | `MessageBatchItem operation: {operation:?}` | `src/kmip_2_1/kmip_messages.rs` | `operation` — … | — |
-| `trace` | `MessageBatchItem request payload: {request_payload}` | `src/kmip_1_4/kmip_messages.rs` | `request_payload` — … | — |
-| `trace` | `MessageBatchItem request payload: {request_payload}` | `src/kmip_2_1/kmip_messages.rs` | `request_payload` — … | — |
-| `trace` | `MessageResponseBatchItem operation: {operation:?}` | `src/kmip_1_4/kmip_messages.rs` | `operation` — … | — |
-| `trace` | `MessageResponseBatchItem operation: {operation:?}` | `src/kmip_2_1/kmip_messages.rs` | `operation` — … | — |
-| `trace` | `MessageResponseBatchItem response payload: {response_payload}` | `src/kmip_1_4/kmip_messages.rs` | `response_payload` — … | — |
-| `trace` | `MessageResponseBatchItem response payload: {response_payload}` | `src/kmip_2_1/kmip_messages.rs` | `response_payload` — … | — |
-| `trace` | `newtype_variant_seed: child index: {}, at root: {}, current tag: {:?}` | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs` | — | — |
-| `trace` | `Not a BulkData` | `src/kmip_2_1/extra/bulk_data.rs` | — | — |
-| `trace` | `Object Visitor: visit_map: key: {key:?},` | `src/kmip_1_4/kmip_objects.rs` | `key` — … | — |
-| `trace` | `Object Visitor: visit_map: key: {key:?},` | `src/kmip_2_1/kmip_objects.rs` | `key` — … | — |
-| `trace` | `Seq Element: serializing a seq element with tag {}, stack is: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | — | — |
-| `trace` | `seq_access: next_element_seed: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs` | — | — |
-| `trace` | `serialize_map of len: {len:?}. Current: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `len` — … | — |
-| `trace` | `serialize_newtype_variant, name: {name}::{variant} (variant index: {variant_index})` | `src/ttlv/kmip_ttlv_serializer.rs` | `name` — …<br>`variant` — …<br>`variant_index` — … | — |
-| `trace` | `serialize_seq of len: {len:?} in receiver: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `len` — … | — |
-| `trace` | `serialize_seq of len: {len:?} in receiver: {:?} (byte accumulation mode)` | `src/ttlv/kmip_ttlv_serializer.rs` | `len` — … | — |
-| `trace` | `serialize_struct named: {name} in parent: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `name` — … | — |
-| `trace` | `serialize_struct, no parent found, creating a new one with tag: {}` | `src/ttlv/kmip_ttlv_serializer.rs` | — | — |
-| `trace` | `serialize_tuple of len {len}. Current: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `len` — … | — |
-| `trace` | `serialize_tuple_struct {name} of len {len}. Current: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `name` — …<br>`len` — … | — |
-| `trace` | `serialize_unit_variant, name: {name}::{variant}; variant_index: {variant_index}` | `src/ttlv/kmip_ttlv_serializer.rs` | `name` — …<br>`variant` — …<br>`variant_index` — … | — |
-| `trace` | `serializing a struct field with name: {key}, stack: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `key` — … | — |
-| `trace` | `struct_variant with fields: {fields:?}: state:  {:?}` | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs` | `fields` — … | — |
-| `trace` | `Structure finalized, stack: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | — | — |
-| `trace` | `tag: {:?}, content: {:?}` | `src/ttlv/kmip_ttlv_deserializer/adjacently_tagged_structure.rs` | — | — |
-| `trace` | `tuple_variant of len: {len}, child index: {}, current: {:?}` | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs` | `len` — … | — |
-| `trace` | `unique_identifier: {unique_identifier}` | `src/kmip_2_1/requests/import.rs` | `unique_identifier` — … | — |
-| `trace` | `unit_variant: child index: {}, current: {:?}` | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs` | — | — |
-| `trace` | `Untagged Enum map: next_value_seed: current tag:  {:?}, at root: {}` | `src/ttlv/kmip_ttlv_deserializer/untagged_enum_walker.rs` | — | — |
-| `trace` | `Value: State ? {:?}` | `src/ttlv/kmip_ttlv_deserializer/adjacently_tagged_structure.rs` | — | — |
-| `trace` | `visit_f64: {}` | `src/ttlv/deserialize.rs` | — | — |
-| `trace` | `visit_i64: {}` | `src/ttlv/deserialize.rs` | — | — |
-| `trace` | `visit_map: Enumeration` | `src/ttlv/deserialize.rs` | — | — |
-| `trace` | `visit_str: {}` | `src/ttlv/deserialize.rs` | — | — |
-| `trace` | `visit_u64: {}` | `src/ttlv/deserialize.rs` | — | — |
-| `trace` | `... replacing  "Object" with: {name}` | `src/ttlv/kmip_ttlv_serializer.rs` | `name` | |
-| `trace` | `serialize_seq, no parent found. This is a direct vec![] serialization. Creating                  a new one with tag: {}` | `src/ttlv/kmip_ttlv_serializer.rs` | — | — |
-| `trace` | `serialize_struct_variant {name}::{variant} (variant index: {variant_index}) of len              {len}. Current: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `name`, `variant`, `variant_index`, `len` | — |
-| `trace` | `serialize_tuple_variant {name}::{variant} (variant index: {variant_index}) of len              {len}. Current: {:?}` | `src/ttlv/kmip_ttlv_serializer.rs` | `name`, `variant`, `variant_index`, `len` | — |
-| `trace` | `Untagged Enum map: next_key_seed: completed?: {}, at root: {}, index: {}, current              tag: {:?}` | `src/ttlv/kmip_ttlv_deserializer/untagged_enum_walker.rs` | — | — |
+| Level   | Message                                                                                                                   | File                                                               | Variables                                          | Notes           |
+| ------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------- | --------------- |
+| `warn`  | `Custom attribute name does not start with 'x-' or 'y-': {}`                                                              | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
+| `warn`  | `Failed to deserialize KMIP 2.1 attribute: {}`                                                                            | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
+| `warn`  | `KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}`                                                              | `src/kmip_1_4/kmip_attributes.rs`                                  | `v`: parsed value                                  | ×2 in this file |
+| `warn`  | `KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}`                                                            | `src/kmip_1_4/kmip_attributes.rs`                                  | `attribute`: KMIP attribute (debug display)        | ×9 in this file |
+| `warn`  | `Unexpected value type for y-unsupported-2_1-attribute: {:?}`                                                             | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
+| `debug` | `[serialize] writing tag: {}`                                                                                             | `src/ttlv/wire/ttlv_bytes_serializer.rs`                           | -                                                  | -               |
+| `debug` | `Converting KMIP 2.1 QueryResponse to KMIP 1.4: {value}`                                                                  | `src/kmip_1_4/kmip_operations.rs`                                  | `value`: value                                     | -               |
+| `trace` | `... => This is an Object => identifier: key: Object`                                                                     | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... added a struct field: {key}, the parent struct is now: {:?}`                                                         | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `key` — …                                          | —               |
+| `trace` | `... assuming deserialization of BigInteger: {:?}`                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... assuming deserialization of ByteString: {:?}`                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... coerced ShortUniqueIdentifier ByteString -> hex string: {}`                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... coerced {} Enumeration(code={}) -> string`                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... coerced {} Enumeration(name={}) -> string`                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... coerced {} Integer({}) -> string`                                                                                    | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... deserializing an adjacently tagged structure`                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... deserializing enum at root`                                                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... deserializing enum that is the only child of the current element`                                                    | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... deserializing transparent seq with tag: {tag}`                                                                       | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `tag` — …                                          | —               |
+| `trace` | `... detected VendorAttribute triple children; deserializing element itself as enum variant`                              | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... enum: index: {:#x}`                                                                                                  | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... enum: name: {}`                                                                                                      | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... identifier: key: {}`                                                                                                 | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... Seq element added, the current parent value is: {:?}`                                                                | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
+| `trace` | `... str: key: {}`                                                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... structure recognized as byte-like; concatenated len={} for tag {}`                                                   | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... structure: 1.4 Object`                                                                                               | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... structure: 2.1 Object`                                                                                               | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... structure: tag: {}`                                                                                                  | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... tag: {}`                                                                                                             | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `... text string: value: {}`                                                                                              | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `===> KeyMaterial: Deserializing Bytes String for key format type: {:?}`                                                  | `src/kmip_2_1/kmip_data_structures.rs`                             | —                                                  | ×2 in this file |
+| `trace` | `===> KeyMaterial: Deserializing key format type: {f:?} as struct`                                                        | `src/kmip_1_4/kmip_data_structures.rs`                             | `f` — …                                            | —               |
+| `trace` | `===> KeyMaterial: Deserializing Structure for key format type: {f:?}`                                                    | `src/kmip_2_1/kmip_data_structures.rs`                             | `f` — …                                            | —               |
+| `trace` | `===> KeyMaterial: Deserializing {:?} key format type as seq`                                                             | `src/kmip_1_4/kmip_data_structures.rs`                             | —                                                  | —               |
+| `trace` | `==> Deserializing KeyBlock`                                                                                              | `src/kmip_1_4/kmip_data_structures.rs`                             | —                                                  | —               |
+| `trace` | `==> Deserializing KeyBlock`                                                                                              | `src/kmip_2_1/kmip_data_structures.rs`                             | —                                                  | —               |
+| `trace` | `array_access: next_element_seed in seq: {}, current index: {}, elem at index:  {:?}`                                     | `src/ttlv/kmip_ttlv_deserializer/array_deserializer.rs`            | —                                                  | —               |
+| `trace` | `Checking usage mask authorization {:?} for flag: {:?}`                                                                   | `src/kmip_2_1/kmip_attributes.rs`                                  | —                                                  | —               |
+| `trace` | `Converting KMIP 2.1 CreateKeyPairResponse to KMIP 1.4: {value}`                                                          | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 CreateResponse to KMIP 1.4: {value}`                                                                 | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 DecryptResponse to KMIP 1.4: {value}`                                                                | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 DestroyResponse to KMIP 1.4: {value}`                                                                | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 EncryptResponse to KMIP 1.4: {value}`                                                                | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 GetAttributesResponse to KMIP 1.4: {value}`                                                          | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 GetResponse to KMIP 1.4: {value}`                                                                    | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 ImportResponse to KMIP 1.4: {value}`                                                                 | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 LocateResponse to KMIP 1.4: {value}`                                                                 | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 RegisterResponse to KMIP 1.4: {value}`                                                               | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `Converting KMIP 2.1 SignResponse to KMIP 1.4: {value}`                                                                   | `src/kmip_1_4/kmip_operations.rs`                                  | `value` — …                                        | —               |
+| `trace` | `current struct: {}, num children: {}, next child {:?}`                                                                   | `src/ttlv/kmip_ttlv_deserializer/structure_walker.rs`              | —                                                  | —               |
+| `trace` | `deserialize_any of enum variant: name: {}`                                                                               | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_any of enum variant: value: {}`                                                                              | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_any value of BigInt: {:?}`                                                                                   | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_any value of Structure: {:?}`                                                                                | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_any: map access state: key, tag: {}`                                                                         | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_any: map access state: {:?}, index: {}, child: {:?}`                                                         | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_any: state:  {:?}`                                                                                           | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs`     | —                                                  | —               |
+| `trace` | `deserialize_bool: state:  {:?}`                                                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_bytes: state:  {:?}`                                                                                         | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_bytes_buff: state:  {:?}`                                                                                    | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_char: state:  {:?}`                                                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_enum: name {name}, element: {:?}`                                                                            | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `name` — …                                         | —               |
+| `trace` | `deserialize_f32: state:  {:?}`                                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_f64: state:  {:?}`                                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_i128: element: {:?}`                                                                                         | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_i16 state:  {:?}`                                                                                            | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_i32: state:  {:?}`                                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_i64: state:  {:?}`                                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_identifier: map state: {:?}, element: {:?}`                                                                  | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_ignored_any: state:  {:?}`                                                                                   | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_map: calling Untagged Enum deserializer for: {:?}`                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_new_type_struct with name: {name}, state:  {:?}`                                                             | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `name` — …                                         | —               |
+| `trace` | `deserialize_option: state:  {:?}`                                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_seq: child index: {}: {:?}`                                                                                  | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_seq: state:  {:?}`                                                                                           | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs`     | —                                                  | —               |
+| `trace` | `deserialize_str: map state: {:?}, element tag: {}`                                                                       | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_string: state:  {:?}`                                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_struct: name {name}, fields: {fields:?}, element: {:?}`                                                      | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `name` — …<br>`fields` — …                         | —               |
+| `trace` | `deserialize_tuple: child index: {}, current :  {:?}`                                                                     | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_tuple: state:  {:?}`                                                                                         | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs`     | —                                                  | —               |
+| `trace` | `deserialize_tuple_struct: name: {name}, len: {len},  state:  {:?}`                                                       | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `name` — …<br>`len` — …                            | —               |
+| `trace` | `deserialize_u16: state:  {:?}`                                                                                           | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_u32: state: {}: {:?}`                                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_u64: state:  {}: {:?}`                                                                                       | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_u8: state:  {:?}`                                                                                            | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_unit: state:  {:?}`                                                                                          | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | —                                                  | —               |
+| `trace` | `deserialize_unit_struct with name: {name}, state:  {:?}`                                                                 | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `name` — …                                         | —               |
+| `trace` | `deserializing bytes string at tag: {}, of len: {}`                                                                       | `src/ttlv/kmip_ttlv_deserializer/byte_string_deserializer.rs`      | —                                                  | —               |
+| `trace` | `deserializing OffsetDateTime at tag: {}, value: {}, index: {}`                                                           | `src/ttlv/kmip_ttlv_deserializer/offset_date_time_deserializer.rs` | —                                                  | —               |
+| `trace` | `element:  {:?}`                                                                                                          | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs`                   | —                                                  | —               |
+| `trace` | `element: {:?}`                                                                                                           | `src/ttlv/kmip_ttlv_deserializer/structure_walker.rs`              | —                                                  | —               |
+| `trace` | `Finished serializing byte sequence as ByteString, parent: {:?}`                                                          | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
+| `trace` | `Finished serializing the sequence, the parent is: {:?}`                                                                  | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
+| `trace` | `from_ttlv: {s:?}`                                                                                                        | `src/ttlv/kmip_ttlv_deserializer/deserializer.rs`                  | `s` — …                                            | —               |
+| `trace` | `Key: State ? {:?}`                                                                                                       | `src/ttlv/kmip_ttlv_deserializer/adjacently_tagged_structure.rs`   | —                                                  | —               |
+| `trace` | `key_wrap_type: {key_wrap_type:?}, attributes: {attributes}`                                                              | `src/kmip_2_1/requests/import.rs`                                  | `key_wrap_type` — …<br>`attributes` — …            | —               |
+| `trace` | `MessageBatchItem operation: {operation:?}`                                                                               | `src/kmip_1_4/kmip_messages.rs`                                    | `operation` — …                                    | —               |
+| `trace` | `MessageBatchItem operation: {operation:?}`                                                                               | `src/kmip_2_1/kmip_messages.rs`                                    | `operation` — …                                    | —               |
+| `trace` | `MessageBatchItem request payload: {request_payload}`                                                                     | `src/kmip_1_4/kmip_messages.rs`                                    | `request_payload` — …                              | —               |
+| `trace` | `MessageBatchItem request payload: {request_payload}`                                                                     | `src/kmip_2_1/kmip_messages.rs`                                    | `request_payload` — …                              | —               |
+| `trace` | `MessageResponseBatchItem operation: {operation:?}`                                                                       | `src/kmip_1_4/kmip_messages.rs`                                    | `operation` — …                                    | —               |
+| `trace` | `MessageResponseBatchItem operation: {operation:?}`                                                                       | `src/kmip_2_1/kmip_messages.rs`                                    | `operation` — …                                    | —               |
+| `trace` | `MessageResponseBatchItem response payload: {response_payload}`                                                           | `src/kmip_1_4/kmip_messages.rs`                                    | `response_payload` — …                             | —               |
+| `trace` | `MessageResponseBatchItem response payload: {response_payload}`                                                           | `src/kmip_2_1/kmip_messages.rs`                                    | `response_payload` — …                             | —               |
+| `trace` | `newtype_variant_seed: child index: {}, at root: {}, current tag: {:?}`                                                   | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs`                   | —                                                  | —               |
+| `trace` | `Not a BulkData`                                                                                                          | `src/kmip_2_1/extra/bulk_data.rs`                                  | —                                                  | —               |
+| `trace` | `Object Visitor: visit_map: key: {key:?},`                                                                                | `src/kmip_1_4/kmip_objects.rs`                                     | `key` — …                                          | —               |
+| `trace` | `Object Visitor: visit_map: key: {key:?},`                                                                                | `src/kmip_2_1/kmip_objects.rs`                                     | `key` — …                                          | —               |
+| `trace` | `Seq Element: serializing a seq element with tag {}, stack is: {:?}`                                                      | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
+| `trace` | `seq_access: next_element_seed: state:  {:?}`                                                                             | `src/ttlv/kmip_ttlv_deserializer/kmip_big_int_deserializer.rs`     | —                                                  | —               |
+| `trace` | `serialize_map of len: {len:?}. Current: {:?}`                                                                            | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `len` — …                                          | —               |
+| `trace` | `serialize_newtype_variant, name: {name}::{variant} (variant index: {variant_index})`                                     | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name` — …<br>`variant` — …<br>`variant_index` — … | —               |
+| `trace` | `serialize_seq of len: {len:?} in receiver: {:?}`                                                                         | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `len` — …                                          | —               |
+| `trace` | `serialize_seq of len: {len:?} in receiver: {:?} (byte accumulation mode)`                                                | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `len` — …                                          | —               |
+| `trace` | `serialize_struct named: {name} in parent: {:?}`                                                                          | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name` — …                                         | —               |
+| `trace` | `serialize_struct, no parent found, creating a new one with tag: {}`                                                      | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
+| `trace` | `serialize_tuple of len {len}. Current: {:?}`                                                                             | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `len` — …                                          | —               |
+| `trace` | `serialize_tuple_struct {name} of len {len}. Current: {:?}`                                                               | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name` — …<br>`len` — …                            | —               |
+| `trace` | `serialize_unit_variant, name: {name}::{variant}; variant_index: {variant_index}`                                         | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name` — …<br>`variant` — …<br>`variant_index` — … | —               |
+| `trace` | `serializing a struct field with name: {key}, stack: {:?}`                                                                | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `key` — …                                          | —               |
+| `trace` | `struct_variant with fields: {fields:?}: state:  {:?}`                                                                    | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs`                   | `fields` — …                                       | —               |
+| `trace` | `Structure finalized, stack: {:?}`                                                                                        | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
+| `trace` | `tag: {:?}, content: {:?}`                                                                                                | `src/ttlv/kmip_ttlv_deserializer/adjacently_tagged_structure.rs`   | —                                                  | —               |
+| `trace` | `tuple_variant of len: {len}, child index: {}, current: {:?}`                                                             | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs`                   | `len` — …                                          | —               |
+| `trace` | `unique_identifier: {unique_identifier}`                                                                                  | `src/kmip_2_1/requests/import.rs`                                  | `unique_identifier` — …                            | —               |
+| `trace` | `unit_variant: child index: {}, current: {:?}`                                                                            | `src/ttlv/kmip_ttlv_deserializer/enum_walker.rs`                   | —                                                  | —               |
+| `trace` | `Untagged Enum map: next_value_seed: current tag:  {:?}, at root: {}`                                                     | `src/ttlv/kmip_ttlv_deserializer/untagged_enum_walker.rs`          | —                                                  | —               |
+| `trace` | `Value: State ? {:?}`                                                                                                     | `src/ttlv/kmip_ttlv_deserializer/adjacently_tagged_structure.rs`   | —                                                  | —               |
+| `trace` | `visit_f64: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
+| `trace` | `visit_i64: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
+| `trace` | `visit_map: Enumeration`                                                                                                  | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
+| `trace` | `visit_str: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
+| `trace` | `visit_u64: {}`                                                                                                           | `src/ttlv/deserialize.rs`                                          | —                                                  | —               |
+| `trace` | `... replacing  "Object" with: {name}`                                                                                    | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name`                                             |                 |
+| `trace` | `serialize_seq, no parent found. This is a direct vec![] serialization. Creating                  a new one with tag: {}` | `src/ttlv/kmip_ttlv_serializer.rs`                                 | —                                                  | —               |
+| `trace` | `serialize_struct_variant {name}::{variant} (variant index: {variant_index}) of len              {len}. Current: {:?}`    | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name`, `variant`, `variant_index`, `len`          | —               |
+| `trace` | `serialize_tuple_variant {name}::{variant} (variant index: {variant_index}) of len              {len}. Current: {:?}`     | `src/ttlv/kmip_ttlv_serializer.rs`                                 | `name`, `variant`, `variant_index`, `len`          | —               |
+| `trace` | `Untagged Enum map: next_key_seed: completed?: {}, at root: {}, index: {}, current              tag: {:?}`                | `src/ttlv/kmip_ttlv_deserializer/untagged_enum_walker.rs`          | —                                                  | —               |
 
 ### `cosmian_kms_interfaces`
 
 Crate path: `crate/interfaces`
 `RUST_LOG` target: `cosmian_kms_interfaces`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `error` | `Failed to decode object_id {}` | `src/hsm/hsm_store.rs` | - | Malformed object ID in PKCS#11 session. Key may have been created by a different client. |
-| `debug` | `Created HSM AES Key of length {key_length} with id {uid}` | `src/hsm/hsm_store.rs` | `key_length`: key length<br>`uid`: KMIP object UID | - |
-| `debug` | `Creating RSA keypair with uid: {uid}` | `src/hsm/hsm_store.rs` | `uid`: KMIP object UID | - |
-| `debug` | `HSM find: incompatible filter, skipping HSM search: {e}` | `src/hsm/hsm_store.rs` | `e`: caught error | - |
-| `debug` | `Is {owner} an HSM admin? {}` | `src/hsm/hsm_store.rs` | `owner`: object owner identity | - |
-| `debug` | `No researched_attributes provided. Defaulting to empty filter attributes` | `src/hsm/hsm_store.rs` | - | - |
-| `debug` | `sign: using algorithm {algorithm:?} for key {uid}` | `src/hsm/hsm_store.rs` | `algorithm`: cryptographic algorithm<br>`uid`: KMIP object UID | - |
-| `debug` | `User '{}' is not an HSM admin; skipping HSM keys for ownership query` | `src/hsm/hsm_store.rs` | - | - |
-| `debug` | `Using default algorithm to decrypt` | `src/hsm/hsm_store.rs` | - | - |
-| `debug` | `Using default algorithm to encrypt` | `src/hsm/hsm_store.rs` | - | - |
-| `debug` | `{e}` | `src/hsm/hsm_store.rs` | `e`: caught error | - |
-| `trace` | `Found: {uid}` | `src/hsm/hsm_store.rs` | `uid` — … | — |
-| `trace` | `Getting metadata for: {:02X?}` | `src/hsm/hsm_store.rs` | — | — |
-| `warn` | `count_all_non_destroyed not implemented for this ObjectsStore backend —              kms.objects.total will read 0 until a real implementation is provided` | `src/stores/objects_store.rs` | — | — |
-| `warn` | `count_non_destroyed_keys not implemented for this ObjectsStore backend —              kms.keys.active.count will read 0 until a real implementation is provided` | `src/stores/objects_store.rs` | — | — |
-| `warn` | `HSM count_non_destroyed_keys: failed to list slots: {e}` | `src/hsm/hsm_store.rs` | `e` | — |
-| `warn` | `ModifyAttribute/SetAttribute on HSM key {uid}: attribute update accepted but not              persisted to PKCS#11 slot (HSM does not support KMIP attribute storage)` | `src/hsm/hsm_store.rs` | `uid` | — |
-| `debug` | `encrypt: an RSA private key {uid} was specified. Trying to use                              public key {pk_uid} for encryption` | `src/hsm/hsm_store.rs` | `uid`, `pk_uid` | — |
-| `debug` | `HSM count_non_destroyed_keys: slot {slot_id} query failed: {e}` | `src/hsm/hsm_store.rs` | `slot_id`, `e` | — |
-| `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations` | `src/hsm/hsm_store.rs` | `uid`, `e` | — |
+| Level   | Message                                                                                                                                                                 | File                          | Variables                                                      | Notes                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `error` | `Failed to decode object_id {}`                                                                                                                                         | `src/hsm/hsm_store.rs`        | -                                                              | Malformed object ID in PKCS#11 session. Key may have been created by a different client. |
+| `debug` | `Created HSM AES Key of length {key_length} with id {uid}`                                                                                                              | `src/hsm/hsm_store.rs`        | `key_length`: key length<br>`uid`: KMIP object UID             | -                                                                                        |
+| `debug` | `Creating RSA keypair with uid: {uid}`                                                                                                                                  | `src/hsm/hsm_store.rs`        | `uid`: KMIP object UID                                         | -                                                                                        |
+| `debug` | `HSM find: incompatible filter, skipping HSM search: {e}`                                                                                                               | `src/hsm/hsm_store.rs`        | `e`: caught error                                              | -                                                                                        |
+| `debug` | `Is {owner} an HSM admin? {}`                                                                                                                                           | `src/hsm/hsm_store.rs`        | `owner`: object owner identity                                 | -                                                                                        |
+| `debug` | `No researched_attributes provided. Defaulting to empty filter attributes`                                                                                              | `src/hsm/hsm_store.rs`        | -                                                              | -                                                                                        |
+| `debug` | `sign: using algorithm {algorithm:?} for key {uid}`                                                                                                                     | `src/hsm/hsm_store.rs`        | `algorithm`: cryptographic algorithm<br>`uid`: KMIP object UID | -                                                                                        |
+| `debug` | `User '{}' is not an HSM admin; skipping HSM keys for ownership query`                                                                                                  | `src/hsm/hsm_store.rs`        | -                                                              | -                                                                                        |
+| `debug` | `Using default algorithm to decrypt`                                                                                                                                    | `src/hsm/hsm_store.rs`        | -                                                              | -                                                                                        |
+| `debug` | `Using default algorithm to encrypt`                                                                                                                                    | `src/hsm/hsm_store.rs`        | -                                                              | -                                                                                        |
+| `debug` | `{e}`                                                                                                                                                                   | `src/hsm/hsm_store.rs`        | `e`: caught error                                              | -                                                                                        |
+| `trace` | `Found: {uid}`                                                                                                                                                          | `src/hsm/hsm_store.rs`        | `uid` — …                                                      | —                                                                                        |
+| `trace` | `Getting metadata for: {:02X?}`                                                                                                                                         | `src/hsm/hsm_store.rs`        | —                                                              | —                                                                                        |
+| `warn`  | `count_all_non_destroyed not implemented for this ObjectsStore backend —              kms.objects.total will read 0 until a real implementation is provided`            | `src/stores/objects_store.rs` | —                                                              | —                                                                                        |
+| `warn`  | `count_non_destroyed_keys not implemented for this ObjectsStore backend —              kms.keys.active.count will read 0 until a real implementation is provided`       | `src/stores/objects_store.rs` | —                                                              | —                                                                                        |
+| `warn`  | `HSM count_non_destroyed_keys: failed to list slots: {e}`                                                                                                               | `src/hsm/hsm_store.rs`        | `e`                                                            | —                                                                                        |
+| `warn`  | `ModifyAttribute/SetAttribute on HSM key {uid}: attribute update accepted but not              persisted to PKCS#11 slot (HSM does not support KMIP attribute storage)` | `src/hsm/hsm_store.rs`        | `uid`                                                          | —                                                                                        |
+| `debug` | `encrypt: an RSA private key {uid} was specified. Trying to use                              public key {pk_uid} for encryption`                                        | `src/hsm/hsm_store.rs`        | `uid`, `pk_uid`                                                | —                                                                                        |
+| `debug` | `HSM count_non_destroyed_keys: slot {slot_id} query failed: {e}`                                                                                                        | `src/hsm/hsm_store.rs`        | `slot_id`, `e`                                                 | —                                                                                        |
+| `debug` | `HSM key {uid} export failed ({e}); falling back to metadata-only stub for                      attribute operations`                                                   | `src/hsm/hsm_store.rs`        | `uid`, `e`                                                     | —                                                                                        |
 
 ### `cosmian_kms_access`
 
@@ -930,43 +939,43 @@ Crate path: `crate/hsm/base_hsm`
 Crate path: `crate/clients/clap`
 `RUST_LOG` target: `cosmian_kms_cli_actions`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `info` | `[{email}] - certificate ID used: {certificate_unique_identifier}` | `src/actions/google/key_pairs/create.rs` | `email`: Google Workspace user email<br>`certificate_unique_identifier`: KMS UID of the certificate | - |
-| `info` | `[{email}] - Import PKCS12 file before using it in Google key pair generation` | `src/actions/google/key_pairs/create.rs` | `email`: Google Workspace user email | - |
-| `info` | `ModifyAttributes response for {effective_uid}: {attribute}` | `src/actions/attributes/modify.rs` | `effective_uid`: resolved KMIP object UID<br>`attribute`: updated attribute name and value | - |
-| `info` | `SetAttributes response for {unique_identifier}: {attribute}` | `src/actions/attributes/set.rs` | `unique_identifier`: KMIP object UID<br>`attribute`: attribute name and value that was set | - |
-| `debug` | `{decrypt_request}` | `src/actions/cover_crypt/decrypt.rs` | `decrypt_request`: full Covercrypt decrypt request (debug display) | - |
-| `debug` | `{encrypt_request}` | `src/actions/cover_crypt/encrypt.rs` | `encrypt_request`: full Covercrypt encrypt request (debug display) | - |
-| `debug` | `access_structure: {access_structure}` | `src/actions/cover_crypt/keys/create_key_pair.rs` | `access_structure`: Covercrypt access structure (debug display) | - |
-| `debug` | `Creating new leaf certificate with attributes: {attributes}` | `src/actions/google/key_pairs/create.rs` | `attributes`: X.509 certificate attributes being submitted | - |
-| `debug` | `GetAttributes response for {unique_identifier}: {attributes}` | `src/actions/attributes/get.rs` | `unique_identifier`: KMIP object UID<br>`attributes`: structured attributes response | - |
-| `debug` | `import certificate as {format_label} file` | `src/actions/certificates/import_certificate.rs` | `format_label`: certificate format name (e.g. `PEM`, `DER`) | - |
-| `debug` | `import certificate as PKCS12 file` | `src/actions/certificates/import_certificate.rs` | - | - |
-| `debug` | `import certificate chain as PEM file` | `src/actions/certificates/import_certificate.rs` | - | - |
-| `trace` | `{self}` | `src/actions/attributes/delete.rs` | `self` — full delete action configuration (debug display) | — |
-| `trace` | `{self}` | `src/actions/attributes/get.rs` | `self` — full get-attributes action configuration (debug display) | — |
-| `trace` | `{self}` | `src/actions/attributes/modify.rs` | `self` — full modify action configuration (debug display) | — |
-| `trace` | `{self}` | `src/actions/attributes/set.rs` | `self` — full set-attributes action configuration (debug display) | — |
-| `trace` | `{self}` | `src/actions/certificates/export_certificate.rs` | `self` — full export action configuration (debug display) | — |
-| `trace` | `{self}` | `src/actions/certificates/import_certificate.rs` | `self` — full import action configuration (debug display) | — |
-| `trace` | `{id}` | `src/actions/shared/get_key_uid.rs` | `id` — resolved KMIP object UID | — |
-| `trace` | `data_encryption_algorithm: {data_encryption_algorithm}` | `src/actions/symmetric/encrypt.rs` | `data_encryption_algorithm` — selected symmetric encryption algorithm | — |
-| `trace` | `Determine the certificate to use - either existing or newly created` | `src/actions/google/key_pairs/create.rs` | — | — |
-| `trace` | `import certificate as TTLV JSON file` | `src/actions/certificates/import_certificate.rs` | — | — |
-| `trace` | `response for {unique_identifier}: <none>` | `src/actions/attributes/delete.rs` | `unique_identifier` — KMIP object UID (no attribute was present) | — |
-| `trace` | `unwrap using server-side HSM crypto oracle for key: {key_id}` | `src/actions/shared/unwrap_key.rs` | `key_id` — UID of the key being unwrapped via the HSM crypto oracle | — |
-| `info` | `[{email}] - Generating new leaf certificate with extensions file: {:?}` | `src/actions/google/key_pairs/create.rs` | `email` | — |
-| `debug` | `GetAttributes response for {unique_identifier}: {}` | `src/actions/attributes/get.rs` | `unique_identifier` | — |
-| `debug` | `MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.` | `src/actions/cng.rs` | — | — |
-| `trace` | `dek (len={}): {dek:?}` | `src/actions/symmetric/encrypt.rs` | `dek` | — |
-| `trace` | `dek length {}` | `src/actions/symmetric/decrypt.rs` | — | ×2 in this file |
-| `trace` | `encapsulation length {}` | `src/actions/symmetric/decrypt.rs` | — | — |
-| `trace` | `encryption algorithm {:?}, key id {:?}, ciphertext (len={}): {:?}` | `src/actions/symmetric/decrypt.rs` | — | — |
-| `trace` | `Leaf certificate attributes: {}` | `src/actions/certificates/import_certificate.rs` | — | — |
-| `trace` | `pkcs7_object: {:?}` | `src/actions/google/key_pairs/create.rs` | — | — |
-| `trace` | `response for {unique_identifier}: {}` | `src/actions/attributes/delete.rs` | `unique_identifier` | — |
-| `trace` | `wrapped_key_bytes: {:?}` | `src/actions/google/key_pairs/create.rs` | — | — |
+| Level   | Message                                                                        | File                                              | Variables                                                                                           | Notes           |
+| ------- | ------------------------------------------------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------- |
+| `info`  | `[{email}] - certificate ID used: {certificate_unique_identifier}`             | `src/actions/google/key_pairs/create.rs`          | `email`: Google Workspace user email<br>`certificate_unique_identifier`: KMS UID of the certificate | -               |
+| `info`  | `[{email}] - Import PKCS12 file before using it in Google key pair generation` | `src/actions/google/key_pairs/create.rs`          | `email`: Google Workspace user email                                                                | -               |
+| `info`  | `ModifyAttributes response for {effective_uid}: {attribute}`                   | `src/actions/attributes/modify.rs`                | `effective_uid`: resolved KMIP object UID<br>`attribute`: updated attribute name and value          | -               |
+| `info`  | `SetAttributes response for {unique_identifier}: {attribute}`                  | `src/actions/attributes/set.rs`                   | `unique_identifier`: KMIP object UID<br>`attribute`: attribute name and value that was set          | -               |
+| `debug` | `{decrypt_request}`                                                            | `src/actions/cover_crypt/decrypt.rs`              | `decrypt_request`: full Covercrypt decrypt request (debug display)                                  | -               |
+| `debug` | `{encrypt_request}`                                                            | `src/actions/cover_crypt/encrypt.rs`              | `encrypt_request`: full Covercrypt encrypt request (debug display)                                  | -               |
+| `debug` | `access_structure: {access_structure}`                                         | `src/actions/cover_crypt/keys/create_key_pair.rs` | `access_structure`: Covercrypt access structure (debug display)                                     | -               |
+| `debug` | `Creating new leaf certificate with attributes: {attributes}`                  | `src/actions/google/key_pairs/create.rs`          | `attributes`: X.509 certificate attributes being submitted                                          | -               |
+| `debug` | `GetAttributes response for {unique_identifier}: {attributes}`                 | `src/actions/attributes/get.rs`                   | `unique_identifier`: KMIP object UID<br>`attributes`: structured attributes response                | -               |
+| `debug` | `import certificate as {format_label} file`                                    | `src/actions/certificates/import_certificate.rs`  | `format_label`: certificate format name (e.g. `PEM`, `DER`)                                         | -               |
+| `debug` | `import certificate as PKCS12 file`                                            | `src/actions/certificates/import_certificate.rs`  | -                                                                                                   | -               |
+| `debug` | `import certificate chain as PEM file`                                         | `src/actions/certificates/import_certificate.rs`  | -                                                                                                   | -               |
+| `trace` | `{self}`                                                                       | `src/actions/attributes/delete.rs`                | `self` — full delete action configuration (debug display)                                           | —               |
+| `trace` | `{self}`                                                                       | `src/actions/attributes/get.rs`                   | `self` — full get-attributes action configuration (debug display)                                   | —               |
+| `trace` | `{self}`                                                                       | `src/actions/attributes/modify.rs`                | `self` — full modify action configuration (debug display)                                           | —               |
+| `trace` | `{self}`                                                                       | `src/actions/attributes/set.rs`                   | `self` — full set-attributes action configuration (debug display)                                   | —               |
+| `trace` | `{self}`                                                                       | `src/actions/certificates/export_certificate.rs`  | `self` — full export action configuration (debug display)                                           | —               |
+| `trace` | `{self}`                                                                       | `src/actions/certificates/import_certificate.rs`  | `self` — full import action configuration (debug display)                                           | —               |
+| `trace` | `{id}`                                                                         | `src/actions/shared/get_key_uid.rs`               | `id` — resolved KMIP object UID                                                                     | —               |
+| `trace` | `data_encryption_algorithm: {data_encryption_algorithm}`                       | `src/actions/symmetric/encrypt.rs`                | `data_encryption_algorithm` — selected symmetric encryption algorithm                               | —               |
+| `trace` | `Determine the certificate to use - either existing or newly created`          | `src/actions/google/key_pairs/create.rs`          | —                                                                                                   | —               |
+| `trace` | `import certificate as TTLV JSON file`                                         | `src/actions/certificates/import_certificate.rs`  | —                                                                                                   | —               |
+| `trace` | `response for {unique_identifier}: <none>`                                     | `src/actions/attributes/delete.rs`                | `unique_identifier` — KMIP object UID (no attribute was present)                                    | —               |
+| `trace` | `unwrap using server-side HSM crypto oracle for key: {key_id}`                 | `src/actions/shared/unwrap_key.rs`                | `key_id` — UID of the key being unwrapped via the HSM crypto oracle                                 | —               |
+| `info`  | `[{email}] - Generating new leaf certificate with extensions file: {:?}`       | `src/actions/google/key_pairs/create.rs`          | `email`                                                                                             | —               |
+| `debug` | `GetAttributes response for {unique_identifier}: {}`                           | `src/actions/attributes/get.rs`                   | `unique_identifier`                                                                                 | —               |
+| `debug` | `MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.`  | `src/actions/cng.rs`                              | —                                                                                                   | —               |
+| `trace` | `dek (len={}): {dek:?}`                                                        | `src/actions/symmetric/encrypt.rs`                | `dek`                                                                                               | —               |
+| `trace` | `dek length {}`                                                                | `src/actions/symmetric/decrypt.rs`                | —                                                                                                   | ×2 in this file |
+| `trace` | `encapsulation length {}`                                                      | `src/actions/symmetric/decrypt.rs`                | —                                                                                                   | —               |
+| `trace` | `encryption algorithm {:?}, key id {:?}, ciphertext (len={}): {:?}`            | `src/actions/symmetric/decrypt.rs`                | —                                                                                                   | —               |
+| `trace` | `Leaf certificate attributes: {}`                                              | `src/actions/certificates/import_certificate.rs`  | —                                                                                                   | —               |
+| `trace` | `pkcs7_object: {:?}`                                                           | `src/actions/google/key_pairs/create.rs`          | —                                                                                                   | —               |
+| `trace` | `response for {unique_identifier}: {}`                                         | `src/actions/attributes/delete.rs`                | `unique_identifier`                                                                                 | —               |
+| `trace` | `wrapped_key_bytes: {:?}`                                                      | `src/actions/google/key_pairs/create.rs`          | —                                                                                                   | —               |
 
 ---
 
@@ -975,13 +984,13 @@ Crate path: `crate/clients/clap`
 Crate path: `crate/clients/ckms`
 `RUST_LOG` target: `ckms`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `info` | `Starting KMS CLI` | `src/commands.rs` | - | - |
-| `info` | `Starting KMS CLI configuration wizard` | `src/commands.rs` | - | - |
-| `debug` | `Loading configuration from: {conf_path_buf}` | `src/config.rs` | `conf_path_buf`: filesystem path of the configuration file being loaded | - |
-| `trace` | `Configuration: {config}` | `src/commands.rs` | `config` — full resolved CLI configuration (pretty debug display) | — |
-| `info` | `Configuration saved at {}` | `src/commands.rs` | — | — |
+| Level   | Message                                       | File              | Variables                                                               | Notes |
+| ------- | --------------------------------------------- | ----------------- | ----------------------------------------------------------------------- | ----- |
+| `info`  | `Starting KMS CLI`                            | `src/commands.rs` | -                                                                       | -     |
+| `info`  | `Starting KMS CLI configuration wizard`       | `src/commands.rs` | -                                                                       | -     |
+| `debug` | `Loading configuration from: {conf_path_buf}` | `src/config.rs`   | `conf_path_buf`: filesystem path of the configuration file being loaded | -     |
+| `trace` | `Configuration: {config}`                     | `src/commands.rs` | `config` — full resolved CLI configuration (pretty debug display)       | —     |
+| `info`  | `Configuration saved at {}`                   | `src/commands.rs` | —                                                                       | —     |
 
 ---
 
@@ -1014,9 +1023,9 @@ Crate path: `crate/clients/client`
 Crate path: `crate/clients/client_utils`
 `RUST_LOG` target: `cosmian_kms_client_utils`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `info` | `WARNING: the PEM file contains multiple objects. Only the private key will                      be imported. A corresponding public key will be generated automatically.` | `src/import_utils.rs` | — | — |
+| Level  | Message                                                                                                                                                                    | File                  | Variables | Notes |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | --------- | ----- |
+| `info` | `WARNING: the PEM file contains multiple objects. Only the private key will                      be imported. A corresponding public key will be generated automatically.` | `src/import_utils.rs` | —         | —     |
 
 ---
 
@@ -1027,67 +1036,67 @@ Crate path: `crate/clients/client_utils`
 Crate path: `crate/clients/pkcs11/provider`
 `RUST_LOG` target: `cosmian_pkcs11`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `error` | `C_GetFunctionList: failed to instantiate base KMS client: {}` | `src/lib.rs` | - | PKCS#11 module failed to create the KMS client on load. Check server URL and auth in ckms.toml. |
-| `error` | `Failed to parse EC P256 public key: {:?}` | `src/pkcs11_public_key.rs` | - | HSM returned a malformed EC P256 key. Verify key generation parameters. |
-| `error` | `Failed to parse RSA private key: {:?}` | `src/pkcs11_private_key.rs` | - | - |
-| `error` | `Failed to parse RSA public key: {:?}` | `src/pkcs11_public_key.rs` | - | - |
-| `error` | `Public key is not an EC P256 key` | `src/pkcs11_private_key.rs` | - | - |
-| `error` | `Public key is not an EC P256 key` | `src/pkcs11_public_key.rs` | - | - |
-| `error` | `Public key is not an RSA key` | `src/pkcs11_public_key.rs` | - | - |
-| `error` | `remote_sign failed for Pkcs11PrivateKey with remote_id {}: {e}` | `src/pkcs11_private_key.rs` | `e`: caught error | Remote signing via PKCS#11 failed. Check KMS connectivity and key permissions. |
-| `error` | `Unsupported cryptographic algorithm: {:?}` | `src/kms_object.rs` | - | - |
-| `error` | `Unsupported key algorithm: {:?}` | `src/kms_object.rs` | - | - |
-| `error` | `verify not implemented for Pkcs11PublicKey` | `src/pkcs11_public_key.rs` | - | - |
-| `warn` | `create_private_key_from_id: {id} has type {:?} (expected PrivateKey), skipping` | `src/backend.rs` | `id`: object ID | - |
-| `warn` | `create_symmetric_key_from_id: {id} has type {:?} (expected SymmetricKey), skipping` | `src/backend.rs` | `id`: object ID | - |
-| `debug` | `decrypt: decrypt_ctx: {ctx:?}` | `src/backend.rs` | `ctx`: ctx | - |
-| `debug` | `encrypt: ctx: {ctx:?}` | `src/backend.rs` | `ctx`: ctx | - |
-| `debug` | `kms_encrypt_async: ciphertext: {}` | `src/kms_object.rs` | - | - |
-| `debug` | `kms_import_object_async: label: {label}, data (length): {}` | `src/kms_object.rs` | `label`: label | - |
-| `debug` | `Locate response: ids: {:?}` | `src/kms_object.rs` | - | - |
-| `debug` | `Located objects: tags: {tags:?}, type: {object_type:?} => {uniques_identifiers:?}` | `src/kms_object.rs` | `tags`: KMIP tag set<br>`object_type`: KMIP object type<br>`uniques_identifiers`: uniques identifiers | - |
-| `debug` | `remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}` | `src/backend.rs` | `remote_id`: remote id<br>`algorithm`: cryptographic algorithm | - |
-| `debug` | `vol1: {}` | `src/tests.rs` | - | - |
-| `trace` | `create_object: {label:?}` | `src/backend.rs` | `label` — … | — |
-| `trace` | `find_all_certificates` | `src/backend.rs` | — | — |
-| `trace` | `find_all_data_objects: entering` | `src/backend.rs` | — | — |
-| `trace` | `find_all_data_objects: found {} objects` | `src/backend.rs` | — | — |
-| `trace` | `find_all_objects: entering` | `src/backend.rs` | — | — |
-| `trace` | `find_all_objects: found {} keys` | `src/backend.rs` | — | — |
-| `trace` | `find_all_private_keys` | `src/backend.rs` | — | — |
-| `trace` | `find_all_public_keys` | `src/backend.rs` | — | — |
-| `trace` | `find_all_symmetric_keys` | `src/backend.rs` | — | — |
-| `trace` | `find_certificate` | `src/backend.rs` | — | — |
-| `trace` | `find_data_object: {:?}` | `src/backend.rs` | — | — |
-| `trace` | `find_private_key: {:?}` | `src/backend.rs` | — | — |
-| `trace` | `find_public_key: {:?}` | `src/backend.rs` | — | — |
-| `trace` | `find_symmetric_key: {:?}` | `src/backend.rs` | — | — |
-| `trace` | `Found {} objects` | `src/kms_object.rs` | — | — |
-| `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}` | `src/backend.rs` | `algorithm` — …<br>`key_length` — …<br>`label` — … | — |
-| `trace` | `get_kms_certificate_objects_async: found {} Certificate objects` | `src/kms_object.rs` | — | — |
-| `trace` | `get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}` | `src/kms_object.rs` | — | — |
-| `trace` | `get_kms_objects_async: no objects found for tags: {:?}` | `src/kms_object.rs` | — | — |
-| `trace` | `get_kms_secret_data_objects_async: found {} SecretData objects` | `src/kms_object.rs` | — | — |
-| `trace` | `get_kms_secret_data_objects_async: no SecretData objects found for tags: {:?}` | `src/kms_object.rs` | — | — |
-| `error` | `C_GetFunctionList: failed to instantiate KMS client: {}.                      Check that ckms.toml exists alongside the DLL                      (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                      at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs` | — | |
-| `error` | `C_GetFunctionList: failed to load ckms.toml: {}.                  Check that ckms.toml exists alongside the DLL                  (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs` | — | |
-| `warn` | `create_object_from_attributes: unsupported object type: {other}, skipping                      {id}` | `src/backend.rs` | `other`, `id` | — |
-| `warn` | `create_private_key_from_id: unsupported key/algorithm for PrivateKey {id}:                      {e}, skipping` | `src/backend.rs` | `id`, `e` | — |
-| `warn` | `create_private_key_object: unsupported key/algorithm for PrivateKey {id}:                      {e}, skipping` | `src/backend.rs` | `id`, `e` | — |
-| `warn` | `create_public_key_object: unsupported key/algorithm for PublicKey {id}: {e},                      skipping` | `src/backend.rs` | `id`, `e` | — |
-| `warn` | `create_symmetric_key_from_id: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | — |
-| `warn` | `create_symmetric_key_object: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping` | `src/backend.rs` | `id`, `e` | — |
-| `warn` | `find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e},                      skipping` | `src/backend.rs` | `id`, `e` | — |
-| `warn` | `find_all_public_keys: failed to export public key {id}: {e},                              skipping` | `src/backend.rs` | `id`, `e` | — |
-| `warn` | `find_all_data_objects: failed to build DataObject for disk-encryption                          key: {e}, skipping` | `src/backend.rs` | `e` | — |
-| `warn` | `find_all_data_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list` | `src/backend.rs` | `e` | — |
-| `warn` | `find_all_objects: failed to build DataObject for disk-encryption key:                          {e}, skipping` | `src/backend.rs` | `e` | — |
-| `warn` | `find_all_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list` | `src/backend.rs` | `e` | — |
-| `trace` | `find_all_objects: total {} objects (including disk-encryption DataObjects)` | `src/backend.rs` | — | — |
-| `trace` | `get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects` | `src/kms_object.rs` | — | — |
-| `trace` | `get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag:              {disk_encryption_tag}` | `src/kms_object.rs` | `disk_encryption_tag` | — |
+| Level   | Message                                                                                                                                                                                                                                                                    | File                        | Variables                                                                                             | Notes                                                                                           |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `error` | `C_GetFunctionList: failed to instantiate base KMS client: {}`                                                                                                                                                                                                             | `src/lib.rs`                | -                                                                                                     | PKCS#11 module failed to create the KMS client on load. Check server URL and auth in ckms.toml. |
+| `error` | `Failed to parse EC P256 public key: {:?}`                                                                                                                                                                                                                                 | `src/pkcs11_public_key.rs`  | -                                                                                                     | HSM returned a malformed EC P256 key. Verify key generation parameters.                         |
+| `error` | `Failed to parse RSA private key: {:?}`                                                                                                                                                                                                                                    | `src/pkcs11_private_key.rs` | -                                                                                                     | -                                                                                               |
+| `error` | `Failed to parse RSA public key: {:?}`                                                                                                                                                                                                                                     | `src/pkcs11_public_key.rs`  | -                                                                                                     | -                                                                                               |
+| `error` | `Public key is not an EC P256 key`                                                                                                                                                                                                                                         | `src/pkcs11_private_key.rs` | -                                                                                                     | -                                                                                               |
+| `error` | `Public key is not an EC P256 key`                                                                                                                                                                                                                                         | `src/pkcs11_public_key.rs`  | -                                                                                                     | -                                                                                               |
+| `error` | `Public key is not an RSA key`                                                                                                                                                                                                                                             | `src/pkcs11_public_key.rs`  | -                                                                                                     | -                                                                                               |
+| `error` | `remote_sign failed for Pkcs11PrivateKey with remote_id {}: {e}`                                                                                                                                                                                                           | `src/pkcs11_private_key.rs` | `e`: caught error                                                                                     | Remote signing via PKCS#11 failed. Check KMS connectivity and key permissions.                  |
+| `error` | `Unsupported cryptographic algorithm: {:?}`                                                                                                                                                                                                                                | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
+| `error` | `Unsupported key algorithm: {:?}`                                                                                                                                                                                                                                          | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
+| `error` | `verify not implemented for Pkcs11PublicKey`                                                                                                                                                                                                                               | `src/pkcs11_public_key.rs`  | -                                                                                                     | -                                                                                               |
+| `warn`  | `create_private_key_from_id: {id} has type {:?} (expected PrivateKey), skipping`                                                                                                                                                                                           | `src/backend.rs`            | `id`: object ID                                                                                       | -                                                                                               |
+| `warn`  | `create_symmetric_key_from_id: {id} has type {:?} (expected SymmetricKey), skipping`                                                                                                                                                                                       | `src/backend.rs`            | `id`: object ID                                                                                       | -                                                                                               |
+| `debug` | `decrypt: decrypt_ctx: {ctx:?}`                                                                                                                                                                                                                                            | `src/backend.rs`            | `ctx`: ctx                                                                                            | -                                                                                               |
+| `debug` | `encrypt: ctx: {ctx:?}`                                                                                                                                                                                                                                                    | `src/backend.rs`            | `ctx`: ctx                                                                                            | -                                                                                               |
+| `debug` | `kms_encrypt_async: ciphertext: {}`                                                                                                                                                                                                                                        | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
+| `debug` | `kms_import_object_async: label: {label}, data (length): {}`                                                                                                                                                                                                               | `src/kms_object.rs`         | `label`: label                                                                                        | -                                                                                               |
+| `debug` | `Locate response: ids: {:?}`                                                                                                                                                                                                                                               | `src/kms_object.rs`         | -                                                                                                     | -                                                                                               |
+| `debug` | `Located objects: tags: {tags:?}, type: {object_type:?} => {uniques_identifiers:?}`                                                                                                                                                                                        | `src/kms_object.rs`         | `tags`: KMIP tag set<br>`object_type`: KMIP object type<br>`uniques_identifiers`: uniques identifiers | -                                                                                               |
+| `debug` | `remote_sign: remote_id: {remote_id}, algorithm: {algorithm:?}`                                                                                                                                                                                                            | `src/backend.rs`            | `remote_id`: remote id<br>`algorithm`: cryptographic algorithm                                        | -                                                                                               |
+| `debug` | `vol1: {}`                                                                                                                                                                                                                                                                 | `src/tests.rs`              | -                                                                                                     | -                                                                                               |
+| `trace` | `create_object: {label:?}`                                                                                                                                                                                                                                                 | `src/backend.rs`            | `label` — …                                                                                           | —                                                                                               |
+| `trace` | `find_all_certificates`                                                                                                                                                                                                                                                    | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_all_data_objects: entering`                                                                                                                                                                                                                                          | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_all_data_objects: found {} objects`                                                                                                                                                                                                                                  | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_all_objects: entering`                                                                                                                                                                                                                                               | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_all_objects: found {} keys`                                                                                                                                                                                                                                          | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_all_private_keys`                                                                                                                                                                                                                                                    | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_all_public_keys`                                                                                                                                                                                                                                                     | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_all_symmetric_keys`                                                                                                                                                                                                                                                  | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_certificate`                                                                                                                                                                                                                                                         | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_data_object: {:?}`                                                                                                                                                                                                                                                   | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_private_key: {:?}`                                                                                                                                                                                                                                                   | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_public_key: {:?}`                                                                                                                                                                                                                                                    | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `find_symmetric_key: {:?}`                                                                                                                                                                                                                                                 | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `Found {} objects`                                                                                                                                                                                                                                                         | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
+| `trace` | `generate_key: {algorithm:?}-{key_length}, {label:?}`                                                                                                                                                                                                                      | `src/backend.rs`            | `algorithm` — …<br>`key_length` — …<br>`label` — …                                                    | —                                                                                               |
+| `trace` | `get_kms_certificate_objects_async: found {} Certificate objects`                                                                                                                                                                                                          | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
+| `trace` | `get_kms_certificate_objects_async: no Certificate objects found for tags: {:?}`                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
+| `trace` | `get_kms_objects_async: no objects found for tags: {:?}`                                                                                                                                                                                                                   | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
+| `trace` | `get_kms_secret_data_objects_async: found {} SecretData objects`                                                                                                                                                                                                           | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
+| `trace` | `get_kms_secret_data_objects_async: no SecretData objects found for tags: {:?}`                                                                                                                                                                                            | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
+| `error` | `C_GetFunctionList: failed to instantiate KMS client: {}.                      Check that ckms.toml exists alongside the DLL                      (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                      at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.` | `src/lib.rs`                | —                                                                                                     |                                                                                                 |
+| `error` | `C_GetFunctionList: failed to load ckms.toml: {}.                  Check that ckms.toml exists alongside the DLL                  (C:\opt\oracle\extapi\64\pkcs11\ckms.toml),                  at ~/.cosmian/ckms.toml, or set CKMS_CONF to its path.`                     | `src/lib.rs`                | —                                                                                                     |                                                                                                 |
+| `warn`  | `create_object_from_attributes: unsupported object type: {other}, skipping                      {id}`                                                                                                                                                                      | `src/backend.rs`            | `other`, `id`                                                                                         | —                                                                                               |
+| `warn`  | `create_private_key_from_id: unsupported key/algorithm for PrivateKey {id}:                      {e}, skipping`                                                                                                                                                            | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
+| `warn`  | `create_private_key_object: unsupported key/algorithm for PrivateKey {id}:                      {e}, skipping`                                                                                                                                                             | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
+| `warn`  | `create_public_key_object: unsupported key/algorithm for PublicKey {id}: {e},                      skipping`                                                                                                                                                               | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
+| `warn`  | `create_symmetric_key_from_id: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping`                                                                                                                                                        | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
+| `warn`  | `create_symmetric_key_object: unsupported key/algorithm for SymmetricKey                      {id}: {e}, skipping`                                                                                                                                                         | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
+| `warn`  | `find_all_public_keys: failed to build Pkcs11PublicKey for {id}: {e},                      skipping`                                                                                                                                                                       | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
+| `warn`  | `find_all_public_keys: failed to export public key {id}: {e},                              skipping`                                                                                                                                                                       | `src/backend.rs`            | `id`, `e`                                                                                             | —                                                                                               |
+| `warn`  | `find_all_data_objects: failed to build DataObject for disk-encryption                          key: {e}, skipping`                                                                                                                                                        | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
+| `warn`  | `find_all_data_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list`                                                                                                                                                          | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
+| `warn`  | `find_all_objects: failed to build DataObject for disk-encryption key:                          {e}, skipping`                                                                                                                                                             | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
+| `warn`  | `find_all_objects: failed to fetch disk-encryption data objects: {e},                  returning empty list`                                                                                                                                                               | `src/backend.rs`            | `e`                                                                                                   | —                                                                                               |
+| `trace` | `find_all_objects: total {} objects (including disk-encryption DataObjects)`                                                                                                                                                                                               | `src/backend.rs`            | —                                                                                                     | —                                                                                               |
+| `trace` | `get_kms_disk_encryption_data_objects_async: found {} SymmetricKey objects`                                                                                                                                                                                                | `src/kms_object.rs`         | —                                                                                                     | —                                                                                               |
+| `trace` | `get_kms_disk_encryption_data_objects_async: no SymmetricKey objects found for tag:              {disk_encryption_tag}`                                                                                                                                                    | `src/kms_object.rs`         | `disk_encryption_tag`                                                                                 | —                                                                                               |
 
 ### `cosmian_pkcs11_module`
 
@@ -1169,50 +1178,50 @@ Crate path: `crate/clients/pkcs11/module`
 Crate path: `crate/clients/cng`
 `RUST_LOG` target: `cosmian_cng`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `error` | `CNG KSP decrypt: {e}` | `src/provider.rs` | `e`: caught error | Decryption via CNG failed. Check key state and CNG provider logs. |
-| `error` | `CNG KSP delete_key: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP encrypt: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP enum_keys: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP export_key private: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP export_key: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP finalize_key: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP import_key attrs: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP import_key backend: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP import_key parse blob: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `error` | `CNG KSP open_key attrs({name}): {e}` | `src/provider.rs` | `name`: key or object name<br>`e`: caught error | - |
-| `error` | `CNG KSP open_key pub({name}): {e}` | `src/provider.rs` | `name`: key or object name<br>`e`: caught error | - |
-| `error` | `CNG KSP open_key({name}): {e}` | `src/provider.rs` | `name`: key or object name<br>`e`: caught error | - |
-| `error` | `CNG KSP open_provider: {e}` | `src/provider.rs` | `e`: caught error | CNG provider DLL failed to load or initialise. Verify the DLL is registered. |
-| `error` | `CNG KSP sign_hash: {e}` | `src/provider.rs` | `e`: caught error | Signing via CNG failed. Key may be non-exportable or in an invalid state. |
-| `error` | `CNG KSP verify_signature: {e}` | `src/provider.rs` | `e`: caught error | - |
-| `info` | `CNG KSP provider already registered; skipping BCryptRegisterProvider` | `src/registry.rs` | - | - |
-| `info` | `DLL was locked; old copy renamed to '{}' and scheduled for deletion on reboot.` | `src/registry.rs` | - | - |
-| `debug` | `BCryptAddContextFunction returned {status:#010x} (may already exist)` | `src/registry.rs` | `status`: HTTP response status | - |
-| `debug` | `BCryptRemoveContextFunctionProvider returned {status:#010x}` | `src/registry.rs` | `status`: HTTP response status | - |
-| `debug` | `CNG KSP GetKeyStorageInterface called` | `src/lib.rs` | - | - |
-| `debug` | `CNG KSP register: source dll={}` | `src/registry.rs` | - | - |
-| `debug` | `CNG KSP unregister` | `src/registry.rs` | - | - |
-| `debug` | `CNG KSP: create_ec_key_pair name={key_name} curve={curve:?}` | `src/backend.rs` | `key_name`: CNG key name<br>`curve`: elliptic curve identifier | - |
-| `debug` | `CNG KSP: create_rsa_key_pair name={key_name} bits={bit_length}` | `src/backend.rs` | `key_name`: CNG key name<br>`bit_length`: key size in bits | - |
-| `debug` | `CNG KSP: decoded PEM to {} bytes DER` | `src/key.rs` | - | - |
-| `debug` | `CNG KSP: decrypt_data uid={uid} len={}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `CNG KSP: destroy_key uid={uid}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `CNG KSP: encrypt_data uid={uid} len={}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `CNG KSP: export_private_key_pkcs8 uid={uid}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `CNG KSP: export_public_key_spki uid={uid}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `CNG KSP: finalize import blob len={}, first_bytes={:?}` | `src/key.rs` | - | - |
-| `debug` | `CNG KSP: finalized key '{}' → priv={}, pub={}` | `src/key.rs` | - | - |
-| `debug` | `CNG KSP: import_rsa_private_key name={key_name}` | `src/backend.rs` | `key_name`: CNG key name | - |
-| `debug` | `CNG KSP: revoke_key uid={uid}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `CNG KSP: sign_hash uid={uid} hash_len={}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `CNG KSP: verify_signature uid={uid} hash_len={} sig_len={}` | `src/backend.rs` | `uid`: KMIP object UID | - |
-| `debug` | `Copying {} -> {}` | `src/registry.rs` | - | - |
-| `debug` | `MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.` | `src/registry.rs` | - | - |
-| `trace` | `CNG KSP: list_cng_keys` | `src/backend.rs` | — | — |
-| `trace` | `CNG KSP: locate_key_by_name tag={tag}` | `src/backend.rs` | `tag` — … | — |
-| `trace` | `CNG KSP: locate_public_key_by_name tag={tag}` | `src/backend.rs` | `tag` — … | — |
+| Level   | Message                                                                          | File              | Variables                                                      | Notes                                                                        |
+| ------- | -------------------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `error` | `CNG KSP decrypt: {e}`                                                           | `src/provider.rs` | `e`: caught error                                              | Decryption via CNG failed. Check key state and CNG provider logs.            |
+| `error` | `CNG KSP delete_key: {e}`                                                        | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP encrypt: {e}`                                                           | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP enum_keys: {e}`                                                         | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP export_key private: {e}`                                                | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP export_key: {e}`                                                        | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP finalize_key: {e}`                                                      | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP import_key attrs: {e}`                                                  | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP import_key backend: {e}`                                                | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP import_key parse blob: {e}`                                             | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `error` | `CNG KSP open_key attrs({name}): {e}`                                            | `src/provider.rs` | `name`: key or object name<br>`e`: caught error                | -                                                                            |
+| `error` | `CNG KSP open_key pub({name}): {e}`                                              | `src/provider.rs` | `name`: key or object name<br>`e`: caught error                | -                                                                            |
+| `error` | `CNG KSP open_key({name}): {e}`                                                  | `src/provider.rs` | `name`: key or object name<br>`e`: caught error                | -                                                                            |
+| `error` | `CNG KSP open_provider: {e}`                                                     | `src/provider.rs` | `e`: caught error                                              | CNG provider DLL failed to load or initialise. Verify the DLL is registered. |
+| `error` | `CNG KSP sign_hash: {e}`                                                         | `src/provider.rs` | `e`: caught error                                              | Signing via CNG failed. Key may be non-exportable or in an invalid state.    |
+| `error` | `CNG KSP verify_signature: {e}`                                                  | `src/provider.rs` | `e`: caught error                                              | -                                                                            |
+| `info`  | `CNG KSP provider already registered; skipping BCryptRegisterProvider`           | `src/registry.rs` | -                                                              | -                                                                            |
+| `info`  | `DLL was locked; old copy renamed to '{}' and scheduled for deletion on reboot.` | `src/registry.rs` | -                                                              | -                                                                            |
+| `debug` | `BCryptAddContextFunction returned {status:#010x} (may already exist)`           | `src/registry.rs` | `status`: HTTP response status                                 | -                                                                            |
+| `debug` | `BCryptRemoveContextFunctionProvider returned {status:#010x}`                    | `src/registry.rs` | `status`: HTTP response status                                 | -                                                                            |
+| `debug` | `CNG KSP GetKeyStorageInterface called`                                          | `src/lib.rs`      | -                                                              | -                                                                            |
+| `debug` | `CNG KSP register: source dll={}`                                                | `src/registry.rs` | -                                                              | -                                                                            |
+| `debug` | `CNG KSP unregister`                                                             | `src/registry.rs` | -                                                              | -                                                                            |
+| `debug` | `CNG KSP: create_ec_key_pair name={key_name} curve={curve:?}`                    | `src/backend.rs`  | `key_name`: CNG key name<br>`curve`: elliptic curve identifier | -                                                                            |
+| `debug` | `CNG KSP: create_rsa_key_pair name={key_name} bits={bit_length}`                 | `src/backend.rs`  | `key_name`: CNG key name<br>`bit_length`: key size in bits     | -                                                                            |
+| `debug` | `CNG KSP: decoded PEM to {} bytes DER`                                           | `src/key.rs`      | -                                                              | -                                                                            |
+| `debug` | `CNG KSP: decrypt_data uid={uid} len={}`                                         | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `CNG KSP: destroy_key uid={uid}`                                                 | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `CNG KSP: encrypt_data uid={uid} len={}`                                         | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `CNG KSP: export_private_key_pkcs8 uid={uid}`                                    | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `CNG KSP: export_public_key_spki uid={uid}`                                      | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `CNG KSP: finalize import blob len={}, first_bytes={:?}`                         | `src/key.rs`      | -                                                              | -                                                                            |
+| `debug` | `CNG KSP: finalized key '{}' → priv={}, pub={}`                                  | `src/key.rs`      | -                                                              | -                                                                            |
+| `debug` | `CNG KSP: import_rsa_private_key name={key_name}`                                | `src/backend.rs`  | `key_name`: CNG key name                                       | -                                                                            |
+| `debug` | `CNG KSP: revoke_key uid={uid}`                                                  | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `CNG KSP: sign_hash uid={uid} hash_len={}`                                       | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `CNG KSP: verify_signature uid={uid} hash_len={} sig_len={}`                     | `src/backend.rs`  | `uid`: KMIP object UID                                         | -                                                                            |
+| `debug` | `Copying {} -> {}`                                                               | `src/registry.rs` | -                                                              | -                                                                            |
+| `debug` | `MoveFileExW(DELAY_UNTIL_REBOOT) failed for '{}'; leftover file is harmless.`    | `src/registry.rs` | -                                                              | -                                                                            |
+| `trace` | `CNG KSP: list_cng_keys`                                                         | `src/backend.rs`  | —                                                              | —                                                                            |
+| `trace` | `CNG KSP: locate_key_by_name tag={tag}`                                          | `src/backend.rs`  | `tag` — …                                                      | —                                                                            |
+| `trace` | `CNG KSP: locate_public_key_by_name tag={tag}`                                   | `src/backend.rs`  | `tag` — …                                                      | —                                                                            |
 
 ## Domain: Web UI
 
@@ -1222,49 +1231,49 @@ the OTLP pipeline.
 
 Crate path: `ui/src/`
 
-| Level | Message | File | Variables | Notes |
-|---|---|---|---|---|
-| `warn` | `revoke_ttlv_request not available in WASM package` | `components/common/Locate.tsx` | - | - |
-| `info` | `[KMS] vendor_id set to "{vendorId}"` | `App.tsx` | `vendorId`: vendor identifier string received from the server | - |
-| `error` | `Aggregate date error:` | `actions/Tokenize/TokenizeAggregateDate.tsx` | — | — |
-| `error` | `Aggregate number error:` | `actions/Tokenize/TokenizeAggregateNumber.tsx` | — | — |
-| `error` | `Certificate validation failed:` | `pages/LoginPage.tsx` | — | — |
-| `error` | `Error creating FPE key:` | `actions/FPE/FpeKeysCreate.tsx` | — | — |
-| `error` | `Error fetching create permission:` | `actions/Access/AccessObtained.tsx` | — | — |
-| `error` | `Error fetching CSE information:` | `actions/Keys/CseInfo.tsx` | — | — |
-| `error` | `Error fetching Get for ${uid}:` | `components/common/Locate.tsx` | `uid` | ×4 in this file |
-| `error` | `Error fetching HSM status:` | `actions/Objects/HsmStatus.tsx` | — | — |
-| `error` | `Error fetching privileged access:` | `actions/Access/AccessGrant.tsx` | — | — |
-| `error` | `Error fetching privileged access:` | `actions/Access/AccessRevoke.tsx` | — | — |
-| `error` | `Error getting attributes:` | `actions/Attributes/AttributeGet.tsx` | — | — |
-| `error` | `Error listing objects:` | `actions/Access/AccessObtained.tsx` | — | — |
-| `error` | `Error listing objects:` | `actions/Objects/ObjectsOwned.tsx` | — | — |
-| `error` | `Error loading certificate algorithms from WASM:` | `actions/Certificates/CertificateCertify.tsx` | — | — |
-| `error` | `Error loading EC algorithms from WASM:` | `actions/EC/ECKeysCreate.tsx` | — | — |
-| `error` | `Error loading hash algorithms from WASM:` | `actions/Symmetric/SymmetricHash.tsx` | — | — |
-| `error` | `Error loading PQC algorithms from WASM:` | `actions/PQC/PqcKeysCreate.tsx` | — | — |
-| `error` | `Error loading symmetric algorithms from WASM:` | `actions/Keys/SymKeysCreate.tsx` | — | — |
-| `error` | `Error parsing tags JSON:` | `actions/CloudProviders/AwsExportKeyMaterial.tsx` | — | — |
-| `error` | `Error parsing tags JSON:` | `utils/azureByok.ts` | — | — |
-| `error` | `Fallback Locate without KFT failed:` | `components/common/Locate.tsx` | — | — |
-| `error` | `FPE decrypt error:` | `actions/FPE/FpeDecrypt.tsx` | — | — |
-| `error` | `FPE encrypt error:` | `actions/FPE/FpeEncrypt.tsx` | — | — |
-| `error` | `Hash tokenize error:` | `actions/Tokenize/TokenizeHash.tsx` | — | — |
-| `error` | `Login error:` | `contexts/AuthContext.tsx` | — | — |
-| `error` | `Login error:` | `pages/LoginPage.tsx` | — | — |
-| `error` | `Noise tokenize error:` | `actions/Tokenize/TokenizeNoise.tsx` | — | — |
-| `error` | `Scale number error:` | `actions/Tokenize/TokenizeScaleNumber.tsx` | — | — |
-| `error` | `WASM init failed:` | `App.tsx` | — | — |
-| `error` | `Word mask error:` | `actions/Tokenize/TokenizeWordMask.tsx` | — | — |
-| `error` | `Word pattern mask error:` | `actions/Tokenize/TokenizeWordPatternMask.tsx` | — | — |
-| `error` | `Word tokenize error:` | `actions/Tokenize/TokenizeWordTokenize.tsx` | — | — |
-| `warn` | `[KMS] Could not query server vendor_id, using default:` | `App.tsx` | — | — |
-| `warn` | `State+KFT fallback Locate without KFT failed:` | `components/common/Locate.tsx` | — | — |
-| `warn` | `Symmetric google_cse key check failed:` | `actions/Keys/CseInfo.tsx` | — | — |
-| `debug` | `ECSign: signature length` | `actions/EC/ECSign.tsx` | — | — |
-| `debug` | `ECVerify: dataBuf len` | `actions/EC/ECVerify.tsx` | — | — |
-| `debug` | `RsaSign: signature length` | `actions/RSA/RsaSign.tsx` | — | — |
-| `debug` | `RsaVerify: dataBuf len` | `actions/RSA/RsaVerify.tsx` | — | — |
-| `error` | `JWT fallback failed:` | `App.tsx` | - | - |
+| Level   | Message                                                  | File                                              | Variables                                                     | Notes           |
+| ------- | -------------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------- | --------------- |
+| `warn`  | `revoke_ttlv_request not available in WASM package`      | `components/common/Locate.tsx`                    | -                                                             | -               |
+| `info`  | `[KMS] vendor_id set to "{vendorId}"`                    | `App.tsx`                                         | `vendorId`: vendor identifier string received from the server | -               |
+| `error` | `Aggregate date error:`                                  | `actions/Tokenize/TokenizeAggregateDate.tsx`      | —                                                             | —               |
+| `error` | `Aggregate number error:`                                | `actions/Tokenize/TokenizeAggregateNumber.tsx`    | —                                                             | —               |
+| `error` | `Certificate validation failed:`                         | `pages/LoginPage.tsx`                             | —                                                             | —               |
+| `error` | `Error creating FPE key:`                                | `actions/FPE/FpeKeysCreate.tsx`                   | —                                                             | —               |
+| `error` | `Error fetching create permission:`                      | `actions/Access/AccessObtained.tsx`               | —                                                             | —               |
+| `error` | `Error fetching CSE information:`                        | `actions/Keys/CseInfo.tsx`                        | —                                                             | —               |
+| `error` | `Error fetching Get for ${uid}:`                         | `components/common/Locate.tsx`                    | `uid`                                                         | ×4 in this file |
+| `error` | `Error fetching HSM status:`                             | `actions/Objects/HsmStatus.tsx`                   | —                                                             | —               |
+| `error` | `Error fetching privileged access:`                      | `actions/Access/AccessGrant.tsx`                  | —                                                             | —               |
+| `error` | `Error fetching privileged access:`                      | `actions/Access/AccessRevoke.tsx`                 | —                                                             | —               |
+| `error` | `Error getting attributes:`                              | `actions/Attributes/AttributeGet.tsx`             | —                                                             | —               |
+| `error` | `Error listing objects:`                                 | `actions/Access/AccessObtained.tsx`               | —                                                             | —               |
+| `error` | `Error listing objects:`                                 | `actions/Objects/ObjectsOwned.tsx`                | —                                                             | —               |
+| `error` | `Error loading certificate algorithms from WASM:`        | `actions/Certificates/CertificateCertify.tsx`     | —                                                             | —               |
+| `error` | `Error loading EC algorithms from WASM:`                 | `actions/EC/ECKeysCreate.tsx`                     | —                                                             | —               |
+| `error` | `Error loading hash algorithms from WASM:`               | `actions/Symmetric/SymmetricHash.tsx`             | —                                                             | —               |
+| `error` | `Error loading PQC algorithms from WASM:`                | `actions/PQC/PqcKeysCreate.tsx`                   | —                                                             | —               |
+| `error` | `Error loading symmetric algorithms from WASM:`          | `actions/Keys/SymKeysCreate.tsx`                  | —                                                             | —               |
+| `error` | `Error parsing tags JSON:`                               | `actions/CloudProviders/AwsExportKeyMaterial.tsx` | —                                                             | —               |
+| `error` | `Error parsing tags JSON:`                               | `utils/azureByok.ts`                              | —                                                             | —               |
+| `error` | `Fallback Locate without KFT failed:`                    | `components/common/Locate.tsx`                    | —                                                             | —               |
+| `error` | `FPE decrypt error:`                                     | `actions/FPE/FpeDecrypt.tsx`                      | —                                                             | —               |
+| `error` | `FPE encrypt error:`                                     | `actions/FPE/FpeEncrypt.tsx`                      | —                                                             | —               |
+| `error` | `Hash tokenize error:`                                   | `actions/Tokenize/TokenizeHash.tsx`               | —                                                             | —               |
+| `error` | `Login error:`                                           | `contexts/AuthContext.tsx`                        | —                                                             | —               |
+| `error` | `Login error:`                                           | `pages/LoginPage.tsx`                             | —                                                             | —               |
+| `error` | `Noise tokenize error:`                                  | `actions/Tokenize/TokenizeNoise.tsx`              | —                                                             | —               |
+| `error` | `Scale number error:`                                    | `actions/Tokenize/TokenizeScaleNumber.tsx`        | —                                                             | —               |
+| `error` | `WASM init failed:`                                      | `App.tsx`                                         | —                                                             | —               |
+| `error` | `Word mask error:`                                       | `actions/Tokenize/TokenizeWordMask.tsx`           | —                                                             | —               |
+| `error` | `Word pattern mask error:`                               | `actions/Tokenize/TokenizeWordPatternMask.tsx`    | —                                                             | —               |
+| `error` | `Word tokenize error:`                                   | `actions/Tokenize/TokenizeWordTokenize.tsx`       | —                                                             | —               |
+| `warn`  | `[KMS] Could not query server vendor_id, using default:` | `App.tsx`                                         | —                                                             | —               |
+| `warn`  | `State+KFT fallback Locate without KFT failed:`          | `components/common/Locate.tsx`                    | —                                                             | —               |
+| `warn`  | `Symmetric google_cse key check failed:`                 | `actions/Keys/CseInfo.tsx`                        | —                                                             | —               |
+| `debug` | `ECSign: signature length`                               | `actions/EC/ECSign.tsx`                           | —                                                             | —               |
+| `debug` | `ECVerify: dataBuf len`                                  | `actions/EC/ECVerify.tsx`                         | —                                                             | —               |
+| `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
+| `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
+| `error` | `JWT fallback failed:`                                   | `App.tsx`                                         | -                                                             | -               |
 
 ---

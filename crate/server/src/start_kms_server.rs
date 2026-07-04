@@ -59,10 +59,10 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, crypto, get_hsm_status,
-        get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        get_version,
         google_cse::{self, GoogleCseConfig},
-        health,
+        health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
         ms_dke, root_redirect, swagger,
         ui_auth::configure_auth_routes,
@@ -1054,11 +1054,34 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(health::get_health)
             .service(get_version);
 
+        // JWKS endpoint: public, unauthenticated, CORS-open (partially).
+        // The scope prefix `/.well-known` is explicit so this scope does not conflict
+        // with the empty-prefix default_scope and its restrictive CORS configuration.
+        if kms_server_for_http.params.jwks_endpoint.jwks_endpoint_enabled {
+            warn!(
+                "JWKS endpoint enabled — all active public keys with the \"jwks\" tag will be publicly exposed (unauthenticated) at \
+                 `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served. \
+                 Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file.",
+                kms_server_for_http.params.jwks_endpoint.jwks_endpoint_max_keys
+            );
+            app = app.service(
+                web::scope("/.well-known")
+                    .wrap(
+                        Cors::default()
+                            .allow_any_origin()
+                            // HEAD is included so that CDN healthchecks and HTTP
+                            // clients that probe with HEAD before GET work correctly.
+                            .allowed_methods(vec!["GET", "HEAD"])
+                    )
+                    .service(jwks::get_jwks),
+            );
+        }
+
         // REST Native Crypto API — /v1/crypto/*
         let crypto_scope = web::scope("/v1/crypto")
             .app_data(
                 web::JsonConfig::default()
-                    .error_handler(crypto::crypto_json_error_handler),
+                    .error_handler(jose::crypto_json_error_handler),
             )
             .wrap(EnsureAuth::new(
                 kms_server_for_http.clone(),
@@ -1074,14 +1097,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ))
             .wrap(Condition::new(use_cert_auth, TlsAuth))
             .wrap(Cors::permissive())
-            .service(crypto::encrypt_handler)
-            .service(crypto::decrypt_handler)
-            .service(crypto::sign_handler)
-            .service(crypto::verify_handler)
-            .service(crypto::mac_handler)
-            .service(crypto::create_key_handler)
-            .service(crypto::delete_key_handler)
-            .service(crypto::unwrap_key_handler);
+            .service(jose::encrypt_handler)
+            .service(jose::decrypt_handler)
+            .service(jose::sign_handler)
+            .service(jose::verify_handler)
+            .service(jose::mac_handler)
+            .service(jose::create_key_handler)
+            .service(jose::delete_key_handler)
+            .service(jose::unwrap_key_handler)
+            .service(jose::add_tags_handler)
+            .service(jose::remove_tags_handler)
+            .service(jose::list_tags_handler);
         app = app.service(crypto_scope);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints

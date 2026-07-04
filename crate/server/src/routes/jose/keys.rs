@@ -36,7 +36,7 @@ use super::{
     },
     b64_decode,
 };
-use crate::core::KMS;
+use crate::{core::KMS, routes::jwks::JWKS_TAG};
 
 /// `POST /v1/crypto/keys` — generate or import a JWK-style key.
 ///
@@ -199,10 +199,15 @@ async fn generate_ec_key_pair(
     let recommended_curve = curve_from_crv(crv)?;
     let alg = body.alg.as_deref();
 
+    let tags: &[&str] = if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
+        &[JWKS_TAG]
+    } else {
+        &[]
+    };
     let create_req = create_ec_key_pair_request(
         kms.vendor_id(),
-        None,               // auto-generate UID
-        Vec::<&str>::new(), // no tags
+        None, // auto-generate UID
+        tags,
         recommended_curve,
         false, // not sensitive
         None,  // no wrapping key
@@ -254,8 +259,12 @@ async fn generate_rsa_key_pair(
 
     let create_req = create_rsa_key_pair_request(
         kms.vendor_id(),
-        None,               // auto-generate UID
-        Vec::<&str>::new(), // no tags
+        None, // auto-generate UID
+        if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
+            vec![JWKS_TAG]
+        } else {
+            vec![]
+        },
         bits,
         false, // not sensitive
         None,  // no wrapping key
@@ -302,15 +311,14 @@ async fn generate_okp_key_pair(
 
     let recommended_curve = curve_from_crv(crv)?;
 
-    let create_req = create_ec_key_pair_request(
-        kms.vendor_id(),
-        None,
-        Vec::<&str>::new(),
-        recommended_curve,
-        false,
-        None,
-    )
-    .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
+    let tags: &[&str] = if kms.params.jwks_endpoint.jwks_endpoint_auto_tag {
+        &[JWKS_TAG]
+    } else {
+        &[]
+    };
+    let create_req =
+        create_ec_key_pair_request(kms.vendor_id(), None, tags, recommended_curve, false, None)
+            .map_err(|e| CryptoApiError::InternalError(e.to_string()))?;
 
     let resp = kms
         .create_key_pair(create_req, user)

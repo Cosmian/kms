@@ -218,8 +218,8 @@ mod tests {
     use cosmian_kms_server::{
         config::{
             AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
-            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
-            SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+            JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig,
+            ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
@@ -261,6 +261,7 @@ mod tests {
                 rate_limit_per_second: Some(100),
                 cors_allowed_origins: None,
                 server_workers: None,
+                jwks_enabled: false,
             },
             proxy: ProxyConfig {
                 proxy_url: Some("https://proxy.example.com:8080".to_owned()),
@@ -304,6 +305,7 @@ mod tests {
                 azure_ekm_ekm_vendor: String::new(),
                 azure_ekm_ekm_product: String::new(),
             },
+            jwks_endpoint: JwksEndpointConfig::default(),
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -446,6 +448,11 @@ aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
 [kmip.allowlists]
+
+[jwks_endpoint]
+jwks_endpoint_enabled = false
+jwks_endpoint_max_keys = 50
+jwks_endpoint_auto_tag = true
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

@@ -60,5 +60,6 @@ pub fn configure_http() -> KResult<HttpConfig> {
         rate_limit_per_second,
         cors_allowed_origins: None,
         server_workers: None,
+        jwks_enabled: false,
     })
 }

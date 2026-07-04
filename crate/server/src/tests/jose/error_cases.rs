@@ -255,3 +255,125 @@ async fn test_decrypt_short_tag_returns_400() -> KResult<()> {
     );
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// RSA-OAEP error-path tests
+// ---------------------------------------------------------------------------
+
+/// RSA-OAEP protected header with no `encrypted_key` (or empty) must be rejected 400.
+#[tokio::test]
+async fn test_rsa_oaep_decrypt_missing_encrypted_key() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None).await;
+
+    let (kid_priv, _kid_pub) = super::common::create_rsa_key_pair_rest(&app).await?;
+
+    // Craft a valid RSA-OAEP protected header pointing at the private key
+    let protected_json = format!(r#"{{"alg":"RSA-OAEP","enc":"A256GCM","kid":"{kid_priv}"}}"#);
+    let protected_b64 = URL_SAFE_NO_PAD.encode(protected_json.as_bytes());
+
+    let req = test::TestRequest::post()
+        .uri("/v1/crypto/decrypt")
+        .set_json(&json!({
+            "protected":    protected_b64,
+            "encrypted_key": "",          // empty — must be rejected
+            "iv":           URL_SAFE_NO_PAD.encode([0_u8; 12]),
+            "ciphertext":   URL_SAFE_NO_PAD.encode(b"fake"),
+            "tag":          URL_SAFE_NO_PAD.encode([0_u8; 16])
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "RSA-OAEP decrypt with empty encrypted_key must return 400"
+    );
+    Ok(())
+}
+
+/// Flipping one bit of the wrapped CEK triggers implicit rejection (RFC 7516 §11.5):
+/// the server substitutes a random CEK and AES-GCM authentication then fails → 422.
+#[tokio::test]
+async fn test_rsa_oaep_decrypt_tampered_encrypted_key() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None).await;
+
+    let (_kid_priv, kid_pub) = super::common::create_rsa_key_pair_rest(&app).await?;
+
+    let data_b64 = URL_SAFE_NO_PAD.encode(b"tamper target");
+    let enc_resp: serde_json::Value = test_utils::post_json_with_uri(
+        &app,
+        json!({"kid": kid_pub, "alg": "RSA-OAEP", "enc": "A256GCM", "data": data_b64}),
+        "/v1/crypto/encrypt",
+    )
+    .await?;
+
+    // Flip the first byte of the wrapped CEK to corrupt it
+    let mut ek_bytes = URL_SAFE_NO_PAD
+        .decode(enc_resp["encrypted_key"].as_str().expect("encrypted_key"))
+        .expect("base64url decode");
+    ek_bytes[0] ^= 0xFF;
+    let tampered_ek = URL_SAFE_NO_PAD.encode(&ek_bytes);
+
+    let req = test::TestRequest::post()
+        .uri("/v1/crypto/decrypt")
+        .set_json(&json!({
+            "protected":    enc_resp["protected"],
+            "encrypted_key": tampered_ek,
+            "iv":           enc_resp["iv"],
+            "ciphertext":   enc_resp["ciphertext"],
+            "tag":          enc_resp["tag"]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    // Implicit rejection: wrong CEK → AES-GCM tag mismatch → DecryptionFailed (422)
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "tampered wrapped key must trigger implicit rejection and return 422"
+    );
+    Ok(())
+}
+
+/// Supplying a symmetric AES key UID in an RSA-OAEP protected header must be rejected.
+#[tokio::test]
+async fn test_rsa_oaep_decrypt_symmetric_key_as_kid() -> KResult<()> {
+    log_init(None);
+    let app = test_utils::test_app(None).await;
+
+    // Create a symmetric AES key
+    let create_req = symmetric_key_create_request(
+        VENDOR_ID_COSMIAN,
+        None,
+        256,
+        CryptographicAlgorithm::AES,
+        EMPTY_TAGS,
+        false,
+        None,
+    )?;
+    let cr: CreateResponse = test_utils::post_2_1(&app, create_req).await?;
+    let aes_kid = cr.unique_identifier.to_string();
+
+    // Build an RSA-OAEP protected header with the AES key UID as `kid`
+    let protected_json = format!(r#"{{"alg":"RSA-OAEP","enc":"A256GCM","kid":"{aes_kid}"}}"#);
+    let protected_b64 = URL_SAFE_NO_PAD.encode(protected_json.as_bytes());
+
+    let req = test::TestRequest::post()
+        .uri("/v1/crypto/decrypt")
+        .set_json(&json!({
+            "protected":    protected_b64,
+            "encrypted_key": URL_SAFE_NO_PAD.encode([0_u8; 256]), // 256 bytes (fake RSA-wrapped CEK)
+            "iv":           URL_SAFE_NO_PAD.encode([0_u8; 12]),
+            "ciphertext":   URL_SAFE_NO_PAD.encode(b"fake"),
+            "tag":          URL_SAFE_NO_PAD.encode([0_u8; 16])
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    // AES key is not an RSA key → CryptoFailure (422)
+    assert_ne!(
+        resp.status().as_u16() / 100,
+        2,
+        "RSA-OAEP decrypt with an AES kid must fail with a non-2xx status"
+    );
+    Ok(())
+}

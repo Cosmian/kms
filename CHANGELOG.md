@@ -266,7 +266,7 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 
-- New `documentation/docs/integrations/rest_crypto_api.md` — JOSE REST API reference with examples ([#868](https://github.com/Cosmian/kms/issues/868))
+- New `documentation/docs/integrations/jose_api.md` — JOSE REST API reference with examples ([#868](https://github.com/Cosmian/kms/issues/868))
 - New `documentation/docs/hsm_support/multi_hsm.md` — multi-HSM routing, TOML config, `/hsm/status` endpoint ([#942](https://github.com/Cosmian/kms/pull/942))
 - PKI page consolidated: `pqc_x509_certificates.md` → `pki.md`; covers RFC 5280/8017/5480/8032/9881/9909/9935/9608 and classical + PQC algorithms ([#943](https://github.com/Cosmian/kms/pull/943))
 - New `documentation/docs/integrations/storage/vast_data.md` — VAST Data setup, KEK/DEK workflow, troubleshooting ([#845](https://github.com/Cosmian/kms/issues/845))

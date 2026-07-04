@@ -58,6 +58,40 @@ components:
       description: Client certificate presented during TLS handshake
 
   schemas:
+    # ── REST Crypto tag management ───────────────────────────────────────────
+
+    TagsRequest:
+      description: Request body for adding or removing user tags on a key.
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          items:
+            type: string
+          description: >
+            Tags to add or remove. Each tag must be a non-empty string and must
+            not start with `_` (that prefix is reserved for system tags).
+          example: ["jwks", "prod"]
+
+    TagsResponse:
+      description: Response body returned by all three tag management endpoints.
+      type: object
+      required: [kid, tags]
+      properties:
+        kid:
+          type: string
+          description: KMS unique identifier of the key.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        tags:
+          type: array
+          items:
+            type: string
+          description: >
+            Current user-visible tags on the key after the operation, sorted
+            alphabetically. System tags (starting with `_`) are never included.
+          example: ["jwks", "prod"]
+
     # ── TTLV JSON ────────────────────────────────────────────────────────────
 
     TtlvNode:
@@ -2041,6 +2075,112 @@ paths:
       responses:
         '204':
           description: Key destroyed — no content
+
+  /v1/crypto/keys/{kid}/tags:
+    post:
+      tags: [REST Crypto API]
+      summary: Add user tags to a key
+      description: |
+        Merge one or more user-defined tags into the key's tag set. Existing tags
+        are preserved. Duplicate tags are silently ignored. Tags starting with `_`
+        are system tags and are rejected with `400 Bad Request`.
+      operationId: cryptoAddTags
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: kid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: KMS unique identifier of the key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagsRequest'
+      responses:
+        '200':
+          description: Tags updated — full current user tag set returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsResponse'
+        '400':
+          description: Empty tag string or system tag (starts with `_`) supplied
+        '403':
+          description: Key access denied
+        '404':
+          description: Key not found
+
+    delete:
+      tags: [REST Crypto API]
+      summary: Remove user tags from a key
+      description: |
+        Remove one or more user-defined tags from the key's tag set. Tags not
+        present on the key are silently ignored. Tags starting with `_` are system
+        tags and are rejected with `400 Bad Request`.
+      operationId: cryptoRemoveTags
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: kid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: KMS unique identifier of the key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagsRequest'
+      responses:
+        '200':
+          description: Tags updated — remaining user tag set returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsResponse'
+        '400':
+          description: Empty tag string or system tag (starts with `_`) supplied
+        '403':
+          description: Key access denied
+        '404':
+          description: Key not found
+
+    get:
+      tags: [REST Crypto API]
+      summary: List user tags on a key
+      description: |
+        Returns the current user-visible tags on the key. System tags (starting
+        with `_`) are never included.
+      operationId: cryptoListTags
+      security:
+        - bearerAuth: []
+        - mtls: []
+      parameters:
+        - name: kid
+          in: path
+          required: true
+          schema:
+            type: string
+          description: KMS unique identifier of the key
+      responses:
+        '200':
+          description: Current user tag set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsResponse'
+        '403':
+          description: Key access denied
+        '404':
+          description: Key not found
 
   /v1/crypto/keys/unwrap:
     post:

@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -182,6 +182,9 @@ pub struct ServerParams {
     /// generations to decrypt — a hint that re-encryption with the latest key may
     /// be beneficial.
     pub keyset_warn_depth: u32,
+
+    /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
+    pub jwks_endpoint: JwksEndpointConfig,
 }
 
 /// Represents the server parameters.
@@ -363,6 +366,7 @@ impl ServerParams {
                 v
             },
             keyset_warn_depth: conf.keyset_warn_depth,
+            jwks_endpoint: conf.jwks_endpoint,
         };
 
         debug!("{res:#?}");
@@ -701,6 +705,26 @@ impl fmt::Debug for ServerParams {
             &self.auto_rotation_check_interval_secs,
         );
         debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
+        if self.jwks_endpoint.jwks_endpoint_enabled {
+            debug_struct
+                .field(
+                    "jwks_endpoint_enabled",
+                    &self.jwks_endpoint.jwks_endpoint_enabled,
+                )
+                .field(
+                    "jwks_endpoint_max_keys",
+                    &self.jwks_endpoint.jwks_endpoint_max_keys,
+                )
+                .field(
+                    "jwks_endpoint_auto_tag",
+                    &self.jwks_endpoint.jwks_endpoint_auto_tag,
+                );
+        } else {
+            debug_struct.field(
+                "jwks_endpoint_enabled",
+                &self.jwks_endpoint.jwks_endpoint_enabled,
+            );
+        }
 
         debug_struct.finish()
     }
