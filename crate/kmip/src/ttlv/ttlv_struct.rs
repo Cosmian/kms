@@ -3,8 +3,8 @@ use std::fmt::Debug;
 use time::OffsetDateTime;
 
 use super::{
-    TTLVBytesDeserializer, TTLVBytesSerializer, enum_lookup::lookup_enum_code, error::TtlvError,
-    kmip_big_int::KmipBigInt,
+    TTLVBytesDeserializer, TTLVBytesSerializer, enum_lookup::lookup_enum_code_for_tag,
+    error::TtlvError, kmip_big_int::KmipBigInt,
 };
 use crate::{KmipResultHelper, kmip_1_4, kmip_2_1};
 
@@ -95,7 +95,9 @@ impl TTLV {
         match &mut self.value {
             TTLValue::Enumeration(en) => {
                 if en.value == 0 && !en.name.is_empty() {
-                    if let Some((code, canonical)) = lookup_enum_code(&en.name) {
+                    // Use tag-aware lookup to disambiguate shared variant names
+                    // (e.g. "SHA3256" in HashingAlgorithm vs CryptographicAlgorithm)
+                    if let Some((code, canonical)) = lookup_enum_code_for_tag(&en.name, &self.tag) {
                         en.value = code;
                         if !canonical.is_empty() {
                             en.name = canonical.to_owned();

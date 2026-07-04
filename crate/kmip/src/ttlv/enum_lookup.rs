@@ -25,6 +25,34 @@ pub fn lookup_enum_code(name: &str) -> Option<(u32, &'static str)> {
     FORWARD_TABLE.get(key.as_str()).copied()
 }
 
+/// Tag-aware enum code lookup. When a TTLV tag is known (e.g.
+/// `"HashingAlgorithm"`), this function intercepts the small set of variant
+/// names that collide across enums before falling through to the global table.
+///
+/// The only actual collision is the SHA3 family (`SHA3224`/`SHA3256`/`SHA3384`/
+/// `SHA3512`): these names appear in both `HashingAlgorithm` and
+/// `CryptographicAlgorithm` with **different** numeric codes. The global
+/// [`FORWARD_TABLE`] resolves them to `CryptographicAlgorithm` codes (inserted
+/// first); when the TTLV tag is `HashingAlgorithm` or
+/// `MaskGeneratorHashingAlgorithm` the correct `HashingAlgorithm` codes are
+/// returned directly without touching the global table.
+#[must_use]
+pub fn lookup_enum_code_for_tag(name: &str, tag: &str) -> Option<(u32, &'static str)> {
+    if matches!(tag, "HashingAlgorithm" | "MaskGeneratorHashingAlgorithm") {
+        let resolved = match name {
+            "SHA3224" => Some((k0::HashingAlgorithm::SHA3224 as u32, "SHA3224")),
+            "SHA3256" => Some((k0::HashingAlgorithm::SHA3256 as u32, "SHA3256")),
+            "SHA3384" => Some((k0::HashingAlgorithm::SHA3384 as u32, "SHA3384")),
+            "SHA3512" => Some((k0::HashingAlgorithm::SHA3512 as u32, "SHA3512")),
+            _ => None,
+        };
+        if resolved.is_some() {
+            return resolved;
+        }
+    }
+    lookup_enum_code(name)
+}
+
 /// Reverse look up: given a numeric KMIP enumeration code, return the
 /// canonical textual name if known.
 ///
@@ -85,6 +113,7 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         k21_obj::ObjectType,
         k21::KeyFormatType,
         k21::CryptographicAlgorithm,
+        k21::DigitalSignatureAlgorithm,
         k21::RecommendedCurve,
         k21::QueryFunction,
         k21::ValidityIndicator,
@@ -279,6 +308,7 @@ static REVERSE_TABLE: LazyLock<HashMap<u32, &'static str>> = LazyLock::new(|| {
         k21_obj::ObjectType,
         k21::KeyFormatType,
         k21::CryptographicAlgorithm,
+        k21::DigitalSignatureAlgorithm,
         k21::RecommendedCurve,
         k21::QueryFunction,
         k21::ValidityIndicator,
@@ -336,5 +366,77 @@ mod tests {
         assert_eq!(lookup_enum_code("Valid"), Some((0x01, "Valid")));
         assert_eq!(lookup_enum_code("Invalid"), Some((0x02, "Invalid")));
         assert_eq!(lookup_enum_code("Unknown"), Some((0x03, "Unknown")));
+    }
+
+    #[test]
+    fn test_binary_ttlv_enum_coverage() {
+        let mut failures = Vec::new();
+
+        // DigitalSignatureAlgorithm — must be in forward table
+        let dsa_names = [
+            ("ECDSAWithSHA256", 0x0E_u32),
+            ("ECDSAWithSHA384", 0x0F),
+            ("ECDSAWithSHA512", 0x10),
+            ("SHA256WithRSAEncryption", 0x05),
+            ("RSASSAPSS", 0x08),
+        ];
+        for (name, expected) in dsa_names {
+            match lookup_enum_code(name) {
+                Some((code, _)) => {
+                    if code != expected {
+                        failures.push(format!(
+                            "{name}: global lookup code={code:#06X}, expected {expected:#06X}"
+                        ));
+                    }
+                }
+                None => failures.push(format!("{name} NOT in forward table")),
+            }
+            // Also verify tag-aware lookup
+            match lookup_enum_code_for_tag(name, "DigitalSignatureAlgorithm") {
+                Some((code, _)) => {
+                    if code != expected {
+                        failures.push(format!(
+                            "{name}: tag-aware code={code:#06X}, expected {expected:#06X}"
+                        ));
+                    }
+                }
+                None => failures.push(format!("{name} NOT in tag override table")),
+            }
+        }
+
+        // DerivationMethod — HKDF must resolve
+        match lookup_enum_code("HKDF") {
+            Some((code, _)) => {
+                assert_eq!(code, 0x0A, "HKDF should be 0x0A");
+            }
+            None => failures.push("HKDF NOT in forward table".to_owned()),
+        }
+
+        // HashingAlgorithm — SHA3 variants: tag-aware lookup must return
+        // HashingAlgorithm codes (0x0E-0x11), NOT CryptographicAlgorithm codes
+        let sha3_hashing = [
+            ("SHA3224", 0x0E_u32),
+            ("SHA3256", 0x0F),
+            ("SHA3384", 0x10),
+            ("SHA3512", 0x11),
+        ];
+        for (name, expected) in sha3_hashing {
+            match lookup_enum_code_for_tag(name, "HashingAlgorithm") {
+                Some((code, _)) => {
+                    if code != expected {
+                        failures.push(format!(
+                            "{name} (HashingAlgorithm tag): code={code:#06X}, expected {expected:#06X}"
+                        ));
+                    }
+                }
+                None => failures.push(format!("{name} NOT in tag override for HashingAlgorithm")),
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "Enum lookup failures:\n{}",
+            failures.join("\n")
+        );
     }
 }

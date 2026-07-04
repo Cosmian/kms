@@ -65,6 +65,7 @@ categories['Symmetric'] = []
 categories['Asymmetric'] = []
 categories['PQC'] = []
 categories['KMIP Operations'] = []
+categories['KMIP Version Matrix'] = []
 categories['Serialization'] = []
 categories['K8s Plugin'] = []
 categories['Access Control'] = []
@@ -89,6 +90,8 @@ for v in main_vectors:
                 categories['PQC'].append(v)
             else:
                 categories['Asymmetric'].append(v)
+        elif parts[1] == 'kmip_versions':
+            categories['KMIP Version Matrix'].append(v)
         elif parts[1] == 'kmip_operations':
             if 'keyset' in basename and not basename.startswith('rekey'):
                 categories['Keyset Resolution'].append(v)
@@ -136,6 +139,9 @@ def display_path(v):
         'serialization',
     ):
         return os.path.basename(path)
+    if parts[0] == 'fips' and parts[1] == 'kmip_versions':
+        # e.g. fips/kmip_versions/v1_0/check → v1_0/check
+        return '/'.join(parts[2:])
     if parts[0] == 'access_control':
         return os.path.basename(path)
     return path
