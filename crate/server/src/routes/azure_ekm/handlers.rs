@@ -181,7 +181,9 @@ async fn get_and_validate_kek_algorithm(
             }
             Ok(kek_algorithm)
         }
-        (CryptographicAlgorithm::RSA, WrapAlgorithm::RsaOaep256) => Ok(kek_algorithm),
+        (CryptographicAlgorithm::RSA, WrapAlgorithm::RsaOaep256 | WrapAlgorithm::RsaOaep) => {
+            Ok(kek_algorithm)
+        }
         (CryptographicAlgorithm::AES, _) => Err(AzureEkmErrorReply::unsupported_algorithm(
             &format!("{request_alg:?}"),
             "AES",
@@ -225,7 +227,7 @@ pub(crate) async fn wrap_key_handler(
                 )));
             }
         }
-        WrapAlgorithm::RsaOaep256 => {
+        WrapAlgorithm::RsaOaep256 | WrapAlgorithm::RsaOaep => {
             // We only check for reasonable bounds here
             if dek_bytes.len() > 512 {
                 return Err(AzureEkmErrorReply::invalid_request(format!(
@@ -253,12 +255,17 @@ pub(crate) async fn wrap_key_handler(
             .await?
         }
         CryptographicAlgorithm::RSA => {
-            // RSA-OAEP-256 wrap using KMIP Encrypt operation
+            // RSA-OAEP wrap using KMIP Encrypt operation
+            let hashing_algorithm = match request.alg {
+                WrapAlgorithm::RsaOaep => HashingAlgorithm::SHA1,
+                _ => HashingAlgorithm::SHA256,
+            };
             wrap_with_rsa(
                 kms,
                 key_name,
                 user,
                 dek_bytes,
+                hashing_algorithm,
                 request.request_context.correlation_id,
             )
             .await?
@@ -315,7 +322,7 @@ async fn wrap_with_aes(
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
         WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap,
-        WrapAlgorithm::RsaOaep256 => {
+        WrapAlgorithm::RsaOaep256 | WrapAlgorithm::RsaOaep => {
             return Err(AzureEkmErrorReply::invalid_request(
                 "Invalid AES wrap algorithm",
             ));
@@ -336,11 +343,14 @@ async fn wrap_with_aes(
 }
 
 /// Wrap DEK with RSA public key using KMIP Encrypt (OAEP padding)
+///
+/// `hashing_algorithm` selects the OAEP hash: `SHA256` for `RSA-OAEP-256`, `SHA1` for `RSA-OAEP`.
 async fn wrap_with_rsa(
     kms: &KMS,
     key_name: &str,
     user: &str,
     dek_bytes: Zeroizing<Vec<u8>>,
+    hashing_algorithm: HashingAlgorithm,
     correlation_id: String,
 ) -> Result<Vec<u8>, AzureEkmErrorReply> {
     kmip_encrypt_dek(
@@ -351,7 +361,7 @@ async fn wrap_with_rsa(
         CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::OAEP),
-            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            hashing_algorithm: Some(hashing_algorithm),
             ..Default::default()
         },
         correlation_id,
@@ -393,11 +403,16 @@ pub(crate) async fn unwrap_key_handler(
             .await?
         }
         CryptographicAlgorithm::RSA => {
+            let hashing_algorithm = match request.alg {
+                WrapAlgorithm::RsaOaep => HashingAlgorithm::SHA1,
+                _ => HashingAlgorithm::SHA256,
+            };
             unwrap_with_rsa(
                 kms,
                 key_name,
                 user,
                 wrapped_dek_bytes,
+                hashing_algorithm,
                 request.request_context.correlation_id,
             )
             .await?
@@ -450,7 +465,7 @@ async fn unwrap_with_aes(
     let block_cipher_mode = match alg {
         WrapAlgorithm::A256KWP => BlockCipherMode::AESKeyWrapPadding,
         WrapAlgorithm::A256KW => BlockCipherMode::NISTKeyWrap,
-        WrapAlgorithm::RsaOaep256 => {
+        WrapAlgorithm::RsaOaep256 | WrapAlgorithm::RsaOaep => {
             return Err(AzureEkmErrorReply::invalid_request(
                 "Invalid AES wrap algorithm",
             ));
@@ -471,11 +486,14 @@ async fn unwrap_with_aes(
 }
 
 /// Unwrap DEK with RSA private key using KMIP Decrypt (OAEP padding)
+///
+/// `hashing_algorithm` selects the OAEP hash: `SHA256` for `RSA-OAEP-256`, `SHA1` for `RSA-OAEP`.
 async fn unwrap_with_rsa(
     kms: &KMS,
     key_name: &str,
     user: &str,
     wrapped_dek_bytes: Vec<u8>,
+    hashing_algorithm: HashingAlgorithm,
     correlation_id: String,
 ) -> Result<Zeroizing<Vec<u8>>, AzureEkmErrorReply> {
     kmip_decrypt_dek(
@@ -486,7 +504,7 @@ async fn unwrap_with_rsa(
         CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::OAEP),
-            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            hashing_algorithm: Some(hashing_algorithm),
             ..Default::default()
         },
         correlation_id,
