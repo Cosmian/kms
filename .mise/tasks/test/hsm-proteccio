@@ -20,7 +20,14 @@ print_header "Running Proteccio HSM tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
-# Note: tests are gated behind --features proteccio (mod tests is #[cfg(feature = "proteccio")])
+# 1. Run the non-ignored guard test — panics at runtime if --features proteccio
+#    wasn't passed, causing the CI job to fail instead of silently reporting 0 tests.
+cargo test \
+  -p proteccio_pkcs11_loader \
+  --features proteccio \
+  -- proteccio_tests_guard
+
+# 2. Run the ignored HSM tests.
 cargo test \
   -p proteccio_pkcs11_loader \
   --features proteccio \

@@ -20,7 +20,14 @@ print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
-# Note: tests are gated behind --features crypt2pay (mod tests is #[cfg(feature = "crypt2pay")])
+# 1. Run the non-ignored guard test — panics at runtime if --features crypt2pay
+#    wasn't passed, causing the CI job to fail instead of silently reporting 0 tests.
+cargo test \
+  -p crypt2pay_pkcs11_loader \
+  --features crypt2pay \
+  -- crypt2pay_tests_guard
+
+# 2. Run the ignored HSM tests.
 cargo test \
   -p crypt2pay_pkcs11_loader \
   --features crypt2pay \

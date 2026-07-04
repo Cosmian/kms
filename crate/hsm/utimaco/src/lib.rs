@@ -5,7 +5,6 @@ use cosmian_kms_base_hsm::hsm_capabilities::{HsmCapabilities, HsmProvider};
 pub const UTIMACO_PKCS11_LIB: &str = "/lib/libcs_pkcs11_R3.so";
 
 #[cfg(test)]
-#[cfg(feature = "utimaco")]
 mod tests;
 
 pub struct UtimacoCapabilityProvider;

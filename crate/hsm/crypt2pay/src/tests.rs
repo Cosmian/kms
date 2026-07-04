@@ -17,6 +17,20 @@ use crate::{CRYPT2PAY_PKCS11_LIB, Crypt2payCapabilityProvider};
 
 const SLOT_ID: usize = 0x01; // Crypt2pay default slot
 
+/// Guard: ensure the `crypt2pay` feature is enabled when these tests are run.
+///
+/// This test is NOT `#[ignore]` — it always runs. If the feature gate is missing
+/// (e.g. `cargo test` without `--features crypt2pay`), it panics immediately so
+/// the CI job fails instead of silently reporting 0 tests.
+#[test]
+fn crypt2pay_tests_guard() {
+    assert!(
+        cfg!(feature = "crypt2pay"),
+        "the `crypt2pay` feature must be enabled to run Crypt2Pay HSM tests\n\
+         (hint: cargo test --features crypt2pay)"
+    );
+}
+
 fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
     Ok(shared::HsmTestConfig {

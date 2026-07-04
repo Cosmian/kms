@@ -17,6 +17,20 @@ use crate::{PROTECCIO_PKCS11_LIB, ProteccioCapabilityProvider};
 
 const SLOT_ID: usize = 0x01; // Proteccio default slot
 
+/// Guard: ensure the `proteccio` feature is enabled when these tests are run.
+///
+/// This test is NOT `#[ignore]` — it always runs. If the feature gate is missing
+/// (e.g. `cargo test` without `--features proteccio`), it panics immediately so
+/// the CI job fails instead of silently reporting 0 tests.
+#[test]
+fn proteccio_tests_guard() {
+    assert!(
+        cfg!(feature = "proteccio"),
+        "the `proteccio` feature must be enabled to run Proteccio HSM tests\n\
+         (hint: cargo test --features proteccio)"
+    );
+}
+
 fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id().unwrap_or(SLOT_ID);

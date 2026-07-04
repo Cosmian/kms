@@ -29,7 +29,16 @@ REPO_ROOT="$(get_repo_root)"
 # Prepare Utimaco simulator (extracted by reusable_scripts/prepare_utimaco.sh)
 require_cmd cargo
 
-# Note: tests are gated behind --features utimaco (mod tests is #[cfg(feature = "utimaco")])
+require_cmd cargo
+
+# 1. Run the non-ignored guard test — panics at runtime if --features utimaco
+#    wasn't passed, causing the CI job to fail instead of silently reporting 0 tests.
+cargo test \
+  -p utimaco_pkcs11_loader \
+  --features utimaco \
+  -- utimaco_tests_guard
+
+# 2. Run the ignored HSM tests.
 cargo test \
   -p utimaco_pkcs11_loader \
   --features utimaco \

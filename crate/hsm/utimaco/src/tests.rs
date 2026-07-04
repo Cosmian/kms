@@ -16,6 +16,20 @@ use crate::{UTIMACO_PKCS11_LIB, UtimacoCapabilityProvider};
 
 const SLOT_ID: usize = 0x00; // Utimaco default slot
 
+/// Guard: ensure the `utimaco` feature is enabled when these tests are run.
+///
+/// This test is NOT `#[ignore]` — it always runs. If the feature gate is missing
+/// (e.g. `cargo test` without `--features utimaco`), it panics immediately so
+/// the CI job fails instead of silently reporting 0 tests.
+#[test]
+fn utimaco_tests_guard() {
+    assert!(
+        cfg!(feature = "utimaco"),
+        "the `utimaco` feature must be enabled to run Utimaco HSM tests\n\
+         (hint: cargo test --features utimaco)"
+    );
+}
+
 fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id().unwrap_or(SLOT_ID);
