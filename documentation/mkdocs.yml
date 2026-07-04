@@ -27,8 +27,7 @@ markdown_extensions:
       # make exceptions to highlighting of code:
       custom_fences:
         - name: mermaid
-          class:
-            mermaid
+          class: mermaid
             # Uncomment the following line to check Mermaid figures
             # format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
@@ -83,8 +82,8 @@ nav:
       - Other HSMs: hsm_support/other_hsms.md
   - Integrations:
       - API Endpoints: integrations/api.md
-      - JOSE / REST Crypto:
-          - REST Native Crypto API: integrations/jose/rest_crypto_api.md
+      - JOSE (JWS, JWE, JWKS):
+          - JOSE API: integrations/jose/jose_api.md
           - JWE Key Unwrap: integrations/jose/jwe_decryption.md
           - JWKS Endpoint: integrations/jose/jwks_endpoint.md
       - Cloud providers:

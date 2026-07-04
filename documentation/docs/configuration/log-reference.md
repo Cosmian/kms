@@ -62,7 +62,7 @@ Crate path: `crate/server`
 | `warn` | `{:?} {} 401 unauthorized: bad JWT` | `src/middlewares/jwt/jwt_token_auth.rs` | - | - |
 | `warn` | `{error:?}` | `src/middlewares/jwt/jwt_token_auth.rs` | `error`: error detail | - |
 | `warn` | `{status_code} - {message}` | `src/routes/mod.rs` | `status_code`: HTTP status code<br>`message`: human-readable message text | - |
-| `warn` | `{status} - {}` | `src/routes/crypto/error.rs` | `status`: HTTP response status | - |
+| `warn` | `{status} - {}` | `src/routes/jose/error.rs` | `status`: HTTP response status | - |
 | `info` | `AUTHENTICATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
 | `info` | `AUTHORIZATION token headers: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
 | `info` | `AUTHORIZATION token: {:?}` | `src/routes/google_cse/jwt.rs` | - | - |
@@ -142,7 +142,7 @@ Crate path: `crate/server`
 | `debug` | `Access revoke for {}` | `src/routes/access.rs` | - | - |
 | `debug` | `Activate: object {} current state = {:?}` | `src/core/operations/activate.rs` | - | - |
 | `debug` | `Add Attribute: {}` | `src/core/operations/attributes/add.rs` | - | - |
-| `debug` | `AES-GCM decryption failed (expected for implicit rejection): {e}` | `src/routes/crypto/aes_gcm.rs` | `e`: caught error | - |
+| `debug` | `AES-GCM decryption failed (expected for implicit rejection): {e}` | `src/routes/jose/aes_gcm.rs` | `e`: caught error | - |
 | `debug` | `after getting CRL: url: {url}` | `src/core/operations/validate.rs` | `url`: URL | - |
 | `debug` | `algorithm: {ca:?}, ciphertext length: {}` | `src/core/operations/encrypt.rs` | `ca`: cryptographic algorithm | - |
 | `debug` | `allocation_size: {allocation_size}` | `src/routes/google_cse/operations.rs` | `allocation_size`: allocated buffer size | ×2 in this file |
@@ -232,8 +232,8 @@ Crate path: `crate/server`
 | `debug` | `retrieving RSA private key from KMS` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Revocation status: result: {res:?}` | `src/core/operations/validate.rs` | `res`: result (debug display) | - |
 | `debug` | `RSA key pair generation: size in bits: {key_size_in_bits}` | `src/core/operations/create_key_pair.rs` | `key_size_in_bits`: RSA key size in bits | - |
-| `debug` | `RSA-OAEP encrypt: wrapped CEK ({} bytes) with {} ({} bit key)` | `src/routes/crypto/encrypt.rs` | - | - |
-| `debug` | `RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection` | `src/routes/crypto/decrypt.rs` | - | - |
+| `debug` | `RSA-OAEP encrypt: wrapped CEK ({} bytes) with {} ({} bit key)` | `src/routes/jose/encrypt.rs` | - | - |
+| `debug` | `RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection` | `src/routes/jose/decrypt.rs` | - | - |
 | `debug` | `Set Attribute: {}` | `src/core/operations/attributes/set.rs` | - | - |
 | `debug` | `Set Object Attribute: {}` | `src/core/operations/attributes/add.rs` | - | - |
 | `debug` | `Set Object Attribute: {}` | `src/core/operations/attributes/set.rs` | - | - |
@@ -312,7 +312,7 @@ Crate path: `crate/server`
 | `trace` | `cryptographic_algorithm: {cryptographic_algorithm}` | `src/core/operations/create_key_pair.rs` | `cryptographic_algorithm` — … | — |
 | `trace` | `curve: {curve}` | `src/core/operations/create_key_pair.rs` | `curve` — … | — |
 | `trace` | `Decrypt: uid={:?}, data_len={}` | `src/core/operations/decrypt.rs` | — | — |
-| `trace` | `DELETE /v1/crypto/keys/{kid}` | `src/routes/crypto/keys.rs` | `kid` — … | — |
+| `trace` | `DELETE /v1/crypto/keys/{kid}` | `src/routes/jose/keys.rs` | `kid` — … | — |
 | `trace` | `Description: {:?}` | `src/core/operations/attributes/add.rs` | — | — |
 | `trace` | `Discover versions: {}` | `src/core/operations/discover_versions.rs` | — | — |
 | `trace` | `ECB encrypt result: ciphertext_len={}` | `src/core/operations/encrypt.rs` | — | — |
@@ -386,13 +386,13 @@ Crate path: `crate/server`
 | `trace` | `PKCS12 parsed successfully` | `src/core/operations/import.rs` | — | — |
 | `trace` | `plaintext length: {} bytes` | `src/core/operations/decrypt.rs` | — | — |
 | `trace` | `plaintext_len={}, nonce_len={}, aad_len={}, padding_method={padding_method:?}` | `src/core/operations/encrypt.rs` | `padding_method` — … | — |
-| `trace` | `POST /v1/crypto/decrypt` | `src/routes/crypto/decrypt.rs` | — | — |
-| `trace` | `POST /v1/crypto/encrypt kid={} alg={}` | `src/routes/crypto/encrypt.rs` | — | — |
-| `trace` | `POST /v1/crypto/keys kty={}` | `src/routes/crypto/keys.rs` | — | — |
-| `trace` | `POST /v1/crypto/keys/unwrap` | `src/routes/crypto/unwrap.rs` | — | — |
-| `trace` | `POST /v1/crypto/mac kid={}` | `src/routes/crypto/mac.rs` | — | — |
-| `trace` | `POST /v1/crypto/sign kid={}` | `src/routes/crypto/sign.rs` | — | — |
-| `trace` | `POST /v1/crypto/verify` | `src/routes/crypto/verify.rs` | — | — |
+| `trace` | `POST /v1/crypto/decrypt` | `src/routes/jose/decrypt.rs` | — | — |
+| `trace` | `POST /v1/crypto/encrypt kid={} alg={}` | `src/routes/jose/encrypt.rs` | — | — |
+| `trace` | `POST /v1/crypto/keys kty={}` | `src/routes/jose/keys.rs` | — | — |
+| `trace` | `POST /v1/crypto/keys/unwrap` | `src/routes/jose/unwrap.rs` | — | — |
+| `trace` | `POST /v1/crypto/mac kid={}` | `src/routes/jose/mac.rs` | — | — |
+| `trace` | `POST /v1/crypto/sign kid={}` | `src/routes/jose/sign.rs` | — | — |
+| `trace` | `POST /v1/crypto/verify` | `src/routes/jose/verify.rs` | — | — |
 | `trace` | `POST /{key_name}/{key_id}/Decrypt {encrypted_data:?}` | `src/routes/ms_dke/mod.rs` | `key_name` — …<br>`key_id` — …<br>`encrypted_data` — … | — |
 | `trace` | `post_process_private_key: operation type: {operation_type:?}` | `src/core/operations/export_get.rs` | `operation_type` — … | — |
 | `trace` | `Private key attributes after lifecycle update: {}` | `src/core/operations/create_key_pair.rs` | — | — |
@@ -613,10 +613,10 @@ Crate path: `crate/server`
 | `warn` | `Key uid={uid} found by Locate but missing on retrieve — skipping` | `src/routes/jwks.rs` | `uid` | - |
 | `warn` | `Skipping key uid={uid} from JWKS (conversion failed): {e}` | `src/routes/jwks.rs` | `uid`, `e` | - |
 | `info` | `GET /.well-known/jwks.json` | `src/routes/jwks.rs` | - | - |
-| `trace` | `DELETE /v1/crypto/keys/{kid}/tags` | `src/routes/crypto/tags.rs` | `kid` | - |
-| `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/crypto/tags.rs` | `kid` | - |
+| `trace` | `DELETE /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
+| `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
-| `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/crypto/tags.rs` | `kid` | - |
+| `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 
 ### `cosmian_kms_server_database`
 

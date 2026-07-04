@@ -270,17 +270,17 @@ pub(crate) async fn test_app(
     app = app.service(google_cse_scope);
 
     let crypto_scope = web::scope("/v1/crypto")
-        .service(routes::crypto::encrypt_handler)
-        .service(routes::crypto::decrypt_handler)
-        .service(routes::crypto::sign_handler)
-        .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler)
-        .service(routes::crypto::create_key_handler)
-        .service(routes::crypto::delete_key_handler)
-        .service(routes::crypto::unwrap_key_handler)
-        .service(routes::crypto::add_tags_handler)
-        .service(routes::crypto::remove_tags_handler)
-        .service(routes::crypto::list_tags_handler);
+        .service(routes::jose::encrypt_handler)
+        .service(routes::jose::decrypt_handler)
+        .service(routes::jose::sign_handler)
+        .service(routes::jose::verify_handler)
+        .service(routes::jose::mac_handler)
+        .service(routes::jose::create_key_handler)
+        .service(routes::jose::delete_key_handler)
+        .service(routes::jose::unwrap_key_handler)
+        .service(routes::jose::add_tags_handler)
+        .service(routes::jose::remove_tags_handler)
+        .service(routes::jose::list_tags_handler);
     app = app.service(crypto_scope);
 
     test::init_service(app).await
@@ -346,17 +346,17 @@ pub(crate) async fn test_app_with_clap_config(
     app = app.service(google_cse_scope);
 
     let crypto_scope = web::scope("/v1/crypto")
-        .service(routes::crypto::encrypt_handler)
-        .service(routes::crypto::decrypt_handler)
-        .service(routes::crypto::sign_handler)
-        .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler)
-        .service(routes::crypto::create_key_handler)
-        .service(routes::crypto::delete_key_handler)
-        .service(routes::crypto::unwrap_key_handler)
-        .service(routes::crypto::add_tags_handler)
-        .service(routes::crypto::remove_tags_handler)
-        .service(routes::crypto::list_tags_handler);
+        .service(routes::jose::encrypt_handler)
+        .service(routes::jose::decrypt_handler)
+        .service(routes::jose::sign_handler)
+        .service(routes::jose::verify_handler)
+        .service(routes::jose::mac_handler)
+        .service(routes::jose::create_key_handler)
+        .service(routes::jose::delete_key_handler)
+        .service(routes::jose::unwrap_key_handler)
+        .service(routes::jose::add_tags_handler)
+        .service(routes::jose::remove_tags_handler)
+        .service(routes::jose::list_tags_handler);
     app = app.service(crypto_scope);
 
     test::init_service(app).await

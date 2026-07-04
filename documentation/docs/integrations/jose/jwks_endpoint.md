@@ -3,7 +3,7 @@
 The KMS exposes a standard [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517)
 JWKS endpoint at:
 
-```
+```text
 GET /.well-known/jwks.json
 ```
 
@@ -162,5 +162,5 @@ Existing keys are not affected when you change this setting.
 
 ## See also
 
-- [REST Native Crypto API](rest_crypto_api.md) — full endpoint reference
+- [JOSE API](jose_api.md) — full endpoint reference
 - [JWE Decryption](jwe_decryption.md) — using the KMS as a JWE decryption oracle
