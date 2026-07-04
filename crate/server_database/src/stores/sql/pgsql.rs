@@ -9,6 +9,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore,
 };
+use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
 use openssl::ssl::{SslConnector, SslFiletype, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
@@ -116,7 +117,8 @@ async fn pg_get_client_for_tx(
 
 /// Retry an operation on transient connection errors (e.g. during failover).
 /// Each attempt gets a fresh connection from the pool so multi-host URLs can resolve
-/// to the new primary.
+/// to the new primary. With `RecyclingMethod::Verified` the pool itself discards
+/// dead connections during `pool.get()`, so every retry receives a live connection.
 macro_rules! pg_retry {
     ($pool:expr, | $client:ident | $body:expr) => {{
         let mut last_err: Option<InterfaceError> = None;
@@ -130,6 +132,12 @@ macro_rules! pg_retry {
                             if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES
                             {
                                 let delay_ms = pg_retry_backoff_ms(attempt);
+                                tracing::warn!(
+                                    attempt,
+                                    delay_ms,
+                                    error = %e,
+                                    "PostgreSQL retryable error — retrying"
+                                );
                                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms))
                                     .await;
                                 last_err = Some(e);
@@ -143,6 +151,12 @@ macro_rules! pg_retry {
                     let msg = e.to_string();
                     if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
                         let delay_ms = pg_retry_backoff_ms(attempt);
+                        tracing::warn!(
+                            attempt,
+                            delay_ms,
+                            error = %msg,
+                            "PostgreSQL pool error — retrying"
+                        );
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         last_err = Some(InterfaceError::from(DbError::from(e)));
                         continue;
@@ -160,6 +174,8 @@ macro_rules! pg_retry {
 /// Retry a transactional operation on transient errors.
 /// Gets a fresh connection and starts a new transaction on each retry.
 /// Uses `pg_get_client_for_tx` for connection acquisition with backoff.
+/// With `RecyclingMethod::Verified` the pool discards dead connections at
+/// `pool.get()` time, guaranteeing a live connection for every retry.
 macro_rules! pg_retry_tx {
     ($pool:expr, | $tx:ident | $body:expr) => {{
         for attempt in 0..PG_MAX_RETRIES {
@@ -177,6 +193,12 @@ macro_rules! pg_retry_tx {
                 Err(e) => {
                     if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
                         let delay_ms = pg_retry_backoff_ms(attempt);
+                        tracing::warn!(
+                            attempt,
+                            delay_ms,
+                            error = %e,
+                            "PostgreSQL BEGIN failed — retrying"
+                        );
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
@@ -190,6 +212,12 @@ macro_rules! pg_retry_tx {
                         let msg = e.to_string();
                         if is_pg_retryable_error(&msg) && attempt + 1 < PG_MAX_RETRIES {
                             let delay_ms = pg_retry_backoff_ms(attempt);
+                            tracing::warn!(
+                                attempt,
+                                delay_ms,
+                                error = %msg,
+                                "PostgreSQL COMMIT failed — retrying"
+                            );
                             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                             continue;
                         }
@@ -199,6 +227,12 @@ macro_rules! pg_retry_tx {
                 Err(e) => {
                     if is_pg_retryable_error(&e.to_string()) && attempt + 1 < PG_MAX_RETRIES {
                         let delay_ms = pg_retry_backoff_ms(attempt);
+                        tracing::warn!(
+                            attempt,
+                            delay_ms,
+                            error = %e,
+                            "PostgreSQL transaction body failed — retrying"
+                        );
                         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                         continue;
                     }
@@ -243,7 +277,15 @@ impl PgPool {
         let mut cfg = PgConfig::new();
         cfg.url = Some(clean_url_str);
         cfg.manager = Some(ManagerConfig {
-            recycling_method: RecyclingMethod::Fast,
+            // Verified runs `simple_query("")` on every recycled connection.
+            // This fails immediately at the OS level (ECONNRESET) for any dead
+            // connection, even in the race window where `is_closed()` still
+            // returns `false`. Without this, a dropped dead connection is pushed
+            // back to the idle pool without any check, and the next `pool.get()`
+            // re-validates only via `is_closed()`—which races against the
+            // tokio-postgres background task that sets the flag. Verified
+            // eliminates that race and ensures failover to a live host.
+            recycling_method: RecyclingMethod::Verified,
         });
 
         // Pool sizing defaults: conservative pool tuned to CPU.
