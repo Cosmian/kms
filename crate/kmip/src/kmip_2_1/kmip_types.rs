@@ -1368,6 +1368,14 @@ pub enum Tag {
     CommonProtectionStorageMasks = 0x42_0163,
     PrivateProtectionStorageMasks = 0x42_0164,
     PublicProtectionStorageMasks = 0x42_0165,
+    CertificateAttributes = 0x42_0166,
+    RotateAutomatic = 0x42_0167,
+    RotateDate = 0x42_0168,
+    RotateGeneration = 0x42_0169,
+    RotateInterval = 0x42_016A,
+    RotateLatest = 0x42_016B,
+    RotateName = 0x42_016C,
+    RotateOffset = 0x42_016D,
     // Extensions 540000 – 54FFFF
 }
 

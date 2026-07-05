@@ -1,11 +1,20 @@
 use std::io::Write;
 
-use crate::ttlv::{TTLV, TTLValue, TtlvType, error::TtlvError, wire::kmip_tag::KmipTag};
+use crate::ttlv::{
+    TTLV, TTLValue, TtlvType, enum_lookup::lookup_enum_code, error::TtlvError,
+    wire::kmip_tag::KmipTag,
+};
 
-/// Write a tag as a 3-byte big-endian integer
+/// Write a tag as a 3-byte big-endian integer.
+/// Falls back to the forward enum-lookup table when the tag name does not
+/// exactly match a [`KmipTag`] variant (e.g. PascalCase serde renames like
+/// `CertificateSubjectCn` vs `CertificateSubjectCN`).
 fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
-    let tag =
-        TAG::from_str(tag_str).map_err(|_e| TtlvError::from(format!("Unknown tag: {tag_str}")))?;
+    let tag = TAG::from_str(tag_str).or_else(|_| {
+        lookup_enum_code(tag_str)
+            .and_then(|(code, _)| TAG::from_u32(code).ok())
+            .ok_or_else(|| TtlvError::from(format!("Unknown tag: {tag_str}")))
+    })?;
     let tag_value: u32 = tag.to_u32();
     let tag_bytes = tag_value.to_be_bytes();
     // Write only the lowest 3 bytes in big-endian

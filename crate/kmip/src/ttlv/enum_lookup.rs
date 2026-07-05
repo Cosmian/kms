@@ -127,6 +127,7 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         k21::EncodingOption,
         k21_ops::PKCS11Function,
         k21_ops::PKCS11ReturnCode,
+        k21::Tag,
     );
 
     #[cfg(feature = "interop")]
@@ -251,6 +252,28 @@ static FORWARD_TABLE: LazyLock<HashMap<&'static str, (u32, &'static str)>> = Laz
         ("PKCS1v1_5", "PKCS1v15"),
         // CertificateType
         ("X_509", "X509"),
+        // CertificateAttributes fields: PascalCase serde renames produce
+        // lowercase second letter for two-letter abbreviations (e.g. "Cn"),
+        // but the Tag enum uses all-caps ("CN"). Add aliases so the
+        // binary TTLV serializer's write_tag fallback can resolve them.
+        ("CertificateSubjectCn", "CertificateSubjectCN"),
+        ("CertificateSubjectOu", "CertificateSubjectOU"),
+        ("CertificateSubjectSt", "CertificateSubjectST"),
+        ("CertificateSubjectDc", "CertificateSubjectDC"),
+        ("CertificateSubjectUid", "CertificateSubjectUID"),
+        (
+            "CertificateSubjectDnQualifier",
+            "CertificateSubjectDNQualifier",
+        ),
+        ("CertificateIssuerCn", "CertificateIssuerCN"),
+        ("CertificateIssuerOu", "CertificateIssuerOU"),
+        ("CertificateIssuerSt", "CertificateIssuerST"),
+        ("CertificateIssuerDc", "CertificateIssuerDC"),
+        ("CertificateIssuerUid", "CertificateIssuerUID"),
+        (
+            "CertificateIssuerDnQualifier",
+            "CertificateIssuerDNQualifier",
+        ),
     ];
     for &(alias, canonical) in aliases {
         if let Some(&entry) = map.get(canonical) {
