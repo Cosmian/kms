@@ -141,6 +141,7 @@ nav:
       - Configuration examples: configuration/configurations.md
       - Command line arguments: configuration/server_cli.md
       - Databases: configuration/database.md
+      - Object &amp; Unwrapped Caches: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
       - Authorizing users with access rights: configuration/authorization.md
