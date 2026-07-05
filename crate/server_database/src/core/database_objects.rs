@@ -273,28 +273,27 @@ impl Database {
     ///   If the object is found and passes the filters, it is returned wrapped in `Some`.
     ///   If the object is not found or does not pass the filters, `None` is returned.
     pub async fn retrieve_object(&self, uid: &str) -> DbResult<Option<ObjectWithMetadata>> {
-        Box::pin(async move {
-            // Fast path: check the in-memory cache first (no DB round-trip, no recording).
-            // The cache returns Arc<ObjectWithMetadata> — unwrap_or_clone avoids a deep
-            // copy when the caller is the sole holder (common on the encrypt hot-path
-            // where the cache entry is read-only).
-            if let Some(owm) = self.object_cache.get(uid).await {
-                return Ok(Some(std::sync::Arc::unwrap_or_clone(owm)));
-            }
-            // Cache miss: fetch from the backing store and record the operation.
-            let result: Option<ObjectWithMetadata> = self
-                .record("retrieve", async move {
-                    let db = self.get_object_store(uid).await?;
-                    db.retrieve(uid).await.map_err(DbError::from)
-                })
+        // Fast path: check the in-memory cache first (no DB round-trip, no recording).
+        // The cache returns Arc<ObjectWithMetadata> — unwrap_or_clone avoids a deep
+        // copy when the caller is the sole holder (common on the encrypt hot-path
+        // where the cache entry is read-only).
+        if let Some(owm) = self.object_cache.get(uid).await {
+            return Ok(Some(std::sync::Arc::unwrap_or_clone(owm)));
+        }
+        // Cache miss: fetch from the backing store and record the operation.
+        let result: Option<ObjectWithMetadata> = self
+            .record("retrieve", async move {
+                let db = self.get_object_store(uid).await?;
+                db.retrieve(uid).await.map_err(DbError::from)
+            })
+            .await?;
+        // Populate cache on successful retrieval.
+        if let Some(ref owm) = result {
+            self.object_cache
+                .insert(uid.to_owned(), owm.clone())
                 .await?;
-            // Populate cache on successful retrieval.
-            if let Some(ref owm) = result {
-                self.object_cache.insert(uid.to_owned(), owm.clone()).await;
-            }
-            Ok(result)
-        })
-        .await
+        }
+        Ok(result)
     }
 
     /// Retrieve a cached object as `Arc<ObjectWithMetadata>` without deep-cloning.
@@ -310,31 +309,28 @@ impl Database {
         &self,
         uid: &str,
     ) -> DbResult<Option<Arc<ObjectWithMetadata>>> {
-        Box::pin(async move {
-            // Fast path: cache hit — zero-copy Arc clone.
-            if let Some(owm) = self.object_cache.get(uid).await {
-                return Ok(Some(owm));
+        // Fast path: cache hit — zero-copy Arc clone.
+        if let Some(owm) = self.object_cache.get(uid).await {
+            return Ok(Some(owm));
+        }
+        // Cache miss: fetch from the backing store and record the operation.
+        let result: Option<ObjectWithMetadata> = self
+            .record("retrieve", async move {
+                let db = self.get_object_store(uid).await?;
+                db.retrieve(uid).await.map_err(DbError::from)
+            })
+            .await?;
+        // Populate cache on successful retrieval and return the Arc.
+        match result {
+            Some(owm) => {
+                let arc = std::sync::Arc::new(owm);
+                self.object_cache
+                    .insert_arc(uid.to_owned(), Arc::clone(&arc))
+                    .await?;
+                Ok(Some(arc))
             }
-            // Cache miss: fetch from the backing store and record the operation.
-            let result: Option<ObjectWithMetadata> = self
-                .record("retrieve", async move {
-                    let db = self.get_object_store(uid).await?;
-                    db.retrieve(uid).await.map_err(DbError::from)
-                })
-                .await?;
-            // Populate cache on successful retrieval and return the Arc.
-            match result {
-                Some(owm) => {
-                    let arc = std::sync::Arc::new(owm);
-                    self.object_cache
-                        .insert_arc(uid.to_owned(), Arc::clone(&arc))
-                        .await;
-                    Ok(Some(arc))
-                }
-                None => Ok(None),
-            }
-        })
-        .await
+            None => Ok(None),
+        }
     }
 
     /// Retrieve the tags of the object with the given `uid`

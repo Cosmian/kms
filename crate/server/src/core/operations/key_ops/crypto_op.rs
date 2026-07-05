@@ -425,7 +425,7 @@ impl KMS {
         if is_wrapped || has_usage_limits {
             // Clone before unwrap: preserve the wrapped key for DB persistence.
             let mut unwrapped_owm = owm.clone();
-            self.unwrap_and_enforce_policy(&mut unwrapped_owm, Op::OP_NAME, user)
+            Box::pin(self.unwrap_and_enforce_policy(&mut unwrapped_owm, Op::OP_NAME, user))
                 .await
                 .with_context(|| {
                     format!(
@@ -445,7 +445,7 @@ impl KMS {
             Ok(res)
         } else {
             // Non-wrapped key without usage limits: enforce policy and execute directly.
-            self.unwrap_and_enforce_policy(&mut owm, Op::OP_NAME, user)
+            Box::pin(self.unwrap_and_enforce_policy(&mut owm, Op::OP_NAME, user))
                 .await
                 .with_context(|| {
                     format!(
@@ -559,7 +559,7 @@ impl KMS {
     ) -> KResult<()> {
         use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
         if !matches!(owm.object(), Object::Certificate { .. }) && owm.object().is_wrapped() {
-            owm.set_object(self.get_unwrapped(owm.id(), owm.object(), user).await?);
+            owm.set_object(Box::pin(self.get_unwrapped(owm.id(), owm.object(), user)).await?);
         }
         crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key(
             &self.params,

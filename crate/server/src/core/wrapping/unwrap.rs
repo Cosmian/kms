@@ -68,7 +68,13 @@ pub(crate) async fn unwrap_object(object: &mut Object, kms: &KMS, user: &str) ->
             "...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user: \
              {user}"
         );
-        unwrap_using_kms(object_key_block, kms, user, &unwrapping_key_uid).await?;
+        Box::pin(unwrap_using_kms(
+            object_key_block,
+            kms,
+            user,
+            &unwrapping_key_uid,
+        ))
+        .await?;
     }
     debug!(
         "Key successfully unwrapped with wrapping key: {}",

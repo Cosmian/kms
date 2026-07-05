@@ -18,6 +18,7 @@ use crate::error::DbResult;
 
 mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
+pub(crate) mod fingerprinter;
 mod object_cache;
 mod unwrapped_cache;
 
@@ -237,7 +238,7 @@ impl Database {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
             unwrapped_cache: UnwrappedCache::new(cache_max_age, cache_max_size),
-            object_cache: ObjectCache::new(cache_max_age),
+            object_cache: ObjectCache::new(cache_max_age, cache_max_size),
             kind,
             health,
             recorder: None,

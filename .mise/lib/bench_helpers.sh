@@ -180,6 +180,97 @@ bench_register_cleanup() {
   trap '_bench_cleanup' EXIT
 }
 
+# Start a KMS server backed by a SoftHSM2 token with a key_encryption_key.
+#
+# Sets up a fresh SoftHSM2 token, writes a kms.toml with the HSM instance and
+# key_encryption_key pointing at the new token, starts the server, then creates
+# the KEK via ckms so the server is immediately usable.
+#
+# Prerequisites:
+#   - softhsm2.sh must already be sourced by the caller.
+#   - bench_build_binaries (or bench_build_ckms) must have run, so KMS_BIN and
+#     CKMS_BIN are set.
+#
+# Usage: bench_start_server_hsm <port> <tmp_dir> [http_workers]
+# Sets:  KMS_PID, HSM_KEK_UID
+bench_start_server_hsm() {
+  local port="$1" tmp_dir="$2" http_workers="${3:-}"
+  local sqlite_path="${tmp_dir}/kms-data"
+  local kms_conf="${tmp_dir}/kms.toml"
+  local kms_log="${tmp_dir}/kms.log"
+
+  require_cmd softhsm2-util \
+    "SoftHSM2 (softhsm2-util) is required for HSM benchmarks. Install: brew install softhsm (macOS) or apt install softhsm2 (Linux)"
+
+  # Initialize a fresh single-token SoftHSM2 environment.
+  softhsm2_setup "${tmp_dir}/softhsm2/tokens" "${tmp_dir}/softhsm2/softhsm2.conf"
+  local init_out
+  init_out=$(softhsm2_init_token "bench_kek" "${HSM_USER_PASSWORD}" "${HSM_USER_PASSWORD}" 2>&1 | tee /dev/stderr)
+  SOFTHSM2_HSM_SLOT_ID=$(softhsm2_get_slot_id "$init_out" "bench_kek")
+  export SOFTHSM2_HSM_SLOT_ID
+
+  HSM_KEK_UID="hsm::${SOFTHSM2_HSM_SLOT_ID}::bench_kek"
+  export HSM_KEK_UID
+
+  mkdir -p "$sqlite_path"
+
+  # Write kms.toml with HSM + key_encryption_key.
+  # The server will not start wrapping until the KEK is created (see below).
+  cat >"${kms_conf}" <<EOF
+key_encryption_key = "${HSM_KEK_UID}"
+
+hsm_model    = "softhsm2"
+hsm_admin    = ["admin"]
+hsm_slot     = [${SOFTHSM2_HSM_SLOT_ID}]
+hsm_password = ["${HSM_USER_PASSWORD}"]
+
+[db]
+database_type = "sqlite"
+sqlite_path   = "${sqlite_path}"
+
+[http]
+hostname = "0.0.0.0"
+port     = ${port}
+EOF
+
+  if [ -n "${http_workers}" ]; then
+    printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
+  fi
+
+  echo "Starting KMS server (HSM-backed) on port ${port}..."
+  local lib_path_var
+  lib_path_var=$(softhsm2_lib_path_var)
+  local lib_path
+  lib_path=$(softhsm2_lib_search_path)
+
+  env \
+    "${lib_path_var}=${lib_path}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    "${KMS_BIN}" --config "${kms_conf}" \
+    >"${kms_log}" 2>&1 &
+  KMS_PID=$!
+  export KMS_PID
+
+  kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "${KMS_PID}" "${kms_log}" 60
+
+  # Create the KEK on the HSM now that the server is running.
+  # The server's kek_bootstrap logic allows creating an object whose UID equals
+  # key_encryption_key even when it does not yet exist.
+  echo "Creating KEK on HSM (UID: ${HSM_KEK_UID})..."
+  env \
+    "${lib_path_var}=${lib_path}" \
+    SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH}" \
+    SOFTHSM2_CONF="${SOFTHSM2_CONF}" \
+    "${CKMS_BIN}" \
+    --url "http://127.0.0.1:${port}" \
+    sym keys create \
+    --algorithm aes \
+    --number-of-bits 256 \
+    "${HSM_KEK_UID}"
+  echo "KEK created: ${HSM_KEK_UID}"
+}
+
 # Write a markdown benchmark report.
 # Usage: bench_write_md <out_path> <kms_port> <criterion_md_path> [page_title]
 bench_write_md() {

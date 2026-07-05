@@ -362,10 +362,11 @@ async fn process_operation(
     let operation_name = get_operation_name(&request_operation);
     trace!("Processing KMIP operation: {operation_name} with user: {user:?}");
 
-    let start_time = std::time::Instant::now();
+    // Only capture start time when metrics are enabled to avoid unconditional syscall overhead.
+    let start_time = kms.metrics.as_ref().map(|_| std::time::Instant::now());
 
     // Process the operation and capture the result
-    let result: Result<Operation, KmsError> = async {
+    let result: Result<Operation, KmsError> = Box::pin(async {
         Ok(match request_operation {
         // New operations currently unsupported server-side: return explicit not supported errors
     Operation::PKCS11Response(_) // response variants unsupported as requests
@@ -463,7 +464,8 @@ async fn process_operation(
             ),
             Operation::Encrypt(kmip_request) => {
                 Operation::EncryptResponse(
-                    crate::core::operations::encrypt(kms, *kmip_request, user).await?,
+                    Box::pin(crate::core::operations::encrypt(kms, *kmip_request, user))
+                        .await?,
                 )
             }
             Operation::Export(kmip_request) => {
@@ -568,12 +570,12 @@ async fn process_operation(
                 ));
             }
         })
-    }
+    })
     .await;
 
     // Record metrics if enabled
-    if let Some(ref metrics) = kms.metrics {
-        let duration = start_time.elapsed().as_secs_f64();
+    if let (Some(metrics), Some(start)) = (kms.metrics.as_ref(), start_time) {
+        let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(operation_name, user);
         metrics.record_kmip_operation_duration(operation_name, duration);
 

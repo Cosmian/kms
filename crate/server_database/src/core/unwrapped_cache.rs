@@ -1,27 +1,10 @@
-use std::{
-    collections::HashMap,
-    hash::{BuildHasher, RandomState},
-    num::NonZeroUsize,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{num::NonZeroUsize, time::Duration};
 
-use cosmian_kmip::{
-    KmipError,
-    kmip_2_1::kmip_objects::Object,
-    ttlv::{KmipFlavor, to_ttlv},
-};
-use cosmian_logger::{debug, trace, warn};
-use lru::LruCache;
-#[cfg(test)]
-use tokio::sync::RwLockReadGuard;
-use tokio::sync::{
-    RwLock,
-    mpsc::{self, Receiver, Sender},
-    oneshot,
-};
+use cosmian_kmip::kmip_2_1::kmip_objects::Object;
+use cosmian_logger::trace;
+use moka::future::Cache;
 
-use crate::{DbError, error::DbResult};
+use crate::{DbError, core::fingerprinter::Fingerprinter, error::DbResult};
 
 /// Type of the data kept in the cache. It contains the unwrapped object and the
 /// fingerprint of the wrapped object it originates from. The fingerprint has two
@@ -32,18 +15,21 @@ use crate::{DbError, error::DbResult};
 ///
 /// 2. it prevents cache corruption from tricking the server into using an
 ///    incorrect unwrapped object, hence acting as a defense-in-depth mechanism.
+///
+/// Field order matches [`super::ObjectCache`]'s internal entry: value first,
+/// fingerprint second.
 #[derive(Clone)]
 pub struct CachedObject {
-    fingerprint: u64,
     unwrapped_object: Object,
+    fingerprint: u64,
 }
 
 impl CachedObject {
     #[must_use]
-    pub const fn new(key_signature: u64, unwrapped_object: Object) -> Self {
+    pub const fn new(unwrapped_object: Object, fingerprint: u64) -> Self {
         Self {
-            fingerprint: key_signature,
             unwrapped_object,
+            fingerprint,
         }
     }
 
@@ -60,128 +46,33 @@ impl CachedObject {
 
 /// The cache of unwrapped objects
 pub struct UnwrappedCache {
-    seed: RandomState,
-    cache: Arc<RwLock<LruCache<String, CachedObject>>>,
-    access_timestamps: Arc<RwLock<HashMap<String, Instant>>>,
-    access_sender: Sender<String>,
-    gc_interval: Duration,
-    max_age: Duration,
-    shutdown_sender: Option<oneshot::Sender<()>>,
+    fingerprinter: Fingerprinter,
+    inner: Cache<String, CachedObject>,
 }
 
 impl UnwrappedCache {
     /// Create a new cache with configurable max age and max size settings.
     ///
-    /// `max_age` is the duration after which an entry is considered stale and
-    /// eligible for garbage collection.  `max_size` is the maximum number of
-    /// entries the LRU cache will hold before evicting the least-recently-used
-    /// entry.  Callers should set `max_size` above their active key cardinality
-    /// to avoid LRU thrashing (every access to a cold key evicting a warm one).
-    ///
-    /// The garbage collection interval is set to `max_age × 1.5`.
+    /// `max_age` is the time-to-idle duration after which an entry is evicted.
+    /// `max_size` is the maximum number of entries the LRU cache will hold
+    /// before evicting the least-recently-used entry.
     #[must_use]
+    #[allow(clippy::as_conversions)]
     pub fn new(max_age: Duration, max_size: NonZeroUsize) -> Self {
-        let (tx, rx) = mpsc::channel(100_000);
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        let cache = Arc::new(RwLock::new(LruCache::new(max_size)));
-        let access_timestamps = Arc::new(RwLock::new(HashMap::new()));
-        let gc_interval = max_age + max_age / 2;
-
-        let unwrapped_cache = Self {
-            seed: RandomState::new(),
-            cache,
-            access_timestamps,
-            access_sender: tx,
-            gc_interval,
-            max_age,
-            shutdown_sender: Some(shutdown_tx),
-        };
-
-        unwrapped_cache.spawn_gc_thread(rx, shutdown_rx);
-        unwrapped_cache
-    }
-
-    /// Spawns a thread to handle garbage collection.
-    fn spawn_gc_thread(&self, mut rx: Receiver<String>, mut shutdown_rx: oneshot::Receiver<()>) {
-        let timestamps = self.access_timestamps.clone();
-        let cache = self.cache.clone();
-        let interval = self.gc_interval;
-        let max_age = self.max_age;
-
-        tokio::spawn(async move {
-            let mut interval_timer = tokio::time::interval(interval);
-
-            loop {
-                tokio::select! {
-                    // Check for shutdown signal
-                    shutdown = &mut shutdown_rx => {
-                        if shutdown.is_ok() {
-                            debug!("Cache garbage collection thread shutting down");
-                            break;
-                        }
-                    }
-
-                    // Process access timestamp updates
-                    Some(key) = rx.recv() => {
-                        let mut timestamps_lock = timestamps.write().await;
-                        timestamps_lock.insert(key, Instant::now());
-                    }
-
-                    // Run garbage collection at the configured interval
-                    _ = interval_timer.tick() => {
-                        debug!("Running cache garbage collection");
-                        let now = Instant::now();
-                        let mut keys_to_remove = Vec::new();
-
-                        // Find stale keys
-                        {
-                            let timestamps_lock = timestamps.read().await;
-                            for (key, last_access) in timestamps_lock.iter() {
-                                if now.duration_since(*last_access) > max_age {
-                                    keys_to_remove.push(key.clone());
-                                }
-                            }
-                        }
-
-                        // Remove stale keys
-                        if !keys_to_remove.is_empty() {
-                            let mut timestamps_lock = timestamps.write().await;
-                            let mut cache_lock = cache.write().await;
-
-                            for key in &keys_to_remove {
-                                timestamps_lock.remove(key);
-                                cache_lock.pop(key);
-                            }
-
-                            debug!("Garbage collected {} stale cache entries", keys_to_remove.len());
-                        }
-                    }
-                }
-            }
-
-            debug!("Cache garbage collection thread terminated");
-        });
-    }
-
-    // Record a timestamp for a cache access
-    async fn record_access(&self, uid: &str) -> DbResult<()> {
-        if let Err(e) = self.access_sender.send(uid.to_owned()).await {
-            warn!("Failed to send cache access timestamp: {}", e);
-            return Err(DbError::UnwrappedCache(e.to_string()));
+        Self {
+            fingerprinter: Fingerprinter::new(),
+            inner: Cache::builder()
+                .max_capacity(max_size.get() as u64)
+                .time_to_idle(max_age)
+                .build(),
         }
-        Ok(())
     }
 
     /// Return the fingerprint of this object.
     ///
-    /// Serializes the full `Object` to TTLV bytes and hashes the result.
-    /// This ensures integrity across all object fields, not only the key material.
+    /// Delegates to the shared [`Fingerprinter`].
     fn fingerprint(&self, object: &Object) -> DbResult<u64> {
-        let bytes = to_ttlv(object)
-            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
-            .map_err(KmipError::from)
-            .map_err(DbError::from)?;
-        Ok(self.seed.hash_one(&bytes))
+        self.fingerprinter.fingerprint(object)
     }
 
     /// Validate the cache for a given object.
@@ -189,11 +80,10 @@ impl UnwrappedCache {
     /// If the object fingerprint is different, the cache is invalidated and the
     /// value is removed.
     pub async fn validate_cache(&self, uid: &str, object: &Object) -> DbResult<()> {
-        let mut cache = self.cache.write().await;
-        if let Some(cached_object) = cache.peek(uid) {
+        if let Some(cached_object) = self.inner.get(uid).await {
             if cached_object.fingerprint() != self.fingerprint(object)? {
                 trace!("Invalidating the cache for {}", uid);
-                cache.pop(uid);
+                self.inner.invalidate(uid).await;
             }
         }
         Ok(())
@@ -201,17 +91,14 @@ impl UnwrappedCache {
 
     /// Clear a value from the cache.
     pub async fn clear_cache(&self, uid: &str) {
-        self.cache.write().await.pop(uid);
-        self.access_timestamps.write().await.remove(uid);
+        self.inner.invalidate(uid).await;
     }
 
     /// Returns the unwrapped object cached under the given UID if it exists and
     /// its fingerprint matches the one of the given wrapped object.
     pub async fn peek(&self, uid: &str, wrapped_object: &Object) -> DbResult<Option<Object>> {
-        let cache_read = self.cache.read();
-        match cache_read.await.peek(uid) {
+        match self.inner.get(uid).await {
             Some(cached_object) => {
-                self.record_access(uid).await?;
                 if cached_object.fingerprint() == self.fingerprint(wrapped_object)? {
                     Ok(Some(cached_object.unwrapped_object().clone()))
                 } else {
@@ -239,37 +126,21 @@ impl UnwrappedCache {
             ));
         }
 
-        self.cache.write().await.put(
-            uid.clone(),
-            CachedObject {
-                fingerprint: self.fingerprint(wrapped_object)?,
-                unwrapped_object,
-            },
-        );
-
-        // Use the mpsc channel for timestamp updates instead of acquiring a
-        // second write lock. This eliminates sequential lock contention under
-        // high concurrency.
-        self.record_access(&uid).await?;
-
+        self.inner
+            .insert(
+                uid,
+                CachedObject::new(unwrapped_object, self.fingerprint(wrapped_object)?),
+            )
+            .await;
         Ok(())
     }
 
+    /// Returns `true` if the cache contains an entry for `uid`.
+    ///
+    /// Only used in tests to check cache state without requiring a `wrapped_object`.
     #[cfg(test)]
-    pub async fn get_cache(&self) -> RwLockReadGuard<'_, LruCache<String, CachedObject>> {
-        self.cache.read().await
-    }
-}
-
-impl Drop for UnwrappedCache {
-    fn drop(&mut self) {
-        // Send shutdown signal to the GC thread when the cache is dropped
-        if let Some(shutdown_tx) = self.shutdown_sender.take() {
-            // We can't do much if sending fails, just ignore the error
-            // This would happen if the receiver was already dropped
-            let _ = shutdown_tx.send(());
-            debug!("Sent shutdown signal to cache garbage collection thread");
-        }
+    pub async fn contains(&self, uid: &str) -> bool {
+        self.inner.get(uid).await.is_some()
     }
 }
 
@@ -364,11 +235,8 @@ mod tests {
             Some(obj) => assert_eq!(obj.id(), &uid),
             None => assert!(false, "expected object to be present"),
         }
-        {
-            let cache = database.unwrapped_cache.get_cache();
-            // the unwrapped version should not be in the cache
-            assert!(cache.await.peek(&uid).is_none());
-        };
+        // Non-wrapped keys must NOT be placed in the unwrapped cache.
+        assert!(!database.unwrapped_cache.contains(&uid).await);
 
         Ok(())
     }

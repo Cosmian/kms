@@ -20,7 +20,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
 };
-use cosmian_logger::{debug, error, info, trace, warn};
+use cosmian_logger::{debug, error, trace, warn};
 use time::OffsetDateTime;
 use tracing::Instrument;
 
@@ -155,7 +155,7 @@ pub(crate) async fn kmip_2_1_json(
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
-    info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
+    debug!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 
@@ -184,7 +184,7 @@ async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) 
                 return Ok(error_response_ttlv(major, minor, &e.to_string()));
             }
         };
-        let span = tracing::span!(tracing::Level::ERROR, "message");
+        let span = tracing::span!(tracing::Level::TRACE, "message");
         let resp = Box::pin(message(kms, req, user))
             .instrument(span)
             .await
@@ -198,7 +198,7 @@ async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) 
         });
         Ok(ttlv)
     } else {
-        let operation = Box::pin(dispatch(kms, ttlv, user)).await?;
+        let operation = dispatch(kms, ttlv, user).await?;
         Ok(to_ttlv(&operation)?)
     }
 }
@@ -231,7 +231,7 @@ pub(crate) async fn kmip_json(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let json = Box::pin(kmip_json_inner(req_http, body, kms))
+    let json = kmip_json_inner(req_http, body, kms)
         .await
         .unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to process request: {}", e);
@@ -262,7 +262,7 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     // Check the KMIP version
     let (major, minor) = get_kmip_version(&ttlv)?;
 
-    info!(
+    debug!(
         target: "kmip",
         user=user,
         tag=ttlv.tag.as_str(),
@@ -271,7 +271,7 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
 
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
         let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
-        Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
+        handle_ttlv(&kms, ttlv, &user, major, minor)
             .instrument(span)
             .await
     } else {
@@ -306,7 +306,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
         return vec![];
     };
     let span = tracing::info_span!("kmip_binary", user = user);
-    Box::pin(handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms))
+    handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms)
         .instrument(span)
         .await
         .unwrap_or_else(|e| {
@@ -353,7 +353,7 @@ async fn handle_ttlv_bytes_inner(
     // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
     let tag = ttlv.tag.clone();
-    info!(
+    debug!(
         target: "kmip",
         user=user,
         tag=tag,
@@ -380,7 +380,7 @@ async fn handle_ttlv_bytes_inner(
         "Request Message: {request_message}"
     );
 
-    let mut response_message = Box::pin(message(kms, request_message, user)).await?;
+    let mut response_message = message(kms, request_message, user).await?;
 
     // Perform 1.1 and 1.2 Response Tweaks to ensure compatibility
     perform_response_tweaks(&mut response_message, major, minor);

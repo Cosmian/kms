@@ -473,13 +473,13 @@ async fn post_process_active_private_key(
 ) -> KResult<()> {
     trace!("key_format_type: {key_format_type:?}",);
     // First perform any necessary unwrapping to the expected type
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
         ObjectType::PrivateKey,
-    )
+    ))
     .await?;
 
     let owm_attributes = object_with_metadata.attributes().clone();
@@ -498,13 +498,12 @@ async fn post_process_active_private_key(
         }
         // A re-wrapping specification is present (e.g. CSE key): unwrap the
         // current wrapping (KEK) first so the key can be re-wrapped below.
-        let unwrapped = kms
-            .get_unwrapped(
-                object_with_metadata.id(),
-                object_with_metadata.object(),
-                user,
-            )
-            .await?;
+        let unwrapped = Box::pin(kms.get_unwrapped(
+            object_with_metadata.id(),
+            object_with_metadata.object(),
+            user,
+        ))
+        .await?;
         object_with_metadata.set_object(unwrapped);
     }
 
@@ -595,26 +594,26 @@ async fn post_process_active_private_key(
                 kms_bail!("export: incompatible key format request for TransparentDSAPrivateKey")
             }
             // Wrap the existing object in-place
-            unwrap_if_requested(
+            Box::pin(unwrap_if_requested(
                 object_with_metadata,
                 key_wrap_type,
                 kms,
                 user,
                 ObjectType::PrivateKey,
-            )
+            ))
             .await?; // ensure unwrapped first
             let mut cloned = object_with_metadata.object().clone();
             wrap_object(&mut cloned, kws, kms, user).await?;
             *object_with_metadata.object_mut() = cloned;
         } else {
             // Just ensure unwrapped if requested (normal path); no format conversion applied
-            unwrap_if_requested(
+            Box::pin(unwrap_if_requested(
                 object_with_metadata,
                 key_wrap_type,
                 kms,
                 user,
                 ObjectType::PrivateKey,
-            )
+            ))
             .await?;
         }
         return Ok(());
@@ -785,13 +784,13 @@ async fn process_public_key(
     user: &str,
 ) -> KResult<()> {
     // perform any necessary unwrapping
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
         ObjectType::PublicKey,
-    )
+    ))
     .await?;
 
     // make a copy of the existing attributes
@@ -969,13 +968,12 @@ async fn unwrap_if_requested(
     debug!("Key wrap type: {:?}", key_wrap_type);
     if let Some(key_wrap_type) = key_wrap_type {
         if key_wrap_type == KeyWrapType::NotWrapped {
-            let mut object = kms
-                .get_unwrapped(
-                    object_with_metadata.id(),
-                    object_with_metadata.object(),
-                    user,
-                )
-                .await?;
+            let mut object = Box::pin(kms.get_unwrapped(
+                object_with_metadata.id(),
+                object_with_metadata.object(),
+                user,
+            ))
+            .await?;
             // If we have lost attributes on the unwrapped object, we need to restore them
             if let Ok(key_block) = object.key_block_mut() {
                 if let Some(KeyValue::Structure { attributes, .. }) = key_block.key_value.as_mut() {
@@ -1113,13 +1111,13 @@ async fn process_symmetric_key(
         object_with_metadata.id(), key_format_type, key_wrap_type);
 
     // First check is any unwrapping needs to be done
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
         ObjectType::SymmetricKey,
-    )
+    ))
     .await?;
 
     // Capture id early to avoid borrow checker conflicts in trace statements
@@ -1146,13 +1144,12 @@ async fn process_symmetric_key(
                 // Try to unwrap the stored wrapped key so callers requesting Raw actually get the
                 // underlying key bytes. This mirrors the behavior expected when the key must be
                 // unwrapped to be used as a KEK to wrap another key.
-                let mut unwrapped = kms
-                    .get_unwrapped(
-                        object_with_metadata.id(),
-                        object_with_metadata.object(),
-                        user,
-                    )
-                    .await?;
+                let mut unwrapped = Box::pin(kms.get_unwrapped(
+                    object_with_metadata.id(),
+                    object_with_metadata.object(),
+                    user,
+                ))
+                .await?;
 
                 // If the unwrapped object lost attributes in the KeyValue::Structure, restore
                 // them from the object metadata so downstream attribute accessors succeed.
@@ -1397,7 +1394,7 @@ async fn post_process_pkcs7(
         ))
         .await?;
         let private_key_object = if private_key_owm.object().is_wrapped() {
-            kms.get_unwrapped(private_key_owm.id(), private_key_owm.object(), user)
+            Box::pin(kms.get_unwrapped(private_key_owm.id(), private_key_owm.object(), user))
                 .await
                 .context("export pkcs7: unable to unwrap the private key")?
         } else {
@@ -1462,13 +1459,13 @@ async fn process_secret_data(
     );
 
     // First check is any unwrapping needs to be done
-    unwrap_if_requested(
+    Box::pin(unwrap_if_requested(
         object_with_metadata,
         key_wrap_type,
         kms,
         user,
         ObjectType::SecretData,
-    )
+    ))
     .await?;
 
     let object = object_with_metadata.object_mut();

@@ -1173,18 +1173,25 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     ))
     .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
 
-    // Apply worker count if configured; otherwise actix-web defaults to num_cpus.
-    let server = if let Some(n) = http_workers {
-        if n == 0 {
-            return Err(KmsError::InvalidRequest(
-                "http_workers must be greater than 0; actix-web panics on 0 workers".to_owned(),
-            ));
-        }
-        info!("KMS HTTP server configured with {n} worker thread(s)");
-        server.workers(n)
-    } else {
-        server
-    };
+    // Apply worker count if configured; otherwise default to available_parallelism
+    // (total logical cores). HTTP workers are I/O-bound (connection handling), so
+    // using total core count (including efficiency cores on hybrid architectures)
+    // is appropriate here, unlike CPU-bound thread pools (tokio, SQLite) which
+    // use P-core count.
+    let http_workers = http_workers.unwrap_or_else(|| {
+        let total = std::thread::available_parallelism()
+            .map(usize::from)
+            .unwrap_or(1);
+        info!("http_workers not configured; defaulting to total core count ({total})");
+        total
+    });
+    if http_workers == 0 {
+        return Err(KmsError::InvalidRequest(
+            "http_workers must be greater than 0; actix-web panics on 0 workers".to_owned(),
+        ));
+    }
+    info!("KMS HTTP server configured with {http_workers} worker thread(s)");
+    let server = server.workers(http_workers);
 
     // The KMIP XML vector test harness keeps a single HTTP connection open across
     // many serialized requests with potentially long gaps (several seconds) while

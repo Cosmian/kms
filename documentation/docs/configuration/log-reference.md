@@ -490,9 +490,6 @@ Crate path: `crate/server`
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
 | `warn` | `User-supplied keyUsage in extension config overrides the RFC-mandated PQC keyUsage              extension (RFC 9881/9909/9935)` | `src/core/operations/certify/build_certificate.rs` | — | — |
-| `info` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
-| `info` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
-| `info` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `debug` | `...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption              oracle, user: {user}` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid`, `user` | — |
 | `debug` | `...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user:              {user}` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid`, `user` | — |
 | `debug` | `...wrapping the key block with key uid: {wrapping_key_uid} using an encryption              oracle, user: {user}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`, `user` | — |
@@ -588,7 +585,6 @@ Crate path: `crate/server`
 | `trace` | `` PKCS#11 `C_UnwrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `ReKeyKeyPair: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/keypair/mod.rs` | - | - |
-| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
 | `warn` | `find_wrapped_by({old_uid}) failed — skipping re-wrap of dependants: {e}` | `src/core/operations/rekey/common.rs` | `old_uid`, `e` | - |
 | `warn` | `[auto-rotate] Failed to query keys due for rotation: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
 | `warn` | `[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}` | `src/core/operations/auto_rotate.rs` | `new_uid`, `e` | - |
@@ -616,6 +612,11 @@ Crate path: `crate/server`
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip.rs` | `e` | - |
+| `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
+| `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
+| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -624,17 +625,11 @@ Crate path: `crate/server_database`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `warn` | `Failed to send cache access timestamp: {}` | `src/core/unwrapped_cache.rs` | - | - |
-| `debug` | `Cache garbage collection thread shutting down` | `src/core/unwrapped_cache.rs` | - | - |
-| `debug` | `Cache garbage collection thread terminated` | `src/core/unwrapped_cache.rs` | - | - |
 | `debug` | `Empty Redis database detected. Initializing a new database instance.` | `src/stores/redis/redis_with_findex.rs` | - | - |
 | `debug` | `Existing Redis database detected (version {version}). Using current database.` | `src/stores/redis/redis_with_findex.rs` | `version`: version | - |
-| `debug` | `Garbage collected {} stale cache entries` | `src/core/unwrapped_cache.rs` | - | - |
 | `debug` | `Listed {} rows` | `src/stores/sql/mysql.rs` | - | ×2 in this file |
 | `debug` | `Owner = {}` | `src/stores/sql/mysql.rs` | - | - |
 | `debug` | `PG find query: {}` | `src/stores/sql/pgsql.rs` | - | - |
-| `debug` | `Running cache garbage collection` | `src/core/unwrapped_cache.rs` | - | - |
-| `debug` | `Sent shutdown signal to cache garbage collection thread` | `src/core/unwrapped_cache.rs` | - | - |
 | `debug` | `Uid = {}` | `src/stores/sql/mysql.rs` | - | - |
 | `trace` | `Created in DB: {uid} / {owner}` | `src/stores/sql/mysql.rs` | `uid` — …<br>`owner` — … | — |
 | `trace` | `Deleted in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | — |

@@ -189,7 +189,6 @@ log = { version = "0.4", default-features = false }
 lru = "0.16"
 moka = { version = "0.12", default-features = false, features = ["future"] }
 native-tls = { version = "0.2", default-features = false }
-num_cpus = "1.16"
 num-format = "0.4"
 itertools = "0.10"
 num-bigint = { version = "0.4", default-features = false }
