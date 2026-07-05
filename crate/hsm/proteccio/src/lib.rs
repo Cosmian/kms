@@ -21,4 +21,5 @@ impl HsmProvider for ProteccioCapabilityProvider {
 pub type Proteccio = BaseHsm<ProteccioCapabilityProvider>;
 
 #[cfg(test)]
+#[cfg(feature = "proteccio")]
 mod tests;

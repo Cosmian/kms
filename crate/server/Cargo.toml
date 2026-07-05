@@ -83,7 +83,6 @@ governor = { version = "0.10", features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 jsonwebtoken = { workspace = true }
-mimalloc = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",

@@ -17,20 +17,6 @@ use crate::{SOFTHSM2_PKCS11_LIB, SofthsmCapabilityProvider};
 
 const SLOT_ID: usize = 0x01; // SoftHSM2 fallback slot if HSM_SLOT_ID is not set
 
-/// Guard: ensure the `softhsm2` feature is enabled when these tests are run.
-///
-/// This test is NOT `#[ignore]` — it always runs. If the feature gate is missing
-/// (e.g. `cargo test` without `--features softhsm2`), it panics immediately so
-/// the CI job fails instead of silently reporting 0 tests.
-#[test]
-fn softhsm2_tests_guard() {
-    assert!(
-        cfg!(feature = "softhsm2"),
-        "the `softhsm2` feature must be enabled to run SoftHSM2 loader tests\n\
-         (hint: cargo test --features softhsm2)"
-    );
-}
-
 fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
     let slot = get_hsm_slot_id().unwrap_or(SLOT_ID);

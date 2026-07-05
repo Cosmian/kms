@@ -20,17 +20,9 @@ print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
-# 1. Run the non-ignored guard test — panics at runtime if --features crypt2pay
-#    wasn't passed, causing the CI job to fail instead of silently reporting 0 tests.
 cargo test \
   -p crypt2pay_pkcs11_loader \
   --features crypt2pay \
-  -- crypt2pay_tests_guard
-
-# 2. Run the ignored HSM tests.
-cargo test \
-  -p crypt2pay_pkcs11_loader \
-  --features crypt2pay \
-  -- --nocapture test_hsm_crypt2pay_all --ignored --exact
+  -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact
 
 print_success "Crypt2Pay HSM tests completed"

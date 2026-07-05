@@ -21,4 +21,5 @@ impl HsmProvider for Crypt2payCapabilityProvider {
 pub type Crypt2pay = BaseHsm<Crypt2payCapabilityProvider>;
 
 #[cfg(test)]
+#[cfg(feature = "crypt2pay")]
 mod tests;

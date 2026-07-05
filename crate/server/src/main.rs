@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
 use cosmian_kms_server::{
     config::{ClapConfig, OpenTelemetryConfig, ServerParams, wizard::run_configure_wizard},
     core::KMS,

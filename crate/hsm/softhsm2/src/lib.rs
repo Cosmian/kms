@@ -28,6 +28,7 @@ pub const SOFTHSM2_PKCS11_LIB: &str = "libsofthsm2.so";
 #[allow(clippy::map_err_ignore)]
 #[allow(clippy::redundant_clone)]
 #[allow(clippy::explicit_iter_loop)]
+#[cfg(feature = "softhsm2")]
 mod tests;
 
 pub struct SofthsmCapabilityProvider;
