@@ -791,7 +791,7 @@ const LocateForm: React.FC = () => {
                                 columns={
                                     [
                                         {
-                                            title: "Object UID",
+                                            title: "UID",
                                             dataIndex: "object_id",
                                             key: "object_id",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) => a.object_id.localeCompare(b.object_id),
@@ -812,7 +812,7 @@ const LocateForm: React.FC = () => {
                                             render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
                                         },
                                         {
-                                            title: "Crypto Algorithm",
+                                            title: "Algorithm",
                                             key: "cryptographic_algorithm",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 ((a.meta?.cryptographic_algorithm as string | undefined) ?? "").localeCompare(
@@ -822,7 +822,7 @@ const LocateForm: React.FC = () => {
                                                 (record.meta?.cryptographic_algorithm as string | undefined) || "N/A",
                                         },
                                         {
-                                            title: "Crypto Length",
+                                            title: "Length",
                                             key: "cryptographic_length",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 ((a.meta?.cryptographic_length as number | undefined) ?? 0) -
@@ -833,7 +833,7 @@ const LocateForm: React.FC = () => {
                                             },
                                         },
                                         {
-                                            title: "Key Format Type",
+                                            title: "Format",
                                             key: "key_format_type",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.meta?.key_format_type ?? "").localeCompare(b.meta?.key_format_type ?? ""),
@@ -877,12 +877,7 @@ const LocateForm: React.FC = () => {
                                                     const initialDate = row.meta?.["initial_date"] as number | undefined;
                                                     const activationDate = row.meta?.["activation_date"] as number | undefined;
                                                     const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
-                                                    return (
-                                                        rotateDate ??
-                                                        initialDate ??
-                                                        (activationDate != null ? activationDate * 1000 : undefined) ??
-                                                        originalCreationDate
-                                                    );
+                                                    return rotateDate ?? initialDate ?? activationDate ?? originalCreationDate;
                                                 };
                                                 const da = getDate(a) ?? 0;
                                                 const db = getDate(b) ?? 0;
@@ -894,11 +889,7 @@ const LocateForm: React.FC = () => {
                                                 const initialDate = row.meta?.["initial_date"] as number | undefined;
                                                 const activationDate = row.meta?.["activation_date"] as number | undefined;
                                                 const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
-                                                const dateValue =
-                                                    rotateDate ??
-                                                    initialDate ??
-                                                    (activationDate != null ? activationDate * 1000 : undefined) ??
-                                                    originalCreationDate;
+                                                const dateValue = rotateDate ?? initialDate ?? activationDate ?? originalCreationDate;
                                                 if (!dateValue) {
                                                     if (/^hsm[0-9]*::/.test(row.object_id)) {
                                                         return (
