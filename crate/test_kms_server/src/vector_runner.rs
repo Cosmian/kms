@@ -4658,4 +4658,90 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/kmip_operations/recertify_old_cert_stays_active")
             .await
     }
+
+    // ── Auto-discovered KMIP version-matrix vectors ─────────────────────────
+
+    /// Walks `test_data/vectors/fips/kmip_versions/` and runs every vector
+    /// directory that contains a `manifest.toml`.
+    ///
+    /// This avoids manually registering hundreds of version × operation
+    /// combinations. Failures report the vector directory name so you can
+    /// re-run a single vector via:
+    /// ```
+    /// cargo test -p test_kms_server --lib -- kmip_version_matrix
+    /// ```
+    #[tokio::test]
+    async fn test_kmip_version_matrix() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+
+        let root = super::repo_root()?;
+        let base = root.join("test_data/vectors/fips/kmip_versions");
+        if !base.exists() {
+            eprintln!("Skipping kmip_version_matrix: {base:?} not found");
+            return Ok(());
+        }
+
+        let mut vector_dirs: Vec<std::path::PathBuf> = Vec::new();
+        // Walk version subdirectories (v1_0, v1_1, …)
+        let mut versions: Vec<_> = std::fs::read_dir(&base)
+            .map_err(|e| KmsClientError::Default(format!("read_dir {base:?}: {e}")))?
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_ok_and(|ft| ft.is_dir()))
+            .map(|e| e.path())
+            .collect();
+        versions.sort();
+        for ver_dir in versions {
+            let mut ops: Vec<_> = std::fs::read_dir(&ver_dir)
+                .map_err(|e| KmsClientError::Default(format!("read_dir {ver_dir:?}: {e}")))?
+                .filter_map(Result::ok)
+                .filter(|e| e.file_type().is_ok_and(|ft| ft.is_dir()))
+                .map(|e| e.path())
+                .collect();
+            ops.sort();
+            for op_dir in ops {
+                if op_dir.join("manifest.toml").exists() {
+                    vector_dirs.push(op_dir);
+                }
+            }
+        }
+
+        eprintln!(
+            "kmip_version_matrix: discovered {} vectors",
+            vector_dirs.len()
+        );
+
+        let mut failures: Vec<(String, String)> = Vec::new();
+        for dir in &vector_dirs {
+            // run_test_vector expects a path relative to the repo root
+            let rel_path = dir.strip_prefix(&root).unwrap_or(dir);
+            let dir_str = rel_path.to_string_lossy().to_string();
+            eprintln!("Running vector: {dir_str}");
+            match run_test_vector(&dir_str).await {
+                Ok(()) => {}
+                Err(e) => {
+                    eprintln!("FAILED: {dir_str}: {e}");
+                    failures.push((dir_str, e.to_string()));
+                }
+            }
+        }
+
+        if !failures.is_empty() {
+            let report = failures
+                .iter()
+                .map(|(dir, err)| format!("  {dir}\n    {err}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(KmsClientError::Default(format!(
+                "{} of {} vectors failed:\n{report}",
+                failures.len(),
+                vector_dirs.len()
+            )));
+        }
+
+        eprintln!(
+            "kmip_version_matrix: all {} vectors passed",
+            vector_dirs.len()
+        );
+        Ok(())
+    }
 }

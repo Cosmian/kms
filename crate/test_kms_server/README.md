@@ -65,7 +65,7 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**479 vectors** across 15 categories (including KAT):
+**632 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
@@ -134,9 +134,9 @@ replays the steps sequentially.
 | KMIP Operations | `attribute_management` | Tests GetAttributes, SetAttribute, AddAttribute, DeleteAttribute, ModifyAttribute, GetAttributeList | 9 |
 | KMIP Operations | `batch_create_get` | Sends a single JSON RequestMessage with BatchCount=2: first BatchItem creates an AES-256 key, second BatchItem gets it back. Both items must succeed. Exercises the JSON batch endpoint. | 2 |
 | KMIP Operations | `batch_hash_query` | Sends a single binary KMIP RequestMessage with BatchCount=3: Hash(SHA-256), Hash(SHA-384), and Query in one binary request. All three BatchItems must succeed. Exercises the binary batch endpoint with BatchOrderOption=true and stateless independent operations. | 1 |
-| KMIP Operations | `certify_chain` | Creates a 3-level X.509 chain: | 18 |
-| KMIP Operations | `certify_revoke_validate` | Creates a self-signed certificate, validates it (valid), revokes it, then re-validates (invalid) | 8 |
-| KMIP Operations | `certify_validate` | Creates an EC key pair, self-signs a certificate, validates it, then cleans up | 6 |
+| KMIP Operations | `certify_chain` | Creates a 3-level X.509 chain: | 22 |
+| KMIP Operations | `certify_revoke_validate` | Creates a self-signed certificate, validates it (valid), revokes it, then re-validates (invalid) | 10 |
+| KMIP Operations | `certify_validate` | Creates an EC key pair, self-signs a certificate, validates it, then cleans up | 8 |
 | KMIP Operations | `check` | Creates a key, checks its usage mask, activates it, checks again | 4 |
 | KMIP Operations | `crl_validation_lifecycle` | Full CRL validation: create CA+EE cert chain, generate empty CRL (valid), revoke EE cert, regenerate CRL, validate again (invalid due to revocation in CRL) | 16 |
 | KMIP Operations | `derive_key_hkdf` | Creates a base symmetric key, derives a new AES-128 key using HKDF-SHA256 | 3 |
@@ -165,11 +165,11 @@ replays the steps sequentially.
 | KMIP Operations | `process_window_encrypt_expired_fails` | Creates an Active symmetric key, then sets its ProtectStopDate to a date in the past via SetAttribute.  An Encrypt attempt must be rejected with Wrong_Key_Lifecycle_State even though the key state is still Active. | 5 |
 | KMIP Operations | `process_window_encrypt_not_yet_active_fails` | Creates an Active symmetric key, then sets its ProcessStartDate to a date far in the future via SetAttribute.  An Encrypt attempt must be rejected with Wrong_Key_Lifecycle_State even though the key state is still Active. | 5 |
 | KMIP Operations | `query` | Queries server information, supported operations, and supported object types | 1 |
-| KMIP Operations | `recertify_chain` | Creates a root CA (self-signed) and a leaf certificate signed by the root, then performs ReCertify on the leaf certificate. Verifies the new leaf cert has proper replacement links and Active state. | 16 |
-| KMIP Operations | `recertify_old_cert_stays_active` | After ReCertify, the old certificate transitions to Deactivated state per KMIP §4.57 transition 6 (same path as ReKey). The new certificate is Active. | 11 |
-| KMIP Operations | `recertify_self_signed` | Creates a self-signed certificate, performs ReCertify to rotate it, and verifies the new certificate has a fresh UID and Active state. | 10 |
-| KMIP Operations | `recertify_with_links` | Verifies that ReCertify properly sets ReplacementObjectLink on the old certificate and ReplacedObjectLink on the new certificate, forming a bidirectional chain. Also verifies that the new certificate is in Active state. | 11 |
-| KMIP Operations | `recertify_with_offset` | Verifies that ReCertify with Offset=0 produces an Active certificate, and ReCertify with Offset=86400 (24h future) produces a PreActive certificate. | 19 |
+| KMIP Operations | `recertify_chain` | Creates a root CA (self-signed) and a leaf certificate signed by the root, then performs ReCertify on the leaf certificate. Verifies the new leaf cert has proper replacement links and Active state. | 17 |
+| KMIP Operations | `recertify_old_cert_stays_active` | After ReCertify, the old certificate transitions to Deactivated state per KMIP §4.57 transition 6 (same path as ReKey). The new certificate is Active. | 12 |
+| KMIP Operations | `recertify_self_signed` | Creates a self-signed certificate, performs ReCertify to rotate it, and verifies the new certificate has a fresh UID and Active state. | 11 |
+| KMIP Operations | `recertify_with_links` | Verifies that ReCertify properly sets ReplacementObjectLink on the old certificate and ReplacedObjectLink on the new certificate, forming a bidirectional chain. Also verifies that the new certificate is in Active state. | 12 |
+| KMIP Operations | `recertify_with_offset` | Verifies that ReCertify with Offset=0 produces an Active certificate, and ReCertify with Offset=86400 (24h future) produces a PreActive certificate. | 21 |
 | KMIP Operations | `register_export` | Registers a pre-existing AES key, retrieves it with Get, exports it, then destroys | 5 |
 | KMIP Operations | `rekey` | Creates an AES key, re-keys it, and verifies the new key works for encryption | 5 |
 | KMIP Operations | `rekey_compromised_succeeds` | Verifies that ReKey on a Compromised key succeeds. Per the spec, Active, Deactivated, and Compromised keys can be rotated. Only PreActive and Destroyed states are rejected. | 8 |
@@ -540,10 +540,10 @@ MAC, or derived-key values.
 | Mac | `kat/mac/hmac_sha3_512` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
 | Mac | `kat/mac/hmac_sha512` | RFC 4231 §4.2 | Import, Mac | `MACData` |
 | **Recertify** | |  | | |
-| Recertify | `kat/recertify/replacement_and_replaced_links` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy |  |
-| Recertify | `kat/recertify/rotate_generation_counter` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateGeneration` |
-| Recertify | `kat/recertify/rotate_latest_flag` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateLatest` |
-| Recertify | `kat/recertify/state_transitions` |  | CreateKeyPair, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `State` |
+| Recertify | `kat/recertify/replacement_and_replaced_links` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy |  |
+| Recertify | `kat/recertify/rotate_generation_counter` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateGeneration` |
+| Recertify | `kat/recertify/rotate_latest_flag` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateLatest` |
+| Recertify | `kat/recertify/state_transitions` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `State` |
 | **Rekey** | |  | | |
 | Rekey | `kat/rekey/deactivated_accepts_decrypt` |  | Create, Encrypt, ReKey, Decrypt, Destroy, Revoke, Destroy | `Data` |
 | Rekey | `kat/rekey/deactivated_rejects_encrypt` |  | Create, Encrypt, ReKey, Encrypt, Destroy, Revoke, Destroy |  |
