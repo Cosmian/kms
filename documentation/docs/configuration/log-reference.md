@@ -925,6 +925,7 @@ Crate path: `crate/hsm/base_hsm`
 | `trace` | `Doing round with {round_length} bytes. {processed_length} of {total_length} done` | `src/session/session_impl.rs` | `round_length` — …<br>`processed_length` — …<br>`total_length` — … | ×2 in this file |
 | `trace` | `Found {object_count} objects` | `src/session/session_impl.rs` | `object_count` — … | — |
 | `debug` | `OAEP hash {hash} not supported: {e}` | `src/session/session_impl.rs` | `hash`, `e` | - |
+| `debug` | `RSA key pair generation unavailable for OAEP hash probe: {e}` | `src/session/session_impl.rs` | `e` | - |
 
 ---
 
