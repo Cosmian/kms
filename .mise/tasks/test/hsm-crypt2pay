@@ -25,7 +25,9 @@ require_cmd cargo
 
 # CRYPT2PAY_PKCS11_LIB matches the crate constant in crypt2pay_pkcs11_loader.
 # HSM_USER_PASSWORD is read by the Rust test harness.
+# C2P_CONF must point to c2p.xml so the C2P library can find its hardware config.
 CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
+  C2P_CONF=/etc/c2p/c2p.xml \
   HSM_USER_PASSWORD="${CRYPT2PAY_PASSWORD}" \
   cargo test \
   -p crypt2pay_pkcs11_loader \
