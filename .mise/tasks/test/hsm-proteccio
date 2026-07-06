@@ -18,9 +18,17 @@ ensure_nix_shell
 
 print_header "Running Proteccio HSM tests (${VARIANT_NAME})"
 
+# Prepare Proteccio HSM libraries: downloads, extracts, and installs to /lib/.
+"${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_proteccio.sh"
+
 require_cmd cargo
 
-HSM_USER_PASSWORD="${PROTECCIO_PASSWORD}" HSM_SLOT_ID="${PROTECCIO_SLOT}" cargo test \
+# PROTECCIO_PKCS11_LIB matches the crate constant in proteccio_pkcs11_loader.
+# HSM_USER_PASSWORD and HSM_SLOT_ID are read by the Rust test harness.
+PROTECCIO_PKCS11_LIB=/lib/libnethsm.so \
+  HSM_USER_PASSWORD="${PROTECCIO_PASSWORD}" \
+  HSM_SLOT_ID="${PROTECCIO_SLOT}" \
+  cargo test \
   -p proteccio_pkcs11_loader \
   --features proteccio \
   -- --nocapture tests::test_hsm_proteccio_all --ignored --exact

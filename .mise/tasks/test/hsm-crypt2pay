@@ -18,9 +18,16 @@ ensure_nix_shell
 
 print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
+# Prepare Crypt2Pay HSM libraries: downloads, extracts, and installs to /lib/.
+"${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_crypt2pay.sh"
+
 require_cmd cargo
 
-HSM_USER_PASSWORD="${CRYPTO2PAY_HSM_PASSWORD}" cargo test \
+# CRYPT2PAY_PKCS11_LIB matches the crate constant in crypt2pay_pkcs11_loader.
+# HSM_USER_PASSWORD is read by the Rust test harness.
+CRYPT2PAY_PKCS11_LIB=/lib/libpkcs11c2p.so \
+  HSM_USER_PASSWORD="${CRYPT2PAY_HSM_PASSWORD}" \
+  cargo test \
   -p crypt2pay_pkcs11_loader \
   --features crypt2pay \
   -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact

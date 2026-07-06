@@ -23,12 +23,15 @@ ensure_nix_shell
 
 print_header "Running Utimaco HSM tests (${VARIANT_NAME})"
 
-# shellcheck disable=SC2034  # REPO_ROOT reserved for future path references
-REPO_ROOT="$(get_repo_root)"
+# Prepare Utimaco simulator: extracts the simulator, starts it, configures PINs,
+# and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG.
+"${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_utimaco.sh"
 
-# Prepare Utimaco simulator (extracted by reusable_scripts/prepare_utimaco.sh)
 require_cmd cargo
 
+# UTIMACO_PKCS11_LIB is already exported by prepare_utimaco.sh.
+# The Rust test reads UTIMACO_PKCS11_LIB (falls back to the crate constant
+# /lib/libcs_pkcs11_R3.so) and HSM_USER_PASSWORD.
 HSM_USER_PASSWORD="12345678" cargo test \
   -p utimaco_pkcs11_loader \
   --features utimaco \

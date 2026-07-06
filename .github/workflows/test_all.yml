@@ -153,7 +153,6 @@ jobs:
           EDB_SUBSCRIPTION_TOKEN: ${{ secrets.EDB_SUBSCRIPTION_TOKEN }}
 
           # InterSystems IRIS mTLS integration test
-          IRIS_DOCKER_IMAGE: ${{ vars.IRIS_DOCKER_IMAGE || 'intersystemsdc/iris-community:latest' }}
           IRIS_LICENSE_KEY: ${{ secrets.IRIS_LICENSE_KEY }}
 
           # AWS secret backend variables (secret_aws test type)
