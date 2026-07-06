@@ -20,7 +20,7 @@ print_header "Running Proteccio HSM tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
-cargo test \
+HSM_USER_PASSWORD="${PROTECCIO_PASSWORD}" HSM_SLOT_ID="${PROTECCIO_SLOT}" cargo test \
   -p proteccio_pkcs11_loader \
   --features proteccio \
   -- --nocapture tests::test_hsm_proteccio_all --ignored --exact

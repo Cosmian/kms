@@ -7,7 +7,7 @@ use crate::ttlv::{
 
 /// Write a tag as a 3-byte big-endian integer.
 /// Falls back to the forward enum-lookup table when the tag name does not
-/// exactly match a [`KmipTag`] variant (e.g. PascalCase serde renames like
+/// exactly match a [`KmipTag`] variant (e.g. `PascalCase` serde renames like
 /// `CertificateSubjectCn` vs `CertificateSubjectCN`).
 fn write_tag<W: Write, TAG: KmipTag>(writer: &mut W, tag_str: &str) -> Result<(), TtlvError> {
     let tag = TAG::from_str(tag_str).or_else(|_| {

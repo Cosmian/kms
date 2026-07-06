@@ -20,7 +20,7 @@ print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
 require_cmd cargo
 
-cargo test \
+HSM_USER_PASSWORD="${CRYPTO2PAY_HSM_PASSWORD}" cargo test \
   -p crypt2pay_pkcs11_loader \
   --features crypt2pay \
   -- --nocapture tests::test_hsm_crypt2pay_all --ignored --exact

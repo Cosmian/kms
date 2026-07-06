@@ -29,7 +29,7 @@ REPO_ROOT="$(get_repo_root)"
 # Prepare Utimaco simulator (extracted by reusable_scripts/prepare_utimaco.sh)
 require_cmd cargo
 
-cargo test \
+HSM_USER_PASSWORD="12345678" cargo test \
   -p utimaco_pkcs11_loader \
   --features utimaco \
   -- --nocapture tests::test_hsm_utimaco_all --ignored --exact
