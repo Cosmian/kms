@@ -19,7 +19,7 @@ ensure_nix_shell
 print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
 # Prepare Crypt2Pay HSM libraries: downloads, extracts, and installs to /lib/.
-"${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_crypt2pay.sh"
+bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_crypt2pay.sh"
 
 require_cmd cargo
 

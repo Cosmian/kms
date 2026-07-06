@@ -25,7 +25,7 @@ print_header "Running Utimaco HSM tests (${VARIANT_NAME})"
 
 # Prepare Utimaco simulator: extracts the simulator, starts it, configures PINs,
 # and exports UTIMACO_PKCS11_LIB + CS_PKCS11_R3_CFG.
-"${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_utimaco.sh"
+source "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_utimaco.sh"
 
 require_cmd cargo
 
