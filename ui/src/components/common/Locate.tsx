@@ -1,10 +1,9 @@
-import type { TableColumnsType } from "antd";
-import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Tooltip } from "antd";
+import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, TableColumnsType, Tag, Tooltip } from "antd";
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../contexts/useAuth";
+import HashMapDisplay from "./HashMapDisplay";
 import { AuthMethod, fetchAuthMethod, getNoTTLVRequest, sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
-import HashMapDisplay from "./HashMapDisplay";
 
 const formatUnixDate = (unixMs: number): string => {
     const d = new Date(unixMs);
@@ -89,7 +88,6 @@ const LocateForm: React.FC = () => {
         // If s already a textual state (possibly with hyphen), return as-is
         return s;
     };
-    // Details modal removed; tags are shown inline
     const { idToken, serverUrl } = useAuth();
     const [authMethod, setAuthMethod] = useState<AuthMethod>("None");
     const responseRef = useRef<HTMLDivElement>(null);
@@ -591,15 +589,15 @@ const LocateForm: React.FC = () => {
             const getRespStr = await sendKmipRequest(getReq, idToken, serverUrl);
             if (getRespStr) {
                 const parsed = await wasm.parse_get_attributes_ttlv_response(getRespStr, []);
-                let m: Map<string, unknown>;
                 if (parsed instanceof Map) {
-                    m = new Map(parsed as Map<string, unknown>);
+                    setDetailsData(parsed);
                 } else if (parsed && typeof parsed === "object") {
-                    m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
+                    // Convert record to Map
+                    const m = new Map<string, unknown>(Object.entries(parsed as Record<string, unknown>));
+                    setDetailsData(m);
                 } else {
-                    m = new Map();
+                    setDetailsData(new Map());
                 }
-                setDetailsData(m);
                 setDetailsForId(uid);
                 setDetailsVisible(true);
             }
@@ -788,13 +786,15 @@ const LocateForm: React.FC = () => {
                                     showSizeChanger: true,
                                     pageSizeOptions: [50, 100, 500, 1000],
                                 }}
+                                scroll={{ x: "max-content" }}
                                 className="border rounded"
                                 columns={
                                     [
                                         {
-                                            title: "Object UID",
+                                            title: "UID",
                                             dataIndex: "object_id",
                                             key: "object_id",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) => a.object_id.localeCompare(b.object_id),
                                         },
                                         {
                                             title: "Type",
@@ -812,7 +812,28 @@ const LocateForm: React.FC = () => {
                                             render: (record: LocateObjectRow) => record.attributes?.ObjectType || "N/A",
                                         },
                                         {
-                                            title: "Key Format Type",
+                                            title: "Algorithm",
+                                            key: "cryptographic_algorithm",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                ((a.meta?.cryptographic_algorithm as string | undefined) ?? "").localeCompare(
+                                                    (b.meta?.cryptographic_algorithm as string | undefined) ?? "",
+                                                ),
+                                            render: (record: LocateObjectRow) =>
+                                                (record.meta?.cryptographic_algorithm as string | undefined) || "N/A",
+                                        },
+                                        {
+                                            title: "Length",
+                                            key: "cryptographic_length",
+                                            sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
+                                                ((a.meta?.cryptographic_length as number | undefined) ?? 0) -
+                                                ((b.meta?.cryptographic_length as number | undefined) ?? 0),
+                                            render: (record: LocateObjectRow) => {
+                                                const len = record.meta?.cryptographic_length as number | undefined;
+                                                return len != null ? `${len} bits` : "N/A";
+                                            },
+                                        },
+                                        {
+                                            title: "Format",
                                             key: "key_format_type",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) =>
                                                 (a.meta?.key_format_type ?? "").localeCompare(b.meta?.key_format_type ?? ""),
@@ -851,15 +872,16 @@ const LocateForm: React.FC = () => {
                                             title: "Date",
                                             key: "date",
                                             sorter: (a: LocateObjectRow, b: LocateObjectRow) => {
-                                                const da = (a.meta?.["rotate_date"] ??
-                                                    a.meta?.["initial_date"] ??
-                                                    a.meta?.["activation_date"] ??
-                                                    a.meta?.["original_creation_date"]) as number | undefined;
-                                                const db = (b.meta?.["rotate_date"] ??
-                                                    b.meta?.["initial_date"] ??
-                                                    b.meta?.["activation_date"] ??
-                                                    b.meta?.["original_creation_date"]) as number | undefined;
-                                                return (da ?? 0) - (db ?? 0);
+                                                const getDate = (row: LocateObjectRow) => {
+                                                    const rotateDate = row.meta?.["rotate_date"] as number | undefined;
+                                                    const initialDate = row.meta?.["initial_date"] as number | undefined;
+                                                    const activationDate = row.meta?.["activation_date"] as number | undefined;
+                                                    const originalCreationDate = row.meta?.["original_creation_date"] as number | undefined;
+                                                    return rotateDate ?? initialDate ?? activationDate ?? originalCreationDate;
+                                                };
+                                                const da = getDate(a) ?? 0;
+                                                const db = getDate(b) ?? 0;
+                                                return da - db;
                                             },
                                             defaultSortOrder: "descend" as const,
                                             render: (row: LocateObjectRow) => {
@@ -940,7 +962,6 @@ const LocateForm: React.FC = () => {
             >
                 {detailsData && detailsData.size ? <HashMapDisplay data={detailsData} /> : <div>No attributes found.</div>}
             </Modal>
-            {/* Details modal no longer used after replacing Actions with Tags */}
         </div>
     );
 };

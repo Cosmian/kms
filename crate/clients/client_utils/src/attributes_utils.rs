@@ -374,6 +374,7 @@ pub const LOCATE_ENRICH_ATTRIBUTE_KEYS: &[&str] = &[
 ];
 
 pub fn parse_selected_attributes_flatten(
+    vendor_id: &str,
     attributes: &Attributes,
     selected_attributes: &[&str],
 ) -> Result<HashMap<String, Value>, UtilsError> {
@@ -488,6 +489,15 @@ pub fn parse_selected_attributes_flatten(
                 attributes.object_type.as_ref()
             ),
             "state" => insert_if_some!(results, selected_attribute_name, attributes.state.as_ref()),
+            "tags" | "user_tags" => {
+                let tags = attributes.get_tags(vendor_id);
+                if !tags.is_empty() {
+                    results.insert(
+                        selected_attribute_name.to_owned(),
+                        serde_json::to_value(tags).unwrap_or_default(),
+                    );
+                }
+            }
             "vendor_attributes" => insert_if_some!(
                 results,
                 selected_attribute_name,

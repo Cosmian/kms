@@ -2267,8 +2267,9 @@ pub fn parse_get_attributes_ttlv_response(
         unique_identifier: _,
         attributes,
     } = from_ttlv(ttlv).map_err(|e| JsValue::from(e.to_string()))?;
-    let results = parse_selected_attributes_flatten(&attributes, &selected_attributes)
-        .map_err(|e| JsValue::from(e.to_string()))?;
+    let results =
+        parse_selected_attributes_flatten(&get_vendor_id(), &attributes, &selected_attributes)
+            .map_err(|e| JsValue::from(e.to_string()))?;
     Ok(serde_wasm_bindgen::to_value(&results)?)
 }
 
