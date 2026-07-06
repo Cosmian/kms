@@ -13,9 +13,10 @@ use pkcs11_sys::{
     CK_ATTRIBUTE, CK_BBOOL, CK_C_INITIALIZE_ARGS, CK_FALSE, CK_KEY_TYPE, CK_MECHANISM,
     CK_MECHANISM_PTR, CK_OBJECT_HANDLE, CK_RV, CK_TRUE, CK_ULONG, CK_VOID_PTR, CKA_DECRYPT,
     CKA_ECDSA_PARAMS, CKA_ENCRYPT, CKA_EXTRACTABLE, CKA_KEY_TYPE, CKA_LABEL, CKA_PRIVATE,
-    CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_OS_LOCKING_OK,
-    CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS,
-    CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS, CKM_SHA512_RSA_PKCS, CKR_OK,
+    CKA_SENSITIVE, CKA_SIGN, CKA_TOKEN, CKA_UNWRAP, CKA_VERIFY, CKA_WRAP, CKF_GENERATE_KEY_PAIR,
+    CKF_OS_LOCKING_OK, CKK_EC, CKM_AES_CBC, CKM_EC_KEY_PAIR_GEN, CKM_RSA_PKCS_KEY_PAIR_GEN,
+    CKM_RSA_PKCS_OAEP, CKM_SHA1_RSA_PKCS, CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS, CKR_OK,
 };
 use rand::{TryRng, rngs::SysRng};
 use uuid::Uuid;
@@ -36,6 +37,14 @@ use crate::{
 #[must_use]
 pub fn lib_path(env_var: &str, default_path: &str) -> String {
     std::env::var(env_var).unwrap_or_else(|_| default_path.to_owned())
+}
+
+/// Returns `true` if the slot advertises `CKM_RSA_PKCS_KEY_PAIR_GEN` with the
+/// `CKF_GENERATE_KEY_PAIR` flag, meaning the HSM can actually generate RSA key pairs.
+#[must_use]
+pub fn rsa_key_pair_gen_supported(slot: &Arc<SlotManager>) -> bool {
+    slot.get_mechanism_info(CKM_RSA_PKCS_KEY_PAIR_GEN)
+        .is_ok_and(|info| info.flags & CKF_GENERATE_KEY_PAIR != 0)
 }
 
 /// Per-HSM configuration for shared tests
@@ -226,6 +235,10 @@ pub fn generate_aes_key(slot: &Arc<SlotManager>) -> HResult<()> {
 #[allow(clippy::panic, clippy::expect_used, clippy::unwrap_used)]
 pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     log_init(None);
+    if !rsa_key_pair_gen_supported(slot) {
+        warn!("Slot does not support on-device RSA key pair generation — skipping test");
+        return Ok(());
+    }
     let sk_id = Uuid::new_v4().to_string();
     let pk_id = sk_id.clone() + "_pk";
     let session = slot.open_session(true)?;
