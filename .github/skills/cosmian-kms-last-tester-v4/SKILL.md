@@ -1,425 +1,79 @@
 ---
-name: cosmian-pr-tester-v3
-description: Be the final quality gate for PRs to the Cosmian KMS codebase. Assume all tests pass upstream. Focus on finding behavioral inconsistencies, implicit contract changes, and surprising interactions that only break in production. Build an ACC risk map from the diff, then propose adversarial tours against a live KMS instance to validate assumptions. Simulate the usage of the newly added feature like if you were a real user, not a test generator.
+name: cosmian-kms-last-tester-v4
+description: Acts as the final quality gate for Cosmian KMS PRs. Assumes all automated tests pass upstream. Builds an ACC risk map from git diff, runs adversarial tours against a live KMS instance, and produces a finding report. Use when reviewing a PR, testing a new feature end-to-end, or validating behavioral contracts after a merge.
 ---
 
 # Cosmian KMS — PR Review & Final-Layer Testing Agent
 
-## 0 — Prerequisites: Live KMS Instance
+## 0 — Prerequisites
 
-Before any test scenario can execute, a live KMS server **must** be running. The agent should either:
-
-1. **Detect that the user already started one** — check for a process on port `9998` or ask.
-2. **Start one itself** — using the canonical command below.
-
-### Starting the test KMS (non-FIPS — most common case)
+**KMS server**: must be running on port `9998` before any test. Check first; start if needed.
 
 ```bash
+# non-FIPS (most common — all algorithms enabled)
 pnpm -C ui build && cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/no_auth.toml
+
+# FIPS only
+pnpm -C ui build && cargo run -p cosmian_kms_server -- -c test_data/configs/server/no_auth.toml
 ```
 
-This command:
+Adapt config to the PR: TLS → `tls_auth_non_fips.toml`, JWT → `jwt_auth.toml`, PostgreSQL → start DB with `docker compose up -d` first. Full config reference: `reference/kmip-ops-and-configs.md`.
 
-- Builds the Web UI (`pnpm -C ui build`) and places the bundle in `ui/dist/`.
-- Runs the KMS server binary with `non-fips` features (all algorithms enabled, including Covercrypt, FPE, PQC, tokenize).
-- Uses `test_data/configs/server/no_auth.toml`: no authentication, SQLite at `/tmp/kms-data`, HTTP on `0.0.0.0:9998`, UI served from `ui/dist/`.
-
-**Adapting to the PR context:**
-
-- If the PR is **FIPS-only** (no `non-fips` feature gate in the changed code), drop `--features non-fips`:
-  ```bash
-  pnpm -C ui build && cargo run -p cosmian_kms_server -- -c test_data/configs/server/no_auth.toml
-  ```
-- If the PR touches **TLS/mTLS**, use a TLS config instead:
-  ```bash
-  cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/tls_auth_non_fips.toml
-  ```
-- If the PR touches **JWT/OIDC auth**, use `jwt_auth.toml` or `api_token_auth.toml`.
-- If the PR touches **PostgreSQL/MySQL**, start the DB with `docker compose up -d` first and use the appropriate config.
-- All available server configs are in `test_data/configs/server/`.
-
-### Verifying the server is alive
+**Health check:**
 
 ```bash
 curl -s http://127.0.0.1:9998/health | jq .
-# Expected: {"status":"UP","latency_ms":...,"dependencies":{"database":{"name":"sqlite","status":"UP"}}}
-
-curl -s http://127.0.0.1:9998/version
-# Expected: "<version> (OpenSSL <ver>-non-FIPS)" or "<version> (OpenSSL <ver>-FIPS)"
+# {"status":"UP","latency_ms":...,"dependencies":{"database":{"name":"sqlite","status":"UP"}}}
 
 curl -s http://127.0.0.1:9998/server-info | jq .
-# Expected: {"version":"...","fips_mode":false,"hsm":{"configured":false,...}}
+# {"version":"...","fips_mode":false,...}
 ```
+
+**Chrome DevTools MCP** (for UI testing): install `npx -y chrome-devtools-mcp@latest`. Skill is designed for VS Code but works in any MCP-capable IDE. See `reference/ui-routes.md` for fully-qualified tool names.
 
 ---
 
-## 1 — How to Test: The Four Scenario Types
+## 1 — Test Channels
 
-Every feature or bugfix PR ultimately changes behavior that is exercised through one of four channels. The tester agent **must identify which channel(s) the PR affects** and test accordingly.
+Identify which channel(s) the PR affects and test accordingly.
 
-### 1.1 — CLI Testing (ckms binary)
+### 1.1 — CLI (`ckms` binary)
 
-**When**: The PR modifies CLI actions (`crate/clients/clap/src/`), client logic (`crate/clients/client/`), crypto operations (`crate/crypto/`), server operations (`crate/server/src/core/operations/`), or any KMIP-visible behavior.
-
-**How**: Run `ckms` commands against the live KMS:
+**When**: PR touches `crate/clients/clap/`, `crate/clients/client/`, `crate/crypto/`, `crate/server/src/core/operations/`, or any KMIP-visible behavior.
 
 ```bash
-# General pattern:
 cargo run -p ckms --features non-fips -- <subcommand> [args]
-
-# For FIPS-only features, drop --features non-fips:
-cargo run -p ckms -- <subcommand> [args]
 ```
 
-**Complete CLI command tree** (top-level → subcommands):
+Full command tree, roundtrip examples → **`reference/cli-commands.md`**
 
-| Command              | Subcommands                                                     | Feature gate |
-| -------------------- | --------------------------------------------------------------- | ------------ |
-| `ckms sym`           | `keys create`, `encrypt`, `decrypt`                             | —            |
-| `ckms rsa`           | `keys create-key-pair`, `encrypt`, `decrypt`, `sign`, `verify`  | —            |
-| `ckms ec`            | `keys create-key-pair`, `encrypt`, `decrypt`, `sign`, `verify`  | —            |
-| `ckms certificates`  | `certify`, `validate`, `encrypt`, `decrypt`, `export`, `import` | —            |
-| `ckms mac`           | `compute`, `verify`                                             | —            |
-| `ckms hash`          | (hash operations)                                               | —            |
-| `ckms derive-key`    | (key derivation)                                                | —            |
-| `ckms locate`        | (object search with filters)                                    | —            |
-| `ckms attributes`    | `get`, `set`, `modify`, `delete`                                | —            |
-| `ckms access-rights` | `grant`, `revoke`, `list`, `obtain`                             | —            |
-| `ckms rng`           | (random number generation)                                      | —            |
-| `ckms secret-data`   | (create, export, import)                                        | —            |
-| `ckms opaque-object` | (create, export, import)                                        | —            |
-| `ckms aws`           | (BYOK export/import)                                            | —            |
-| `ckms azure`         | (BYOK export/import)                                            | —            |
-| `ckms google`        | (CSE operations)                                                | —            |
-| `ckms server`        | `version`, `query`, `discover-versions`                         | —            |
-| `ckms bench`         | (performance benchmarks)                                        | —            |
-| `ckms cc`            | (Covercrypt operations)                                         | `non-fips`   |
-| `ckms fpe`           | `keys create`, `encrypt`, `decrypt`                             | `non-fips`   |
-| `ckms pqc`           | (ML-KEM, ML-DSA, SLH-DSA operations)                            | `non-fips`   |
-| `ckms tokenize`      | (hash, noise, mask, pattern, aggregate)                         | `non-fips`   |
+### 1.2 — HTTP endpoints (`curl`)
 
-**Example: full roundtrip test for FPE**
+**When**: PR touches `crate/server/src/routes/` (any of: KMIP, access, JOSE REST, JWKS, enterprise integrations, tokenize, middleware).
 
-```bash
-# Create an FPE key
-cargo run -p ckms --features non-fips -- fpe keys create --tag my-fpe-key
-# → note the returned key ID, e.g. 859362c9-eabc-4702-bf50-a33627042dfd
+Full endpoint map, curl examples, JOSE algorithm table, JWKS eligibility rules → **`reference/endpoints.md`**
 
-# Encrypt a file
-cargo run -p ckms --features non-fips -- fpe encrypt -k 859362c9-eabc-4702-bf50-a33627042dfd target/lol.md
+### 1.3 — Web UI (Chrome DevTools MCP)
 
-# Decrypt it back
-cargo run -p ckms --features non-fips -- fpe decrypt -k 859362c9-eabc-4702-bf50-a33627042dfd target/lol.md.enc
+**When**: PR touches `ui/src/`, `crate/clients/wasm/`, or UI-facing server behavior.
 
-# Verify roundtrip: diff original and decrypted
-diff target/lol.md target/lol.md.dec
-```
+UI is served at `http://127.0.0.1:9998/ui/`. Use `io.github.ChromeDevTools:navigate_page` to open a route, `io.github.ChromeDevTools:fill_form` and `io.github.ChromeDevTools:click` to interact, `io.github.ChromeDevTools:take_screenshot` and `io.github.ChromeDevTools:wait_for` to observe results.
 
-**Example: symmetric key lifecycle**
+Full UI route map, action module list, MCP tool reference → **`reference/ui-routes.md`**
 
-```bash
-# Create AES-256 key
-cargo run -p ckms --features non-fips -- sym keys create --algorithm aes --number-of-bits 256 --tag test-aes
-
-# Encrypt
-cargo run -p ckms --features non-fips -- sym encrypt -k <key-id> test_data/plain.txt
-
-# Decrypt
-cargo run -p ckms --features non-fips -- sym decrypt -k <key-id> test_data/plain.txt.enc
-```
-
-### 1.2 — HTTP Endpoint Testing (curl / scripts)
-
-**When**: The PR modifies server routes (`crate/server/src/routes/`), enterprise integration endpoints (AWS XKS, Azure EKM, Google CSE, MS DKE), tokenize endpoints, access-control REST API, JOSE REST crypto API (`crate/server/src/routes/crypto/`), JWKS endpoint (`crate/server/src/routes/jwks.rs`), or middleware logic.
-
-**How**: Send HTTP requests directly with `curl`.
-
-**Complete endpoint map:**
-
-| Path                                     | Method   | Auth   | Purpose                                                     |
-| ---------------------------------------- | -------- | ------ | ----------------------------------------------------------- |
-| `/health`                                | GET      | No     | Health check + DB status                                    |
-| `/version`                               | GET      | No     | Server version string                                       |
-| `/server-info`                           | GET      | No     | Version, FIPS mode, HSM info                                |
-| `/kmip/2_1`                              | POST     | Yes    | Main KMIP 2.1 endpoint (TTLV JSON)                          |
-| `/access/owned`                          | GET      | Yes    | List objects owned by user                                  |
-| `/access/obtained`                       | GET      | Yes    | List access rights obtained                                 |
-| `/access/list/{id}`                      | GET      | Yes    | List accesses for object                                    |
-| `/access/grant`                          | POST     | Yes    | Grant access                                                |
-| `/access/revoke`                         | POST     | Yes    | Revoke access                                               |
-| `/access/create`                         | GET      | Yes    | Check create permission                                     |
-| `/access/privileged`                     | GET      | Yes    | Check privileged access                                     |
-| `/download-cli`                          | GET/HEAD | Yes    | Download CLI archive                                        |
-| `/ui/**`                                 | GET      | Varies | Web UI SPA routes                                           |
-| `/ui-auth/login`                         | POST     | —      | UI login                                                    |
-| `/ui-auth/logout`                        | POST     | —      | UI logout                                                   |
-| `/ui-auth/oidc-callback`                 | POST     | —      | OIDC callback                                               |
-| **Enterprise — AWS XKS**                 |          |        |                                                             |
-| `/aws/encrypt`                           | POST     | SigV4  | AWS XKS encrypt                                             |
-| `/aws/decrypt`                           | POST     | SigV4  | AWS XKS decrypt                                             |
-| `/aws/health`                            | GET      | SigV4  | AWS XKS health                                              |
-| `/aws/metadata/{keyId}`                  | GET      | SigV4  | Key metadata                                                |
-| **Enterprise — Azure EKM**               |          |        |                                                             |
-| `/azureekm/metadata/{keyName}`           | GET      | mTLS   | Key metadata                                                |
-| `/azureekm/wrap`                         | POST     | mTLS   | Wrap key                                                    |
-| `/azureekm/unwrap`                       | POST     | mTLS   | Unwrap key                                                  |
-| **Enterprise — Google CSE**              |          |        |                                                             |
-| `/google_cse/status`                     | GET      | JWT    | CSE status                                                  |
-| `/google_cse/wrap`                       | POST     | JWT    | Wrap key                                                    |
-| `/google_cse/unwrap`                     | POST     | JWT    | Unwrap key                                                  |
-| `/google_cse/rewrap`                     | POST     | JWT    | Re-wrap key                                                 |
-| `/google_cse/digest`                     | POST     | JWT    | Hash/digest                                                 |
-| `/google_cse/certs`                      | GET      | JWT    | Get certificates                                            |
-| **Enterprise — MS DKE**                  |          |        |                                                             |
-| `/ms_dke/version`                        | GET      | No     | DKE version                                                 |
-| `/ms_dke/{keyName}/{keyVersion}`         | GET      | No     | Get public key                                              |
-| `/ms_dke/{keyName}/{keyVersion}/decrypt` | POST     | No     | Decrypt with DKE                                            |
-| **Tokenize (non-fips only)**             |          |        |                                                             |
-| `/tokenize/hash`                         | POST     | Varies | Hash a string                                               |
-| `/tokenize/noise`                        | POST     | Varies | Add noise to value                                          |
-| `/tokenize/word_mask`                    | POST     | Varies | Mask words                                                  |
-| `/tokenize/word_tokenize`                | POST     | Varies | Tokenize words                                              |
-| `/tokenize/word_pattern_mask`            | POST     | Varies | Pattern-based word mask                                     |
-| `/tokenize/aggregate_number`             | POST     | Varies | Aggregate numbers                                           |
-| `/tokenize/aggregate_date`               | POST     | Varies | Aggregate dates                                             |
-| `/tokenize/scale_number`                 | POST     | Varies | Scale numbers                                               |
-| **JOSE REST Crypto API**                 |          |        |                                                             |
-| `/v1/crypto/keys`                        | POST     | Yes    | Generate or import a JWK-style key                          |
-| `/v1/crypto/keys/{kid}`                  | DELETE   | Yes    | Destroy a key by KMS UID                                    |
-| `/v1/crypto/keys/unwrap`                 | POST     | Yes    | Import a wrapped CEK (JWE) without exposing plaintext       |
-| `/v1/crypto/keys/{kid}/tags`             | POST     | Yes    | Add user tags to a key                                      |
-| `/v1/crypto/keys/{kid}/tags`             | DELETE   | Yes    | Remove user tags from a key                                 |
-| `/v1/crypto/keys/{kid}/tags`             | GET      | Yes    | List current user tags on a key                             |
-| `/v1/crypto/encrypt`                     | POST     | Yes    | JWE content encryption (Flattened JSON)                     |
-| `/v1/crypto/decrypt`                     | POST     | Yes    | JWE content decryption (Flattened JSON)                     |
-| `/v1/crypto/sign`                        | POST     | Yes    | Detached JWS signature (RFC 7515)                           |
-| `/v1/crypto/verify`                      | POST     | Yes    | Verify a detached JWS signature                             |
-| `/v1/crypto/mac`                         | POST     | Yes    | HMAC compute (or verify when `mac` field present)           |
-| **JWKS Public Key Discovery**            |          |        |                                                             |
-| `/.well-known/jwks.json`                 | GET      | No     | RFC 7517 public key set (when `jwks_endpoint_enabled=true`) |
-
-**Example: raw KMIP request via curl**
-
-```bash
-# Create a symmetric key via raw KMIP JSON-TTLV
-curl -s -X POST http://127.0.0.1:9998/kmip/2_1 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tag": "Create",
-    "value": [
-      {"tag": "ObjectType", "type": "Enumeration", "value": "SymmetricKey"},
-      {"tag": "Attributes", "value": [
-        {"tag": "CryptographicAlgorithm", "type": "Enumeration", "value": "AES"},
-        {"tag": "CryptographicLength", "type": "Integer", "value": 256}
-      ]}
-    ]
-  }' | jq .
-```
-
-**Example: MS DKE endpoint test**
-
-```bash
-# Get the DKE public key (no auth required)
-curl -s http://127.0.0.1:9998/ms_dke/my-key-name/my-key-version | jq .
-```
-
-**Example: tokenize endpoint test (non-fips)**
-
-```bash
-curl -s -X POST http://127.0.0.1:9998/tokenize/hash \
-  -H "Content-Type: application/json" \
-  -d '{"data": "hello world", "method": "SHA2"}' | jq .
-```
-
-**Example: JOSE REST crypto API — full roundtrip (sign + verify + JWKS)**
-
-The JOSE REST API requires the server to be started with `jwks_endpoint_enabled = true` in the config (or `--jwks-endpoint-enabled` CLI flag / `KMS_JWKS_ENDPOINT_ENABLED=true` env var). The `/v1/crypto/*` endpoints are always available once the server is running.
-
-```bash
-# 1. Generate an EC P-256 signing key pair (auto-tagged "jwks" by default)
-KID=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/keys \
-  -H "Content-Type: application/json" \
-  -d '{"kty":"EC","alg":"ES256"}' | jq -r .kid)
-echo "Private key KID: $KID"
-
-# 2. Sign a payload (detached JWS, RFC 7515)
-PAYLOAD=$(echo -n '{"sub":"test","iss":"kms"}' | base64 | tr '+/' '-_' | tr -d '=')
-SIGN_RESP=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/sign \
-  -H "Content-Type: application/json" \
-  -d "{\"kid\":\"$KID\",\"alg\":\"ES256\",\"data\":\"$PAYLOAD\"}")
-echo "$SIGN_RESP" | jq .
-PROTECTED=$(echo "$SIGN_RESP" | jq -r .protected)
-SIG=$(echo "$SIGN_RESP" | jq -r .signature)
-
-# 3. Verify the signature
-curl -s -X POST http://127.0.0.1:9998/v1/crypto/verify \
-  -H "Content-Type: application/json" \
-  -d "{\"protected\":\"$PROTECTED\",\"data\":\"$PAYLOAD\",\"signature\":\"$SIG\"}" | jq .
-# Expected: {"kid":"...","valid":true}
-
-# 4. Fetch the JWKS (unauthenticated, public key discovery) — only when jwks_endpoint_enabled=true
-curl -s http://127.0.0.1:9998/.well-known/jwks.json | jq .
-# Expected: {"keys":[{"kty":"EC","crv":"P-256","x":"...","y":"...","use":"sig",...}]}
-
-# 5. Check tags on the key
-KID_PUBLIC=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/keys \
-  -H "Content-Type: application/json" \
-  -d '{"kty":"EC","alg":"ES256"}' | jq -r .kid_public)
-curl -s http://127.0.0.1:9998/v1/crypto/keys/$KID_PUBLIC/tags | jq .
-# Expected: {"kid":"...","tags":["jwks"]}
-
-# 6. AES-GCM JWE encrypt + decrypt roundtrip (direct key agreement)
-SYM_KID=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/keys \
-  -H "Content-Type: application/json" \
-  -d '{"kty":"oct","alg":"A256GCM"}' | jq -r .kid)
-PLAINTEXT=$(echo -n 'hello world' | base64 | tr '+/' '-_' | tr -d '=')
-ENC_RESP=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/encrypt \
-  -H "Content-Type: application/json" \
-  -d "{\"kid\":\"$SYM_KID\",\"alg\":\"dir\",\"enc\":\"A256GCM\",\"data\":\"$PLAINTEXT\"}")
-echo "$ENC_RESP" | jq .
-DEC_RESP=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/decrypt \
-  -H "Content-Type: application/json" \
-  -d "$ENC_RESP")
-echo "$DEC_RESP" | jq .
-# Expected: {"kid":"...","data":"aGVsbG8gd29ybGQ"} (base64url of "hello world")
-
-# 7. HMAC compute + verify
-HMAC_KID=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/keys \
-  -H "Content-Type: application/json" \
-  -d '{"kty":"oct","alg":"HS256"}' | jq -r .kid)
-DATA=$(echo -n 'message to authenticate' | base64 | tr '+/' '-_' | tr -d '=')
-MAC_RESP=$(curl -s -X POST http://127.0.0.1:9998/v1/crypto/mac \
-  -H "Content-Type: application/json" \
-  -d "{\"kid\":\"$HMAC_KID\",\"alg\":\"HS256\",\"data\":\"$DATA\"}")
-MAC=$(echo "$MAC_RESP" | jq -r .mac)
-# Verify
-curl -s -X POST http://127.0.0.1:9998/v1/crypto/mac \
-  -H "Content-Type: application/json" \
-  -d "{\"kid\":\"$HMAC_KID\",\"alg\":\"HS256\",\"data\":\"$DATA\",\"mac\":\"$MAC\"}" | jq .
-# Expected: {"kid":"...","valid":true}
-
-# 8. Delete a key
-curl -s -X DELETE http://127.0.0.1:9998/v1/crypto/keys/$KID
-# Expected: HTTP 204 No Content
-```
-
-**JOSE REST API: supported algorithms**
-
-| Algorithm         | Type               | Key types | FIPS? | Notes                           |
-| ----------------- | ------------------ | --------- | ----- | ------------------------------- |
-| `dir`             | Key management     | `oct`     | Yes   | Direct key agreement (JWE)      |
-| `RSA-OAEP`        | Key management     | `RSA`     | Yes   | RSA-OAEP SHA-1 (JWE key wrap)   |
-| `RSA-OAEP-256`    | Key management     | `RSA`     | Yes   | RSA-OAEP SHA-256 (JWE key wrap) |
-| `RS256/384/512`   | Signature          | `RSA`     | Yes   | PKCS#1 v1.5 (JWS)               |
-| `PS256/384/512`   | Signature          | `RSA`     | Yes   | RSA-PSS (JWS)                   |
-| `ES256/384/512`   | Signature          | `EC`      | Yes   | ECDSA P-256/P-384/P-521 (JWS)   |
-| `HS256/384/512`   | MAC                | `oct`     | Yes   | HMAC-SHA-256/384/512            |
-| `EdDSA`           | Signature          | `OKP`     | No    | Ed25519 — `non-fips` only       |
-| `A128/192/256GCM` | Content encryption | `oct`     | Yes   | AES-GCM `enc` algorithms (JWE)  |
-
-**JOSE REST API: error response format**
-
-All `/v1/crypto/*` endpoints return errors as JSON:
-
-```json
-{ "error": "BadRequest", "description": "..." }
-```
-
-| Error variant          | HTTP status | Trigger                                      |
-| ---------------------- | ----------- | -------------------------------------------- |
-| `BadRequest`           | 400         | Malformed base64url, missing fields          |
-| `UnsupportedAlgorithm` | 422         | Unknown JOSE algorithm identifier            |
-| `Forbidden`            | 403         | Caller not authorised to use the key         |
-| `NotFound`             | 404         | KMS object UID not found                     |
-| `CryptoFailure`        | 422         | Wrong key type, size mismatch                |
-| `DecryptionFailed`     | 422         | Uniform decryption error (oracle prevention) |
-| `InternalError`        | 500         | Unexpected server error                      |
-
-**JWKS endpoint: key behaviour**
-
-- Only keys tagged `"jwks"` with `Verify` in their `CryptographicUsageMask` and in `Active` or `Deactivated` state are served.
-- `POST /v1/crypto/keys` auto-tags created key pairs with `"jwks"` unless `KMS_JWKS_ENDPOINT_AUTO_TAG=false`.
-- Response includes `Cache-Control: no-store` and a weak `ETag` (SHA-256 of body). Clients may send `If-None-Match` to get `304 Not Modified`.
-- When more than `jwks_endpoint_max_keys` (default: 50) eligible keys exist, the response is truncated and `X-JWKS-Truncated: true` header is set.
-- The endpoint is **unauthenticated** — no credentials required, no auth middleware applied.
-- The route is only registered when `jwks_endpoint_enabled = true`; accessing it while disabled returns `404`.
-
-### 1.3 — Web UI Testing (Chrome DevTools MCP)
-
-**When**: The PR modifies UI code (`ui/src/`), WASM bindings (`crate/clients/wasm/`), or UI-facing server behavior.
-
-**How**: Use the `@io.github.chromedevtools/chrome-devtools-mcp` MCP server to interact with the UI in a browser. The UI is served at `http://127.0.0.1:9998/ui/` when the KMS server is running with UI enabled.
-
-**UI route structure** (React SPA client-side routes under `/ui/`):
-
-| Route                 | Feature                      | Non-FIPS only |
-| --------------------- | ---------------------------- | ------------- |
-| `/ui/locate`          | Object search and listing    | No            |
-| `/ui/sym/*`           | Symmetric key operations     | No            |
-| `/ui/rsa/*`           | RSA key operations           | No            |
-| `/ui/ec/*`            | EC key operations            | No            |
-| `/ui/certificates/*`  | Certificate lifecycle        | No            |
-| `/ui/mac/*`           | MAC compute/verify           | No            |
-| `/ui/derive-key/*`    | Key derivation               | No            |
-| `/ui/attributes/*`    | Object attributes management | No            |
-| `/ui/access-rights/*` | Access control               | No            |
-| `/ui/secret-data/*`   | Secret/sensitive data        | No            |
-| `/ui/opaque-object/*` | Opaque objects               | No            |
-| `/ui/aws/*`           | AWS BYOK                     | No            |
-| `/ui/azure/*`         | Azure BYOK                   | No            |
-| `/ui/google-cse/*`    | Google CSE                   | No            |
-| `/ui/cc/*`            | Covercrypt                   | Yes           |
-| `/ui/pqc/*`           | Post-Quantum Crypto          | Yes           |
-| `/ui/tokenize/*`      | Tokenization operations      | Yes           |
-| `/ui/login`           | Login page                   | No            |
-
-**UI action modules** (each maps to a group of forms in `ui/src/actions/`):
-
-| Module            | Forms                                                   | Description                  |
-| ----------------- | ------------------------------------------------------- | ---------------------------- |
-| `Access/`         | Grant, List, Obtained, Revoke                           | Access control management    |
-| `Attributes/`     | Delete, Get, Modify, Set                                | Object attribute CRUD        |
-| `Certificates/`   | Certify, Decrypt, Encrypt, Export, Import, Validate     | Certificate lifecycle        |
-| `CloudProviders/` | AWS export/import, Azure export/import, Google CMEK/CSE | Cloud integrations           |
-| `Covercrypt/`     | Encrypt, Decrypt, MasterKey, UserKey                    | Functional encryption        |
-| `EC/`             | CreateKeyPair, Encrypt, Decrypt, Sign, Verify           | Elliptic Curve ops           |
-| `FPE/`            | KeysCreate, Encrypt, Decrypt                            | Format Preserving Encryption |
-| `Keys/`           | CseInfo, DeriveKey, Export, Import, SymKeyCreate        | General key operations       |
-| `MAC/`            | Compute, Verify                                         | Message Authentication Code  |
-| `Objects/`        | Destroy, ListOwned, Revoke, OpaqueObject, SecretData    | Object lifecycle             |
-| `PQC/`            | Encapsulate, Decapsulate, Sign, Verify                  | Post-Quantum ops             |
-| `RSA/`            | CreateKeyPair, Encrypt, Decrypt, Sign, Verify           | RSA operations               |
-| `Symmetric/`      | Encrypt, Decrypt, Hash                                  | Symmetric encryption         |
-| `Tokenize/`       | Hash, Noise, WordMask, PatternMask, Aggregate           | Data anonymization           |
-
-**Testing via Chrome DevTools MCP**:
-
-1. Navigate to the correct UI page (e.g., `http://127.0.0.1:9998/ui/locate`)
-2. Fill form fields using `data-testid` attributes (Ant Design components)
-3. Submit and observe the response panel
-4. Verify success/error messages in the UI
-
-**Important UI conventions**:
-
-- Ant Design `<Select>` components portal into `document.body` — interact with them via the MCP by clicking the dropdown trigger, then clicking options in the popup.
-- Form submissions trigger WASM → KMIP → server roundtrips. Wait for the response panel to update.
-- The UI has `data-testid` attributes on key elements for test targeting.
-
-### 1.4 — Other Testing Scenarios
-
-Some PRs touch surfaces outside the three main channels:
+### 1.4 — Other channels
 
 | Scenario              | When                                           | How to test                                                                                   |
 | --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **PKCS#11 module**    | Changes to `crate/clients/pkcs11/`             | Run `cargo test -p cosmian_pkcs11` (uses in-process test server)                              |
+| **PKCS#11 module**    | Changes to `crate/clients/pkcs11/`             | `cargo test -p cosmian_pkcs11`                                                                |
 | **WASM client**       | Changes to `crate/clients/wasm/`               | `cd crate/clients/wasm && wasm-pack test --headless --chrome`                                 |
-| **TCP socket server** | Changes to socket handling                     | Enable socket server in config (`start_socket_server = true`, port 5696), send raw TTLV bytes |
-| **Database backends** | Changes to `crate/server_database/`            | Start target DB with `docker compose up -d`, use appropriate config                           |
-| **OpenSSL/crypto**    | Changes to `crate/crypto/`                     | `cargo test -p cosmian_kms_crypto` — ensures all algorithm implementations pass               |
-| **HSM integrations**  | Changes to `crate/hsm/`                        | Requires HSM hardware or SoftHSM2 (`test_data/configs/server/hsm/softhsm2_config.toml`)       |
-| **Middleware/auth**   | Changes to `crate/server/src/middlewares/`     | Test with various auth configs (JWT, mTLS, API token)                                         |
+| **TCP socket server** | Changes to socket handling                     | Enable `start_socket_server = true` (port 5696), send raw TTLV bytes                         |
+| **Database backends** | Changes to `crate/server_database/`            | `docker compose up -d`, use appropriate config                                                |
+| **OpenSSL/crypto**    | Changes to `crate/crypto/`                     | `cargo test -p cosmian_kms_crypto`                                                            |
+| **HSM integrations**  | Changes to `crate/hsm/`                        | Requires HSM hardware or SoftHSM2 (`test_data/configs/server/hsm/softhsm2_config.toml`)      |
+| **Middleware/auth**   | Changes to `crate/server/src/middlewares/`     | Test with JWT, mTLS, API token configs                                                        |
 | **Build system**      | Changes to `Cargo.toml`, `build.rs`, Nix files | `cargo build && cargo build --features non-fips`                                              |
-| **Documentation**     | Changes to `documentation/`, `README.md`       | Verify links, build MkDocs: `cd documentation && mkdocs build`                                |
+| **Documentation**     | Changes to `documentation/`, `README.md`       | `cd documentation && mkdocs build`                                                            |
 
 ---
 
@@ -603,89 +257,15 @@ Scenario: Health endpoint reflects actual DB state
 
 ## 8 — KMS Error Reference
 
-### HTTP Status Code Mapping
-
-| KMS Error Type                                                                                                                                                                          | HTTP Status | Typical cause          |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------- |
-| `RouteNotFound`                                                                                                                                                                         | 404         | Endpoint doesn't exist |
-| `Unauthorized`                                                                                                                                                                          | 401         | Authentication failed  |
-| `ItemNotFound`, `InvalidRequest`, `NotSupported`, `UnsupportedAlgorithm`, `InconsistentOperation`, `Kmip21Error`, `Kmip14Error`, `UnsupportedProtectionMasks`, `UnsupportedPlaceholder` | 422         | Client request issue   |
-| `Database`, `CryptographicError`, `Certificate`, `TLS`, `ServerError`, `Default`, `Redis`, `Findex`                                                                                     | 500         | Server-side error      |
-
-### KMIP ResultReason Codes
-
-| Code         | Reason                                | Common trigger                                   |
-| ------------ | ------------------------------------- | ------------------------------------------------ |
-| `0x00000001` | OperationFailed                       | General failure                                  |
-| `0x00000004` | Invalid_Message                       | Malformed TTLV                                   |
-| `0x00000009` | Item_Not_Found                        | Key/object doesn't exist                         |
-| `0x0000000C` | Unsupported_Operation                 | Operation not implemented                        |
-| `0x0000000E` | Unsupported_Cryptographic_Algorithm   | Algorithm not available (e.g., ChaCha20 in FIPS) |
-| `0x00000010` | Permission_Denied                     | User lacks access                                |
-| `0x00000011` | Duplicate_Item                        | Object already exists                            |
-| `0x00000017` | Incompatible_Cryptographic_Parameters | Bad crypto params                                |
-
-### Enterprise Endpoint Error Formats
-
-- **AWS XKS**: `{"errorCode":"...","message":"..."}`
-- **Azure EKM**: `{"code":"...","message":"...","details":{...}}`
-- **Google CSE**: `{"error":"...","error_description":"..."}`
-- **MS DKE**: `{"error":"...","error_description":"..."}`
-- **Tokenize**: `{"code":422,"message":"..."}`
+HTTP status mapping, KMIP `ResultReason` codes, and enterprise error formats → **`reference/error-codes.md`**
 
 ---
 
 ## 9 — KMS Domain Invariants
 
-These are the semantic invariants the agent must treat as always-true unless the PR explicitly changes them. Any scenario that contradicts one of these is a **critical finding**:
+Any scenario that violates one of these is a **critical finding**.
 
-### Key Lifecycle Invariants
-
-- A key in `PreActive` state **cannot** encrypt, decrypt, sign, or verify
-- A key in `Deactivated` or `Compromised` state **cannot** be used for new encrypt/wrap operations
-- A `Destroyed` key **cannot** be retrieved, activated, or used in any operation
-- Wrapping a key with itself must be rejected
-- Key state transitions must follow KMIP 2.1 state machine: `PreActive → Active → Deactivated → Compromised → Destroyed` (plus `Destroyed_Compromised`)
-
-### Security Invariants
-
-- Key material must **never** appear in logs, error messages, or HTTP response bodies (except in legitimate Export/Get responses)
-- All administrative operations must be reflected in the audit log with caller identity and timestamp
-- Operations gated behind `non-fips` must not be reachable when the server is built without that feature
-- Algorithm allowlists in KMIP policy must be enforced — a policy forbidding RSA-2048 must reject RSA-2048 key creation
-
-### Access Control Invariants
-
-- A user without explicit access cannot perform operations on another user's objects
-- The `default_username` is used only when no authentication is configured
-- `non_revocable_key_id` keys cannot have their access revoked
-- Granting access is an owner-only operation
-
-### Protocol Invariants
-
-- `POST /kmip/2_1` with empty body returns 422, not 404 or 500
-- Unknown KMIP operations return `RouteNotFound` / `Unsupported_Operation`
-- KMIP responses always include `ProtocolVersion`, `TimeStamp`, `BatchCount`
-- Enterprise endpoints conform to their respective vendor specifications (AWS SigV4, Azure mTLS, Google JWT)
-
-### Concurrency Invariants
-
-- Concurrent operations on the same key must not produce inconsistent state
-- No partial rotation, no duplicate IDs
-- Database transactions must be isolated properly across backends
-
-### JOSE REST API and JWKS Invariants
-
-- `POST /v1/crypto/keys` with key material fields (`k`, `d`) imports; without them, generates. The two code paths must not be confused.
-- `DELETE /v1/crypto/keys/{kid}` must revoke-then-destroy. Attempting to use a deleted key in any subsequent `/v1/crypto/*` call must fail with `404 Not Found`.
-- JWE decryption failures (padding oracle, AES-GCM tag mismatch) must return the same `{"error":"DecryptionFailed","description":"Decryption failed"}` response regardless of the root cause, per RFC 7516 §11.5.
-- `POST /v1/crypto/sign` must return a detached JWS protected header and signature; the payload must **not** appear in the response.
-- `POST /v1/crypto/verify` must use the `kid` embedded in the protected header, not an independently supplied one. Supplying a `kid` pointing to a different key type than the `alg` in the header must fail.
-- `/.well-known/jwks.json` must return `404` (route not registered) when `jwks_endpoint_enabled = false`.
-- `/.well-known/jwks.json` must never return private key material — only public coordinates (`x`, `y`, `n`, `e`).
-- Auto-tagging (`KMS_JWKS_ENDPOINT_AUTO_TAG=true`, the default): every key pair created via `POST /v1/crypto/keys` must receive the `"jwks"` tag. When disabled, newly created keys must **not** be auto-tagged.
-- System tags (prefix `_`) must be rejected with `400` by `POST`/`DELETE /v1/crypto/keys/{kid}/tags`.
-- `EdDSA` (Ed25519 / `OKP` key type) must only be reachable in `non-fips` builds; a FIPS build must reject `kty=OKP` at key creation with a clear error.
+Full invariant list (key lifecycle, security, access control, protocol, concurrency, JOSE/JWKS) → **`reference/invariants.md`**
 
 ---
 
@@ -711,65 +291,69 @@ The tester agent **must be aware** of which feature flags are active and test ac
 
 ---
 
-## 11 — KMIP Operations Reference
+## 11 — KMIP Operations & Test Configurations
 
-All 31 operations dispatched by the server (from `crate/server/src/core/operations/dispatch.rs`):
-
-| Operation          | KMIP Tag             | Handler                   | Notes                                           |
-| ------------------ | -------------------- | ------------------------- | ----------------------------------------------- |
-| Activate           | `"Activate"`         | `kms.activate()`          | Transitions key to Active state                 |
-| Add Attribute      | `"AddAttribute"`     | `kms.add_attribute()`     |                                                 |
-| Certify            | `"Certify"`          | `kms.certify()`           | Creates certificate from CSR or key pair        |
-| Check              | `"Check"`            | `check()`                 |                                                 |
-| Create             | `"Create"`           | `kms.create()`            | Creates symmetric keys, secrets, opaque objects |
-| Create Key Pair    | `"CreateKeyPair"`    | `kms.create_key_pair()`   | RSA, EC, PQC key pairs                          |
-| Decrypt            | `"Decrypt"`          | `kms.decrypt()`           |                                                 |
-| Delete Attribute   | `"DeleteAttribute"`  | `kms.delete_attribute()`  |                                                 |
-| Derive Key         | `"DeriveKey"`        | `kms.derive_key()`        | HKDF, SP800-108                                 |
-| Destroy            | `"Destroy"`          | `kms.destroy()`           | Terminal state                                  |
-| Discover Versions  | `"DiscoverVersions"` | `kms.discover_versions()` |                                                 |
-| Encrypt            | `"Encrypt"`          | `kms.encrypt()`           | AES, RSA, EC, FPE, Covercrypt                   |
-| Export             | `"Export"`           | `kms.export()`            |                                                 |
-| Get                | `"Get"`              | `kms.get()`               | Retrieves object by ID                          |
-| Get Attribute List | `"GetAttributeList"` | `get_attribute_list()`    |                                                 |
-| Get Attributes     | `"GetAttributes"`    | `kms.get_attributes()`    |                                                 |
-| Hash               | `"Hash"`             | `kms.hash()`              | SHA-2, SHA-3                                    |
-| Import             | `"Import"`           | `kms.import()`            |                                                 |
-| Locate             | `"Locate"`           | `kms.locate()`            | Search by attributes, tags                      |
-| MAC                | `"MAC"` / `"Mac"`    | `kms.mac()`               | HMAC                                            |
-| MAC Verify         | `"MACVerify"`        | `mac_verify()`            |                                                 |
-| Modify Attribute   | `"ModifyAttribute"`  | `kms.modify_attribute()`  |                                                 |
-| Query              | `"Query"`            | `query_op()`              | Server capabilities                             |
-| Register           | `"Register"`         | `kms.register()`          | Import pre-existing object                      |
-| ReKey              | `"ReKey"`            | `kms.rekey()`             | Key rotation                                    |
-| ReKey Key Pair     | `"ReKeyKeyPair"`     | `kms.rekey_keypair()`     |                                                 |
-| Revoke             | `"Revoke"`           | `kms.revoke()`            |                                                 |
-| RNG Retrieve       | `"RNGRetrieve"`      | `kms.rng_retrieve()`      | Random bytes                                    |
-| RNG Seed           | `"RNGSeed"`          | `kms.rng_seed()`          |                                                 |
-| Set Attribute      | `"SetAttribute"`     | `kms.set_attribute()`     |                                                 |
-| Sign               | `"Sign"`             | `kms.sign()`              | RSA, EC, PQC signatures                         |
-| Signature Verify   | `"SignatureVerify"`  | `kms.signature_verify()`  |                                                 |
-| Validate           | `"Validate"`         | `kms.validate()`          | Certificate validation                          |
-
-Unknown operations → `KmsError::RouteNotFound()` (HTTP 404).
+Full dispatch table (all 31 operations, handlers, notes) and server config reference → **`reference/kmip-ops-and-configs.md`**
 
 ---
 
-## 12 — Test Configuration Reference
+## 12 — Workflow Checklist
 
-| Config file                | Auth         | DB         | TLS     | Use when testing...         |
-| -------------------------- | ------------ | ---------- | ------- | --------------------------- |
-| `no_auth.toml`             | None         | SQLite     | No      | **Default for most PRs**    |
-| `api_token_auth.toml`      | API Token    | SQLite     | No      | API token middleware        |
-| `jwt_auth.toml`            | JWT (Google) | SQLite     | No      | JWT/OIDC authentication     |
-| `tls_auth_non_fips.toml`   | mTLS         | SQLite     | PKCS#12 | TLS client certificate auth |
-| `tls13_auth_non_fips.toml` | mTLS         | SQLite     | TLS 1.3 | TLS 1.3 enforcement         |
-| `multifactor_tls_jwt.toml` | TLS + JWT    | SQLite     | Yes     | Multi-factor auth           |
-| `mysql_database.toml`      | None         | MySQL      | No      | MySQL backend               |
-| `lb_kms1_postgres.toml`    | None         | PostgreSQL | No      | PostgreSQL backend          |
-| `google_cse.toml`          | OIDC + CSE   | SQLite     | Yes     | Google CSE integration      |
-| `otlp_logging.toml`        | None         | SQLite     | No      | OTEL/metrics testing        |
-| `hsm/softhsm2_config.toml` | None         | SQLite     | No      | SoftHSM2 integration        |
+Copy and track progress for each PR review:
+
+```
+PR Review Progress:
+- [ ] A: KMS server running on port 9998 (health check green)
+- [ ] A: Chrome DevTools MCP available (if PR touches UI)
+- [ ] A: Test channels identified (CLI / HTTP / UI / Other)
+- [ ] B: git diff read; ACC risk map built (Attributes × Components)
+- [ ] B: Behavioral diff questions answered (§4)
+- [ ] C: Relevant tours selected and run (§5)
+- [ ] C: SFDIPOT canaries executed for touched dimensions (§6)
+- [ ] C: Regression invariants checked (§7, reference/invariants.md)
+- [ ] E: Finding report written (see template below)
+```
+
+---
+
+## 13 — Finding Report Template
+
+```markdown
+# PR Finding Report — <PR title / branch>
+
+## Server
+- Mode: FIPS / non-FIPS
+- Config: <config file used>
+- Version: <curl http://127.0.0.1:9998/version>
+
+## Channels tested
+- [ ] CLI
+- [ ] HTTP
+- [ ] Web UI
+- [ ] Other: ___
+
+## ACC risk map (high-risk cells only)
+| Attribute | Component | Risk | Tested? |
+|-----------|-----------|------|---------|
+| ...       | ...       | H/M/L| Y/N     |
+
+## Tours run
+| Tour | Findings |
+|------|----------|
+| ...  | ...      |
+
+## SFDIPOT canaries
+| Dimension | Result |
+|-----------|--------|
+| ...       | PASS / FAIL |
+
+## Invariant regressions
+- [ ] No invariants violated
+- [ ] Violations: <describe>
+
+## Verdict
+**GO / NO-GO** — <one sentence summary>
+```
 
 ---
 
