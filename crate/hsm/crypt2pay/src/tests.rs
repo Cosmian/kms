@@ -5,10 +5,10 @@
 //! HSM_USER_PASSWORD=XXX cargo test --release --target x86_64-unknown-linux-gnu --features crypt2pay -- tests::test_hsm_crypt2pay_all
 //! ```
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use cosmian_kms_base_hsm::{
-    HResult, RsaOaepDigest, SlotManager,
+    HResult, RsaOaepDigest,
     test_helpers::{get_hsm_password, get_hsm_slot_id},
     tests_shared as shared,
 };
@@ -16,7 +16,6 @@ use cosmian_kms_base_hsm::{
 use crate::{CRYPT2PAY_PKCS11_LIB, Crypt2payCapabilityProvider};
 
 const SLOT_ID: usize = 0x01; // Crypt2pay default slot
-const RSA_KEY_PAIR_GEN_MECHANISM: u64 = 0x0;
 
 fn cfg() -> HResult<shared::HsmTestConfig> {
     let user_password = get_hsm_password()?;
@@ -31,17 +30,6 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
         threads: 4,
         supports_rsa_wrap: true,
     })
-}
-
-fn skip_if_rsa_keygen_unavailable(slot: &Arc<SlotManager>) -> bool {
-    if slot.get_mechanism_info(RSA_KEY_PAIR_GEN_MECHANISM).is_ok() {
-        return false;
-    }
-
-    eprintln!(
-        "Skipping Crypt2Pay RSA integration checks: slot {SLOT_ID} does not advertise CKM_RSA_PKCS_KEY_PAIR_GEN"
-    );
-    true
 }
 
 /// To run all the tests:
@@ -66,10 +54,6 @@ fn test_hsm_crypt2pay_all() -> HResult<()> {
     drop(hsm.get_algorithms(cfg.slot_id_for_tests)?);
     shared::destroy_all(&slot)?;
     shared::generate_aes_key(&slot)?;
-    if skip_if_rsa_keygen_unavailable(&slot) {
-        shared::destroy_all(&slot)?;
-        return Ok(());
-    }
     shared::generate_rsa_keypair(&slot)?;
     shared::rsa_key_wrap(&slot, RsaOaepDigest::SHA256)?;
     shared::rsa_pkcs_encrypt(&slot)?;
