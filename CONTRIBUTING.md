@@ -1,17 +1,17 @@
 # Contributing to Cosmian KMS
 
 - [Contributing to Cosmian KMS](#contributing-to-cosmian-kms)
-    - [Issues](#issues)
-        - [Reporting an Issue](#reporting-an-issue)
-        - [Issue Lifecycle](#issue-lifecycle)
-    - [Pull Requests](#pull-requests)
-        - [Changelog Entries](#changelog-entries)
-    - [Contributing to the UI](#contributing-to-the-ui)
-    - [Setting up Rust to work on Cosmian KMS](#setting-up-rust-to-work-on-cosmian-kms)
-    - [Testing](#testing)
-    - [Contributor License Agreement](#contributor-license-agreement)
-    - [Code of Conduct](#code-of-conduct)
-    - [Getting Help](#getting-help)
+  - [Issues](#issues)
+    - [Reporting an Issue](#reporting-an-issue)
+    - [Issue Lifecycle](#issue-lifecycle)
+  - [Pull Requests](#pull-requests)
+    - [Changelog Entries](#changelog-entries)
+  - [Contributing to the UI](#contributing-to-the-ui)
+  - [Setting up Rust to work on Cosmian KMS](#setting-up-rust-to-work-on-cosmian-kms)
+  - [Testing](#testing)
+  - [Contributor License Agreement](#contributor-license-agreement)
+  - [Code of Conduct](#code-of-conduct)
+  - [Getting Help](#getting-help)
 
 ---
 
@@ -130,16 +130,16 @@ ln -s AGENTS.md CLAUDE.md
 
 These rules are non-negotiable and apply to every contribution:
 
-| Rule | Detail |
-|------|--------|
-| **No `.unwrap()`** | Use `?` propagation in production code; never ignore errors in tests |
+| Rule                        | Detail                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| **No `.unwrap()`**          | Use `?` propagation in production code; never ignore errors in tests                       |
 | **No inline feature flags** | `#[cfg(feature = "non-fips")]` at function/module level only, never inside a function body |
-| **Unsafe code** | Every `unsafe` block requires a `// SAFETY:` comment explaining the invariant |
-| **Clippy** | Zero warnings — fix them; `#[allow]` requires an inline comment explaining why |
-| **Tests** | Unit tests go in a `#[cfg(test)]` submodule in the same file |
-| **Docs** | All public items require `///` doc comments |
-| **Pre-commit hooks** | Must pass — never use `--no-verify` |
-| **Commit scope** | Minimal, focused changes — don't refactor unrelated code alongside a bug fix |
+| **Unsafe code**             | Every `unsafe` block requires a `// SAFETY:` comment explaining the invariant              |
+| **Clippy**                  | Zero warnings — fix them; `#[allow]` requires an inline comment explaining why             |
+| **Tests**                   | Unit tests go in a `#[cfg(test)]` submodule in the same file                               |
+| **Docs**                    | All public items require `///` doc comments                                                |
+| **Pre-commit hooks**        | Must pass — never use `--no-verify`                                                        |
+| **Commit scope**            | Minimal, focused changes — don't refactor unrelated code alongside a bug fix               |
 
 For detailed Rust design patterns and idiomatic conventions specific to this codebase, see
 [`.github/skills/rust-patterns/SKILL.md`](.github/skills/rust-patterns/SKILL.md).
@@ -161,6 +161,8 @@ Before submitting a pull request, please ensure that:
 
 For database-specific testing, you may need to set up local database instances. See
 [§1 Database test environment](AGENTS.md#database-test-environment) in AGENTS.md for details.
+
+If you have access to LLM coding tools, we recommand to use the [kms-last-test-vx](.github/skills/kms-last-test-v5) skill before considering work as finished, as it operates as last human-like sanity check.
 
 ## Contributor License Agreement
 
