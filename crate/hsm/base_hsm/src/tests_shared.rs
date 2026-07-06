@@ -232,7 +232,7 @@ pub fn generate_rsa_keypair(slot: &Arc<SlotManager>) -> HResult<()> {
     let (sk_handle, pk_handle) = session.generate_rsa_key_pair(
         sk_id.as_bytes(),
         pk_id.as_bytes(),
-        RsaKeySize::Rsa2048,
+        RsaKeySize::Rsa3072,
         false,
     )?;
     info!("Generated exportable RSA key: sk: {sk_id}, pk: {pk_id}");
