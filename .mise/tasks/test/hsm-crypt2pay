@@ -16,6 +16,18 @@ kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
 ensure_nix_shell
 
+cleanup() {
+  if [[ -f /tmp/crypt2pay-openvpn.pid ]]; then
+    sudo kill "$(cat /tmp/crypt2pay-openvpn.pid)" 2>/dev/null || true
+    sudo rm -f /tmp/crypt2pay-openvpn.pid
+  fi
+  if [[ -f /tmp/crypt2pay-openvpn.conf ]]; then
+    sudo rm -f /tmp/crypt2pay-openvpn.conf
+  fi
+}
+
+trap cleanup EXIT
+
 print_header "Running Crypt2Pay HSM tests (${VARIANT_NAME})"
 
 # Prepare Crypt2Pay HSM libraries: downloads, extracts, and installs to /lib/.
