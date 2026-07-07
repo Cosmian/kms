@@ -48,7 +48,9 @@ use time::OffsetDateTime;
 use crate::{
     core::{
         KMS,
-        operations::digest::digest,
+        operations::{
+            algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key, digest::digest,
+        },
         uid_utils::{
             KeysetVersion, has_prefix, parse_keyset_identifier, resolve_keyset_to_single_uid,
             uids_from_unique_identifier, walk_keyset_chain,
@@ -397,8 +399,8 @@ impl KMS {
                 }
                 Ok(result)
             }
-            ResolvedKey::Local(owm) => {
-                self.execute_local_with_limits::<Op>(*owm, &request, user)
+            ResolvedKey::Local(mut owm) => {
+                self.execute_local_with_limits::<Op>(&mut owm, &request, user)
                     .await
             }
             ResolvedKey::Keyset(chain) => {
@@ -409,52 +411,66 @@ impl KMS {
     }
 
     /// Execute a local operation with unwrapping and usage-limit accounting.
+    ///
+    /// `owm` is taken by mutable reference rather than by value: both call sites
+    /// already own the object and don't need it afterward, so operating in place
+    /// avoids moving the (comparatively large) `ObjectWithMetadata` struct -- `id`,
+    /// `owner`, the `Object` enum, and the `Attributes` struct -- onto this
+    /// function's stack frame on every cryptographic operation.
     async fn execute_local_with_limits<Op: CryptoOpSpec>(
         &self,
-        owm: ObjectWithMetadata,
+        owm: &mut ObjectWithMetadata,
         request: &Op::Request,
         user: &str,
     ) -> KResult<Op::Response> {
-        let mut owm = owm;
+        let data_len = Op::usage_data_len(request);
 
-        // Fast path: if the key is not wrapped and has no usage limits,
-        // we can skip the expensive clone and operate directly on owm.
-        let has_usage_limits = owm.attributes().usage_limits.is_some();
-        let is_wrapped = owm.object().is_wrapped();
+        // Algorithm policy enforcement only inspects `KeyBlock`/`Attributes` metadata
+        // (algorithm, length, curve), which is identical whether the key is wrapped or
+        // not, so it can run once on `owm`, before any unwrapping takes place.
+        enforce_kmip_algorithm_policy_for_retrieved_key(&self.params, Op::OP_NAME, owm.id(), owm)?;
 
-        if is_wrapped || has_usage_limits {
-            // Clone before unwrap: preserve the wrapped key for DB persistence.
+        // The clone is only needed when the key is wrapped: unwrapping mutates the
+        // object, replacing the wrapped key material with plaintext.
+        // `decrement_usage_limits` below persists `owm.object()` back to the database,
+        // so unwrapping `owm` directly would leak the plaintext key to storage
+        // (COSMIAN-2026-015). Only the disposable `unwrapped_owm` clone may ever hold
+        // plaintext key material -- `owm` must remain wrapped for persistence.
+        //
+        // `enforce_usage_limits`/`decrement_usage_limits` are no-ops when the key has
+        // no `UsageLimits` set, so they are called unconditionally rather than gating
+        // the fast path on that as well.
+        if owm.object().is_wrapped() {
             let mut unwrapped_owm = owm.clone();
-            Box::pin(self.unwrap_and_enforce_policy(&mut unwrapped_owm, Op::OP_NAME, user))
-                .await
-                .with_context(|| {
-                    format!(
-                        "{}: the key: {}, cannot be unwrapped.",
-                        Op::OP_NAME,
-                        owm.id()
-                    )
-                })?;
+            let unwrapped =
+                Box::pin(self.get_unwrapped(unwrapped_owm.id(), unwrapped_owm.object(), user))
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "{}: the key: {}, cannot be unwrapped.",
+                            Op::OP_NAME,
+                            owm.id()
+                        )
+                    })?;
+            unwrapped_owm.set_object(unwrapped);
+            // Guard against COSMIAN-2026-015 regressing silently: `owm` (the copy
+            // that gets persisted below) must remain wrapped.
+            debug_assert!(
+                owm.object().is_wrapped(),
+                "owm must stay wrapped for persistence; only unwrapped_owm may hold plaintext key material"
+            );
 
-            let data_len = Op::usage_data_len(request);
             owm.enforce_usage_limits(data_len)?;
-
             let res = Op::execute_local(self, &unwrapped_owm, request, user).await?;
-
-            self.decrement_usage_limits(&mut owm, Op::OP_NAME, data_len)
+            self.decrement_usage_limits(owm, Op::OP_NAME, data_len)
                 .await?;
             Ok(res)
         } else {
-            // Non-wrapped key without usage limits: enforce policy and execute directly.
-            Box::pin(self.unwrap_and_enforce_policy(&mut owm, Op::OP_NAME, user))
-                .await
-                .with_context(|| {
-                    format!(
-                        "{}: the key: {}, cannot be unwrapped.",
-                        Op::OP_NAME,
-                        owm.id()
-                    )
-                })?;
-            Op::execute_local(self, &owm, request, user).await
+            owm.enforce_usage_limits(data_len)?;
+            let res = Op::execute_local(self, owm, request, user).await?;
+            self.decrement_usage_limits(owm, Op::OP_NAME, data_len)
+                .await?;
+            Ok(res)
         }
     }
 
@@ -472,7 +488,7 @@ impl KMS {
         let mut last_err: Option<KmsError> = None;
 
         for (depth, uid) in chain.iter().enumerate() {
-            let Some(owm) = self.database.retrieve_object(uid).await? else {
+            let Some(mut owm) = self.database.retrieve_object(uid).await? else {
                 continue;
             };
 
@@ -501,7 +517,7 @@ impl KMS {
             }
 
             match self
-                .execute_local_with_limits::<Op>(owm, request, user)
+                .execute_local_with_limits::<Op>(&mut owm, request, user)
                 .await
             {
                 Ok(response) => {
@@ -540,33 +556,6 @@ impl KMS {
                 ),
             )
         }))
-    }
-
-    /// Unwrap a key (if wrapped) and enforce the KMIP algorithm policy.
-    ///
-    /// # Security
-    ///
-    /// The operation is performed **in-place** on `owm`, replacing the wrapped key material
-    /// with plaintext.  Callers that later persist `owm` (e.g. via `decrement_usage_limits`)
-    /// **MUST clone** before calling this function and pass the original (still-wrapped)
-    /// `owm` to the persistence path.  Failing to do so silently stores the plaintext key
-    /// in the database, defeating KEK encryption at rest.
-    pub(crate) async fn unwrap_and_enforce_policy(
-        &self,
-        owm: &mut ObjectWithMetadata,
-        op_name: &str,
-        user: &str,
-    ) -> KResult<()> {
-        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object;
-        if !matches!(owm.object(), Object::Certificate { .. }) && owm.object().is_wrapped() {
-            owm.set_object(Box::pin(self.get_unwrapped(owm.id(), owm.object(), user)).await?);
-        }
-        crate::core::operations::algorithm_policy::enforce_kmip_algorithm_policy_for_retrieved_key(
-            &self.params,
-            op_name,
-            owm.id(),
-            owm,
-        )
     }
 
     /// Check whether a user is authorized to perform `operation` on the object
