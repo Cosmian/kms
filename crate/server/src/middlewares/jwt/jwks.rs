@@ -96,13 +96,32 @@ impl JwksManager {
     ///
     /// The threshold to refresh JWKS is set to `REFRESH_INTERVAL`.
     pub async fn refresh(&self) -> KResult<()> {
+        self.refresh_internal(false).await
+    }
+
+    /// Force a JWKS refresh, bypassing the `REFRESH_INTERVAL` throttle.
+    ///
+    /// Intended for the narrow case where the cache is known to be empty (e.g. the
+    /// initial fetch at startup failed): a throttled [`refresh`](Self::refresh) call
+    /// could otherwise be a no-op for up to `REFRESH_INTERVAL` seconds — because
+    /// `last_update` may have already been set by a previous (failed) attempt — leaving
+    /// callers unable to validate any token in the meantime.
+    ///
+    /// Do not call this on every miss: it is not throttled and could be abused to
+    /// hammer the JWKS endpoint if used unconditionally.
+    pub async fn force_refresh(&self) -> KResult<()> {
+        self.refresh_internal(true).await
+    }
+
+    async fn refresh_internal(&self, force: bool) -> KResult<()> {
         let refresh_is_allowed = {
             let mut last_update = self.last_update.write().map_err(|e| {
                 KmsError::ServerError(format!("cannot lock last_update for write. Error: {e:?}"))
             })?;
 
-            let can_be_refreshed = last_update
-                .is_none_or(|lu| (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now());
+            let can_be_refreshed = force
+                || last_update
+                    .is_none_or(|lu| (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now());
 
             if can_be_refreshed {
                 *last_update = Some(Utc::now());

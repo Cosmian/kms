@@ -388,7 +388,20 @@ pub(crate) async fn login_as(
         );
     };
 
-    let url = format!("{}/login?realm={realm}", server_url.trim_end_matches('/'));
+    let Ok(mut url) = Url::parse(server_url.trim_end_matches('/')) else {
+        return HttpResponse::InternalServerError().json(
+            serde_json::json!({ "error": "Invalid Cosmian authentication server URL" }),
+        );
+    };
+    {
+        let Ok(mut segments) = url.path_segments_mut() else {
+            return HttpResponse::InternalServerError().json(
+                serde_json::json!({ "error": "Invalid Cosmian authentication server URL: cannot be a base" }),
+            );
+        };
+        segments.push("login");
+    }
+    url.query_pairs_mut().append_pair("realm", realm);
 
     let client = match Client::builder()
         .danger_accept_invalid_certs(config.cosmian_auth_accept_invalid_certs)
@@ -407,7 +420,7 @@ pub(crate) async fn login_as(
     );
 
     let response = match client
-        .post(&url)
+        .post(url)
         .basic_auth(&body.username, Some(&body.password))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(request_body)
