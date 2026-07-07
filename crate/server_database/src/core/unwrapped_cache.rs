@@ -1,6 +1,9 @@
 use std::{num::NonZeroUsize, time::Duration};
 
-use cosmian_kmip::kmip_2_1::kmip_objects::Object;
+use cosmian_kmip::kmip_2_1::{
+    kmip_objects::{Object, OpaqueObject},
+    kmip_types::OpaqueDataType,
+};
 use cosmian_logger::trace;
 use moka::future::Cache;
 
@@ -41,6 +44,20 @@ impl CachedObject {
     #[must_use]
     pub const fn unwrapped_object(&self) -> &Object {
         &self.unwrapped_object
+    }
+}
+
+impl Drop for CachedObject {
+    fn drop(&mut self) {
+        // Replace the unwrapped key-material-bearing Object with a zero-content
+        // opaque object so the original Object and its KeyBlock/KeyValue bytes
+        // are dropped before moka deallocates the cache entry's heap memory.
+        // This is defense-in-depth: the freed bytes are still in the allocator
+        // but they are no longer reachable through this cache entry.
+        self.unwrapped_object = Object::OpaqueObject(OpaqueObject {
+            opaque_data_type: OpaqueDataType::Unknown,
+            opaque_data_value: Vec::new(),
+        });
     }
 }
 

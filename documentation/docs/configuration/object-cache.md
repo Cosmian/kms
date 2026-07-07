@@ -350,7 +350,8 @@ sequenceDiagram
     J->>OS: AES-GCM decrypt(ciphertext, CEK)
     OS-->>J: plaintext
 
-    Note over J: CEK dropped here (ephemeral, not cached)
+    J->>UC: insert_cek(sha256(encrypted_key), cek)
+    Note over J,UC: CEK cached in UnwrappedCache for subsequent decrypt calls
 ```
 
 ---
@@ -367,6 +368,74 @@ sequenceDiagram
 | KEK rotated (Rekey) | invalidated | `clear_cache()` called explicitly | ✓ | ✓ (next access) |
 
 ---
+
+---
+
+## JOSE CEK Cache (RSA-OAEP path)
+
+The `/v1/crypto/encrypt` and `/v1/crypto/decrypt` endpoints support a
+`RSA-OAEP` / `RSA-OAEP-256` key-management algorithm (RFC 7516). Each
+decryption requires an RSA private-key operation to unwrap the ephemeral
+**Content Encryption Key** (CEK). When the same JWE token is decrypted
+repeatedly, this operation is repeated on every call.
+
+The CEK is stored in **`UnwrappedCache`** after the first successful unwrap so
+subsequent requests for the same token skip the RSA operation entirely.
+
+### Cache key
+
+```text
+"jose_cek_{SHA-256-hex(encrypted_key_bytes)}"
+```
+
+The JWE `encrypted_key` field (the RSA-OAEP ciphertext of the CEK) uniquely
+identifies a token because RSA-OAEP encryption is randomised. SHA-256 keeps the
+map key compact: 64 hex chars regardless of RSA key size.
+
+### Fingerprint source
+
+The RSA private-key KMIP `Object` is passed as the fingerprint source at
+`insert()` and `peek()` time. If the key is re-imported or re-wrapped (its
+serialised form changes), the fingerprint stored in the cache entry no longer
+matches and `peek()` returns `None`, forcing a fresh RSA-OAEP unwrap and
+re-population.
+
+### `/encrypt` → `/decrypt` cross-path caching
+
+When `/encrypt` is called, the freshly generated CEK is inserted into the cache
+immediately after wrapping, keyed by the `encrypted_key` returned in the JWE
+response. The first `/decrypt` call for that token will get a cache hit if both
+calls share the same server instance and the key has not changed.
+
+If `/encrypt` uses a public-key KMIP object while `/decrypt` uses the linked
+private-key KMIP object, the fingerprints differ. In that case the first decrypt
+call replaces the stale entry with a correctly fingerprinted one; all subsequent
+decrypts hit the cache.
+
+### TTL and sizing
+
+CEK cache entries share the same `UnwrappedCache` TTL and LRU capacity as
+wrapped KMS keys:
+
+| Parameter | CLI flag | Description |
+|---|---|---|
+| Max entries | `--unwrapped-cache-max-size` | Default 1000. Increase for workloads with many concurrent JWE tokens. |
+| Time-to-idle | `--unwrapped-cache-max-age` | Entries evicted after this idle period. |
+
+### RFC 7516 §11.5 — implicit rejection preserved
+
+Only genuinely unwrapped CEKs are inserted. The random substitute key generated
+when RSA-OAEP decryption fails (padding oracle countermeasure) is **never**
+cached. This preserves the constant-time rejection guarantee: an attacker
+submitting an invalid `encrypted_key` still causes AES-GCM to fail at tag
+verification, and no cache entry is written.
+
+### `dir` mode
+
+The `dir` key-management algorithm uses a KMS-stored symmetric key directly.
+That path delegates to the KMIP `Encrypt`/`Decrypt` pipeline which already
+passes through `UnwrappedCache` via `get_unwrapped()`. No additional caching is
+required.
 
 ## Configuration
 

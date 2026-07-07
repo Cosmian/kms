@@ -5,10 +5,13 @@ use actix_web::{
     web::{Data, Json},
 };
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_operations::Encrypt,
-        kmip_types::{LinkType, UniqueIdentifier},
+    cosmian_kmip::{
+        kmip_2_1,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_operations::Encrypt,
+            kmip_types::{LinkType, UniqueIdentifier},
+        },
     },
     cosmian_kms_crypto::{
         crypto::rsa::ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
@@ -22,7 +25,7 @@ use super::{
     CryptoApiError, CryptoResult, EncryptRequest, EncryptResponse as CryptoEncryptResponse,
     JoseAlgorithm,
     aes_gcm::{aes_gcm_encrypt, generate_cek},
-    b64_decode, b64_encode, jose_oaep_hashes, jose_to_kmip_params,
+    b64_decode, b64_encode, cek_cache, jose_oaep_hashes, jose_to_kmip_params,
 };
 use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
 
@@ -151,10 +154,9 @@ async fn encrypt_rsa_oaep(
 
     // Determine if this is a private key (resolve to linked public key) or already a public key
     let (public_key, private_key_uid) = match owm.object() {
-        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PrivateKey { .. } => {
+        kmip_2_1::kmip_objects::Object::PrivateKey { .. } => {
             // Resolve linked public key if available; otherwise extract from private key
-            let pkey = if let Some(pub_key_uid) =
-                owm.attributes().get_link(LinkType::PublicKeyLink)
+            let pkey = if let Some(pub_key_uid) = owm.attributes().get_link(LinkType::PublicKeyLink)
             {
                 let pub_owm = Box::pin(retrieve_object_for_operation(
                     &pub_key_uid.to_string(),
@@ -189,7 +191,7 @@ async fn encrypt_rsa_oaep(
             };
             (pkey, kid.clone())
         }
-        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_objects::Object::PublicKey { .. } => {
+        kmip_2_1::kmip_objects::Object::PublicKey { .. } => {
             // Already a public key — resolve linked private key UID for the protected header
             let priv_key_uid = owm
                 .attributes()
@@ -235,6 +237,12 @@ async fn encrypt_rsa_oaep(
     // Step 2: Wrap CEK with RSA-OAEP
     let wrapped_cek = ckm_rsa_pkcs_oaep_key_wrap(&public_key, oaep_hash, mgf1_hash, None, &cek)
         .map_err(|e| CryptoApiError::InternalError(format!("RSA-OAEP key wrap failed: {e}")))?;
+
+    // Cache the CEK keyed by the wrapped form so that subsequent /decrypt calls
+    // for this JWE token can skip the RSA-OAEP unwrap entirely.
+    // Uses owm.object() as fingerprint source; if the key is rotated or updated
+    // the fingerprint changes and the entry will be rejected on next peek().
+    cek_cache::insert_cek(kms, &wrapped_cek, owm.object(), &cek).await;
 
     debug!(
         "RSA-OAEP encrypt: wrapped CEK ({} bytes) with {} ({} bit key)",

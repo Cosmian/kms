@@ -11,11 +11,7 @@ Create an ADR document for the Cosmian KMS repository.
 
 Save ADRs at: `documentation/docs/adr/adr-YYYY-MM-DD-[title-slug].md`
 
-Where `YYYY-MM-DD` is the current date. Check existing files to determine the next number:
-
-```bash
-ls documentation/docs/adr/ 2>/dev/null | sort | tail -5
-```
+Where `YYYY-MM-DD` is the current date.
 
 If the `documentation/docs/adr/` directory doesn't exist yet, create it and add a nav entry in `documentation/mkdocs.yml`.
 

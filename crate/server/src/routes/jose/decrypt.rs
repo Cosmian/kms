@@ -22,7 +22,7 @@ use zeroize::Zeroizing;
 
 use super::{
     CryptoApiError, CryptoResult, DecryptRequest, DecryptResponse as CryptoDecryptResponse,
-    JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode,
+    JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode, cek_cache,
     cek_size_bytes, encrypt::build_jwe_aad, jose_oaep_hashes, jose_to_kmip_params,
 };
 use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
@@ -249,28 +249,53 @@ async fn decrypt_rsa_oaep(
     let (oaep_hash, mgf1_hash) = jose_oaep_hashes(alg)?;
     let expected_cek_len = cek_size_bytes(enc);
 
-    // Implicit rejection: attempt unwrap; on failure substitute random CEK.
-    // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
-    let cek: Zeroizing<Vec<u8>> = match ckm_rsa_pkcs_oaep_key_unwrap(
-        &private_key,
-        oaep_hash,
-        mgf1_hash,
-        None,
-        &encrypted_key_bytes,
-    ) {
-        Ok(unwrapped) if unwrapped.len() == expected_cek_len => unwrapped,
-        _ => {
-            // Substitute random CEK — AES-GCM will fail on tag verification
-            debug!("RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection");
-            let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
-            rand_bytes(&mut random_cek).map_err(|e| {
-                CryptoApiError::InternalError(format!(
-                    "Failed to generate random CEK for implicit rejection: {e}"
-                ))
-            })?;
-            random_cek
-        }
-    };
+    // Check the CEK cache before attempting the expensive RSA-OAEP private-key
+    // operation. A cache hit means this exact JWE token was already decrypted
+    // (or encrypted) on this server and the CEK is still valid.
+    //
+    // RFC 7516 §11.5 implicit rejection is preserved: the cache is only
+    // populated with genuine CEKs; random substitute keys are never inserted.
+    let cek: Zeroizing<Vec<u8>> =
+        match cek_cache::peek_cek(kms, &encrypted_key_bytes, private_key_owm.object()).await {
+            Some(cached_cek) => cached_cek,
+            None => {
+                // Cache miss — perform RSA-OAEP unwrap.
+                // Implicit rejection: attempt unwrap; on failure substitute random CEK.
+                // This prevents padding oracle attacks (Manger 2001, RFC 7516 §11.5).
+                match ckm_rsa_pkcs_oaep_key_unwrap(
+                    &private_key,
+                    oaep_hash,
+                    mgf1_hash,
+                    None,
+                    &encrypted_key_bytes,
+                ) {
+                    Ok(unwrapped) if unwrapped.len() == expected_cek_len => {
+                        // Cache the CEK for subsequent decryptions of this JWE token.
+                        cek_cache::insert_cek(
+                            kms,
+                            &encrypted_key_bytes,
+                            private_key_owm.object(),
+                            &unwrapped,
+                        )
+                        .await;
+                        unwrapped
+                    }
+                    _ => {
+                        // Substitute random CEK — AES-GCM will fail on tag verification
+                        debug!(
+                            "RSA-OAEP unwrap failed or CEK size mismatch — using implicit rejection"
+                        );
+                        let mut random_cek = Zeroizing::new(vec![0_u8; expected_cek_len]);
+                        rand_bytes(&mut random_cek).map_err(|e| {
+                            CryptoApiError::InternalError(format!(
+                                "Failed to generate random CEK for implicit rejection: {e}"
+                            ))
+                        })?;
+                        random_cek
+                    }
+                }
+            }
+        };
 
     // AAD reconstruction (RFC 7516 §5.2 step 15)
     let aad_bytes = build_jwe_aad(&body.protected, body.aad.as_deref())?;
