@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cosmian-kms.fullname" . }}
+  labels:
+    {{- include "cosmian-kms.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "cosmian-kms.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "cosmian-kms.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "cosmian-kms.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ include "cosmian-kms.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Explicit args guarantee the entrypoint script invokes the binary
+          # with our settings rather than silently falling back to its
+          # built-in sqlite default (it only reads $COSMIAN_KMS_CONF / env
+          # when invoked with zero arguments).
+          args:
+            - --database-type
+            - {{ .Values.kms.database.type | quote }}
+            {{- if eq .Values.kms.database.type "sqlite" }}
+            - --sqlite-path
+            - {{ .Values.kms.database.sqlitePath | quote }}
+            {{- end }}
+            - --hostname
+            - {{ .Values.kms.hostname | quote }}
+            - --port
+            - {{ .Values.kms.port | quote }}
+            {{- if .Values.kms.database.clearDatabase }}
+            - --clear-database
+            {{- end }}
+            {{- if .Values.kms.tls.enabled }}
+            - --tls-cert-file
+            - /etc/cosmian-kms/tls/tls.crt
+            - --tls-key-file
+            - /etc/cosmian-kms/tls/tls.key
+            {{- end }}
+            {{- with .Values.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            # The server resolves a relative KMS_ROOT_DATA_PATH against $HOME, which
+            # is unset/unwritable for the container's non-root user; pin it to the
+            # dedicated writable workspace volume mounted below.
+            - name: KMS_ROOT_DATA_PATH
+              value: /var/lib/cosmian-kms/workspace
+            - name: KMS_DEFAULT_USERNAME
+              value: {{ .Values.kms.defaultUsername | quote }}
+            {{- if .Values.kms.corsAllowedOrigins }}
+            - name: KMS_CORS_ALLOWED_ORIGINS
+              value: {{ .Values.kms.corsAllowedOrigins | quote }}
+            {{- end }}
+            {{- if .Values.kms.serverWorkers }}
+            - name: KMS_SERVER_WORKERS
+              value: {{ .Values.kms.serverWorkers | quote }}
+            {{- end }}
+            {{- if .Values.kms.rateLimitPerSecond }}
+            - name: KMS_RATE_LIMIT_PER_SECOND
+              value: {{ .Values.kms.rateLimitPerSecond | quote }}
+            {{- end }}
+            {{- if .Values.kms.jwksEnabled }}
+            - name: KMS_JWKS_ENABLED
+              value: "true"
+            {{- end }}
+            {{- if not .Values.kms.uiEnabled }}
+            - name: KMS_UI_ENABLE
+              value: "false"
+            {{- end }}
+            {{- if or .Values.kms.database.url .Values.kms.database.existingSecret }}
+            - name: KMS_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.kms.database.existingSecret | default (printf "%s-db" (include "cosmian-kms.fullname" .)) }}
+                  key: database-url
+            {{- end }}
+            {{- if eq .Values.kms.database.type "redis-findex" }}
+            - name: KMS_REDIS_MASTER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.kms.database.existingSecret | default (printf "%s-db" (include "cosmian-kms.fullname" .)) }}
+                  key: redis-master-password
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.kms.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /var/lib/cosmian-kms/workspace
+            {{- if and (eq .Values.kms.database.type "sqlite") .Values.persistence.enabled }}
+            - name: sqlite-data
+              mountPath: {{ .Values.kms.database.sqlitePath }}
+            {{- end }}
+            {{- if .Values.kms.tls.enabled }}
+            - name: tls
+              mountPath: /etc/cosmian-kms/tls
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        {{- if and (eq .Values.kms.database.type "sqlite") .Values.persistence.enabled }}
+        - name: sqlite-data
+          persistentVolumeClaim:
+            claimName: {{ include "cosmian-kms.pvcName" . }}
+        {{- end }}
+        {{- if .Values.kms.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.kms.tls.existingSecret }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
