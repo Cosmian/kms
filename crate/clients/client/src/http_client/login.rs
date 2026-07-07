@@ -442,11 +442,12 @@ pub async fn cosmian_login(
     /// Name of the session cookie set by the Cosmian authentication server.
     const COSMIAN_SESSION_COOKIE: &str = "_ea_";
 
-    let url = format!(
-        "{}/login?realm={}",
-        config.server_url.trim_end_matches('/'),
-        config.realm
-    );
+    let mut url = Url::parse(config.server_url.trim_end_matches('/'))
+        .map_err(|e| HttpClientError::Default(format!("Invalid Cosmian auth server URL: {e:?}")))?;
+    url.path_segments_mut()
+        .map_err(|()| HttpClientError::Default("Invalid Cosmian auth server URL: cannot be a base".to_owned()))?
+        .push("login");
+    url.query_pairs_mut().append_pair("realm", &config.realm);
 
     let body = totp_code.map_or_else(
         || "{}".to_owned(),
@@ -459,7 +460,7 @@ pub async fn cosmian_login(
         .build()
         .map_err(|e| HttpClientError::Default(format!("Failed to build reqwest client: {e:?}")))?;
     let response = client
-        .post(&url)
+        .post(url)
         .basic_auth(username, Some(password))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(body)

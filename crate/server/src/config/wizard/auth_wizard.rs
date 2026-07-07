@@ -126,8 +126,16 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         println!("  Configure the Cosmian authentication server.");
         let server_url: String = Input::with_theme(&theme)
             .with_prompt("Cosmian auth server URL (e.g. https://auth.example.com)")
+            .validate_with(|input: &String| -> Result<(), &str> {
+                if input.trim().is_empty() {
+                    Err("The Cosmian auth server URL cannot be blank")
+                } else {
+                    Ok(())
+                }
+            })
             .interact_text()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let server_url = server_url.trim().to_owned();
         let jwks_uri: String = Input::with_theme(&theme)
             .with_prompt("JWKS URI (leave blank to use <server_url>/.well-known/jwks.json)")
             .allow_empty(true)

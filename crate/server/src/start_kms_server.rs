@@ -794,6 +794,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     "Cosmian auth is enabled but no server URL is configured".to_owned(),
                 )
             })?;
+            // Security guard: the Cosmian auth JWKS URI must use HTTPS to prevent credential
+            // exposure and MITM attacks on the public-key material used to verify bearer
+            // tokens, same as for the other JWT identity providers above.
+            #[cfg(not(feature = "insecure"))]
+            validate_jwks_uris_are_https(std::slice::from_ref(&jwks_uri))?;
+
             let proxy_params = kms_server.params.proxy_params.clone();
             let mgr = Arc::new(
                 JwksManager::new_with_options(

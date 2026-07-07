@@ -132,8 +132,12 @@ pub(crate) async fn verify_cosmian_jwt_subject(
         // Fetch all public keys — Cosmian tokens have no `kid` so we try them all.
         let jwks = jwks_manager.find_any()?;
         if jwks.is_empty() {
-            // JWKS cache might be stale; attempt one refresh.
-            jwks_manager.refresh().await?;
+            // JWKS cache is empty — the initial fetch at startup may have failed, or the
+            // IdP may have been unreachable. Force a refresh, bypassing the normal
+            // throttle: a plain `refresh()` call could be a no-op here for up to
+            // `REFRESH_INTERVAL` seconds if `last_update` was already set by that earlier
+            // failed attempt, even though the cache never got populated.
+            jwks_manager.force_refresh().await?;
         }
         let jwks = jwks_manager.find_any()?;
 
