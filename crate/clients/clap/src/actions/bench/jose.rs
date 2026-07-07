@@ -1,7 +1,10 @@
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::{
+    KmsClient,
+    jose::{
+        JoseDecryptReq, JoseEncReq, JoseKeyReq, JoseMacReq, JoseSignReq, JoseVerifyReq, b64url,
+    },
+};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 use super::types::bench_ko;
@@ -9,123 +12,6 @@ use super::types::bench_ko;
 // =============================================================================
 // JOSE BENCHMARKS (REST /v1/crypto/* endpoints)
 // =============================================================================
-
-// ─── Local JOSE types (server types are pub(crate)) ─────────────────────────
-
-/// Encode bytes as base64url (no padding) for JOSE payloads.
-pub(super) fn b64url(data: &[u8]) -> String {
-    URL_SAFE_NO_PAD.encode(data)
-}
-
-#[derive(Serialize)]
-struct JoseKeyReq {
-    kty: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    alg: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    crv: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    bits: Option<usize>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct JoseKeyResp {
-    kid: String,
-    #[serde(default)]
-    kid_public: Option<String>,
-}
-
-#[derive(Clone, Serialize)]
-pub(super) struct JoseEncReq {
-    pub(super) kid: String,
-    pub(super) alg: &'static str,
-    pub(super) enc: &'static str,
-    pub(super) data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) aad: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct JoseEncResp {
-    protected: String,
-    encrypted_key: String,
-    iv: String,
-    ciphertext: String,
-    tag: String,
-    #[serde(default)]
-    aad: Option<String>,
-}
-
-#[derive(Clone, Serialize)]
-struct JoseDecryptReq {
-    protected: String,
-    encrypted_key: String,
-    iv: String,
-    ciphertext: String,
-    tag: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    aad: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct JoseDecryptResp {
-    #[allow(dead_code)]
-    kid: String,
-    #[allow(dead_code)]
-    data: String,
-}
-
-#[derive(Clone, Serialize)]
-pub(super) struct JoseSignReq {
-    pub(super) kid: String,
-    pub(super) alg: &'static str,
-    pub(super) data: String,
-}
-
-#[derive(Deserialize, Serialize)]
-struct JoseSignResp {
-    protected: String,
-    signature: String,
-}
-
-#[derive(Clone, Serialize)]
-struct JoseVerifyReq {
-    protected: String,
-    data: String,
-    signature: String,
-}
-
-#[derive(Deserialize, Serialize)]
-struct JoseVerifyResp {
-    #[allow(dead_code)]
-    kid: String,
-    #[allow(dead_code)]
-    valid: bool,
-}
-
-#[derive(Clone, Serialize)]
-struct JoseMacReq {
-    kid: String,
-    alg: &'static str,
-    data: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    mac: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-struct JoseMacComputeResp {
-    #[allow(dead_code)]
-    kid: String,
-    mac: String,
-}
-
-#[derive(Deserialize, Serialize)]
-struct JoseMacVerifyResp {
-    #[allow(dead_code)]
-    kid: String,
-    #[allow(dead_code)]
-    valid: bool,
-}
 
 // ─── JOSE key creation helpers ──────────────────────────────────────────────
 
@@ -140,9 +26,7 @@ pub(super) fn jose_create_sym_key(
         crv: None,
         bits: None,
     };
-    rt.block_on(client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req)))
-        .ok()
-        .map(|r| r.kid)
+    rt.block_on(client.jose_create_key(req)).ok().map(|r| r.kid)
 }
 
 pub(super) fn jose_try_create_ec_kp(
@@ -157,9 +41,7 @@ pub(super) fn jose_try_create_ec_kp(
         crv: Some(crv),
         bits: None,
     };
-    let resp = rt
-        .block_on(client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req)))
-        .ok()?;
+    let resp = rt.block_on(client.jose_create_key(req)).ok()?;
     Some((resp.kid, resp.kid_public?))
 }
 
@@ -175,9 +57,7 @@ fn jose_try_create_rsa_kp(
         crv: None,
         bits: Some(bits),
     };
-    let resp = rt
-        .block_on(client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req)))
-        .ok()?;
+    let resp = rt.block_on(client.jose_create_key(req)).ok()?;
     Some((resp.kid, resp.kid_public?))
 }
 
@@ -189,9 +69,7 @@ fn jose_try_create_okp_kp(rt: &Runtime, client: &KmsClient) -> Option<(String, S
         crv: Some("Ed25519"),
         bits: None,
     };
-    let resp = rt
-        .block_on(client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req)))
-        .ok()?;
+    let resp = rt.block_on(client.jose_create_key(req)).ok()?;
     Some((resp.kid, resp.kid_public?))
 }
 
@@ -220,9 +98,7 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
             aad: None,
         };
 
-        let Ok(enc_resp) = rt.block_on(
-            client.post_no_ttlv::<JoseEncReq, JoseEncResp>("/v1/crypto/encrypt", Some(&enc_req)),
-        ) else {
+        let Ok(enc_resp) = rt.block_on(client.jose_encrypt(enc_req.clone())) else {
             eprintln!("[bench] JOSE encrypt {enc} not supported by server, skipping");
             bench_ko("jose/encrypt");
             continue;
@@ -230,12 +106,8 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
 
         let enc_req_clone = enc_req.clone();
         group.bench_function(BenchmarkId::new("encrypt", enc), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseEncReq, JoseEncResp>(
-                    "/v1/crypto/encrypt",
-                    Some(&enc_req_clone),
-                )
-            });
+            b.to_async(rt)
+                .iter(|| client.jose_encrypt(enc_req_clone.clone()));
         });
 
         let dec_req = JoseDecryptReq {
@@ -247,12 +119,7 @@ pub(super) fn bench_jose_encrypt(c: &mut Criterion, client: &KmsClient, rt: &Run
             aad: enc_resp.aad,
         };
         group.bench_function(BenchmarkId::new("decrypt", enc), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseDecryptReq, JoseDecryptResp>(
-                    "/v1/crypto/decrypt",
-                    Some(&dec_req),
-                )
-            });
+            b.to_async(rt).iter(|| client.jose_decrypt(dec_req.clone()));
         });
     }
     group.finish();
@@ -291,9 +158,7 @@ fn bench_jose_encrypt_rsa_oaep(c: &mut Criterion, client: &KmsClient, rt: &Runti
             aad: None,
         };
 
-        let Ok(enc_resp) = rt.block_on(
-            client.post_no_ttlv::<JoseEncReq, JoseEncResp>("/v1/crypto/encrypt", Some(&enc_req)),
-        ) else {
+        let Ok(enc_resp) = rt.block_on(client.jose_encrypt(enc_req.clone())) else {
             eprintln!("[bench] JOSE RSA-OAEP encrypt ({bits}-bit) not supported, skipping");
             bench_ko("jose/encrypt/rsa-oaep");
             continue;
@@ -301,12 +166,8 @@ fn bench_jose_encrypt_rsa_oaep(c: &mut Criterion, client: &KmsClient, rt: &Runti
 
         let enc_req_clone = enc_req.clone();
         group.bench_function(BenchmarkId::new("encrypt", bits), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseEncReq, JoseEncResp>(
-                    "/v1/crypto/encrypt",
-                    Some(&enc_req_clone),
-                )
-            });
+            b.to_async(rt)
+                .iter(|| client.jose_encrypt(enc_req_clone.clone()));
         });
 
         // The protected header embeds the private key UID so decrypt is self-contained.
@@ -319,12 +180,7 @@ fn bench_jose_encrypt_rsa_oaep(c: &mut Criterion, client: &KmsClient, rt: &Runti
             aad: enc_resp.aad,
         };
         group.bench_function(BenchmarkId::new("decrypt", bits), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseDecryptReq, JoseDecryptResp>(
-                    "/v1/crypto/decrypt",
-                    Some(&dec_req),
-                )
-            });
+            b.to_async(rt).iter(|| client.jose_decrypt(dec_req.clone()));
         });
     }
     group.finish();
@@ -401,9 +257,7 @@ pub(super) fn bench_jose_sign_verify_one(
         data: payload.to_owned(),
     };
 
-    let Ok(sign_resp) = rt.block_on(
-        client.post_no_ttlv::<JoseSignReq, JoseSignResp>("/v1/crypto/sign", Some(&sign_req)),
-    ) else {
+    let Ok(sign_resp) = rt.block_on(client.jose_sign(sign_req.clone())) else {
         eprintln!("[bench] JOSE sign {alg} not supported by server, skipping");
         bench_ko(format!("jose/sign-verify/{label}"));
         return;
@@ -411,9 +265,7 @@ pub(super) fn bench_jose_sign_verify_one(
 
     let mut group = c.benchmark_group(format!("jose/sign-verify/{label}"));
     group.bench_function("sign", |b| {
-        b.to_async(rt).iter(|| {
-            client.post_no_ttlv::<JoseSignReq, JoseSignResp>("/v1/crypto/sign", Some(&sign_req))
-        });
+        b.to_async(rt).iter(|| client.jose_sign(sign_req.clone()));
     });
 
     let verify_req = JoseVerifyReq {
@@ -422,12 +274,8 @@ pub(super) fn bench_jose_sign_verify_one(
         signature: sign_resp.signature,
     };
     group.bench_function("verify", |b| {
-        b.to_async(rt).iter(|| {
-            client.post_no_ttlv::<JoseVerifyReq, JoseVerifyResp>(
-                "/v1/crypto/verify",
-                Some(&verify_req),
-            )
-        });
+        b.to_async(rt)
+            .iter(|| client.jose_verify(verify_req.clone()));
     });
     group.finish();
 }
@@ -452,9 +300,7 @@ pub(super) fn bench_jose_mac(c: &mut Criterion, client: &KmsClient, rt: &Runtime
             mac: None,
         };
 
-        let Ok(mac_resp) = rt.block_on(
-            client.post_no_ttlv::<JoseMacReq, JoseMacComputeResp>("/v1/crypto/mac", Some(&mac_req)),
-        ) else {
+        let Ok(mac_resp) = rt.block_on(client.jose_mac_compute(mac_req.clone())) else {
             eprintln!("[bench] JOSE MAC {alg} not supported by server, skipping");
             bench_ko("jose/mac");
             continue;
@@ -462,12 +308,8 @@ pub(super) fn bench_jose_mac(c: &mut Criterion, client: &KmsClient, rt: &Runtime
 
         let mac_req_clone = mac_req.clone();
         group.bench_function(BenchmarkId::new("compute", alg), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseMacReq, JoseMacComputeResp>(
-                    "/v1/crypto/mac",
-                    Some(&mac_req_clone),
-                )
-            });
+            b.to_async(rt)
+                .iter(|| client.jose_mac_compute(mac_req_clone.clone()));
         });
 
         let verify_req = JoseMacReq {
@@ -477,12 +319,8 @@ pub(super) fn bench_jose_mac(c: &mut Criterion, client: &KmsClient, rt: &Runtime
             mac: Some(mac_resp.mac),
         };
         group.bench_function(BenchmarkId::new("verify", alg), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseMacReq, JoseMacVerifyResp>(
-                    "/v1/crypto/mac",
-                    Some(&verify_req),
-                )
-            });
+            b.to_async(rt)
+                .iter(|| client.jose_mac_verify(verify_req.clone()));
         });
     }
     group.finish();
@@ -501,18 +339,13 @@ pub(super) fn bench_jose_key_creation(c: &mut Criterion, client: &KmsClient, rt:
             crv: None,
             bits: None,
         };
-        if rt
-            .block_on(client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req)))
-            .is_err()
-        {
+        if rt.block_on(client.jose_create_key(req)).is_err() {
             eprintln!("[bench] JOSE key-creation oct/{alg} not supported, skipping");
             bench_ko("jose/key-creation");
             continue;
         }
         group.bench_function(BenchmarkId::new("oct", alg), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req))
-            });
+            b.to_async(rt).iter(|| client.jose_create_key(req));
         });
     }
 
@@ -524,18 +357,13 @@ pub(super) fn bench_jose_key_creation(c: &mut Criterion, client: &KmsClient, rt:
             crv: Some(crv),
             bits: None,
         };
-        if rt
-            .block_on(client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req)))
-            .is_err()
-        {
+        if rt.block_on(client.jose_create_key(req)).is_err() {
             eprintln!("[bench] JOSE key-creation EC/{alg} not supported, skipping");
             bench_ko("jose/key-creation");
             continue;
         }
         group.bench_function(BenchmarkId::new("EC", alg), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&req))
-            });
+            b.to_async(rt).iter(|| client.jose_create_key(req));
         });
     }
 
@@ -546,14 +374,9 @@ pub(super) fn bench_jose_key_creation(c: &mut Criterion, client: &KmsClient, rt:
         crv: None,
         bits: Some(2048),
     };
-    if rt
-        .block_on(client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&rsa_req)))
-        .is_ok()
-    {
+    if rt.block_on(client.jose_create_key(rsa_req)).is_ok() {
         group.bench_function(BenchmarkId::new("RSA", "2048"), |b| {
-            b.to_async(rt).iter(|| {
-                client.post_no_ttlv::<JoseKeyReq, JoseKeyResp>("/v1/crypto/keys", Some(&rsa_req))
-            });
+            b.to_async(rt).iter(|| client.jose_create_key(rsa_req));
         });
     } else {
         eprintln!("[bench] JOSE key-creation RSA/2048 not supported, skipping");
@@ -586,12 +409,7 @@ pub(super) fn bench_jose_batch(c: &mut Criterion, client: &KmsClient, rt: &Runti
     };
 
     // Test that the endpoint works
-    if rt
-        .block_on(
-            client.post_no_ttlv::<JoseEncReq, JoseEncResp>("/v1/crypto/encrypt", Some(&enc_req)),
-        )
-        .is_err()
-    {
+    if rt.block_on(client.jose_encrypt(enc_req.clone())).is_err() {
         eprintln!("[bench] JOSE batch encrypt not supported, skipping");
         bench_ko("jose/batch");
         return;
@@ -612,14 +430,7 @@ pub(super) fn bench_jose_batch(c: &mut Criterion, client: &KmsClient, rt: &Runti
             |b, &count| {
                 b.to_async(rt).iter(|| async {
                     for _ in 0..count {
-                        drop(
-                            client
-                                .post_no_ttlv::<JoseEncReq, JoseEncResp>(
-                                    "/v1/crypto/encrypt",
-                                    Some(&enc_req),
-                                )
-                                .await,
-                        );
+                        drop(client.jose_encrypt(enc_req.clone()).await);
                     }
                 });
             },

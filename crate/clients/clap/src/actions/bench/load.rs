@@ -5,6 +5,7 @@ use std::{
 
 use cosmian_kms_client::{
     KmsClient,
+    jose::{JoseEncReq, JoseSignReq, b64url},
     kmip_2_1::{
         extra::BulkData,
         kmip_operations::{Encrypt, Operation, Sign},
@@ -21,7 +22,7 @@ use zeroize::Zeroizing;
 
 use super::{
     helpers::{aes_gcm_params, create_sym_key, try_create_ec_kp},
-    jose::{JoseEncReq, JoseSignReq, b64url, jose_create_sym_key, jose_try_create_ec_kp},
+    jose::{jose_create_sym_key, jose_try_create_ec_kp},
     kmip_ttlv_bytes::{make_wire_request, to_wire_bytes, wire_response_ok},
     output::criterion_home,
     types::{BenchMode, BenchProtocol},
