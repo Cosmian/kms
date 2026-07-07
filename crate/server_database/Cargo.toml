@@ -67,6 +67,7 @@ tokio-postgres = { version = "0.7.18", features = [
 tokio-rusqlite = "0.7"
 url = { workspace = true }
 uuid = { workspace = true }
+zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -617,6 +617,13 @@ Crate path: `crate/server`
 | `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
 | `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
 | `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `warn` | `JOSE CEK cache insert error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
+| `warn` | `JOSE CEK cache peek error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
+| `warn` | `JOSE CEK cache: failed to construct KMIP SymmetricKey: {e}` | `src/routes/jose/cek_cache.rs` | `e` | - |
+| `warn` | `JOSE CEK cache: unexpected CEK length {other} bytes — not an AES-128/192/256 key` | `src/routes/jose/cek_cache.rs` | `other` | - |
+| `warn` | `JOSE CEK cache: unexpected object type for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 
 ### `cosmian_kms_server_database`
 

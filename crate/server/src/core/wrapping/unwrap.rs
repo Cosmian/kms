@@ -188,8 +188,13 @@ async fn unwrap_using_crypto_oracle(
         .strip_suffix(SYSTEM_TAG_PUBLIC_KEY)
         .map_or_else(|| unwrapping_key_uid.to_owned(), str::to_owned);
 
-    // Permission checks on HSM keys are not performed during unwrapping.
-    // The HSM itself manages access control for key operations.
+    // SECURITY ASSUMPTION: KMS-level user-permission checks are intentionally
+    // skipped for HSM-backed keys during unwrapping. The HSM device is the
+    // authoritative access-control boundary for these keys: every cryptographic
+    // operation the HSM permits is considered authorised by the KMS layer.
+    // Operators MUST ensure that HSM slot / PIN configuration and the
+    // user-to-slot mapping enforce the desired access policy; the KMS makes
+    // no additional ownership or permission assertion here.
 
     // fetch the key wrapping data
     let key_wrapping_data = object_key_block.key_wrapping_data.as_ref().ok_or_else(|| {

@@ -15,6 +15,7 @@ use cosmian_kmip::{
     kmip_2_1::kmip_objects::Object,
     ttlv::{KmipFlavor, to_ttlv},
 };
+use zeroize::Zeroizing;
 
 use crate::{DbError, error::DbResult};
 
@@ -42,11 +43,16 @@ impl Fingerprinter {
     /// instance seed.  The hash covers every object field, not only the raw
     /// key material, so attribute mutations are also detected.
     pub(crate) fn fingerprint(&self, object: &Object) -> DbResult<u64> {
-        let bytes = to_ttlv(object)
-            .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
-            .map_err(KmipError::from)
-            .map_err(DbError::from)?;
-        Ok(self.seed.hash_one(&bytes))
+        // Wrap the serialized bytes in a Zeroizing buffer so that any key
+        // material captured during TTLV serialization is wiped from memory
+        // as soon as this function returns.
+        let bytes = Zeroizing::new(
+            to_ttlv(object)
+                .and_then(|ttlv| ttlv.to_bytes(KmipFlavor::Kmip2))
+                .map_err(KmipError::from)
+                .map_err(DbError::from)?,
+        );
+        Ok(self.seed.hash_one(bytes.as_slice()))
     }
 }
 

@@ -1470,6 +1470,7 @@ dependencies = [
  "tokio-rusqlite",
  "url",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

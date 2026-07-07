@@ -373,10 +373,12 @@ impl Database {
             Ok(db.update_object(uid, object, attributes, tags).await?)
         })
         .await?;
-        // Invalidate the object cache since attributes (e.g. usage limits) changed.
+        // Invalidate the object cache since attributes or key material may have changed.
         self.object_cache.invalidate(uid).await;
-        // Key material is immutable; only attributes change via update_object.
-        // The GC clears stale unwrap-cache entries; no eager invalidation needed here.
+        // Validate the unwrapped cache: if the object fingerprint changed (e.g. a
+        // re-wrap), evict the stale unwrapped entry so the next get_unwrapped call
+        // performs a fresh unwrap instead of returning stale key material.
+        self.unwrapped_cache.validate_cache(uid, object).await?;
         Ok(())
     }
 
@@ -581,7 +583,11 @@ impl Database {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.clear_cache(uid).await;
                 }
-                AtomicOperation::UpdateState(_) => {}
+                AtomicOperation::UpdateState((uid, _)) => {
+                    // Evict the stale object so the new lifecycle state is
+                    // visible immediately on the next retrieve_object call.
+                    self.object_cache.invalidate(uid).await;
+                }
             }
         }
         Ok(ids)

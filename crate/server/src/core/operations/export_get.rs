@@ -103,6 +103,12 @@ pub(crate) async fn export_get(
         ));
     }
 
+    // Snapshot the original DB-form object before any response-oriented processing
+    // (format conversion, re-wrapping, auto-unwrap via default_unwrap_types).
+    // Attribute-persistence paths (Fresh bit flip) must write back this form so
+    // that auto-unwrapped key material is never accidentally persisted to the DB.
+    let original_object = owm.object().clone();
+
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
@@ -123,8 +129,10 @@ pub(crate) async fn export_get(
                         let mut updated_attrs = owm.attributes().clone();
                         updated_attrs.fresh = Some(false);
                         let uid = owm.id().to_owned();
-                        // Also flip Fresh inside the embedded KeyBlock attributes if present
-                        let mut obj = owm.object().clone();
+                        // Also flip Fresh inside the embedded KeyBlock attributes if present.
+                        // Use the original DB-form object (not the post-processed response form)
+                        // to avoid persisting auto-unwrapped key material to the database.
+                        let mut obj = original_object.clone();
                         if let Ok(kb) = obj.key_block_mut() {
                             if let Some(KeyValue::Structure { attributes, .. }) =
                                 kb.key_value.as_mut()
@@ -222,8 +230,10 @@ pub(crate) async fn export_get(
                         let mut updated_attrs = owm.attributes().clone();
                         updated_attrs.fresh = Some(false);
                         let uid = owm.id().to_owned();
-                        // Also flip Fresh inside the embedded KeyBlock attributes if present
-                        let mut obj = owm.object().clone();
+                        // Also flip Fresh inside the embedded KeyBlock attributes if present.
+                        // Use the original DB-form object (not the post-processed response form)
+                        // to avoid persisting auto-unwrapped key material to the database.
+                        let mut obj = original_object.clone();
                         if let Ok(kb_mut) = obj.key_block_mut() {
                             if let Some(KeyValue::Structure { attributes, .. }) =
                                 kb_mut.key_value.as_mut()
