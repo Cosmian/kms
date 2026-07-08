@@ -399,8 +399,8 @@ impl KMS {
                 }
                 Ok(result)
             }
-            ResolvedKey::Local(mut owm) => {
-                self.execute_local_with_limits::<Op>(&mut owm, &request, user)
+            ResolvedKey::Local(owm) => {
+                self.execute_local_with_limits::<Op>(&owm, &request, user)
                     .await
             }
             ResolvedKey::Keyset(chain) => {
@@ -419,7 +419,7 @@ impl KMS {
     /// function's stack frame on every cryptographic operation.
     async fn execute_local_with_limits<Op: CryptoOpSpec>(
         &self,
-        owm: &mut ObjectWithMetadata,
+        owm: &ObjectWithMetadata,
         request: &Op::Request,
         user: &str,
     ) -> KResult<Op::Response> {
@@ -429,6 +429,7 @@ impl KMS {
         // (algorithm, length, curve), which is identical whether the key is wrapped or
         // not, so it can run once on `owm`, before any unwrapping takes place.
         enforce_kmip_algorithm_policy_for_retrieved_key(&self.params, Op::OP_NAME, owm.id(), owm)?;
+        owm.enforce_usage_limits(data_len)?;
 
         // The clone is only needed when the key is wrapped: unwrapping mutates the
         // object, replacing the wrapped key material with plaintext.
@@ -440,38 +441,38 @@ impl KMS {
         // `enforce_usage_limits`/`decrement_usage_limits` are no-ops when the key has
         // no `UsageLimits` set, so they are called unconditionally rather than gating
         // the fast path on that as well.
-        if owm.object().is_wrapped() {
-            let mut unwrapped_owm = owm.clone();
-            let unwrapped =
-                Box::pin(self.get_unwrapped(unwrapped_owm.id(), unwrapped_owm.object(), user))
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "{}: the key: {}, cannot be unwrapped.",
-                            Op::OP_NAME,
-                            owm.id()
-                        )
-                    })?;
-            unwrapped_owm.set_object(unwrapped);
-            // Guard against COSMIAN-2026-015 regressing silently: `owm` (the copy
-            // that gets persisted below) must remain wrapped.
-            debug_assert!(
-                owm.object().is_wrapped(),
-                "owm must stay wrapped for persistence; only unwrapped_owm may hold plaintext key material"
-            );
-
-            owm.enforce_usage_limits(data_len)?;
-            let res = Op::execute_local(self, &unwrapped_owm, request, user).await?;
-            self.decrement_usage_limits(owm, Op::OP_NAME, data_len)
-                .await?;
-            Ok(res)
-        } else {
-            owm.enforce_usage_limits(data_len)?;
-            let res = Op::execute_local(self, owm, request, user).await?;
-            self.decrement_usage_limits(owm, Op::OP_NAME, data_len)
-                .await?;
-            Ok(res)
+        // Clone for crypto use: this clone may be unwrapped to obtain plaintext
+        // key material needed by the algorithm.  The original `owm` keeps its
+        // wrapped key material, which is passed directly to `decrement_usage_limits`
+        // for persistence — no second clone needed (COSMIAN-2026-015).
+        let mut local_owm = owm.clone();
+        if local_owm.object().is_wrapped() {
+            let unwrapped = Box::pin(self.get_unwrapped(local_owm.id(), local_owm.object(), user))
+                .await
+                .with_context(|| {
+                    format!(
+                        "{}: the key: {}, cannot be unwrapped.",
+                        Op::OP_NAME,
+                        owm.id()
+                    )
+                })?;
+            local_owm.set_object(unwrapped);
         }
+
+        let res = Op::execute_local(self, &local_owm, request, user).await?;
+
+        // Persist usage limits: `owm.object()` is still wrapped, avoiding
+        // plaintext leakage; `local_owm.attributes_mut()` has the decremented
+        // counter computed right here.
+        self.decrement_usage_limits(
+            owm.id(),
+            owm.object(),
+            local_owm.attributes_mut(),
+            Op::OP_NAME,
+            data_len,
+        )
+        .await?;
+        Ok(res)
     }
 
     /// Try each key in a keyset chain (newest→oldest) until one succeeds.
@@ -488,7 +489,7 @@ impl KMS {
         let mut last_err: Option<KmsError> = None;
 
         for (depth, uid) in chain.iter().enumerate() {
-            let Some(mut owm) = self.database.retrieve_object(uid).await? else {
+            let Some(owm) = self.database.retrieve_object(uid).await? else {
                 continue;
             };
 
@@ -517,7 +518,7 @@ impl KMS {
             }
 
             match self
-                .execute_local_with_limits::<Op>(&mut owm, request, user)
+                .execute_local_with_limits::<Op>(&owm, request, user)
                 .await
             {
                 Ok(response) => {
@@ -595,14 +596,23 @@ impl KMS {
     ///
     /// Persistence is skipped when no usage limits are set on the key,
     /// avoiding unnecessary row-level lock contention on the hot path.
+    /// Decrement the `UsageLimits` counter on `attributes` and persist the original
+    /// `object` together with the updated attributes to the database.
+    ///
+    /// The `object` and `attributes` are split so the caller can pass the
+    /// original (still-wrapped) key material alongside the decremented
+    /// attributes from a disposable clone — this avoids a full second clone
+    /// just for persistence (COSMIAN-2026-015).
     async fn decrement_usage_limits(
         &self,
-        owm: &mut ObjectWithMetadata,
+        id: &str,
+        object: &Object,
+        attributes: &mut Attributes,
         op_name: &str,
         data_len: usize,
     ) -> KResult<()> {
         let mut decremented = false;
-        if let Some(ref mut ul) = owm.attributes_mut().usage_limits {
+        if let Some(ul) = attributes.usage_limits.as_mut() {
             match ul.usage_limits_unit {
                 UsageLimitsUnit::Byte => {
                     let consumed = i64::try_from(data_len).unwrap_or(i64::MAX);
@@ -616,9 +626,8 @@ impl KMS {
             }
         }
         if decremented {
-            let attributes = owm.attributes().clone();
             self.database
-                .update_object(owm.id(), owm.object(), &attributes, None)
+                .update_object(id, object, attributes, None)
                 .await
                 .map_err(|e| {
                     KmsError::ServerError(format!(
