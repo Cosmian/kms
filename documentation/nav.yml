@@ -135,6 +135,8 @@ nav:
       - Obtaining TLS Certificates: configuration/certificates.md
       - Logging and telemetry: configuration/logging.md
       - Log reference: configuration/log-reference.md
+      - Audit logs: configuration/audit-logs.md
+      - SIEMs: configuration/siems.md
       - Monitoring:
           - Setup: configuration/monitoring-setup.md
           - Metrics reference: configuration/otlp-metrics.md
@@ -166,5 +168,6 @@ nav:
           - Examples: kms_clients/configuration.md
       - Usage:
           - Command Line Interface: kms_clients/usage.md
+          - Audit log management: kms_clients/audit.md
       - Access Rights: kms_clients/authorization.md
       - S/MIME Gmail: kms_clients/smime_gmail.md

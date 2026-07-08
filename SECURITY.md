@@ -1,46 +1,46 @@
 # Security Policy
 
 - [Security Policy](#security-policy)
-    - [Reporting a Vulnerability](#reporting-a-vulnerability)
-    - [Severity Rating](#severity-rating)
-    - [Known Vulnerabilities](#known-vulnerabilities)
-        - [2026](#2026)
-            - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
-            - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
-            - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
-            - [COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type](#cosmian-2026-016--attribute-mutation-authorization-bypass-via-incorrect-operation-type)
-            - [COSMIAN-2026-015 — KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign](#cosmian-2026-015--kek-plaintext-leak-via-usagelimits-persist-in-decrypt-and-sign)
-            - [COSMIAN-2026-014 — Sensitive configuration values exposed in Debug output](#cosmian-2026-014--sensitive-configuration-values-exposed-in-debug-output)
-            - [COSMIAN-2026-013 — Internal error details leaked in HTTP 5xx responses](#cosmian-2026-013--internal-error-details-leaked-in-http-5xx-responses)
-            - [COSMIAN-2026-012 — `/server-info` endpoint accessible without authentication](#cosmian-2026-012--server-info-endpoint-accessible-without-authentication)
-            - [COSMIAN-2026-011 — Non-atomic state transitions enable TOCTOU races](#cosmian-2026-011--non-atomic-state-transitions-enable-toctou-races)
-            - [COSMIAN-2026-010 — Predictable default session cookie salt](#cosmian-2026-010--predictable-default-session-cookie-salt)
-            - [COSMIAN-2026-009 — Google CSE rewrap SSRF via `original_kacls_url`](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url)
-            - [COSMIAN-2026-008 — Unwrap cache not invalidated on key revocation/destruction](#cosmian-2026-008--unwrap-cache-not-invalidated-on-key-revocationdestruction)
-            - [COSMIAN-2026-007 — MS DKE scope missing authentication middleware](#cosmian-2026-007--ms-dke-scope-missing-authentication-middleware)
-            - [COSMIAN-2026-006 — Server crash under concurrent requests due to tracing span misuse](#cosmian-2026-006--server-crash-under-concurrent-requests-due-to-tracing-span-misuse)
-            - [COSMIAN-2026-005 — JWT decoding race condition causing intermittent authentication bypass](#cosmian-2026-005--jwt-decoding-race-condition-causing-intermittent-authentication-bypass)
-            - [COSMIAN-2026-004 — OTLP telemetry exported over plaintext HTTP leaks encryption queries](#cosmian-2026-004--otlp-telemetry-exported-over-plaintext-http-leaks-encryption-queries)
-            - [COSMIAN-2026-003 — KMIP Import `replace_existing` bypasses ownership verification](#cosmian-2026-003--kmip-import-replace_existing-bypasses-ownership-verification)
-            - [COSMIAN-2026-002 — SipHash key hardcoded to zero in unwrap cache](#cosmian-2026-002--siphash-key-hardcoded-to-zero-in-unwrap-cache)
-        - [2025](#2025)
-            - [COSMIAN-2025-003 — glibc CVEs in container base image (CVE-2024-2961, CVE-2024-33600, CVE-2024-33601)](#cosmian-2025-003--glibc-cves-in-container-base-image-cve-2024-2961-cve-2024-33600-cve-2024-33601)
-            - [COSMIAN-2025-012 — Session cookie encryption key randomly regenerated on each restart](#cosmian-2025-012--session-cookie-encryption-key-randomly-regenerated-on-each-restart)
-            - [COSMIAN-2025-011 — RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel](#cosmian-2025-011--rustsec-2023-0071-rsa-marvin-attack-timing-side-channel)
-            - [COSMIAN-2025-004 — OpenSSL 3.x CVEs addressed by upgrade to 3.6.2](#cosmian-2025-004--openssl-3x-cves-addressed-by-upgrade-to-362)
-            - [COSMIAN-2025-010 — JWT authentication token not forwarded to downstream services](#cosmian-2025-010--jwt-authentication-token-not-forwarded-to-downstream-services)
-            - [COSMIAN-2025-009 — HSM unwrap operation bypasses KMS permission checks](#cosmian-2025-009--hsm-unwrap-operation-bypasses-kms-permission-checks)
-            - [COSMIAN-2025-002 — Negative X.509 certificate serial numbers](#cosmian-2025-002--negative-x509-certificate-serial-numbers)
-            - [COSMIAN-2025-008 — Google CSE `privilegedunwrap` endpoint unrestricted access](#cosmian-2025-008--google-cse-privilegedunwrap-endpoint-unrestricted-access)
-            - [COSMIAN-2025-001 — CSE migration key pair race condition](#cosmian-2025-001--cse-migration-key-pair-race-condition)
-            - [COSMIAN-2025-007 — OpenID Connect authentication silently falls back to no-auth on TLS failure](#cosmian-2025-007--openid-connect-authentication-silently-falls-back-to-no-auth-on-tls-failure)
-            - [COSMIAN-2025-006 — Missing PKCE in OAuth2 authentication flow](#cosmian-2025-006--missing-pkce-in-oauth2-authentication-flow)
-            - [COSMIAN-2025-005 — JWT authorization config loop — only first OIDC provider checked](#cosmian-2025-005--jwt-authorization-config-loop--only-first-oidc-provider-checked)
-    - [Summary Table](#summary-table)
-    - [Security Best Practices](#security-best-practices)
-    - [FIPS Compliance](#fips-compliance)
-    - [Security Audits](#security-audits)
-    - [Contact](#contact)
+  - [Reporting a Vulnerability](#reporting-a-vulnerability)
+  - [Severity Rating](#severity-rating)
+  - [Known Vulnerabilities](#known-vulnerabilities)
+    - [2026](#2026)
+      - [COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`](#cosmian-2026-019--rustsec-2026-0173-proc-macro-error2-soundness-issue-via-mysql_async)
+      - [COSMIAN-2026-018 — Activate operation uses overly permissive authorization check](#cosmian-2026-018--activate-operation-uses-overly-permissive-authorization-check)
+      - [COSMIAN-2026-017 — ReKey / ReKeyKeyPair authorization bypass via raw object retrieval](#cosmian-2026-017--rekey--rekeykeypair-authorization-bypass-via-raw-object-retrieval)
+      - [COSMIAN-2026-016 — Attribute-mutation authorization bypass via incorrect operation type](#cosmian-2026-016--attribute-mutation-authorization-bypass-via-incorrect-operation-type)
+      - [COSMIAN-2026-015 — KEK plaintext leak via `UsageLimits` persist in Decrypt and Sign](#cosmian-2026-015--kek-plaintext-leak-via-usagelimits-persist-in-decrypt-and-sign)
+      - [COSMIAN-2026-014 — Sensitive configuration values exposed in Debug output](#cosmian-2026-014--sensitive-configuration-values-exposed-in-debug-output)
+      - [COSMIAN-2026-013 — Internal error details leaked in HTTP 5xx responses](#cosmian-2026-013--internal-error-details-leaked-in-http-5xx-responses)
+      - [COSMIAN-2026-012 — `/server-info` endpoint accessible without authentication](#cosmian-2026-012--server-info-endpoint-accessible-without-authentication)
+      - [COSMIAN-2026-011 — Non-atomic state transitions enable TOCTOU races](#cosmian-2026-011--non-atomic-state-transitions-enable-toctou-races)
+      - [COSMIAN-2026-010 — Predictable default session cookie salt](#cosmian-2026-010--predictable-default-session-cookie-salt)
+      - [COSMIAN-2026-009 — Google CSE rewrap SSRF via `original_kacls_url`](#cosmian-2026-009--google-cse-rewrap-ssrf-via-original_kacls_url)
+      - [COSMIAN-2026-008 — Unwrap cache not invalidated on key revocation/destruction](#cosmian-2026-008--unwrap-cache-not-invalidated-on-key-revocationdestruction)
+      - [COSMIAN-2026-007 — MS DKE scope missing authentication middleware](#cosmian-2026-007--ms-dke-scope-missing-authentication-middleware)
+      - [COSMIAN-2026-006 — Server crash under concurrent requests due to tracing span misuse](#cosmian-2026-006--server-crash-under-concurrent-requests-due-to-tracing-span-misuse)
+      - [COSMIAN-2026-005 — JWT decoding race condition causing intermittent authentication bypass](#cosmian-2026-005--jwt-decoding-race-condition-causing-intermittent-authentication-bypass)
+      - [COSMIAN-2026-004 — OTLP telemetry exported over plaintext HTTP leaks encryption queries](#cosmian-2026-004--otlp-telemetry-exported-over-plaintext-http-leaks-encryption-queries)
+      - [COSMIAN-2026-003 — KMIP Import `replace_existing` bypasses ownership verification](#cosmian-2026-003--kmip-import-replace_existing-bypasses-ownership-verification)
+      - [COSMIAN-2026-002 — SipHash key hardcoded to zero in unwrap cache](#cosmian-2026-002--siphash-key-hardcoded-to-zero-in-unwrap-cache)
+    - [2025](#2025)
+      - [COSMIAN-2025-003 — glibc CVEs in container base image (CVE-2024-2961, CVE-2024-33600, CVE-2024-33601)](#cosmian-2025-003--glibc-cves-in-container-base-image-cve-2024-2961-cve-2024-33600-cve-2024-33601)
+      - [COSMIAN-2025-012 — Session cookie encryption key randomly regenerated on each restart](#cosmian-2025-012--session-cookie-encryption-key-randomly-regenerated-on-each-restart)
+      - [COSMIAN-2025-011 — RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel](#cosmian-2025-011--rustsec-2023-0071-rsa-marvin-attack-timing-side-channel)
+      - [COSMIAN-2025-004 — OpenSSL 3.x CVEs addressed by upgrade to 3.6.2](#cosmian-2025-004--openssl-3x-cves-addressed-by-upgrade-to-362)
+      - [COSMIAN-2025-010 — JWT authentication token not forwarded to downstream services](#cosmian-2025-010--jwt-authentication-token-not-forwarded-to-downstream-services)
+      - [COSMIAN-2025-009 — HSM unwrap operation bypasses KMS permission checks](#cosmian-2025-009--hsm-unwrap-operation-bypasses-kms-permission-checks)
+      - [COSMIAN-2025-002 — Negative X.509 certificate serial numbers](#cosmian-2025-002--negative-x509-certificate-serial-numbers)
+      - [COSMIAN-2025-008 — Google CSE `privilegedunwrap` endpoint unrestricted access](#cosmian-2025-008--google-cse-privilegedunwrap-endpoint-unrestricted-access)
+      - [COSMIAN-2025-001 — CSE migration key pair race condition](#cosmian-2025-001--cse-migration-key-pair-race-condition)
+      - [COSMIAN-2025-007 — OpenID Connect authentication silently falls back to no-auth on TLS failure](#cosmian-2025-007--openid-connect-authentication-silently-falls-back-to-no-auth-on-tls-failure)
+      - [COSMIAN-2025-006 — Missing PKCE in OAuth2 authentication flow](#cosmian-2025-006--missing-pkce-in-oauth2-authentication-flow)
+      - [COSMIAN-2025-005 — JWT authorization config loop — only first OIDC provider checked](#cosmian-2025-005--jwt-authorization-config-loop--only-first-oidc-provider-checked)
+  - [Summary Table](#summary-table)
+  - [Security Best Practices](#security-best-practices)
+  - [FIPS Compliance](#fips-compliance)
+  - [Security Audits](#security-audits)
+  - [Contact](#contact)
 
 ---
 
@@ -79,13 +79,13 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 #### COSMIAN-2026-019 — RUSTSEC-2026-0173: `proc-macro-error2` soundness issue via `mysql_async`
 
-| Field      | Value                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------- |
-| Severity   | Low                                                                                               |
-| Published  | 2026                                                                                              |
-| Affected   | from 5.0.0 before 5.23.0 (MySQL/Percona/MariaDB backend only)                                    |
-| Fixed in   | 5.23.0                                                                                            |
-| Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0173)                                                 |
+| Field      | Value                                                                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Severity   | Low                                                                                                                                            |
+| Published  | 2026                                                                                                                                           |
+| Affected   | from 5.0.0 before 5.23.0 (MySQL/Percona/MariaDB backend only)                                                                                  |
+| Fixed in   | 5.23.0                                                                                                                                         |
+| Found by   | `cargo deny` advisory scanner (RUSTSEC-2026-0173)                                                                                              |
 | References | [RUSTSEC-2026-0173](https://rustsec.org/advisories/RUSTSEC-2026-0173.html), [#fix_RUSTSEC-2026-0173](https://github.com/Cosmian/kms/pull/1011) |
 
 **Summary:** `mysql_async` 0.36 pulled in `mysql-common-derive`, which transitively depended on `proc-macro-error2`. `proc-macro-error2` carries RUSTSEC-2026-0173, a soundness issue in its procedural macro machinery (use of `std::mem::transmute` across incompatible lifetime bounds). The advisory affects compile-time macro expansion, not the runtime KMS binary.
@@ -107,7 +107,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | Copilot code review (GitHub PR #961)            |
 | References | [#961](https://github.com/Cosmian/kms/pull/961) |
 
-**Summary:** The KMIP `Activate` operation passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. The permission check for `GetAttributes` grants access to any user holding *any* operation grant on the object. This meant a user with only `Encrypt` permission could activate a `PreActive` key, changing its lifecycle state — a security-relevant state transition that should require explicit authorization.
+**Summary:** The KMIP `Activate` operation passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. The permission check for `GetAttributes` grants access to any user holding _any_ operation grant on the object. This meant a user with only `Encrypt` permission could activate a `PreActive` key, changing its lifecycle state — a security-relevant state transition that should require explicit authorization.
 
 **Impact:** Privilege escalation: a user with a minimal grant (e.g., encrypt-only) could force-activate a key that was intentionally kept in `PreActive` state (e.g., with a future activation date), bypassing the key lifecycle controls set by the key owner.
 
@@ -145,7 +145,7 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 | Found by   | Copilot code review (GitHub PR #959)              |
 | References | [#960](https://github.com/Cosmian/kms/issues/960) |
 
-**Summary:** The `SetAttribute`, `ModifyAttribute`, `AddAttribute`, and `DeleteAttribute` KMIP operations all passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. That function's permission check uses a relaxed "any-permission" policy for `GetAttributes`, so any user holding *any* grant on an object (e.g., `Encrypt`-only) could mutate its attributes — including security-sensitive attributes such as `CryptographicUsageMask` — without the required `Modify` or full-access grant.
+**Summary:** The `SetAttribute`, `ModifyAttribute`, `AddAttribute`, and `DeleteAttribute` KMIP operations all passed `KmipOperation::GetAttributes` as the operation type to `retrieve_object_for_operation`. That function's permission check uses a relaxed "any-permission" policy for `GetAttributes`, so any user holding _any_ grant on an object (e.g., `Encrypt`-only) could mutate its attributes — including security-sensitive attributes such as `CryptographicUsageMask` — without the required `Modify` or full-access grant.
 
 **Impact:** Privilege escalation: a user with a limited grant (e.g., encrypt-only) could change key attributes, potentially widening the usage mask, altering sensitive metadata, or compromising the key's intended usage restrictions.
 
@@ -651,38 +651,38 @@ We take the security of Cosmian KMS seriously. If you discover a security vulner
 
 ## Summary Table
 
-| ID               | Severity | Affected                | Fixed in | Title                                                         |
-| ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------- |
+| ID               | Severity | Affected                | Fixed in | Title                                                               |
+| ---------------- | -------- | ----------------------- | -------- | ------------------------------------------------------------------- |
 | COSMIAN-2026-019 | Low      | 5.0.0 – 5.22.x          | 5.23.0   | RUSTSEC-2026-0173: proc-macro-error2 via mysql_async (compile-time) |
-| COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check           |
-| COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                     |
-| COSMIAN-2026-016 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type |
-| COSMIAN-2026-015 | High     | 5.0.0 – 5.21.x          | 5.22.0   | KEK plaintext leak via UsageLimits persist in Decrypt/Sign    |
-| COSMIAN-2026-014 | Low      | 5.0.0 – 5.21.0          | 5.22.0   | Sensitive config values exposed in Debug output               |
-| COSMIAN-2026-013 | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Internal error details leaked in HTTP 5xx responses           |
-| COSMIAN-2026-012 | Low      | 5.0.0 – 5.21.0          | 5.22.0   | `/server-info` endpoint accessible without authentication     |
-| COSMIAN-2026-011 | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Non-atomic state transitions enable TOCTOU races              |
-| COSMIAN-2026-010 | Moderate | 5.15.0 – 5.21.0         | 5.22.0   | Predictable default session cookie salt                       |
-| COSMIAN-2026-009 | High     | 5.0.0 – 5.21.0          | 5.22.0   | Google CSE rewrap SSRF via `original_kacls_url`               |
-| COSMIAN-2026-008 | High     | 5.0.0 – 5.21.0          | 5.22.0   | Unwrap cache not invalidated on key revocation/destruction    |
-| COSMIAN-2026-007 | High     | 5.0.0 – 5.21.0          | 5.22.0   | MS DKE scope missing authentication middleware                |
-| COSMIAN-2026-006 | High     | 5.17.0 – 5.21.0         | 5.22.0   | Server crash via tracing span misuse                          |
-| COSMIAN-2026-005 | High     | 5.17.0 – 5.20.1         | 5.21.0   | JWT race condition / algorithm confusion                      |
-| COSMIAN-2026-004 | Critical | 5.0.0+ (with HTTP OTLP) | 5.22.0   | Plaintext OTLP export leaks encryption query metadata         |
-| COSMIAN-2026-003 | Critical | 5.0.0 – 5.16.2          | 5.17.0   | Import `replace_existing` ownership bypass                    |
-| COSMIAN-2026-002 | Critical | 5.0.0 – 5.16.2          | 5.17.0   | SipHash key hardcoded to zero                                 |
-| COSMIAN-2025-012 | High     | 5.0.0 – 5.14.1          | 5.15.0   | Session cookie key randomly regenerated on restart            |
-| COSMIAN-2025-011 | High     | 5.0.0 – 5.14.1          | 5.15.0   | RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel      |
-| COSMIAN-2025-010 | High     | 5.0.0 – 5.13.0          | 5.14.0   | JWT token not forwarded to downstream services                |
-| COSMIAN-2025-009 | Critical | 5.0.0 – 5.12.0          | 5.13.0   | HSM unwrap bypasses KMS permission checks                     |
-| COSMIAN-2025-008 | Critical | 5.0.0 – 5.7.0           | 5.8.0    | Google CSE `privilegedunwrap` unrestricted access             |
-| COSMIAN-2025-007 | High     | 5.0.0 – 5.6.1           | 5.6.2    | OIDC silently falls back to no-auth on TLS failure            |
-| COSMIAN-2025-006 | High     | 5.0.0 – 5.0.0           | 5.1.0    | Missing PKCE in OAuth2 authentication flow                    |
-| COSMIAN-2025-005 | High     | 5.0.0 – 5.1.0           | 5.1.1    | JWT config loop — only first OIDC provider checked            |
-| COSMIAN-2025-004 | High     | 5.0.0 – 5.14.1          | 5.15.0   | OpenSSL 3.x CVEs (upgrade to 3.6.2)                           |
-| COSMIAN-2025-003 | High     | 5.0.0 – 5.15.0          | 5.16.0   | glibc CVEs in container base image                            |
-| COSMIAN-2025-002 | Moderate | 5.0.0 – 5.12.0          | 5.12.1   | Negative X.509 certificate serial numbers                     |
-| COSMIAN-2025-001 | Moderate | 5.0.0 – 5.7.0           | 5.8.0    | CSE migration key pair race condition                         |
+| COSMIAN-2026-018 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Activate uses overly permissive authorization check                 |
+| COSMIAN-2026-017 | Critical | 5.0.0 – 5.22.x          | 5.23.0   | ReKey / ReKeyKeyPair authorization bypass                           |
+| COSMIAN-2026-016 | Moderate | 5.0.0 – 5.22.x          | 5.23.0   | Attribute-mutation authorization bypass via incorrect op type       |
+| COSMIAN-2026-015 | High     | 5.0.0 – 5.21.x          | 5.22.0   | KEK plaintext leak via UsageLimits persist in Decrypt/Sign          |
+| COSMIAN-2026-014 | Low      | 5.0.0 – 5.21.0          | 5.22.0   | Sensitive config values exposed in Debug output                     |
+| COSMIAN-2026-013 | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Internal error details leaked in HTTP 5xx responses                 |
+| COSMIAN-2026-012 | Low      | 5.0.0 – 5.21.0          | 5.22.0   | `/server-info` endpoint accessible without authentication           |
+| COSMIAN-2026-011 | Moderate | 5.0.0 – 5.21.0          | 5.22.0   | Non-atomic state transitions enable TOCTOU races                    |
+| COSMIAN-2026-010 | Moderate | 5.15.0 – 5.21.0         | 5.22.0   | Predictable default session cookie salt                             |
+| COSMIAN-2026-009 | High     | 5.0.0 – 5.21.0          | 5.22.0   | Google CSE rewrap SSRF via `original_kacls_url`                     |
+| COSMIAN-2026-008 | High     | 5.0.0 – 5.21.0          | 5.22.0   | Unwrap cache not invalidated on key revocation/destruction          |
+| COSMIAN-2026-007 | High     | 5.0.0 – 5.21.0          | 5.22.0   | MS DKE scope missing authentication middleware                      |
+| COSMIAN-2026-006 | High     | 5.17.0 – 5.21.0         | 5.22.0   | Server crash via tracing span misuse                                |
+| COSMIAN-2026-005 | High     | 5.17.0 – 5.20.1         | 5.21.0   | JWT race condition / algorithm confusion                            |
+| COSMIAN-2026-004 | Critical | 5.0.0+ (with HTTP OTLP) | 5.22.0   | Plaintext OTLP export leaks encryption query metadata               |
+| COSMIAN-2026-003 | Critical | 5.0.0 – 5.16.2          | 5.17.0   | Import `replace_existing` ownership bypass                          |
+| COSMIAN-2026-002 | Critical | 5.0.0 – 5.16.2          | 5.17.0   | SipHash key hardcoded to zero                                       |
+| COSMIAN-2025-012 | High     | 5.0.0 – 5.14.1          | 5.15.0   | Session cookie key randomly regenerated on restart                  |
+| COSMIAN-2025-011 | High     | 5.0.0 – 5.14.1          | 5.15.0   | RUSTSEC-2023-0071: RSA Marvin Attack timing side-channel            |
+| COSMIAN-2025-010 | High     | 5.0.0 – 5.13.0          | 5.14.0   | JWT token not forwarded to downstream services                      |
+| COSMIAN-2025-009 | Critical | 5.0.0 – 5.12.0          | 5.13.0   | HSM unwrap bypasses KMS permission checks                           |
+| COSMIAN-2025-008 | Critical | 5.0.0 – 5.7.0           | 5.8.0    | Google CSE `privilegedunwrap` unrestricted access                   |
+| COSMIAN-2025-007 | High     | 5.0.0 – 5.6.1           | 5.6.2    | OIDC silently falls back to no-auth on TLS failure                  |
+| COSMIAN-2025-006 | High     | 5.0.0 – 5.0.0           | 5.1.0    | Missing PKCE in OAuth2 authentication flow                          |
+| COSMIAN-2025-005 | High     | 5.0.0 – 5.1.0           | 5.1.1    | JWT config loop — only first OIDC provider checked                  |
+| COSMIAN-2025-004 | High     | 5.0.0 – 5.14.1          | 5.15.0   | OpenSSL 3.x CVEs (upgrade to 3.6.2)                                 |
+| COSMIAN-2025-003 | High     | 5.0.0 – 5.15.0          | 5.16.0   | glibc CVEs in container base image                                  |
+| COSMIAN-2025-002 | Moderate | 5.0.0 – 5.12.0          | 5.12.1   | Negative X.509 certificate serial numbers                           |
+| COSMIAN-2025-001 | Moderate | 5.0.0 – 5.7.0           | 5.8.0    | CSE migration key pair race condition                               |
 
 ---
 
@@ -696,6 +696,14 @@ When using Cosmian KMS, we recommend:
 4. **Access Control**: Implement proper authentication and authorization mechanisms
 5. **Monitoring**: Enable logging and monitoring for security events
 6. **TLS Everywhere**: Use TLS for all endpoints including OTLP collectors
+7. **Audit log saturation**: The tamper-evident audit log uses a bounded in-memory
+   channel (default capacity: 4 096 events). Under sustained high load, events that
+   cannot be enqueued are dropped and an `error!` is emitted to the server log — the
+   compliance record is incomplete for that burst. To detect saturation, monitor the
+   server log for `"AuditFileStore: channel full"` messages and alert on any
+   occurrence. Tune the capacity with `--audit-channel-capacity` (env:
+   `KMS_AUDIT_CHANNEL_CAPACITY`); reduce request concurrency or raise the capacity
+   to stay within the write throughput of the underlying storage.
 
 ## FIPS Compliance
 
