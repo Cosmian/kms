@@ -212,6 +212,11 @@ pub struct ServerParams {
     /// disabled (the default).
     pub audit_file_path: Option<std::path::PathBuf>,
 
+    /// Capacity of the bounded in-memory channel between request threads and the
+    /// audit writer task.  Propagated from `--audit-channel-capacity` /
+    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
+    pub audit_channel_capacity: usize,
+
     // ── Vault-compatible API ──────────────────────────────────────────────────
     /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
     /// are registered at startup.  Defaults to `false`.
@@ -559,6 +564,7 @@ impl ServerParams {
             } else {
                 None
             },
+            audit_channel_capacity: conf.audit.audit_channel_capacity,
             // Vault-compatible API — opt-in via config file or CLI flags.
             vault_api_enabled: conf.vault.vault_api_enabled,
             vault_auth_verifier_url: conf
@@ -970,6 +976,7 @@ impl fmt::Debug for ServerParams {
             );
         }
         debug_struct.field("audit_file_path", &self.audit_file_path);
+        debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);

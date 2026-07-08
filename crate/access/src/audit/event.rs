@@ -3,25 +3,18 @@ use time::OffsetDateTime;
 
 /// The finalised, persisted audit event including its hash-chain fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuditEventFull {
+pub struct AuditEvent {
     /// Monotonically increasing row counter.
     pub id: i64,
     /// Wall-clock timestamp of the KMIP operation (UTC).
     #[serde(with = "time::serde::rfc3339")]
     pub timestamp: OffsetDateTime,
-    /// KMIP operation name, e.g. "Encrypt", "Create", "Destroy".
     pub operation: String,
-    /// Authenticated username / identity, e.g. "alice@example.com".
     pub user: String,
-    /// KMIP Unique Identifier of the object involved, if any.
     pub object_uid: Option<String>,
-    /// Cryptographic algorithm associated with the operation, if any.
     pub algorithm: Option<String>,
-    /// Client IP address as seen by the server, if available.
     pub client_ip: Option<String>,
-    /// Whether the operation succeeded or the reason it failed.
     pub result: AuditResult,
-    /// Total server-side processing time in milliseconds.
     pub duration_ms: u64,
     /// SHA-256 of the previous row (all-zeros for the first row).
     #[serde(with = "hex::serde")]
@@ -61,21 +54,13 @@ impl AuditResult {
 /// fields (`id`, `prev_hash`, `row_hash`) are assigned by the writer task.
 #[derive(Debug, Clone)]
 pub struct AuditEventDraft {
-    /// Wall-clock timestamp of the KMIP operation (UTC).
     pub timestamp: OffsetDateTime,
-    /// KMIP operation name.
     pub operation: String,
-    /// Authenticated username / identity.
     pub user: String,
-    /// KMIP Unique Identifier of the object involved, if any.
     pub object_uid: Option<String>,
-    /// Cryptographic algorithm, if any.
     pub algorithm: Option<String>,
-    /// Client IP address as seen by the server, if available.
     pub client_ip: Option<String>,
-    /// Whether the operation succeeded or failed.
     pub result: AuditResult,
-    /// Server-side processing time in milliseconds.
     pub duration_ms: u64,
 }
 

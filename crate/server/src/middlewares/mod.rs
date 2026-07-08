@@ -1,5 +1,5 @@
 mod audit;
-pub(crate) use audit::AuditMiddleware;
+pub(crate) use audit::{AuditMiddleware, KmipAlgorithm, KmipObjectUid, KmipOperationName};
 
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;
@@ -94,9 +94,3 @@ pub(crate) struct AuthenticatedUser {
     /// Which authentication method was used
     pub auth_method: AuthMethod,
 }
-
-/// KMIP-specific operation name injected by the KMIP route handlers
-/// so the audit middleware records the exact operation ("Encrypt", "Create", …)
-/// instead of the coarse path-derived grouping ("KMIP").
-#[derive(Debug, Clone)]
-pub(crate) struct KmipOperationName(pub String);
