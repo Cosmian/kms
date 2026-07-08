@@ -11,6 +11,7 @@ use serde::{
     de::{MapAccess, Visitor},
 };
 use strum::{Display, VariantNames};
+use zeroize::Zeroize;
 
 // Bring the Base64Display extension trait into scope to use `.to_base64()` on byte buffers
 use super::kmip_operations::Base64Display;
@@ -346,6 +347,30 @@ impl Display for Object {
             Self::SymmetricKey(SymmetricKey { key_block }) => {
                 write!(f, "SymmetricKey(key_block: {key_block})")
             }
+        }
+    }
+}
+
+impl Zeroize for Object {
+    /// Zero all sensitive key material contained in this `Object`.
+    ///
+    /// Only key-bearing variants carry sensitive data; certificate and opaque
+    /// variants are left untouched.  Each key variant delegates to
+    /// `KeyBlock::zeroize()` which propagates down through `KeyValue` and
+    /// `KeyMaterial`, triggering `Zeroizing<Vec<u8>>` and `SafeBigInt::drop()`
+    /// on every private-key byte or `BigInt` field.
+    fn zeroize(&mut self) {
+        match self {
+            Self::SymmetricKey(k) => k.key_block.zeroize(),
+            Self::PrivateKey(k) => k.key_block.zeroize(),
+            Self::SecretData(s) => s.key_block.zeroize(),
+            Self::SplitKey(s) => s.key_block.zeroize(),
+            Self::PGPKey(p) => p.key_block.zeroize(),
+            // PublicKey, Certificate, CertificateRequest, OpaqueObject — not secret
+            Self::PublicKey(_)
+            | Self::Certificate(_)
+            | Self::CertificateRequest(_)
+            | Self::OpaqueObject(_) => {}
         }
     }
 }

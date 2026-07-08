@@ -53,15 +53,20 @@ impl ObjectCache {
     /// * `max_age` — time-to-idle: entries are evicted after this duration
     ///   without access.
     /// * `max_size` — maximum number of entries before LRU eviction kicks in.
+    /// * `max_ttl` — optional absolute time-to-live; when set, an entry expires
+    ///   at `min(last_access + max_age, insert_time + max_ttl)`.
     #[must_use]
     #[allow(clippy::as_conversions)]
-    pub fn new(max_age: Duration, max_size: NonZeroUsize) -> Self {
+    pub fn new(max_age: Duration, max_size: NonZeroUsize, max_ttl: Option<Duration>) -> Self {
+        let mut builder = Cache::builder()
+            .max_capacity(max_size.get() as u64)
+            .time_to_idle(max_age);
+        if let Some(ttl) = max_ttl {
+            builder = builder.time_to_live(ttl);
+        }
         Self {
             fingerprinter: Fingerprinter::new(),
-            inner: Cache::builder()
-                .max_capacity(max_size.get() as u64)
-                .time_to_idle(max_age)
-                .build(),
+            inner: builder.build(),
         }
     }
 
@@ -165,7 +170,11 @@ mod tests {
     }
 
     fn cache(max_age: Duration) -> ObjectCache {
-        ObjectCache::new(max_age, NonZeroUsize::new(1000).expect("1000 is non-zero"))
+        ObjectCache::new(
+            max_age,
+            NonZeroUsize::new(1000).expect("1000 is non-zero"),
+            None,
+        )
     }
 
     #[tokio::test]

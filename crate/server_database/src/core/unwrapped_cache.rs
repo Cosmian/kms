@@ -6,6 +6,7 @@ use cosmian_kmip::kmip_2_1::{
 };
 use cosmian_logger::trace;
 use moka::future::Cache;
+use zeroize::Zeroize;
 
 use crate::{DbError, core::fingerprinter::Fingerprinter, error::DbResult};
 
@@ -49,11 +50,12 @@ impl CachedObject {
 
 impl Drop for CachedObject {
     fn drop(&mut self) {
-        // Replace the unwrapped key-material-bearing Object with a zero-content
-        // opaque object so the original Object and its KeyBlock/KeyValue bytes
-        // are dropped before moka deallocates the cache entry's heap memory.
-        // This is defense-in-depth: the freed bytes are still in the allocator
-        // but they are no longer reachable through this cache entry.
+        // Explicitly zero all sensitive key material before releasing memory.
+        // `Object::zeroize()` zeros in-place via `Zeroizing<Vec<u8>>` (ByteString,
+        // TransparentSymmetricKey) and `SafeBigInt::drop()` (all private-key variants),
+        // then the replacement with an empty OpaqueObject ensures the slot can never
+        // serve key material again even if the allocator does not overwrite freed pages.
+        self.unwrapped_object.zeroize();
         self.unwrapped_object = Object::OpaqueObject(OpaqueObject {
             opaque_data_type: OpaqueDataType::Unknown,
             opaque_data_value: Vec::new(),
@@ -65,23 +67,39 @@ impl Drop for CachedObject {
 pub struct UnwrappedCache {
     fingerprinter: Fingerprinter,
     inner: Cache<String, CachedObject>,
+    /// When `true` all `peek` / `insert` calls are no-ops; every unwrap goes
+    /// straight through to the KEK or HSM, leaving no plaintext key material
+    /// in process memory beyond a single operation.
+    disabled: bool,
 }
 
 impl UnwrappedCache {
-    /// Create a new cache with configurable max age and max size settings.
+    /// Create a new cache with configurable settings.
     ///
-    /// `max_age` is the time-to-idle duration after which an entry is evicted.
-    /// `max_size` is the maximum number of entries the LRU cache will hold
-    /// before evicting the least-recently-used entry.
+    /// * `max_age` — time-to-idle: entries are evicted after this duration without access.
+    /// * `max_size` — maximum number of entries before LRU eviction kicks in.
+    /// * `max_ttl` — optional absolute time-to-live; when set, an entry expires at
+    ///   `min(last_access + max_age, insert_time + max_ttl)`.  Use this to cap
+    ///   plaintext key residency for continuously-accessed (hot) keys.
+    /// * `disabled` — when `true`, bypasses the cache entirely.
     #[must_use]
     #[allow(clippy::as_conversions)]
-    pub fn new(max_age: Duration, max_size: NonZeroUsize) -> Self {
+    pub fn new(
+        max_age: Duration,
+        max_size: NonZeroUsize,
+        max_ttl: Option<Duration>,
+        disabled: bool,
+    ) -> Self {
+        let mut builder = Cache::builder()
+            .max_capacity(max_size.get() as u64)
+            .time_to_idle(max_age);
+        if let Some(ttl) = max_ttl {
+            builder = builder.time_to_live(ttl);
+        }
         Self {
             fingerprinter: Fingerprinter::new(),
-            inner: Cache::builder()
-                .max_capacity(max_size.get() as u64)
-                .time_to_idle(max_age)
-                .build(),
+            inner: builder.build(),
+            disabled,
         }
     }
 
@@ -113,7 +131,12 @@ impl UnwrappedCache {
 
     /// Returns the unwrapped object cached under the given UID if it exists and
     /// its fingerprint matches the one of the given wrapped object.
+    ///
+    /// Returns `Ok(None)` immediately when the cache is disabled.
     pub async fn peek(&self, uid: &str, wrapped_object: &Object) -> DbResult<Option<Object>> {
+        if self.disabled {
+            return Ok(None);
+        }
         match self.inner.get(uid).await {
             Some(cached_object) => {
                 if cached_object.fingerprint() == self.fingerprint(wrapped_object)? {
@@ -131,12 +154,17 @@ impl UnwrappedCache {
     /// The fingerprint of the wrapped object is stored alongside the unwrapped
     /// object to ensure it is never used to answer requests for another wrapped
     /// object.
+    ///
+    /// Is a no-op when the cache is disabled.
     pub async fn insert(
         &self,
         uid: String,
         wrapped_object: &Object,
         unwrapped_object: Object,
     ) -> DbResult<()> {
+        if self.disabled {
+            return Ok(());
+        }
         if wrapped_object == &unwrapped_object {
             return Err(DbError::UnwrappedCache(
                 "wrapped and unwrapped objects should be different".to_owned(),
@@ -205,6 +233,8 @@ mod tests {
             Duration::from_millis(100),
             NonZeroUsize::new(100).expect("100 is non-zero"),
             None,
+            false,
+            None,
         )
         .await?;
 
@@ -267,6 +297,8 @@ mod tests {
         let cache = super::UnwrappedCache::new(
             Duration::from_millis(100), // Keys expire after 100 ms, GC runs every 150 ms.
             NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
         );
 
         // Insert an item
@@ -319,6 +351,8 @@ mod tests {
             let cache = super::UnwrappedCache::new(
                 Duration::from_millis(100),
                 NonZeroUsize::new(100).expect("100 is non-zero"),
+                None,
+                false,
             );
 
             let uid = "test_item".to_owned();

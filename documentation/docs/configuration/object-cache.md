@@ -442,11 +442,19 @@ required.
 Both caches are configured via the [server configuration file](server_configuration_file.md)
 or CLI flags:
 
-| Parameter | Default | Description |
-|---|---|---|
-| `object_cache_max_size` | Varies | Max entries in ObjectCache before LRU eviction |
-| `object_cache_max_age` | Varies | Time-to-idle before eviction (seconds) |
-| `unwrapped_cache_max_size` | 1000 | Max entries in UnwrappedCache (see CLI `--unwrapped-cache-max-size`) |
+| Parameter | CLI flag | Default | Description |
+|---|---|---|---|
+| `object_cache_max_size` | `--cache-max-size` | 1000 | Max entries in ObjectCache before LRU eviction |
+| `object_cache_max_age` | `--cache-max-age` | 15 s | Time-to-idle: entry evicted after this idle period (seconds) |
+| `unwrapped_cache_max_size` | `--unwrapped-cache-max-size` | 1000 | Max entries in UnwrappedCache |
+| `unwrapped_cache_max_age` | `--unwrapped-cache-max-age` | 15 s | Time-to-idle for UnwrappedCache entries (seconds) |
+| `unwrapped_cache_max_ttl` | `--unwrapped-cache-max-ttl` | *(none)* | **Absolute** time-to-live ceiling (seconds). When set, every entry is evicted at `min(TTI, TTL)` regardless of access frequency. See [Security considerations](#security-considerations). |
+| `disable_unwrapped_cache` | `--disable-unwrapped-cache` | `false` | Completely bypass the UnwrappedCache. Every operation performs a full KEK unwrap. See [Disabling the UnwrappedCache](#disabling-the-unwrappedcache). |
+
+> **TTL vs TTI**: `max_age` (time-to-idle) resets on every cache hit. A frequently
+> accessed key is **never** evicted by TTI alone. `max_ttl` is an *absolute* ceiling
+> independent of access frequency. For compliance environments that require a maximum
+> plaintext-key exposure window, always set `max_ttl`.
 
 ---
 
@@ -473,3 +481,71 @@ or CLI flags:
    `get_unwrapped()` simultaneously for a cold key, both perform the cryptographic
    unwrap. The second `insert()` overwrites the first. This wastes one unwrap but
    avoids lock contention — a tradeoff favoring throughput.
+
+6. **TTI amplifies plaintext exposure window.** With the default 15-second
+   time-to-idle, a continuously accessed key's plaintext material stays resident
+   indefinitely. For compliance environments with a bounded key-exposure
+   requirement (e.g. FIPS operational security policies, PCI-DSS, or NIS2),
+   set `--unwrapped-cache-max-ttl` to enforce an absolute ceiling:
+
+   ```bash
+   cosmian_kms --unwrapped-cache-max-ttl 60  # evict plaintext after at most 60 s
+   ```
+
+7. **Memory-zeroization on eviction.** When an entry is evicted from
+   `UnwrappedCache`, the plaintext `Object` is explicitly zeroized before
+   deallocation. All `Zeroizing<Vec<u8>>` byte buffers (symmetric keys, private-key
+   components) and `SafeBigInt` fields are overwritten with zeroes. This reduces
+   the window during which sensitive key material could be recovered from freed
+   memory pages.
+
+8. **CPU-level side-channel risk (CacheFX / Prime+Probe).** Plaintext key
+   material held in the `UnwrappedCache` occupies resident DRAM pages.
+   Modern CPU microarchitectural attacks (Prime+Probe, Flush+Reload) can
+   potentially exfiltrate AES round-key material and RSA/EC private-key bits
+   from shared L3 cache lines. These attacks require local code execution on the
+   same physical host. Mitigations:
+   - Keep `--unwrapped-cache-max-ttl` low (≤ 60 s) to limit the attack window.
+   - Use `--disable-unwrapped-cache` in high-security deployments where KEK
+     unwrap latency is acceptable.
+   - Run the KMS on dedicated (non-shared) hardware or inside a hardware-enforced
+     enclave (SEV-SNP, TDX) to eliminate co-tenant cache-sharing.
+
+---
+
+## Disabling the UnwrappedCache
+
+The `UnwrappedCache` trades security for performance: every cache hit saves a
+full KEK-unwrap operation but keeps plaintext key material in process memory
+between calls.
+
+To disable it entirely — so that every operation performs a fresh cryptographic
+unwrap and no plaintext key material is ever cached — use:
+
+```bash
+# CLI flag
+cosmian_kms --disable-unwrapped-cache
+
+# Environment variable
+KMS_DISABLE_UNWRAPPED_CACHE=true cosmian_kms
+
+# Configuration file  (kms.toml / server.toml)
+disable_unwrapped_cache = true
+```
+
+When disabled:
+
+- `peek()` always returns `None`, causing every `get_unwrapped()` to perform the
+  full KEK-unwrap cryptographic operation.
+- `insert()` is a no-op; plaintext key material is never stored in the cache.
+- The `ObjectCache` (wrapped objects) is **not** affected: database round-trips
+  are still cached for performance.
+
+> **Trade-off**: Disabling the UnwrappedCache increases per-operation latency by
+> one full asymmetric-key operation (RSA-OAEP or ECDH unwrap). For a 2048-bit
+> RSA KEK on a modern server, this is typically 0.5–2 ms per call. For
+> symmetric KEKs (AES-256 key-wrap), the overhead is under 0.1 ms.
+
+The `ObjectCache` can be configured to very short TTI or very small capacity to
+reduce wrapped-object retention, but it cannot be disabled via a flag — set
+`--cache-max-age 1 --cache-max-size 1` to minimise its footprint if needed.

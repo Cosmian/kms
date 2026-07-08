@@ -158,6 +158,8 @@ impl KMS {
             object_stores,
             server_params.unwrapped_cache_max_age,
             cache_max_size,
+            server_params.unwrapped_cache_max_ttl,
+            server_params.disable_unwrapped_cache,
             db_otel_recorder,
         )
         .await?;

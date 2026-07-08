@@ -82,6 +82,12 @@ pub struct ServerParams {
     /// The maximum number of entries in the unwrapped key cache
     pub unwrapped_cache_max_size: usize,
 
+    /// Absolute time-to-live for unwrapped cache entries (`None` = no ceiling)
+    pub unwrapped_cache_max_ttl: Option<Duration>,
+
+    /// When `true`, the unwrapped cache is bypassed: every unwrap is performed live
+    pub disable_unwrapped_cache: bool,
+
     /// Whether the socket server should be started
     pub start_socket_server: bool,
 
@@ -289,6 +295,25 @@ impl ServerParams {
             } else {
                 conf.db.unwrapped_cache_max_size
             },
+            unwrapped_cache_max_ttl: match conf.db.unwrapped_cache_max_ttl {
+                None => None,
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "unwrapped_cache_max_ttl must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                Some(ttl_min) => {
+                    let ttl = Duration::from_secs(ttl_min * 60);
+                    let tti = Duration::from_secs(conf.db.unwrapped_cache_max_age * 60);
+                    if ttl < tti {
+                        return Err(KmsError::NotSupported(
+                            "unwrapped_cache_max_ttl must be >= unwrapped_cache_max_age".to_owned(),
+                        ));
+                    }
+                    Some(ttl)
+                }
+            },
+            disable_unwrapped_cache: conf.db.disable_unwrapped_cache,
             start_socket_server: conf.socket_server.socket_server_start,
             socket_server_hostname: conf.socket_server.socket_server_hostname,
             socket_server_port: conf.socket_server.socket_server_port,
@@ -504,7 +529,9 @@ impl fmt::Debug for ServerParams {
         debug_struct
             .field("clear_db_on_start", &self.clear_db_on_start)
             .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
-            .field("unwrapped_cache_max_size", &self.unwrapped_cache_max_size);
+            .field("unwrapped_cache_max_size", &self.unwrapped_cache_max_size)
+            .field("unwrapped_cache_max_ttl", &self.unwrapped_cache_max_ttl)
+            .field("disable_unwrapped_cache", &self.disable_unwrapped_cache);
 
         if let Some(ref otel_params) = self.otel_params {
             debug_struct.field("otel_params", otel_params);

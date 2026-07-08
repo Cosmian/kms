@@ -181,6 +181,28 @@ pub struct MainDBConfig {
         verbatim_doc_comment
     )]
     pub unwrapped_cache_max_size: usize,
+
+    /// Absolute time-to-live in minutes for entries in the unwrapped key cache.
+    /// When set, a cached unwrapped key is evicted at most this many minutes after
+    /// it was first inserted, regardless of how frequently it is accessed.
+    /// This caps plaintext key residency for continuously-used (hot) keys and
+    /// satisfies compliance policies that require a hard upper bound on in-memory
+    /// key material exposure.
+    /// When not set (the default), only the time-to-idle window applies and hot
+    /// keys may remain cached indefinitely.
+    /// When set, value must be ≥ `unwrapped-cache-max-age`.
+    #[clap(long, env = "KMS_UNWRAPPED_CACHE_MAX_TTL", verbatim_doc_comment)]
+    pub unwrapped_cache_max_ttl: Option<u64>,
+
+    /// Disable the unwrapped key cache entirely.
+    /// When set, every operation that needs plaintext key material will perform
+    /// a full KEK-unwrap (or HSM call) on every request instead of serving the
+    /// key from memory.
+    /// Use this in high-security environments where no plaintext key material
+    /// should persist in process memory beyond a single operation.
+    /// Disabling the cache significantly increases CPU and HSM load.
+    #[clap(long, env = "KMS_DISABLE_UNWRAPPED_CACHE", verbatim_doc_comment)]
+    pub disable_unwrapped_cache: bool,
 }
 
 impl Default for MainDBConfig {
@@ -193,6 +215,8 @@ impl Default for MainDBConfig {
             max_connections: None,
             unwrapped_cache_max_age: 15,
             unwrapped_cache_max_size: 1000,
+            unwrapped_cache_max_ttl: None,
+            disable_unwrapped_cache: false,
             #[cfg(feature = "non-fips")]
             redis_master_password: None,
         }

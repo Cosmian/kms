@@ -620,6 +620,8 @@ mod tests {
             Duration::from_secs(1),
             NonZeroUsize::new(100).expect("100 is non-zero"),
             None,
+            false,
+            None,
         )
         .await
         .expect("Failed to instantiate in-memory database");
@@ -676,6 +678,8 @@ mod tests {
             HashMap::new(),
             Duration::from_secs(1),
             NonZeroUsize::new(100).expect("100 is non-zero"),
+            None,
+            false,
             Some(recorder_arc),
         )
         .await

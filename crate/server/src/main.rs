@@ -259,6 +259,8 @@ mod tests {
                 clear_database: false,
                 unwrapped_cache_max_age: 15,
                 unwrapped_cache_max_size: 1000,
+                unwrapped_cache_max_ttl: None,
+                disable_unwrapped_cache: false,
             },
             socket_server: SocketServerConfig {
                 socket_server_start: false,

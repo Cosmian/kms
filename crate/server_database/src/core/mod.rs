@@ -101,12 +101,15 @@ impl Database {
     /// - `object_stores` is a map of object stores with their prefixes.
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
     /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
+    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
     pub async fn instantiate(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
         cache_max_age: Duration,
         cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
         recorder: Option<Arc<dyn DbMetricsRecorder>>,
     ) -> DbResult<Self> {
         // main/default database
@@ -115,6 +118,8 @@ impl Database {
             clear_db_on_start,
             cache_max_age,
             cache_max_size,
+            cache_max_ttl,
+            disable_unwrapped_cache,
         )
         .await?;
         db.recorder = recorder;
@@ -129,6 +134,8 @@ impl Database {
         clear_db_on_start: bool,
         cache_max_age: Duration,
         cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
     ) -> DbResult<Self> {
         // Permissions are stored in the same backend as objects for the main database.
         // The `SqlitePool`/`PgPool`/`MySqlPool` types implement both `ObjectsStore` and
@@ -145,6 +152,8 @@ impl Database {
                     db,
                     cache_max_age,
                     cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::Sqlite,
                     health,
                 ))
@@ -157,6 +166,8 @@ impl Database {
                     db,
                     cache_max_age,
                     cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::Postgres,
                     health,
                 ))
@@ -171,6 +182,8 @@ impl Database {
                     db,
                     cache_max_age,
                     cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::Mysql,
                     health,
                 ))
@@ -200,6 +213,8 @@ impl Database {
                     db,
                     cache_max_age,
                     cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::RedisFindex,
                     health,
                 ))
@@ -226,19 +241,27 @@ impl Database {
     /// - `permissions_database` is the database for permissions
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
     /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
+    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
     fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
         cache_max_age: Duration,
         cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
         kind: MainDbKind,
         health: Arc<dyn DatabaseHealth + Sync + Send>,
     ) -> Self {
         Self {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
-            unwrapped_cache: UnwrappedCache::new(cache_max_age, cache_max_size),
-            object_cache: ObjectCache::new(cache_max_age, cache_max_size),
+            unwrapped_cache: UnwrappedCache::new(
+                cache_max_age,
+                cache_max_size,
+                cache_max_ttl,
+                disable_unwrapped_cache,
+            ),
+            object_cache: ObjectCache::new(cache_max_age, cache_max_size, cache_max_ttl),
             kind,
             health,
             recorder: None,
