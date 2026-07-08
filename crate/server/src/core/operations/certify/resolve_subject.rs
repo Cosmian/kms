@@ -158,9 +158,8 @@ pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &str) -> KRe
     if let Some(mut public_key) = public_key {
         // The public key may be stored in wrapped form (e.g. when using a KEK).
         // Unwrap it before using it for certificate creation.
-        let unwrapped_object = kms
-            .get_unwrapped(public_key.id(), public_key.object(), user)
-            .await?;
+        let unwrapped_object =
+            Box::pin(kms.get_unwrapped(public_key.id(), public_key.object(), user)).await?;
         public_key.set_object(unwrapped_object);
         return Ok(Subject::PublicKeyAndSubjectName(
             attributes.unique_identifier.clone().unwrap_or_default(),

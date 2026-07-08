@@ -8,7 +8,6 @@ use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{KmipOperation, kmip_types::UniqueIdentifier},
     cosmian_kms_interfaces::ObjectWithMetadata,
 };
-use cosmian_logger::debug;
 
 use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission, uid_utils::has_prefix},
@@ -300,21 +299,14 @@ impl KMS {
     /// Get the user from the request depending on the authentication method.
     pub(crate) fn get_user(&self, req_http: &HttpRequest) -> String {
         if self.params.force_default_username {
-            let default_username = self.params.default_username.clone();
-            debug!(
-                "Authenticated using forced default user: {}",
-                default_username
-            );
-            return default_username;
+            return self.params.default_username.clone();
         }
-        let user = req_http
+        req_http
             .extensions()
             .get::<AuthenticatedUser>()
             .map_or_else(
                 || self.params.default_username.clone(),
                 |au| au.username.clone(),
-            );
-        debug!("Authenticated user: {}", user);
-        user
+            )
     }
 }

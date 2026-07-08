@@ -141,6 +141,7 @@ nav:
       - Configuration examples: configuration/configurations.md
       - Command line arguments: configuration/server_cli.md
       - Databases: configuration/database.md
+      - Object &amp; Unwrapped Caches: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
       - Authorizing users with access rights: configuration/authorization.md
@@ -158,11 +159,6 @@ nav:
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
-          - Benchmarks:
-              - Standard algorithms: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks.md
-              - Load tests: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks_load_tests.md
-              - DKE and Google CSE: certifications_and_compliance/cryptographic_algorithms/benchmarks/google_dke_benchmarks.md
-              - CPU Scaling & Flamegraphs: certifications_and_compliance/cryptographic_algorithms/benchmarks/cpu_scaling.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:
           - SBOM: certifications_and_compliance/audit/sbom.md
@@ -208,3 +204,6 @@ nav:
           - Auto-Rotation Policy: kmip_support/key_rotation/auto_rotation_policy.md
       - Revoke: kmip_support/_revoke.md
       - Sign: kmip_support/_signature.md
+  - Benchmarks:
+      - Reports: benchmarks/ckms_bench/report.md
+      - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md

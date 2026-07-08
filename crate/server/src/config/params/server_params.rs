@@ -82,6 +82,12 @@ pub struct ServerParams {
     /// The maximum number of entries in the unwrapped key cache
     pub unwrapped_cache_max_size: usize,
 
+    /// Absolute time-to-live for unwrapped cache entries (`None` = no ceiling)
+    pub unwrapped_cache_max_ttl: Option<Duration>,
+
+    /// When `true`, the unwrapped cache is bypassed: every unwrap is performed live
+    pub disable_unwrapped_cache: bool,
+
     /// Whether the socket server should be started
     pub start_socket_server: bool,
 
@@ -158,9 +164,9 @@ pub struct ServerParams {
     /// embedded deployments; production should set this to a positive value such as 100).
     pub rate_limit_per_second: Option<u32>,
 
-    /// Number of actix-web worker threads. `None` lets actix-web default to the number
-    /// of logical CPUs, which is optimal for CPU-bound workloads such as crypto operations.
-    pub server_workers: Option<usize>,
+    /// Number of actix-web HTTP worker threads. `None` means actix-web default
+    /// (uses `std::thread::available_parallelism`).
+    pub http_workers: Option<usize>,
 
     /// Extra origins allowed to make cross-origin requests to the KMIP API.
     /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]` in
@@ -289,6 +295,25 @@ impl ServerParams {
             } else {
                 conf.db.unwrapped_cache_max_size
             },
+            unwrapped_cache_max_ttl: match conf.db.unwrapped_cache_max_ttl {
+                None => None,
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "unwrapped_cache_max_ttl must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                Some(ttl_min) => {
+                    let ttl = Duration::from_secs(ttl_min * 60);
+                    let tti = Duration::from_secs(conf.db.unwrapped_cache_max_age * 60);
+                    if ttl < tti {
+                        return Err(KmsError::NotSupported(
+                            "unwrapped_cache_max_ttl must be >= unwrapped_cache_max_age".to_owned(),
+                        ));
+                    }
+                    Some(ttl)
+                }
+            },
+            disable_unwrapped_cache: conf.db.disable_unwrapped_cache,
             start_socket_server: conf.socket_server.socket_server_start,
             socket_server_hostname: conf.socket_server.socket_server_hostname,
             socket_server_port: conf.socket_server.socket_server_port,
@@ -348,7 +373,7 @@ impl ServerParams {
             // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
             // to enable rate limiting in production deployments.
             rate_limit_per_second: conf.http.rate_limit_per_second,
-            server_workers: conf.http.server_workers,
+            http_workers: conf.http.http_workers,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_else(|| {
                 crate::config::default_cors_origins(cors_scheme, conf.http.port)
             }),
@@ -504,7 +529,9 @@ impl fmt::Debug for ServerParams {
         debug_struct
             .field("clear_db_on_start", &self.clear_db_on_start)
             .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
-            .field("unwrapped_cache_max_size", &self.unwrapped_cache_max_size);
+            .field("unwrapped_cache_max_size", &self.unwrapped_cache_max_size)
+            .field("unwrapped_cache_max_ttl", &self.unwrapped_cache_max_ttl)
+            .field("disable_unwrapped_cache", &self.disable_unwrapped_cache);
 
         if let Some(ref otel_params) = self.otel_params {
             debug_struct.field("otel_params", otel_params);
@@ -697,7 +724,7 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
         debug_struct.field("ui_enable", &self.ui_enable);
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
-        debug_struct.field("server_workers", &self.server_workers);
+        debug_struct.field("http_workers", &self.http_workers);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
         debug_struct.field(

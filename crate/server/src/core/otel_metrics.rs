@@ -11,12 +11,10 @@
 //! - HTTP request metrics
 //! - Server uptime and health metrics
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::Arc;
 
 use cosmian_kms_server_database::{DbMetricsRecorder, MainDbKind};
+use dashmap::DashMap;
 use opentelemetry::{
     KeyValue,
     metrics::{Counter, Gauge, Histogram, Meter, MeterProvider, UpDownCounter},
@@ -99,7 +97,7 @@ pub struct OtelMetrics {
     pub active_users: UpDownCounter<i64>,
 
     /// Track unique users (username -> last seen timestamp)
-    active_users_tracker: Arc<RwLock<HashMap<String, i64>>>,
+    active_users_tracker: Arc<DashMap<String, i64>>,
 
     /// Database operation counts
     pub database_operations_total: Counter<u64>,
@@ -328,7 +326,7 @@ impl OtelMetrics {
             permissions_granted_per_user,
             permissions_granted_total,
             active_users,
-            active_users_tracker: Arc::new(RwLock::new(HashMap::with_capacity(100))),
+            active_users_tracker: Arc::new(DashMap::with_capacity(100)),
             database_operations_total,
             database_operation_duration,
             http_requests_total,
@@ -387,11 +385,9 @@ impl OtelMetrics {
     /// Returns the real user string if the cardinality cap has not been reached,
     /// or `"__overflow__"` when it has.
     fn bounded_user_label(&self, user: &str) -> String {
-        let tracker = self
-            .active_users_tracker
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if tracker.contains_key(user) || tracker.len() < MAX_TRACKED_CARDINALITY {
+        if self.active_users_tracker.contains_key(user)
+            || self.active_users_tracker.len() < MAX_TRACKED_CARDINALITY
+        {
             user.to_owned()
         } else {
             OVERFLOW_USER_LABEL.to_owned()
@@ -400,9 +396,12 @@ impl OtelMetrics {
 
     /// Update active user tracking.
     ///
-    /// Metric recording is best-effort: if the lock is poisoned (a previous
-    /// writer panicked), the poisoned value is recovered and tracking continues
-    /// rather than propagating a panic into the KMIP hot path.
+    /// Uses `DashMap` for lock-free concurrent shard access — no global write
+    /// lock that would serialize all KMIP operations.
+    ///
+    /// Cleanup of stale users (inactive > 1 hour) is performed inline but only
+    /// touches the shard containing each stale key, so concurrent operations on
+    /// other shards proceed unblocked.
     ///
     /// # Panics
     ///
@@ -418,28 +417,25 @@ impl OtelMetrics {
         )
         .unwrap_or(i64::MAX);
 
-        let mut tracker = self
-            .active_users_tracker
-            .write()
-            // SAFETY: recover the inner value on lock poisoning so that a
-            // previous writer panic does not permanently break metric recording.
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
         // Enforce cardinality cap: do not track new users beyond the limit.
-        if !tracker.contains_key(user) && tracker.len() >= MAX_TRACKED_CARDINALITY {
+        if !self.active_users_tracker.contains_key(user)
+            && self.active_users_tracker.len() >= MAX_TRACKED_CARDINALITY
+        {
             return;
         }
 
-        let previous_len = i64::try_from(tracker.len()).unwrap_or(i64::MAX);
-        tracker.insert(user.to_owned(), now);
+        let previous_len = self.active_users_tracker.len();
+        self.active_users_tracker.insert(user.to_owned(), now);
 
-        // Clean up users inactive for more than 1 hour
+        // Clean up users inactive for more than 1 hour.
         let cutoff = now - 3600;
-        tracker.retain(|_, &mut last_seen| last_seen > cutoff);
+        self.active_users_tracker
+            .retain(|_, last_seen| *last_seen > cutoff);
 
-        // Update gauge - calculate the delta
-        let current_len = i64::try_from(tracker.len()).unwrap_or(i64::MAX);
-        let delta = current_len - previous_len;
+        // Update gauge — calculate the delta.
+        let current_len = self.active_users_tracker.len();
+        let delta = i64::try_from(current_len).unwrap_or(i64::MAX)
+            - i64::try_from(previous_len).unwrap_or(i64::MAX);
         if delta != 0 {
             self.active_users.add(delta, &[]);
         }
@@ -724,14 +720,7 @@ mod tests {
         metrics.update_active_user("user1");
         metrics.update_active_user("user2");
         metrics.update_active_user("user3");
-        assert_eq!(
-            metrics
-                .active_users_tracker
-                .read()
-                .expect("Failed to lock tracker")
-                .len(),
-            3
-        );
+        assert_eq!(metrics.active_users_tracker.len(), 3);
     }
 
     // ── Tests with value assertions ───────────────────────────────────────────

@@ -32,7 +32,7 @@ fn cfg() -> HResult<shared::HsmTestConfig> {
     })
 }
 
-/// To tun all the tests, try something like
+/// To run all the tests:
 /// ```sh
 ///  RUST_LOG=info \
 ///  C2P_CONF=<PATH_TO_C2P_DIR>/c2p.xml \

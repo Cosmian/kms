@@ -292,7 +292,7 @@ impl KMS {
             return Ok(None);
         };
 
-        if let Err(e) = unwrap_object(dep_object, self, owner).await {
+        if let Err(e) = Box::pin(unwrap_object(dep_object, self, owner)).await {
             warn!("failed to unwrap dependant {dep_uid}: {e}, skipping");
             return Ok(None);
         }

@@ -53,7 +53,7 @@ pub(crate) const JWKS_TAG: &str = "jwks";
 pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<HttpResponse> {
     info!("GET /.well-known/jwks.json");
 
-    let (jwk_set, truncated) = build_jwk_set(&kms).await?;
+    let (jwk_set, truncated) = Box::pin(build_jwk_set(&kms)).await?;
     let json = serde_json::to_string(&jwk_set)
         .map_err(|e| KmsError::ServerError(format!("JWKS serialization failed: {e}")))?;
 
@@ -88,7 +88,7 @@ pub(crate) async fn get_jwks(req: HttpRequest, kms: Data<Arc<KMS>>) -> KResult<H
 
 /// Build the JWK Set and a boolean indicating whether the result was truncated.
 async fn build_jwk_set(kms: &KMS) -> KResult<(JwkSet, bool)> {
-    let objects = discover_eligible_public_keys(kms).await?;
+    let objects = Box::pin(discover_eligible_public_keys(kms)).await?;
     let max_keys = kms.params.jwks_endpoint.jwks_endpoint_max_keys;
     let truncated = objects.len() > max_keys;
 

@@ -43,7 +43,7 @@ repos:
     rev: v1.31.1
     hooks:
       - id: typos
-        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|docs.instructions.md|crate/server/src/tests/jose/rfc_vectors.rs
+        exclude: documentation/docs/images/google_cse.drawio.svg|crate/test_server/src/test_jwt.rs|crate/pkcs11/documentation/veracrypt_ckms.svg|crate/server/src/tests/google_cse/|documentation/docs/pkcs11/images|documentation/docs/kms_clients/pkcs11/images|crate/server/resources|documentation/docs/algorithms.md|crate/server/src/tests/certificates/chain/root/ca/|documentation/docs/pki/smime.md|documentation/docs/hsms/proteccio.md|crate/crypto/src/crypto/rsa/ckm_rsa_aes_key_wrap.rs|crate/clients/ckms/src/tests/shared/export_import.rs|ui/src/Locate.tsx|kmip/|.mise/scripts/oracle/README_HSM.md|crate/pkcs11/documentation/veracrypt_ckms.svg|documentation/docs/pkcs11/images|nix/signing-keys/cosmian-kms-public.asc|sbom/|documentation/docs/certifications_and_compliance/cryptographic_algorithms/benchmarks/|crate/clients/clap/src/tests/shared/export_import.rs|crate/crypto/src/crypto/fpe/ff1.rs|documentation/docs/benchmarks/|.mise/scripts/bench/bench_run_flamegraph.sh|docs.instructions.md|crate/server/src/tests/jose/rfc_vectors.rs
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
@@ -83,14 +83,14 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ui/public|cli_documentation/docs/pkcs11/images
+        exclude: ui/public|cli_documentation/docs/pkcs11/images|documentation/docs/benchmarks/
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-builtin-literals
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-json
-        exclude: ui
+        exclude: ui|documentation/docs/benchmarks/
       - id: check-merge-conflict
       - id: check-symlinks
       - id: check-toml

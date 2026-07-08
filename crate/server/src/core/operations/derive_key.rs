@@ -101,7 +101,7 @@ pub(crate) async fn derive_key(
 
     // Unwrap the base key if it's wrapped
     base_key_owm.set_object(
-        kms.get_unwrapped(base_key_owm.id(), base_key_owm.object(), user)
+        Box::pin(kms.get_unwrapped(base_key_owm.id(), base_key_owm.object(), user))
             .await
             .with_context(|| {
                 format!(

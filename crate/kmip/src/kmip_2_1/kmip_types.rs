@@ -1368,7 +1368,18 @@ pub enum Tag {
     CommonProtectionStorageMasks = 0x42_0163,
     PrivateProtectionStorageMasks = 0x42_0164,
     PublicProtectionStorageMasks = 0x42_0165,
+    RotateInterval = 0x42_016A,
+    RotateAutomatic = 0x42_016B,
+    RotateOffset = 0x42_016C,
+    RotateDate = 0x42_016D,
+    RotateGeneration = 0x42_016E,
+    RotateName = 0x42_016F,
+    RotateLatest = 0x42_0172,
     // Extensions 540000 – 54FFFF
+    /// Cosmian vendor extension: not part of the KMIP 2.1 Tag Enumeration
+    /// (§11.56). Used internally to TTLV-serialize the composite
+    /// `CertificateAttributes` attribute struct (subject/issuer fields).
+    CertificateAttributes = 0x54_0001,
 }
 
 /// Indicates the method used to wrap the Key Value.

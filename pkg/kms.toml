@@ -193,7 +193,7 @@ hostname = "0.0.0.0"
 
 # Number of actix-web worker threads.
 # Leave unset (default) to let actix-web choose based on the number of logical CPUs.
-# server_workers = 8
+# http_workers = 8
 
 # Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
 # Required for any Web UI deployment: the browser Fetch API sends an `Origin` header on

@@ -114,8 +114,9 @@ softhsm2_get_slot_id() {
   local init_out="$1" label="$2"
   local slot_id
 
-  # Try to extract from init-token output first
-  slot_id=$(echo "$init_out" | grep -o 'reassigned to slot [0-9]*' | awk '{print $4}')
+  # Try to extract from init-token output first.
+  # --free may initialize multiple free slots; take only the first match.
+  slot_id=$(echo "$init_out" | grep -m1 -o 'reassigned to slot [0-9]*' | awk '{print $4}')
 
   # Fallback: query softhsm2-util --show-slots
   if [ -z "${slot_id:-}" ]; then

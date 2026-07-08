@@ -36,8 +36,9 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 ///
 /// On Windows, if the process was launched by the Service Control Manager, it
 /// dispatches to the Windows service entry point instead.
-#[tokio::main]
-async fn main() {
+///
+/// The tokio runtime is sized to the available parallelism reported by the OS.
+fn main() {
     // On Windows, attempt to register with the SCM.  If the process was launched
     // by the SCM, `try_run_as_service()` blocks until the service stops and then
     // returns Ok(()).  If launched from a console, it returns Err (not an SCM
@@ -55,10 +56,27 @@ async fn main() {
         }
     }
 
-    if let Err(e) = run().await {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
-    }
+    let parallelism = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1);
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(parallelism)
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Failed to build tokio runtime: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    rt.block_on(async {
+        if let Err(e) = run().await {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    });
 }
 
 async fn run() -> KResult<()> {
@@ -241,6 +259,8 @@ mod tests {
                 clear_database: false,
                 unwrapped_cache_max_age: 15,
                 unwrapped_cache_max_size: 1000,
+                unwrapped_cache_max_ttl: None,
+                disable_unwrapped_cache: false,
             },
             socket_server: SocketServerConfig {
                 socket_server_start: false,
@@ -260,7 +280,7 @@ mod tests {
                 api_token_id: None,
                 rate_limit_per_second: Some(100),
                 cors_allowed_origins: None,
-                server_workers: None,
+                http_workers: None,
                 jwks_enabled: false,
             },
             proxy: ProxyConfig {

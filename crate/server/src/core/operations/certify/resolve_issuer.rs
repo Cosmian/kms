@@ -92,9 +92,9 @@ pub(crate) async fn get_issuer<'a>(
     ensure_issuer_key_active(&issuer_private_key)?;
     // The private key may be stored in wrapped form (e.g. when using an HSM with a KEK).
     // Unwrap it before converting to OpenSSL format for signing.
-    let unwrapped_pk = kms
-        .get_unwrapped(issuer_private_key.id(), issuer_private_key.object(), user)
-        .await?;
+    let unwrapped_pk =
+        Box::pin(kms.get_unwrapped(issuer_private_key.id(), issuer_private_key.object(), user))
+            .await?;
     Ok(Issuer::PrivateKeyAndCertificate(
         UniqueIdentifier::TextString(issuer_certificate.id().to_owned()),
         kmip_private_key_to_openssl(&unwrapped_pk)?,
@@ -152,9 +152,8 @@ async fn issuer_for_self_signed_certificate<'a>(
             })?;
             // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
             ensure_issuer_key_active(&private_key)?;
-            let unwrapped_pk = kms
-                .get_unwrapped(private_key.id(), private_key.object(), user)
-                .await?;
+            let unwrapped_pk =
+                Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), user)).await?;
             Ok(Issuer::PrivateKeyAndCertificate(
                 unique_identifier.clone(),
                 kmip_private_key_to_openssl(&unwrapped_pk)?,
@@ -180,9 +179,8 @@ async fn issuer_for_self_signed_certificate<'a>(
             })?;
             // KMIP §4.57: Deactivated keys SHALL NOT be used for signing.
             ensure_issuer_key_active(&private_key)?;
-            let unwrapped_pk = kms
-                .get_unwrapped(private_key.id(), private_key.object(), user)
-                .await?;
+            let unwrapped_pk =
+                Box::pin(kms.get_unwrapped(private_key.id(), private_key.object(), user)).await?;
             // see if we can find an existing certificate to link to the public key
             let certificate = fetch_object_from_attributes(
                 LinkType::CertificateLink,

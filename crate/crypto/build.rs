@@ -22,6 +22,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NON_FIPS");
+    println!("cargo:rerun-if-env-changed=CFLAGS");
     println!("cargo:rerun-if-changed=build.rs");
 
     // Skip OpenSSL build on Windows

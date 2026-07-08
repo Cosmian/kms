@@ -208,7 +208,7 @@ pub(super) async fn process_symmetric_key(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, user).await?;
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
     }
 
     // Tag the object as a symmetric key
@@ -377,7 +377,7 @@ pub(super) async fn process_public_key(
     // Unwrap the key_block if required.
     {
         if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-            unwrap_object(&mut object, kms, user).await?;
+            Box::pin(unwrap_object(&mut object, kms, user)).await?;
         }
     }
 
@@ -493,7 +493,7 @@ pub(super) async fn process_private_key(
     // Process based on the key block type.
     let mut object = request.object;
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, user).await?;
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
     }
 
     // PKCS12 has its own processing
@@ -986,7 +986,7 @@ pub(super) async fn process_secret_data(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, user).await?;
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
     }
 
     // Tag the object as a secret data

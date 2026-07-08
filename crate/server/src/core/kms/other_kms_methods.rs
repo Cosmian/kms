@@ -75,7 +75,7 @@ impl KMS {
         }
         let unwrapped_object = {
             let mut unwrapped_object = object.clone();
-            unwrap_object(&mut unwrapped_object, self, user).await?;
+            Box::pin(unwrap_object(&mut unwrapped_object, self, user)).await?;
             unwrapped_object
         };
 

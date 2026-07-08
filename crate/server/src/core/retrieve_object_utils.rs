@@ -235,7 +235,7 @@ pub(crate) async fn retrieve_object_for_operation(
                         && state != State::Destroyed_Compromised
                     {
                         let unwrapped_object =
-                            kms.get_unwrapped(owm.id(), owm.object(), user).await?;
+                            Box::pin(kms.get_unwrapped(owm.id(), owm.object(), user)).await?;
                         owm.set_object(unwrapped_object);
                     }
                 }

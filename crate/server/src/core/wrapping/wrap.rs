@@ -283,7 +283,7 @@ async fn wrap_using_kms(
     let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
         debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
         let mut wrapping_key_object = wrapping_key.object().clone();
-        unwrap_object(&mut wrapping_key_object, kms, user).await?;
+        Box::pin(unwrap_object(&mut wrapping_key_object, kms, user)).await?;
         wrapping_key_object.clone()
     } else {
         wrapping_key.object().clone()

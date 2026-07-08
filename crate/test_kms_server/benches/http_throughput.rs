@@ -184,7 +184,7 @@ fn bench_http_throughput(c: &mut Criterion) {
 
     let config_path = test_config_path("auth_plain.toml");
 
-    let mut group = c.benchmark_group("KMS CPU Scaling");
+    let mut group = c.benchmark_group("kms_bench");
     group.throughput(Throughput::Elements(CONCURRENCY as u64));
     // Reduce sample count to keep total bench time reasonable; each sample
     // already exercises many concurrent requests.
@@ -199,7 +199,7 @@ fn bench_http_throughput(c: &mut Criterion) {
             .block_on(start_test_server_with_patch(
                 &config_path,
                 |cfg| {
-                    cfg.http.server_workers = Some(workers);
+                    cfg.http.http_workers = Some(workers);
                     // Keep SQLite on tmpfs to keep I/O out of the critical path.
                     let shm = std::path::PathBuf::from("/dev/shm");
                     let base = if shm.exists() {
@@ -228,7 +228,7 @@ fn bench_http_throughput(c: &mut Criterion) {
 
         // ── AES-256-GCM encrypt ───────────────────────────────────────────
         group.bench_with_input(
-            BenchmarkId::new("AES-256-GCM encrypt", format!("{workers} workers")),
+            BenchmarkId::new("aes_gcm_enc", format!("w{workers}")),
             &workers,
             |b, _| {
                 let client = client.clone();
@@ -256,7 +256,7 @@ fn bench_http_throughput(c: &mut Criterion) {
 
         // ── RSA-2048 OAEP decrypt ─────────────────────────────────────────
         group.bench_with_input(
-            BenchmarkId::new("RSA-2048 OAEP decrypt", format!("{workers} workers")),
+            BenchmarkId::new("rsa_oaep_dec", format!("w{workers}")),
             &workers,
             |b, _| {
                 let client = client.clone();
@@ -291,7 +291,7 @@ fn bench_http_throughput(c: &mut Criterion) {
 
         // ── ECDSA P-256 sign ──────────────────────────────────────────────
         group.bench_with_input(
-            BenchmarkId::new("ECDSA P-256 sign", format!("{workers} workers")),
+            BenchmarkId::new("ecdsa_sign", format!("w{workers}")),
             &workers,
             |b, _| {
                 let client = client.clone();

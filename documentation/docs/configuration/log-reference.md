@@ -147,8 +147,6 @@ Crate path: `crate/server`
 | `debug` | `algorithm: {ca:?}, ciphertext length: {}` | `src/core/operations/encrypt.rs` | `ca`: cryptographic algorithm | - |
 | `debug` | `allocation_size: {allocation_size}` | `src/routes/google_cse/operations.rs` | `allocation_size`: allocated buffer size | ×2 in this file |
 | `debug` | `API token authentication failed: {e:?}` | `src/middlewares/api_token/api_token_middleware.rs` | `e`: caught error | - |
-| `debug` | `Authenticated user: {}` | `src/core/kms/permissions.rs` | - | - |
-| `debug` | `Authenticated using forced default user: {}` | `src/core/kms/permissions.rs` | - | - |
 | `debug` | `Authentication token check: validation disabled` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `Building and signing certificate` | `src/core/operations/certify/build_certificate.rs` | - | - |
 | `debug` | `check algorithm` | `src/routes/google_cse/operations.rs` | - | - |
@@ -492,9 +490,6 @@ Crate path: `crate/server`
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
 | `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
 | `warn` | `User-supplied keyUsage in extension config overrides the RFC-mandated PQC keyUsage              extension (RFC 9881/9909/9935)` | `src/core/operations/certify/build_certificate.rs` | — | — |
-| `info` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
-| `info` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
-| `info` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | — | — |
 | `debug` | `...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption              oracle, user: {user}` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid`, `user` | — |
 | `debug` | `...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user:              {user}` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid`, `user` | — |
 | `debug` | `...wrapping the key block with key uid: {wrapping_key_uid} using an encryption              oracle, user: {user}` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`, `user` | — |
@@ -590,7 +585,6 @@ Crate path: `crate/server`
 | `trace` | `` PKCS#11 `C_UnwrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `` PKCS#11 `C_WrapKey` not yet implemented `` | `src/core/operations/pkcs11.rs` | - | - |
 | `trace` | `ReKeyKeyPair: resolved keyset ref '{}' → '{}'` | `src/core/operations/rekey/keypair/mod.rs` | - | - |
-| `info` | `KMS HTTP server configured with {n} worker thread(s)` | `src/start_kms_server.rs` | `n` | - |
 | `warn` | `find_wrapped_by({old_uid}) failed — skipping re-wrap of dependants: {e}` | `src/core/operations/rekey/common.rs` | `old_uid`, `e` | - |
 | `warn` | `[auto-rotate] Failed to query keys due for rotation: {e}` | `src/core/operations/auto_rotate.rs` | `e` | - |
 | `warn` | `[auto-rotate] Failed to re-arm rotation policy on replacement {new_uid}: {e}` | `src/core/operations/auto_rotate.rs` | `new_uid`, `e` | - |
@@ -617,6 +611,19 @@ Crate path: `crate/server`
 | `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
+| `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip.rs` | `e` | - |
+| `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
+| `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
+| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `warn` | `JOSE CEK cache insert error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
+| `warn` | `JOSE CEK cache peek error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
+| `warn` | `JOSE CEK cache: failed to construct KMIP SymmetricKey: {e}` | `src/routes/jose/cek_cache.rs` | `e` | - |
+| `warn` | `JOSE CEK cache: unexpected CEK length {other} bytes — not an AES-128/192/256 key` | `src/routes/jose/cek_cache.rs` | `other` | - |
+| `warn` | `JOSE CEK cache: unexpected object type for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -625,17 +632,11 @@ Crate path: `crate/server_database`
 
 | Level | Message | File | Variables | Notes |
 |---|---|---|---|---|
-| `warn` | `Failed to send cache access timestamp: {}` | `src/core/unwrapped_cache.rs` | - | - |
-| `debug` | `Cache garbage collection thread shutting down` | `src/core/unwrapped_cache.rs` | - | - |
-| `debug` | `Cache garbage collection thread terminated` | `src/core/unwrapped_cache.rs` | - | - |
 | `debug` | `Empty Redis database detected. Initializing a new database instance.` | `src/stores/redis/redis_with_findex.rs` | - | - |
 | `debug` | `Existing Redis database detected (version {version}). Using current database.` | `src/stores/redis/redis_with_findex.rs` | `version`: version | - |
-| `debug` | `Garbage collected {} stale cache entries` | `src/core/unwrapped_cache.rs` | - | - |
 | `debug` | `Listed {} rows` | `src/stores/sql/mysql.rs` | - | ×2 in this file |
 | `debug` | `Owner = {}` | `src/stores/sql/mysql.rs` | - | - |
 | `debug` | `PG find query: {}` | `src/stores/sql/pgsql.rs` | - | - |
-| `debug` | `Running cache garbage collection` | `src/core/unwrapped_cache.rs` | - | - |
-| `debug` | `Sent shutdown signal to cache garbage collection thread` | `src/core/unwrapped_cache.rs` | - | - |
 | `debug` | `Uid = {}` | `src/stores/sql/mysql.rs` | - | - |
 | `trace` | `Created in DB: {uid} / {owner}` | `src/stores/sql/mysql.rs` | `uid` — …<br>`owner` — … | — |
 | `trace` | `Deleted in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | — |
@@ -648,9 +649,6 @@ Crate path: `crate/server_database`
 | `trace` | `Redis DB size: {count}` | `src/stores/redis/redis_with_findex.rs` | `count` — … | — |
 | `trace` | `Updated in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | ×2 in this file |
 | `trace` | `Upserted in DB: {uid}` | `src/stores/sql/mysql.rs` | `uid` — … | — |
-| `warn` | `[database] count_all_non_destroyed failed: {e}` | `src/core/database_objects.rs` | `e` | — |
-| `warn` | `[database] count_non_destroyed_keys failed: {e}` | `src/core/database_objects.rs` | `e` | — |
-| `warn` | `[database] reconcile_counts failed for a store: {e}` | `src/core/database_objects.rs` | `e` | — |
 | `debug` | `[redis-bootstrap] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | ×2 in this file |
 | `debug` | `[redis-metrics] reconcile: live_objects={live_count}, non_destroyed_keys={key_count}` | `src/stores/redis/redis_with_findex.rs` | `live_count`, `key_count` | — |
 | `debug` | `` [redis-metrics] bootstrapped {} live object(s) into `{}` `` | `src/stores/redis/redis_with_findex.rs` | - | - |

@@ -71,23 +71,20 @@ macro_rules! op {
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<Operation> {
     let operation_tag = ttlv.tag.clone();
-    let start_time = std::time::Instant::now();
 
-    let result = dispatch_inner(kms, ttlv, user, &operation_tag).await;
-
-    // Record metrics if enabled
     if let Some(ref metrics) = kms.metrics {
-        let duration = start_time.elapsed().as_secs_f64();
+        let start = std::time::Instant::now();
+        let result = dispatch_inner(kms, ttlv, user, &operation_tag).await;
+        let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(&operation_tag, user);
         metrics.record_kmip_operation_duration(&operation_tag, duration);
-
-        // Record error if operation failed
         if result.is_err() {
             metrics.record_error(&operation_tag);
         }
+        result
+    } else {
+        dispatch_inner(kms, ttlv, user, &operation_tag).await
     }
-
-    result
 }
 
 async fn dispatch_inner(
@@ -97,8 +94,11 @@ async fn dispatch_inner(
     operation_tag: &str,
 ) -> KResult<Operation> {
     // For operations where the request carries algorithm choices, validate them
-    // before executing any cryptographic action.
-    enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+    // before executing any cryptographic action.  Skip entirely when no policy
+    // is configured — avoids a function call + match on every dispatch.
+    if kms.params.kmip_policy.policy_id.is_some() {
+        enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+    }
 
     Ok(match operation_tag {
         "Activate" => op!(ttlv, kms, user, Activate, activate, ActivateResponse),
