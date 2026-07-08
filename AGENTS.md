@@ -208,7 +208,7 @@ Use `--features non-fips` to enable all non-approved algorithms.
 - **Unsafe code**: every `unsafe` block requires a `// SAFETY:` comment explaining the invariant that makes it sound.
 - **Clippy**: zero warnings (`cargo clippy-all`). Decision tree for `#[allow(clippy::...)]`: (1) fix it; (2) if unfixable, add an inline comment explaining why; (3) if undecided, report the exact warning to the user.
 - **Tests**: unit tests go in a `#[cfg(test)]` submodule in the same file.
-- **Public API**: all public items require `///` doc comments.
+- **Public API**: all public items that are not trivial require `///` doc comments that explay _why_, _constraints_, _non obvious behaviors_, etc. Comments should not be a paraphrase of the code.
 - **Pre-commit hooks**: must pass before every commit — never use `--no-verify`.
 - **Commit scope**: minimal, focused changes — don't refactor surrounding code alongside a bug fix.
 - **Live DB tests**: `docker compose up -d <service>` before running tests that need a backend (postgres :5432, mysql :3306, redis :6379, etc.).
@@ -252,21 +252,21 @@ Fix every warning. Do not suppress with `#[allow]` unless there is a documented,
 
 Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and emits the exact applicable checklist from the table below.
 
-| Task type | Sub-rules |
-|---|---|
-| New/modified KMIP operation | 4.3, 4.10 |
-| New/modified REST endpoint | 4.2, 4.10 |
-| New/modified CLI command/flag | 4.4, 4.15 |
-| New/modified UI feature | 4.1, 4.4, 4.5 (if WASM needed) |
-| Non-FIPS-only feature | 4.8 |
-| Auth method change | 4.9 |
-| Server config/wizard change | 4.6, 4.7 |
-| Cloud provider integration | 4.12 |
-| HSM backend | 4.13 |
-| Documentation/behavior change | 4.14 |
-| Playwright E2E test change | 4.16 |
-| OpenSSL upgrade | 4.17 |
-| `Cargo.lock` or `pnpm-lock.yaml` change | 4.11 |
+| Task type                               | Sub-rules                      |
+| --------------------------------------- | ------------------------------ |
+| New/modified KMIP operation             | 4.3, 4.10                      |
+| New/modified REST endpoint              | 4.2, 4.10                      |
+| New/modified CLI command/flag           | 4.4, 4.15                      |
+| New/modified UI feature                 | 4.1, 4.4, 4.5 (if WASM needed) |
+| Non-FIPS-only feature                   | 4.8                            |
+| Auth method change                      | 4.9                            |
+| Server config/wizard change             | 4.6, 4.7                       |
+| Cloud provider integration              | 4.12                           |
+| HSM backend                             | 4.13                           |
+| Documentation/behavior change           | 4.14                           |
+| Playwright E2E test change              | 4.16                           |
+| OpenSSL upgrade                         | 4.17                           |
+| `Cargo.lock` or `pnpm-lock.yaml` change | 4.11                           |
 
 > **Full sub-rule checklists** (4.1–4.17) are in `.github/skills/kms-sync-rules/SKILL.md`. The `/kms-sync-rules` skill reads your diff and emits only the applicable ones.
 
@@ -442,8 +442,8 @@ RUST_LOG="cosmian_kms_server=trace,cosmian_kms_server_database=trace" \
 Add the failing crate to `RUST_LOG` if the problem originates elsewhere.
 
 - **During debugging**: whenever you add temporary code (a log, a hardcoded value, a
-relaxed auth/CORS/TLS config, a test-only endpoint), mark it immediately with a comment:
-`// TODO: debug — remove before shipping`. This makes residue findable at a glance.
+  relaxed auth/CORS/TLS config, a test-only endpoint), mark it immediately with a comment:
+  `// TODO: debug — remove before shipping`. This makes residue findable at a glance.
 - When working on some feature, run the tests that actually use that feature or (if no direct test) are the most related - Do not run the full test suite to check if a certain new addition is correct.
 
 ### 8.5 GitHub CLI usage

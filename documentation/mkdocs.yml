@@ -27,7 +27,8 @@ markdown_extensions:
       # make exceptions to highlighting of code:
       custom_fences:
         - name: mermaid
-          class: mermaid
+          class:
+            mermaid
             # Uncomment the following line to check Mermaid figures
             # format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
@@ -147,6 +148,8 @@ nav:
       - Authorizing users with access rights: configuration/authorization.md
       - Enabling TLS: configuration/tls.md
       - Logging and telemetry: configuration/logging.md
+      - Audit logs: configuration/audit-logs.md
+      - SIEMs: configuration/siems.md
       - Monitoring:
           - Setup: configuration/monitoring-setup.md
           - Metrics reference: configuration/otlp-metrics.md
