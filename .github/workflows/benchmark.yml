@@ -6,8 +6,9 @@ on:
   workflow_call:
     inputs:
       server_version:
-        description: KMS server version to benchmark (e.g. 5.24.0)
-        required: true
+        description: KMS server version to benchmark (e.g. 5.24.0); omit to build from the selected branch
+        required: false
+        default: ''
         type: string
       variant:
         description: Build variant (fips|non-fips)
@@ -24,8 +25,9 @@ on:
   workflow_dispatch:
     inputs:
       server_version:
-        description: KMS server version to benchmark (e.g. 5.24.0)
-        required: true
+        description: KMS server version to benchmark (e.g. 5.24.0); omit to build from the selected branch
+        required: false
+        default: ''
       variant:
         description: Build variant (fips|non-fips)
         required: false
@@ -38,13 +40,13 @@ on:
 jobs:
   # ── Job 1: run the benchmark suite ─────────────────────────────────────────
   benchmark:
-    name: Benchmark KMS ${{ inputs.server_version }} (${{ inputs.variant }})
+    name: Benchmark KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant }})
     # Benchmarks require a stable, dedicated machine to produce comparable results.
     # See https://github.com/Cosmian/kms/issues/776
     runs-on: [self-hosted, benchmark]
     timeout-minutes: 180
     concurrency:
-      group: benchmark-${{ inputs.server_version }}-${{ inputs.variant }}
+      group: benchmark-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
       cancel-in-progress: true
 
     steps:
@@ -74,28 +76,26 @@ jobs:
 
       - name: Run load + criterion benchmarks
         run: |
-          mise run bench:load \
-            --variant "${{ inputs.variant }}" \
-            --server-version "${{ inputs.server_version }}" \
-            --mode "${{ inputs.bench_mode }}" \
-            --criterion
+          ARGS=(--variant "${{ inputs.variant }}" --mode "${{ inputs.bench_mode }}" --criterion)
+          [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
+          mise run bench:load "${ARGS[@]}"
 
       - name: Upload benchmark report folder
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-report-${{ inputs.server_version }}-${{ inputs.variant }}
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
           # The entire version folder: report.md + load/ + criterion/ + raw JSON.
-          path: target/criterion/reports/${{ inputs.server_version }}/
+          path: target/criterion/reports/${{ inputs.server_version || github.ref_name }}/
           retention-days: 365
 
   # ── Job 2: run CPU-scaling flamegraph benchmark (parallel with job 1) ────────
   flamegraph:
-    name: Flamegraph KMS ${{ inputs.server_version }} (${{ inputs.variant }})
+    name: Flamegraph KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant }})
     runs-on: [self-hosted, benchmark]
     timeout-minutes: 120
     concurrency:
-      group: flamegraph-${{ inputs.server_version }}-${{ inputs.variant }}
+      group: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
       cancel-in-progress: true
 
     steps:
@@ -138,7 +138,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: flamegraph-${{ inputs.server_version }}-${{ inputs.variant }}
+          name: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
           path: documentation/docs/benchmarks/
           retention-days: 365
 
@@ -157,14 +157,14 @@ jobs:
       - name: Download benchmark artifact
         uses: actions/download-artifact@v8
         with:
-          name: benchmark-report-${{ inputs.server_version }}-${{ inputs.variant }}
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
           path: report
 
       - name: Push benchmark report to package.cosmian.com
         shell: bash
         run: |
           set -ex
-          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version }}/benchmarks"
+          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version || github.ref_name }}/benchmarks"
           SSH_OPTS="-o StrictHostKeyChecking=no -i /root/.ssh/id_rsa"
 
           # Create remote directory.
@@ -176,7 +176,7 @@ jobs:
             cosmian@package.cosmian.com:"${REMOTE_DIR}/"
 
           echo ""
-          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version }}/benchmarks/report.md"
+          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/report.md"
 
   # ── Job 4: publish flamegraph output to package.cosmian.com ──────────────
   publish-flamegraph:
@@ -193,14 +193,14 @@ jobs:
       - name: Download flamegraph artifact
         uses: actions/download-artifact@v8
         with:
-          name: flamegraph-${{ inputs.server_version }}-${{ inputs.variant }}
+          name: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
           path: flamegraph-docs
 
       - name: Push flamegraph output to package.cosmian.com
         shell: bash
         run: |
           set -ex
-          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version }}/benchmarks/flamegraph"
+          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph"
           SSH_OPTS="-o StrictHostKeyChecking=no -i /root/.ssh/id_rsa"
 
           # Create remote directory.
@@ -212,4 +212,4 @@ jobs:
             cosmian@package.cosmian.com:"${REMOTE_DIR}/"
 
           echo ""
-          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version }}/benchmarks/flamegraph/cpu_scaling.md"
+          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph/cpu_scaling.md"
