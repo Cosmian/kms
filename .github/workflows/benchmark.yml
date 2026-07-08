@@ -134,6 +134,18 @@ jobs:
         run: cargo install flamegraph --locked
 
       - name: Run CPU-scaling flamegraph benchmark
+        env:
+          # Use frame-pointer unwinding instead of DWARF in CI.
+          # DWARF (dwarf,32768) writes ~32 KB per sample; at 8 workers × 500 Hz
+          # × 15 s the raw perf.data reaches ~2 GB per profile, exhausting runner
+          # memory and causing the OS to kill the process.
+          # fp generates ~800 B/sample; Rust code compiled with
+          # -C force-frame-pointers=yes gives accurate Rust frames; only
+          # non-FP system libs (glibc, OpenSSL) appear as [unknown], which is
+          # acceptable for a CI flamegraph.
+          PERF_CALL_GRAPH: fp
+          # Cap profile time at 10 s (default 15 s) to reduce total runtime.
+          PROFILE_TIME: '10'
         run: |
           mise run bench:flamegraph \
             --variant "${{ inputs.variant }}"
@@ -150,7 +162,6 @@ jobs:
   publish:
     name: Publish to package.cosmian.com
     needs: benchmark
-    if: always() && needs.benchmark.result != 'cancelled'
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -186,9 +197,6 @@ jobs:
   publish-flamegraph:
     name: Publish flamegraph to package.cosmian.com
     needs: flamegraph
-    # Only publish when the flamegraph job actually produced output; scp -r on
-    # an empty artifact directory fails and there is nothing useful to publish.
-    if: needs.flamegraph.result == 'success'
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
