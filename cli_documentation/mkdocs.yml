@@ -67,5 +67,6 @@ nav:
   - Usage:
       - Command Line Interface: usage.md
       - CLI Reference: cli/main_commands.md
+      - Audit commands: audit.md
   - Access Rights: authorization.md
   - S/MIME Gmail: smime_gmail.md

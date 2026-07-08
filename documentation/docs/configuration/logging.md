@@ -75,11 +75,11 @@ Log files are named `<name>.YYYY-MM-DD`, where `<name>` defaults to `kms`.
 When `rolling_log_dir` is set without specifying a path (e.g. via the
 configuration wizard), the recommended platform-specific defaults are:
 
-| Platform | Default directory                                        |
-| -------- | ------------------------------------------------------- |
-| Linux    | `/var/log/`                                             |
+| Platform | Default directory                                      |
+| -------- | ------------------------------------------------------ |
+| Linux    | `/var/log/`                                            |
 | Windows  | `C:\Users\<username>\AppData\Local\Cosmian KMS Server` |
-| macOS    | `~/Library/Logs/`                                       |
+| macOS    | `~/Library/Logs/`                                      |
 
 > **Warning (Windows):** The server does **not** expand Windows environment variables
 > such as `%LOCALAPPDATA%` in configuration files. If you override `rolling_log_dir`
@@ -260,19 +260,19 @@ To quickly validate that OTLP export works without the full stack:
 
 === "Docker"
 
-  ```bash
-  docker run -p 16686:16686 -p 4317:4317 \
-    -e COLLECTOR_OTLP_ENABLED=true \
-    jaegertracing/all-in-one:latest
-  ```
+```bash
+docker run -p 16686:16686 -p 4317:4317 \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  jaegertracing/all-in-one:latest
+```
 
 === "kms.toml"
 
-  ```toml
-  [logging]
-  otlp = "http://localhost:4317"
-  quiet = true
-  ```
+```toml
+[logging]
+otlp = "http://localhost:4317"
+quiet = true
+```
 
 Then start the KMS locally:
 
@@ -284,3 +284,9 @@ Open [http://localhost:16686](http://localhost:16686) to browse traces in the Ja
 
 > For production use, replace Jaeger with the full OTel Collector + VictoriaMetrics + Grafana
 > stack described above.
+
+---
+
+## Structured audit log
+
+For tamper-evident, compliance-grade event recording, see [Audit logs](./audit-logs.md).
