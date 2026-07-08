@@ -21,6 +21,24 @@
 //! * Duration: measured as wall-clock elapsed from the moment the inner
 //!   service `Future` is polled to completion.
 
+/// KMIP-specific operation name injected by the KMIP route handlers
+/// so the audit middleware records the exact operation ("Encrypt", "Create", …)
+/// instead of the coarse path-derived grouping ("KMIP").
+#[derive(Debug, Clone)]
+pub(crate) struct KmipOperationName(pub String);
+
+/// KMIP object UID injected by the KMIP route handler for audit purposes.
+/// For Create/CreateKeyPair this is the server-generated UID from the response TTLV.
+/// For object-bearing ops (Encrypt, Decrypt, Get, Destroy, …) it is the
+/// `UniqueIdentifier` from the request TTLV.
+#[derive(Debug, Clone)]
+pub(crate) struct KmipObjectUid(pub String);
+
+/// KMIP cryptographic algorithm (e.g. `"AES"`, `"RSA"`) injected by the KMIP
+/// route handler for audit purposes.
+#[derive(Debug, Clone)]
+pub(crate) struct KmipAlgorithm(pub String);
+
 use std::{
     pin::Pin,
     rc::Rc,
@@ -42,7 +60,7 @@ use time::OffsetDateTime;
 
 use crate::{
     core::audit::{AuditFileStore, make_failure_draft, make_success_draft},
-    middlewares::{AuthenticatedUser, KmipOperationName},
+    middlewares::AuthenticatedUser,
 };
 
 const UNAUTHENTICATED: &str = "unauthenticated";
@@ -102,7 +120,6 @@ where
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // Fast path: audit disabled
         let store = match &self.store {
             None => {
                 let svc = self.service.clone();
@@ -114,12 +131,9 @@ where
             Some(s) => s.clone(),
         };
 
-        // Capture per-request context
         let operation = extract_operation(req.path());
         let client_ip = extract_client_ip(&req);
 
-        // Read user identity before the request is consumed; may be absent
-        // (no auth configured, or auth will fail downstream).
         let user = req
             .extensions()
             .get::<AuthenticatedUser>()
@@ -135,29 +149,37 @@ where
             let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
             let status = res.status();
 
-            // Re-read user after authentication middlewares may have injected it
-            // into the response extensions (actix propagates req extensions to resp).
             let final_user = res
                 .request()
                 .extensions()
                 .get::<AuthenticatedUser>()
                 .map_or(user, |u| u.username.clone());
 
-            // Prefer the exact KMIP operation name injected by the route handler
-            // (e.g. "Encrypt", "Create"); fall back to path-derived coarse name.
             let final_operation = res
                 .request()
                 .extensions()
                 .get::<KmipOperationName>()
                 .map_or(operation, |k| k.0.clone());
 
+            let object_uid = res
+                .request()
+                .extensions()
+                .get::<KmipObjectUid>()
+                .map(|k| k.0.clone());
+
+            let algorithm = res
+                .request()
+                .extensions()
+                .get::<KmipAlgorithm>()
+                .map(|k| k.0.clone());
+
             let draft: AuditEventDraft = if status.is_success() || status.is_redirection() {
                 make_success_draft(
                     timestamp,
                     final_operation,
                     final_user,
-                    None, // object_uid resolved post-deserialization — not available here
-                    None, // algorithm — same
+                    object_uid,
+                    algorithm,
                     client_ip,
                     duration_ms,
                 )
@@ -171,8 +193,8 @@ where
                     timestamp,
                     final_operation,
                     final_user,
-                    None,
-                    None,
+                    object_uid,
+                    algorithm,
                     client_ip,
                     duration_ms,
                     reason,
@@ -204,10 +226,8 @@ fn extract_operation(path: &str) -> String {
 fn extract_client_ip(req: &ServiceRequest) -> Option<String> {
     // TODO: XFF header can be spoofed by clients when there is no trusted reverse
     //       proxy in front of the KMS; validate against an IP allowlist in production.
-    // Prefer `X-Forwarded-For` (set by load balancers / reverse proxies)
     if let Some(xff) = req.headers().get("x-forwarded-for") {
         if let Ok(val) = xff.to_str() {
-            // XFF may contain a comma-separated list; take the first (client) entry
             if let Some(ip) = val.split(',').next() {
                 let ip = ip.trim();
                 if !ip.is_empty() {
@@ -234,5 +254,93 @@ mod tests {
         assert_eq!(extract_operation("/v1/crypto/encrypt"), "v1");
         assert_eq!(extract_operation("/"), "unknown");
         assert_eq!(extract_operation(""), "unknown");
+    }
+
+    #[test]
+    fn make_success_draft_all_attributes() {
+        use crate::core::audit::make_success_draft;
+        use cosmian_kms_access::audit::AuditResult;
+        use time::OffsetDateTime;
+
+        let ts = OffsetDateTime::now_utc();
+
+        let draft = make_success_draft(
+            ts,
+            "Encrypt",
+            "alice",
+            Some("key-42".to_owned()),
+            Some("AES-256".to_owned()),
+            Some("192.168.1.1".to_owned()),
+            42,
+        );
+        assert_eq!(draft.timestamp, ts);
+        assert_eq!(draft.operation, "Encrypt");
+        assert_eq!(draft.user, "alice");
+        assert_eq!(draft.object_uid.as_deref(), Some("key-42"));
+        assert_eq!(draft.algorithm.as_deref(), Some("AES-256"));
+        assert_eq!(draft.client_ip.as_deref(), Some("192.168.1.1"));
+        assert_eq!(draft.duration_ms, 42);
+        assert!(matches!(draft.result, AuditResult::Success));
+
+        let draft = make_success_draft(ts, "Get", "bob", None, None, None, 7);
+        assert_eq!(draft.operation, "Get");
+        assert_eq!(draft.user, "bob");
+        assert!(draft.object_uid.is_none());
+        assert!(draft.algorithm.is_none());
+        assert!(draft.client_ip.is_none());
+        assert_eq!(draft.duration_ms, 7);
+        assert!(matches!(draft.result, AuditResult::Success));
+    }
+
+    #[test]
+    fn make_failure_draft_all_attributes() {
+        use crate::core::audit::make_failure_draft;
+        use cosmian_kms_access::audit::AuditResult;
+        use time::OffsetDateTime;
+
+        let ts = OffsetDateTime::now_utc();
+
+        let draft = make_failure_draft(
+            ts,
+            "Decrypt",
+            "charlie",
+            Some("obj-99".to_owned()),
+            Some("RSA-3072".to_owned()),
+            Some("10.0.0.5".to_owned()),
+            123,
+            "403 Forbidden",
+        );
+        assert_eq!(draft.timestamp, ts);
+        assert_eq!(draft.operation, "Decrypt");
+        assert_eq!(draft.user, "charlie");
+        assert_eq!(draft.object_uid.as_deref(), Some("obj-99"));
+        assert_eq!(draft.algorithm.as_deref(), Some("RSA-3072"));
+        assert_eq!(draft.client_ip.as_deref(), Some("10.0.0.5"));
+        assert_eq!(draft.duration_ms, 123);
+        assert!(matches!(
+            &draft.result,
+            AuditResult::Failure(reason) if reason == "403 Forbidden"
+        ));
+
+        let draft = make_failure_draft(
+            ts,
+            "Create",
+            "dave",
+            None,
+            None,
+            None,
+            15,
+            "401 Unauthorized",
+        );
+        assert_eq!(draft.operation, "Create");
+        assert_eq!(draft.user, "dave");
+        assert!(draft.object_uid.is_none());
+        assert!(draft.algorithm.is_none());
+        assert!(draft.client_ip.is_none());
+        assert_eq!(draft.duration_ms, 15);
+        assert!(matches!(
+            &draft.result,
+            AuditResult::Failure(reason) if reason == "401 Unauthorized"
+        ));
     }
 }
