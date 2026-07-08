@@ -117,8 +117,12 @@ jobs:
       - name: Install system dependencies
         run: |
           if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq \
-              linux-perf librsvg2-bin
+            sudo apt-get update -qq
+            # linux-tools-generic provides perf on Ubuntu; also try the
+            # kernel-specific package for an exact-version perf binary.
+            sudo apt-get install -y -qq librsvg2-bin \
+              "linux-tools-$(uname -r)" linux-tools-generic 2>/dev/null \
+              || sudo apt-get install -y -qq librsvg2-bin linux-tools-generic
           fi
 
       - name: Allow perf for unprivileged processes
@@ -182,7 +186,9 @@ jobs:
   publish-flamegraph:
     name: Publish flamegraph to package.cosmian.com
     needs: flamegraph
-    if: always() && needs.flamegraph.result != 'cancelled'
+    # Only publish when the flamegraph job actually produced output; scp -r on
+    # an empty artifact directory fails and there is nothing useful to publish.
+    if: needs.flamegraph.result == 'success'
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
