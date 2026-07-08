@@ -31,7 +31,7 @@ If any required input is missing, ask before proceeding.
 
 ```markdown
 ---
-title: "ADR-NNNN: [Decision Title]"
+title: "ADR-YYYY-MM-DD: [Decision Title]"
 status: "Proposed"
 date: "YYYY-MM-DD"
 authors: "[Stakeholder Names/Roles]"
@@ -40,7 +40,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-NNNN: [Decision Title]
+# ADR-YYYY-MM-DD: [Decision Title]
 
 ## Status
 
@@ -90,8 +90,3 @@ superseded_by: ""
 - **REF-002**: [External documentation, RFCs, specifications]
 - **REF-003**: [Relevant codebase files: e.g. `crate/server_database/src/`, `crate/server/src/config/`]
 ```
-
-## After Writing
-
-1. Update `documentation/mkdocs.yml` to include the new ADR under the `ADRs` nav section (create the section if it doesn't exist).
-2. Commit with message: `docs(adr): add ADR-NNNN [title]`
