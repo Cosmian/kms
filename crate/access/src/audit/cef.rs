@@ -2,14 +2,16 @@ use std::fmt::Write as _;
 
 use time::format_description::well_known::Rfc3339;
 
-use super::event::{AuditEventFull, AuditResult};
+use super::event::{AuditEvent, AuditResult};
 
-// CEF v25 severity levels used by this implementation
+// CEF severity levels used by this implementation (CEF spec 0.1, header CEF:0)
 const SEV_SUCCESS: u8 = 5;
 const SEV_AUTH_FAILURE: u8 = 7; // 401 / 403
 const SEV_OTHER_FAILURE: u8 = 6;
 
-/// Serialises `event` as a single CEF v25 line (no trailing newline).
+// Note: no current Rust library currently seems to exist for CEF, hence this implementation is hand-rolled. Tests are pretty heavy.
+
+/// Serialises `event` as a single CEF line (spec 0.1, `CEF:0` header, no trailing newline).
 ///
 /// Format:
 /// ```text
@@ -32,7 +34,7 @@ const SEV_OTHER_FAILURE: u8 = 6;
 /// `cs2`        | Algorithm (omitted if unknown)       |
 /// `cs2Label`   | "algorithm" (omitted if cs2 absent)  |
 #[must_use]
-pub fn to_cef_line(event: &AuditEventFull, kms_version: &str) -> String {
+pub fn to_cef_line(event: &AuditEvent, kms_version: &str) -> String {
     let severity = cef_severity(&event.result);
 
     // ── Header fields ────────────────────────────────────────────────────
@@ -97,7 +99,6 @@ pub fn to_cef_line(event: &AuditEventFull, kms_version: &str) -> String {
     format!("{header}{ext}")
 }
 
-
 fn cef_severity(result: &AuditResult) -> u8 {
     match result {
         AuditResult::Success => SEV_SUCCESS,
@@ -122,7 +123,7 @@ fn escape_header(s: &str) -> String {
 }
 
 /// Escapes a value for use in a CEF extension field value.
-/// Per CEF v25 spec: `\` → `\\`, then `=` → `\=`, then newlines.
+/// Per CEF spec 0.1: `\` → `\\`, then `=` → `\=`, then newlines.
 fn escape_ext_value(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('=', "\\=")
@@ -135,12 +136,12 @@ fn escape_ext_value(s: &str) -> String {
 mod tests {
     use time::OffsetDateTime;
 
-    use super::super::event::{AuditEventFull, AuditResult};
+    use super::super::event::{AuditEvent, AuditResult};
     use super::{escape_ext_value, escape_header, to_cef_line};
     use crate::audit::hash::compute_row_hash;
 
-    fn make_event(result: AuditResult) -> AuditEventFull {
-        let mut ev = AuditEventFull {
+    fn make_event(result: AuditResult) -> AuditEvent {
+        let mut ev = AuditEvent {
             id: 7,
             timestamp: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
             operation: "Encrypt".to_owned(),

@@ -11,17 +11,16 @@
 //! * `verify` — validates the SHA-256 hash chain; exits non-zero if broken
 
 use std::{
-    io::{BufRead, BufReader, Write as _},
+    io::{BufRead, BufReader, Write},
     path::PathBuf,
 };
 
 use clap::{Parser, Subcommand, ValueEnum};
 use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
-    AuditEventFull, AuditResult, to_cef_line, verify_chain_link, verify_event,
+    AuditEvent, AuditResult, to_cef_line, verify_chain_link, verify_event,
 };
 
 use crate::error::result::KmsCliResult;
-
 
 /// Commands for managing and inspecting the KMS audit log.
 ///
@@ -47,7 +46,6 @@ impl AuditCommands {
         }
     }
 }
-
 
 /// Output format for `ckms audit export`.
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
@@ -97,11 +95,22 @@ pub struct ExportAuditAction {
 }
 
 impl ExportAuditAction {
-    /// Run the export.
+    /// Run the export, writing output to `stdout`.
     ///
     /// # Errors
     /// Returns an error if the file cannot be opened or read.
     pub fn run(&self) -> KmsCliResult<()> {
+        self.run_with_writer(&mut std::io::stdout().lock())
+    }
+
+    /// Run the export, writing output to the provided writer.
+    ///
+    /// For stdout call `run_with_writer(&mut std::io::stdout().lock())`.
+    /// For tests pass `&mut Vec::new()` and inspect the captured bytes.
+    ///
+    /// # Errors
+    /// Returns an error if the file cannot be opened, read, or a line cannot be parsed.
+    pub(crate) fn run_with_writer<W: Write>(&self, out: &mut W) -> KmsCliResult<()> {
         let since = self
             .since
             .as_deref()
@@ -116,10 +125,7 @@ impl ExportAuditAction {
             .transpose()?;
 
         let file = std::fs::File::open(&self.path).map_err(crate::error::KmsCliError::IoError)?;
-
         let reader = BufReader::new(file);
-        let stdout = std::io::stdout();
-        let mut out = stdout.lock();
 
         for (line_no, line) in reader.lines().enumerate() {
             let line = line.map_err(crate::error::KmsCliError::IoError)?;
@@ -127,14 +133,13 @@ impl ExportAuditAction {
                 continue;
             }
 
-            let event: AuditEventFull = serde_json::from_str(&line).map_err(|e| {
+            let event: AuditEvent = serde_json::from_str(&line).map_err(|e| {
                 crate::error::KmsCliError::InvalidRequest(format!(
                     "line {}: malformed audit event: {e}",
                     line_no + 1
                 ))
             })?;
 
-            // Apply --since filter
             if let Some(ts) = since {
                 if event.timestamp < ts {
                     continue;
@@ -152,7 +157,6 @@ impl ExportAuditAction {
         Ok(())
     }
 }
-
 
 /// Verify the SHA-256 hash chain of the audit log file.
 ///
@@ -185,16 +189,28 @@ pub struct VerifyAuditAction {
 }
 
 impl VerifyAuditAction {
-    /// Run the verification.
+    /// Run the verification, printing the summary to `stdout`.
     ///
     /// # Errors
     /// Returns an error if the file cannot be opened or read, or if a broken
     /// hash-chain link is detected (exit code 1).
     pub fn run(&self) -> KmsCliResult<()> {
+        self.run_with_writer(&mut std::io::stdout().lock())
+    }
+
+    /// Run the verification, writing the summary line to the provided writer.
+    ///
+    /// Returns `Err` containing the human-readable diagnosis on the first broken
+    /// link ("TAMPERED: …" or "CHAIN BROKEN: …"), allowing callers to assert on
+    /// the exact error message format.
+    ///
+    /// # Errors
+    /// Returns an error if the file cannot be opened, read, or the chain is broken.
+    pub(crate) fn run_with_writer<W: Write>(&self, out: &mut W) -> KmsCliResult<()> {
         let file = std::fs::File::open(&self.path).map_err(crate::error::KmsCliError::IoError)?;
 
         let reader = BufReader::new(file);
-        let mut prev: Option<AuditEventFull> = None;
+        let mut prev: Option<AuditEvent> = None;
         let mut total: u64 = 0;
 
         for (line_no, line) in reader.lines().enumerate() {
@@ -203,14 +219,13 @@ impl VerifyAuditAction {
                 continue;
             }
 
-            let event: AuditEventFull = serde_json::from_str(&line).map_err(|e| {
+            let event: AuditEvent = serde_json::from_str(&line).map_err(|e| {
                 crate::error::KmsCliError::InvalidRequest(format!(
                     "line {}: malformed audit event: {e}",
                     line_no + 1
                 ))
             })?;
 
-            // 1. Verify the row's own hash
             if !verify_event(&event) {
                 return Err(crate::error::KmsCliError::InvalidRequest(format!(
                     "TAMPERED: event id={} (line {}) has an invalid row_hash",
@@ -219,7 +234,6 @@ impl VerifyAuditAction {
                 )));
             }
 
-            // 2. Verify the chain link from the previous event
             if !verify_chain_link(&event, prev.as_ref()) {
                 return Err(crate::error::KmsCliError::InvalidRequest(format!(
                     "CHAIN BROKEN: event id={} (line {}) prev_hash does not match \
@@ -252,10 +266,237 @@ impl VerifyAuditAction {
         }
 
         writeln!(
-            std::io::stdout().lock(),
+            out,
             "Audit chain OK: {total} event{} verified",
             if total == 1 { "" } else { "s" }
         )
         .map_err(crate::error::KmsCliError::IoError)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use std::{io::Write as _, path::PathBuf};
+
+    use cosmian_kms_client::reexport::cosmian_kms_access::audit::{
+        AuditEvent, AuditResult, compute_row_hash,
+    };
+    use time::OffsetDateTime;
+
+    use super::{ExportAuditAction, ExportFormat, VerifyAuditAction};
+
+    fn temp_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "kms_cli_audit_test_{}_{label}.jsonl",
+            std::process::id()
+        ))
+    }
+
+    /// Build a valid N-event hash chain, writing to `path` and returning the events.
+    fn make_chain(n: u64, path: &PathBuf) -> Vec<AuditEvent> {
+        let mut events: Vec<AuditEvent> = Vec::new();
+        let mut file = std::fs::File::create(path).unwrap();
+
+        for i in 0..n {
+            let prev_hash = events.last().map_or([0u8; 32], |e: &AuditEvent| e.row_hash);
+            let mut event = AuditEvent {
+                id: i as i64,
+                timestamp: OffsetDateTime::now_utc(),
+                operation: format!("Op{i}"),
+                user: "test-user".to_owned(),
+                object_uid: Some(format!("uid-{i}")),
+                algorithm: Some("AES-256-GCM".to_owned()),
+                client_ip: Some("127.0.0.1".to_owned()),
+                result: AuditResult::Success,
+                duration_ms: 1,
+                prev_hash,
+                row_hash: [0u8; 32],
+            };
+            event.row_hash = compute_row_hash(&event);
+            writeln!(file, "{}", serde_json::to_string(&event).unwrap()).unwrap();
+            events.push(event);
+        }
+        events
+    }
+
+    fn verify_action(path: PathBuf) -> VerifyAuditAction {
+        VerifyAuditAction {
+            path,
+            verbose: false,
+        }
+    }
+
+    fn export_action(path: PathBuf, format: ExportFormat) -> ExportAuditAction {
+        ExportAuditAction {
+            path,
+            since: None,
+            format,
+            kms_version: "test".to_owned(),
+        }
+    }
+
+    // ── VerifyAuditAction ──────────────────────────────────────────────────────
+
+    #[test]
+    fn verify_ok_reports_n_events_verified() {
+        let path = temp_path("verify_ok");
+        make_chain(3, &path);
+        let mut out = Vec::new();
+        verify_action(path).run_with_writer(&mut out).unwrap();
+        let msg = String::from_utf8(out).unwrap();
+        assert!(msg.contains("Audit chain OK: 3 events verified"), "{msg}");
+    }
+
+    #[test]
+    fn verify_empty_file_is_ok() {
+        let path = temp_path("verify_empty");
+        std::fs::File::create(&path).unwrap();
+        let mut out = Vec::new();
+        verify_action(path).run_with_writer(&mut out).unwrap();
+        let msg = String::from_utf8(out).unwrap();
+        assert!(msg.contains("Audit chain OK: 0 events verified"), "{msg}");
+    }
+
+    #[test]
+    fn verify_detects_tampered_row_hash() {
+        let path = temp_path("verify_tampered");
+        let mut events = make_chain(3, &path);
+
+        // Corrupt event id=1
+        events[1].row_hash[0] ^= 0xff;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        for ev in &events {
+            writeln!(file, "{}", serde_json::to_string(ev).unwrap()).unwrap();
+        }
+
+        let err = verify_action(path)
+            .run_with_writer(&mut Vec::new())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("TAMPERED") && msg.contains("event id=1"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn verify_detects_broken_chain_link() {
+        let path = temp_path("verify_chain");
+        let mut events = make_chain(3, &path);
+
+        // Break the link: corrupt prev_hash of event id=2 (chain link from id=1)
+        events[2].prev_hash[0] ^= 0xff;
+        // Recompute row_hash so the TAMPERED check passes; only chain check fails
+        events[2].row_hash = compute_row_hash(&events[2]);
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&path)
+            .unwrap();
+        for ev in &events {
+            writeln!(file, "{}", serde_json::to_string(ev).unwrap()).unwrap();
+        }
+
+        let err = verify_action(path)
+            .run_with_writer(&mut Vec::new())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("CHAIN BROKEN") && msg.contains("event id=2"),
+            "{msg}"
+        );
+    }
+
+    // ── ExportAuditAction ──────────────────────────────────────────────────────
+
+    #[test]
+    fn export_json_outputs_parseable_lines() {
+        let path = temp_path("export_json");
+        make_chain(3, &path);
+        let mut out = Vec::new();
+        export_action(path, ExportFormat::Json)
+            .run_with_writer(&mut out)
+            .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 3);
+        for line in &lines {
+            drop(serde_json::from_str::<AuditEvent>(line).unwrap());
+        }
+    }
+
+    #[test]
+    fn export_cef_lines_have_cef_prefix() {
+        let path = temp_path("export_cef");
+        make_chain(3, &path);
+        let mut out = Vec::new();
+        export_action(path, ExportFormat::Cef)
+            .run_with_writer(&mut out)
+            .unwrap();
+        let text = String::from_utf8(out).unwrap();
+        for line in text.lines() {
+            assert!(line.starts_with("CEF:0|"), "{line}");
+        }
+    }
+
+    #[test]
+    fn export_since_filter_drops_earlier_events() {
+        let path = temp_path("export_since");
+        // Build chain with a known timestamp split
+        let before = OffsetDateTime::now_utc();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let cutoff = OffsetDateTime::now_utc();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let after = OffsetDateTime::now_utc();
+
+        // Write 3 events: one before, one at cutoff, one after
+        let mut file = std::fs::File::create(&path).unwrap();
+        let timestamps = [before, cutoff, after];
+        let mut prev_hash = [0u8; 32];
+        for (i, ts) in timestamps.iter().enumerate() {
+            let mut ev = AuditEvent {
+                id: i as i64,
+                timestamp: *ts,
+                operation: "Encrypt".to_owned(),
+                user: "u".to_owned(),
+                object_uid: None,
+                algorithm: None,
+                client_ip: None,
+                result: AuditResult::Success,
+                duration_ms: 1,
+                prev_hash,
+                row_hash: [0u8; 32],
+            };
+            ev.row_hash = compute_row_hash(&ev);
+            prev_hash = ev.row_hash;
+            writeln!(file, "{}", serde_json::to_string(&ev).unwrap()).unwrap();
+        }
+
+        let since_str = cutoff
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        let action = ExportAuditAction {
+            path,
+            since: Some(since_str),
+            format: ExportFormat::Json,
+            kms_version: "test".to_owned(),
+        };
+        let mut out = Vec::new();
+        action.run_with_writer(&mut out).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        // Events at cutoff and after should appear; event before cutoff should be dropped
+        assert_eq!(
+            lines.len(),
+            2,
+            "expected 2 lines (cutoff + after), got:\n{text}"
+        );
+        let ev0: AuditEvent = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(ev0.id, 1, "first kept event should have id=1 (cutoff)");
     }
 }

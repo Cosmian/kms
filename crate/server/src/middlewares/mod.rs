@@ -1,5 +1,5 @@
 mod audit;
-pub(crate) use audit::AuditMiddleware;
+pub(crate) use audit::{AuditMiddleware, KmipAlgorithm, KmipObjectUid, KmipOperationName};
 
 mod tls_auth;
 pub(crate) use cosmian_kms_interfaces::UserId;

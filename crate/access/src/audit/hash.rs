@@ -1,7 +1,7 @@
 use sha2::{Digest, Sha256};
 use time::format_description::well_known::Rfc3339;
 
-use super::event::AuditEventFull;
+use super::event::AuditEvent;
 
 /// Builds the deterministic, NUL-delimited binary representation of `event`
 /// that is fed into the SHA-256 digest.
@@ -26,7 +26,7 @@ use super::event::AuditEventFull;
 /// || NUL
 /// || duration_ms (8 bytes, big-endian u64)
 /// ```
-pub(crate) fn canonical_bytes(event: &AuditEventFull) -> Vec<u8> {
+pub(crate) fn canonical_bytes(event: &AuditEvent) -> Vec<u8> {
     let mut buf = Vec::with_capacity(256);
 
     buf.extend_from_slice(&event.prev_hash);
@@ -65,7 +65,7 @@ pub(crate) fn canonical_bytes(event: &AuditEventFull) -> Vec<u8> {
 /// Computes the SHA-256 digest over the canonical byte form of `event`.
 /// The returned hash should be stored as `event.row_hash`.
 #[must_use]
-pub fn compute_row_hash(event: &AuditEventFull) -> [u8; 32] {
+pub fn compute_row_hash(event: &AuditEvent) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(canonical_bytes(event));
     hasher.finalize().into()
@@ -74,7 +74,7 @@ pub fn compute_row_hash(event: &AuditEventFull) -> [u8; 32] {
 /// Returns `true` when `event.row_hash` matches the SHA-256 of its own
 /// canonical bytes.
 #[must_use]
-pub fn verify_event(event: &AuditEventFull) -> bool {
+pub fn verify_event(event: &AuditEvent) -> bool {
     let expected = compute_row_hash(event);
     expected == event.row_hash
 }
@@ -93,7 +93,7 @@ pub fn verify_event(event: &AuditEventFull) -> bool {
 /// expose a `--prev-hash` flag) so the first link is not treated as a fresh
 /// chain start.
 #[must_use]
-pub fn verify_chain_link(current: &AuditEventFull, prev: Option<&AuditEventFull>) -> bool {
+pub fn verify_chain_link(current: &AuditEvent, prev: Option<&AuditEvent>) -> bool {
     prev.map_or_else(
         || current.id == 0 && current.prev_hash == [0_u8; 32],
         |p| current.prev_hash == p.row_hash,
@@ -105,11 +105,11 @@ pub fn verify_chain_link(current: &AuditEventFull, prev: Option<&AuditEventFull>
 mod tests {
     use time::OffsetDateTime;
 
-    use super::super::event::{AuditEventFull, AuditResult};
+    use super::super::event::{AuditEvent, AuditResult};
     use super::{canonical_bytes, compute_row_hash, verify_chain_link, verify_event};
 
-    fn make_event(id: i64, prev_hash: [u8; 32], result: AuditResult) -> AuditEventFull {
-        let mut ev = AuditEventFull {
+    fn make_event(id: i64, prev_hash: [u8; 32], result: AuditResult) -> AuditEvent {
+        let mut ev = AuditEvent {
             id,
             timestamp: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
             operation: "Encrypt".to_owned(),

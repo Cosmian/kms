@@ -70,6 +70,17 @@ hostname = "0.0.0.0"
 # so they appear in the endpoint immediately (default: true).
 # jwks_endpoint_auto_tag = true
 
+# ── Audit logging ────────────────────────────────────────────────────────────
+# Append a tamper-evident SHA-256-chained JSONL line for every KMIP operation.
+# Uncomment the section below and set `enabled = true` to activate.
+#
+# [audit]
+# enabled = true
+#
+# [audit.file]
+# path = "/var/lib/cosmian/kms/audit.jsonl"
+# channel_capacity = 4096
+
 [db]
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"

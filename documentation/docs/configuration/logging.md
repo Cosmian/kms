@@ -260,19 +260,19 @@ To quickly validate that OTLP export works without the full stack:
 
 === "Docker"
 
-  ```bash
-  docker run -p 16686:16686 -p 4317:4317 \
-    -e COLLECTOR_OTLP_ENABLED=true \
-    jaegertracing/all-in-one:latest
-  ```
+```bash
+docker run -p 16686:16686 -p 4317:4317 \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  jaegertracing/all-in-one:latest
+```
 
 === "kms.toml"
 
-  ```toml
-  [logging]
-  otlp = "http://localhost:4317"
-  quiet = true
-  ```
+```toml
+[logging]
+otlp = "http://localhost:4317"
+quiet = true
+```
 
 Then start the KMS locally:
 
@@ -284,3 +284,9 @@ Open [http://localhost:16686](http://localhost:16686) to browse traces in the Ja
 
 > For production use, replace Jaeger with the full OTel Collector + VictoriaMetrics + Grafana
 > stack described above.
+
+---
+
+## Structured audit log
+
+For tamper-evident, compliance-grade event recording, see [Audit logs](./audit-logs.md).
