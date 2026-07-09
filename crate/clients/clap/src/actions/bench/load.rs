@@ -23,8 +23,8 @@ use zeroize::Zeroizing;
 use super::{
     helpers::{aes_gcm_params, create_sym_key, try_create_ec_kp},
     jose::{jose_create_sym_key, jose_try_create_ec_kp},
-    kmip_ttlv_bytes::{make_wire_request, to_wire_bytes, wire_response_ok},
     output::criterion_home,
+    transport::{make_wire_request, to_wire_bytes, wire_response_ok},
     types::{BenchMode, BenchProtocol},
 };
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -173,19 +173,13 @@ pub(super) fn parse_concurrency_levels(s: &str) -> KmsCliResult<Vec<usize>> {
         .collect()
 }
 
-/// Plaintext size for load test encrypt operations (4 KiB).
-///
-/// A larger payload stresses the serialization layer and makes the
-/// JSON-vs-binary-TTLV codec overhead measurable: base64 expansion in JSON
-/// adds ~33% payload size compared to raw bytes in binary TTLV.
-const LOAD_PLAINTEXT_SIZE: usize = 4096;
-
 /// Prepare one representative operation per applicable mode category.
 fn prepare_load_ops(
     rt: &Runtime,
     client: &KmsClient,
     mode: &BenchMode,
     protocol: &BenchProtocol,
+    plaintext_size: usize,
 ) -> Vec<PreparedLoadOp> {
     let mut ops = Vec::new();
     let needs_encrypt = matches!(mode, BenchMode::Encrypt | BenchMode::All);
@@ -203,7 +197,7 @@ fn prepare_load_ops(
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; LOAD_PLAINTEXT_SIZE])),
+            data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
             ..Default::default()
         };
         ops.push(preserialized_op(
@@ -244,7 +238,7 @@ fn prepare_load_ops(
     if run_json && needs_batch {
         let key_id = create_sym_key(rt, client, 128, CryptographicAlgorithm::AES);
         let key_str = key_id.to_string();
-        let data = BulkData::new(vec![Zeroizing::new(vec![1_u8; LOAD_PLAINTEXT_SIZE]); 10])
+        let data = BulkData::new(vec![Zeroizing::new(vec![1_u8; plaintext_size]); 10])
             .serialize()
             .expect("BulkData serialize");
         let req = encrypt_request(
@@ -269,7 +263,7 @@ fn prepare_load_ops(
         let req = Encrypt {
             unique_identifier: Some(key_id),
             cryptographic_parameters: Some(aes_gcm_params()),
-            data: Some(Zeroizing::new(vec![1_u8; LOAD_PLAINTEXT_SIZE])),
+            data: Some(Zeroizing::new(vec![1_u8; plaintext_size])),
             ..Default::default()
         };
         ops.push(preserialized_wire_op(
@@ -305,7 +299,7 @@ fn prepare_load_ops(
                 kid,
                 alg: "dir",
                 enc: "A256GCM",
-                data: b64url(&vec![1_u8; LOAD_PLAINTEXT_SIZE]),
+                data: b64url(&vec![1_u8; plaintext_size]),
                 aad: None,
             };
             let body = serde_json::to_vec(&jose_enc_req).expect("JOSE encrypt JSON serialization");
@@ -476,8 +470,9 @@ pub(super) fn bench_load(
     warmup: Duration,
     duration: Duration,
     cooldown: Duration,
+    plaintext_size: usize,
 ) -> Vec<LoadResult> {
-    let ops = prepare_load_ops(rt, client, mode, protocol);
+    let ops = prepare_load_ops(rt, client, mode, protocol, plaintext_size);
     if ops.is_empty() {
         eprintln!("[load] No operations prepared for mode {mode:?}");
         return Vec::new();

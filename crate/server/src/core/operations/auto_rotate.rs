@@ -315,11 +315,10 @@ fn days_until_next_rotation(
 
     let next_rotation = if let Some(last_rotate) = attrs.rotate_date {
         last_rotate + interval
-    } else if let Some(initial) = attrs.initial_date {
+    } else {
+        let initial = attrs.initial_date?;
         let offset = time::Duration::seconds(attrs.rotate_offset.unwrap_or(0));
         initial + offset + interval
-    } else {
-        return None;
     };
 
     Some((next_rotation - now).whole_days())

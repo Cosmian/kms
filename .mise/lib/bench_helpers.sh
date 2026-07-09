@@ -44,6 +44,7 @@ bench_build_ckms() {
   [ "${build_mode}" = "release" ] && cargo_args=(--release)
 
   local repo_root
+  # shellcheck disable=SC2119
   repo_root="$(get_repo_root)"
 
   echo "Building ckms CLI (${build_mode})..."
@@ -65,6 +66,7 @@ bench_build_binaries() {
   [ "${build_mode}" = "release" ] && cargo_args=(--release)
 
   local repo_root
+  # shellcheck disable=SC2119
   repo_root="$(get_repo_root)"
 
   echo "Building cosmian_kms server and ckms CLI (${build_mode})..."
@@ -129,6 +131,37 @@ bench_download_server() {
   echo "Server binary: ${BENCH_DEB_BINARY}"
 }
 
+# Warn when CPU frequency scaling / turbo may distort load-sweep scaling curves.
+# On power-limited CPUs (laptops, Intel "T" SKUs, thermally constrained hosts) a
+# heavy concurrency level draws more power and throttles to a LOWER clock than a
+# light level, which exaggerates sublinear scaling independently of the server.
+# No warmup/cooldown value can compensate for load-dependent DVFS; pin the clock.
+bench_warn_cpu_scaling() {
+  local gov="" turbo="" f0="" fmax=""
+  gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true)
+  [ -r /sys/devices/system/cpu/intel_pstate/no_turbo ] &&
+    turbo=$(cat /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null || true)
+  f0=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq 2>/dev/null || true)
+  fmax=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null || true)
+  local wide_range=0
+  if [ -n "$f0" ] && [ -n "$fmax" ] && [ "$f0" -gt 0 ] 2>/dev/null; then
+    [ $((fmax * 100 / f0)) -ge 200 ] && wide_range=1
+  fi
+  if { [ -n "$gov" ] && [ "$gov" != "performance" ]; } || [ "${turbo:-1}" = "0" ] || [ "$wide_range" = 1 ]; then
+    echo "-------------------------------------------------------------------------------"
+    echo "WARNING: dynamic CPU frequency scaling is active"
+    echo "         (governor='${gov:-unknown}', turbo=$([ "${turbo:-0}" = 1 ] && echo disabled || echo enabled))."
+    echo "         Scaling curves may be DISTORTED: heavier concurrency levels draw more"
+    echo "         power and can throttle to a lower clock than light levels, exaggerating"
+    echo "         apparent sublinear scaling. For reproducible scaling curves, pin the clock:"
+    echo "           sudo cpupower frequency-set -g performance"
+    echo "           echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo"
+    echo "         and, ideally, run the client on a SEPARATE host so it does not compete"
+    echo "         with the server for CPU (co-location caps throughput on shared cores)."
+    echo "-------------------------------------------------------------------------------"
+  fi
+}
+
 # Start a temporary SQLite KMS server for benchmarks.
 # Usage: bench_start_server <port> <tmp_dir> [http_workers]
 # Sets: KMS_PID
@@ -154,16 +187,29 @@ EOF
     printf 'http_workers = %s\n' "${http_workers}" >>"${kms_conf}"
   fi
 
-  echo "Starting KMS server on port ${port}..."
+  # Optional CPU pinning (BENCH_SERVER_CPUS, e.g. "0-7") isolates the server from
+  # the client so a capacity sweep is not distorted by co-location on shared cores.
+  local pin=()
+  [ -n "${BENCH_SERVER_CPUS:-}" ] && pin=(taskset -c "${BENCH_SERVER_CPUS}")
+  echo "Starting KMS server on port ${port}...${BENCH_SERVER_CPUS:+ (cpus ${BENCH_SERVER_CPUS})}"
   if [ -n "${OPENSSL_MODULES_DIR:-}" ]; then
-    OPENSSL_MODULES="${OPENSSL_MODULES_DIR}" "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
+    OPENSSL_MODULES="${OPENSSL_MODULES_DIR}" ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
   else
-    "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
+    ${pin[@]+"${pin[@]}"} "${KMS_BIN}" --config "${kms_conf}" >"${kms_log}" 2>&1 &
   fi
   KMS_PID=$!
   export KMS_PID
 
   kms_wait_ready "http://127.0.0.1:${port}/kmip/2_1" "${KMS_PID}" "${kms_log}" 60
+}
+
+# Stop the benchmark server started by bench_start_server. Used between capacity
+# sweep iterations so each worker count runs against a fresh, uncontended server.
+bench_stop_server() {
+  [ -n "${KMS_PID:-}" ] || return 0
+  kill "${KMS_PID}" 2>/dev/null || true
+  wait "${KMS_PID}" 2>/dev/null || true
+  KMS_PID=""
 }
 
 # Internal cleanup handler.
@@ -323,7 +369,7 @@ bench_collect_env() {
     _BENCH_MODE="${BENCH_MODE:-all}" \
     _BENCH_PROTOCOL="${BENCH_PROTOCOL:-all}" \
     _BENCH_TIME="${BENCH_TIME:-20}" \
-    _BENCH_CONCURRENCY="${BENCH_CONCURRENCY:-1,2,4,8,16,32}" \
+    _BENCH_CONCURRENCY="${BENCH_CONCURRENCY:-1,2,4,8,16}" \
     _BENCH_WARMUP="${BENCH_WARMUP:-5}" \
     _BENCH_COOLDOWN="${BENCH_COOLDOWN:-2}" \
     python3 - >"${out_file}" <<'PYEOF'
@@ -390,7 +436,7 @@ env = {
     "bench_mode":        g("_BENCH_MODE", "all"),
     "bench_protocol":    g("_BENCH_PROTOCOL", "all"),
     "bench_time_s":      _int("_BENCH_TIME", 20),
-    "bench_concurrency": g("_BENCH_CONCURRENCY", "1,2,4,8,16,32"),
+    "bench_concurrency": g("_BENCH_CONCURRENCY", "1,2,4,8,16"),
     "bench_warmup_s":    _int("_BENCH_WARMUP", 5),
     "bench_cooldown_s":  _int("_BENCH_COOLDOWN", 2),
     "cpu_model":         cpu_model,
@@ -425,10 +471,12 @@ bench_generate_report() {
   elif [ -n "${CARGO_TARGET_DIR:-}" ]; then
     crit_home="${CARGO_TARGET_DIR}/criterion"
   else
+    # shellcheck disable=SC2119
     crit_home="$(get_repo_root)/target/criterion"
   fi
 
   local report_dir="${crit_home}/reports"
+  # shellcheck disable=SC2119
   local plot_script="${MISE_CONFIG_ROOT:-$(get_repo_root)}/.mise/scripts/bench/plot_version_compare.py"
 
   # Derive version label from running server (only the numeric part, e.g. "5.24.0").
@@ -474,6 +522,7 @@ bench_generate_report() {
   # checked-in docs always reflect the latest run (committed by the CI job or
   # the developer's local run).
   local docs_bench_dir
+  # shellcheck disable=SC2119
   docs_bench_dir="$(get_repo_root)/documentation/docs/benchmarks/ckms_bench"
   echo "Updating docs: ${docs_bench_dir}..."
   rm -rf "${docs_bench_dir:?}"

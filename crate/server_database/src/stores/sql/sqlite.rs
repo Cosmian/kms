@@ -99,8 +99,7 @@ impl SqlitePool {
         // matching the MySQL/PostgreSQL backend pool sizing strategy.
         // Note: total connections = num_readers + 1 (dedicated writer).
         let default_readers: usize = std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+            .map_or(1, usize::from)
             .saturating_mul(2)
             .min(32);
         let num_readers: usize = max_connections

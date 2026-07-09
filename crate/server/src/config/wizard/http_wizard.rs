@@ -2,7 +2,7 @@
 
 #![allow(unreachable_pub)]
 
-use dialoguer::{Input, theme::ColorfulTheme};
+use dialoguer::{Confirm, Input, theme::ColorfulTheme};
 
 use crate::{config::HttpConfig, error::KmsError, result::KResult};
 
@@ -50,6 +50,14 @@ pub fn configure_http() -> KResult<HttpConfig> {
         rate_limit_str.trim().parse().ok()
     };
 
+    let jwks_enabled: bool = Confirm::with_theme(&theme)
+        .with_prompt(
+            "Enable the public JWKS endpoint (GET /.well-known/jwks.json)? [WARNING: unauthenticated]",
+        )
+        .default(false)
+        .interact()
+        .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+
     // CORS origins are populated later in the wizard (after TLS and public-URL
     // are known). Pre-fill with an empty list so the field is present in the
     // config struct; `mod.rs` will replace this with the computed value.
@@ -60,6 +68,6 @@ pub fn configure_http() -> KResult<HttpConfig> {
         rate_limit_per_second,
         cors_allowed_origins: None,
         http_workers: None,
-        jwks_enabled: false,
+        jwks_enabled,
     })
 }

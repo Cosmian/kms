@@ -6,7 +6,7 @@
 #USAGE flag "-m --mode <m>"         env="BENCH_MODE"          default="all"             help="Benchmark mode"                            { choices "all" "encrypt" "key-creation" "sign-verify" "batch" }
 #USAGE flag "-P --protocol <p>"     env="BENCH_PROTOCOL"      default="all"             help="Protocol to benchmark"                     { choices "all" "ttlv-json" "ttlv-bytes" "jose" }
 #USAGE flag "-t --time <t>"         env="BENCH_TIME"          default="20"              help="Measurement time per level (seconds)"
-#USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16,32"  help="Comma-separated concurrency levels"
+#USAGE flag "-c --concurrency <c>"  env="BENCH_CONCURRENCY"   default="1,2,4,8,16"  help="Comma-separated concurrency levels"
 #USAGE flag "-w --http-workers <n>" env="BENCH_HTTP_WORKERS"  default="32"              help="Number of Actix-web HTTP worker threads"
 #USAGE flag "-W --warmup <s>"       env="BENCH_WARMUP"        default="5"               help="Warmup time before the load sweep (seconds)"
 #USAGE flag "-C --cooldown <s>"     env="BENCH_COOLDOWN"      default="2"               help="Cooldown between concurrency levels (seconds)"
@@ -23,7 +23,7 @@ BENCH_RELEASE="${usage_release:-true}"
 BENCH_MODE="${usage_mode:-all}"
 BENCH_PROTOCOL="${usage_protocol:-all}"
 BENCH_TIME="${usage_time:-20}"
-BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16,32}"
+BENCH_CONCURRENCY="${usage_concurrency:-1,2,4,8,16}"
 BENCH_HTTP_WORKERS="${usage_http_workers:-32}"
 BENCH_WARMUP="${usage_warmup:-5}"
 BENCH_COOLDOWN="${usage_cooldown:-2}"
@@ -34,7 +34,7 @@ print_header "Running load benchmark with HSM-backed KEK (${VARIANT_NAME})"
 
 # ── Variables ────────────────────────────────────────────────────────────────
 TMP_DIR="$(mktemp -d /tmp/kms-bench-hsm-XXXXXX)"
-BUILD_MODE=$( [ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release )
+BUILD_MODE=$([ "${BENCH_RELEASE}" = "false" ] && echo debug || echo release)
 
 if [ "${BENCH_SANITY}" = "true" ]; then
   BUILD_MODE="debug"

@@ -55,6 +55,21 @@ port = 9998
 hostname = "0.0.0.0"
 # http_workers = 8  # leave unset to use all logical CPUs
 
+# ── JWKS Endpoint ────────────────────────────────────────────────────────────
+# Expose a public JSON Web Key Set at GET /.well-known/jwks.json (RFC 7517).
+# WARNING: this endpoint is intentionally unauthenticated — any client can read
+# the listed public keys.  Enable only when you want third parties to verify
+# JWT signatures or discover your public keys.
+[jwks_endpoint]
+# Enable the /.well-known/jwks.json endpoint (default: false).
+# jwks_endpoint_enabled = false
+# Maximum number of public keys returned per response (default: 50).
+# Responses exceeding this limit include X-JWKS-Truncated: true.
+# jwks_endpoint_max_keys = 50
+# Automatically tag key pairs created via POST /v1/crypto/keys with "jwks"
+# so they appear in the endpoint immediately (default: true).
+# jwks_endpoint_auto_tag = true
+
 [db]
 database_type = "redis-findex"
 database_url = "redis://0.0.0.0:6379"

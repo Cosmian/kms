@@ -56,9 +56,7 @@ fn main() {
         }
     }
 
-    let parallelism = std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1);
+    let parallelism = std::thread::available_parallelism().map_or(1, usize::from);
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(parallelism)
         .enable_all()

@@ -312,8 +312,10 @@ impl KMS {
                 self.user_can_perform_operation(&owm, user, &Spec::KMIP_OP)
                     .await?
             } else {
-                // Lenient: Get grant also authorizes (standard for crypto ops)
-                self.is_user_authorized_with_get_wildcard(owm.id(), user, Spec::KMIP_OP)
+                // Lenient: Get grant also authorizes (standard for crypto ops).
+                // `owm` is already loaded (object-cache hit on the hot path), so
+                // use the owner-aware check to skip a redundant ownership query.
+                self.is_owm_authorized_with_get_wildcard(&owm, user, Spec::KMIP_OP)
                     .await?
             };
             if !authorized {
@@ -431,20 +433,31 @@ impl KMS {
         enforce_kmip_algorithm_policy_for_retrieved_key(&self.params, Op::OP_NAME, owm.id(), owm)?;
         owm.enforce_usage_limits(data_len)?;
 
-        // The clone is only needed when the key is wrapped: unwrapping mutates the
-        // object, replacing the wrapped key material with plaintext.
-        // `decrement_usage_limits` below persists `owm.object()` back to the database,
-        // so unwrapping `owm` directly would leak the plaintext key to storage
-        // (COSMIAN-2026-015). Only the disposable `unwrapped_owm` clone may ever hold
-        // plaintext key material -- `owm` must remain wrapped for persistence.
+        // Fast path: a non-wrapped key with no usage limits — by far the most
+        // common crypto request (e.g. a plain symmetric key served from the
+        // object cache). There is nothing to unwrap, so no plaintext key material
+        // ever needs to leave `owm`, and `decrement_usage_limits` would be a
+        // no-op. Operate directly on the cached `owm`, skipping both the
+        // ~800-byte deep clone and the persistence round-trip.
         //
-        // `enforce_usage_limits`/`decrement_usage_limits` are no-ops when the key has
-        // no `UsageLimits` set, so they are called unconditionally rather than gating
-        // the fast path on that as well.
-        // Clone for crypto use: this clone may be unwrapped to obtain plaintext
-        // key material needed by the algorithm.  The original `owm` keeps its
-        // wrapped key material, which is passed directly to `decrement_usage_limits`
-        // for persistence — no second clone needed (COSMIAN-2026-015).
+        // COSMIAN-2026-015 does not apply here: the key is not wrapped, so nothing
+        // is unwrapped and no key material is ever written back to storage.
+        if !owm.object().is_wrapped() && owm.attributes().usage_limits.is_none() {
+            return Op::execute_local(self, owm, request, user).await;
+        }
+
+        // Slow path: the key is wrapped and/or carries usage limits, so a clone is
+        // required.
+        //
+        // - Wrapped keys: unwrapping mutates the object, replacing the wrapped key
+        //   material with plaintext. `decrement_usage_limits` below persists
+        //   `owm.object()` back to the database, so unwrapping `owm` directly would
+        //   leak the plaintext key to storage (COSMIAN-2026-015). Only the
+        //   disposable `local_owm` clone may ever hold plaintext key material --
+        //   `owm` must remain wrapped for persistence.
+        // - Usage limits: `local_owm.attributes_mut()` holds the decremented
+        //   counter, while the still-wrapped `owm.object()` is persisted alongside
+        //   it -- no second clone needed (COSMIAN-2026-015).
         let mut local_owm = owm.clone();
         if local_owm.object().is_wrapped() {
             let unwrapped = Box::pin(self.get_unwrapped(local_owm.id(), local_owm.object(), user))
@@ -499,9 +512,10 @@ impl KMS {
                 continue;
             }
 
-            // Permission check
+            // Permission check — `owm` was just retrieved above, so use the
+            // owner-aware check to avoid a redundant `is_object_owned_by` query.
             if !self
-                .is_user_authorized_with_get_wildcard(uid, user, Op::KMIP_OP)
+                .is_owm_authorized_with_get_wildcard(&owm, user, Op::KMIP_OP)
                 .await?
             {
                 continue;
@@ -565,6 +579,12 @@ impl KMS {
     /// The user is authorized if they own the object, or have been granted the
     /// specific `operation` **or** `Get` (which implies read-level access).
     /// For HSM keys (prefix-based UIDs), the `Get` wildcard is **not** applied.
+    ///
+    /// When the caller already holds the [`ObjectWithMetadata`] — the common case
+    /// on the crypto hot-path, where it is served from the object cache — prefer
+    /// [`Self::is_owm_authorized_with_get_wildcard`]: it reads the owner from the
+    /// in-memory object and avoids the extra `is_object_owned_by` database
+    /// round-trip performed here.
     pub(crate) async fn is_user_authorized_with_get_wildcard(
         &self,
         uid: &str,
@@ -574,6 +594,41 @@ impl KMS {
         if self.database.is_object_owned_by(uid, user).await? {
             return Ok(true);
         }
+        self.user_has_granted_operation(uid, user, operation).await
+    }
+
+    /// Owner-aware variant of [`Self::is_user_authorized_with_get_wildcard`].
+    ///
+    /// The object owner is read directly from `owm` (already loaded, typically
+    /// from the object cache), so the ownership check costs no database query.
+    /// Non-owners fall back to the granted-operation lookup. This removes one
+    /// database round-trip per cryptographic operation on the owner hot-path.
+    pub(crate) async fn is_owm_authorized_with_get_wildcard(
+        &self,
+        owm: &ObjectWithMetadata,
+        user: &str,
+        operation: KmipOperation,
+    ) -> KResult<bool> {
+        if owm.owner() == user {
+            return Ok(true);
+        }
+        self.user_has_granted_operation(owm.id(), user, operation)
+            .await
+    }
+
+    /// Shared authorization tail: does `user` hold an explicit grant for
+    /// `operation` on the object `uid` (honoring the `Get` wildcard for non-HSM
+    /// keys)?
+    ///
+    /// Ownership is **not** checked here — callers must handle the owner case
+    /// first. HSM keys (prefix-based UIDs) require an explicit per-operation
+    /// grant and never honor the `Get` wildcard.
+    async fn user_has_granted_operation(
+        &self,
+        uid: &str,
+        user: &str,
+        operation: KmipOperation,
+    ) -> KResult<bool> {
         let ops = self
             .database
             .list_user_operations_on_object(uid, user, false)
