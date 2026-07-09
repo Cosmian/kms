@@ -13,7 +13,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore,
 };
-use cosmian_logger::{debug, trace};
+use cosmian_logger::{debug, trace, warn};
 #[cfg(feature = "non-fips")]
 use mysql_async::ClientIdentity;
 use mysql_async::{Pool, SslOpts, Transaction, prelude::*};
@@ -28,7 +28,7 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         MYSQL_QUERIES,
-        migrate::{DbState, Migrate},
+        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         sql::{
             database::SqlDatabase,
             locate_query::{
@@ -276,7 +276,7 @@ impl MySqlPool {
             }
         }
 
-        // Add wrapping_key_id column if not present, then backfill existing wrapped objects.
+        // Add wrapping_key_id column if not present.
         // MySQL 8.0 does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
         // so we check with SHOW COLUMNS first.
         let has_col_sql = MYSQL_QUERIES
@@ -295,29 +295,84 @@ impl MySqlPool {
                 })?;
             conn.query_drop(add_col).await.map_err(DbError::from)?;
         }
-        // Backfill: deserialize each object in Rust and extract wrapping key UID
-        let select_sql = MYSQL_QUERIES
-            .get("select-objects-null-wrapping-key")
-            .ok_or_else(|| {
-                DbError::DatabaseError(
-                    "Missing SQL query: select-objects-null-wrapping-key".to_owned(),
-                )
-            })?;
-        let update_sql = MYSQL_QUERIES.get("update-wrapping-key-id").ok_or_else(|| {
-            DbError::DatabaseError("Missing SQL query: update-wrapping-key-id".to_owned())
+
+        // Ensure the read-path indexes exist. MySQL 8.0 has no
+        // `CREATE INDEX IF NOT EXISTS`, so check information_schema first.
+        let has_index_sql = MYSQL_QUERIES
+            .get("has-index")
+            .ok_or_else(|| DbError::DatabaseError("Missing SQL query: has-index".to_owned()))?;
+        for (table, index_name, create_name) in [
+            ("objects", "idx_objects_owner", "create-index-objects-owner"),
+            ("objects", "idx_objects_state", "create-index-objects-state"),
+            (
+                "read_access",
+                "idx_read_access_userid",
+                "create-index-read_access-userid",
+            ),
+            (
+                "objects",
+                "idx_objects_wrapping_key_id",
+                "create-index-objects-wrapping-key-id",
+            ),
+        ] {
+            let existing: Vec<mysql_async::Row> = conn
+                .exec(has_index_sql, (table, index_name))
+                .await
+                .map_err(DbError::from)?;
+            if existing.is_empty() {
+                let create_sql = MYSQL_QUERIES.get(create_name).ok_or_else(|| {
+                    DbError::DatabaseError(format!("Missing SQL query: {create_name}"))
+                })?;
+                conn.query_drop(create_sql).await.map_err(DbError::from)?;
+            }
+        }
+
+        // One-time `wrapping_key_id` backfill, gated by a completion marker so the
+        // O(N) scan runs at most once per database instead of on every startup.
+        // MySQL has no transactional DDL, but the column is already ensured above;
+        // if the process dies mid-backfill the marker stays unset and the scan
+        // re-runs cleanly on the next boot.
+        let select_param = MYSQL_QUERIES.get("select-parameter").ok_or_else(|| {
+            DbError::DatabaseError("Missing SQL query: select-parameter".to_owned())
         })?;
-        let null_rows: Vec<(String, String)> =
-            conn.query(select_sql).await.map_err(DbError::from)?;
-        for (id, object_json) in &null_rows {
-            if let Ok(obj) =
-                serde_json::from_str::<cosmian_kmip::kmip_2_1::kmip_objects::Object>(object_json)
-            {
-                if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                    conn.exec_drop(update_sql, (&wrapping_uid, id))
-                        .await
-                        .map_err(DbError::from)?;
+        let backfill_marker: Option<String> = conn
+            .exec_first(select_param, (WRAPPING_KEY_BACKFILL_PARAM,))
+            .await
+            .map_err(DbError::from)?;
+        if backfill_marker.as_deref() != Some("true") {
+            let select_sql = MYSQL_QUERIES
+                .get("select-objects-null-wrapping-key")
+                .ok_or_else(|| {
+                    DbError::DatabaseError(
+                        "Missing SQL query: select-objects-null-wrapping-key".to_owned(),
+                    )
+                })?;
+            let update_sql = MYSQL_QUERIES.get("update-wrapping-key-id").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: update-wrapping-key-id".to_owned())
+            })?;
+            let null_rows: Vec<(String, String)> =
+                conn.query(select_sql).await.map_err(DbError::from)?;
+            for (id, object_json) in &null_rows {
+                match serde_json::from_str::<Object>(object_json) {
+                    Ok(obj) => {
+                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                            conn.exec_drop(update_sql, (&wrapping_uid, id))
+                                .await
+                                .map_err(DbError::from)?;
+                        }
+                    }
+                    Err(e) => warn!(
+                        "wrapping_key_id backfill: skipping object {id} that failed to \
+                         deserialize: {e}"
+                    ),
                 }
             }
+            let upsert_param = MYSQL_QUERIES.get("upsert-parameter").ok_or_else(|| {
+                DbError::DatabaseError("Missing SQL query: upsert-parameter".to_owned())
+            })?;
+            conn.exec_drop(upsert_param, (WRAPPING_KEY_BACKFILL_PARAM, "true"))
+                .await
+                .map_err(DbError::from)?;
         }
 
         let this = Self { pool };

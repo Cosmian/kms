@@ -625,4 +625,58 @@ impl ObjectsDB {
         }
         Ok(due)
     }
+
+    /// Scan all `do::*` keys and return `(uid, wrapping_key_uid)` pairs for every
+    /// object that embeds a wrapping key (i.e. `Object::wrapping_key_uid()` is
+    /// `Some`).
+    ///
+    /// Used once at startup to backfill the `wrapped_by::<uid>` Findex index for
+    /// objects created before that index existed (see
+    /// [`crate::stores::RedisWithFindex::instantiate`]). Mirrors the scan pattern
+    /// of [`Self::scan_due_for_rotation`].
+    pub(crate) async fn scan_wrapped_objects(&self) -> DbResult<Vec<(String, String)>> {
+        let mut wrapped: Vec<(String, String)> = Vec::new();
+        let mut cursor: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("do::*")
+                .arg("COUNT")
+                .arg(SCAN_BATCH_HINT)
+                .query_async(&mut self.mgr.clone())
+                .await?;
+
+            if !keys.is_empty() {
+                let mut pipeline = pipe();
+                for key in &keys {
+                    pipeline.get(key);
+                }
+                let values: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
+
+                for (key, ciphertext) in keys.iter().zip(values) {
+                    if ciphertext.is_empty() {
+                        continue;
+                    }
+                    let uid = key.strip_prefix("do::").unwrap_or(key.as_str());
+                    match self.decrypt_object(uid, &ciphertext) {
+                        Ok(obj) => {
+                            if let Some(wk_uid) = obj.object.wrapping_key_uid() {
+                                wrapped.push((uid.to_owned(), wk_uid));
+                            }
+                        }
+                        Err(e) => {
+                            debug!("[redis-scan-wrapped] skipping key {key}: {e}");
+                        }
+                    }
+                }
+            }
+
+            cursor = next_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(wrapped)
+    }
 }

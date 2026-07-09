@@ -17,6 +17,7 @@ use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
     PermissionsStore,
 };
+use cosmian_logger::reexport::tracing;
 use rawsql::Loader;
 use rusqlite::{OptionalExtension, Row, params_from_iter};
 use serde_json::Value;
@@ -33,7 +34,7 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES,
-        migrate::{DbState, Migrate},
+        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         sql::database::SqlDatabase,
     },
 };
@@ -159,15 +160,23 @@ impl SqlitePool {
             .await
             .map_err(DbError::from)?;
 
-        // Add wrapping_key_id column if not present (migration for existing databases),
-        // then backfill from the embedded JSON for any pre-existing wrapped objects.
+        // One-time migration for databases created before the `wrapping_key_id`
+        // column existed. The column and its index are ensured on every start
+        // (idempotent and cheap); the expensive O(N) backfill scan is gated by a
+        // completion marker so it runs at most once per database instead of on
+        // every startup (unwrapped objects keep a NULL value forever). The
+        // column-add, index, backfill and marker share a single transaction so an
+        // interrupted run re-executes cleanly on the next boot.
         // Note: SQLite does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
         // so we check PRAGMA table_info first.
+        let backfill_done =
+            pool.get_parameter(WRAPPING_KEY_BACKFILL_PARAM).await? == Some("true".to_owned());
         pool.writer
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
                     let has_column: bool = {
-                        let mut stmt = c.prepare("PRAGMA table_info(objects)")?;
+                        let mut stmt = tx.prepare("PRAGMA table_info(objects)")?;
                         let mut rows = stmt.query([])?;
                         let mut found = false;
                         while let Some(row) = rows.next()? {
@@ -180,39 +189,57 @@ impl SqlitePool {
                         found
                     };
                     if !has_column {
-                        c.execute_batch(
+                        tx.execute_batch(
                             "ALTER TABLE objects ADD COLUMN wrapping_key_id VARCHAR(128);",
                         )?;
                     }
-                    // Backfill: deserialize each object and extract wrapping key UID via Rust
-                    let mut stmt =
-                        c.prepare("SELECT id, object FROM objects WHERE wrapping_key_id IS NULL")?;
-                    let pairs: Vec<(String, String)> = {
-                        let mut rows = stmt.query([])?;
-                        let mut out = Vec::new();
-                        while let Some(row) = rows.next()? {
-                            out.push((row.get(0)?, row.get(1)?));
-                        }
-                        out
-                    };
-                    for (id, object_json) in &pairs {
-                        if let Ok(obj) = serde_json::from_str::<
-                            cosmian_kmip::kmip_2_1::kmip_objects::Object,
-                        >(object_json)
-                        {
-                            if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                                c.execute(
-                                    "UPDATE objects SET wrapping_key_id = ?1 WHERE id = ?2",
-                                    rusqlite::params![wrapping_uid, id],
-                                )?;
+                    // Index supporting `find-wrapped-by` lookups and the backfill scan.
+                    tx.execute_batch(
+                        "CREATE INDEX IF NOT EXISTS idx_objects_wrapping_key_id \
+                         ON objects (wrapping_key_id);",
+                    )?;
+                    if !backfill_done {
+                        // Backfill: deserialize each object and extract its wrapping key UID.
+                        let pairs: Vec<(String, String)> = {
+                            let mut stmt = tx.prepare(
+                                "SELECT id, object FROM objects WHERE wrapping_key_id IS NULL",
+                            )?;
+                            let mut rows = stmt.query([])?;
+                            let mut out = Vec::new();
+                            while let Some(row) = rows.next()? {
+                                out.push((row.get(0)?, row.get(1)?));
+                            }
+                            out
+                        };
+                        for (id, object_json) in &pairs {
+                            match serde_json::from_str::<Object>(object_json) {
+                                Ok(obj) => {
+                                    if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                                        tx.execute(
+                                            "UPDATE objects SET wrapping_key_id = ?1 WHERE id = ?2",
+                                            rusqlite::params![wrapping_uid, id],
+                                        )?;
+                                    }
+                                }
+                                Err(e) => tracing::warn!(
+                                    uid = %id,
+                                    error = %e,
+                                    "wrapping_key_id backfill: skipping object that failed to \
+                                     deserialize"
+                                ),
                             }
                         }
                     }
+                    tx.commit()?;
                     Ok(())
                 },
             )
             .await
             .map_err(DbError::from)?;
+        if !backfill_done {
+            pool.set_parameter(WRAPPING_KEY_BACKFILL_PARAM, "true")
+                .await?;
+        }
 
         if clear_database {
             pool.set_current_db_version(env!("CARGO_PKG_VERSION"))
@@ -229,6 +256,41 @@ impl SqlitePool {
         #[allow(clippy::indexing_slicing)]
         // SAFETY: idx is computed modulo readers.len(), which is always >= 1.
         &self.readers[idx]
+    }
+
+    /// Read a value from the `parameters` table by name, or `None` if absent.
+    async fn get_parameter(&self, name: &'static str) -> DbResult<Option<String>> {
+        let select_param = replace_dollars_with_qn(get_sqlite_query!("select-parameter"));
+        let res = self
+            .reader()
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<Option<String>, rusqlite::Error> {
+                    let mut stmt = c.prepare_cached(&select_param)?;
+                    stmt.query_row(params_from_iter([&name]), |row| row.get::<_, String>(0))
+                        .optional()
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(res)
+    }
+
+    /// Upsert a `name`/`value` pair into the `parameters` table.
+    async fn set_parameter(&self, name: &'static str, value: &str) -> DbResult<()> {
+        let upsert_param = replace_dollars_with_qn(get_sqlite_query!("upsert-parameter"));
+        let value_s = value.to_owned();
+        self.writer
+            .call(
+                move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
+                    let tx = c.transaction()?;
+                    tx.execute(&upsert_param, params_from_iter([&name, &value_s.as_str()]))?;
+                    tx.commit()?;
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(DbError::from)?;
+        Ok(())
     }
 
     pub(crate) async fn health_check(&self) -> DbResult<()> {

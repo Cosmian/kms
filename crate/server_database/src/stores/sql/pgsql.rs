@@ -27,7 +27,7 @@ use crate::{
     migrate_block_cipher_mode_if_needed,
     stores::{
         PGSQL_QUERIES,
-        migrate::{DbState, Migrate},
+        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         sql::database::SqlDatabase,
     },
 };
@@ -364,7 +364,7 @@ impl PgPool {
                 .map_err(|e| DbError::DatabaseError(e.to_string()))?
         };
 
-        let client = pool.get().await.map_err(DbError::from)?;
+        let mut client = pool.get().await.map_err(DbError::from)?;
         // Bootstrap schema if needed: create tables if they don't exist
         let tmp_loader = Self { pool: pool.clone() };
         for name in [
@@ -383,39 +383,72 @@ impl PgPool {
             )
             .await
             .map_err(DbError::from)?;
-        // Add wrapping_key_id column if not present, then backfill existing wrapped objects.
+        // Add wrapping_key_id column if not present (idempotent).
         client
             .batch_execute(
                 "ALTER TABLE objects ADD COLUMN IF NOT EXISTS wrapping_key_id VARCHAR(128);",
             )
             .await
             .map_err(DbError::from)?;
-        // Backfill: deserialize each object in Rust and extract wrapping key UID
-        let select_stmt = client
-            .prepare(get_pgsql_query!("select-objects-null-wrapping-key"))
+        // Create the read-path indexes (idempotent). PostgreSQL supports
+        // `CREATE INDEX IF NOT EXISTS`, so these are safe to run on every start.
+        for name in [
+            "create-index-objects-owner",
+            "create-index-objects-state",
+            "create-index-read_access-userid",
+            "create-index-objects-wrapping-key-id",
+        ] {
+            let sql = tmp_loader.get_query(name)?;
+            client.batch_execute(sql).await.map_err(DbError::from)?;
+        }
+        // One-time `wrapping_key_id` backfill for pre-existing objects, gated by a
+        // completion marker so the O(N) scan runs at most once per database. The
+        // scan, updates and marker share a transaction: an interrupted run leaves
+        // the marker unset and re-executes cleanly on the next boot.
+        let backfill_done = client
+            .query_opt(
+                get_pgsql_query!("select-parameter"),
+                &[&WRAPPING_KEY_BACKFILL_PARAM],
+            )
             .await
-            .map_err(DbError::from)?;
-        let update_stmt = client
-            .prepare(get_pgsql_query!("update-wrapping-key-id"))
-            .await
-            .map_err(DbError::from)?;
-        let null_rows = client
-            .query(&select_stmt, &[])
-            .await
-            .map_err(DbError::from)?;
-        for row in &null_rows {
-            let id: String = row.get(0);
-            let object_json: String = row.get(1);
-            if let Ok(obj) =
-                serde_json::from_str::<cosmian_kmip::kmip_2_1::kmip_objects::Object>(&object_json)
-            {
-                if let Some(wrapping_uid) = obj.wrapping_key_uid() {
-                    client
-                        .execute(&update_stmt, &[&wrapping_uid, &id])
-                        .await
-                        .map_err(DbError::from)?;
+            .map_err(DbError::from)?
+            .map(|row| row.get::<usize, String>(0))
+            == Some("true".to_owned());
+        if !backfill_done {
+            let tx = client.transaction().await.map_err(DbError::from)?;
+            let update_stmt = tx
+                .prepare(get_pgsql_query!("update-wrapping-key-id"))
+                .await
+                .map_err(DbError::from)?;
+            let null_rows = tx
+                .query(get_pgsql_query!("select-objects-null-wrapping-key"), &[])
+                .await
+                .map_err(DbError::from)?;
+            for row in &null_rows {
+                let id: String = row.get(0);
+                let object_json: String = row.get(1);
+                match serde_json::from_str::<Object>(&object_json) {
+                    Ok(obj) => {
+                        if let Some(wrapping_uid) = obj.wrapping_key_uid() {
+                            tx.execute(&update_stmt, &[&wrapping_uid, &id])
+                                .await
+                                .map_err(DbError::from)?;
+                        }
+                    }
+                    Err(e) => tracing::warn!(
+                        uid = %id,
+                        error = %e,
+                        "wrapping_key_id backfill: skipping object that failed to deserialize"
+                    ),
                 }
             }
+            tx.execute(
+                get_pgsql_query!("upsert-parameter"),
+                &[&WRAPPING_KEY_BACKFILL_PARAM, &"true"],
+            )
+            .await
+            .map_err(DbError::from)?;
+            tx.commit().await.map_err(DbError::from)?;
         }
 
         // Optionally clear any existing data (useful for tests)
