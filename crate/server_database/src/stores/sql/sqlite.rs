@@ -165,8 +165,9 @@ impl SqlitePool {
         // (idempotent and cheap); the expensive O(N) backfill scan is gated by a
         // completion marker so it runs at most once per database instead of on
         // every startup (unwrapped objects keep a NULL value forever). The
-        // column-add, index, backfill and marker share a single transaction so an
-        // interrupted run re-executes cleanly on the next boot.
+        // column-add, index and backfill share a single transaction; the completion
+        // marker is written separately afterwards. Because the backfill is idempotent,
+        // an interrupted run (marker still unset) re-executes cleanly on the next boot.
         // Note: SQLite does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`,
         // so we check PRAGMA table_info first.
         let backfill_done =
