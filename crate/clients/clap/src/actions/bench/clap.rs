@@ -2,6 +2,7 @@ use std::{io::Write as _, time::Duration};
 
 use cosmian_kms_client::KmsClient;
 use criterion::Criterion;
+use tokio::runtime::Runtime;
 
 use super::{
     helpers::run_warmup,
@@ -9,10 +10,7 @@ use super::{
         bench_jose_batch, bench_jose_encrypt, bench_jose_key_creation, bench_jose_mac,
         bench_jose_sign_verify,
     },
-    kmip_ttlv_bytes::{
-        bench_wire_batch, bench_wire_encrypt, bench_wire_key_creation, bench_wire_sign_verify,
-    },
-    kmip_ttlv_json::{bench_batch, bench_encrypt, bench_key_creation, bench_sign_verify},
+    kmip::{bench_batch, bench_encrypt, bench_key_creation, bench_sign_verify},
     load::{
         LoadResult, bench_load, generate_html_output, generate_load_json_output,
         generate_markdown_load_output_combined, parse_concurrency_levels, print_load_results,
@@ -21,6 +19,7 @@ use super::{
         collect_json_output, count_baseline_files, criterion_home, generate_compact_output,
         generate_markdown_output,
     },
+    transport::{Transport, set_max_group_time},
     types::{BenchAction, BenchFormat, BenchMode, BenchProtocol, BenchSpeed, bench_ko_reset},
 };
 use crate::error::{KmsCliError, result::KmsCliResult};
@@ -38,6 +37,7 @@ impl BenchAction {
         let format = self.format.clone();
         let speed = self.speed.clone();
         let time = self.time;
+        let max_group_time = self.max_group_time;
         let save_baseline = self.save_baseline.clone();
         let load_baseline = self.load_baseline.clone();
         let version_label = self.version_label.clone();
@@ -45,6 +45,7 @@ impl BenchAction {
         let load_concurrency = self.load_concurrency.clone();
         let warmup_time = self.warmup_time;
         let cooldown_time = self.cooldown_time;
+        let load_plaintext_size = self.load_plaintext_size;
 
         // Drop the existing client (bound to the current runtime)
         drop(kms_rest_client);
@@ -96,6 +97,7 @@ impl BenchAction {
                         warmup,
                         duration,
                         cooldown,
+                        load_plaintext_size,
                     );
                     if results.is_empty() {
                         continue;
@@ -192,34 +194,15 @@ impl BenchAction {
             let run_wire = matches!(protocol, BenchProtocol::All | BenchProtocol::TtlvBytes);
             let run_jose = matches!(protocol, BenchProtocol::All | BenchProtocol::Jose);
 
+            // Apply the optional per-group wall-clock budget (KMIP groups only).
+            set_max_group_time(max_group_time.map(Duration::from_secs));
+
             if run_json {
-                match mode {
-                    BenchMode::All => {
-                        bench_encrypt(&mut c, &client, &rt);
-                        bench_key_creation(&mut c, &client, &rt);
-                        bench_sign_verify(&mut c, &client, &rt);
-                        bench_batch(&mut c, &client, &rt, is_sanity);
-                    }
-                    BenchMode::Encrypt => bench_encrypt(&mut c, &client, &rt),
-                    BenchMode::KeyCreation => bench_key_creation(&mut c, &client, &rt),
-                    BenchMode::SignVerify => bench_sign_verify(&mut c, &client, &rt),
-                    BenchMode::Batch => bench_batch(&mut c, &client, &rt, is_sanity),
-                }
+                run_kmip_benches(&mut c, &client, &rt, &mode, Transport::Json, is_sanity);
             }
 
             if run_wire {
-                match mode {
-                    BenchMode::All => {
-                        bench_wire_encrypt(&mut c, &client, &rt);
-                        bench_wire_key_creation(&mut c, &client, &rt);
-                        bench_wire_sign_verify(&mut c, &client, &rt);
-                        bench_wire_batch(&mut c, &client, &rt, is_sanity);
-                    }
-                    BenchMode::Encrypt => bench_wire_encrypt(&mut c, &client, &rt),
-                    BenchMode::KeyCreation => bench_wire_key_creation(&mut c, &client, &rt),
-                    BenchMode::SignVerify => bench_wire_sign_verify(&mut c, &client, &rt),
-                    BenchMode::Batch => bench_wire_batch(&mut c, &client, &rt, is_sanity),
-                }
+                run_kmip_benches(&mut c, &client, &rt, &mode, Transport::Bytes, is_sanity);
             }
 
             if run_jose {
@@ -290,5 +273,28 @@ impl BenchAction {
         })
         .await
         .map_err(|e| KmsCliError::Default(format!("Benchmark task panicked: {e}")))?
+    }
+}
+
+/// Run all KMIP criterion benchmark groups for a single transport (JSON or binary TTLV).
+fn run_kmip_benches(
+    c: &mut Criterion,
+    client: &KmsClient,
+    rt: &Runtime,
+    mode: &BenchMode,
+    transport: Transport,
+    is_sanity: bool,
+) {
+    match mode {
+        BenchMode::All => {
+            bench_encrypt(c, client, rt, transport);
+            bench_key_creation(c, client, rt, transport);
+            bench_sign_verify(c, client, rt, transport);
+            bench_batch(c, client, rt, transport, is_sanity);
+        }
+        BenchMode::Encrypt => bench_encrypt(c, client, rt, transport),
+        BenchMode::KeyCreation => bench_key_creation(c, client, rt, transport),
+        BenchMode::SignVerify => bench_sign_verify(c, client, rt, transport),
+        BenchMode::Batch => bench_batch(c, client, rt, transport, is_sanity),
     }
 }

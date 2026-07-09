@@ -1179,9 +1179,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // is appropriate here, unlike CPU-bound thread pools (tokio, SQLite) which
     // use P-core count.
     let http_workers = http_workers.unwrap_or_else(|| {
-        let total = std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1);
+        let total = std::thread::available_parallelism().map_or(1, usize::from);
         info!("http_workers not configured; defaulting to total core count ({total})");
         total
     });

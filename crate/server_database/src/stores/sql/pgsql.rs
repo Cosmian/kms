@@ -291,8 +291,7 @@ impl PgPool {
         // Pool sizing defaults: conservative pool tuned to CPU.
         // Keep behavior consistent with the MySQL backend.
         let default_conns: usize = std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1)
+            .map_or(1, usize::from)
             .saturating_mul(2)
             .min(10);
         let max_conns: usize = max_connections

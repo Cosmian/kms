@@ -115,6 +115,7 @@ impl BenchProtocol {
 ///   ckms bench --mode encrypt --protocol jose         # JOSE encrypt only
 ///   ckms bench --protocol ttlv-bytes                  # all modes over binary TTLV
 ///   ckms bench --speed sanity                         # smoke-test: compact output
+///   ckms bench --max-group-time 30                    # cap each benchmark group at 30s
 ///   ckms bench --mode key-creation --speed quick      # quick run
 ///   ckms bench --format json                          # also write JSON results
 ///   ckms bench --load                                 # load test all ops, concurrency 1-32
@@ -150,6 +151,13 @@ pub struct BenchAction {
     #[clap(long = "time", short = 't', default_value = "10")]
     pub(super) time: u64,
 
+    /// Maximum wall-clock time (in seconds) to spend per benchmark group.
+    /// Once a group exceeds this budget, its remaining benchmarks are skipped
+    /// (benchmarks already completed in the group are kept). Unset means no cap.
+    /// Applies to the KMIP (ttlv-json / ttlv-bytes) benchmark groups.
+    #[clap(long = "max-group-time", default_value = "30")]
+    pub(super) max_group_time: Option<u64>,
+
     /// Save results under a named baseline in target/criterion/<bench>/<name>/.
     /// Use this to snapshot a run before a change. To compare, run again with
     /// --load-baseline <name> (or without any flag to diff against "base").
@@ -179,8 +187,15 @@ pub struct BenchAction {
 
     /// Comma-separated concurrency levels for load testing.
     /// Only used when --load is set.
-    #[clap(long = "load-concurrency", default_value = "1,2,4,8,16,32")]
+    #[clap(long = "load-concurrency", default_value = "1,2,4,8,16")]
     pub(super) load_concurrency: String,
+
+    /// Plaintext size in bytes for load-test encrypt ops (default 4096).
+    /// Larger payloads make the op CPU-bound (crypto + serialization dominate the
+    /// fixed HTTP/loopback overhead), which is what a capacity/scaling benchmark
+    /// wants; the small default keeps the op network/latency-bound.
+    #[clap(long = "load-plaintext-size", default_value = "4096")]
+    pub(super) load_plaintext_size: usize,
 
     /// Warmup time in seconds before benchmarking starts.
     /// Sends requests for this duration to warm HTTP connection pools,

@@ -932,9 +932,7 @@ fn start_test_kms_server(
 
     let thread_handle = thread::spawn(move || {
         // allow others `spawn` to happen within the KMS Server in the future
-        let parallelism = std::thread::available_parallelism()
-            .map(usize::from)
-            .unwrap_or(1);
+        let parallelism = std::thread::available_parallelism().map_or(1, usize::from);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(parallelism)
             .enable_all()

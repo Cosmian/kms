@@ -364,10 +364,18 @@ check_and_test_db() {
 
 _warn_system_kms_conf() {
   local default_conf="/etc/cosmian/kms.toml"
+  local disabled_conf="${default_conf}.off"
   if [ -f "$default_conf" ]; then
     echo "WARNING: ${default_conf} exists on this system." >&2
-    echo "         The KMS server will load this file and ignore CLI args" >&2
+    echo "         The KMS server would load this file and ignore CLI args" >&2
     echo "         when started without an explicit --config flag." >&2
+    echo "         Renaming it to ${disabled_conf} for this test run." >&2
+    if mv "$default_conf" "$disabled_conf" 2>/dev/null ||
+      { command -v sudo >/dev/null 2>&1 && sudo -n mv "$default_conf" "$disabled_conf" 2>/dev/null; }; then
+      echo "         Moved ${default_conf} -> ${disabled_conf}" >&2
+    else
+      echo "         ERROR: could not rename ${default_conf}; the server may ignore CLI args." >&2
+    fi
   fi
 }
 

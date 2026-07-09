@@ -620,7 +620,7 @@ def _render_env_section(env_data: dict[str, dict], versions: list[str]) -> list[
         # ── Raw lscpu ─────────────────────────────────────────────────────────
         lscpu = env.get('lscpu', '')
         if lscpu:
-            lines += ['### CPU detail (`lscpu`)', '', '```', lscpu, '```', '']
+            lines += ['### CPU detail (`lscpu`)', '', '```text', lscpu, '```', '']
 
     return lines
 
