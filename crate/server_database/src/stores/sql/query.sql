@@ -166,6 +166,9 @@ CREATE INDEX IF NOT EXISTS idx_objects_state ON objects (state);
 -- name: create-index-read_access-userid
 CREATE INDEX IF NOT EXISTS idx_read_access_userid ON read_access (userid);
 
+-- name: create-index-objects-wrapping-key-id
+CREATE INDEX IF NOT EXISTS idx_objects_wrapping_key_id ON objects (wrapping_key_id);
+
 -- name: list-uids-for-tags
 SELECT id FROM tags WHERE tag = ANY($1::text[]) GROUP BY id HAVING COUNT(DISTINCT tag) = $2::int;
 

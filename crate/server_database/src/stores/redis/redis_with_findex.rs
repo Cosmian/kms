@@ -39,7 +39,7 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{DbState, Migrate},
+        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
@@ -194,7 +194,59 @@ impl RedisWithFindex {
             }
         }
 
+        // One-time backfill of the `wrapped_by::<uid>` Findex index for objects
+        // created before that index existed. Gated by a completion marker so the
+        // O(N) scan runs at most once per database (a fresh database has no
+        // objects, so this is a no-op that only writes the marker).
+        redis_with_findex.backfill_wrapped_by_index().await?;
+
         Ok(redis_with_findex)
+    }
+
+    /// Backfill the `wrapped_by::<uid>` Findex index for wrapped objects that
+    /// predate that index.
+    ///
+    /// `find_wrapped_by` (used by key rotation) relies on a `wrapped_by::<uid>`
+    /// keyword that newer code writes at insert time. Objects stored by earlier
+    /// versions lack it, so they would be invisible to rotation. This method
+    /// scans every object once, (re-)inserts the keyword for wrapped ones, and
+    /// records a `wrapping_key_id_backfilled` marker so the scan never re-runs.
+    /// Re-inserting an already-indexed keyword is idempotent.
+    pub(crate) async fn backfill_wrapped_by_index(&self) -> DbResult<()> {
+        let marker: Option<String> = redis::cmd("GET")
+            .arg(WRAPPING_KEY_BACKFILL_PARAM)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to read wrapped_by backfill marker: {e}"))
+            })?;
+        if marker.as_deref() == Some("true") {
+            return Ok(());
+        }
+
+        let wrapped = self.objects_db.scan_wrapped_objects().await?;
+        for (uid, wrapping_key_uid) in wrapped {
+            let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+            let indexed_uid = IndexedValue::from(uid.as_bytes());
+            self.findex.insert(keyword, [indexed_uid]).await?;
+        }
+
+        redis::cmd("SET")
+            .arg(WRAPPING_KEY_BACKFILL_PARAM)
+            .arg("true")
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to set wrapped_by backfill marker: {e}"))
+            })?;
+        Ok(())
+    }
+
+    /// Test-only accessor to the underlying object store, used to seed a legacy
+    /// (unindexed) object when exercising [`Self::backfill_wrapped_by_index`].
+    #[cfg(test)]
+    pub(crate) fn objects_db(&self) -> &ObjectsDB {
+        &self.objects_db
     }
 
     /// Prepare an object to be inserted

@@ -659,6 +659,10 @@ Crate path: `crate/server_database`
 | `warn` | `PostgreSQL pool error — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `warn` | `PostgreSQL retryable error — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
 | `warn` | `PostgreSQL transaction body failed — retrying` | `src/stores/sql/pgsql.rs` | `attempt`, `delay_ms`, `error` | - |
+| `warn` | `wrapping_key_id backfill: skipping object that failed to                                      deserialize` | `src/stores/sql/sqlite.rs` | - | - |
+| `warn` | `wrapping_key_id backfill: skipping object that failed to deserialize` | `src/stores/sql/pgsql.rs` | - | - |
+| `warn` | `wrapping_key_id backfill: skipping object {id} that failed to                          deserialize: {e}` | `src/stores/sql/mysql.rs` | `id`, `e` | - |
+| `debug` | `[redis-scan-wrapped] skipping key {key}: {e}` | `src/stores/redis/objects_db.rs` | `key`, `e` | - |
 
 ### `cosmian_kms_crypto`
 

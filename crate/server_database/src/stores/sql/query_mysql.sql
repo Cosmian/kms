@@ -223,3 +223,23 @@ SELECT id, object FROM objects WHERE wrapping_key_id IS NULL;
 
 -- name: update-wrapping-key-id
 UPDATE objects SET wrapping_key_id = ? WHERE id = ?;
+
+-- name: has-index
+SELECT 1
+FROM information_schema.statistics
+WHERE table_schema = DATABASE()
+  AND table_name = ?
+  AND index_name = ?
+LIMIT 1;
+
+-- name: create-index-objects-owner
+CREATE INDEX idx_objects_owner ON objects (owner);
+
+-- name: create-index-objects-state
+CREATE INDEX idx_objects_state ON objects (state);
+
+-- name: create-index-read_access-userid
+CREATE INDEX idx_read_access_userid ON read_access (userid);
+
+-- name: create-index-objects-wrapping-key-id
+CREATE INDEX idx_objects_wrapping_key_id ON objects (wrapping_key_id);
