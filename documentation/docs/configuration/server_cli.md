@@ -154,6 +154,39 @@ Options:
           [env: KMS_UNWRAPPED_CACHE_MAX_AGE=]
           [default: 15]
 
+      --unwrapped-cache-max-size <UNWRAPPED_CACHE_MAX_SIZE>
+          Maximum number of entries in the unwrapped key cache.
+          When the cache is full, the least-recently-used entry is evicted.
+          Set this above the number of distinct wrapped keys in your deployment
+          to avoid LRU thrashing. The default is 1000.
+
+          [env: KMS_UNWRAPPED_CACHE_MAX_SIZE=]
+          [default: 1000]
+
+      --unwrapped-cache-max-ttl <UNWRAPPED_CACHE_MAX_TTL>
+          Absolute time-to-live in minutes for entries in the unwrapped key cache.
+          When set, a cached unwrapped key is evicted at most this many minutes after
+          it was first inserted, regardless of how frequently it is accessed.
+          This caps plaintext key residency for continuously-used (hot) keys and
+          satisfies compliance policies that require a hard upper bound on in-memory
+          key material exposure.
+          When not set (the default), only the time-to-idle window applies and hot
+          keys may remain cached indefinitely.
+          When set, value must be ≥ `unwrapped-cache-max-age`.
+
+          [env: KMS_UNWRAPPED_CACHE_MAX_TTL=]
+
+      --disable-unwrapped-cache
+          Disable the unwrapped key cache entirely.
+          When set, every operation that needs plaintext key material will perform
+          a full KEK-unwrap (or HSM call) on every request instead of serving the
+          key from memory.
+          Use this in high-security environments where no plaintext key material
+          should persist in process memory beyond a single operation.
+          Disabling the cache significantly increases CPU and HSM load.
+
+          [env: KMS_DISABLE_UNWRAPPED_CACHE=]
+
       --socket-server-start
           Start the KMIP socket server? If this is set to true, the TLS config must be provided, featuring a server PKCS#12 file and a client certificate authority certificate file
 
@@ -270,6 +303,25 @@ Options:
           addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
 
           [env: KMS_CORS_ALLOWED_ORIGINS=]
+
+      --http-workers <HTTP_WORKERS>
+          Number of actix-web HTTP worker threads.
+          Defaults to the number of logical CPUs. On I/O-heavy workloads (e.g. `PostgreSQL` backend)
+          setting this to `2 * <number of CPU cores>` improves throughput by keeping more Tokio
+          threads busy while others are waiting on network I/O.
+          Can also be set via the `TOKIO_WORKER_THREADS` environment variable (Tokio runtime),
+          but this flag controls only the actix-web application workers.
+
+          [env: KMS_HTTP_WORKERS=]
+
+      --jwks-enabled
+          Enable the `GET /.well-known/jwks.json` endpoint.
+
+          When set, the server exposes all public keys with the `Verify` usage mask as a
+          RFC 7517 JSON Web Key Set. Defaults to `false`; set to `true` to enable public key
+          discovery for JWT verification.
+
+          [env: KMS_JWKS_ENABLED=]
 
       --proxy-url <PROXY_URL>
           The proxy URL:
@@ -415,7 +467,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.24.0"]
+          [default: "Cosmian KMS v5.25.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -531,6 +583,21 @@ Options:
 
           [env: KMS_POLICY_ID=]
 
+      --auto-rotation-check-interval-secs <AUTO_ROTATION_CHECK_INTERVAL_SECS>
+          Interval in seconds between background auto-rotation checks.
+          Set to 0 (default) to disable the auto-rotation background task.
+          When enabled, must be at least 60 seconds to avoid excessive database churn.
+
+          [default: 0]
+
+      --keyset-warn-depth <KEYSET_WARN_DEPTH>
+          Depth at which a successful keyset chain decryption triggers a server-side warning.
+          Keyset chain traversal is unbounded (stopped only by cycle detection);
+          this threshold emits a warning log so operators can flag stale ciphertexts.
+          Default: 5.
+
+          [default: 5]
+
       --backend <BACKEND>
           Possible values:
           - vault:       `HashiCorp` Vault KV-v2. Path format: `secret://<mount>/<path>[#<field>]`
@@ -576,6 +643,42 @@ Options:
 
       --cosmian-kms-insecure-certs
           [env: COSMIAN_KMS_INSECURE_CERTS=]
+
+      --jwks-endpoint-enabled
+          Enable the `GET /.well-known/jwks.json` endpoint.
+
+          When set, the server publicly exposes all active public keys whose
+          `CryptographicUsageMask` includes `Verify` as a RFC 7517 JSON Web Key Set.
+          The endpoint is **unauthenticated** — no credentials are required to fetch it,
+          and no authentication middleware is applied. Defaults to `false`.
+
+          [env: KMS_JWKS_ENDPOINT_ENABLED=]
+
+      --jwks-endpoint-max-keys <JWKS_ENDPOINT_MAX_KEYS>
+          Maximum number of public keys returned in a single JWKS response.
+
+          When the server holds more eligible keys than this limit, the response is
+          truncated and an `X-JWKS-Truncated: true` header is added to signal consumers.
+          Increase this value if your deployment performs frequent key rotation and all
+          overlapping verification keys must be simultaneously discoverable.
+
+          [env: KMS_JWKS_ENDPOINT_MAX_KEYS=]
+          [default: 50]
+
+      --jwks-endpoint-auto-tag
+          Automatically tag key pairs created via the REST crypto API for JWKS inclusion.
+
+          When `true` (the default), every key pair created via `POST /v1/crypto/keys`
+          receives the `"jwks"` tag and immediately appears in
+          `GET /.well-known/jwks.json`.
+
+          Set to `false` to disable this behaviour globally.  Operators must then
+          manually tag each public key via `POST /v1/crypto/keys/{kid}/tags` before
+          it is published in the JWKS document.
+
+          This setting has no effect on keys created directly through the KMIP protocol.
+
+          [env: KMS_JWKS_ENDPOINT_AUTO_TAG=]
 
   -h, --help
           Print help (see a summary with '-h')

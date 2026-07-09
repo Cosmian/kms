@@ -179,8 +179,12 @@ hostname = "0.0.0.0"
 # Leave unset (default) to disable rate limiting.
 # rate_limit_per_second = 100
 
-# Number of actix-web worker threads.
-# Leave unset (default) to let actix-web choose based on the number of logical CPUs.
+# Number of actix-web HTTP worker threads.
+# Defaults to the number of logical CPUs. On I/O-heavy workloads (e.g. `PostgreSQL` backend)
+# setting this to `2 * <number of CPU cores>` improves throughput by keeping more Tokio
+# threads busy while others are waiting on network I/O.
+# Can also be set via the `TOKIO_WORKER_THREADS` environment variable (Tokio runtime),
+# but this flag controls only the actix-web application workers.
 # http_workers = 8
 
 # Comma-separated list of origins allowed to make cross-origin requests to the KMIP API.
@@ -332,3 +336,31 @@ aws_xks_enable = false
 [notifications.smtp]
 # The KMS HTTP server port
 port = 0
+
+[jwks_endpoint]
+# Enable the `GET /.well-known/jwks.json` endpoint.
+#
+# When set, the server publicly exposes all active public keys whose
+# `CryptographicUsageMask` includes `Verify` as a RFC 7517 JSON Web Key Set.
+# The endpoint is **unauthenticated** — no credentials are required to fetch it,
+# and no authentication middleware is applied. Defaults to `false`.
+jwks_endpoint_enabled = false
+# Maximum number of public keys returned in a single JWKS response.
+#
+# When the server holds more eligible keys than this limit, the response is
+# truncated and an `X-JWKS-Truncated: true` header is added to signal consumers.
+# Increase this value if your deployment performs frequent key rotation and all
+# overlapping verification keys must be simultaneously discoverable.
+jwks_endpoint_max_keys = 50
+# Automatically tag key pairs created via the REST crypto API for JWKS inclusion.
+#
+# When `true` (the default), every key pair created via `POST /v1/crypto/keys`
+# receives the `"jwks"` tag and immediately appears in
+# `GET /.well-known/jwks.json`.
+#
+# Set to `false` to disable this behaviour globally.  Operators must then
+# manually tag each public key via `POST /v1/crypto/keys/{kid}/tags` before
+# it is published in the JWKS document.
+#
+# This setting has no effect on keys created directly through the KMIP protocol.
+jwks_endpoint_auto_tag = true

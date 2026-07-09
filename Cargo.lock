@@ -842,7 +842,7 @@ dependencies = [
 
 [[package]]
 name = "ckms"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1078,7 +1078,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "cosmian_cng"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1162,7 +1162,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1189,7 +1189,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_access"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "cosmian_kmip",
  "serde",
@@ -1197,7 +1197,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_base_hsm"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "async-trait",
  "cosmian_kms_interfaces",
@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli_actions"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -1256,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "actix-web",
  "base64 0.22.1",
@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_utils"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client_wasm"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_crypto"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_interfaces"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "async-trait",
  "cosmian_kmip",
@@ -1379,7 +1379,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -1442,7 +1442,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server_database"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "async-trait",
  "cosmian_findex",
@@ -1505,7 +1505,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "ckms",
  "cosmian_config_utils",
@@ -1530,7 +1530,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_pkcs11_module"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "const-oid 0.9.6",
  "cosmian_logger",
@@ -1675,7 +1675,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypt2pay_pkcs11_loader"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -3205,7 +3205,7 @@ dependencies = [
 
 [[package]]
 name = "kmip-derive"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "quote",
  "syn",
@@ -4274,7 +4274,7 @@ dependencies = [
 
 [[package]]
 name = "proteccio_pkcs11_loader"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]
@@ -5171,7 +5171,7 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "smartcardhsm_pkcs11_loader"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
@@ -5200,7 +5200,7 @@ dependencies = [
 
 [[package]]
 name = "softhsm2_pkcs11_loader"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "cosmian_kms_base_hsm",
  "libloading",
@@ -5384,7 +5384,7 @@ checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test_kms_server"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "actix-server",
  "cosmian_kms_client",
@@ -6058,7 +6058,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utimaco_pkcs11_loader"
-version = "5.24.0"
+version = "5.25.0"
 dependencies = [
  "cosmian_kms_base_hsm",
 ]

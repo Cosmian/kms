@@ -556,6 +556,10 @@ Run benchmarks using criterion for statistical analysis.
 
 Possible values:  `"all", "encrypt", "key-creation", "sign-verify", "batch"` [default: `"all"`]
 
+`--protocol [-p] <PROTOCOL>` Protocol / transport to benchmark (default: all). - `ttlv-json`: KMIP over JSON TTLV (`POST /kmip/2_1`) - `ttlv-bytes`: KMIP over binary TTLV (`POST /kmip`) - `jose`: REST JOSE endpoints (`POST /v1/crypto/*`)
+
+Possible values:  `"all", "ttlv-json", "ttlv-bytes", "jose"` [default: `"all"`]
+
 `--format [-f] <FORMAT>` Output format
 
 Possible values:  `"text", "json", "markdown", "compact", "html"` [default: `"text"`]
@@ -565,6 +569,8 @@ Possible values:  `"text", "json", "markdown", "compact", "html"` [default: `"te
 Possible values:  `"normal", "quick", "sanity"` [default: `"normal"`]
 
 `--time [-t] <TIME>` Maximum measurement time per benchmark in seconds (default: 10). Caps how long criterion spends on each benchmark function. Ignored in quick and sanity speed modes
+
+`--max-group-time <MAX_GROUP_TIME>` Maximum wall-clock time (in seconds) to spend per benchmark group. Once a group exceeds this budget, its remaining benchmarks are skipped (benchmarks already completed in the group are kept). Unset means no cap. Applies to the KMIP (ttlv-json / ttlv-bytes) benchmark groups
 
 `--save-baseline <SAVE_BASELINE>` Save results under a named baseline in target/criterion/<bench>/<name>/. Use this to snapshot a run before a change. To compare, run again with --load-baseline <name> (or without any flag to diff against "base"). Example: --save-baseline before-my-change
 
@@ -577,6 +583,12 @@ Possible values:  `"normal", "quick", "sanity"` [default: `"normal"`]
 Possible values:  `"true", "false"` [default: `"false"`]
 
 `--load-concurrency <LOAD_CONCURRENCY>` Comma-separated concurrency levels for load testing. Only used when --load is set
+
+`--load-plaintext-size <LOAD_PLAINTEXT_SIZE>` Plaintext size in bytes for load-test encrypt ops (default 4096). Larger payloads make the op CPU-bound (crypto + serialization dominate the fixed HTTP/loopback overhead), which is what a capacity/scaling benchmark wants; the small default keeps the op network/latency-bound
+
+`--warmup-time <WARMUP_TIME>` Warmup time in seconds before benchmarking starts. Sends requests for this duration to warm HTTP connection pools, TLS sessions, and server-side caches. Set to 0 to skip
+
+`--cooldown-time <COOLDOWN_TIME>` Cooldown time in seconds between load-test concurrency levels. Lets the server drain TCP `TIME_WAIT` sockets, checkpoint `SQLite` WAL, and release memory before the next level starts fresh
 
 
 
@@ -873,6 +885,8 @@ Revoke a Covercrypt master or user decryption key
 `
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
@@ -1332,6 +1346,8 @@ Revoke an FPE key
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
@@ -1506,8 +1522,11 @@ Possible values:  `"ml-kem-512", "ml-kem-768", "ml-kem-1024", "ml-dsa-44", "ml-d
 
 Possible values:  `"true", "false"` [default: `"false"`]
 
-`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
-Must not contain the `@` character.
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
 
@@ -1680,7 +1699,9 @@ Revoke a PQC public or private key
 `ckms pqc keys revoke [options] <REVOCATION_REASON>
 `
 ### Arguments
-` <REVOCATION_REASON>` The reason for the revocation
+` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke
 
@@ -2036,7 +2057,9 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 **`destroy`** [[10.8]](#108-ckms-certificates-destroy)  Destroy a certificate
 
-**`validate`** [[10.9]](#109-ckms-certificates-validate)  Validate a certificate
+**`set-rotation-policy`** [[10.9]](#109-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
+
+**`validate`** [[10.10]](#1010-ckms-certificates-validate)  Validate a certificate
 
 ---
 
@@ -2244,6 +2267,8 @@ Revoke a certificate
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
@@ -2274,7 +2299,26 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 10.9 ckms certificates validate
+## 10.9 ckms certificates set-rotation-policy
+
+Set the automatic rotation policy on a certificate (interval, offset, keyset name)
+
+### Usage
+`ckms certificates set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 10.10 ckms certificates validate
 
 Validate a certificate
 
@@ -2499,8 +2543,11 @@ If the wrapping key is:
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
 
-`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
-Must not contain the `@` character.
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
 
@@ -2674,6 +2721,8 @@ Revoke a public or private key
 `
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
@@ -3485,8 +3534,11 @@ If the wrapping key is:
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
 
-`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
-Must not contain the `@` character.
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
 
@@ -3660,6 +3712,8 @@ Revoke a public or private key
 `
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
@@ -4029,6 +4083,8 @@ Revoke an `OpaqueObject`
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--key-id [-k] <OBJECT_ID>` The opaque object unique identifier to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tags to locate the object if id is not provided. Repeat to specify multiple tags
@@ -4329,6 +4385,8 @@ Revoke a secret data
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--secret-data-id [-s] <SECRET_ID>` The secret unique identifier of the secret to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the secret data when no secret data id is specified. To specify multiple tags, use the option multiple times
@@ -4456,8 +4514,11 @@ If the wrapping key is:
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
 
-`--rotation-name [-n] <ROTATE_NAME>` Assign a keyset name for addressing key generations via `name@latest`, `name@first`, `name@N` syntax.
-Must not contain the `@` character.
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
 
@@ -4644,6 +4705,8 @@ Revoke a symmetric key
 `
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 

@@ -188,7 +188,7 @@ openssl36 = opensslPkgs.callPackage ./openssl.nix {
    enableLegacy = true;
    srcUrl = "https://package.cosmian.com/openssl/openssl-3.6.2.tar.gz";
    sha256SRI = "sha256-qvUaH+BkOE+BHa6utOxNznNA7IvYkwJ+7mdq8x6DoE8=";
-   expectedHash = "b6a5f44b7eb69e3fa35dbf15524405b44837a481d43d81daddde3ff21fcbb8e9";
+   expectedHash = "b6a5f44b7eb69e3fa35dbf15.25.05b44837a481d43d81daddde3ff21fcbb8e9";
 };
 
 openssl312 = opensslPkgs.callPackage ./openssl.nix {
@@ -577,9 +577,9 @@ mise run package:deb
 
 Each package will have a corresponding `.asc` signature:
 
-- `result-deb-fips/cosmian_kms_server_5.24.0_amd64.deb.asc`
-- `result-rpm-fips/cosmian_kms_server_fips-5.24.0.x86_64.rpm.asc`
-- `result-dmg-fips/Cosmian KMS Server_5.24.0_arm64.dmg.asc`
+- `result-deb-fips/cosmian_kms_server_5.25.0_amd64.deb.asc`
+- `result-rpm-fips/cosmian_kms_server_fips-5.25.0.x86_64.rpm.asc`
+- `result-dmg-fips/Cosmian KMS Server_5.25.0_arm64.dmg.asc`
 
 ### Verify signatures
 
@@ -588,7 +588,7 @@ Each package will have a corresponding `.asc` signature:
 gpg --import nix/signing-keys/cosmian-kms-public.asc
 
 # Verify package
-gpg --verify result-deb-fips/cosmian_kms_server_5.24.0_amd64.deb.asc
+gpg --verify result-deb-fips/cosmian_kms_server_5.25.0_amd64.deb.asc
 ```
 
 See `nix/signing-keys/README.md` for detailed signing documentation.
