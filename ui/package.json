@@ -1,7 +1,7 @@
 {
     "name": "ui",
     "private": true,
-    "version": "5.24.0",
+    "version": "5.25.0",
     "type": "module",
     "packageManager": "pnpm@10.17.1",
     "scripts": {
