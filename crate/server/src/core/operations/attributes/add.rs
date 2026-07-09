@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::has_prefix},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
@@ -33,6 +33,27 @@ pub(crate) async fn add_attribute(
         .as_str()
         .context("Add Attribute: the unique identifier must be a string")?;
 
+    // Read-only guard — these attributes are server-managed.
+    match &request.new_attribute {
+        Attribute::RotateAutomatic(_)
+        | Attribute::RotateGeneration(_)
+        | Attribute::RotateDate(_)
+        | Attribute::RotateLatest(_) => {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Attribute_Read_Only,
+                "DENIED: this attribute is server-managed and cannot be added by the user"
+                    .to_owned(),
+            ));
+        }
+        Attribute::RotateName(name) if name.contains('@') => {
+            return Err(KmsError::InvalidRequest(
+                "AddAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
+                    .to_owned(),
+            ));
+        }
+        _ => {}
+    }
+
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
         KmipOperation::AddAttribute,
@@ -42,7 +63,25 @@ pub(crate) async fn add_attribute(
     .await?;
     trace!("Retrieved object for: {}", owm.object());
 
+    // For SQL keys (non-HSM): rotate_name must equal the key's UID.
+    // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
+    if has_prefix(owm.id()).is_none() {
+        if let Attribute::RotateName(name) = &request.new_attribute {
+            let key_uid = owm.id();
+            if name.as_str() != key_uid {
+                return Err(KmsError::InvalidRequest(format!(
+                    "AddAttribute: rotate_name ('{name}') must equal the key's UID \
+                     ('{key_uid}') — create the key with the keyset name as its ID"
+                )));
+            }
+        }
+    }
+
     let mut attributes = owm.attributes_mut().clone();
+
+    // Capture before the macro runs (which may partially move request.new_attribute).
+    let is_adding_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
+        && has_prefix(owm.id()).is_none();
 
     // Check if the attribute is allowed to be set
     match_add_attribute! {
@@ -98,6 +137,7 @@ pub(crate) async fn add_attribute(
             QuantumSafe => quantum_safe,
             RandomNumberGenerator => random_number_generator,
             RevocationReason => revocation_reason,
+            RotateAutomatic => rotate_automatic,
             RotateDate => rotate_date,
             RotateGeneration => rotate_generation,
             RotateInterval => rotate_interval,
@@ -179,6 +219,16 @@ pub(crate) async fn add_attribute(
                         .to_owned(),
                 ));
             }
+        }
+    }
+
+    // Initialise keyset metadata when rotate_name is first added to an SQL key.
+    if is_adding_rotate_name_on_sql {
+        if attributes.rotate_generation.is_none() {
+            attributes.rotate_generation = Some(0);
+        }
+        if attributes.rotate_latest.is_none() {
+            attributes.rotate_latest = Some(true);
         }
     }
 

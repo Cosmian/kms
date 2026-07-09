@@ -1,4 +1,3 @@
-use cosmian_kms_server_database::reexport::cosmian_kmip;
 #[cfg(feature = "non-fips")]
 use cosmian_kms_server_database::reexport::cosmian_kms_crypto::crypto::kem::kem_keygen;
 #[cfg(feature = "non-fips")]
@@ -33,45 +32,26 @@ use cosmian_logger::warn;
 use cosmian_logger::{debug, info, trace};
 use uuid::Uuid;
 use crate::{
-    core::{KMS, retrieve_object_utils::user_has_permission, wrapping::wrap_and_cache},
+    core::{KMS, uid_utils::has_prefix, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
 };
+use super::key_ops::ObjectLifecycleExt;
 
 pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
     owner: &str,
-
-    privileged_users: Option<Vec<String>>,
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
 
-    // To create a key pair, check that the user has `Create` access right
-    // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users {
-        let has_permission = user_has_permission(
-            owner,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == owner) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
-
-    if request.common_protection_storage_masks.is_some()
-        || request.private_protection_storage_masks.is_some()
-        || request.public_protection_storage_masks.is_some()
-    {
-        kms_bail!(KmsError::UnsupportedPlaceholder)
-    }
+    KMS::reject_protection_storage_masks(
+        request.common_protection_storage_masks.is_some()
+            || request.private_protection_storage_masks.is_some()
+            || request.public_protection_storage_masks.is_some(),
+    )?;
+    kms.enforce_create_permission(owner).await?;
 
     // generate uids and create the key pair and tags
     let sk_uid = request
@@ -83,6 +63,23 @@ pub(crate) async fn create_key_pair(
             std::string::ToString::to_string,
         );
     let pk_uid = sk_uid.clone() + SYSTEM_TAG_PUBLIC_KEY;
+
+    // Extract rotate_name before `request` is consumed by `generate_key_pair`.
+    // Keyset validation (SQL keys only): if rotate_name is set, it must equal the private key's UID.
+    // HSM key pairs have opaque PKCS#11-prefixed UIDs — the UID-match constraint does not apply.
+    let sk_rotate_name = request
+        .private_key_attributes
+        .as_ref()
+        .or(request.common_attributes.as_ref())
+        .and_then(|attrs| attrs.rotate_name.clone());
+    if let Some(ref rotate_name) = sk_rotate_name {
+        if has_prefix(&sk_uid).is_none() && rotate_name.as_str() != sk_uid {
+            return Err(KmsError::InvalidRequest(format!(
+                "CreateKeyPair: rotate_name ('{rotate_name}') must equal the private key's UID \
+                 ('{sk_uid}') — set the private key ID to the keyset name at creation time"
+            )));
+        }
+    }
     // Capture requested ActivationDate values BEFORE moving the request into key generation
     // Private key: prefer private_key_attributes.activation_date then fallback to common_attributes.activation_date
     let requested_sk_activation_date = request
@@ -112,11 +109,14 @@ pub(crate) async fn create_key_pair(
     trace!("sk_uid: {sk_uid}, pk_uid: {pk_uid}");
 
     let mut private_key = key_pair.private_key().to_owned();
-    let private_key_attributes = super::key_ops::setup_object_lifecycle(
-        &mut private_key,
-        ObjectType::PrivateKey,
-        requested_sk_activation_date,
-    )?;
+    let private_key_attributes =
+        private_key.setup_with_lifecycle(ObjectType::PrivateKey, requested_sk_activation_date)?;
+    let mut private_key_attributes = private_key_attributes;
+    // Initialise keyset metadata for gen-0 on SQL key pairs only.
+    if sk_rotate_name.is_some() && has_prefix(&sk_uid).is_none() {
+        private_key_attributes.rotate_generation = Some(0);
+        private_key_attributes.rotate_latest = Some(true);
+    }
     trace!(
         "Private key attributes after lifecycle update: {}",
         private_key_attributes
@@ -131,13 +131,13 @@ pub(crate) async fn create_key_pair(
         &mut private_key,
     ))
     .await?;
+    // If the private key was wrapped, record the WrappingKeyLink in stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    private_key.copy_wrapping_key_link_to(&mut private_key_attributes);
 
     let mut public_key = key_pair.public_key().to_owned();
-    let public_key_attributes = super::key_ops::setup_object_lifecycle(
-        &mut public_key,
-        ObjectType::PublicKey,
-        requested_pk_activation_date,
-    )?;
+    let mut public_key_attributes =
+        public_key.setup_with_lifecycle(ObjectType::PublicKey, requested_pk_activation_date)?;
     trace!(
         "Public key attributes after lifecycle update: {}",
         public_key_attributes
@@ -150,6 +150,8 @@ pub(crate) async fn create_key_pair(
         &mut public_key,
     ))
     .await?;
+    // If the public key was wrapped, record the WrappingKeyLink in stored attributes.
+    public_key.copy_wrapping_key_link_to(&mut public_key_attributes);
 
     let operations = vec![
         AtomicOperation::Create((

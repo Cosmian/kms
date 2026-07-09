@@ -1368,7 +1368,18 @@ pub enum Tag {
     CommonProtectionStorageMasks = 0x42_0163,
     PrivateProtectionStorageMasks = 0x42_0164,
     PublicProtectionStorageMasks = 0x42_0165,
+    RotateInterval = 0x42_016A,
+    RotateAutomatic = 0x42_016B,
+    RotateOffset = 0x42_016C,
+    RotateDate = 0x42_016D,
+    RotateGeneration = 0x42_016E,
+    RotateName = 0x42_016F,
+    RotateLatest = 0x42_0172,
     // Extensions 540000 – 54FFFF
+    /// Cosmian vendor extension: not part of the KMIP 2.1 Tag Enumeration
+    /// (§11.56). Used internally to TTLV-serialize the composite
+    /// `CertificateAttributes` attribute struct (subject/issuer fields).
+    CertificateAttributes = 0x54_0001,
 }
 
 /// Indicates the method used to wrap the Key Value.
@@ -1750,6 +1761,22 @@ impl UniqueIdentifier {
             Self::TextString(s) => Some(s),
             _ => None,
         }
+    }
+
+    /// Compute a fresh UID for a rotation replacement key.
+    ///
+    /// For keyset keys (`rotate_name` is `Some`): returns `"{name}@{gen+1}"`,
+    /// e.g. `"my-keyset@1"` for the first rotation of `"my-keyset"`.
+    /// For standalone keys (no `rotate_name`): returns a fresh UUID.
+    ///
+    /// The `prefix_uuid` pattern (`"name_<uuid>"`) is intentionally dropped;
+    /// keyset membership is the only path to deterministic successor UIDs.
+    #[must_use]
+    pub fn rotation_successor(rotate_name: Option<&str>, rotate_generation: Option<i32>) -> String {
+        rotate_name.map_or_else(
+            || Uuid::new_v4().to_string(),
+            |name| format!("{name}@{}", rotate_generation.unwrap_or(0) + 1),
+        )
     }
 }
 

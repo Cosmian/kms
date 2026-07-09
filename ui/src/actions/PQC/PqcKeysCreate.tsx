@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Form, Select, Space } from "antd";
+import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
 import { useBranding } from "../../contexts/useBranding";
 import { sendKmipRequest } from "../../utils/utils";
@@ -10,6 +10,9 @@ interface PqcKeyCreateFormData {
     algorithm: string;
     tags: string[];
     sensitive: boolean;
+    enrollKeyset: boolean;
+    rotateInterval?: number;
+    rotateOffset?: number;
 }
 
 type CreateKeyPairResponse = {
@@ -49,7 +52,26 @@ const PqcKeysCreateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await wasm.parse_create_keypair_ttlv_response(result_str);
-                return `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
+                const skId = result.PrivateKeyUniqueIdentifier;
+
+                // Apply rotation policy on the private key (keyset anchor)
+                if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
+                    if (values.rotateInterval !== undefined) {
+                        const req = wasm.set_rotate_interval_ttlv_request(skId, BigInt(values.rotateInterval));
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                    if (values.rotateOffset !== undefined) {
+                        const req = wasm.set_rotate_offset_ttlv_request(skId, BigInt(values.rotateOffset));
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                    if (values.enrollKeyset) {
+                        // rotation name is set to the private key ID (server-generated for PQC)
+                        const req = wasm.set_rotate_name_ttlv_request(skId, skId);
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                }
+
+                return `Key pair has been created. Private key Id: ${skId} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;
             }
         });
     };
@@ -87,6 +109,7 @@ const PqcKeysCreateForm: React.FC = () => {
                 initialValues={{
                     tags: [],
                     sensitive: false,
+                    enrollKeyset: false,
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
@@ -106,6 +129,30 @@ const PqcKeysCreateForm: React.FC = () => {
 
                         <Form.Item name="sensitive" valuePropName="checked" help="If set, the private key will not be exportable">
                             <Checkbox>Sensitive</Checkbox>
+                        </Form.Item>
+
+                        <Divider orientation="left" plain>
+                            Rotation Policy (optional)
+                        </Divider>
+
+                        <Form.Item
+                            name="rotateName"
+                            label="Rotation Name"
+                            help="Keyset name for addressing generations via name@latest, name@first, name@N"
+                        >
+                            <Input placeholder="e.g. my-keyset" data-testid="pqc-rotation-name" />
+                        </Form.Item>
+
+                        <Form.Item
+                            name="rotateInterval"
+                            label="Rotation Interval (seconds)"
+                            help="Auto-rotate the key pair every N seconds. Set 0 to disable."
+                        >
+                            <InputNumber className="w-[200px]" min={0} placeholder="e.g. 86400" data-testid="pqc-rotation-interval" />
+                        </Form.Item>
+
+                        <Form.Item name="rotateOffset" label="Rotation Offset (seconds)" help="Delay before the first rotation occurs.">
+                            <InputNumber className="w-[200px]" min={0} placeholder="e.g. 3600" data-testid="pqc-rotation-offset" />
                         </Form.Item>
                     </Card>
 

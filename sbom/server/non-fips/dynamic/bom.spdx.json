@@ -2,10 +2,10 @@
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
-  "name": "SPDXRef-nix-store-4xz4jn987mykb7d0500p14f6da6f0ial-cosmian-kms-server-dynamic-5.24.0.drv",
-  "documentNamespace": "sbomnix://6f664774-369b-4a0c-b5a7-597e8b505fb2",
+  "name": "SPDXRef-nix-store-yb3kls96w9nfm7bgdrf90yq3rwy30l0d-cosmian-kms-server-dynamic-5.25.0.drv",
+  "documentNamespace": "sbomnix://fe0f040d-4936-42d8-96b2-810071381b7d",
   "creationInfo": {
-    "created": "2026-06-19T06:30:25.912072+00:00",
+    "created": "2026-07-09T20:14:40.185141+00:00",
     "creators": [
       "Tool: sbomnix-1.7.4"
     ]
@@ -14,8 +14,8 @@
   "packages": [
     {
       "name": "cosmian-kms-server-dynamic",
-      "SPDXID": "SPDXRef-nix-store-4xz4jn987mykb7d0500p14f6da6f0ial-cosmian-kms-server-dynamic-5.24.0.drv",
-      "versionInfo": "5.24.0",
+      "SPDXID": "SPDXRef-nix-store-yb3kls96w9nfm7bgdrf90yq3rwy30l0d-cosmian-kms-server-dynamic-5.25.0.drv",
+      "versionInfo": "5.25.0",
       "downloadLocation": "NOASSERTION",
       "licenseConcluded": "NOASSERTION",
       "licenseDeclared": "NOASSERTION",
@@ -24,12 +24,12 @@
         {
           "referenceCategory": "SECURITY",
           "referenceType": "cpe23Type",
-          "referenceLocator": "cpe:2.3:a:cosmian-kms-server-dynamic:cosmian-kms-server-dynamic:5.24.0:*:*:*:*:*:*:*"
+          "referenceLocator": "cpe:2.3:a:cosmian-kms-server-dynamic:cosmian-kms-server-dynamic:5.25.0:*:*:*:*:*:*:*"
         },
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:nix/cosmian-kms-server-dynamic@5.24.0"
+          "referenceLocator": "pkg:nix/cosmian-kms-server-dynamic@5.25.0"
         }
       ]
     },
@@ -120,7 +120,7 @@
   ],
   "relationships": [
     {
-      "spdxElementId": "SPDXRef-nix-store-4xz4jn987mykb7d0500p14f6da6f0ial-cosmian-kms-server-dynamic-5.24.0.drv",
+      "spdxElementId": "SPDXRef-nix-store-yb3kls96w9nfm7bgdrf90yq3rwy30l0d-cosmian-kms-server-dynamic-5.25.0.drv",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-nix-store-0ag6km30kmkx6p21ngr8n475jczc9yxy-openssl-3.6.2.drv"
     },

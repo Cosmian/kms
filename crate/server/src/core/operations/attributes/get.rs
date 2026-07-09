@@ -510,9 +510,11 @@ pub(crate) async fn get_attributes(
                     res.state = attributes.state;
                 }
                 Tag::UniqueIdentifier => {
-                    attributes
-                        .unique_identifier
-                        .clone_into(&mut res.unique_identifier);
+                    // Always authoritative: use the stored object UID from the database row
+                    // rather than the embedded attribute value. The embedded value may be a
+                    // stale random UUID for re-keyed objects created before the `finalize`
+                    // fix stamped the correct new UID into the key material attributes.
+                    res.unique_identifier = Some(UniqueIdentifier::TextString(owm.id().to_owned()));
                 }
                 Tag::ShortUniqueIdentifier => {
                     // Ensure presence: if absent, return an empty string
@@ -558,6 +560,18 @@ pub(crate) async fn get_attributes(
         owm.id(),
         res.get_tags(kms.vendor_id())
     );
+
+    // Rotation attributes are not represented by Tag enum variants, so they are
+    // not included by the tag-based filtering loop above. Always propagate them
+    // from the source attributes when present.
+    res.rotate_automatic = attributes.rotate_automatic;
+    res.rotate_date = attributes.rotate_date;
+    res.rotate_generation = attributes.rotate_generation;
+    res.rotate_interval = attributes.rotate_interval;
+    res.rotate_latest = attributes.rotate_latest;
+    res.rotate_name.clone_from(&attributes.rotate_name);
+    res.rotate_offset = attributes.rotate_offset;
+
     trace!("Get Attributes: Response: {}", res);
     Ok(GetAttributesResponse {
         unique_identifier: UniqueIdentifier::TextString(owm.id().to_owned()),

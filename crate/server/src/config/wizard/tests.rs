@@ -233,6 +233,8 @@ fn test_config_toml_round_trip_preserves_values() {
             api_token_id: None,
             rate_limit_per_second: None,
             cors_allowed_origins: None,
+            http_workers: None,
+            jwks_enabled: false,
         },
         db: MainDBConfig {
             database_type: Some("sqlite".to_owned()),

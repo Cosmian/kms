@@ -8,6 +8,7 @@
 #USAGE }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
 setup_test_logging
@@ -16,9 +17,13 @@ if [ "$VARIANT" != "non-fips" ]; then
   print_error "Redis-findex tests require non-fips variant (got: $VARIANT)"
 fi
 
+# WITH_HSM=1 must be set before ensure_nix_shell so the Nix shellHook adds
+# the Nix-built SoftHSM2 (linked against Nix OpenSSL FIPS 3.1.2) to PATH.
+export WITH_HSM=1
 # shellcheck disable=SC2119  # ensure_nix_shell intentionally called without args here
 ensure_nix_shell
 
 check_and_test_db "Redis" "redis" "REDIS_HOST" "REDIS_PORT"
+run_db_softhsm2_tests "redis_with_findex_softhsm2"
 
 print_success "Redis tests completed"

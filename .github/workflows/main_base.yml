@@ -31,6 +31,37 @@ jobs:
     with:
       toolchain: ${{ inputs.toolchain }}
 
+  log-reference:
+    name: Log index — log-reference.md in sync with source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Check log-reference.md is up to date
+        id: check
+        run: python3 .mise/scripts/docs/update_log_index.py --check --no-color
+
+      - name: How to fix
+        if: failure()
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
+          echo "  log-reference.md is out of sync with the source code."
+          echo ""
+          echo "  Fix it locally by running:"
+          echo ""
+          echo "    python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color"
+          echo ""
+          echo "  Then review the diff, stage, and commit:"
+          echo ""
+          echo "    git diff documentation/docs/configuration/log-reference.md"
+          echo "    git add documentation/docs/configuration/log-reference.md"
+          echo "    git commit -m 'docs: sync log-reference.md'"
+          echo ""
+          echo "════════════════════════════════════════════════════════════"
+
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
     with:
@@ -53,7 +84,7 @@ jobs:
           toolchain: 1.91.0
           components: rustfmt, clippy
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -85,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 

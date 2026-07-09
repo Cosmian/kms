@@ -1,8 +1,5 @@
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
-    kmip_0::{
-        kmip_messages::{RequestMessage, ResponseMessage},
-        kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
-    },
+    kmip_0::kmip_operations::{DiscoverVersions, DiscoverVersionsResponse},
     kmip_2_1::kmip_operations::{
         Activate, ActivateResponse, AddAttribute, AddAttributeResponse, Certify, CertifyResponse,
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
@@ -11,10 +8,10 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         GetAttributesResponse, GetResponse, Hash, HashResponse, Import, ImportResponse, Locate,
         LocateResponse, MAC, MACResponse, MACVerify, MACVerifyResponse, ModifyAttribute,
         ModifyAttributeResponse, PKCS11, PKCS11Response, Query, QueryResponse, RNGRetrieve,
-        RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReKey, ReKeyKeyPair, ReKeyKeyPairResponse,
-        ReKeyResponse, Register, RegisterResponse, Revoke, RevokeResponse, SetAttribute,
-        SetAttributeResponse, Sign, SignResponse, SignatureVerify, SignatureVerifyResponse,
-        Validate, ValidateResponse,
+        RNGRetrieveResponse, RNGSeed, RNGSeedResponse, ReCertify, ReCertifyResponse, ReKey,
+        ReKeyKeyPair, ReKeyKeyPairResponse, ReKeyResponse, Register, RegisterResponse, Revoke,
+        RevokeResponse, SetAttribute, SetAttributeResponse, Sign, SignResponse, SignatureVerify,
+        SignatureVerifyResponse, Validate, ValidateResponse,
     },
 };
 use tracing::Instrument;
@@ -79,15 +76,10 @@ impl KMS {
     /// If the information in the Certificate Request conflicts with the
     /// attributes specified in the Attributes, then the information in the
     /// Certificate Request takes precedence.
-    pub(crate) async fn certify(
-        &self,
-        request: Certify,
-        user: &str,
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<CertifyResponse> {
+    pub(crate) async fn certify(&self, request: Certify, user: &str) -> KResult<CertifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "certify");
 
-        Box::pin(operations::certify(self, request, user, privileged_users))
+        Box::pin(operations::certify(self, request, user))
             .instrument(span)
             .await
     }
@@ -100,13 +92,8 @@ impl KMS {
     /// contains the Unique Identifier of the created object. The server SHALL
     /// copy the Unique Identifier returned by this operation into the ID
     /// Placeholder variable.
-    pub(crate) async fn create(
-        &self,
-        request: Create,
-        user: &str,
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<CreateResponse> {
-        Box::pin(operations::create(self, request, user, privileged_users)).await
+    pub(crate) async fn create(&self, request: Create, user: &str) -> KResult<CreateResponse> {
+        Box::pin(operations::create(self, request, user)).await
     }
 
     /// This operation requests the server to generate a new public/private key
@@ -128,18 +115,12 @@ impl KMS {
         &self,
         request: CreateKeyPair,
         user: &str,
-        privileged_users: Option<Vec<String>>,
     ) -> KResult<CreateKeyPairResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "create_key_pair");
 
-        Box::pin(operations::create_key_pair(
-            self,
-            request,
-            user,
-            privileged_users,
-        ))
-        .instrument(span)
-        .await
+        Box::pin(operations::create_key_pair(self, request, user))
+            .instrument(span)
+            .await
     }
 
     /// This request is used by the client to determine a list of protocol versions
@@ -412,16 +393,11 @@ impl KMS {
     /// for queries on tags. See tagging.
     /// For instance, a request for a unique identifier `[tag1]` will
     /// attempt to find a valid single object tagged with `tag1`
-    pub(crate) async fn import(
-        &self,
-        request: Import,
-        user: &str,
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<ImportResponse> {
+    pub(crate) async fn import(&self, request: Import, user: &str) -> KResult<ImportResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "import");
 
         // Box::pin :: see https://rust-lang.github.io/rust-clippy/master/index.html#large_futures
-        Box::pin(operations::import(self, request, user, privileged_users))
+        Box::pin(operations::import(self, request, user))
             .instrument(span)
             .await
     }
@@ -572,16 +548,20 @@ impl KMS {
         user: &str,
     ) -> KResult<MACVerifyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "mac_verify");
-        let _enter = span.enter();
 
-        Box::pin(operations::mac_verify(self, request, user)).await
+        Box::pin(operations::mac_verify(self, request, user))
+            .instrument(span)
+            .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn message(
         &self,
-        request: RequestMessage,
+        request: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::RequestMessage,
         user: &str,
-    ) -> KResult<ResponseMessage> {
+    ) -> KResult<
+        cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_messages::ResponseMessage,
+    > {
         let span = tracing::span!(tracing::Level::ERROR, "message");
 
         // This is a large future, hence pinning
@@ -594,11 +574,10 @@ impl KMS {
         &self,
         request: Register,
         user: &str,
-        privileged_users: Option<Vec<String>>,
     ) -> KResult<RegisterResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "register");
 
-        Box::pin(operations::register(self, request, user, privileged_users))
+        Box::pin(operations::register(self, request, user))
             .instrument(span)
             .await
     }
@@ -632,19 +611,12 @@ impl KMS {
         &self,
         request: ReKeyKeyPair,
         user: &str,
-
-        privileged_users: Option<Vec<String>>,
     ) -> KResult<ReKeyKeyPairResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey_keypair");
 
-        Box::pin(operations::rekey_keypair(
-            self,
-            request,
-            user,
-            privileged_users,
-        ))
-        .instrument(span)
-        .await
+        Box::pin(operations::rekey_keypair(self, request, user))
+            .instrument(span)
+            .await
     }
 
     /// This request is used to generate a replacement key for an existing symmetric key. It is analogous to the Create operation, except that attributes of the replacement key are copied from the existing key, with the exception of the attributes listed in Re-key Attribute Requirements.
@@ -656,15 +628,27 @@ impl KMS {
     /// For the existing key, the server SHALL create a Link attribute of Link Type Replacement Object pointing to the replacement key. For the replacement key, the server SHALL create a Link attribute of Link Type Replaced Key pointing to the existing key.
     ///
     /// An Offset MAY be used to indicate the difference between the Initial Date and the Activation Date of the replacement key. If no Offset is specified, the Activation Date, Process Start Date, Protect Stop Date and Deactivation Date values are copied from the existing key.
-    pub(crate) async fn rekey(
-        &self,
-        request: ReKey,
-        user: &str,
-        privileged_users: Option<Vec<String>>,
-    ) -> KResult<ReKeyResponse> {
+    pub(crate) async fn rekey(&self, request: ReKey, user: &str) -> KResult<ReKeyResponse> {
         let span = tracing::span!(tracing::Level::ERROR, "rekey");
 
-        Box::pin(operations::rekey(self, request, user, privileged_users))
+        Box::pin(operations::rekey(self, request, user))
+            .instrument(span)
+            .await
+    }
+
+    /// `ReCertify` — certificate rotation with a new UID.
+    ///
+    /// Creates a fresh certificate for the same subject/issuer and links old → new
+    /// via `ReplacementObjectLink`. Keys referencing the old certificate are updated
+    /// to point to the new one.
+    pub(crate) async fn recertify(
+        &self,
+        request: ReCertify,
+        user: &str,
+    ) -> KResult<ReCertifyResponse> {
+        let span = tracing::span!(tracing::Level::ERROR, "recertify");
+
+        Box::pin(operations::recertify(self, request, user))
             .instrument(span)
             .await
     }

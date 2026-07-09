@@ -31,7 +31,7 @@ bitflags = { workspace = true }
 cosmian_crypto_core = { workspace = true }
 cosmian_logger = { workspace = true }
 hex = { workspace = true, features = ["std"] }
-kmip-derive = { path = "../kmip-derive", version = "5.24.0" }
+kmip-derive = { path = "../kmip-derive", version = "5.25.0" }
 num-bigint-dig = { workspace = true, features = [
   "std",
   "rand",
@@ -39,7 +39,7 @@ num-bigint-dig = { workspace = true, features = [
   "zeroize",
 ] }
 num-traits = { workspace = true }
-quick-xml = { version = "0.31", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 regex = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = [] }

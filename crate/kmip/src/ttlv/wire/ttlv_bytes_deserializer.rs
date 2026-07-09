@@ -80,7 +80,11 @@ where
         // Read Value based on type
         let (value, value_len) = match item_type {
             TtlvType::Structure => {
-                let mut items = Vec::new();
+                // Pre-allocate with a capacity estimate: each child TLV is at
+                // least 8 bytes (header) + value, so `length / 16` is a
+                // conservative lower bound.  Cap at 16 to avoid over-allocating
+                // for artificially large (attacker-crafted) lengths.
+                let mut items = Vec::with_capacity((length / 16).min(16));
                 let mut remaining = length;
                 while remaining > 0 {
                     let (item, item_length) = self.read_ttlv_inner::<TAG>(depth + 1)?;

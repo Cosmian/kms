@@ -282,6 +282,7 @@ Run after each task, when diff >200 lines, or before marking the last todo "comp
 2. **Security-posture delta** — Did any change widen the attack surface or introduce a vulnerability? Run `/security-review` on changed files if uncertain.
 3. **Feature-flag consistency** — Are additions gated behind the same feature flags as surrounding code?
 4. **Diff review** — `git diff --stat && git diff` — every hunk must be explainable by the task.
+5. **PR quality gate** — For significant work (new feature, algorithm, auth change, or diff > 200 lines), suggest running `/kms-last-test-v5` once before the PR is submitted. Skip for trivial fixes and one-liners.
 
 ### 7. Updating CHANGELOG.md
 
@@ -314,6 +315,7 @@ All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` f
 
 | Invoke | When |
 |--------|------|
+| `/kms-last-test-v5` | **Before submitting a significant PR** — adversarial quality gate; suggest once for large features, skip for trivial fixes |
 | `/pre-release` | **Before every release** — orchestrates all AI audits, produces go/no-go report |
 | `/kms-release-notes <version>` | Aggregate `CHANGELOG/*.md` into a compact release note |
 | `/ci-fix` | Fix all CI failures in a loop until the branch is green |
@@ -330,6 +332,7 @@ All team-wide skills are in `.github/skills/`. See `.github/prompts/README.md` f
 | `/code-quality [path]` | Full code quality audit — duplication, patterns, Clippy, CI |
 | `/refactor-plan` | Before any multi-file refactor |
 | `/rust-refactor` | To find and consolidate Rust code duplication |
+| `/rust-simplify [path]` | Find simplification opportunities: nesting, long functions, dead code, bool traps, iterator anti-patterns |
 | `/rust-patterns` | KMS-specific Rust design patterns reference |
 | `/docs-writer` | For documentation pages (Diátaxis framework) |
 | `/adr` | For architectural decisions |

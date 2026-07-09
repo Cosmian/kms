@@ -56,6 +56,7 @@ Team-wide GitHub Copilot skills for the KMS repository.
 | **Code Quality** | `/code-quality [path]` | **Orchestrates** `/rust-refactor`, `/rust-patterns`, Clippy hygiene, and `/ci-efficiency`. Produces a ranked report of blocking items and high-impact improvements. |
 | Refactor Plan | `/refactor-plan` | Investigate a refactor, produce a phased plan with cargo verification steps. Wait for confirmation before implementing. |
 | Rust Refactor | `/rust-refactor` | Find duplication in Rust code and consolidate with Traits, Generics, macros. Ranked impact/risk plan before touching code. |
+| Rust Simplify | `/rust-simplify [path]` | Find simplification opportunities: nested control flow, long functions, dead code, bool param traps, iterator anti-patterns, and Clippy-flagged complexity. Ranked list before touching code. |
 | Rust Patterns | `/rust-patterns` | KMS-specific Rust design patterns: newtype, builder, command, trait abstraction, key lifecycle state machine. |
 | CI Efficiency | `/ci-efficiency` | Audit GitHub Actions workflows for waste (missing caches, over-broad triggers, no concurrency cancellation). |
 

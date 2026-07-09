@@ -159,7 +159,7 @@ pub(super) async fn test_server_side_unwrap() -> KResult<()> {
         attributes: Attributes::default(),
         object: wrapped_dek,
     };
-    let import_response = kms.import(import_request, &admin, None).await?;
+    let import_response = kms.import(import_request, &admin).await?;
     assert_eq!(
         import_response.unique_identifier,
         UniqueIdentifier::TextString(tmp_uid.clone())

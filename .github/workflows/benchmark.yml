@@ -1,93 +1,98 @@
 ---
-name: Benchmark Regression
+name: Benchmark
 
 on:
-  # Run on demand from the GitHub UI (useful for one-off checks)
-  workflow_dispatch:
+  # Called by other workflows (e.g. the release workflow) to record a baseline.
+  workflow_call:
     inputs:
-      bench_speed:
-        description: Benchmark speed mode (sanity|quick|normal)
+      server_version:
+        description: KMS server version to benchmark (e.g. 5.24.0); omit to build from the selected branch
         required: false
-        default: quick
-      regression_threshold:
-        description: Maximum average regression in % before failing
-        required: false
-        default: '10'
+        default: ''
+        type: string
       variant:
         description: Build variant (fips|non-fips)
         required: false
         default: non-fips
+        type: string
+      bench_mode:
+        description: Benchmark mode (all|encrypt|key-creation|sign-verify|batch)
+        required: false
+        default: all
+        type: string
 
-  # Run weekly on Sunday at 02:00 UTC against the default branch
-  schedule:
-    - cron: 0 2 * * 0
-
-  # Run on tag pushes to record a release baseline
-  push:
-    tags:
-      - '**'
+  # Manual trigger from the GitHub UI.
+  workflow_dispatch:
+    inputs:
+      server_version:
+        description: KMS server version to benchmark (e.g. 5.24.0); omit to build from the selected branch
+        required: false
+        default: ''
+      variant:
+        description: Build variant (fips|non-fips)
+        required: false
+        default: non-fips
+      bench_mode:
+        description: Benchmark mode (all|encrypt|key-creation|sign-verify|batch)
+        required: false
+        default: all
 
 jobs:
-  benchmark-regression:
-    name: Benchmark Regression – ${{ inputs.variant || 'non-fips' }}
+  # ── Job 1: run the benchmark suite ─────────────────────────────────────────
+  benchmark:
+    name: Benchmark KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant }})
     # Benchmarks require a stable, dedicated machine to produce comparable results.
     # See https://github.com/Cosmian/kms/issues/776
-    runs-on: self-hosted
-    timeout-minutes: 120
+    runs-on: [self-hosted, benchmark]
+    timeout-minutes: 180
+    concurrency:
+      group: benchmark-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+      cancel-in-progress: true
 
     steps:
       - name: Clean workspace (fix self-hosted runner permission issues)
         run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
+          clean: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
 
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
+      - uses: ./.github/actions/install-mise
 
-      - name: Install dependencies (jq, bc, OpenSSL)
+      - name: Install system dependencies
         run: |
           if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq jq bc curl pkg-config libssl-dev
+            sudo apt-get update -qq && sudo apt-get install -y -qq \
+              jq bc curl pkg-config libssl-dev python3 python3-matplotlib
           elif command -v brew >/dev/null 2>&1; then
-            brew install jq bc openssl pkg-config
+            brew install jq bc openssl pkg-config python3
           fi
 
-      - name: Run benchmark regression analysis
-        env:
-          VARIANT: ${{ inputs.variant || 'non-fips' }}
-          BENCH_SPEED: ${{ inputs.bench_speed || 'quick' }}
-          REGRESSION_THRESHOLD: ${{ inputs.regression_threshold || '10' }}
+      - name: Run load + criterion benchmarks
         run: |
-          mise run bench:regression --variant "$VARIANT"
+          ARGS=(--variant "${{ inputs.variant }}" --mode "${{ inputs.bench_mode }}" --criterion)
+          [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
+          mise run bench:load "${ARGS[@]}"
 
-      - name: Upload benchmark results
+      - name: Upload benchmark report folder
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-results-${{ inputs.variant || 'non-fips' }}-${{ github.run_id }}
-          path: |
-            target/criterion/benchmarks.json
-          retention-days: 90
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+          # The entire version folder: report.md + load/ + criterion/ + raw JSON.
+          path: target/criterion/reports/${{ inputs.server_version || github.ref_name }}/
+          retention-days: 30
 
-  publish-benchmarks:
-    name: Publish benchmark results to package.cosmian.com
-    needs: benchmark-regression
-    if: always() && needs.benchmark-regression.result != 'cancelled'
+  # ── Job 2: publish benchmark report to package.cosmian.com ────────────────
+  publish:
+    name: Publish to package.cosmian.com
+    needs: benchmark
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -98,21 +103,23 @@ jobs:
       - name: Download benchmark artifact
         uses: actions/download-artifact@v8
         with:
-          name: benchmark-results-${{ inputs.variant || 'non-fips' }}-${{ github.run_id }}
-          path: benchmark-results
+          name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+          path: report
 
-      - name: Push benchmark results to package.cosmian.com
+      - name: Push benchmark report to package.cosmian.com
         shell: bash
         run: |
           set -ex
-          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
-            BRANCH="${GITHUB_REF_NAME}"
-          else
-            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          fi
-          REMOTE_DIR="/mnt/package/kms/${BRANCH}/benchmarks"
-          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-            cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
-          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
-            benchmark-results/benchmarks.json \
+          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version || github.ref_name }}/benchmarks"
+          SSH_OPTS="-o StrictHostKeyChecking=no -i /root/.ssh/id_rsa"
+
+          # Create remote directory.
+          ssh ${SSH_OPTS} cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
+
+          # Copy the full report folder (report.md + load/ + criterion/ SVGs + raw JSON).
+          scp -r ${SSH_OPTS} \
+            report/. \
             cosmian@package.cosmian.com:"${REMOTE_DIR}/"
+
+          echo ""
+          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/report.md"

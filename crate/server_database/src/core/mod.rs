@@ -3,7 +3,7 @@
 mod database_objects;
 mod database_permissions;
 mod db_metrics;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 #[cfg(feature = "non-fips")]
@@ -18,9 +18,14 @@ use crate::error::DbResult;
 
 mod main_db_params;
 pub use main_db_params::{AdditionalObjectStoresParams, MainDbParams};
+pub(crate) mod fingerprinter;
+mod object_cache;
 mod unwrapped_cache;
 
-pub use crate::core::unwrapped_cache::{CachedObject, UnwrappedCache};
+pub use crate::core::{
+    object_cache::ObjectCache,
+    unwrapped_cache::{CachedObject, UnwrappedCache},
+};
 #[cfg(feature = "non-fips")]
 use crate::stores::RedisWithFindex;
 use crate::stores::{MySqlPool, PgPool, SqlitePool};
@@ -36,6 +41,10 @@ pub struct Database {
     /// The Unwrapped cache keeps the unwrapped version of keys in memory.
     /// This cache avoids calls to HSMs for each operation
     unwrapped_cache: UnwrappedCache,
+
+    /// LRU cache for `retrieve_object` results, eliminating repeated DB round-trips
+    /// when the same key is used for consecutive cryptographic operations.
+    object_cache: ObjectCache,
 
     /// The database kind for the default store (sqlite/postgres/mysql/redis-findex).
     kind: MainDbKind,
@@ -91,17 +100,28 @@ impl Database {
     /// - `clear_db_on_start` indicates whether to clear the database on startup.
     /// - `object_stores` is a map of object stores with their prefixes.
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
+    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
+    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
     pub async fn instantiate(
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         object_stores: HashMap<String, Arc<dyn ObjectsStore + Sync + Send>>,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
         recorder: Option<Arc<dyn DbMetricsRecorder>>,
     ) -> DbResult<Self> {
         // main/default database
-        let mut db =
-            Self::instantiate_main_database(main_db_params, clear_db_on_start, cache_max_age)
-                .await?;
+        let mut db = Self::instantiate_main_database(
+            main_db_params,
+            clear_db_on_start,
+            cache_max_age,
+            cache_max_size,
+            cache_max_ttl,
+            disable_unwrapped_cache,
+        )
+        .await?;
         db.recorder = recorder;
         for (prefix, store) in object_stores {
             db.register_objects_store(&prefix, store).await;
@@ -113,6 +133,9 @@ impl Database {
         main_db_params: &MainDbParams,
         clear_db_on_start: bool,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
     ) -> DbResult<Self> {
         // Permissions are stored in the same backend as objects for the main database.
         // The `SqlitePool`/`PgPool`/`MySqlPool` types implement both `ObjectsStore` and
@@ -128,6 +151,9 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::Sqlite,
                     health,
                 ))
@@ -139,6 +165,9 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::Postgres,
                     health,
                 ))
@@ -152,6 +181,9 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::Mysql,
                     health,
                 ))
@@ -180,6 +212,9 @@ impl Database {
                     db.clone(),
                     db,
                     cache_max_age,
+                    cache_max_size,
+                    cache_max_ttl,
+                    disable_unwrapped_cache,
                     MainDbKind::RedisFindex,
                     health,
                 ))
@@ -189,6 +224,10 @@ impl Database {
 
     pub const fn unwrapped_cache(&self) -> &UnwrappedCache {
         &self.unwrapped_cache
+    }
+
+    pub const fn object_cache(&self) -> &ObjectCache {
+        &self.object_cache
     }
 
     /// Create a new Objects Store
@@ -201,17 +240,28 @@ impl Database {
     /// - `default_database` is the default database for objects without a prefix
     /// - `permissions_database` is the database for permissions
     /// - `cache_max_age` is the maximum age of unwrapped objects in the cache.
+    /// - `cache_max_size` is the maximum number of entries in the unwrapped objects cache.
+    #[allow(clippy::too_many_arguments)] // cache config params (max_ttl, disable) are additive; a builder would over-engineer
     fn new(
         default_objects_database: Arc<dyn ObjectsStore + Sync + Send>,
         permissions_database: Arc<dyn PermissionsStore + Sync + Send>,
         cache_max_age: Duration,
+        cache_max_size: NonZeroUsize,
+        cache_max_ttl: Option<Duration>,
+        disable_unwrapped_cache: bool,
         kind: MainDbKind,
         health: Arc<dyn DatabaseHealth + Sync + Send>,
     ) -> Self {
         Self {
             objects: RwLock::new(HashMap::from([(String::new(), default_objects_database)])),
             permissions: permissions_database,
-            unwrapped_cache: UnwrappedCache::new(cache_max_age),
+            unwrapped_cache: UnwrappedCache::new(
+                cache_max_age,
+                cache_max_size,
+                cache_max_ttl,
+                disable_unwrapped_cache,
+            ),
+            object_cache: ObjectCache::new(cache_max_age, cache_max_size, cache_max_ttl),
             kind,
             health,
             recorder: None,
@@ -225,6 +275,42 @@ impl Database {
 
     pub async fn health_check(&self) -> Result<(), String> {
         self.health.check().await
+    }
+
+    /// Count all non-destroyed objects across all registered stores.
+    ///
+    /// Returns the total number of objects (all types) whose state is not `Destroyed`.
+    pub async fn count_all_non_destroyed_objects(&self) -> DbResult<u64> {
+        let map = self.objects.read().await;
+        let mut total = 0_u64;
+        for store in map.values() {
+            total += store.count_all_non_destroyed().await?;
+        }
+        Ok(total)
+    }
+
+    /// Count non-destroyed key objects across all registered stores.
+    ///
+    /// Returns the number of key objects (symmetric, asymmetric) whose state is not `Destroyed`.
+    pub async fn count_non_destroyed_key_objects(&self) -> DbResult<u64> {
+        let map = self.objects.read().await;
+        let mut total = 0_u64;
+        for store in map.values() {
+            total += store.count_non_destroyed_keys().await?;
+        }
+        Ok(total)
+    }
+
+    /// Reconcile all object-count metrics across all registered stores.
+    ///
+    /// For Redis-findex this rewrites the O(1) counter keys from a full SCAN;
+    /// for SQL backends this is a no-op.
+    pub async fn reconcile_all_object_counts(&self) -> DbResult<()> {
+        let map = self.objects.read().await;
+        for store in map.values() {
+            store.reconcile_counts().await?;
+        }
+        Ok(())
     }
 }
 

@@ -3,8 +3,8 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_2_1::kmip_operations::{
         Activate, AddAttribute, Certify, Check, Create, CreateKeyPair, Decrypt, DeleteAttribute,
         DeriveKey, Destroy, Encrypt, Export, Get, GetAttributeList, GetAttributes, Hash, Import,
-        Locate, MAC, MACVerify, ModifyAttribute, Operation, Query, RNGRetrieve, RNGSeed, ReKey,
-        ReKeyKeyPair, Register, Revoke, SetAttribute, Sign, SignatureVerify, Validate,
+        Locate, MAC, MACVerify, ModifyAttribute, Operation, Query, RNGRetrieve, RNGSeed, ReCertify,
+        ReKey, ReKeyKeyPair, Register, Revoke, SetAttribute, Sign, SignatureVerify, Validate,
     },
     ttlv::{TTLV, from_ttlv},
 };
@@ -28,13 +28,6 @@ macro_rules! op {
     ($ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
         let req = from_ttlv::<$Req>($ttlv)?;
         let resp = $kms.$method(req, $user).await?;
-        Operation::$Resp(resp)
-    }};
-    // Variant for operations that also need privileged_users
-    (priv $ttlv:expr, $kms:expr, $user:expr, $Req:ty, $method:ident, $Resp:ident) => {{
-        let req = from_ttlv::<$Req>($ttlv)?;
-        let privileged_users = $kms.params.privileged_users.clone();
-        let resp = $kms.$method(req, $user, privileged_users).await?;
         Operation::$Resp(resp)
     }};
     // Variant for operations returning a boxed response
@@ -78,23 +71,20 @@ macro_rules! op {
 /// Dispatch operation depending on the TTLV tag
 pub(crate) async fn dispatch(kms: &KMS, ttlv: TTLV, user: &str) -> KResult<Operation> {
     let operation_tag = ttlv.tag.clone();
-    let start_time = std::time::Instant::now();
 
-    let result = dispatch_inner(kms, ttlv, user, &operation_tag).await;
-
-    // Record metrics if enabled
     if let Some(ref metrics) = kms.metrics {
-        let duration = start_time.elapsed().as_secs_f64();
+        let start = std::time::Instant::now();
+        let result = dispatch_inner(kms, ttlv, user, &operation_tag).await;
+        let duration = start.elapsed().as_secs_f64();
         metrics.record_kmip_operation(&operation_tag, user);
         metrics.record_kmip_operation_duration(&operation_tag, duration);
-
-        // Record error if operation failed
         if result.is_err() {
             metrics.record_error(&operation_tag);
         }
+        result
+    } else {
+        dispatch_inner(kms, ttlv, user, &operation_tag).await
     }
-
-    result
 }
 
 async fn dispatch_inner(
@@ -104,8 +94,11 @@ async fn dispatch_inner(
     operation_tag: &str,
 ) -> KResult<Operation> {
     // For operations where the request carries algorithm choices, validate them
-    // before executing any cryptographic action.
-    enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+    // before executing any cryptographic action.  Skip entirely when no policy
+    // is configured — avoids a function call + match on every dispatch.
+    if kms.params.kmip_policy.policy_id.is_some() {
+        enforce_kmip_algorithm_policy_for_operation(&kms.params, operation_tag, &ttlv)?;
+    }
 
     Ok(match operation_tag {
         "Activate" => op!(ttlv, kms, user, Activate, activate, ActivateResponse),
@@ -117,13 +110,20 @@ async fn dispatch_inner(
             add_attribute,
             AddAttributeResponse
         ),
-        "Certify" => op!(priv ttlv, kms, user, Certify, certify, CertifyResponse),
+        "Certify" => op!(ttlv, kms, user, Certify, certify, CertifyResponse),
         "Check" => {
             op!(fn ttlv, kms, user, Check, check, CheckResponse)
         }
-        "Create" => op!(priv ttlv, kms, user, Create, create, CreateResponse),
+        "Create" => op!(ttlv, kms, user, Create, create, CreateResponse),
         "CreateKeyPair" => {
-            op!(priv ttlv, kms, user, CreateKeyPair, create_key_pair, CreateKeyPairResponse)
+            op!(
+                ttlv,
+                kms,
+                user,
+                CreateKeyPair,
+                create_key_pair,
+                CreateKeyPairResponse
+            )
         }
         "Decrypt" => op!(ttlv, kms, user, Decrypt, decrypt, DecryptResponse),
         "DeleteAttribute" => {
@@ -160,7 +160,7 @@ async fn dispatch_inner(
             RNGRetrieveResponse
         ),
         "RNGSeed" => op!(ttlv, kms, user, RNGSeed, rng_seed, RNGSeedResponse),
-        "Import" => op!(priv ttlv, kms, user, Import, import, ImportResponse),
+        "Import" => op!(ttlv, kms, user, Import, import, ImportResponse),
         "Locate" => op!(ttlv, kms, user, Locate, locate, LocateResponse),
         "Mac" | "MAC" => op!(ttlv, kms, user, MAC, mac, MACResponse),
         "MACVerify" => {
@@ -177,11 +177,21 @@ async fn dispatch_inner(
                 ModifyAttributeResponse
             )
         }
-        "ReKey" => op!(priv ttlv, kms, user, ReKey, rekey, ReKeyResponse),
+        "ReKey" => op!(ttlv, kms, user, ReKey, rekey, ReKeyResponse),
         "ReKeyKeyPair" => {
-            op!(priv ttlv, kms, user, ReKeyKeyPair, rekey_keypair, ReKeyKeyPairResponse)
+            op!(
+                ttlv,
+                kms,
+                user,
+                ReKeyKeyPair,
+                rekey_keypair,
+                ReKeyKeyPairResponse
+            )
         }
-        "Register" => op!(priv ttlv, kms, user, Register, register, RegisterResponse),
+        "ReCertify" => {
+            op!(ttlv, kms, user, ReCertify, recertify, ReCertifyResponse)
+        }
+        "Register" => op!(ttlv, kms, user, Register, register, RegisterResponse),
         "Revoke" => op!(ttlv, kms, user, Revoke, revoke, RevokeResponse),
         "SetAttribute" => op!(
             ttlv,

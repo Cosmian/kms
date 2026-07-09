@@ -14,7 +14,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::console,
+    actions::{console, shared::RotationPolicyArgs},
     error::result::{KmsCliResult, KmsCliResultHelper},
 };
 
@@ -77,6 +77,10 @@ pub struct CreateKeyAction {
         verbatim_doc_comment
     )]
     pub wrapping_key_id: Option<String>,
+
+    /// Optional rotation policy to apply immediately after key creation.
+    #[clap(flatten)]
+    pub rotation_policy: RotationPolicyArgs,
 }
 
 impl CreateKeyAction {
@@ -137,6 +141,14 @@ impl CreateKeyAction {
                 .with_context(|| "failed creating the key")?
                 .unique_identifier
         };
+
+        // Apply rotation policy if any fields were provided
+        if self.rotation_policy.is_set() {
+            let key_id = unique_identifier
+                .as_str()
+                .with_context(|| "the server did not return a key id as a string")?;
+            self.rotation_policy.apply(&kms_rest_client, key_id).await?;
+        }
 
         let mut stdout = console::Stdout::new("The symmetric key was successfully generated.");
         stdout.set_tags(Some(&self.tags));

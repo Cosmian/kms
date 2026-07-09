@@ -65,269 +65,440 @@ under `test_data/vectors/` containing a `manifest.toml` and one JSON step file
 per KMIP operation. The vector runner uses singleton shared servers and
 replays the steps sequentially.
 
-**353 vectors** across 8 categories:
+**632 vectors** across 16 categories (including KAT):
 
 | Category | Vector Directory Name | KMIP Operations | Steps |
 |----------|-----------------------|-----------------|-------|
 | **Symmetric** | | | |
-| Symmetric | `aes_create_get` | Create, Get | 2 |
-| Symmetric | `aes_encrypt_decrypt` | Create, Encrypt, Decrypt, Revoke, Destroy | 5 |
-| Symmetric | `aes128_encrypt_decrypt` | Create, Encrypt (AES-128-GCM), Decrypt | 3 |
-| Symmetric | `aes256_cbc_encrypt_decrypt` | Create, Encrypt (AES-256-CBC), Decrypt | 3 |
-| Symmetric | `aes128_cbc_encrypt_decrypt` | Create, Encrypt (AES-128-CBC), Decrypt | 3 |
-| Symmetric | `aes192_gcm_encrypt_decrypt` | Create, Encrypt (AES-192-GCM), Decrypt | 3 |
-| Symmetric | `aes192_cbc_encrypt_decrypt` | Create, Encrypt (AES-192-CBC), Decrypt | 3 |
-| Symmetric | `aes128_ecb_encrypt_decrypt` | Create, Encrypt (AES-128-ECB, no padding, no nonce), Decrypt | 3 |
-| Symmetric | `aes256_ecb_encrypt_decrypt` | Create, Encrypt (AES-256-ECB, no padding, no nonce), Decrypt | 3 |
-| Symmetric | `aes256_gcm_aad_encrypt_decrypt` | Create, Encrypt (AES-256-GCM + AAD), Decrypt | 3 |
-| Symmetric | `aes256_gcm_siv_encrypt_decrypt` | Create, Encrypt (AES-256-GCM-SIV), Decrypt | 3 |
-| Symmetric | `aes128_gcm_siv_encrypt_decrypt` | Create, Encrypt (AES-128-GCM-SIV), Decrypt | 3 |
-| Symmetric | `aes192_ecb_encrypt_decrypt` | Create, Encrypt (AES-192-ECB, no padding), Decrypt | 3 |
-| Symmetric | `aes256_cbc_no_padding_encrypt_decrypt` | Create, Encrypt (AES-256-CBC, no padding), Decrypt | 3 |
-| Symmetric | `aes128_xts_encrypt_decrypt` | Create, Encrypt (AES-128-XTS), Decrypt | 3 |
-| Symmetric | `aes256_xts_encrypt_decrypt` | Create, Encrypt (AES-256-XTS), Decrypt | 3 |
-| Symmetric | `chacha20_encrypt_decrypt` | Create, Encrypt (ChaCha20 pure stream), Decrypt | 3 |
-| Symmetric | `chacha20_poly1305_encrypt_decrypt` | Create, Encrypt (ChaCha20-Poly1305 AEAD), Decrypt | 3 |
+| Symmetric | `aes128_cbc_encrypt_decrypt` | Creates an AES-128 symmetric key, encrypts data with AES-CBC (PKCS5 padding), then decrypts and verifies | 3 |
+| Symmetric | `aes128_ecb_encrypt_decrypt` | Creates an AES-128 symmetric key, encrypts block-aligned data with AES-ECB (no padding, no nonce), then decrypts and verifies | 3 |
+| Symmetric | `aes128_encrypt_decrypt` | Creates an AES-128 key, encrypts data with AES-GCM, then decrypts | 5 |
+| Symmetric | `aes128_gcm_siv_encrypt_decrypt` | Creates an AES-128 symmetric key, encrypts data with AES-GCM-SIV (nonce-misuse resistant AEAD), then decrypts and verifies | 3 |
+| Symmetric | `aes128_xts_encrypt_decrypt` | Creates an AES-128-XTS key (32-byte, non-FIPS), encrypts a sector with a fixed tweak, then decrypts and verifies | 3 |
+| Symmetric | `aes192_cbc_encrypt_decrypt` | Creates an AES-192 symmetric key, encrypts data with AES-CBC (PKCS5 padding), then decrypts and verifies | 3 |
+| Symmetric | `aes192_ecb_encrypt_decrypt` | Creates an AES-192 symmetric key, encrypts block-aligned data with AES-ECB (no padding, no nonce), then decrypts and verifies | 3 |
+| Symmetric | `aes192_gcm_encrypt_decrypt` | Creates an AES-192 symmetric key, encrypts data with AES-GCM (AEAD), then decrypts and verifies | 3 |
+| Symmetric | `aes256_cbc_encrypt_decrypt` | Creates an AES-256 symmetric key, encrypts data with AES-CBC (PKCS5 padding), then decrypts and verifies | 3 |
+| Symmetric | `aes256_cbc_no_padding_encrypt_decrypt` | Creates an AES-256 key, encrypts block-aligned data with CBC and no padding, then decrypts and verifies | 3 |
+| Symmetric | `aes256_ecb_encrypt_decrypt` | Creates an AES-256 symmetric key, encrypts block-aligned data with AES-ECB (no padding, no nonce), then decrypts and verifies | 3 |
+| Symmetric | `aes256_gcm_aad_encrypt_decrypt` | Creates an AES-256 symmetric key, encrypts data with AES-GCM and Additional Authenticated Data (AAD), then decrypts and verifies that AAD is authenticated | 3 |
+| Symmetric | `aes256_gcm_siv_encrypt_decrypt` | Creates an AES-256 symmetric key, encrypts data with AES-GCM-SIV (nonce-misuse resistant AEAD), then decrypts and verifies | 3 |
+| Symmetric | `aes256_xts_encrypt_decrypt` | Creates an AES-256-XTS key (64-byte, non-FIPS), encrypts a sector with a fixed tweak, then decrypts and verifies | 3 |
+| Symmetric | `aes_create_get` | Creates an AES-256 symmetric key and retrieves it via Get | 2 |
+| Symmetric | `aes_encrypt_decrypt` | Creates an AES-256 key, encrypts data with AES-GCM, then decrypts and verifies | 5 |
+| Symmetric | `chacha20_encrypt_decrypt` | Creates a ChaCha20 key (non-FIPS), encrypts data with an 8-byte nonce, then decrypts and verifies | 3 |
+| Symmetric | `chacha20_poly1305_encrypt_decrypt` | Creates a ChaCha20-Poly1305 key, encrypts data with AEAD mode, then decrypts and verifies | 3 |
 | **Asymmetric** | | | |
-| Asymmetric | `rsa_create_encrypt_decrypt` | CreateKeyPair (RSA-2048), Encrypt (OAEP/SHA-256), Decrypt | 3 |
-| Asymmetric | `rsa4096_encrypt_decrypt` | CreateKeyPair (RSA-4096), Encrypt (OAEP/SHA-256), Decrypt | 3 |
-| Asymmetric | `rsa2048_oaep_sha384_encrypt_decrypt` | CreateKeyPair (RSA-2048), Encrypt (OAEP/SHA-384), Decrypt | 3 |
-| Asymmetric | `rsa2048_oaep_sha512_encrypt_decrypt` | CreateKeyPair (RSA-2048), Encrypt (OAEP/SHA-512), Decrypt | 3 |
-| Asymmetric | `rsa2048_pkcs1v15_encrypt_decrypt` | CreateKeyPair (RSA-2048), Encrypt (PKCS#1 v1.5), Decrypt | 3 |
-| Asymmetric | `ec_p256_sign_verify` | CreateKeyPair (P-256), Sign (ECDSA), SignatureVerify | 3 |
-| Asymmetric | `ec_p384_sign_verify` | CreateKeyPair (P-384), Sign (ECDSA), SignatureVerify | 3 |
-| Asymmetric | `ec_p521_sign_verify` | CreateKeyPair (P-521), Sign (ECDSA), SignatureVerify | 3 |
-| Asymmetric | `rsa2048_pkcs1v15_sha256_sign` | CreateKeyPair (RSA-2048), Sign (PKCS#1 v1.5 SHA-256), SignatureVerify | 3 |
-| Asymmetric | `rsa2048_pss_sha256_sign` | CreateKeyPair (RSA-2048), Sign (PSS-SHA256), SignatureVerify | 3 |
-| Asymmetric | `rsa2048_pss_sha384_sign` | CreateKeyPair (RSA-2048), Sign (PSS-SHA384), SignatureVerify | 3 |
-| Asymmetric | `rsa2048_pss_sha512_sign` | CreateKeyPair (RSA-2048), Sign (PSS-SHA512), SignatureVerify | 3 |
-| Asymmetric | `eddsa_ed25519_sign` | CreateKeyPair (Ed25519), Sign (EdDSA), SignatureVerify | 3 |
-| Asymmetric | `eddsa_ed448_sign` | CreateKeyPair (Ed448), Sign (EdDSA), SignatureVerify | 3 |
-| Asymmetric | `ec_k256_sign_verify` | CreateKeyPair (secp256k1), Sign (ECDSA), SignatureVerify | 3 |
-| Asymmetric | `rsa4096_pss_sha256_sign` | CreateKeyPair (RSA-4096), Sign (PSS-SHA256), SignatureVerify | 3 |
-| Asymmetric | `rsa2048_pss_sha1_sign` | CreateKeyPair (RSA-2048), Sign (PSS-SHA1), SignatureVerify | 3 |
-| Asymmetric | `ec_p256_ecies_encrypt_decrypt` | CreateKeyPair (P-256), Encrypt (ECIES), Decrypt | 3 |
-| Asymmetric | `rsa2048_aes_key_wrap` | CreateKeyPair (RSA-2048), Encrypt (RSA-AES key wrap), Decrypt | 3 |
+| Asymmetric | `ec_k256_sign_verify` | Creates a secp256k1 ECDSA key pair (non-FIPS), signs data with SHA-256, verifies the signature | 3 |
+| Asymmetric | `ec_p256_ecies_encrypt_decrypt` | Creates an ECDH P-256 key pair (non-FIPS), encrypts with ECIES using the public key, decrypts with the private key | 3 |
+| Asymmetric | `ec_p256_sign_verify` | Creates a NIST P-256 key pair, signs data, verifies the signature | 3 |
+| Asymmetric | `ec_p384_sign_verify` | Creates a NIST P-384 key pair, signs data, verifies the signature | 3 |
+| Asymmetric | `ec_p521_sign_verify` | Creates a NIST P-521 key pair, signs data with ECDSA, verifies the signature | 3 |
+| Asymmetric | `eddsa_ed25519_sign` | Creates an Ed25519 key pair, signs data with EdDSA, verifies the signature | 3 |
+| Asymmetric | `eddsa_ed448_sign` | Creates an Ed448 key pair (non-FIPS), signs data, verifies the signature | 3 |
+| Asymmetric | `ml_dsa_44_export_raw` | Creates a ML-DSA-44 key pair (PKCS8 format), exports both private and public keys as Raw format | 3 |
+| Asymmetric | `ml_kem_768_export_raw` | Creates a ML-KEM-768 key pair (PKCS8 format), exports both private and public keys as Raw format | 3 |
+| Asymmetric | `rsa2048_aes_key_wrap` | Creates an RSA-2048 key pair, wraps 32-byte AES key material with RSA-AES (PaddingMethod=None), then unwraps and verifies | 3 |
+| Asymmetric | `rsa2048_oaep_sha384_encrypt_decrypt` | Creates an RSA-2048 key pair, encrypts data with OAEP/SHA-384, decrypts with the private key and verifies | 3 |
+| Asymmetric | `rsa2048_oaep_sha512_encrypt_decrypt` | Creates an RSA-2048 key pair, encrypts data with OAEP/SHA-512, decrypts with the private key and verifies | 3 |
+| Asymmetric | `rsa2048_pkcs1v15_encrypt_decrypt` | Creates an RSA-2048 key pair, encrypts data with PKCS#1 v1.5 padding (non-FIPS), decrypts with the private key and verifies | 3 |
+| Asymmetric | `rsa2048_pkcs1v15_sha256_sign` | Creates an RSA-2048 key pair, signs data with PKCS#1 v1.5 (SHA-256WithRSAEncryption), verifies the signature | 3 |
+| Asymmetric | `rsa2048_pss_sha1_sign` | Creates an RSA-2048 key pair, signs data with PSS-SHA1 (non-FIPS: SHA-1 signing disallowed in FIPS mode), verifies the signature | 3 |
+| Asymmetric | `rsa2048_pss_sha256_sign` | Creates an RSA-2048 key pair, signs data with RSASSA-PSS (SHA-256), verifies the signature | 3 |
+| Asymmetric | `rsa2048_pss_sha384_sign` | Creates an RSA-2048 key pair, signs data with RSASSA-PSS (SHA-384), verifies the signature | 3 |
+| Asymmetric | `rsa2048_pss_sha512_sign` | Creates an RSA-2048 key pair, signs data with RSASSA-PSS (SHA-512), verifies the signature | 3 |
+| Asymmetric | `rsa4096_encrypt_decrypt` | Creates an RSA-4096 key pair, encrypts data with the public key, decrypts with the private key | 3 |
+| Asymmetric | `rsa4096_pss_sha256_sign` | Creates an RSA-4096 key pair, signs data with PSS-SHA256, verifies the signature | 3 |
+| Asymmetric | `rsa_create_encrypt_decrypt` | Creates an RSA-2048 key pair, encrypts data with the public key, decrypts with the private key | 3 |
 | **PQC** | | | |
-| PQC | `ml_dsa_44_sign_verify` | CreateKeyPair (ML-DSA-44), Sign, SignatureVerify | 3 |
-| PQC | `ml_dsa_65_sign_verify` | CreateKeyPair (ML-DSA-65), Sign, SignatureVerify | 3 |
-| PQC | `ml_dsa_87_sign_verify` | CreateKeyPair (ML-DSA-87), Sign, SignatureVerify | 3 |
-| PQC | `ml_kem_512_encap_decap` | CreateKeyPair (ML-KEM-512), Encrypt (encapsulate), Decrypt (decapsulate) | 3 |
-| PQC | `ml_kem_768_encap_decap` | CreateKeyPair (ML-KEM-768), Encrypt (encapsulate), Decrypt (decapsulate) | 3 |
-| PQC | `ml_kem_1024_encap_decap` | CreateKeyPair (ML-KEM-1024), Encrypt (encapsulate), Decrypt (decapsulate) | 3 |
-| PQC | `slh_dsa_sha2_128s_sign_verify` | CreateKeyPair (SLH-DSA-SHA2-128s), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_sha2_128f_sign_verify` | CreateKeyPair (SLH-DSA-SHA2-128f), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_sha2_192s_sign_verify` | CreateKeyPair (SLH-DSA-SHA2-192s), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_sha2_192f_sign_verify` | CreateKeyPair (SLH-DSA-SHA2-192f), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_sha2_256s_sign_verify` | CreateKeyPair (SLH-DSA-SHA2-256s), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_sha2_256f_sign_verify` | CreateKeyPair (SLH-DSA-SHA2-256f), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_shake_128s_sign_verify` | CreateKeyPair (SLH-DSA-SHAKE-128s), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_shake_128f_sign_verify` | CreateKeyPair (SLH-DSA-SHAKE-128f), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_shake_192s_sign_verify` | CreateKeyPair (SLH-DSA-SHAKE-192s), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_shake_192f_sign_verify` | CreateKeyPair (SLH-DSA-SHAKE-192f), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_shake_256s_sign_verify` | CreateKeyPair (SLH-DSA-SHAKE-256s), Sign, SignatureVerify | 3 |
-| PQC | `slh_dsa_shake_256f_sign_verify` | CreateKeyPair (SLH-DSA-SHAKE-256f), Sign, SignatureVerify | 3 |
+| PQC | `ml_dsa_44_sign_verify` | Creates a ML-DSA-44 key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `ml_dsa_65_sign_verify` | Creates a ML-DSA-65 key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `ml_dsa_87_sign_verify` | Creates a ML-DSA-87 key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `ml_kem_1024_encap_decap` | Creates a ML-KEM-1024 key pair, encapsulates to get ciphertext + shared secret, decapsulates and verifies shared secrets match | 3 |
+| PQC | `ml_kem_512_encap_decap` | Creates a ML-KEM-512 key pair, encapsulates to get ciphertext + shared secret, decapsulates and verifies shared secrets match | 3 |
+| PQC | `ml_kem_768_encap_decap` | Creates a ML-KEM-768 key pair, encapsulates to get ciphertext + shared secret, decapsulates and verifies shared secrets match | 3 |
+| PQC | `slh_dsa_sha2_128f_sign_verify` | Creates a SLH-DSA-SHA2-128f key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_sha2_128s_sign_verify` | Creates a SLH-DSA-SHA2-128s key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_sha2_192f_sign_verify` | Creates a SLH-DSA-SHA2-192f key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_sha2_192s_sign_verify` | Creates a SLH-DSA-SHA2-192s key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_sha2_256f_sign_verify` | Creates a SLH-DSA-SHA2-256f key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_sha2_256s_sign_verify` | Creates a SLH-DSA-SHA2-256s key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_shake_128f_sign_verify` | Creates a SLH-DSA-SHAKE-128f key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_shake_128s_sign_verify` | Creates a SLH-DSA-SHAKE-128s key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_shake_192f_sign_verify` | Creates a SLH-DSA-SHAKE-192f key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_shake_192s_sign_verify` | Creates a SLH-DSA-SHAKE-192s key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_shake_256f_sign_verify` | Creates a SLH-DSA-SHAKE-256f key pair (non-FIPS), signs data, verifies the signature | 3 |
+| PQC | `slh_dsa_shake_256s_sign_verify` | Creates a SLH-DSA-SHAKE-256s key pair (non-FIPS), signs data, verifies the signature | 3 |
 | **KMIP Operations** | | | |
-| KMIP Operations | `activate` | Create, Check, Activate, Check, Encrypt, Destroy | 6 |
-| KMIP Operations | `attribute_management` | Create, GetAttributes, SetAttribute, AddAttribute, DeleteAttribute, ModifyAttribute, GetAttributeList | 7 |
-| KMIP Operations | `certify_validate` | CreateKeyPair, Certify, Validate, Destroy ×3 | 6 |
-| KMIP Operations | `certify_revoke_validate` | CreateKeyPair, Certify, Validate, Revoke, Validate (invalid) | 8 |
-| KMIP Operations | `certify_chain` | CreateKeyPair, Certify (root→intermediate→leaf), Validate chain | 17 |
-| KMIP Operations | `check` | Create, Check, Activate, Check | 4 |
-| KMIP Operations | `derive_key_pbkdf2` | Create, DeriveKey (PBKDF2-SHA256), Get | 3 |
-| KMIP Operations | `derive_key_pbkdf2_sha512` | Create, DeriveKey (PBKDF2-SHA512), Get | 3 |
-| KMIP Operations | `derive_key_hkdf` | Create, DeriveKey (HKDF-SHA256), Get | 3 |
-| KMIP Operations | `destroy` | Create, Revoke, Destroy, Get (fail) | 4 |
-| KMIP Operations | `discover_versions` | DiscoverVersions | 1 |
-| KMIP Operations | `get_attribute_list` | Create, GetAttributeList, Revoke, Destroy | 4 |
-| KMIP Operations | `get_attributes` | Create, GetAttributes, Revoke, Destroy | 4 |
-| KMIP Operations | `hash_sha256` | Hash (SHA-256) | 2 |
-| KMIP Operations | `hash_sha384` | Hash (SHA-384) | 2 |
-| KMIP Operations | `hash_sha512` | Hash (SHA-512) | 2 |
-| KMIP Operations | `hash_sha3_256` | Hash (SHA3-256) | 2 |
-| KMIP Operations | `hash_sha3_384` | Hash (SHA3-384) | 2 |
-| KMIP Operations | `hash_sha3_512` | Hash (SHA3-512) | 2 |
-| KMIP Operations | `import_key` | Import, Get, Revoke, Destroy | 4 |
-| KMIP Operations | `locate` | Create ×2, Locate | 3 |
-| KMIP Operations | `locate_by_state` | Create ×2, Activate, Locate (active only) | 4 |
-| KMIP Operations | `locate_by_tag` | Create (with vendor tag), Locate (by tag), Destroy | 3 |
-| KMIP Operations | `locate_by_usage_mask` | Create (encrypt-only + sign-only), Locate (by usage mask) | 3 |
-| KMIP Operations | `mac_and_verify` | Create, MAC, MACVerify, MACVerify (fail) | 4 |
-| KMIP Operations | `mac_hmac_sha384` | Create, MAC (HMAC-SHA384) | 2 |
-| KMIP Operations | `mac_hmac_sha512` | Create, MAC (HMAC-SHA512) | 2 |
-| KMIP Operations | `mac_hmac_sha3_256` | Import, MAC (HMAC-SHA3-256) | 2 |
-| KMIP Operations | `opaque_data` | Import, Get, Revoke, Destroy | 4 |
-| KMIP Operations | `query` | Query | 1 |
-| KMIP Operations | `register_export` | Register, Get, Export, Destroy | 4 |
-| KMIP Operations | `rekey` | Create, ReKey, Encrypt | 3 |
-| KMIP Operations | `rekey_locate_by_name` | Create (named), Locate, ReKey, Locate (finds new key), GetAttributes (old=Active — ReKey does not deactivate the existing key) | 5 |
-| KMIP Operations | `rekey_deactivated_fails` | Create, ReKey, Revoke (old → Deactivated), ReKey (old → fails) | 4 |
-| KMIP Operations | `rekey_with_links` | Create, ReKey, GetAttributes (old has ReplacementObjectLink), GetAttributes (new has ReplacedObjectLink) | 4 |
-| KMIP Operations | `rekey_with_offset` | Create, ReKey (Offset=3600s), GetAttributes (ActivationDate = now+3600) | 4 |
-| KMIP Operations | `rekey_name_removed_from_old` | Create (named), ReKey, GetAttributes (old has no Name) | 4 |
-| KMIP Operations | `rekey_double_chain` | Create, ReKey, ReKey, GetAttributes (chain of ReplacementObjectLinks) | 5 |
-| KMIP Operations | `rekey_old_key_still_decrypts` | Create, ReKey, Encrypt (old key still works) | 3 |
-| KMIP Operations | `rekey_keypair_ec` | CreateKeyPair (EC P-256), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_rsa` | CreateKeyPair (RSA-2048), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_rsa4096` | CreateKeyPair (RSA-4096), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_p384` | CreateKeyPair (EC P-384), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_p521` | CreateKeyPair (EC P-521), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_ml_kem_768` | CreateKeyPair (ML-KEM-768), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_ml_kem_1024` | CreateKeyPair (ML-KEM-1024), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_ml_dsa_65` | CreateKeyPair (ML-DSA-65), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_ml_dsa_87` | CreateKeyPair (ML-DSA-87), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_slh_dsa_sha2_128f` | CreateKeyPair (SLH-DSA-SHA2-128f), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_keypair_double_chain` | CreateKeyPair (EC), ReKeyKeyPair ×2, verify link chain | 7 |
-| KMIP Operations | `rekey_keypair_deactivated_fails` | CreateKeyPair (EC), Revoke SK, ReKeyKeyPair → fails | 4 |
-| KMIP Operations | `rekey_keypair_change_algo_fails` | CreateKeyPair (EC), ReKeyKeyPair (different algo) → fails | 3 |
-| KMIP Operations | `rekey_keypair_ec_locate_by_name` | CreateKeyPair (named), ReKeyKeyPair, Locate (finds new key) | 5 |
-| KMIP Operations | `rekey_keypair_name_removed_from_old` | CreateKeyPair (named), ReKeyKeyPair, GetAttributes (old has no Name) | 5 |
-| KMIP Operations | `rekey_keypair_old_key_still_active` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (old SK State=Active) | 5 |
-| KMIP Operations | `rekey_keypair_no_public_link_fails` | CreateKeyPair (EC), Delete PublicKeyLink, ReKeyKeyPair → fails | 4 |
-| KMIP Operations | `rekey_keypair_with_offset` | CreateKeyPair (EC), ReKeyKeyPair (Offset=3600s), verify ActivationDate | 5 |
-| KMIP Operations | `rekey_keypair_ec_with_links` | CreateKeyPair (EC), ReKeyKeyPair, GetAttributes (verify links) | 5 |
-| KMIP Operations | `rekey_keypair_rsa_with_links` | CreateKeyPair (RSA), ReKeyKeyPair, GetAttributes (verify links) | 5 |
-| KMIP Operations | `rekey_keypair_rsa_encrypt_decrypt` | CreateKeyPair (RSA), ReKeyKeyPair, Encrypt+Decrypt with new key | 7 |
-| KMIP Operations | `rekey_keypair_ec_sign_verify` | CreateKeyPair (ECDSA P-256), ReKeyKeyPair, Sign+Verify with new key | 7 |
-| KMIP Operations (non-FIPS) | `rekey_keypair_ed25519` | CreateKeyPair (Ed25519), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations (non-FIPS) | `rekey_keypair_x25519` | CreateKeyPair (X25519), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations (non-FIPS) | `rekey_keypair_secp256k1` | CreateKeyPair (secp256k1), ReKeyKeyPair, Revoke+Destroy | 5 |
-| KMIP Operations | `rekey_kmip14` | Create (KMIP 1.4 JSON), ReKey (KMIP 1.4), Encrypt, Destroy ×2 | 7 |
-| KMIP Operations | `rekey_keypair_kmip14` | CreateKeyPair (KMIP 1.4 JSON), ReKeyKeyPair (KMIP 1.4), Destroy ×4 | 6 |
-| KMIP Operations | `rekey_keypair_kmip14_binary` | CreateKeyPair (KMIP 1.4 binary), ReKeyKeyPair (KMIP 1.4 binary), Destroy ×4 | 6 |
-| KMIP Operations | `rng_retrieve` | RNGRetrieve | 1 |
-| KMIP Operations | `rng_seed` | RNGSeed | 1 |
-| KMIP Operations | `secret_data` | Register, Get, Activate, Revoke, Destroy | 5 |
+| KMIP Operations | `activate` | Creates a pre-active key, verifies encrypt fails, activates it, encrypts successfully | 6 |
+| KMIP Operations | `attribute_management` | Tests GetAttributes, SetAttribute, AddAttribute, DeleteAttribute, ModifyAttribute, GetAttributeList | 9 |
+| KMIP Operations | `batch_create_get` | Sends a single JSON RequestMessage with BatchCount=2: first BatchItem creates an AES-256 key, second BatchItem gets it back. Both items must succeed. Exercises the JSON batch endpoint. | 2 |
+| KMIP Operations | `batch_hash_query` | Sends a single binary KMIP RequestMessage with BatchCount=3: Hash(SHA-256), Hash(SHA-384), and Query in one binary request. All three BatchItems must succeed. Exercises the binary batch endpoint with BatchOrderOption=true and stateless independent operations. | 1 |
+| KMIP Operations | `certify_chain` | Creates a 3-level X.509 chain: | 22 |
+| KMIP Operations | `certify_revoke_validate` | Creates a self-signed certificate, validates it (valid), revokes it, then re-validates (invalid) | 10 |
+| KMIP Operations | `certify_validate` | Creates an EC key pair, self-signs a certificate, validates it, then cleans up | 8 |
+| KMIP Operations | `check` | Creates a key, checks its usage mask, activates it, checks again | 4 |
+| KMIP Operations | `crl_validation_lifecycle` | Full CRL validation: create CA+EE cert chain, generate empty CRL (valid), revoke EE cert, regenerate CRL, validate again (invalid due to revocation in CRL) | 16 |
+| KMIP Operations | `derive_key_hkdf` | Creates a base symmetric key, derives a new AES-128 key using HKDF-SHA256 | 3 |
+| KMIP Operations | `derive_key_pbkdf2` | Creates a base symmetric key, derives a new AES-128 key using PBKDF2-SHA256, retrieves the derived key | 3 |
+| KMIP Operations | `derive_key_pbkdf2_sha512` | Creates a base symmetric key, derives a new AES-128 key using PBKDF2-SHA512 | 3 |
+| KMIP Operations | `destroy` | Creates a symmetric key, destroys it, then verifies Get fails | 4 |
+| KMIP Operations | `discover_versions` | Queries supported KMIP protocol versions from the server | 1 |
+| KMIP Operations | `get_attribute_list` | Creates a key and retrieves the list of its attribute names | 4 |
+| KMIP Operations | `get_attributes` | Creates a symmetric key, retrieves its attributes, then cleans up | 4 |
+| KMIP Operations | `hash_sha256` | Computes a SHA-256 hash of data | 1 |
+| KMIP Operations | `hash_sha384` | Computes a SHA-384 hash of data | 1 |
+| KMIP Operations | `hash_sha3_256` | Computes a SHA3_256 hash of data | 1 |
+| KMIP Operations | `hash_sha3_384` | Computes a SHA3_384 hash of data | 1 |
+| KMIP Operations | `hash_sha3_512` | Computes a SHA3_512 hash of data | 1 |
+| KMIP Operations | `hash_sha512` | Computes a SHA512 hash of data | 1 |
+| KMIP Operations | `import_key` | Imports an AES-256 key with explicit UID, gets it, revokes, and destroys | 4 |
+| KMIP Operations | `locate` | Creates two AES keys with distinct names, then locates them by ObjectType and Name | 3 |
+| KMIP Operations | `locate_by_state` | Creates two keys (one activated, one pre-active), locates only the active one by state filter | 4 |
+| KMIP Operations | `locate_by_tag` | Creates a key with a Cosmian vendor tag, then locates it using the tag filter | 3 |
+| KMIP Operations | `locate_by_usage_mask` | Creates keys with different usage masks (encrypt-only vs sign-only), locates by CryptographicUsageMask | 3 |
+| KMIP Operations | `mac_and_verify` | Creates an HMAC key, computes a MAC, verifies it, then verifies an invalid MAC fails | 6 |
+| KMIP Operations | `mac_hmac_sha384` | Creates an HMACSHA384 HMAC key, computes a MAC over data | 2 |
+| KMIP Operations | `mac_hmac_sha3_256` | Imports an HMACSHA3256 HMAC key, computes a MAC over data | 2 |
+| KMIP Operations | `mac_hmac_sha512` | Creates an HMACSHA512 HMAC key, computes a MAC over data | 2 |
+| KMIP Operations | `opaque_data` | Imports opaque data, retrieves it, then destroys | 4 |
+| KMIP Operations | `process_window_encrypt_expired_fails` | Creates an Active symmetric key, then sets its ProtectStopDate to a date in the past via SetAttribute.  An Encrypt attempt must be rejected with Wrong_Key_Lifecycle_State even though the key state is still Active. | 5 |
+| KMIP Operations | `process_window_encrypt_not_yet_active_fails` | Creates an Active symmetric key, then sets its ProcessStartDate to a date far in the future via SetAttribute.  An Encrypt attempt must be rejected with Wrong_Key_Lifecycle_State even though the key state is still Active. | 5 |
+| KMIP Operations | `query` | Queries server information, supported operations, and supported object types | 1 |
+| KMIP Operations | `recertify_chain` | Creates a root CA (self-signed) and a leaf certificate signed by the root, then performs ReCertify on the leaf certificate. Verifies the new leaf cert has proper replacement links and Active state. | 17 |
+| KMIP Operations | `recertify_old_cert_stays_active` | After ReCertify, the old certificate transitions to Deactivated state per KMIP §4.57 transition 6 (same path as ReKey). The new certificate is Active. | 12 |
+| KMIP Operations | `recertify_self_signed` | Creates a self-signed certificate, performs ReCertify to rotate it, and verifies the new certificate has a fresh UID and Active state. | 11 |
+| KMIP Operations | `recertify_with_links` | Verifies that ReCertify properly sets ReplacementObjectLink on the old certificate and ReplacedObjectLink on the new certificate, forming a bidirectional chain. Also verifies that the new certificate is in Active state. | 12 |
+| KMIP Operations | `recertify_with_offset` | Verifies that ReCertify with Offset=0 produces an Active certificate, and ReCertify with Offset=86400 (24h future) produces a PreActive certificate. | 21 |
+| KMIP Operations | `register_export` | Registers a pre-existing AES key, retrieves it with Get, exports it, then destroys | 5 |
+| KMIP Operations | `rekey` | Creates an AES key, re-keys it, and verifies the new key works for encryption | 5 |
+| KMIP Operations | `rekey_compromised_succeeds` | Verifies that ReKey on a Compromised key succeeds. Per the spec, Active, Deactivated, and Compromised keys can be rotated. Only PreActive and Destroyed states are rejected. | 8 |
+| KMIP Operations | `rekey_deactivated_fails` | Verifies that ReKey on a Destroyed symmetric key fails with Wrong_Key_Lifecycle_State. | 4 |
+| KMIP Operations | `rekey_deactivated_succeeds` | Verifies that ReKey on a Deactivated key succeeds. Per KMIP §6.1.46, Wrong_Key_Lifecycle_State is NOT listed in the Re-Key error table, meaning Deactivated keys are eligible for rotation. | 9 |
+| KMIP Operations | `rekey_double_chain` | Verifies that re-keying twice creates a proper chain: K1→K2→K3. K1.ReplacementObjectLink=K2, K2.ReplacedObjectLink=K1, K2.ReplacementObjectLink=K3, K3.ReplacedObjectLink=K2. | 12 |
+| KMIP Operations | `rekey_keypair_change_algo_fails` | Verifies that ReKeyKeyPair rejects a request that tries to change the cryptographic algorithm (from EC to RSA). | 4 |
+| KMIP Operations | `rekey_keypair_deactivated_fails` | Verifies that ReKeyKeyPair on a Destroyed private key fails. | 6 |
+| KMIP Operations | `rekey_keypair_deactivated_succeeds` | Verifies that ReKeyKeyPair on a revoked/deactivated private key succeeds. Per KMIP §6.1.47, Wrong_Key_Lifecycle_State is NOT listed in the Re-Key Key Pair error table, meaning Deactivated keys are eligible for rotation. | 10 |
+| KMIP Operations | `rekey_keypair_double_chain` | Verifies that re-keying a key pair twice creates a proper chain. KP1 -> KP2 -> KP3 with correct link attributes. | 12 |
+| KMIP Operations | `rekey_keypair_ec` | Verifies that ReKeyKeyPair succeeds for an EC P-256 key pair, returning new private and public key UIDs. | 7 |
+| KMIP Operations | `rekey_keypair_ec_locate_by_name` | Verifies that after ReKeyKeyPair, the replacement private key inherits the Name attribute and can be found via Locate by name. | 8 |
+| KMIP Operations | `rekey_keypair_ec_sign_verify` | Verifies that after ReKeyKeyPair, the new private key can sign and the new public key can verify the signature. | 8 |
+| KMIP Operations | `rekey_keypair_ec_with_links` | Verifies that ReKeyKeyPair on an EC P-256 key pair properly sets ReplacementObjectLink on both old keys and ReplacedObjectLink on both new keys. | 10 |
+| KMIP Operations | `rekey_keypair_kmip14` | Exercises the ReKeyKeyPair operation through the KMIP 1.4 protocol path, verifying that the V14→V21 request conversion (PrivateKeyUniqueIdentifier as required String, CommonTemplateAttribute→CommonAttributes) and V21→V14 response conversion (UniqueIdentifier→String) work correctly. This test was previously impossible because the ReKeyKeyPair V14↔V21 conversion was not implemented. | 6 |
+| KMIP Operations | `rekey_keypair_kmip14_binary` | Exercises ReKeyKeyPair through the binary TTLV wire format with KMIP 1.4 protocol version. This mimics how real clients (VAST Data, Synology, FortiGate, etc.) communicate with the KMS — sending binary TTLV over HTTP. Verifies the full path: JSON→TTLV binary serialization→server parse→V14→V21 conversion→operation→V21→V14 response conversion→binary serialization→JSON assertion. | 6 |
+| KMIP Operations | `rekey_keypair_ml_dsa_44` | Verifies that ReKeyKeyPair succeeds for ML-DSA-44, completing the ML-DSA trilogy (44/65/87). | 10 |
+| KMIP Operations | `rekey_keypair_ml_dsa_65` | Verifies that ReKeyKeyPair succeeds for ML-DSA-65. | 6 |
+| KMIP Operations | `rekey_keypair_ml_dsa_87` | Verifies that ReKeyKeyPair succeeds for ML-DSA-87. | 6 |
+| KMIP Operations | `rekey_keypair_ml_kem_1024` | Verifies that ReKeyKeyPair succeeds for ML-KEM-1024. | 6 |
+| KMIP Operations | `rekey_keypair_ml_kem_512` | Verifies that ReKeyKeyPair succeeds for ML-KEM-512, completing the ML-KEM trilogy (512/768/1024). | 10 |
+| KMIP Operations | `rekey_keypair_ml_kem_768` | Verifies that ReKeyKeyPair succeeds for ML-KEM-768. | 6 |
+| KMIP Operations | `rekey_keypair_name_removed_from_old` | Verifies that after ReKeyKeyPair, the old private key no longer has the Name attribute. | 7 |
+| KMIP Operations | `rekey_keypair_no_public_link_fails` | Verifies that ReKeyKeyPair fails when the private key has no PublicKeyLink. | 5 |
+| KMIP Operations | `rekey_keypair_old_key_still_active` | Verifies that after ReKeyKeyPair, the old private key transitions to Deactivated | 7 |
+| KMIP Operations | `rekey_keypair_p384` | Verifies that ReKeyKeyPair succeeds for this key type. | 6 |
+| KMIP Operations | `rekey_keypair_p521` | Verifies that ReKeyKeyPair succeeds for this key type. | 6 |
+| KMIP Operations | `rekey_keypair_rsa` | Verifies that ReKeyKeyPair succeeds for an RSA-2048 key pair, returning new private and public key UIDs. | 7 |
+| KMIP Operations | `rekey_keypair_rsa4096` | Verifies that ReKeyKeyPair succeeds for this key type. | 6 |
+| KMIP Operations | `rekey_keypair_rsa_encrypt_decrypt` | Verifies that after ReKeyKeyPair, the new public key can encrypt and the new private key can decrypt. | 8 |
+| KMIP Operations | `rekey_keypair_rsa_old_decrypts` | After ReKeyKeyPair, the old private key is Deactivated but can still decrypt ciphertext encrypted with the old public key. Processing operations (Decrypt) accept Deactivated state per KMIP §3.31. | 8 |
+| KMIP Operations | `rekey_keypair_rsa_sign_verify` | Verifies that after ReKeyKeyPair on an RSA-2048 key pair, the new private key can sign and the new public key can verify the signature (RSA-PSS SHA-256). | 12 |
+| KMIP Operations | `rekey_keypair_rsa_with_links` | Verifies that ReKeyKeyPair on an RSA-2048 key pair properly sets ReplacementObjectLink and ReplacedObjectLink. | 8 |
+| KMIP Operations | `rekey_keypair_slh_dsa_sha2_128f` | Verifies that ReKeyKeyPair succeeds for SLH-DSA-SHA2-128F. | 6 |
+| KMIP Operations | `rekey_keypair_with_offset` | Verifies that ReKeyKeyPair with an Offset parameter correctly applies date computation on the replacement key pair. | 7 |
+| KMIP Operations | `rekey_keypair_with_offset_state` | Verifies that ReKeyKeyPair with Offset=0 produces Active keys, and ReKeyKeyPair with Offset=86400 (24h future) produces PreActive keys. | 20 |
+| KMIP Operations | `rekey_kmip14` | Exercises the ReKey operation through the KMIP 1.4 protocol path, verifying that the V14→V21 request conversion and V21→V14 response conversion work correctly. KMIP 1.4 uses TemplateAttribute containers and a required (non-optional) UniqueIdentifier. The ReKey response must return a new UniqueIdentifier as a plain String (not wrapped in UniqueIdentifier enum). | 7 |
+| KMIP Operations | `rekey_locate_by_name` | Verifies that after ReKey, the replacement key inherits the Name attribute and can be found via Locate by name. This is the critical behavior for VAST Data and similar EKM integrations that poll by name after rotation. | 9 |
+| KMIP Operations | `rekey_mac_keyset` | Complex MAC key rotation test: | 10 |
+| KMIP Operations | `rekey_manual_clears_interval` | After a manual ReKey, x-rotate-interval must be set to 0 on the new key. This forces the operator to re-arm the rotation policy explicitly, preventing accidental automatic rotation of the new key. | 8 |
+| KMIP Operations | `rekey_manual_clears_offset` | After a manual ReKey, x-rotate-offset must NOT be inherited by the new key. The spec states the value is 'None (not inherited for manual rekey)'. | 8 |
+| KMIP Operations | `rekey_name_removed_from_old` | Verifies that after ReKey, the old key no longer has the Name attribute (it was transferred to the replacement key). | 7 |
+| KMIP Operations | `rekey_old_key_decrypt_succeeds` | After ReKey, the old key is Deactivated. Per KMIP §3.31 the old key can still be used for Decrypt (processing operations accept Deactivated state). This test encrypts before rotation, then decrypts with the OLD key UID after rotation. | 8 |
+| KMIP Operations | `rekey_old_key_still_decrypts` | Verifies that after ReKey, the old key is Deactivated (KMIP §4.57 transition 6) and can no longer be used for encryption. | 7 |
+| KMIP Operations | `rekey_with_links` | Verifies that ReKey properly sets ReplacementObjectLink on the old key and ReplacedObjectLink on the new key, forming a bidirectional chain. | 8 |
+| KMIP Operations | `rekey_with_offset` | Verifies that ReKey with an Offset parameter correctly computes the replacement key's Activation Date as InitializationDate + Offset. | 7 |
+| KMIP Operations | `rekey_with_offset_state` | Verifies that ReKey with Offset=0 produces an Active key, and ReKey with Offset=86400 (24h future) produces a PreActive key. | 13 |
+| KMIP Operations | `rekey_wrapped_deactivated_succeeds` | Creates a wrapping key and a wrapped dependent key, verifies wrapping, revokes the dependent, then verifies that ReKey on the deactivated wrapped key succeeds per KMIP §6.1.46. | 12 |
+| KMIP Operations | `rekey_wrapped_key` | Creates a wrapping key and a wrapped dependent key, then re-keys the wrapped key. Verifies the new key has fresh material, is still wrapped, and works for encryption. | 13 |
+| KMIP Operations | `rekey_wrapping_key` | Creates a wrapping key, creates a dependent key wrapped by it, then re-keys the wrapping key and verifies the dependent key was automatically re-wrapped and still works for encryption. | 13 |
+| KMIP Operations | `rekey_wrapping_key_double_chain` | Creates a wrapping key K0 with two wrapped dependants. Rotates K0 → K1, then K1 → K2. Verifies the full link chain (K0 → K1 → K2) and that both dependants are re-wrapped each time and still work for encryption. | 24 |
+| KMIP Operations | `rekey_wrapping_key_with_links` | Creates a wrapping key and two dependent wrapped keys. Re-keys the wrapping key and verifies: (1) dependants are actually wrapped, (2) bidirectional replacement links on the wrapping keys, (3) both dependants are re-wrapped and still work for encryption. | 18 |
+| KMIP Operations | `rng_retrieve` | Retrieves 32 random bytes from the server RNG | 1 |
+| KMIP Operations | `rng_seed` | Seeds the server RNG with entropy and verifies the response | 1 |
+| KMIP Operations | `secret_data` | Registers a password as SecretData, retrieves it with Get, then destroys | 5 |
+| KMIP Operations (non-FIPS) | `non-fips/rekey_keypair_covercrypt` | Verifies that ReKeyKeyPair on a Covercrypt master secret key with a RekeyAccessPolicy action performs an in-place attribute-level rekey, returning the same UIDs (no new key pair is created). | 6 |
+| KMIP Operations (non-FIPS) | `non-fips/rekey_keypair_ed25519` | Verifies that ReKeyKeyPair succeeds for ed25519. | 6 |
+| KMIP Operations (non-FIPS) | `non-fips/rekey_keypair_secp256k1` | Verifies that ReKeyKeyPair succeeds for secp256k1. | 6 |
+| KMIP Operations (non-FIPS) | `non-fips/rekey_keypair_x25519` | Verifies that ReKeyKeyPair succeeds for x25519. | 6 |
+| **Serialization** | | | |
+| Serialization | `attributes_preservation` | Creates an AES key with multiple attributes (name, algorithm, length, usage mask), retrieves it with Get, and verifies all attributes are preserved through DB serialization | 3 |
+| Serialization | `create_encrypt_decrypt_roundtrip` | Creates an AES-256 key, encrypts data, then decrypts — verifies key material survives DB serialization through KMIP3: prefixed object storage | 3 |
+| Serialization | `create_locate_roundtrip` | Creates an AES key with a unique name, then Locates it by name — verifies attributes survive DB serialization (kmip_3_0 JSON format) and json_extract queries work | 2 |
+| Serialization | `import_destroy_reimport` | Imports a key with explicit UID, destroys it, then re-imports with the same UID — verifies lifecycle state transitions work correctly with the new serialization format | 6 |
+| Serialization | `rsa_sign_verify_roundtrip` | Creates an RSA-2048 key pair, signs data with private key, verifies with public key — verifies asymmetric key material and attributes survive DB serialization | 3 |
+| **K8s Plugin** | | | |
+| K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by cosmian-kms-plugin when kube-apiserver | 5 |
 | **Access Control** | | | |
-| Access Control | `revoke_key_lifecycle` | Create, Revoke, Encrypt (fail — revoked) | 3 |
-| Access Control | `grant_access_aes` | Create, GrantAccess, Get (user), Encrypt (user), Decrypt (user) | 5 |
-| Access Control | `revoke_access` | Create, GrantAccess, Get (user ok), RevokeAccess, Get (user fail) | 5 |
-| Access Control | `unauthorized_access` | Create, Get (user fail — no grant) | 2 |
-| Access Control | `owner_full_access` | Create, Get (owner), Encrypt (owner), Decrypt (owner) | 4 |
-| Access Control | `grant_partial_permissions` | Create, GrantAccess (Get only), Get (user ok), Encrypt (user ok — Get is wildcard for crypto) | 4 |
-| Access Control | `privilege_escalation_self_grant` | Create, GrantAccess (owner → self) → denied | 2 |
-| Access Control | `privilege_escalation_non_owner_grant` | Create, GrantAccess by user (not owner) → denied ×2 | 3 |
-| Access Control | `privilege_escalation_destroy_without_permission` | Create, GrantAccess (Get only), Get (ok), Destroy (denied — Get not wildcard for lifecycle ops), Get (still exists) | 5 |
-| Access Control | `privilege_escalation_rekey_without_permission` | Create, GrantAccess (Get only), Get (ok), ReKey (denied — Get not wildcard for ReKey), Get (still exists) | 5 |
-| Access Control | `privilege_escalation_activate_without_permission` | Create (PreActive), GrantAccess (Encrypt only), Activate (denied — Encrypt does not imply Activate), Activate (owner ok) | 4 |
+| Access Control | `grant_access_aes` | Owner creates AES key, grants user access, user can Get/Encrypt/Decrypt, owner destroys key | 7 |
+| Access Control | `grant_partial_permissions` | Owner grants only Get; user Get succeeds and Encrypt is denied | 6 |
+| Access Control | `owner_full_permissions` | Owner performs Get/Encrypt/Decrypt/Revoke/Destroy without grants | 6 |
+| Access Control | `privilege_escalation_activate_without_permission` | Owner creates a PreActive AES key, grants user only Encrypt. User's Activate attempt is denied because Encrypt grant does not imply Activate permission. | 6 |
+| Access Control | `privilege_escalation_destroy_without_permission` | Owner creates AES key, grants user only Get. Get acts as wildcard for crypto ops but NOT for Destroy — user's Destroy attempt is denied. | 7 |
+| Access Control | `privilege_escalation_non_owner_grant` | Owner creates AES key, user (non-owner) attempts to grant themselves access — must be denied because user does not own the key | 5 |
+| Access Control | `privilege_escalation_rekey_without_permission` | Owner creates AES key, grants user only Get. User's ReKey attempt is denied because Get wildcard does NOT apply to lifecycle-mutating operations like ReKey. | 7 |
+| Access Control | `privilege_escalation_self_grant` | Owner creates AES key, then attempts to grant themselves additional permissions — which must be denied | 4 |
+| Access Control | `revoke_access` | Owner grants user Get, revokes it, user can no longer Get | 7 |
+| Access Control | `revoke_key_lifecycle` | Creates a symmetric key, revokes it, then verifies it cannot be used for encryption | 3 |
+| Access Control | `unauthorized_access` | Owner creates AES key and ungranted user cannot Get it | 4 |
 | **HSM (requires SoftHSM2 + `HSM_SLOT_ID`)** | | | |
-| HSM / KEK | `hsm/kek_encrypt_decrypt` | Create (HSM+KEK), Encrypt, Decrypt, Destroy | 4 |
-| HSM / KEK | `hsm/kek_sign_verify` | CreateKeyPair (HSM+KEK RSA), Sign, SignatureVerify, Destroy ×2 | 5 |
-| HSM / KEK Create | `hsm/kek_aes256_create_encrypt` | Create (AES-256, KEK-wrapped), Encrypt, Decrypt, Destroy | 3 |
-| HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | CreateKeyPair (RSA-2048, KEK-wrapped), Sign, Destroy ×2 | 3 |
-| HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | CreateKeyPair (EC P-256, KEK-wrapped), Sign, Destroy ×2 | 3 |
-| HSM / KEK Create | `hsm/kek_ed25519_create_sign` | CreateKeyPair (Ed25519, KEK-wrapped), Sign, Destroy ×2 | 3 |
-| HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | CreateKeyPair (RSA-1024, KEK-wrapped) → FIPS rejection | 1 |
-| HSM / Resident Create | `hsm/resident_aes128_create_encrypt` | Create (AES-128, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
-| HSM / Resident Create | `hsm/resident_aes256_create_encrypt` | Create (AES-256, HSM-resident), Encrypt, Decrypt, Destroy | 4 |
-| HSM / Resident Create | `hsm/resident_rsa4096_create_sign` | CreateKeyPair (RSA-4096, HSM-resident), Sign, Destroy ×2 | 4 |
-| HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Create (AES-256, HSM), Encrypt (AES-CBC), Decrypt, Destroy | 4 |
-| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | CreateKeyPair (RSA-2048, HSM), Encrypt (OAEP-SHA256), Decrypt, Destroy ×2 | 5 |
-| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | CreateKeyPair (RSA-2048, HSM), Encrypt (OAEP-SHA1), Decrypt, Destroy ×2 | 5 |
-| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | CreateKeyPair (RSA-2048, HSM), Encrypt (PKCS#1 v1.5), Decrypt, Destroy ×2 | 5 |
-| HSM / Resident Sign | `hsm/resident_rsa2048_sign_pkcs1v15` | CreateKeyPair (RSA-2048, HSM), Sign (raw PKCS#1 v1.5), Destroy ×2 | 4 |
-| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha1` | CreateKeyPair (RSA-2048, HSM), Sign (SHA1WithRSA), Destroy ×2 | 4 |
-| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha256` | CreateKeyPair (RSA-2048, HSM), Sign (SHA256WithRSA), Destroy ×2 | 4 |
-| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha384` | CreateKeyPair (RSA-2048, HSM), Sign (SHA384WithRSA), Destroy ×2 | 4 |
-| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha512` | CreateKeyPair (RSA-2048, HSM), Sign (SHA512WithRSA), Destroy ×2 | 4 |
-| HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | CreateKeyPair (RSA-1024, HSM-resident) → FIPS rejection | 1 |
-| HSM / Resident Negative | `hsm/resident_ec_p256_rejected` | CreateKeyPair (EC P-256, HSM-resident) → unsupported key type | 1 |
-| HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | CreateKeyPair (EC P-384, HSM-resident) → unsupported key type | 1 |
-| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | CreateKeyPair (Ed25519, HSM-resident) → unsupported key type | 1 |
-| HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Create (3DES, HSM-resident) → only AES allowed | 1 |
-| HSM / Resident Negative | `hsm/resident_aes256_encrypt_ecb_rejected` | Create (AES-256, HSM), Encrypt (ECB) → unsupported mode | 3 |
-| HSM / Resident Negative | `hsm/resident_rsa2048_sign_ecdsa_rejected` | CreateKeyPair (RSA-2048, HSM), Sign (ECDSAWithSHA256) → unsupported algorithm | 2 |
-| HSM / Resident Negative | `hsm/resident_rsa2048_sign_dsa_rejected` | CreateKeyPair (RSA-2048, HSM), Sign (DSAWithSHA256) → unsupported algorithm | 2 |
-| HSM / Negative | `hsm/wrong_prefix` | Create (bad prefix) → error | 1 |
-| HSM / Negative | `hsm/no_kek_baseline` | Create (AES, no HSM prefix), Encrypt, Decrypt, Destroy | 4 |
-| HSM / Permissions | `hsm/permissions/admin_create_encrypt_destroy` | Create (admin), Encrypt, Decrypt, Destroy | 4 |
-| HSM / Permissions | `hsm/permissions/admin_grant_encrypt_decrypt` | Create, GrantAccess (Encrypt+Decrypt), user Encrypt, user Decrypt, Destroy | 5 |
-| HSM / Permissions | `hsm/permissions/get_not_wildcard` | Create, GrantAccess (Get only), user Get (ok), user Encrypt (fail), Destroy | 5 |
-| HSM / Permissions | `hsm/permissions/admin_grant_revoke` | Create, Grant Encrypt, user Encrypt (ok), Revoke, user Encrypt (fail), Destroy | 6 |
-| HSM / Permissions | `hsm/permissions/user_cannot_create` | user Create → error (non-admin denied) | 1 |
-| HSM / Permissions | `hsm/permissions/user_cannot_destroy` | Create (admin), user Destroy → error, admin Destroy | 3 |
-| HSM / Permissions | `hsm/permissions/user_cannot_encrypt` | Create (admin), user Encrypt → error (not found), Destroy | 3 |
-| HSM / Permissions | `hsm/permissions/user_cannot_grant` | Create (admin), user GrantAccess → error (not owner), Destroy | 3 |
-| HSM / Permissions | `hsm/permissions/cannot_grant_destroy` | Create (admin), admin GrantAccess (Destroy) → error (reserved), Destroy | 3 |
-| HSM / Permissions | `hsm/permissions/locate_visibility` | Create ×2, Grant user key1, admin Locate (sees both), user Locate (sees only key1), Destroy ×2 | 7 |
+| HSM / KEK Baseline | `hsm/hsm_resident_encrypt` | Creates a new AES-256 key on a KMS server with SoftHSM2 KEK enabled. | 3 |
+| HSM / KEK Baseline | `hsm/hsm_resident_sign` | Creates an EC P-256 key pair on a KMS server with SoftHSM2 KEK enabled. | 2 |
+| HSM / KEK Create | `hsm/kek_aes256_create_encrypt` | Creates a new AES-256 key on a KMS server with SoftHSM2 KEK enabled. | 3 |
+| HSM / KEK Bootstrap | `hsm/kek_bootstrap_self_create` | Regression test for the self-wrap bug introduced by PR #968. | 6 |
+| HSM / KEK Create | `hsm/kek_ec_p256_create_sign` | Creates an EC P-256 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
+| HSM / KEK Create | `hsm/kek_ed25519_create_sign` | Creates an Ed25519 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
+| HSM / KEK | `hsm/kek_encrypt_decrypt` | Imports an AES-256 key into a KMS server backed by a SoftHSM2 KEK. | 3 |
+| HSM / KEK ReKey | `hsm/kek_rekey_kek` | Creates a dedicated HSM KEK ('hsm::<slot>::vec_kek_rekey') and a DB AES DEK that is explicitly wrapped at rest by that KEK. Re-keys the KEK itself — the HSM rotation generates new key material and a new UID, then automatically re-wraps all dependent DB keys (rewrap_dependants). Verifies via GetAttributes that the DEK's WrappingKeyLink now points to the new KEK UID, and confirms encrypt still works after the rotation. Fully cleans up (DEK + both KEK generations) for idempotent reruns. | 12 |
+| HSM / KEK ReKey | `hsm/kek_rekey_wrapped` | Creates an AES-256 key in a KMS server backed by a SoftHSM2 KEK. The key is auto-wrapped by the HSM-resident KEK at rest. Re-keys the wrapped key (unwrap from KEK, generate new material, re-wrap). Verifies the new key works for encryption. | 9 |
+| HSM / KEK Negative | `hsm/kek_rsa1024_rejected` | Attempts to create an RSA-1024 keypair on a server with KEK enabled. | 1 |
+| HSM / KEK Create | `hsm/kek_rsa2048_create_sign` | Creates an RSA-2048 keypair on a KMS server with SoftHSM2 KEK enabled. | 2 |
+| HSM / KEK Create | `hsm/kek_sign_verify` | Imports an Ed25519 private key into a KMS server backed by a SoftHSM2 KEK. | 2 |
+| HSM / Negative | `hsm/no_kek_baseline` | Imports the same AES-256 key as kek_encrypt_decrypt scenario but on a plain SQLite | 3 |
+| HSM / Permissions | `hsm/permissions/admin_create_encrypt_destroy` | HSM admin (<owner.client@acme.com>) creates an AES-256 key directly in the HSM, | 5 |
+| HSM / Permissions | `hsm/permissions/admin_grant_encrypt_decrypt` | HSM admin creates an AES-256 key in the HSM, grants Encrypt and Decrypt | 6 |
+| HSM / Permissions | `hsm/permissions/admin_grant_revoke` | HSM admin creates an AES key, grants Encrypt to user, user can encrypt, | 7 |
+| HSM / Permissions | `hsm/permissions/cannot_grant_destroy` | HSM admin creates an AES key in the HSM, then attempts to grant Destroy to | 4 |
+| HSM / Permissions | `hsm/permissions/get_not_wildcard` | HSM admin creates an AES-256 key in the HSM, grants only Get to | 6 |
+| HSM / Permissions | `hsm/permissions/locate_visibility` | HSM admin creates two AES keys in the HSM. Grants user Encrypt on only the | 10 |
+| HSM / Permissions | `hsm/permissions/user_cannot_create` | Non-admin user (<user.client@acme.com>) attempts to create an AES key directly | 1 |
+| HSM / Permissions | `hsm/permissions/user_cannot_destroy` | HSM admin creates an AES key, then non-admin user (<user.client@acme.com>) | 4 |
+| HSM / Permissions | `hsm/permissions/user_cannot_encrypt` | HSM admin creates an AES key in the HSM. Non-admin user (<user.client@acme.com>) | 4 |
+| HSM / Permissions | `hsm/permissions/user_cannot_grant` | HSM admin creates an AES key in the HSM. Non-admin user (<user.client@acme.com>) | 4 |
+| HSM / Resident Encrypt | `hsm/resident_aes128_create_encrypt` | Creates an AES-128 key directly on the HSM (key material lives in the HSM token). | 5 |
+| HSM / Resident Encrypt | `hsm/resident_aes256_create_encrypt` | Creates an AES-256 key directly on the HSM (key material lives in the HSM token). | 5 |
+| HSM / Resident Encrypt | `hsm/resident_aes256_encrypt_cbc` | Creates an AES-256 key on the HSM, then encrypts and decrypts with AES-CBC mode. | 5 |
+| HSM / Resident Negative | `hsm/resident_aes256_encrypt_ecb_rejected` | Creates an AES-256 key on the HSM, then attempts to encrypt with ECB mode. | 4 |
+| HSM / Resident Negative | `hsm/resident_ec_p256_rejected` | Attempts to create an EC P-256 keypair with an HSM-resident UID. | 1 |
+| HSM / Resident Negative | `hsm/resident_ec_p384_rejected` | Attempts to create an EC P-384 keypair with an HSM-resident UID. | 1 |
+| HSM / Resident Negative | `hsm/resident_ed25519_rejected` | Attempts to create an Ed25519 keypair with an HSM-resident UID. | 1 |
+| HSM / Resident Keyset | `hsm/resident_keyset_double_rotation` | Tests HSM keyset traversal across a 3-generation chain: | 12 |
+| HSM / Resident Keyset | `hsm/resident_keyset_full_lifecycle` | Full HSM keyset lifecycle test covering all three decrypt-addressing variants: | 12 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_addressing` | Creates an HSM-resident key, assigns a keyset name (rotate_name = "ks-addr"), | 15 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_basic` | Creates an HSM-resident AES-256 key without a keyset (no rotate_name), encrypts | 9 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_consecutive` | Creates gen-0 key, rekeys twice (gen-1, gen-2), encrypts once per generation, | 17 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_duplicate_rekey` | Creates an HSM-resident key WITHOUT a keyset name (no rotate_name). Re-keys it | 10 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_encrypt_gen_select` | Encrypts with the keyset base UID before rotation (targets gen-0, the only/latest key) | 15 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_hsm_uid` | Verifies that an HSM-resident keyset can be rotated 3 consecutive times using the | 13 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_keyset_name` | Verifies that an HSM-resident keyset can be rotated 3 consecutive times using the | 13 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_by_name` | Verifies that ReKey can be addressed via the keyset name (not just the direct UID). | 10 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_rekey_non_latest` | Verifies that re-keying a non-latest keyset member is transparently redirected to | 13 |
+| HSM / Resident Keyset | `hsm/resident_keyset_no_kek_uid_lifecycle` | Creates a resident AES-256 HSM key, assigns a rotate_name, rekeys the latest | 18 |
+| HSM / Resident Keyset | `hsm/resident_keyset_rekey_and_decrypt` | Full HSM keyset rotation test: | 9 |
+| HSM / Resident Negative | `hsm/resident_keyset_rotate_name_bare_rejected` | For HSM keys, the keyset name (rotate_name) must be the key's full base UID (hsm::<model>::<slot>::<key_id>). A bare name without the hsm:: prefix is rejected because it would be ambiguous across HSM slots. | 4 |
+| HSM / Resident Negative | `hsm/resident_keyset_rotate_name_gen_suffix_rejected` | For HSM keys, the keyset name must be the base UID without any @N generation suffix. Setting rotate_name to 'hsm::slot::key@1' must be rejected. | 4 |
+| HSM / Resident Keyset | `hsm/resident_keyset_set_rotate_name` | Creates an AES-256 key directly on the HSM, assigns a rotate_name via SetAttribute | 6 |
+| HSM / Resident Negative | `hsm/resident_non_aes_rejected` | Attempts to create a 3DES symmetric key directly on the HSM. | 1 |
+| HSM / Resident Negative | `hsm/resident_rsa1024_rejected` | Attempts to create an RSA-1024 keypair with an HSM-resident UID. | 1 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha1` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-OAEP-SHA1 | 7 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_oaep_sha256` | Creates an RSA-2048 keypair on the HSM, then attempts to encrypt with RSA-OAEP-SHA256. | 6 |
+| HSM / Resident Encrypt | `hsm/resident_rsa2048_encrypt_pkcs1v15` | Creates an RSA-2048 keypair on the HSM, then encrypts with RSA-PKCS#1v1.5 | 7 |
+| HSM / Resident Negative | `hsm/resident_rsa2048_sign_dsa_rejected` | Creates an RSA-2048 keypair on the HSM then attempts to sign using DSAWithSHA256. | 6 |
+| HSM / Resident Negative | `hsm/resident_rsa2048_sign_ecdsa_rejected` | Creates an RSA-2048 keypair on the HSM then attempts to sign using ECDSAWithSHA256. | 6 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_pkcs1v15` | Creates an RSA-2048 keypair on the HSM and signs with raw PKCS#1 v1.5 | 6 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha1` | Creates an RSA-2048 keypair on the HSM and signs with SHA1WithRSA (CKM_SHA1_RSA_PKCS). | 6 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha256` | Creates an RSA-2048 keypair on the HSM and signs with SHA256WithRSA (CKM_SHA256_RSA_PKCS). | 6 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha384` | Creates an RSA-2048 keypair on the HSM and signs with SHA384WithRSA (CKM_SHA384_RSA_PKCS). | 6 |
+| HSM / Resident Sign | `hsm/resident_rsa2048_sign_sha512` | Creates an RSA-2048 keypair on the HSM and signs with SHA512WithRSA (CKM_SHA512_RSA_PKCS). | 6 |
+| HSM / Resident Sign | `hsm/resident_rsa4096_create_sign` | Creates an RSA-4096 keypair directly on the HSM via CreateKeyPair. | 6 |
+| HSM / Negative | `hsm/wrong_prefix` | Attempts to encrypt using a key ID with an invalid HSM slot prefix (hsm::99::nonexistent). | 1 |
 | **Integrations** | | | |
-| Integrations | `fips/integrations/synology_dsm` | Query ×4, Locate, Register, ModifyAttribute, Locate, Activate, Revoke, Destroy (binary TTLV / KMIP 1.2) | 11 |
-| Integrations | `fips/integrations/veeam` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.4) | 5 |
-| Integrations | `fips/integrations/vmware_vcenter` | DiscoverVersions, Query, Create, GetAttributes, AddAttribute ×3, GetAttributes, Get (binary TTLV / KMIP 1.1) | 9 |
-| Integrations | `fips/integrations/mysql` | Create, Activate, Get, Revoke, Destroy (binary TTLV / KMIP 1.1) | 5 |
-| Integrations | `fips/integrations/percona` | Register, Locate, Get, Revoke, Destroy (binary TTLV / KMIP 1.4) | 5 |
-| Integrations | `fips/integrations/fortigate` | Create, Locate, Get, Activate, Revoke, Destroy (binary TTLV / KMIP 1.0) | 6 |
-| Integrations | `fips/integrations/fortigate_credential_type` | Create, Activate, Locate with numeric CredentialType enum, Revoke, Destroy (binary TTLV / KMIP 1.0) | 5 |
-| Integrations | `fips/integrations/fortigate_locate_filter` | Register ×2, Activate ×2, Locate by name ×2 (assert distinct IDs), Revoke ×2, Destroy ×2 (binary TTLV / KMIP 1.0) | 10 |
-| Integrations | `fips/integrations/fortigate_locate_get` | Register ×2, Activate ×2, Batch Locate ×2, Batch Get ×2 (full IPsec key retrieval), Revoke ×2, Destroy ×2 (binary TTLV / KMIP 1.0) | 10 |
-| Integrations | `fips/integrations/vast_data` | DiscoverVersions, Create (with OPN), AddAttribute ×3 (Name, ObjectGroup, OPN), Activate, Locate, Get, GetAttributes, ReKey, Locate, Get, GetAttributes (with OPN), Revoke, Destroy, Revoke, Destroy (JSON TTLV / KMIP 1.4) | 17 |
-| Integrations | `fips/integrations/kmip_1_3_symmetric` | Create, Activate, Get, Locate, Revoke, Destroy (binary TTLV / KMIP 1.3) | 6 |
-| Integrations | `fips/integrations/kmip_1_3_asymmetric` | CreateKeyPair, Get ×2, Destroy ×2 (binary TTLV / KMIP 1.3) | 5 |
-| Integrations | `non-fips/integrations/mongodb` | Create, Locate, Get, Destroy (binary TTLV / KMIP 1.0) | 4 |
-| Integrations | `non-fips/integrations/pykmip` | DiscoverVersions, Create, CreateKeyPair, GetAttributes, Locate, Activate, Revoke, Destroy ×3 (binary TTLV / KMIP 1.2) | 11 |
-| Integrations | `non-fips/integrations/edb_tde_pykmip_variant` | Create, Activate, Encrypt (DEK wrap), Decrypt (DEK unwrap), Revoke, Destroy — EDB TDE pykmip variant | 6 |
-| Integrations | `non-fips/integrations/edb_tde_thales_variant` | Create, Activate, Locate, Get (key export), Revoke, Destroy — EDB TDE thales variant | 6 |
-| Integrations | `non-fips/integrations/edb_tde_key_rotation` | Create ×2, Activate ×2, Encrypt, Decrypt, Encrypt (re-wrap), Decrypt (verify), Revoke ×2, Destroy ×2 — EDB TDE key rotation | 12 |
+| Integrations | `fips/integrations/fortigate` | Simulates FortiOS KMIP 1.0 batched key lookup: Register named AES-128 and HMAC-SHA1 keys → Activate → Batched Locate×4 with UsernamePassword Authentication → Revoke → Destroy. Matches real FortiOS TRACES_40F_1.txt traces (BatchCount=4, BatchOrderOption=true, MaximumItems=1 per Locate, KMIP 1.0 TemplateAttribute). | 17 |
+| Integrations | `fips/integrations/fortigate_credential_type` | Non-regression for GitHub issue #824 (FortiOS 7.6.0 / FortiGate 40F support). FortiGate sends CredentialType as a raw numeric enumeration (0x00000001) rather than the symbolic name "UsernameAndPassword". The server previously failed with "missing field `CredentialType`" because the Authentication/Credential structure was not being deserialized correctly. This test sends a KMIP 1.0 Locate request with Authentication containing the numeric CredentialType value and verifies the server processes it successfully. | 5 |
+| Integrations | `fips/integrations/fortigate_locate_filter` | Non-regression for GitHub issue #824 comment (FortiOS 7.6 / FortiGate 40F). FortiGate sends KMIP 1.0 Locate requests filtered on the Name attribute to resolve IPsec keys (ENC and AUTH, both directions). The bug caused the server to return the same UniqueIdentifier for all Locate requests regardless of the requested NameValue. This test creates two keys with different names matching the FortiGate naming pattern, locates each by name using KMIP 1.0 TemplateAttribute, and verifies each Locate returns the correct (distinct) key. | 10 |
+| Integrations | `fips/integrations/fortigate_locate_get` | Simulates the real FortiOS KMIP 1.0 IPsec key retrieval flow observed in production traces (assii4.txt): Register named AES-128 (ENC) and HMAC-SHA1-160 (AUTH) symmetric keys from the same tunnel pair (FORTIGATE1-FORTIGATE2) → Activate → Batched Locate×2 with UsernamePassword Authentication → Batched Get×2 to retrieve full key material → Revoke → Destroy. Covers the two-phase lookup pattern: first Locate by name to resolve UIDs, then Get by UID to retrieve raw key blocks (FortiOS 7.6 / FortiGate 40F). Key material extracted from assii4.txt production traces. | 10 |
+| Integrations | `fips/integrations/fortigate_locate_many_similar_names` | Non-regression for strict name filtering under FortiGate IPsec key patterns. Creates 8 keys with names that share a very long common prefix and differ only in the last few characters (ENC/AUTH, algorithm, key length, tunnel direction). Locates each individually with MaximumItems=1 and verifies that ONLY the exact-match key is returned — proving no aggregation or truncation occurs. assert_count=1 combined with assert_any_field proves exactly one result was returned and it matches the expected key. | 40 |
+| Integrations | `fips/integrations/fortigate_locate_multi_tunnel` | Non-regression verifying that keys from different IPsec tunnels are strictly isolated during Locate. Creates 6 keys across 3 tunnel configurations (alpha forward, beta forward, alpha reverse) and verifies each Locate returns only the key for its specific tunnel — no cross-tunnel contamination. Tests that: (1) different tunnel names (alpha vs beta) don't interfere, (2) same tunnel name in different direction (fw1-fw2 vs fw2-fw1) stays isolated, (3) same direction but different type (ENC vs AUTH) returns the correct type. | 30 |
+| Integrations | `fips/integrations/fortigate_locate_no_match` | Non-regression proving the server uses EXACT name matching (not substring, prefix, or LIKE). Registers two keys with FortiGate naming patterns, then attempts Locate with: (1) a substring of an existing name, (2) a superstring of an existing name, (3) a completely non-existent name. All three must return success with zero UniqueIdentifiers — proving no partial/fuzzy matching occurs. | 11 |
+| Integrations | `fips/integrations/kmip_1_3_asymmetric` | Tests KMIP 1.3 binary wire format with an RSA key pair lifecycle: CreateKeyPair (RSA-2048, Sign/Verify) → Get (public) → Get (private) → Destroy private → Destroy public. KMIP 1.3 is processed identically to 1.4 (no special tweaks unlike 1.0/1.1/1.2). | 5 |
+| Integrations | `fips/integrations/kmip_1_3_symmetric` | Tests KMIP 1.3 binary wire format with a full symmetric key lifecycle: Create AES-256 key → Activate → Get → Locate (by name) → Revoke → Destroy. KMIP 1.3 is processed identically to 1.4 (no special tweaks unlike 1.0/1.1/1.2). | 6 |
+| Integrations | `fips/integrations/kmip_3_0_asymmetric` | Creates EC P-256 key pair, signs, and verifies using KMIP 3.0 binary wire format | 7 |
+| Integrations | `fips/integrations/kmip_3_0_discover_versions` | Queries supported KMIP protocol versions using KMIP 3.0 binary wire format | 1 |
+| Integrations | `fips/integrations/kmip_3_0_hash` | Computes SHA-256 hash using KMIP 3.0 binary wire format | 1 |
+| Integrations | `fips/integrations/kmip_3_0_locate_get` | Creates a symmetric key, locates it by attributes, and retrieves it using KMIP 3.0 JSON wire format | 4 |
+| Integrations | `fips/integrations/kmip_3_0_mac` | Creates HMAC-SHA256 key, computes MAC, and verifies it using KMIP 3.0 binary wire format | 6 |
+| Integrations | `fips/integrations/kmip_3_0_query` | Queries server operations and objects using KMIP 3.0 JSON wire format | 1 |
+| Integrations | `fips/integrations/kmip_3_0_symmetric` | Creates AES-256 key, encrypts, decrypts, and destroys using KMIP 3.0 binary wire format | 6 |
+| Integrations | `fips/integrations/mysql` | Simulates MySQL Enterprise Transparent Data Encryption (TDE) KMIP 1.1 protocol: Create AES-256 key → Activate → Get → Revoke → Destroy. | 5 |
+| Integrations | `fips/integrations/percona` | Simulates the Percona PostgreSQL TDE KMIP 1.4 protocol: Register (AES-128 symmetric key) → Locate (by ObjectType + Name) → Get. Mirrors crate/server/src/tests/ttlv_tests/integrations/postgres.rs exactly. | 5 |
+| Integrations | `fips/integrations/synology_dsm` | Replays the exact KMIP 1.2 operation sequence observed from Synology DSM 7.x during encrypted volume creation: Query ×4 → Locate (empty) → Register (SecretData/Password with OperationPolicyName) → ModifyAttribute (rename to volume UUID) → Locate (find) → Activate → GetAttributeList → GetAttributes → Get → Revoke → Destroy. Mirrors crate/server/src/tests/ttlv_tests/integrations/synology_dsm.rs exactly. | 14 |
+| Integrations | `fips/integrations/vast_data` | Replays the exact KMIP 1.4 operation sequence observed in VAST Data production logs (June 2026): DiscoverVersions → Create AES-256 (with OperationPolicyName) → AddAttribute (Name) → AddAttribute (ObjectGroup) → AddAttribute (OperationPolicyName) → Activate → Locate by name → Get (plaintext) → GetAttributes (State + ActivationDate) → ReKey → Locate (find rotated key) → Get (new key material) → GetAttributes (verify Active + OperationPolicyName preserved after rotation) → Revoke old → Destroy old → Revoke new → Destroy new. VAST uses HTTP POST to /kmip with KMIP 1.4 binary TTLV and mTLS authentication. Covers the ReKey bug fix (issue #845): VAST sends ReKey and expects a new UUID returned. Covers the OperationPolicyName persistence fix: OPN must survive AddAttribute and ReKey. | 17 |
+| Integrations | `fips/integrations/veeam` | Replays the KMIP 1.4 operation sequence from Veeam Backup & Replication: CreateKeyPair (RSA-2048, Sign/Verify) → Get (public key) → Get (private key) → Destroy private → Destroy public. Mirrors crate/server/src/tests/ttlv_tests/integrations/veeam.rs exactly. | 5 |
+| Integrations | `fips/integrations/vmware_vcenter` | Simulates the VMware vCenter KMIP 1.1 protocol for VM encryption key management: DiscoverVersions → Query → Create (AES-256) → GetAttributes → AddAttribute (x-Product_Version, x-Vendor, x-Product) → GetAttributes → Get. Mirrors crate/server/src/tests/ttlv_tests/integrations/vmware.rs exactly. | 9 |
+| Integrations | `non-fips/integrations/edb_tde_key_rotation` | Simulates EDB Postgres TDE master key rotation: | 12 |
+| Integrations | `non-fips/integrations/edb_tde_pykmip_variant` | Simulates the EDB Postgres TDE workflow using the pykmip variant: | 6 |
+| Integrations | `non-fips/integrations/edb_tde_thales_variant` | Simulates the EDB Postgres TDE workflow using AES-256-CBC KMIP Encrypt/Decrypt: | 6 |
+| Integrations | `non-fips/integrations/mongodb` | Simulates MongoDB Queryable Encryption KMIP 1.0 key management: Create AES-256 → Locate → Get → Destroy. Mirrors crate/server/src/tests/ttlv_tests/get_1_0.rs (Percona Server for MongoDB KMIP 1.0). | 4 |
+| Integrations | `non-fips/integrations/pykmip` | Simulates the PyKMIP client KMIP 1.2 protocol sequence: DiscoverVersions → Create (AES-256) → CreateKeyPair (RSA-2048) → GetAttributes → Locate → Activate → Revoke → Destroy (symmetric + RSA pair). | 11 |
 | **TLS Transport** | | | |
-| TLS | `tls/server_tls` | Create, Revoke, Destroy (HTTPS server TLS) | 3 |
-| TLS | `tls/mtls` | Create, Revoke, Destroy (mTLS client certificate auth) | 3 |
+| TLS | `tls/mtls` | Verifies the KMS can be reached over HTTPS with mutual TLS (client certificate required) | 3 |
+| TLS | `tls/server_tls` | Verifies the KMS can be reached over HTTPS with server-TLS only (self-signed cert, no mTLS) | 3 |
+| **OPA Policy Engine** | | | |
+| OPA | `opa/mode_disabled` | OPA not configured; KMS legacy permission logic applies. Creates an AES key, retrieves it, and destroys it. | 3 |
+| OPA | `opa/mode_enforcing_allowed` | OPA enforcing mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true (OPA + KMS both pass). | 3 |
+| OPA | `opa/mode_enforcing_denied` | OPA enforcing mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
+| OPA | `opa/mode_exclusive_allowed` | OPA exclusive mode; JWT with CryptoOfficer role from auth server; Create then Get allowed by is_owner=true. | 3 |
+| OPA | `opa/mode_exclusive_auditor_destroy_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_auditor_get_attributes_allowed` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_denied` | OPA exclusive mode; owner (mTLS cert) creates AES key; ungranted user (different cert, no roles) is denied Get. | 3 |
+| OPA | `opa/mode_exclusive_domain_admin_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
+| OPA | `opa/mode_exclusive_user_role_denied` | OPA exclusive mode. The CryptoOfficer (default JWT client, owner) creates an AES key. | 3 |
+| OPA | `opa/mode_exclusive_wrong_domain` | OPA exclusive mode. The CryptoOfficer from realm `kms-opa-test` (default JWT client, | 3 |
 | **Negative** | | | |
-| Negative / Protocol | `negative/empty_request` | Empty body → error | 1 |
-| Negative / Protocol | `negative/missing_data_encrypt` | Encrypt without Data → error | 2 |
-| Negative / Protocol | `negative/missing_data_decrypt` | Decrypt without Data → error | 2 |
-| Negative / Protocol | `negative/missing_uid_encrypt` | Encrypt without UniqueIdentifier → error | 1 |
-| Negative / Protocol | `negative/nonexistent_key_encrypt` | Encrypt with unknown key ID → error | 1 |
-| Negative / Protocol | `negative/nonexistent_key_decrypt` | Decrypt with unknown key ID → error | 1 |
-| Negative / Protocol | `negative/wrong_key_type_encrypt` | Encrypt with RSA key for AES cipher → error | 2 |
-| Negative / Protocol | `negative/destroy_then_encrypt` | Destroy key then encrypt → error | 3 |
-| Negative / Protocol | `negative/empty_data_encrypt` | Encrypt with empty plaintext → success | 2 |
-| Negative / Protocol | `negative/invalid_iv_length` | Encrypt with wrong-length IV → error | 2 |
-| Negative / Protocol | `negative/sign_with_encrypt_key` | Sign with Encrypt-mask-only key → error | 2 |
-| Negative / Protocol | `negative/duplicate_tags_encrypt` | Encrypt with tag resolving to 2 keys → error | 7 |
-| Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_mode` | Unsupported BlockCipherMode → success | 2 |
-| Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_padding` | Unsupported PaddingMethod with GCM → success | 2 |
-| Negative / CryptoParams | `negative/crypto_params/encrypt_mode_algo_mismatch` | ChaCha20 key + AES CryptographicParameters → success | 2 |
-| Negative / CryptoParams | `negative/crypto_params/encrypt_gcm_invalid_tag_length` | Invalid TagLength for GCM → error | 2 |
-| Negative / CryptoParams | `negative/crypto_params/sign_invalid_hash` | RSA-PSS with MD5 hash → success in non-FIPS | 2 |
-| Negative / CryptoParams | `negative/crypto_params/sign_rsa_with_ecdsa_algo` | RSA key + ECDSA algorithm → error | 2 |
-| Negative / CryptoParams | `negative/crypto_params/decrypt_wrong_mode` | Encrypt GCM then Decrypt CBC → error | 3 |
-| Negative / CryptoParams | `negative/crypto_params/encrypt_chacha20_with_gcm_mode` | ChaCha20 key + GCM mode → success | 2 |
-| Negative / CryptoParams | `negative/crypto_params/hash_unsupported_algo` | Hash with MD5 → success in non-FIPS | 1 |
-| Negative / CryptoParams | `negative/crypto_params/mac_unsupported_algo` | MAC with MD5 → success in non-FIPS | 2 |
-| Negative / Decrypt | `negative/decrypt/decrypt_missing_iv_cbc` | AES-CBC decrypt without IV → error | 2 |
-| Negative / Decrypt | `negative/decrypt/decrypt_empty_tag_gcm` | AES-GCM decrypt with empty auth tag → error | 2 |
-| Negative / Decrypt | `negative/decrypt/decrypt_truncated_ciphertext` | AES-GCM decrypt truncated ciphertext → error | 2 |
-| Negative / Decrypt | `negative/decrypt/decrypt_wrong_key` | Decrypt with wrong key → error | 3 |
-| Negative / Decrypt | `negative/decrypt/decrypt_corrupted_ciphertext` | AES-GCM decrypt with corrupted ciphertext+tag → error | 3 |
-| Negative / RSA | `negative/rsa/rsa_encrypt_oversized_data` | RSA-OAEP encrypt data too large → error | 2 |
-| Negative / RSA | `negative/rsa/rsa_decrypt_with_public_key` | RSA decrypt using public key → error | 2 |
-| Negative / RSA | `negative/rsa/rsa_decrypt_garbage` | RSA decrypt random bytes → error | 2 |
-| Negative / Sign | `negative/sign_verify/verify_corrupted_signature` | Verify with bit-flipped signature → error | 3 |
-| Negative / Sign | `negative/sign_verify/verify_wrong_key` | Verify with wrong keypair → error | 4 |
-| Negative / Sign | `negative/sign_verify/sign_with_public_key` | Sign with public key → error | 2 |
-| Negative / MAC | `negative/mac/mac_with_non_hmac_key` | MAC with AES key (not HMAC) → error | 2 |
-| Negative / MAC | `negative/mac/mac_verify_wrong_data` | MACVerify with tampered data → error | 3 |
-| Negative / Hash | `negative/hash/hash_missing_algorithm` | Hash without HashingAlgorithm → error | 1 |
-| Negative / Hash | `negative/hash/hash_init_and_final_both_true` | Hash with InitIndicator=true AND FinalIndicator=true → error | 1 |
-| Negative / DeriveKey | `negative/derive_key/derive_key_pbkdf2_no_salt` | PBKDF2 without Salt → error | 2 |
-| Negative / DeriveKey | `negative/derive_key/derive_key_negative_iterations` | PBKDF2 with negative iteration count → error | 2 |
-| Negative / Lifecycle | `negative/lifecycle/encrypt_pre_active_key` | Encrypt with pre-active key → error | 2 |
-| Negative / Lifecycle | `negative/lifecycle/create_invalid_algorithm` | Create with unknown algorithm → error | 1 |
-| Negative / Lifecycle | `negative/lifecycle/create_zero_length_key` | Create with CryptographicLength=0 → error | 1 |
-| Negative / Lifecycle | `negative/lifecycle/double_activate` | Activate already-active key → error | 3 |
-| Negative / Lifecycle | `negative/lifecycle/deactivate_pre_active` | Activate a destroyed key → error | 5 |
-| Negative / TypeMismatch | `negative/type_mismatch/import_malformed_key` | Import TransparentSymmetricKey with raw bytes → error | 1 |
-| Negative / TypeMismatch | `negative/type_mismatch/encrypt_with_secret_data` | Encrypt using SecretData object → error | 2 |
-| Negative / TypeMismatch | `negative/type_mismatch/revoke_already_destroyed` | Revoke a destroyed key → success | 3 |
+| Negative / Activate | `negative/activate/item_not_found` | Tests that Activate returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Activate | `negative/activate/wrong_key_lifecycle_state` | Tests that Activate returns Wrong_Key_Lifecycle_State error as per KMIP spec | 3 |
+| Negative / AddAttribute | `negative/add_attribute/item_not_found` | Tests that Add Attribute returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / AddAttribute | `negative/add_attribute/read_only_attribute` | Tests that Add Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / Certify | `negative/certify/invalid_object_type` | Tests that Certify returns Invalid_Object_Type error as per KMIP spec | 2 |
+| Negative / Certify | `negative/certify/item_not_found` | Tests that Certify returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Check | `negative/check/item_not_found` | Tests that Check returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Create | `negative/create/invalid_attribute` | Tests that Create returns Invalid_Attribute error as per KMIP spec | 1 |
+| Negative / Create | `negative/create/invalid_attribute_value` | Tests that Create returns Invalid_Attribute_Value error as per KMIP spec | 1 |
+| Negative / Create | `negative/create/invalid_field` | Tests that Create returns Invalid_Field error as per KMIP spec | 1 |
+| Negative / Create | `negative/create/invalid_message` | Tests that Create returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Create | `negative/create/read_only_attribute` | Tests that Create returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute` | Tests that Create Key Pair returns Invalid_Attribute error as per KMIP spec | 1 |
+| Negative / CreateKeyPair | `negative/create_key_pair/invalid_attribute_value` | Tests that Create Key Pair returns Invalid_Attribute_Value error as per KMIP spec | 1 |
+| Negative / CreateKeyPair | `negative/create_key_pair/invalid_message` | Tests that Create Key Pair returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / CryptoParams | `negative/crypto_params/decrypt_wrong_mode` | Tests that decryption fails when using CBC mode to decrypt data that was encrypted with GCM | 3 |
+| Negative / CryptoParams | `negative/crypto_params/encrypt_chacha20_with_gcm_mode` | Documents that ChaCha20Poly1305 key with BlockCipherMode GCM succeeds — server routes to AES-256-GCM since GCM mode overrides the key's algorithm | 2 |
+| Negative / CryptoParams | `negative/crypto_params/encrypt_gcm_invalid_tag_length` | Tests that AES-GCM encryption fails with an invalid authentication tag length | 2 |
+| Negative / CryptoParams | `negative/crypto_params/encrypt_mode_algo_mismatch` | Documents that encryption succeeds when CryptographicParameters algorithm differs from key algorithm — server uses the key's actual algorithm, ignoring algorithm field in CryptographicParameters | 2 |
+| Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_mode` | Tests that AES encryption fails with an unsupported BlockCipherMode | 2 |
+| Negative / CryptoParams | `negative/crypto_params/encrypt_unsupported_padding` | Documents that AES-GCM encryption ignores unsupported PaddingMethod (GCM handles padding internally) | 2 |
+| Negative / CryptoParams | `negative/crypto_params/hash_unsupported_algo` | Tests that hashing fails when using an unsupported algorithm (MD5) | 1 |
+| Negative / CryptoParams | `negative/crypto_params/mac_unsupported_algo` | Tests that MAC computation fails when using an unsupported hashing algorithm (MD5) | 2 |
+| Negative / CryptoParams | `negative/crypto_params/sign_invalid_hash` | Documents that RSA-PSS signing with MD5 succeeds in non-FIPS mode (OpenSSL allows MD5 in legacy mode) | 2 |
+| Negative / CryptoParams | `negative/crypto_params/sign_rsa_with_ecdsa_algo` | Tests that signing an RSA key with ECDSA digital signature algorithm fails | 2 |
+| Negative / Decrypt | `negative/decrypt/decrypt_corrupted_ciphertext` | Tests that AES-GCM decryption fails when ciphertext and tag are fabricated | 2 |
+| Negative / Decrypt | `negative/decrypt/decrypt_empty_tag_gcm` | Tests that AES-GCM decryption fails when AuthenticatedEncryptionTag is missing | 3 |
+| Negative / Decrypt | `negative/decrypt/decrypt_missing_iv_cbc` | When IVCounterNonce is absent from a CBC Decrypt request the KMS must return | 2 |
+| Negative / Decrypt | `negative/decrypt/decrypt_truncated_ciphertext` | Tests that AES-GCM decryption fails when ciphertext is too short (1 byte) | 2 |
+| Negative / Decrypt | `negative/decrypt/decrypt_wrong_key` | Tests that AES-GCM decryption fails when using a different key than the one used for encryption | 4 |
+| Negative / Decrypt | `negative/decrypt/invalid_message` | Tests that Decrypt returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Decrypt | `negative/decrypt/wrong_key_lifecycle_state` | Tests that Decrypt returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / DeleteAttribute | `negative/delete_attribute/item_not_found` | Tests that Delete Attribute returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / DeriveKey | `negative/derive_key/derive_key_negative_iterations` | Tests that PBKDF2 key derivation fails when IterationCount is negative | 2 |
+| Negative / DeriveKey | `negative/derive_key/derive_key_pbkdf2_no_salt` | Tests that PBKDF2 key derivation fails when Salt is not provided | 2 |
+| Negative / Destroy | `negative/destroy/item_not_found` | Tests that Destroy returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Destroy | `negative/destroy/wrong_key_lifecycle_state` | Tests that Destroy returns Wrong_Key_Lifecycle_State error as per KMIP spec | 3 |
+| Negative / Protocol | `negative/destroy_then_encrypt` | Tests that encrypt fails when the key has been destroyed | 5 |
+| Negative / Protocol | `negative/duplicate_tags_encrypt` | Creates two AES-256 keys with the same tag ["dup-test-enc"], then attempts | 7 |
+| Negative / Protocol | `negative/empty_data_encrypt` | Tests that GCM encryption with empty data succeeds (GCM allows empty plaintext) | 2 |
+| Negative / Protocol | `negative/empty_request` | Tests that the server handles an empty JSON body gracefully | 1 |
+| Negative / Encrypt | `negative/encrypt/bad_cryptographic_parameters` | Tests that Encrypt returns Bad_Cryptographic_Parameters error as per KMIP spec | 3 |
+| Negative / Encrypt | `negative/encrypt/incompatible_cryptographic_usage_mask` | Tests that Encrypt returns Incompatible_Cryptographic_Usage_Mask error as per KMIP spec | 3 |
+| Negative / Encrypt | `negative/encrypt/invalid_field` | Tests that Encrypt returns Invalid_Field error as per KMIP spec | 3 |
+| Negative / Encrypt | `negative/encrypt/invalid_message` | Tests that Encrypt returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Encrypt | `negative/encrypt/invalid_object_type` | Tests that Encrypt returns Invalid_Object_Type error as per KMIP spec | 3 |
+| Negative / Encrypt | `negative/encrypt/unsupported_cryptographic_parameters` | Tests that Encrypt returns Unsupported_Cryptographic_Parameters error as per KMIP spec | 3 |
+| Negative / Encrypt | `negative/encrypt/wrong_key_lifecycle_state` | Tests that Encrypt returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / Export | `negative/export/item_not_found` | Tests that Export returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Export | `negative/export/key_format_type_not_supported` | Tests that Export returns Key_Format_Type_Not_Supported error as per KMIP spec | 2 |
+| Negative / Get | `negative/get/item_not_found` | Tests that Get returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Get | `negative/get/key_format_type_not_supported` | Tests that Get returns Key_Format_Type_Not_Supported error as per KMIP spec | 2 |
+| Negative / GetAttributeList | `negative/get_attribute_list/item_not_found` | Tests that Get Attribute List returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / GetAttributes | `negative/get_attributes/item_not_found` | Tests that Get Attributes returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Hash | `negative/hash/hash_init_and_final_both_true` | Tests that Hash operation fails when both InitIndicator and FinalIndicator are set to true | 1 |
+| Negative / Hash | `negative/hash/hash_missing_algorithm` | Tests that Hash operation fails when CryptographicParameters has no HashingAlgorithm | 1 |
+| Negative / Import | `negative/import/invalid_message` | Tests that Import returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Protocol | `negative/invalid_iv_length` | Tests that AES-CBC encryption fails when an IV with incorrect length (8 bytes instead of 16) is provided | 2 |
+| Negative / Lifecycle | `negative/lifecycle/create_hsm_key_without_hsm` | Attempts to create an AES-256 key with an HSM-prefixed UID (hsm::0::no_hsm_key) | 1 |
+| Negative / Lifecycle | `negative/lifecycle/create_invalid_algorithm` | Tests that key creation fails when specifying an unsupported cryptographic algorithm | 1 |
+| Negative / Lifecycle | `negative/lifecycle/create_zero_length_key` | Tests that key creation fails when CryptographicLength is set to zero | 1 |
+| Negative / Lifecycle | `negative/lifecycle/deactivate_pre_active` | Tests that activating a destroyed key fails | 5 |
+| Negative / Lifecycle | `negative/lifecycle/double_activate` | Tests that activating an already-active key fails | 3 |
+| Negative / Lifecycle | `negative/lifecycle/encrypt_pre_active_key` | Tests that encryption fails when using a key that has not been activated (no ActivationDate) | 2 |
+| Negative / Lifecycle | `negative/lifecycle/reactivate_deactivated` | Tests that activating a deactivated (revoked) key fails | 4 |
+| Negative / MAC | `negative/mac/item_not_found` | Tests that MAC returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / MAC | `negative/mac/mac_verify_wrong_data` | Tests that MAC verification returns Invalid when data does not match the MAC | 3 |
+| Negative / MAC | `negative/mac/mac_with_non_hmac_key` | Tests that MAC operation fails when using an AES key without proper HMAC algorithm parameters | 2 |
+| Negative / MAC | `negative/mac/wrong_key_lifecycle_state` | Tests that MAC returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / MAC | `negative/mac_verify/item_not_found` | Tests that MAC Verify returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / MAC | `negative/mac_verify/wrong_key_lifecycle_state` | Tests that MAC Verify returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / Protocol | `negative/missing_data_decrypt` | Tests that decrypt fails when no Data field is provided | 2 |
+| Negative / Protocol | `negative/missing_data_encrypt` | Tests that encrypt fails when no Data field is provided | 2 |
+| Negative / Protocol | `negative/missing_uid_encrypt` | Tests that encrypt fails when no UniqueIdentifier is provided | 1 |
+| Negative / ModifyAttribute | `negative/modify_attribute/item_not_found` | Tests that Modify Attribute returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / ModifyAttribute | `negative/modify_attribute/read_only_attribute` | Tests that Modify Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / Protocol | `negative/nonexistent_key_decrypt` | Tests that decrypt fails when referencing a key ID that does not exist | 1 |
+| Negative / Protocol | `negative/nonexistent_key_encrypt` | Tests that encrypt fails when referencing a key ID that does not exist | 1 |
+| Negative / Protocol | `negative/recertify_missing_uid` | Tests that ReCertify fails — ReCertify is a KMIP 1.4 operation not supported in KMIP 2.1 | 1 |
+| Negative / Protocol | `negative/recertify_nonexistent` | Tests that ReCertify fails when the certificate UID does not exist in the database | 1 |
+| Negative / Protocol | `negative/recertify_not_a_certificate` | Tests that ReCertify fails when given a symmetric key instead of a certificate | 4 |
+| Negative / Register | `negative/register/invalid_attribute` | Tests that Register returns Invalid_Attribute error as per KMIP spec | 1 |
+| Negative / Register | `negative/register/invalid_attribute_value` | Tests that Register returns Invalid_Attribute_Value error as per KMIP spec | 1 |
+| Negative / Register | `negative/register/invalid_message` | Tests that Register returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Protocol | `negative/rekey_keypair_non_latest` | Tests that ReKeyKeyPair on a retired (non-latest) keyset member is rejected. | 7 |
+| Negative / Protocol | `negative/rekey_keypair_preactive_fails` | Creates an EC P-256 key pair without ActivationDate (enters PreActive state), then verifies that ReKeyKeyPair on a PreActive private key is rejected. Only Active keys can be rotated. | 5 |
+| Negative / Protocol | `negative/rekey_offset_preactive_cannot_encrypt` | When ReKey uses Offset=86400, the new key enters PreActive state. A PreActive key must not be usable for Encrypt operations. | 6 |
+| Negative / Protocol | `negative/rekey_preactive_fails` | Creates a symmetric key without ActivationDate (enters PreActive state), then verifies that ReKey on a PreActive key is rejected. Only Active keys can be rotated. | 4 |
+| Negative / Revoke | `negative/revoke/item_not_found` | Tests that Revoke returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / RSA | `negative/rsa/rsa_decrypt_garbage` | Tests that RSA-OAEP decryption fails when ciphertext is random garbage data | 2 |
+| Negative / RSA | `negative/rsa/rsa_decrypt_with_public_key` | Tests that RSA decryption fails when attempting to use a public key for decryption | 2 |
+| Negative / RSA | `negative/rsa/rsa_encrypt_oversized_data` | Tests that RSA-OAEP encryption fails when plaintext exceeds modulus size limit | 2 |
+| Negative / SetAttribute | `negative/set_attribute/hsm_rotate_offset_rejected` | Tests that SetAttribute rotate_offset on an HSM-resident key is rejected | 4 |
+| Negative / SetAttribute | `negative/set_attribute/item_not_found` | Tests that Set Attribute returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / SetAttribute | `negative/set_attribute/read_only_attribute` | Tests that Set Attribute returns Read_Only_Attribute error as per KMIP spec | 2 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_date` | x-rotate-date is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / SetAttribute | `negative/set_attribute/readonly_rotate_generation` | x-rotate-generation is a server-managed read-only attribute. Any attempt to set it via SetAttribute must be rejected with Attribute_Read_Only. | 4 |
+| Negative / Sign | `negative/sign/invalid_message` | Tests that Sign returns Invalid_Message error as per KMIP spec | 1 |
+| Negative / Sign | `negative/sign/item_not_found` | Tests that Sign returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Sign | `negative/sign/wrong_key_lifecycle_state` | Tests that Sign returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / Sign | `negative/sign_verify/sign_with_public_key` | Tests that signing fails when attempting to use a public key instead of private key | 2 |
+| Negative / Sign | `negative/sign_verify/verify_corrupted_signature` | Tests that signature verification returns Invalid when the signature is fabricated | 3 |
+| Negative / Sign | `negative/sign_verify/verify_wrong_key` | Tests that signature verification returns Invalid when verifying with a different key pair | 4 |
+| Negative / Protocol | `negative/sign_with_encrypt_key` | Tests that signing fails when the private key only has Decrypt usage mask (no Sign permission) | 2 |
+| Negative / SignatureVerify | `negative/signature_verify/item_not_found` | Tests that Signature Verify returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / SignatureVerify | `negative/signature_verify/wrong_key_lifecycle_state` | Tests that Signature Verify returns Wrong_Key_Lifecycle_State error as per KMIP spec | 2 |
+| Negative / TypeMismatch | `negative/type_mismatch/encrypt_with_secret_data` | Tests that encryption fails when attempting to use a Secret Data object instead of a cryptographic key | 2 |
+| Negative / TypeMismatch | `negative/type_mismatch/import_malformed_key` | Tests that importing a key with mismatched key material size and declared CryptographicLength fails | 1 |
+| Negative / TypeMismatch | `negative/type_mismatch/revoke_already_destroyed` | Documents that the server allows revoking a key that has already been destroyed (surprising but accepted behavior) | 4 |
+| Negative / Validate | `negative/validate/item_not_found` | Tests that Validate returns Item_Not_Found error as per KMIP spec | 1 |
+| Negative / Protocol | `negative/wrong_key_type_encrypt` | Tests that encrypt fails when using a private key (wrong key type for encryption) | 2 |
 | **non-FIPS CryptographicParameters** | | | |
-| non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_explicit_nonce` | Create (AES-128), Encrypt (client 12-B nonce), Decrypt | 3 |
-| non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_explicit_nonce` | Create (AES-256), Encrypt (client 12-B nonce), Decrypt | 3 |
-| non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_aad` | Create (AES-128), Encrypt (AAD + server nonce), Decrypt | 3 |
-| non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_aad` | Create (AES-256), Encrypt (AAD + server nonce), Decrypt | 3 |
-| non-FIPS / ChaCha20 | `non-fips/chacha20_server_generated_nonce` | Create, Encrypt (server generates 8-B nonce), Decrypt | 3 |
-| non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Create, Encrypt (CryptographicParameters{ChaCha20} + 8-B nonce), Decrypt | 3 |
-| non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_explicit_nonce` | Create, Encrypt (AEAD + client 12-B nonce), Decrypt | 3 |
-| non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_aad` | Create, Encrypt (AEAD + AAD + server nonce), Decrypt | 3 |
+| non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_aad` | Creates an AES-128 key, encrypts with additional authenticated data (AAD) using AES-GCM-SIV (server-generated nonce), then decrypts with the same AAD and verifies the plaintext | 3 |
+| non-FIPS / GCM-SIV | `non-fips/aes128_gcm_siv_with_explicit_nonce` | Creates an AES-128 key, encrypts with a client-provided 12-byte nonce using AES-GCM-SIV, then decrypts and verifies the plaintext | 3 |
+| non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_aad` | Creates an AES-256 key, encrypts with additional authenticated data (AAD) using AES-GCM-SIV (server-generated nonce), then decrypts with the same AAD and verifies the plaintext | 3 |
+| non-FIPS / GCM-SIV | `non-fips/aes256_gcm_siv_with_explicit_nonce` | Creates an AES-256 key, encrypts with a client-provided 12-byte nonce using AES-GCM-SIV, then decrypts and verifies the plaintext | 3 |
+| non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_aad` | Creates a ChaCha20-Poly1305 key, encrypts with additional authenticated data (AAD) using AEAD mode (server-generated nonce), then decrypts with the same AAD and verifies the plaintext | 3 |
+| non-FIPS / Poly1305 | `non-fips/chacha20_poly1305_with_explicit_nonce` | Creates a ChaCha20-Poly1305 key, encrypts with a client-provided 12-byte nonce using AEAD mode, then decrypts and verifies the plaintext | 3 |
+| non-FIPS / ChaCha20 | `non-fips/chacha20_server_generated_nonce` | Creates a ChaCha20 key, encrypts without specifying a nonce (server generates an 8-byte nonce), captures the nonce from the response, then decrypts and verifies the plaintext | 3 |
+| non-FIPS / ChaCha20 | `non-fips/chacha20_with_explicit_cryptographic_params` | Creates a ChaCha20 key, encrypts with an explicit CryptographicParameters block specifying the ChaCha20 algorithm and a client-provided 8-byte nonce, then decrypts and verifies the plaintext | 3 |
+| **Keyset Resolution** | | | |
+| Keyset | `keyset_chain_skips_expired_window` | Creates a symmetric key (gen-0), sets a rotate_name, encrypts with the gen-0 UID, then performs a ReKey to create gen-1.  Sets ProtectStopDate in the past on gen-1 (the newest key in the chain).  Decrypts with the bare keyset name. | 9 |
+| Keyset / Decrypt | `keyset_decrypt_at_first` | Creates a symmetric key, assigns a rotate_name, encrypts with the original key UID, performs a ReKey, then decrypts using name@first. Verifies that @first resolves to gen-0 for decryption. | 8 |
+| Keyset / Decrypt | `keyset_decrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, encrypts with gen-0 UID, performs two ReKey operations, then decrypts using name@0. Verifies that @0 resolves to gen-0 for decryption even after multiple rotations. | 11 |
+| Keyset / Decrypt | `keyset_decrypt_at_latest` | Decrypt using name@latest resolves to the single latest key rather than walking the chain. After rotation, encrypts with the new key, then decrypts using name@latest which should find the new key directly. | 8 |
+| Keyset / Decrypt | `keyset_decrypt_double_rotation` | Tests try-each-key across a 3-generation chain: | 11 |
+| Keyset / Decrypt | `keyset_decrypt_try_each` | The primary keyset try-each-key test: | 8 |
+| Keyset | `keyset_ec_sign_verify_chain` | Tests keyset-based Sign resolution with EC key pairs: | 10 |
+| Keyset / Encrypt | `keyset_encrypt_at_first` | Creates a symmetric key with a rotate_name, encrypts using name@first while gen-0 is Active, then performs ReKey (gen-0 → Deactivated per §4.57). Verifies @first resolved to gen-0 by decrypting with the original key UID after rotation (Decrypt accepts Deactivated keys per KMIP §3.31). | 8 |
+| Keyset / Encrypt | `keyset_encrypt_at_generation_n` | Creates a symmetric key, assigns a rotate_name, performs two ReKey operations (gen-0→gen-1→gen-2). Encrypts with name@1 while gen-1 is still Active (between rotations), then verifies by decrypting with the gen-1 UID after the second rotation (Decrypt accepts Deactivated keys). | 11 |
+| Keyset / Encrypt | `keyset_encrypt_bare_name` | Creates a symmetric key with rotate_name set, then encrypts using only the bare keyset name (no @version suffix). For Encrypt operations, bare keyset names resolve to the latest key (SingleLatest mode). | 5 |
+| Keyset / Encrypt | `keyset_encrypt_expired_window_fails` | Creates a symmetric key, assigns a rotate_name, then sets ProtectStopDate in the past on the key (the only/latest key in the chain).  An Encrypt with the bare keyset name must fail. | 5 |
+| Keyset / Encrypt | `keyset_encrypt_latest` | Creates a symmetric key, assigns a rotate_name via SetAttribute, then encrypts data using the keyset name@latest syntax. Verifies that keyset resolution correctly finds the latest key. | 5 |
+| Keyset / Encrypt | `keyset_encrypt_latest_after_rotation` | After rotation, encrypting by the bare keyset name must use the new key: | 8 |
+| Keyset | `keyset_gen0_via_address` | After creating a keyset and rotating it once, verifies that the gen-0 key | 9 |
+| Keyset | `keyset_getattributes_resolution` | Verifies that after ReKey, RotateGeneration is correctly set: | 7 |
+| Keyset | `keyset_mac_verify_chain` | Tests the TryEach chain-walk for MACVerify via keyset name: | 7 |
+| Keyset | `keyset_uid_scheme` | Verifies the deterministic UID scheme for SQL keysets: | 9 |
+| Negative / Keyset | `negative/keyset_addattribute_uid_mismatch_fails` | Verifies that adding rotate_name via AddAttribute is rejected when the attribute value does not equal the key's UID. Mirrors the SetAttribute enforcement for the same keyset-name invariant. | 4 |
+| Negative / Keyset | `negative/keyset_create_no_uid_with_rotate_name_fails` | Verifies that a Create request that specifies rotate_name but omits UniqueIdentifier is rejected. Without an explicit UID equal to the keyset name, the server would assign a random UUID, violating the gen-0 UID invariant. | 1 |
+| Negative / Keyset | `negative/keyset_create_uid_mismatch_fails` | Verifies that a Create request where rotate_name does not equal the supplied UniqueIdentifier is rejected. The invariant is: gen-0 UID must equal the keyset name. | 1 |
+| Negative / Keyset | `negative/keyset_invalid_generation` | Creates a symmetric key with a rotate_name, then attempts to encrypt using name@99 which references a nonexistent generation. The operation must fail. | 4 |
+| Negative / Keyset | `negative/keyset_rotate_name_at_rejected` | Verifies that setting a rotate_name containing '@' is rejected with an InvalidRequest error, since '@' is reserved for keyset versioning syntax. | 4 |
+| Negative / Keyset | `negative/keyset_setattribute_uid_mismatch_fails` | Verifies that setting rotate_name via SetAttribute is rejected when the attribute value does not equal the key's UID. SQL keys require gen-0 UID to equal the keyset name — this invariant must be enforced at SetAttribute time. | 4 |
+| Negative / Keyset | `negative/rekey_non_latest_hsm` | Tests that Re-Key on a retired (non-latest) HSM key is transparently redirected | 10 |
+| Negative / Keyset | `negative/rekey_non_latest_sql` | Tests that Re-Key on a retired (non-latest) SQL-backed key is rejected. | 7 |
 
 ---
 
@@ -339,59 +510,78 @@ MAC, or derived-key values.
 
 | Category | Vector Directory | Reference | Operations | Assert Field |
 |----------|-----------------|-----------|------------|--------------|
-| **Hash** | | NIST FIPS 180-4 / FIPS 202 ("abc") | | |
-| Hash | `kat/hash/sha256` | FIPS 180-4 | Hash (SHA-256) | `Data` |
-| Hash | `kat/hash/sha384` | FIPS 180-4 | Hash (SHA-384) | `Data` |
-| Hash | `kat/hash/sha512` | FIPS 180-4 | Hash (SHA-512) | `Data` |
-| Hash | `kat/hash/sha3_256` | FIPS 202 | Hash (SHA3-256) | `Data` |
-| Hash | `kat/hash/sha3_384` | FIPS 202 | Hash (SHA3-384) | `Data` |
-| Hash | `kat/hash/sha3_512` | FIPS 202 | Hash (SHA3-512) | `Data` |
-| **MAC** | | RFC 4231 §4.2 ("Hi There", key=0x0B×32) | | |
-| MAC | `kat/mac/hmac_sha256` | RFC 4231 §4.2 | Import, MAC (HMAC-SHA256) | `MACData` |
-| MAC | `kat/mac/hmac_sha384` | RFC 4231 §4.2 | Import, MAC (HMAC-SHA384) | `MACData` |
-| MAC | `kat/mac/hmac_sha512` | RFC 4231 §4.2 | Import, MAC (HMAC-SHA512) | `MACData` |
-| MAC | `kat/mac/hmac_sha3_256` | NIST HMAC-SHA3 | Import, MAC (HMAC-SHA3-256) | `MACData` |
-| MAC | `kat/mac/hmac_sha3_384` | NIST HMAC-SHA3 | Import, MAC (HMAC-SHA3-384) | `MACData` |
-| MAC | `kat/mac/hmac_sha3_512` | NIST HMAC-SHA3 | Import, MAC (HMAC-SHA3-512) | `MACData` |
-| MAC | `kat/mac/hmac_sha1` | RFC 2202 §3 | Import, MAC (HMAC-SHA1) | `MACData` |
-| **Symmetric** | | NIST SP 800-38A / SP 800-38D | | |
-| Symmetric | `kat/symmetric/aes128_ecb` | SP 800-38A F.1.1 | Import, Encrypt (AES-128-ECB) | `Data` |
-| Symmetric | `kat/symmetric/aes192_ecb` | SP 800-38A F.1.3 | Import, Encrypt (AES-192-ECB) | `Data` |
-| Symmetric | `kat/symmetric/aes256_ecb` | SP 800-38A F.1.5 | Import, Encrypt (AES-256-ECB) | `Data` |
-| Symmetric | `kat/symmetric/aes128_cbc` | SP 800-38A F.2.1 | Import, Encrypt (AES-128-CBC, no padding) | `Data` |
-| Symmetric | `kat/symmetric/aes192_cbc` | SP 800-38A F.2.3 | Import, Encrypt (AES-192-CBC, no padding) | `Data` |
-| Symmetric | `kat/symmetric/aes256_cbc` | SP 800-38A F.2.5 | Import, Encrypt (AES-256-CBC, no padding) | `Data` |
-| Symmetric | `kat/symmetric/aes128_gcm` | SP 800-38D TC7 | Import, Encrypt (AES-128-GCM + AAD) | `Data`, `AuthenticatedEncryptionTag` |
-| Symmetric | `kat/symmetric/aes192_gcm` | SP 800-38D TC7 | Import, Encrypt (AES-192-GCM + AAD) | `Data`, `AuthenticatedEncryptionTag` |
-| Symmetric | `kat/symmetric/aes256_gcm` | SP 800-38D TC7 | Import, Encrypt (AES-256-GCM + AAD) | `Data`, `AuthenticatedEncryptionTag` |
-| Symmetric | `kat/symmetric/chacha20_poly1305` | RFC 8439 §2.8 | Import, Encrypt (ChaCha20-Poly1305) | `Data`, `AuthenticatedEncryptionTag` |
-| Symmetric | `kat/symmetric/chacha20_pure` | RFC 7539 §2.1 | Import, Encrypt (ChaCha20 pure stream) | `Data` |
-| Symmetric | `kat/symmetric/aes128_xts` | IEEE 1619-2007 | Import, Encrypt (AES-128-XTS) | `Data` |
-| Symmetric | `kat/symmetric/aes256_xts` | IEEE 1619-2007 | Import, Encrypt (AES-256-XTS) | `Data` |
-| Symmetric | `kat/symmetric/rfc3394_aes128_kek` | RFC 3394 §2.2.3 | Import KEK, Import key, Encrypt (AES-128 key wrap), Decrypt | `Data` |
-| Symmetric | `kat/symmetric/rfc3394_aes192_kek` | RFC 3394 §2.2.3 | Import KEK, Import key, Encrypt (AES-192 key wrap), Decrypt | `Data` |
-| Symmetric | `kat/symmetric/rfc3394_aes256_kek` | RFC 3394 §2.2.3 | Import KEK, Import key, Encrypt (AES-256 key wrap), Decrypt | `Data` |
-| Symmetric | `kat/symmetric/rfc5649_aes128_kek` | RFC 5649 §6 | Import KEK, Encrypt (AES-128 key wrap with padding), Decrypt | `Data` |
-| Symmetric | `kat/symmetric/rfc5649_aes192_kek` | RFC 5649 §6 | Import KEK, Encrypt (AES-192 key wrap with padding), Decrypt | `Data` |
-| Symmetric | `kat/symmetric/rfc5649_aes256_kek` | RFC 5649 §6 | Import KEK, Encrypt (AES-256 key wrap with padding), Decrypt | `Data` |
+| **Asymmetric** | | RFC 8032 / NIST PKCS#1 / RFC 6979 | | |
+| Asymmetric | `kat/asymmetric/ed25519_eddsa_sign` | RFC 8032 §7.1 | Import, Sign | `SignatureData` |
+| Asymmetric (non-FIPS) | `kat/asymmetric/ed448_eddsa_sign` | RFC 8032 §7.4 | Import, Sign | `SignatureData` |
+| Asymmetric | `kat/asymmetric/rsa2048_oaep_sha256_decrypt` | NIST PKCS#1 v2.2 | Import, Decrypt | `Data` |
+| Asymmetric (non-FIPS) | `kat/asymmetric/secp256k1_ecdsa_sign` | RFC 6979 §A.2.5 | Import, Sign | `SignatureData` |
+| **Covercrypt** | | Cosmian Covercrypt v16 | | |
+| Covercrypt Decrypt (non-FIPS) | `kat/covercrypt_decrypt` | Self-generated USK | Import, Decrypt | `Data` |
 | **Derive Key** | | RFC 5869 / RFC 8018 | | |
-| Derive Key | `kat/derive_key/hkdf_sha256` | RFC 5869 §A.1 | Import, DeriveKey (HKDF-SHA256), Get | `KeyMaterial` |
-| Derive Key | `kat/derive_key/hkdf_sha384` | RFC 5869 §A.1 | Import, DeriveKey (HKDF-SHA384), Get | `KeyMaterial` |
-| Derive Key | `kat/derive_key/hkdf_sha512` | RFC 5869 §A.1 | Import, DeriveKey (HKDF-SHA512), Get | `KeyMaterial` |
-| Derive Key | `kat/derive_key/pbkdf2_sha256` | RFC 8018 §5.2 | Import, DeriveKey (PBKDF2-SHA256), Get | `KeyMaterial` |
-| Derive Key | `kat/derive_key/pbkdf2_sha384` | RFC 8018 §5.2 | Import, DeriveKey (PBKDF2-SHA384), Get | `KeyMaterial` |
-| Derive Key | `kat/derive_key/pbkdf2_sha512` | RFC 8018 §5.2 | Import, DeriveKey (PBKDF2-SHA512), Get | `KeyMaterial` |
-| **Asymmetric** | | | | |
-| Asymmetric | `kat/asymmetric/ed25519_eddsa_sign` | RFC 8032 §7.1 Test 2 | Import Ed25519 private key, Sign (EdDSA) | `SignatureData` |
-| Asymmetric | `kat/asymmetric/rsa2048_oaep_sha256_decrypt` | NIST PKCS#1 v2.2 | Import RSA-2048 private key, Decrypt (OAEP-SHA256) | `Data` |
-| **Non-FIPS Symmetric** | | RFC 8452 (AES-GCM-SIV) | | |
-| Symmetric (non-FIPS) | `kat/symmetric/aes128_gcm_siv` | RFC 8452 §C.1 | Import, Encrypt (AES-128-GCM-SIV) | `Data`, `AuthenticatedEncryptionTag` |
-| Symmetric (non-FIPS) | `kat/symmetric/aes256_gcm_siv` | RFC 8452 §C.1 | Import, Encrypt (AES-256-GCM-SIV) | `Data`, `AuthenticatedEncryptionTag` |
-| **Non-FIPS Asymmetric** | | RFC 8032 / RFC 6979 | | |
-| Asymmetric (non-FIPS) | `kat/asymmetric/ed448_eddsa_sign` | RFC 8032 §7.4 Test 1 | Import Ed448 private key, Sign (EdDSA) | `SignatureData` |
-| Asymmetric (non-FIPS) | `kat/asymmetric/secp256k1_ecdsa_sign` | RFC 6979 §A.2.5 | Import secp256k1 private key, Sign (ECDSA-SHA256) | `SignatureData` |
-| **Non-FIPS Covercrypt** | | Cosmian Covercrypt v16 | | |
-| Covercrypt (non-FIPS) | `kat/covercrypt_decrypt` | Self-generated USK | Import USK, Decrypt (Covercrypt single-decrypt) | `Data` |
+| Derive Key | `kat/derive_key/hkdf_sha256` | RFC 5869 §A.1 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/hkdf_sha384` | RFC 5869 §A.1 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/hkdf_sha512` | RFC 5869 §A.1 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/pbkdf2_sha256` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/pbkdf2_sha384` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
+| Derive Key | `kat/derive_key/pbkdf2_sha512` | RFC 8018 §5.2 | Import, DeriveKey, Get | `KeyMaterial` |
+| **Hash** | | NIST FIPS 180-4 / FIPS 202 | | |
+| Hash | `kat/hash/sha256` | FIPS 180-4 | Hash | `Data` |
+| Hash | `kat/hash/sha384` | FIPS 202 | Hash | `Data` |
+| Hash | `kat/hash/sha3_256` | FIPS 202 | Hash | `Data` |
+| Hash | `kat/hash/sha3_384` | FIPS 202 | Hash | `Data` |
+| Hash | `kat/hash/sha3_512` | FIPS 202 | Hash | `Data` |
+| Hash | `kat/hash/sha512` | FIPS 180-4 | Hash | `Data` |
+| **MAC** | | RFC 4231 / RFC 2202 / NIST HMAC-SHA3 | | |
+| Mac | `kat/mac/hmac_sha1` | RFC 2202 §3 | Import, Mac | `MACData` |
+| Mac | `kat/mac/hmac_sha256` | RFC 4231 §4.2 | Import, Mac | `MACData` |
+| Mac | `kat/mac/hmac_sha384` | RFC 4231 §4.2 | Import, Mac | `MACData` |
+| Mac | `kat/mac/hmac_sha3_256` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
+| Mac | `kat/mac/hmac_sha3_384` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
+| Mac | `kat/mac/hmac_sha3_512` | NIST HMAC-SHA3 | Import, Mac | `MACData` |
+| Mac | `kat/mac/hmac_sha512` | RFC 4231 §4.2 | Import, Mac | `MACData` |
+| **Recertify** | |  | | |
+| Recertify | `kat/recertify/replacement_and_replaced_links` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy |  |
+| Recertify | `kat/recertify/rotate_generation_counter` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateGeneration` |
+| Recertify | `kat/recertify/rotate_latest_flag` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `RotateLatest` |
+| Recertify | `kat/recertify/state_transitions` |  | CreateKeyPair, Activate, Certify, ReCertify, GetAttributes, GetAttributes, Destroy, Revoke, Destroy, Destroy, Revoke, Destroy | `State` |
+| **Rekey** | |  | | |
+| Rekey | `kat/rekey/deactivated_accepts_decrypt` |  | Create, Encrypt, ReKey, Decrypt, Destroy, Revoke, Destroy | `Data` |
+| Rekey | `kat/rekey/deactivated_rejects_encrypt` |  | Create, Encrypt, ReKey, Encrypt, Destroy, Revoke, Destroy |  |
+| Rekey | `kat/rekey/keyset_uid` |  | Create, ReKey, ReKey, Destroy, Destroy, Revoke, Destroy | `UniqueIdentifier` |
+| Rekey | `kat/rekey/replacement_and_replaced_links` |  | Create, ReKey, GetAttributes, GetAttributes, Destroy, Revoke, Destroy | `LinkedObjectIdentifier` |
+| Rekey | `kat/rekey/rotate_generation_counter` |  | Create, ReKey, ReKey, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy | `RotateGeneration` |
+| Rekey | `kat/rekey/rotate_interval_cleared` |  | Create, SetAttribute, GetAttributes, ReKey, GetAttributes, Destroy, Revoke, Destroy | `RotateInterval` |
+| Rekey | `kat/rekey/rotate_latest_flag` |  | Create, ReKey, GetAttributes, GetAttributes, Destroy, Revoke, Destroy | `RotateLatest` |
+| Rekey | `kat/rekey/state_transitions` |  | Create, ReKey, GetAttributes, GetAttributes, Destroy, Revoke, Destroy | `State` |
+| **Rekey_Keypair** | |  | | |
+| Rekey Keypair | `kat/rekey_keypair/old_pk_deactivated_accepts_verify` |  | CreateKeyPair, ReKeyKeyPair, Sign, SignatureVerify, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy |  |
+| Rekey Keypair | `kat/rekey_keypair/old_sk_deactivated_rejects_sign` |  | CreateKeyPair, Sign, ReKeyKeyPair, Sign, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy |  |
+| Rekey Keypair | `kat/rekey_keypair/replacement_links` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy |  |
+| Rekey Keypair | `kat/rekey_keypair/rotate_generation_counter` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy | `RotateGeneration` |
+| Rekey Keypair | `kat/rekey_keypair/rotate_latest_flag` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy | `RotateLatest` |
+| Rekey Keypair | `kat/rekey_keypair/state_transitions` |  | CreateKeyPair, ReKeyKeyPair, GetAttributes, GetAttributes, GetAttributes, GetAttributes, Destroy, Destroy, Revoke, Destroy, Revoke, Destroy | `State` |
+| **Symmetric** | | NIST SP 800-38A / SP 800-38D / RFC 8439 / RFC 7539 / RFC 3394 / RFC 5649 | | |
+| Symmetric | `kat/symmetric/aes128_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/aes128_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/aes128_gcm` | SP 800-38D TC7 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric (non-FIPS) | `kat/symmetric/aes128_gcm_siv` | RFC 8452 §C.1 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric (non-FIPS) | `kat/symmetric/aes128_xts` | IEEE 1619-2007 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/aes192_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/aes192_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/aes192_gcm` | SP 800-38D TC7 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric | `kat/symmetric/aes256_cbc` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/aes256_ecb` | SP 800-38A | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/aes256_gcm` | SP 800-38D TC7 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric (non-FIPS) | `kat/symmetric/aes256_gcm_siv` | RFC 8452 §C.1 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric (non-FIPS) | `kat/symmetric/aes256_xts` | IEEE 1619-2007 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric (non-FIPS) | `kat/symmetric/chacha20_poly1305` | RFC 8439 §2.8 | Import, Encrypt, Decrypt | `Data`, `AuthenticatedEncryptionTag` |
+| Symmetric (non-FIPS) | `kat/symmetric/chacha20_pure` | RFC 7539 §2.1 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/rfc3394_aes128_kek` | RFC 3394 §2.2.3 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/rfc3394_aes192_kek` | RFC 3394 §2.2.3 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/rfc3394_aes256_kek` | RFC 3394 §2.2.3 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/rfc5649_aes128_kek` | RFC 5649 §6 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/rfc5649_aes192_kek` | RFC 5649 §6 | Import, Encrypt, Decrypt | `Data` |
+| Symmetric | `kat/symmetric/rfc5649_aes256_kek` | RFC 5649 §6 | Import, Encrypt, Decrypt | `Data` |
 
 ---
 

@@ -1,3 +1,5 @@
+mod rotation_policy;
+
 use std::{path::Path, process::Command};
 
 use assert_cmd::prelude::*;

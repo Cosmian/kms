@@ -22,3 +22,7 @@ deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 # Publish dry-run helpers (allow dirty tree during local checks)
 publish-dry = "publish --dry-run --workspace --allow-dirty"
 publish-dry-crate = "publish --dry-run --allow-dirty"
+
+# Run throughput bench with native-CPU tuning for maximum representative throughput.
+# cargo bench-native -- http_throughput
+bench-native = "bench --bench http_throughput"

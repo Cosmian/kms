@@ -1,0 +1,47 @@
+---
+name: Packaging
+
+# Triggered nightly (schedule), manually, on tag pushes, or on push to
+# develop/main.  Bot commits from nix-update-hashes.yml carry [skip ci] so
+# they do NOT re-trigger this workflow.
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+    tags:
+      - '**'
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 1 * * * # Daily at 1 AM
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Non-tag refs (branches, schedule, workflow_dispatch):
+  #   1. Recompute Nix vendor hashes on the current branch and commit them.
+  #   2. Dispatch packaging.yml once both platform jobs have finished.
+  #
+  # Packaging is triggered by nix-update-hashes.yml (trigger_packaging=true)
+  # so this workflow does NOT call packaging.yml directly for the branch case.
+  # ─────────────────────────────────────────────────────────────────────────
+  update-nix-hashes:
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    uses: ./.github/workflows/nix-update-hashes.yml
+    with:
+      ref: ${{ github.ref_name }}
+      trigger_packaging: true
+    secrets: inherit
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Tag refs only:
+  #   Nix hashes are already committed by release.yml — skip the hash update
+  #   and go straight to packaging.
+  # ─────────────────────────────────────────────────────────────────────────
+  packaging:
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/packaging.yml
+    secrets: inherit
+    with:
+      toolchain: 1.91.0

@@ -61,3 +61,8 @@ run.sh
 
 # Windows (vcpkg OpenSSL)
 vcpkg_installed/
+
+# Linux perf profiling artifacts
+perf.data
+perf.data.old
+target/flamegraphs/

@@ -1,7 +1,7 @@
 {
     "name": "ui",
     "private": true,
-    "version": "5.24.0",
+    "version": "5.25.0",
     "type": "module",
     "packageManager": "pnpm@10.17.1",
     "scripts": {
@@ -74,7 +74,8 @@
             "picomatch": ">=4.0.4",
             "rollup": ">=4.59.0",
             "ajv": "^6.14.0",
-            "flatted": ">=3.4.2"
+            "flatted": ">=3.4.2",
+            "js-yaml": ">=4.2.0"
         },
         "onlyBuiltDependencies": [
             "@playwright/test",

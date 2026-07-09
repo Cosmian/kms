@@ -59,10 +59,10 @@ use crate::{
     routes::{
         access,
         aws_xks::{self},
-        azure_ekm, cli_archive_download, cli_archive_exists, crypto, get_hsm_status,
-        get_server_info, get_version,
+        azure_ekm, cli_archive_download, cli_archive_exists, get_hsm_status, get_server_info,
+        get_version,
         google_cse::{self, GoogleCseConfig},
-        health,
+        health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
         ms_dke, root_redirect, swagger,
         ui_auth::configure_auth_routes,
@@ -146,7 +146,7 @@ pub async fn handle_google_cse_rsa_keypair(
                 None,
             )?;
             kms_server
-                .create_key_pair(create_request, &server_params.default_username, None)
+                .create_key_pair(create_request, &server_params.default_username)
                 .await
                 .map(|cr| {
                     (
@@ -299,7 +299,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_sk, &server_params.default_username, None)
+        kms_server.import(import_request_sk, &server_params.default_username)
     };
     let import_pk_fut = {
         // Import PublicKey
@@ -312,7 +312,7 @@ async fn import_cse_migration_key(
             false,
             vec![],
         )?;
-        kms_server.import(import_request_pk, &server_params.default_username, None)
+        kms_server.import(import_request_pk, &server_params.default_username)
     };
 
     try_join!(import_sk_fut, import_pk_fut)
@@ -362,6 +362,13 @@ pub async fn start_kms_server(
         None
     };
 
+    // Spawn background auto-rotation cron thread and retain shutdown signal
+    let auto_rotation_shutdown_tx = if kms_server.params.auto_rotation_check_interval_secs > 0 {
+        Some(cron::spawn_auto_rotation_cron(kms_server.clone()))
+    } else {
+        None
+    };
+
     // Handle Google RSA Keypair for CSE Kacls migration
     if server_params.google_cse.google_cse_enable {
         handle_google_cse_rsa_keypair(&kms_server, &server_params)
@@ -384,6 +391,10 @@ pub async fn start_kms_server(
     let res = start_http_kms_server(kms_server.clone(), kms_server_handle_tx).await;
     // Signal the metrics cron thread to stop
     if let Some(tx) = metrics_shutdown_tx {
+        let _ = tx.send(());
+    }
+    // Signal the auto-rotation cron thread to stop
+    if let Some(tx) = auto_rotation_shutdown_tx {
         let _ = tx.send(());
     }
     if let Some(ss_command_tx) = ss_command_tx {
@@ -720,8 +731,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
     }
 
-    let privileged_users: Option<Vec<String>> = kms_server.params.privileged_users.clone();
-
     // Compute the public URL first so we can use it to derive the session key
     let kms_public_url = kms_server.params.kms_public_url.clone().unwrap_or_else(|| {
         format!(
@@ -756,6 +765,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
+
+    // Extract http_workers before the closure moves kms_server
+    let http_workers = kms_server.params.http_workers;
 
     // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
     // The test-server helper leaves that field at `None` so parallel unit tests are never
@@ -903,6 +915,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             info!("azure EKM API enabled at {}", base_path);
 
             let azure_ekm_scope = web::scope(&base_path)
+                .app_data(azure_ekm::ekm_json_config())
                 .wrap(Condition::new(
                     !kms_server.params.azure_ekm.azure_ekm_disable_client_auth,
                     EnsureAuth::new(kms_server_for_http.clone(), use_cert_auth),
@@ -997,6 +1010,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/aws{_:.*}",
                 "/google-cse{_:.*}",
                 "/tokenize{_:.*}",
+                "/rotation-policy{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_config))
@@ -1040,11 +1054,34 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(health::get_health)
             .service(get_version);
 
+        // JWKS endpoint: public, unauthenticated, CORS-open (partially).
+        // The scope prefix `/.well-known` is explicit so this scope does not conflict
+        // with the empty-prefix default_scope and its restrictive CORS configuration.
+        if kms_server_for_http.params.jwks_endpoint.jwks_endpoint_enabled {
+            warn!(
+                "JWKS endpoint enabled — all active public keys with the \"jwks\" tag will be publicly exposed (unauthenticated) at \
+                 `{kms_public_url}/.well-known/jwks.json`. Up to {} keys will be served. \
+                 Ensure this is intentional. Configure via the `[jwks_endpoint]` section in the server configuration file.",
+                kms_server_for_http.params.jwks_endpoint.jwks_endpoint_max_keys
+            );
+            app = app.service(
+                web::scope("/.well-known")
+                    .wrap(
+                        Cors::default()
+                            .allow_any_origin()
+                            // HEAD is included so that CDN healthchecks and HTTP
+                            // clients that probe with HEAD before GET work correctly.
+                            .allowed_methods(vec!["GET", "HEAD"])
+                    )
+                    .service(jwks::get_jwks),
+            );
+        }
+
         // REST Native Crypto API — /v1/crypto/*
         let crypto_scope = web::scope("/v1/crypto")
             .app_data(
                 web::JsonConfig::default()
-                    .error_handler(crypto::crypto_json_error_handler),
+                    .error_handler(jose::crypto_json_error_handler),
             )
             .wrap(EnsureAuth::new(
                 kms_server_for_http.clone(),
@@ -1060,19 +1097,21 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ))
             .wrap(Condition::new(use_cert_auth, TlsAuth))
             .wrap(Cors::permissive())
-            .service(crypto::encrypt_handler)
-            .service(crypto::decrypt_handler)
-            .service(crypto::sign_handler)
-            .service(crypto::verify_handler)
-            .service(crypto::mac_handler)
-            .service(crypto::create_key_handler)
-            .service(crypto::delete_key_handler)
-            .service(crypto::unwrap_key_handler);
+            .service(jose::encrypt_handler)
+            .service(jose::decrypt_handler)
+            .service(jose::sign_handler)
+            .service(jose::verify_handler)
+            .service(jose::mac_handler)
+            .service(jose::create_key_handler)
+            .service(jose::delete_key_handler)
+            .service(jose::unwrap_key_handler)
+            .service(jose::add_tags_handler)
+            .service(jose::remove_tags_handler)
+            .service(jose::list_tags_handler);
         app = app.service(crypto_scope);
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
-            .app_data(Data::new(privileged_users.clone()))
             .wrap(EnsureAuth::new(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
@@ -1116,10 +1155,9 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             .service(access::grant_access)
             .service(access::revoke_access)
             .service(access::get_create_access)
-            .service(access::get_privileged_access);
-
-        let default_scope = default_scope.service(
-            web::resource("/download-cli")
+            .service(access::get_privileged_access)
+            .service(
+                web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
             )
@@ -1134,6 +1172,25 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         std::time::Duration::from_secs(120),
     ))
     .client_request_timeout(std::time::Duration::from_secs(10)); // keep 10 seconds timeout for KMIP test vectors
+
+    // Apply worker count if configured; otherwise default to available_parallelism
+    // (total logical cores). HTTP workers are I/O-bound (connection handling), so
+    // using total core count (including efficiency cores on hybrid architectures)
+    // is appropriate here, unlike CPU-bound thread pools (tokio, SQLite) which
+    // use P-core count.
+    let http_workers = http_workers.unwrap_or_else(|| {
+        let total = std::thread::available_parallelism().map_or(1, usize::from);
+        info!("http_workers not configured; defaulting to total core count ({total})");
+        total
+    });
+    if http_workers == 0 {
+        return Err(KmsError::InvalidRequest(
+            "http_workers must be greater than 0; actix-web panics on 0 workers".to_owned(),
+        ));
+    }
+    info!("KMS HTTP server configured with {http_workers} worker thread(s)");
+    let server = server.workers(http_workers);
+
     // The KMIP XML vector test harness keeps a single HTTP connection open across
     // many serialized requests with potentially long gaps (several seconds) while
     // preparing the next request. Actix-web's default keep-alive (~5s) was closing
@@ -1216,6 +1273,7 @@ fn validate_jwks_uris_are_https(uris: &[String]) -> KResult<()> {
 
 #[cfg(test)]
 #[expect(clippy::expect_used)]
+#[allow(clippy::assertions_on_result_states)]
 mod tests {
     use super::*;
 
@@ -1302,7 +1360,9 @@ mod tests {
             let uris = vec!["http://idp.example.com/.well-known/jwks.json".to_owned()];
             let result = validate_jwks_uris_are_https(&uris);
             assert!(result.is_err(), "HTTP JWKS URI must be rejected");
-            let msg = result.unwrap_err().to_string();
+            let msg = result
+                .expect_err("HTTP JWKS URI must be rejected")
+                .to_string();
             assert!(
                 msg.contains("HTTPS") || msg.contains("https"),
                 "Error message must mention HTTPS, got: {msg}"
@@ -1340,7 +1400,9 @@ mod tests {
                 result.is_err(),
                 "List containing an HTTP URI must be rejected"
             );
-            let msg = result.unwrap_err().to_string();
+            let msg = result
+                .expect_err("List containing an HTTP URI must be rejected")
+                .to_string();
             assert!(
                 msg.contains("bad.example.com"),
                 "Error message must identify the offending URI, got: {msg}"

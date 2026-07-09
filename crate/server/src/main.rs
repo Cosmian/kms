@@ -36,8 +36,9 @@ fn get_effective_rust_log(config_rust_log: Option<String>, info_only: bool) -> O
 ///
 /// On Windows, if the process was launched by the Service Control Manager, it
 /// dispatches to the Windows service entry point instead.
-#[tokio::main]
-async fn main() {
+///
+/// The tokio runtime is sized to the available parallelism reported by the OS.
+fn main() {
     // On Windows, attempt to register with the SCM.  If the process was launched
     // by the SCM, `try_run_as_service()` blocks until the service stops and then
     // returns Ok(()).  If launched from a console, it returns Err (not an SCM
@@ -55,10 +56,25 @@ async fn main() {
         }
     }
 
-    if let Err(e) = run().await {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
-    }
+    let parallelism = std::thread::available_parallelism().map_or(1, usize::from);
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(parallelism)
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Failed to build tokio runtime: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    rt.block_on(async {
+        if let Err(e) = run().await {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    });
 }
 
 async fn run() -> KResult<()> {
@@ -218,8 +234,8 @@ mod tests {
     use cosmian_kms_server::{
         config::{
             AzureEkmConfig, ClapConfig, GoogleCseConfig, HttpConfig, IdpAuthConfig,
-            KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig, ProxyConfig,
-            SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
+            JwksEndpointConfig, KmipPolicyConfig, LoggingConfig, MainDBConfig, OidcConfig,
+            ProxyConfig, SocketServerConfig, TlsConfig, UiConfig, WorkspaceConfig,
         },
         routes::aws_xks::AwsXksConfig,
     };
@@ -240,6 +256,9 @@ mod tests {
                 #[cfg(feature = "non-fips")]
                 clear_database: false,
                 unwrapped_cache_max_age: 15,
+                unwrapped_cache_max_size: 1000,
+                unwrapped_cache_max_ttl: None,
+                disable_unwrapped_cache: false,
             },
             socket_server: SocketServerConfig {
                 socket_server_start: false,
@@ -259,6 +278,8 @@ mod tests {
                 api_token_id: None,
                 rate_limit_per_second: Some(100),
                 cors_allowed_origins: None,
+                http_workers: None,
+                jwks_enabled: false,
             },
             proxy: ProxyConfig {
                 proxy_url: Some("https://proxy.example.com:8080".to_owned()),
@@ -302,6 +323,7 @@ mod tests {
                 azure_ekm_ekm_vendor: String::new(),
                 azure_ekm_ekm_product: String::new(),
             },
+            jwks_endpoint: JwksEndpointConfig::default(),
             kms_public_url: Some("[kms_public_url]".to_owned()),
             workspace: WorkspaceConfig {
                 root_data_path: PathBuf::from("[root data path]"),
@@ -348,6 +370,8 @@ mod tests {
             privileged_users: None,
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
             print_default_config: false,
+            auto_rotation_check_interval_secs: 0,
+            keyset_warn_depth: 5,
         };
 
         let toml_string = r#"
@@ -363,6 +387,8 @@ hsm_password = []
 hsm_instances = []
 key_encryption_key = "key wrapping key"
 kms_public_url = "[kms_public_url]"
+auto_rotation_check_interval_secs = 0
+keyset_warn_depth = 5
 
 [db]
 database_type = "[redis-findex, postgresql,...]"
@@ -371,6 +397,8 @@ sqlite_path = "[sqlite path]"
 redis_master_password = "[redis master password]"
 clear_database = false
 unwrapped_cache_max_age = 15
+unwrapped_cache_max_size = 1000
+disable_unwrapped_cache = false
 
 [socket_server]
 socket_server_start = false
@@ -439,6 +467,11 @@ aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
 [kmip.allowlists]
+
+[jwks_endpoint]
+jwks_endpoint_enabled = false
+jwks_endpoint_max_keys = 50
+jwks_endpoint_auto_tag = true
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

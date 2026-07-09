@@ -1,4 +1,4 @@
-import { Button, Card, Checkbox, Form, Input, InputNumber, Select, Space } from "antd";
+import { Button, Card, Checkbox, Divider, Form, Input, InputNumber, Select, Space } from "antd";
 import React, { useEffect, useState } from "react";
 import { sendKmipRequest } from "../../utils/utils";
 import * as wasm from "../../wasm/pkg";
@@ -13,6 +13,9 @@ interface SymKeyCreateFormData {
     tags: string[];
     sensitive: boolean;
     wrappingKeyId?: string;
+    enrollKeyset: boolean;
+    rotateInterval?: number;
+    rotateOffset?: number;
 }
 
 type CreateResponse = {
@@ -49,7 +52,26 @@ const SymKeyCreateForm: React.FC = () => {
             const result_str = await sendKmipRequest(request, idToken, serverUrl);
             if (result_str) {
                 const result: CreateResponse = await wasm.parse_create_ttlv_response(result_str);
-                return `${result.UniqueIdentifier} has been created.`;
+                const keyId = result.UniqueIdentifier;
+
+                // Apply rotation policy if any fields were provided
+                if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
+                    if (values.rotateInterval !== undefined) {
+                        const req = wasm.set_rotate_interval_ttlv_request(keyId, BigInt(values.rotateInterval));
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                    if (values.rotateOffset !== undefined) {
+                        const req = wasm.set_rotate_offset_ttlv_request(keyId, BigInt(values.rotateOffset));
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                    if (values.enrollKeyset) {
+                        // rotation name must equal the key ID for SQL-backed keys
+                        const req = wasm.set_rotate_name_ttlv_request(keyId, keyId);
+                        await sendKmipRequest(req, idToken, serverUrl);
+                    }
+                }
+
+                return `${keyId} has been created.`;
             }
         });
     };
@@ -76,6 +98,7 @@ const SymKeyCreateForm: React.FC = () => {
                     numberOfBits: 256,
                     tags: [],
                     sensitive: false,
+                    enrollKeyset: false,
                 }}
             >
                 <Space direction="vertical" size="middle" style={{ display: "flex" }}>
@@ -110,6 +133,52 @@ const SymKeyCreateForm: React.FC = () => {
 
                         <Form.Item name="sensitive" valuePropName="checked" help="If set, the key will not be exportable">
                             <Checkbox>Sensitive</Checkbox>
+                        </Form.Item>
+
+                        <Divider orientation="left" plain>
+                            Rotation Policy (optional)
+                        </Divider>
+
+                        <Form.Item
+                            name="enrollKeyset"
+                            valuePropName="checked"
+                            help="When checked, the rotation name is set to the key ID so this key can be addressed via name@latest, name@first, name@N"
+                        >
+                            <Checkbox data-testid="sym-enroll-keyset">Enroll in keyset (rotation name = key ID)</Checkbox>
+                        </Form.Item>
+
+                        <Form.Item noStyle shouldUpdate={(prev, curr) => prev.enrollKeyset !== curr.enrollKeyset}>
+                            {({ getFieldValue }) =>
+                                getFieldValue("enrollKeyset") ? (
+                                    <>
+                                        <Form.Item
+                                            name="rotateInterval"
+                                            label="Rotation Interval (seconds)"
+                                            help="Auto-rotate the key every N seconds. Set 0 to disable."
+                                        >
+                                            <InputNumber
+                                                className="w-[200px]"
+                                                min={0}
+                                                placeholder="e.g. 86400"
+                                                data-testid="sym-rotation-interval"
+                                            />
+                                        </Form.Item>
+
+                                        <Form.Item
+                                            name="rotateOffset"
+                                            label="Rotation Offset (seconds)"
+                                            help="Delay before the first rotation occurs."
+                                        >
+                                            <InputNumber
+                                                className="w-[200px]"
+                                                min={0}
+                                                placeholder="e.g. 3600"
+                                                data-testid="sym-rotation-offset"
+                                            />
+                                        </Form.Item>
+                                    </>
+                                ) : null
+                            }
                         </Form.Item>
                     </Card>
 

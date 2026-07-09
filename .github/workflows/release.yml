@@ -14,7 +14,7 @@ name: Release
 #      parallel to recompute all Nix vendor hashes (Linux writes server +
 #      linux-cli + UI wasm hashes; macOS writes darwin-cli + UI pnpm hashes)
 #      and commits the results.
-#   7. Dispatches pr.yml on the release branch to trigger the packaging CI,
+#   7. Dispatches packaging.yml on the release branch to trigger the packaging CI,
 #      then polls until that run completes (the packaging CI publishes SBOMs
 #      to package.cosmian.com at last_build/release/<new_version>).
 #   8. Retrieves the generated SBOMs from package.cosmian.com and commits them.
@@ -22,7 +22,7 @@ name: Release
 #        a. Merges release/<new_version> into main (--no-ff).
 #        b. Creates the annotated tag X.Y.Z on main's merge commit.
 #           (conventional git-flow always tags the main merge commit, not the
-#            release branch — this also triggers pr.yml on:push:tags which
+#            release branch — this also triggers packaging.yml on:push:tags which
 #            builds the final packages and creates the GitHub Release)
 #        c. Merges release/<new_version> into develop (syncs version bump back).
 #        d. Deletes the release branch.
@@ -94,7 +94,7 @@ jobs:
           fi
 
       # Use PAT_TOKEN so commits and tag pushes re-trigger other workflows.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: develop
           fetch-depth: 0
@@ -163,16 +163,7 @@ jobs:
         with:
           toolchain: 1.91.0
 
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
+      - uses: ./.github/actions/install-mise
 
       - name: Run version-bump script
         run: |
@@ -230,99 +221,27 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 2 — Recompute Nix vendor hashes (matrix: Linux + macOS)
   #
-  # Hash files split by platform:
-  #   Linux  : server.vendor.{static,dynamic}.sha256
-  #             cli.vendor.linux.sha256
-  #             ui.vendor.{fips,non-fips}.sha256
-  #             ui.pnpm.linux.sha256
-  #   macOS  : cli.vendor.{static,dynamic}.darwin.sha256
-  #             ui.pnpm.darwin.sha256
-  #
-  # The two sets are disjoint, so both runners can commit concurrently without
-  # conflicts.  Each job pulls the latest HEAD before pushing.
+  # Delegated to the local reusable workflow nix-update-hashes.yml.
+  # See that file for the full hash-file split by platform and idempotency notes.
   # ─────────────────────────────────────────────────────────────────────────────
   update-nix-hashes:
-    name: Update Nix vendor hashes (${{ matrix.runner }})
+    name: Update Nix vendor hashes
     needs: prepare
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-latest, macos-15]
-
-    steps:
-      - name: Nix installation
-        uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            connect-timeout = 15
-            stalled-download-timeout = 15
-            narinfo-cache-negative-ttl = 0
-            http-connections = 8
-
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.prepare.outputs.release_branch }}
-          fetch-depth: 0
-          submodules: recursive
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Warm Nix store
-        run: |
-          sed -n 's/.*url *= *"\(https:\/\/[^"]*\.tar\.gz\)".*/\1/p' default.nix | sort -u \
-          | while read -r url; do
-            dest="/tmp/$(basename "$url")"
-            fallback=$(echo "$url" | sed \
-              's|https://package.cosmian.com/nixpkgs/|https://github.com/NixOS/nixpkgs/archive/|')
-            echo "Downloading $(basename "$url") …"
-            if ! curl --retry 3 --retry-delay 5 --retry-all-errors -fsSL -o "$dest" "$url"; then
-              echo "Mirror failed, falling back to GitHub …"
-              curl --retry 5 --retry-delay 10 --retry-max-time 300 \
-                   --retry-all-errors -fsSL -o "$dest" "$fallback"
-            fi
-            echo "Injecting into Nix store …"
-            nix-prefetch-url --unpack --name source "file://$dest"
-            rm -f "$dest"
-          done
-
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
-
-      - name: Recompute all Nix vendor hashes
-        run: mise run release:nix-update-hashes
-
-      - name: Commit updated Nix hashes
-        run: |
-          git add nix/expected-hashes/
-          if git diff --cached --quiet; then
-            echo "Nix hashes are already up-to-date, nothing to commit."
-          else
-            git commit -m "build: update Nix vendor hashes (${{ runner.os }}) for ${{ inputs.new_version }}"
-            # Pull after committing to avoid "index contains uncommitted changes"
-            # error. The two platform jobs touch disjoint file sets so rebase
-            # always succeeds cleanly.
-            git pull --rebase origin "${{ needs.prepare.outputs.release_branch }}"
-            git push origin "${{ needs.prepare.outputs.release_branch }}"
-          fi
+    uses: ./.github/workflows/nix-update-hashes.yml
+    with:
+      ref: ${{ needs.prepare.outputs.release_branch }}
+      new_version: ${{ inputs.new_version }}
+      # release.yml has its own trigger-packaging job (with polling + SBOM
+      # retrieval), so the reusable workflow must NOT dispatch packaging again.
+      trigger_packaging: false
+    secrets:
+      PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 3 — Trigger packaging CI on the release branch and wait for completion
   #
-  # pr.yml supports `workflow_dispatch` which allows us to trigger it on an
-  # arbitrary ref.  This makes packaging run (including the publish-sbom jobs
+  # packaging.yml supports `workflow_dispatch` which allows us to trigger it on
+  # an arbitrary ref.  This makes packaging run (including the publish-sbom jobs
   # that upload to package.cosmian.com) without requiring an open PR.
   #
   # The SBOMs are published at:
@@ -331,14 +250,14 @@ jobs:
   trigger-packaging:
     name: Trigger & await packaging CI
     needs: [prepare, update-nix-hashes]
-    # update-nix-hashes is a matrix job; GitHub waits for ALL instances before
-    # starting trigger-packaging.
+    # nix-update-hashes.yml runs a Linux+macOS matrix internally; GitHub waits
+    # for all instances before starting trigger-packaging.
     runs-on: ubuntu-latest
     outputs:
       packaging_run_id: ${{ steps.dispatch.outputs.run_id }}
 
     steps:
-      - name: Dispatch pr.yml on the release branch
+      - name: Dispatch packaging.yml on the release branch
         id: dispatch
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -346,12 +265,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Dispatching pr.yml on branch '$BRANCH'…"
+          echo "Dispatching packaging.yml on branch '$BRANCH'…"
 
           # Capture the timestamp before dispatch so we can find the new run
           BEFORE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          gh workflow run pr.yml \
+          gh workflow run packaging.yml \
             --repo Cosmian/kms \
             --ref "$BRANCH"
 
@@ -362,13 +281,13 @@ jobs:
           RUN_ID=$(GH_PAGER=cat gh run list \
             --repo Cosmian/kms \
             --branch "$BRANCH" \
-            --workflow pr.yml \
+            --workflow packaging.yml \
             --limit 5 \
             --json databaseId,createdAt \
             --jq "[.[] | select(.createdAt > \"$BEFORE\")] | .[0].databaseId // empty")
 
           if [ -z "${RUN_ID:-}" ] || [ "$RUN_ID" = "null" ]; then
-            echo "ERROR: Could not find the dispatched pr.yml run." >&2
+            echo "ERROR: Could not find the dispatched packaging.yml run." >&2
             exit 1
           fi
 
@@ -432,7 +351,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.release_branch }}
           fetch-depth: 0
@@ -444,16 +363,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Install mise
-        run: |
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install mise
-          else
-            curl -fsSL https://mise.run | sh
-            echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          fi
-          echo "MISE_YES=1" >> "$GITHUB_ENV"
-        shell: bash
+      - uses: ./.github/actions/install-mise
 
       - name: Retrieve SBOMs from package.cosmian.com
         run: |
@@ -479,8 +389,8 @@ jobs:
   #   1. Merge release/<version> into main  (--no-ff)
   #   2. Create the annotated tag on the resulting main merge commit
   #      (git-flow always tags main, never the release branch)
-  #      The tag push triggers pr.yml (on:push:tags) which builds the final
-  #      packages and creates the GitHub Release.
+  #      The tag push triggers packaging.yml (on:push:tags) which builds the
+  #      final packages and creates the GitHub Release.
   #   3. Merge release/<version> into develop  (--no-ff, syncs version bump)
   #   4. Delete the release branch
   # ─────────────────────────────────────────────────────────────────────────────
@@ -491,7 +401,7 @@ jobs:
 
     steps:
       # Use PAT_TOKEN so the push to `main` and `develop` re-triggers CI.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -543,7 +453,7 @@ jobs:
             git tag -a "$TAG" -m "Release $TAG"
             git push origin "$TAG"
             echo "Tag '$TAG' pushed on main."
-            echo "pr.yml (on:push:tags) will now build and publish the release."
+            echo "packaging.yml (on:push:tags) will now build and publish the release."
           fi
 
       - name: Merge release branch into develop
@@ -599,7 +509,7 @@ jobs:
             "$PKG_RUN_ID" "$PKG_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
           printf '| SBOMs | Retrieved and committed |\n' >> "$GITHUB_STEP_SUMMARY"
           printf '| Tag | `%s` on `main` merge commit |\n\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"
-          printf 'The `pr.yml` on-tag pipeline is building the final packages and GitHub Release.\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'The `packaging.yml` on-tag pipeline is building the final packages and GitHub Release.\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf '### Remaining manual step\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Once the tag pipeline completes, update the GitHub Release notes at:\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'https://github.com/Cosmian/kms/releases/tag/%s\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"

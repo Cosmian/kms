@@ -18,6 +18,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
 use cosmian_logger::debug;
 use redis::{AsyncCommands, aio::ConnectionManager, pipe};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use crate::{
     DbError, db_bail, error::DbResult, migrate_block_cipher_mode_if_needed,
@@ -63,6 +64,12 @@ pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keywo
                 keywords.insert(Keyword::from(bytes.as_slice()));
             }
         }
+    }
+    // Index rotate_name so find_by_rotate_name can search by keyword
+    if let Some(rotate_name) = &attributes.rotate_name {
+        keywords.insert(Keyword::from(
+            format!("rotate_name::{rotate_name}").as_bytes(),
+        ));
     }
     keywords
 }
@@ -124,6 +131,10 @@ impl RedisDbObject {
         }
         // index the owner
         keywords.insert(Keyword::from(self.owner.as_bytes()));
+        // index the wrapping key UID so find_wrapped_by can search by keyword
+        if let Some(wk_uid) = self.object.wrapping_key_uid() {
+            keywords.insert(Keyword::from(format!("wrapped_by::{wk_uid}").as_bytes()));
+        }
         keywords
     }
 }
@@ -547,5 +558,125 @@ impl ObjectsDB {
             }
         }
         Ok(count)
+    }
+
+    /// Scan all `do::*` keys and return `(uid, owner)` pairs for every `Active`
+    /// object that has `rotate_automatic = true` and whose next rotation instant
+    /// is ≤ `now`.
+    ///
+    /// This is an O(N) scan used by the auto-rotation scheduler (cron job),
+    /// whose low invocation frequency makes the cost acceptable.  The method
+    /// mirrors the pattern of [`Self::scan_count_non_destroyed`] but collects
+    /// results instead of counting.
+    pub(crate) async fn scan_due_for_rotation(
+        &self,
+        now: OffsetDateTime,
+    ) -> DbResult<Vec<(String, String)>> {
+        let mut due: Vec<(String, String)> = Vec::new();
+        let mut cursor: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("do::*")
+                .arg("COUNT")
+                .arg(SCAN_BATCH_HINT)
+                .query_async(&mut self.mgr.clone())
+                .await?;
+
+            if !keys.is_empty() {
+                let mut pipeline = pipe();
+                for key in &keys {
+                    pipeline.get(key);
+                }
+                let values: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
+
+                for (key, ciphertext) in keys.iter().zip(values) {
+                    if ciphertext.is_empty() {
+                        continue;
+                    }
+                    let uid = key.strip_prefix("do::").unwrap_or(key.as_str());
+                    match self.decrypt_object(uid, &ciphertext) {
+                        Ok(obj) => {
+                            if obj.state != State::Active {
+                                continue;
+                            }
+                            let Some(ref attrs) = obj.attributes else {
+                                continue;
+                            };
+                            if attrs.rotate_automatic != Some(true) {
+                                continue;
+                            }
+                            if crate::stores::sql::locate_query::is_due_for_rotation(attrs, now) {
+                                due.push((uid.to_owned(), obj.owner.clone()));
+                            }
+                        }
+                        Err(e) => {
+                            debug!("[redis-scan-rotation] skipping key {key}: {e}");
+                        }
+                    }
+                }
+            }
+
+            cursor = next_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(due)
+    }
+
+    /// Scan all `do::*` keys and return `(uid, wrapping_key_uid)` pairs for every
+    /// object that embeds a wrapping key (i.e. `Object::wrapping_key_uid()` is
+    /// `Some`).
+    ///
+    /// Used once at startup to backfill the `wrapped_by::<uid>` Findex index for
+    /// objects created before that index existed (see
+    /// [`crate::stores::RedisWithFindex::instantiate`]). Mirrors the scan pattern
+    /// of [`Self::scan_due_for_rotation`].
+    pub(crate) async fn scan_wrapped_objects(&self) -> DbResult<Vec<(String, String)>> {
+        let mut wrapped: Vec<(String, String)> = Vec::new();
+        let mut cursor: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg("do::*")
+                .arg("COUNT")
+                .arg(SCAN_BATCH_HINT)
+                .query_async(&mut self.mgr.clone())
+                .await?;
+
+            if !keys.is_empty() {
+                let mut pipeline = pipe();
+                for key in &keys {
+                    pipeline.get(key);
+                }
+                let values: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
+
+                for (key, ciphertext) in keys.iter().zip(values) {
+                    if ciphertext.is_empty() {
+                        continue;
+                    }
+                    let uid = key.strip_prefix("do::").unwrap_or(key.as_str());
+                    match self.decrypt_object(uid, &ciphertext) {
+                        Ok(obj) => {
+                            if let Some(wk_uid) = obj.object.wrapping_key_uid() {
+                                wrapped.push((uid.to_owned(), wk_uid));
+                            }
+                        }
+                        Err(e) => {
+                            debug!("[redis-scan-wrapped] skipping key {key}: {e}");
+                        }
+                    }
+                }
+            }
+
+            cursor = next_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(wrapped)
     }
 }

@@ -24,12 +24,12 @@ markdown_extensions:
       permalink: true
       baselevel: 1
   - pymdownx.superfences:
-          # make exceptions to highlighting of code:
+      # make exceptions to highlighting of code:
       custom_fences:
         - name: mermaid
           class: mermaid
-                # Uncomment the following line to check Mermaid figures
-                # format: !!python/name:mermaid2.fence_mermaid_custom
+            # Uncomment the following line to check Mermaid figures
+            # format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji
@@ -51,12 +51,17 @@ extra_javascript: #see this for Katex: https://squidfunk.github.io/mkdocs-materi
   - https://unpkg.com/katex@0/dist/katex.min.js
   - https://unpkg.com/katex@0/dist/contrib/auto-render.min.js
   - javascripts/macros.js
+  - javascripts/log_filter.js
 extra_css:
   - https://unpkg.com/katex@0/dist/katex.min.css
+hooks:
+  - hooks.py
 plugins:
   - search
   - kroki
   - meta-descriptions
+not_in_nav: |
+  configuration/log-reference.md
 nav:
   - Why use the Eviden KMS: index.md
   - Quick start: quick_start.md
@@ -77,9 +82,10 @@ nav:
       - Other HSMs: hsm_support/other_hsms.md
   - Integrations:
       - API Endpoints: integrations/api.md
-      - JOSE / REST Crypto:
-          - REST Native Crypto API: integrations/jose/rest_crypto_api.md
+      - JOSE (JWS, JWE, JWKS):
+          - JOSE API: integrations/jose/jose_api.md
           - JWE Key Unwrap: integrations/jose/jwe_decryption.md
+          - JWKS Endpoint: integrations/jose/jwks_endpoint.md
       - Cloud providers:
           - Amazon Web Services (AWS):
               - ECS Fargate: integrations/cloud_providers/aws/fargate.md
@@ -135,6 +141,7 @@ nav:
       - Configuration examples: configuration/configurations.md
       - Command line arguments: configuration/server_cli.md
       - Databases: configuration/database.md
+      - Object &amp; Unwrapped Caches: configuration/object-cache.md
       - Authenticating users to the server: configuration/authentication.md
       - PKCE Authentication: configuration/pkce_authentication.md
       - Authorizing users with access rights: configuration/authorization.md
@@ -152,10 +159,6 @@ nav:
       - Cryptographic algorithms:
           - Algorithms: certifications_and_compliance/cryptographic_algorithms/algorithms.md
           - KMIP algorithm policy: certifications_and_compliance/cryptographic_algorithms/kmip_policy.md
-          - Benchmarks:
-              - Standard algorithms: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks.md
-              - Load tests: certifications_and_compliance/cryptographic_algorithms/benchmarks/benchmarks_load_tests.md
-              - DKE and Google CSE: certifications_and_compliance/cryptographic_algorithms/benchmarks/google_dke_benchmarks.md
       - Zeroization: certifications_and_compliance/zeroization.md
       - Audit:
           - SBOM: certifications_and_compliance/audit/sbom.md
@@ -192,7 +195,15 @@ nav:
       - Import: kmip_support/_import.md
       - Locate: kmip_support/_locate.md
       - Mac: kmip_support/_mac.md
-      - Re-Key: kmip_support/_re-key.md
-      - Re-Key Key Pair: kmip_support/_re-key_key_pair.md
+      - Key rotation:
+          - Re-Key: kmip_support/key_rotation/_re-key.md
+          - Re-Key Key Pair: kmip_support/key_rotation/_re-key_key_pair.md
+          - Re-Certify: kmip_support/key_rotation/_re-certify.md
+          - Key Rotation: kmip_support/key_rotation/index.md
+          - HSM Key Rotation: kmip_support/key_rotation/hsm.md
+          - Auto-Rotation Policy: kmip_support/key_rotation/auto_rotation_policy.md
       - Revoke: kmip_support/_revoke.md
       - Sign: kmip_support/_signature.md
+  - Benchmarks:
+      - Reports: benchmarks/ckms_bench/report.md
+      - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md

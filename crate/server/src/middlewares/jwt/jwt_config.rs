@@ -256,6 +256,11 @@ impl JwtConfig {
 
 #[cfg(test)]
 #[cfg(not(feature = "insecure"))]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::assertions_on_result_states
+)]
 mod tests {
     use jsonwebtoken::Algorithm;
 
@@ -332,7 +337,7 @@ mod tests {
     fn rejection_error_message_quality() {
         let result = check_alg(Algorithm::HS256);
         assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
+        let msg = result.expect_err("HS256 must be rejected").to_string();
         assert!(
             msg.contains("not permitted"),
             "error message should mention 'not permitted', got: {msg}"

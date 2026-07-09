@@ -62,8 +62,8 @@ This is the default configuration. To use SQLite, no additional configuration is
 
     ```toml
     [db]
-    database-type="postgresql"
-    database-url="postgres://kms_user:kms_password@pgsql-server:5432/kms"
+    database_type = "postgresql"
+    database_url = "postgres://kms_user:kms_password@pgsql-server:5432/kms"
     ```
 
 === "Command line arguments"
@@ -163,8 +163,8 @@ All use the same configuration with `database-type=mysql`.
 
     ```toml
     [db]
-    database-type="mysql"
-    database-url="mysql://kms_user:kms_password@mysql-server:3306/kms"
+    database_type = "mysql"
+    database_url = "mysql://kms_user:kms_password@mysql-server:3306/kms"
     ```
 
 === "Command line arguments"
@@ -217,10 +217,10 @@ For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` 
 
     ```toml
     [db]
-    database-type="redis-findex"
-    database-url="redis://localhost:6379"
-    redis-master-password="password"
-    redis-findex-label="label"
+    database_type = "redis-findex"
+    database_url = "redis://localhost:6379"
+    redis_master_password = "password"
+    redis_findex_label = "label"
     ```
 
 === "Command line arguments"
@@ -380,13 +380,13 @@ The cleanup operation will delete all objects and keys stored in the database.
 
     ```toml
     [db]
-    cleanup_on_startup = true
+    clear_database = true
     ```
 
 === "Command line arguments"
 
     ```sh
-    --cleanup-on-startup
+    --clear-database
     ```
 
 ## Database migration
@@ -444,6 +444,9 @@ Notes:
 - No data loss occurs; this operation converts UNIQUE constraints to PRIMARY KEYs and enforces NOT NULL.
 
 ## The Unwrapped Objects Cache
+
+!!! info "Detailed reference"
+    For the full technical reference on the KMS in-memory caches — architecture, public API, configuration options, and security trade-offs — see [Object Cache and Unwrapped Cache](./object-cache.md).
 
 The unwrapped cache is a memory cache, and it is not persistent. The unwrapped cache is used to store unwrapped objects
 that are fetched from the database.

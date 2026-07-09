@@ -9,6 +9,7 @@
 set -euo pipefail
 
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
 
 # This script replaces the (ignored) Rust integration test by:
 # - starting the KMS server with `cargo run -p ...`
@@ -16,10 +17,10 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 # - scraping the collector Prometheus endpoint and asserting expected metrics
 
 KMS_HTTP_HOST=127.0.0.1
-KMS_HTTP_PORT=18080
+KMS_HTTP_PORT=$(kms_pick_free_port)
 
-OTLP_GRPC_PORT=${OTLP_GRPC_PORT:-4317}
-PROM_PORT=${PROM_PORT:-8889}
+OTLP_GRPC_PORT=${OTLP_GRPC_PORT:-${KMS_SLOT_OTEL_GRPC_PORT:-4317}}
+PROM_PORT=${PROM_PORT:-${KMS_SLOT_OTEL_METRICS_PORT:-8889}}
 
 export OTEL_EXPORT_OTLP_ENDPOINT="${OTEL_EXPORT_OTLP_ENDPOINT:-http://127.0.0.1:${OTLP_GRPC_PORT}}"
 OTEL_EXPORT_SCRAPE_URL="${OTEL_EXPORT_SCRAPE_URL:-http://127.0.0.1:${PROM_PORT}/metrics}"

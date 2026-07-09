@@ -210,11 +210,19 @@ impl<'de> Deserialize<'de> for HttpClientConfig {
 pub struct HttpResponse {
     /// HTTP status code.
     pub status: http::StatusCode,
+    /// Response headers.
+    headers: HeaderMap,
     /// Response body as raw bytes.
     body: Bytes,
 }
 
 impl HttpResponse {
+    /// Return the response headers.
+    #[must_use]
+    pub const fn headers(&self) -> &HeaderMap {
+        &self.headers
+    }
+
     /// Deserialize the response body as JSON.
     ///
     /// # Errors
@@ -527,6 +535,7 @@ impl HttpClient {
             .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?;
 
         let status = response.status();
+        let headers = response.headers().clone();
         let body = response
             .into_body()
             .collect()
@@ -534,6 +543,10 @@ impl HttpClient {
             .map_err(|e| HttpClientError::Default(format!("Failed to read response body: {e}")))?
             .to_bytes();
 
-        Ok(HttpResponse { status, body })
+        Ok(HttpResponse {
+            status,
+            headers,
+            body,
+        })
     }
 }

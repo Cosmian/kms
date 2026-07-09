@@ -8,13 +8,139 @@
 #USAGE }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
+# WITH_HSM=1 must be set before ensure_nix_shell so the Nix shellHook adds
+# the Nix-built SoftHSM2 (linked against Nix OpenSSL FIPS 3.1.2) to PATH.
+export WITH_HSM=1
 ensure_nix_shell
+
+# ── PostgreSQL failover-retry test ────────────────────────────────────────────
+# Starts the pg-failover Docker Compose profile (pg1:5434 / pg2:5435), warms
+# the connection pool against pg1, stops pg1 to simulate a primary failure, and
+# verifies that the pg_retry! / pg_retry_tx! macros successfully fail over to
+# pg2 via signal-file coordination with the Rust test process.
+#
+# The Rust test (test_db_postgresql_failover) never calls docker directly.
+# All lifecycle actions are performed here; the two parties synchronise through
+# temporary signal files exported as KMS_PG_FAILOVER_{READY,STOP}_FILE.
+_run_postgresql_failover_test() {
+  local pg1_port="${KMS_SLOT_PG_FAILOVER_1_PORT:-5434}"
+  local pg2_port="${KMS_SLOT_PG_FAILOVER_2_PORT:-5435}"
+
+  # Wait until PostgreSQL inside a container is actually ready for TCP connections.
+  # TCP port open on the host ≠ PostgreSQL ready: the Docker proxy binds the host port
+  # before the entrypoint finishes creating the user/DB.  pg_isready -h 127.0.0.1
+  # probes the container's own TCP stack and returns 0 only once the final postgres
+  # process is listening — which happens after user/DB creation.
+  _wait_for_pg_db() {
+    local container="$1" user="$2" db="$3" timeout="${4:-30}"
+    local _j
+    for _j in $(seq 1 "$timeout"); do
+      if docker exec "${container}" pg_isready -h 127.0.0.1 -U "${user}" -d "${db}" -q 2>/dev/null; then
+        return 0
+      fi
+      sleep 1
+    done
+    return 1
+  }
+
+  print_status "Starting pg-failover containers (pg1:${pg1_port} / pg2:${pg2_port})..."
+  docker compose --profile pg-failover up -d pg-failover-1 pg-failover-2
+
+  if ! _wait_for_port 127.0.0.1 "${pg1_port}" 30; then
+    print_warning "pg-failover-1 (port ${pg1_port}) not ready — skipping failover test"
+    docker compose --profile pg-failover stop pg-failover-1 pg-failover-2 || true
+    return 0
+  fi
+  if ! _wait_for_port 127.0.0.1 "${pg2_port}" 30; then
+    print_warning "pg-failover-2 (port ${pg2_port}) not ready — skipping failover test"
+    docker compose --profile pg-failover stop pg-failover-1 pg-failover-2 || true
+    return 0
+  fi
+
+  # TCP port open ≠ PostgreSQL ready; wait until the kms DB is accessible.
+  print_status "Waiting for pg1 DB to accept connections (up to 30s)..."
+  if ! _wait_for_pg_db pg1 kms kms 30; then
+    print_warning "pg1 DB not ready after 30s — skipping failover test"
+    docker compose --profile pg-failover stop pg-failover-1 pg-failover-2 || true
+    return 0
+  fi
+  print_status "Waiting for pg2 DB to accept connections (up to 30s)..."
+  if ! _wait_for_pg_db pg2 kms kms 30; then
+    print_warning "pg2 DB not ready after 30s — skipping failover test"
+    docker compose --profile pg-failover stop pg-failover-1 pg-failover-2 || true
+    return 0
+  fi
+
+  # Unique signal file paths — PID-scoped to avoid collisions from parallel runs.
+  local ready_file="/tmp/kms_pg_failover_ready_$$"
+  local stop_file="/tmp/kms_pg_failover_stop_$$"
+  rm -f "${ready_file}" "${stop_file}"
+
+  # Inline cleanup called at every exit point so no trap is needed.
+  _fo_cleanup() {
+    docker start pg1 2>/dev/null || true
+    docker compose --profile pg-failover stop pg-failover-1 pg-failover-2 2>/dev/null || true
+    rm -f "${ready_file}" "${stop_file}"
+  }
+
+  # Launch the Rust test in the background, injecting the two signal-file paths.
+  print_status "Launching test_db_postgresql_failover (background)..."
+  local test_pid
+  KMS_PG_FAILOVER_READY_FILE="${ready_file}" \
+    KMS_PG_FAILOVER_STOP_FILE="${stop_file}" \
+    cargo test -p cosmian_kms_server_database --lib "${FEATURES_FLAG[@]}" \
+    -- --ignored --nocapture test_db_postgresql_failover &
+  test_pid=$!
+
+  # Wait for the test to warm the pool and write the ready-file.
+  print_status "Waiting for pool warm-up signal (up to 60s)..."
+  for _ in $(seq 1 60); do
+    if [ -f "${ready_file}" ]; then
+      print_status "Pool warmed — stopping pg1 to simulate primary failure..."
+      break
+    fi
+    sleep 1
+    if ! kill -0 "${test_pid}" 2>/dev/null; then
+      wait "${test_pid}" || true
+      _fo_cleanup
+      print_error "Failover test process exited before sending the ready signal"
+    fi
+  done
+  if [ ! -f "${ready_file}" ]; then
+    kill "${test_pid}" 2>/dev/null || true
+    wait "${test_pid}" || true
+    _fo_cleanup
+    print_error "Timed out (60s) waiting for failover test ready signal"
+  fi
+
+  # Stop pg1 (docker manages the TCP RST to all open connections).
+  docker stop pg1
+
+  # Unblock the Rust test: it polls for this file's existence.
+  touch "${stop_file}"
+  print_status "Stop signal sent — waiting for test to complete..."
+
+  # Propagate the test exit code; cleanup trap handles docker start / compose stop.
+  local ret=0
+  wait "${test_pid}" || ret=$?
+
+  _fo_cleanup
+
+  if [ "${ret}" -ne 0 ]; then
+    print_error "PostgreSQL failover retry test FAILED (exit code ${ret})"
+  fi
+  print_success "PostgreSQL failover retry test passed"
+}
 
 print_header "Running PostgreSQL tests (${VARIANT_NAME})"
 
 check_and_test_db "PostgreSQL" "postgresql" "POSTGRES_HOST" "POSTGRES_PORT"
+run_db_softhsm2_tests "postgresql_softhsm2"
+
+_run_postgresql_failover_test
 
 print_success "PostgreSQL tests completed"

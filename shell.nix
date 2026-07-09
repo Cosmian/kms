@@ -155,6 +155,7 @@ pkgs.mkShell {
     if withHsm then
       [
         softhsmDrv
+        pkgs.openvpn
         pkgs.wget
       ]
       # pkcs11-tool (OpenSC) is used to verify that KMS-created HSM keys

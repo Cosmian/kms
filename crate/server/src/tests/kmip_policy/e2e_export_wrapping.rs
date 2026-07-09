@@ -55,11 +55,11 @@ where
                     cryptographic_usage_mask: Some(
                         CryptographicUsageMask::WrapKey | CryptographicUsageMask::Encrypt,
                     ),
-                    activation_date: Some(time_normalize().expect("time_normalize should work")),
                     alternative_name: Some(AlternativeName {
                         alternative_name_type: AlternativeNameType::UninterpretedTextString,
                         alternative_name_value: tag.to_owned(),
                     }),
+                    activation_date: Some(time_normalize().expect("time_normalize")),
                     ..Default::default()
                 },
                 protection_storage_masks: None,
@@ -93,7 +93,7 @@ async fn e2e_kmip_policy_key_wrapping_aes_kw_suite_requires_aes_and_nist_key_wra
     conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::NISTKeyWrap]);
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
     let (kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
 
     let export = export_request(
@@ -120,7 +120,7 @@ async fn e2e_kmip_policy_key_wrapping_aes_kwp_suite_requires_aes_and_kwp_mode() 
     conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::AESKeyWrapPadding]);
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
     let (kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
 
     let export = export_request(
@@ -147,7 +147,7 @@ async fn e2e_kmip_policy_key_wrapping_aes_gcm_suite_requires_aes_and_gcm() {
     conf.kmip_policy.allowlists.block_cipher_modes = Some(vec![BlockCipherMode::GCM]);
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
     let (kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
 
     let export = export_request(
@@ -178,7 +178,7 @@ async fn e2e_kmip_policy_key_wrapping_rsa_oaep_sha256_suite_requires_rsa_oaep_an
     conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA256]);
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
     let (_kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
 
     let export = export_request(
@@ -219,7 +219,7 @@ async fn e2e_kmip_policy_key_wrapping_rsa_aes_key_wrap_sha256_suite_requires_rsa
     conf.kmip_policy.allowlists.hashes = Some(vec![HashingAlgorithm::SHA256]);
     conf.kmip_policy.policy_id = Some("CUSTOM".to_owned());
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
     let (_kek_uid, target_uid) = create_kek_and_target_for_export(&app).await;
 
     let export = export_request(
@@ -255,7 +255,7 @@ async fn e2e_default_policy_allows_configurable_kem_roundtrip() {
     let mut conf = https_clap_config_opts(None);
     conf.kmip_policy.policy_id = Some("DEFAULT".to_owned());
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     // Use a pre-quantum KEM tag (P-256) so the request does not include a nested
     // post-quantum `CryptographicAlgorithm` in `CryptographicParameters`.

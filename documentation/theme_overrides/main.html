@@ -80,6 +80,7 @@ Check this documentation for customizations: https://squidfunk.github.io/mkdocs-
     });
 
 </script>
+<script>window.KMS_VERSION = "{{ config.extra.get('kms_version', 'develop') }}";</script>
 {{ super() }}
 {% endblock %}
 

@@ -4,68 +4,10 @@ import { useAuth } from "../../contexts/useAuth";
 import HashMapDisplay from "../../components/common/HashMapDisplay";
 import { sendKmipRequest } from "../../utils/utils";
 import { get_attributes_ttlv_request, parse_get_attributes_ttlv_response } from "../../wasm/pkg/cosmian_kms_client_wasm";
+import { ATTRIBUTE_REGISTRY } from "./attributeRegistry";
 
 const { Title } = Typography;
 const { Option } = Select;
-
-const ATTRIBUTE_NAMES = [
-    {
-        value: "activation_date",
-        label: "Activation Date",
-    },
-    {
-        value: "cryptographic_algorithm",
-        label: "Cryptographic Algorithm",
-    },
-    {
-        value: "cryptographic_length",
-        label: "Cryptographic Length",
-    },
-    {
-        value: "key_usage",
-        label: "Key Usage",
-    },
-    {
-        value: "key_format_type",
-        label: "Key Format Type",
-    },
-    {
-        value: "object_type",
-        label: "Object Type",
-    },
-    {
-        value: "vendor_attributes",
-        label: "Vendor Attributes",
-    },
-    {
-        value: "public_key_id",
-        label: "Public key ID",
-    },
-    {
-        value: "private_key_id",
-        label: "Private key ID",
-    },
-    {
-        value: "certificate_id",
-        label: "Certificate ID",
-    },
-    {
-        value: "pkcs12_certificate_id",
-        label: "Pkcs12 Certificate ID",
-    },
-    {
-        value: "pkcs12_password_certificate",
-        label: "Pkcs12 Password Certificate",
-    },
-    {
-        value: "parent_id",
-        label: "Parent ID",
-    },
-    {
-        value: "child_id",
-        label: "Child ID",
-    },
-];
 
 interface AttributeGetFormData {
     id?: string;
@@ -147,7 +89,7 @@ const AttributeGetForm: React.FC = () => {
                             help="The attributes or KMIP-tags to retrieve (all attributes will be returned if none specified)"
                         >
                             <Select mode="multiple" style={{ width: "100%" }} placeholder="Select attribute">
-                                {ATTRIBUTE_NAMES.map((attribute) => (
+                                {ATTRIBUTE_REGISTRY.map((attribute) => (
                                     <Option key={attribute.value} value={attribute.value}>
                                         {attribute.label}
                                     </Option>

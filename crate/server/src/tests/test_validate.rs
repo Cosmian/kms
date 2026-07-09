@@ -143,7 +143,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: root_cert.clone(),
         }),
     };
-    let res_root = kms.import(root_request, owner, None).await?;
+    let res_root = kms.import(root_request, owner).await?;
     // intermediate
     let intermediate_request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -159,7 +159,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: intermediate_cert.clone(),
         }),
     };
-    let res_intermediate = kms.import(intermediate_request, owner, None).await?;
+    let res_intermediate = kms.import(intermediate_request, owner).await?;
     // leaf1
     let leaf1_request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -175,7 +175,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: leaf1_cert.clone(),
         }),
     };
-    let res_leaf1 = kms.import(leaf1_request, owner, None).await?;
+    let res_leaf1 = kms.import(leaf1_request, owner).await?;
     // Only the root, it is valid by default
     let request = Validate {
         certificate: None,
@@ -443,7 +443,7 @@ authorityKeyIdentifier=keyid:always,issuer
         };
 
         let cert_id = kms
-            .certify(certify_req, owner, None)
+            .certify(certify_req, owner)
             .await?
             .unique_identifier
             .to_string();
@@ -1032,7 +1032,7 @@ authorityKeyIdentifier=keyid:always,issuer
             ..Certify::default()
         };
 
-        let result = kms.certify(certify_req, owner, None).await;
+        let result = kms.certify(certify_req, owner).await;
         assert!(
             result.is_err(),
             "ML-KEM self-signed certificate creation must be rejected, but it succeeded"
@@ -1065,7 +1065,6 @@ authorityKeyIdentifier=keyid:always,issuer
                     ..Certify::default()
                 },
                 owner,
-                None,
             )
             .await;
         assert!(result.is_err(), "ML-KEM-768 self-signed must be rejected");

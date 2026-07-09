@@ -18,6 +18,7 @@ mod error;
 mod export_utils;
 mod file_utils;
 pub mod http_client;
+pub mod jose;
 mod kms_rest_client;
 
 pub mod reexport {

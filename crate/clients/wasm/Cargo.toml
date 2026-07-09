@@ -1,7 +1,6 @@
 [package]
 name = "cosmian_kms_client_wasm"
 version.workspace = true
-authors.workspace = true
 build = "build.rs"
 categories.workspace = true
 edition.workspace = true
@@ -27,7 +26,7 @@ default = ["getrandom/js"]
 [dependencies]
 base64 = { workspace = true }
 console_error_panic_hook = "0.1"
-cosmian_kms_client_utils = { path = "../client_utils", version = "5.24.0" }
+cosmian_kms_client_utils = { path = "../client_utils", version = "5.25.0" }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 js-sys = "0.3.77"
 pem = { workspace = true }

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+#MISE description="Update log-reference.md from source call-sites"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Updating log-reference.md"
+REPO_ROOT="$(get_repo_root)"
+
+# Exit codes from update_log_index.py:
+#   0 — already in sync, nothing changed
+#   1 — file updated (new entries added, entries moved, or stale entries deleted)
+#   2 — unrecoverable error (missing file, parse error)
+python3 "${REPO_ROOT}/.mise/scripts/docs/update_log_index.py" --non-interactive --delete-stale --no-color || {
+  rc=$?
+  if [ "$rc" -eq 1 ]; then
+    print_status "log-reference.md updated — review new/stale entries above"
+  else
+    print_error "update_log_index.py failed with exit code $rc"
+  fi
+}
+
+print_success "docs:log-index done"

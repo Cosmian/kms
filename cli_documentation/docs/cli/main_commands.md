@@ -556,6 +556,10 @@ Run benchmarks using criterion for statistical analysis.
 
 Possible values:  `"all", "encrypt", "key-creation", "sign-verify", "batch"` [default: `"all"`]
 
+`--protocol [-p] <PROTOCOL>` Protocol / transport to benchmark (default: all). - `ttlv-json`: KMIP over JSON TTLV (`POST /kmip/2_1`) - `ttlv-bytes`: KMIP over binary TTLV (`POST /kmip`) - `jose`: REST JOSE endpoints (`POST /v1/crypto/*`)
+
+Possible values:  `"all", "ttlv-json", "ttlv-bytes", "jose"` [default: `"all"`]
+
 `--format [-f] <FORMAT>` Output format
 
 Possible values:  `"text", "json", "markdown", "compact", "html"` [default: `"text"`]
@@ -565,6 +569,8 @@ Possible values:  `"text", "json", "markdown", "compact", "html"` [default: `"te
 Possible values:  `"normal", "quick", "sanity"` [default: `"normal"`]
 
 `--time [-t] <TIME>` Maximum measurement time per benchmark in seconds (default: 10). Caps how long criterion spends on each benchmark function. Ignored in quick and sanity speed modes
+
+`--max-group-time <MAX_GROUP_TIME>` Maximum wall-clock time (in seconds) to spend per benchmark group. Once a group exceeds this budget, its remaining benchmarks are skipped (benchmarks already completed in the group are kept). Unset means no cap. Applies to the KMIP (ttlv-json / ttlv-bytes) benchmark groups
 
 `--save-baseline <SAVE_BASELINE>` Save results under a named baseline in target/criterion/<bench>/<name>/. Use this to snapshot a run before a change. To compare, run again with --load-baseline <name> (or without any flag to diff against "base"). Example: --save-baseline before-my-change
 
@@ -577,6 +583,12 @@ Possible values:  `"normal", "quick", "sanity"` [default: `"normal"`]
 Possible values:  `"true", "false"` [default: `"false"`]
 
 `--load-concurrency <LOAD_CONCURRENCY>` Comma-separated concurrency levels for load testing. Only used when --load is set
+
+`--load-plaintext-size <LOAD_PLAINTEXT_SIZE>` Plaintext size in bytes for load-test encrypt ops (default 4096). Larger payloads make the op CPU-bound (crypto + serialization dominate the fixed HTTP/loopback overhead), which is what a capacity/scaling benchmark wants; the small default keeps the op network/latency-bound
+
+`--warmup-time <WARMUP_TIME>` Warmup time in seconds before benchmarking starts. Sends requests for this duration to warm HTTP connection pools, TLS sessions, and server-side caches. Set to 0 to skip
+
+`--cooldown-time <COOLDOWN_TIME>` Cooldown time in seconds between load-test concurrency levels. Lets the server drain TCP `TIME_WAIT` sockets, checkpoint `SQLite` WAL, and release memory before the next level starts fresh
 
 
 
@@ -873,6 +885,8 @@ Revoke a Covercrypt master or user decryption key
 `
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
@@ -1332,6 +1346,8 @@ Revoke an FPE key
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
@@ -1466,6 +1482,12 @@ Manage post-quantum keys (ML-KEM, ML-DSA)
 
 **`destroy`** [[8.1.8]](#818-ckms-pqc-keys-destroy)  Destroy a PQC public or private key
 
+**`re-key`** [[8.1.9]](#819-ckms-pqc-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+**`set-rotation-policy`** [[8.1.10]](#8110-ckms-pqc-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[8.1.11]](#8111-ckms-pqc-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 8.1.1 ckms pqc keys activate
@@ -1499,6 +1521,16 @@ Possible values:  `"ml-kem-512", "ml-kem-768", "ml-kem-1024", "ml-dsa-44", "ml-d
 `--sensitive <SENSITIVE>` Sensitive: if set, the private key will not be exportable
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -1667,7 +1699,9 @@ Revoke a PQC public or private key
 `ckms pqc keys revoke [options] <REVOCATION_REASON>
 `
 ### Arguments
-` <REVOCATION_REASON>` The reason for the revocation
+` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke
 
@@ -1691,6 +1725,51 @@ Destroy a PQC public or private key
 `--remove <REMOVE>` Remove the key from the database entirely
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 8.1.9 ckms pqc keys re-key
+
+Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+### Usage
+`ckms pqc keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the private key to re-key
+
+
+
+---
+
+## 8.1.10 ckms pqc keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms pqc keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 8.1.11 ckms pqc keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms pqc keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 
@@ -1978,7 +2057,9 @@ Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt dat
 
 **`destroy`** [[10.8]](#108-ckms-certificates-destroy)  Destroy a certificate
 
-**`validate`** [[10.9]](#109-ckms-certificates-validate)  Validate a certificate
+**`set-rotation-policy`** [[10.9]](#109-ckms-certificates-set-rotation-policy)  Set the automatic rotation policy on a certificate (interval, offset, keyset name)
+
+**`validate`** [[10.10]](#1010-ckms-certificates-validate)  Validate a certificate
 
 ---
 
@@ -2186,6 +2267,8 @@ Revoke a certificate
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--certificate-id [-c] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
@@ -2216,7 +2299,26 @@ Possible values:  `"true", "false"` [default: `"false"`]
 
 ---
 
-## 10.9 ckms certificates validate
+## 10.9 ckms certificates set-rotation-policy
+
+Set the automatic rotation policy on a certificate (interval, offset, keyset name)
+
+### Usage
+`ckms certificates set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 10.10 ckms certificates validate
 
 Validate a certificate
 
@@ -2391,6 +2493,12 @@ Create, destroy, import, and export elliptic curve key pairs
 
 **`destroy`** [[13.1.8]](#1318-ckms-ec-keys-destroy)  Destroy a public or private key
 
+**`re-key`** [[13.1.9]](#1319-ckms-ec-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+**`set-rotation-policy`** [[13.1.10]](#13110-ckms-ec-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[13.1.11]](#13111-ckms-ec-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 13.1.1 ckms ec keys activate
@@ -2434,6 +2542,16 @@ If the wrapping key is:
 - a symmetric key, AES-GCM will be used
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
+
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -2604,6 +2722,8 @@ Revoke a public or private key
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
@@ -2629,6 +2749,51 @@ but its metadata will still be available in the database.
 Please note that the KMIP specification does not support the removal of objects.
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 13.1.9 ckms ec keys re-key
+
+Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+### Usage
+`ckms ec keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the private key to re-key
+
+
+
+---
+
+## 13.1.10 ckms ec keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms ec keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 13.1.11 ckms ec keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms ec keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 
@@ -3321,6 +3486,12 @@ Create, destroy, import, and export RSA key pairs
 
 **`destroy`** [[22.1.8]](#2218-ckms-rsa-keys-destroy)  Destroy a public or private key
 
+**`re-key`** [[22.1.9]](#2219-ckms-rsa-keys-re-key)  Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+**`set-rotation-policy`** [[22.1.10]](#22110-ckms-rsa-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[22.1.11]](#22111-ckms-rsa-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 22.1.1 ckms rsa keys activate
@@ -3362,6 +3533,16 @@ If the wrapping key is:
 - a symmetric key, AES-GCM will be used
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
+
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -3532,6 +3713,8 @@ Revoke a public or private key
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
@@ -3557,6 +3740,51 @@ but its metadata will still be available in the database.
 Please note that the KMIP specification does not support the removal of objects.
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 22.1.9 ckms rsa keys re-key
+
+Rotate an existing asymmetric key pair, generating a new private/public key pair
+
+### Usage
+`ckms rsa keys re-key [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the private key to re-key
+
+
+
+---
+
+## 22.1.10 ckms rsa keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms rsa keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 22.1.11 ckms rsa keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms rsa keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 
@@ -3854,6 +4082,8 @@ Revoke an `OpaqueObject`
 `
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
+
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
 
 `--key-id [-k] <OBJECT_ID>` The opaque object unique identifier to revoke. If not specified, tags should be specified
 
@@ -4155,6 +4385,8 @@ Revoke a secret data
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--secret-data-id [-s] <SECRET_ID>` The secret unique identifier of the secret to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the secret data when no secret data id is specified. To specify multiple tags, use the option multiple times
@@ -4230,6 +4462,10 @@ Create, destroy, import, and export symmetric keys
 
 **`destroy`** [[26.1.9]](#2619-ckms-sym-keys-destroy)  Destroy a symmetric key
 
+**`set-rotation-policy`** [[26.1.10]](#26110-ckms-sym-keys-set-rotation-policy)  Set the automatic rotation policy on a key or key pair.
+
+**`get-rotation-policy`** [[26.1.11]](#26111-ckms-sym-keys-get-rotation-policy)  Get the automatic rotation policy for a key or key pair.
+
 ---
 
 ## 26.1.1 ckms sym keys activate
@@ -4277,6 +4513,16 @@ If the wrapping key is:
 - a symmetric key, AES-GCM will be used
 - a RSA key, RSA-OAEP will be used
 - a EC key, ECIES will be used (salsa20poly1305 for X25519)
+
+`--enroll-keyset [-n] <ENROLL_KEYSET>` Enroll this key in a keyset so it can be addressed via `name@latest`,
+`name@first`, `name@N` syntax. The keyset name is set automatically to
+the key's own ID returned by the server.
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--rotation-interval <ROTATE_INTERVAL>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--rotation-offset <ROTATE_OFFSET>` Offset in seconds from the initial date before the first rotation occurs
 
 
 
@@ -4460,6 +4706,8 @@ Revoke a symmetric key
 ### Arguments
 ` <REVOCATION_REASON>` The reason for the revocation as a string
 
+`--reason-code [-r] <REASON_CODE>` The revocation reason code [default: unspecified]
+
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
@@ -4485,6 +4733,38 @@ but its metadata will still be available in the database.
 Please note that the KMIP specification does not support the removal of objects.
 
 Possible values:  `"true", "false"` [default: `"false"`]
+
+
+
+---
+
+## 26.1.10 ckms sym keys set-rotation-policy
+
+Set the automatic rotation policy on a key or key pair.
+
+### Usage
+`ckms sym keys set-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to set the rotation policy on
+
+`--interval [-i] <INTERVAL_SECS>` Rotation interval in seconds. The key will be automatically re-keyed at this interval. Set to 0 to disable automatic rotation while preserving other policy fields
+
+`--offset [-o] <OFFSET_SECS>` Offset in seconds from the initial date before the first rotation occurs
+
+`--rotation-name [-n] <ROTATE_NAME>` A keyset name for addressing key generations via name@latest, name@first, name@N syntax. Must not contain the '@' character
+
+
+
+---
+
+## 26.1.11 ckms sym keys get-rotation-policy
+
+Get the automatic rotation policy for a key or key pair.
+
+### Usage
+`ckms sym keys get-rotation-policy [options]`
+### Arguments
+`--key-id [-k] <KEY_ID>` The unique identifier of the key to get the rotation policy from
 
 
 

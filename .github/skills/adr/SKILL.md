@@ -9,13 +9,9 @@ Create an ADR document for the Cosmian KMS repository.
 
 ## ADR Storage
 
-Save ADRs at: `documentation/docs/adr/adr-NNNN-[title-slug].md`
+Save ADRs at: `documentation/docs/adr/adr-YYYY-MM-DD-[title-slug].md`
 
-Where `NNNN` is the next sequential 4-digit number. Check existing files to determine the next number:
-
-```bash
-ls documentation/docs/adr/ 2>/dev/null | sort | tail -5
-```
+Where `YYYY-MM-DD` is the current date.
 
 If the `documentation/docs/adr/` directory doesn't exist yet, create it and add a nav entry in `documentation/mkdocs.yml`.
 
@@ -35,7 +31,7 @@ If any required input is missing, ask before proceeding.
 
 ```markdown
 ---
-title: "ADR-NNNN: [Decision Title]"
+title: "ADR-YYYY-MM-DD: [Decision Title]"
 status: "Proposed"
 date: "YYYY-MM-DD"
 authors: "[Stakeholder Names/Roles]"
@@ -44,7 +40,7 @@ supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-NNNN: [Decision Title]
+# ADR-YYYY-MM-DD: [Decision Title]
 
 ## Status
 
@@ -94,8 +90,3 @@ superseded_by: ""
 - **REF-002**: [External documentation, RFCs, specifications]
 - **REF-003**: [Relevant codebase files: e.g. `crate/server_database/src/`, `crate/server/src/config/`]
 ```
-
-## After Writing
-
-1. Update `documentation/mkdocs.yml` to include the new ADR under the `ADRs` nav section (create the section if it doesn't exist).
-2. Commit with message: `docs(adr): add ADR-NNNN [title]`

@@ -1,4 +1,6 @@
 ---
+# Port isolation: set KMS_TEST_SLOT=N to shift all host ports by N×1000.
+# Source .mise/lib/test_slots.sh to compute KMS_SLOT_* variables automatically.
 services:
   # === Authentication/TLS test stack ===
   no-authentication:
@@ -9,7 +11,7 @@ services:
       - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
-        published: 9998
+        published: ${KMS_SLOT_HTTP_PORT:-9998}
         protocol: tcp
     healthcheck:
       test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
@@ -28,10 +30,10 @@ services:
       - ../../test_data/configs/server/tls_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9999
-        published: 9999
+        published: ${KMS_SLOT_TLS_PORT:-9999}
         protocol: tcp
       - target: 5696
-        published: 5696
+        published: ${KMS_SLOT_KMIP_PORT:-5696}
         protocol: tcp
     healthcheck:
       test: [CMD-SHELL, nc -z localhost 9999]
@@ -49,10 +51,10 @@ services:
       - ../../test_data/configs/server/tls13_auth_${KMS_TLS_CONFIG_FLAVOR:-fips}.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 10000
-        published: 10000
+        published: ${KMS_SLOT_TLS13_PORT:-10000}
         protocol: tcp
       - target: 5697
-        published: 5697
+        published: ${KMS_SLOT_KMIP_TLS13_PORT:-5697}
         protocol: tcp
     healthcheck:
       test: [CMD-SHELL, nc -z localhost 10000]
@@ -70,7 +72,7 @@ services:
       - ../../pkg/kms.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
-        published: 11098
+        published: ${KMS_SLOT_KMS_CONF_PORT:-11098}
         protocol: tcp
     healthcheck:
       test: [CMD-SHELL, "wget -qO- http://localhost:9998/health >/dev/null 2>&1 || wget -qO- --post-data='{}' --header='Content-Type: application/json'\
@@ -89,7 +91,7 @@ services:
       - ../../test_data/configs/server/no_auth.toml:/etc/cosmian/kms.toml:ro
     ports:
       - target: 9998
-        published: 12098
+        published: ${KMS_SLOT_KMS_EXAMPLE_PORT:-12098}
         protocol: tcp
     restart: no
     healthcheck:
@@ -177,7 +179,7 @@ services:
       - kms3
     ports:
       - target: 8080
-        published: 18080
+        published: ${KMS_SLOT_LB_PORT:-18080}
         protocol: tcp
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
@@ -189,7 +191,7 @@ services:
     image: container-registry.oracle.com/database/free:23.9.0.0-lite
     profiles: [oracle]
     ports:
-      - 1521:1521
+      - ${KMS_SLOT_ORACLE_PORT:-1521}:1521
     environment:
       ORACLE_PWD: 1234
       ENABLE_ARCHIVELOG: true
@@ -201,7 +203,7 @@ services:
     image: ${DOCKER_IMAGE_NAME}
     profiles: [oracle]
     ports:
-      - 19998:9998
+      - ${KMS_SLOT_KMS_ORACLE_PORT:-19998}:9998
     networks:
       default:
         aliases:

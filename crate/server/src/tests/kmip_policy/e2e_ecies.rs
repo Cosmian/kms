@@ -31,7 +31,7 @@ async fn e2e_ecies_roundtrip_with_policy(
     allowed_shake: CryptographicAlgorithm,
 ) -> Result<(), KmsError> {
     let conf = ecies_policy_conf(curve, allowed_shake);
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let create_kp = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
@@ -172,7 +172,7 @@ async fn e2e_ecies_is_allowed_when_curves_allowlist_is_unset() {
         CryptographicAlgorithm::SHAKE256,
     ]);
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let create_kp = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,
@@ -228,7 +228,7 @@ async fn e2e_ecies_is_denied_when_curves_allowlist_is_empty() {
         CryptographicAlgorithm::SHAKE256,
     ]);
 
-    let app = Box::pin(test_app_with_clap_config(conf, None)).await;
+    let app = Box::pin(test_app_with_clap_config(conf)).await;
 
     let create_kp = create_ec_key_pair_request(
         VENDOR_ID_COSMIAN,

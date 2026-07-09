@@ -40,6 +40,7 @@ env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="$LIB_PATH" \
   DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_MODEL="softhsm2" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
@@ -62,6 +63,7 @@ env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="$LIB_PATH" \
   DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_MODEL="softhsm2" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
@@ -86,11 +88,13 @@ env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="$LIB_PATH" \
   DYLD_LIBRARY_PATH="$LIB_PATH" \
+  SOFTHSM2_CONF="$SOFTHSM2_CONF" \
   SOFTHSM2_PKCS11_LIB="${SOFTHSM2_PKCS11_LIB_PATH:-}" \
   HSM_USER_PASSWORD="$HSM_USER_PASSWORD" \
   HSM_SLOT_ID="$SOFTHSM2_HSM_SLOT_ID" \
   cargo test \
   -p softhsm2_pkcs11_loader \
-  -- --nocapture
+  --features softhsm2 \
+  -- --nocapture tests::test_hsm_softhsm2_all --ignored --exact
 
 print_success "SoftHSM2 tests completed"

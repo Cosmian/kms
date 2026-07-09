@@ -8,6 +8,8 @@ mod derive_key_tests;
 pub(crate) mod google_cse;
 mod health_endpoint;
 mod hsm;
+mod jose;
+mod jwks_endpoint;
 mod kmip_endpoints;
 #[cfg(feature = "non-fips")]
 mod kmip_messages;
@@ -19,7 +21,7 @@ mod locate;
 mod migrate;
 mod ms_dke;
 mod mtls_db;
-mod rest_crypto;
+mod revoke_tests;
 mod secret_data_tests;
 mod security_regression;
 mod test_modify_attribute;

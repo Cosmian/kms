@@ -655,6 +655,7 @@ pub(crate) fn compare_attributes(
     cmp_opt!(quantum_safe);
     cmp_opt!(random_number_generator);
     cmp_opt!(revocation_reason);
+    cmp_opt!(rotate_automatic);
     cmp_opt!(rotate_date);
     cmp_opt!(rotate_generation);
     cmp_opt!(rotate_interval);

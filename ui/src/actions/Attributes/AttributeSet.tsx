@@ -1,4 +1,4 @@
-import { Button, Card, DatePicker, Form, Input, Select, Space, Typography } from "antd";
+import { Button, Card, Form, Input, Select, Space, Typography } from "antd";
 import moment from "moment";
 import React, { useEffect, useState } from "react";
 import { sendKmipRequest } from "../../utils/utils";
@@ -8,41 +8,17 @@ import {
     set_attribute_ttlv_request,
 } from "../../wasm/pkg/cosmian_kms_client_wasm";
 import { useActionState } from "../../hooks/useActionState";
+import { ATTRIBUTE_REGISTRY, SET_MODIFY_ATTRIBUTES, type AlgoOption } from "./attributeRegistry";
+import AttributeValueInput from "./AttributeValueInput";
 
 const { Title } = Typography;
 const { Option } = Select;
-
-const ALLOWED_ATTRIBUTES = [
-    { value: "activation_date", label: "Activation Date" },
-    { value: "cryptographic_algorithm", label: "Cryptographic Algorithm" },
-    { value: "cryptographic_length", label: "Cryptographic Length" },
-    { value: "key_usage", label: "Key Usage" },
-    { value: "name", label: "Name" },
-    { value: "public_key_id", label: "Public Key ID link" },
-    { value: "private_key_id", label: "Private Key ID link" },
-    { value: "certificate_id", label: "Certificate ID link" },
-    { value: "pkcs12_certificate_id", label: "PKCS12 Certificate ID link" },
-    { value: "pkcs12_password_certificate", label: "PKCS12 Password Certificate link" },
-    { value: "parent_id", label: "Parent ID link" },
-    { value: "child_id", label: "Child ID link" },
-];
-
-type AlgoOption = { value: string; label: string };
-
-const KEY_USAGE_OPTIONS = [
-    { value: "Sign", label: "Sign" },
-    { value: "Verify", label: "Verify" },
-    { value: "Encrypt", label: "Encrypt" },
-    { value: "Decrypt", label: "Decrypt" },
-    { value: "WrapKey", label: "Wrap Key" },
-    { value: "UnwrapKey", label: "Unwrap Key" },
-];
 
 interface AttributeSetFormData {
     id?: string;
     tags?: string[];
     attribute_name: string;
-    attribute_value: string;
+    attribute_value: string | string[];
 }
 
 const AttributeSetForm: React.FC = () => {
@@ -73,14 +49,20 @@ const AttributeSetForm: React.FC = () => {
                 throw new Error("Missing object identifier.");
             }
 
-            if (!values.attribute_name || !values.attribute_value) {
+            if (
+                !values.attribute_name ||
+                !values.attribute_value ||
+                (Array.isArray(values.attribute_value) && values.attribute_value.length === 0)
+            ) {
                 throw new Error("Missing attribute.");
             }
 
-            let attributeValue = values.attribute_value;
+            // Normalise: multi-select (key_usage) returns string[]; join to CSV for Rust
+            let attributeValue = Array.isArray(values.attribute_value) ? values.attribute_value.join(",") : values.attribute_value;
 
-            // For activation_date, convert from timestamp to Unix timestamp in seconds
-            if (values.attribute_name === "activation_date" && attributeValue) {
+            // Date attributes: convert DatePicker value to Unix timestamp in seconds
+            const entry = ATTRIBUTE_REGISTRY.find((a) => a.value === values.attribute_name);
+            if (entry?.inputType === "date" && attributeValue) {
                 const date = moment(attributeValue);
                 attributeValue = Math.floor(date.valueOf() / 1000).toString();
             }
@@ -92,101 +74,6 @@ const AttributeSetForm: React.FC = () => {
                 return `Attribute has been set for ${response.UniqueIdentifier}`;
             }
         });
-    };
-
-    const renderAttributeValueInput = () => {
-        if (!selectedAttributeName) {
-            return <Input placeholder="First select an attribute name" disabled />;
-        }
-
-        switch (selectedAttributeName) {
-            case "activation_date":
-                return (
-                    <Form.Item
-                        name="attribute_value"
-                        label="Activation Date"
-                        rules={[{ required: true, message: "Please select activation date" }]}
-                    >
-                        <DatePicker showTime style={{ width: "100%" }} />
-                    </Form.Item>
-                );
-
-            case "cryptographic_algorithm":
-                return (
-                    <Form.Item
-                        name="attribute_value"
-                        label="Cryptographic Algorithm"
-                        rules={[{ required: true, message: "Please select an algorithm" }]}
-                    >
-                        <Select placeholder="Select algorithm">
-                            {cryptoAlgorithms.map((algo) => (
-                                <Option key={algo.value} value={algo.value}>
-                                    {algo.label}
-                                </Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
-                );
-
-            case "cryptographic_length":
-                return (
-                    <Form.Item
-                        name="attribute_value"
-                        label="Cryptographic Length"
-                        rules={[{ required: true, message: "Please enter length" }]}
-                    >
-                        <Input type="number" placeholder="Enter length in bits" />
-                    </Form.Item>
-                );
-
-            case "key_usage":
-                return (
-                    <Form.Item name="attribute_value" label="Key Usage" rules={[{ required: true, message: "Please select key usage" }]}>
-                        <Select placeholder="Select key usage">
-                            {KEY_USAGE_OPTIONS.map((usage) => (
-                                <Option key={usage.value} value={usage.value}>
-                                    {usage.label}
-                                </Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
-                );
-
-            case "name":
-                return (
-                    <Form.Item name="attribute_value" label="Name" rules={[{ required: true, message: "Please enter name" }]}>
-                        <Input placeholder="Enter object name" />
-                    </Form.Item>
-                );
-
-            case "public_key_id":
-            case "private_key_id":
-            case "certificate_id":
-            case "pkcs12_certificate_id":
-            case "pkcs12_password_certificate":
-            case "parent_id":
-            case "child_id":
-                return (
-                    <Form.Item
-                        name="attribute_value"
-                        label={`${ALLOWED_ATTRIBUTES.find((attr) => attr.value === selectedAttributeName)?.label} Value`}
-                        rules={[{ required: true, message: "Please enter ID value" }]}
-                    >
-                        <Input placeholder="Enter ID value" />
-                    </Form.Item>
-                );
-
-            default:
-                return (
-                    <Form.Item
-                        name="attribute_value"
-                        label="Attribute Value"
-                        rules={[{ required: true, message: "Please enter attribute value" }]}
-                    >
-                        <Input placeholder="Enter attribute value" />
-                    </Form.Item>
-                );
-        }
     };
 
     return (
@@ -228,7 +115,7 @@ const AttributeSetForm: React.FC = () => {
                                 placeholder="Select attribute name"
                                 onChange={onAttributeNameChange}
                             >
-                                {ALLOWED_ATTRIBUTES.map((attr) => (
+                                {SET_MODIFY_ATTRIBUTES.map((attr) => (
                                     <Option key={attr.value} value={attr.value}>
                                         {attr.label}
                                     </Option>
@@ -236,7 +123,7 @@ const AttributeSetForm: React.FC = () => {
                             </Select>
                         </Form.Item>
 
-                        {renderAttributeValueInput()}
+                        <AttributeValueInput selectedAttributeName={selectedAttributeName} cryptoAlgorithms={cryptoAlgorithms} />
                     </Card>
 
                     <Form.Item>

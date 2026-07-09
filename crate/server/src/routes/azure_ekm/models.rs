@@ -71,6 +71,8 @@ pub(crate) enum WrapAlgorithm {
     A256KWP,
     #[serde(rename = "RSA-OAEP-256")]
     RsaOaep256,
+    #[serde(rename = "RSA-OAEP")]
+    RsaOaep,
 }
 
 #[derive(Debug, Deserialize)]

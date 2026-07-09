@@ -4,9 +4,6 @@ run-name: CI (${{ github.head_ref || github.ref_name }})
 
 on:
   push:
-    branches:
-      - develop
-      - main
     tags:
       - '**'
   workflow_dispatch:

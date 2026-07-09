@@ -18,7 +18,8 @@ use cosmian_kms_crypto::{
     reexport::cosmian_crypto_core::{FixedSizeCBytes, Secret, SymmetricKey, kdf256},
 };
 use cosmian_kms_interfaces::{
-    AtomicOperation, InterfaceResult, ObjectWithMetadata, ObjectsStore, PermissionsStore,
+    AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
+    PermissionsStore,
 };
 use cosmian_logger::{debug, trace};
 use cosmian_sse_memories::{ADDRESS_LENGTH, Address, RedisMemory};
@@ -38,7 +39,7 @@ use crate::{
     error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
-        migrate::{DbState, Migrate},
+        migrate::{DbState, Migrate, WRAPPING_KEY_BACKFILL_PARAM},
         redis::{
             findex::{CUSTOM_WORD_LENGTH, FindexRedis, IndexedValue, Keyword},
             objects_db::RedisOperation,
@@ -193,7 +194,59 @@ impl RedisWithFindex {
             }
         }
 
+        // One-time backfill of the `wrapped_by::<uid>` Findex index for objects
+        // created before that index existed. Gated by a completion marker so the
+        // O(N) scan runs at most once per database (a fresh database has no
+        // objects, so this is a no-op that only writes the marker).
+        redis_with_findex.backfill_wrapped_by_index().await?;
+
         Ok(redis_with_findex)
+    }
+
+    /// Backfill the `wrapped_by::<uid>` Findex index for wrapped objects that
+    /// predate that index.
+    ///
+    /// `find_wrapped_by` (used by key rotation) relies on a `wrapped_by::<uid>`
+    /// keyword that newer code writes at insert time. Objects stored by earlier
+    /// versions lack it, so they would be invisible to rotation. This method
+    /// scans every object once, (re-)inserts the keyword for wrapped ones, and
+    /// records a `wrapping_key_id_backfilled` marker so the scan never re-runs.
+    /// Re-inserting an already-indexed keyword is idempotent.
+    pub(crate) async fn backfill_wrapped_by_index(&self) -> DbResult<()> {
+        let marker: Option<String> = redis::cmd("GET")
+            .arg(WRAPPING_KEY_BACKFILL_PARAM)
+            .query_async(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to read wrapped_by backfill marker: {e}"))
+            })?;
+        if marker.as_deref() == Some("true") {
+            return Ok(());
+        }
+
+        let wrapped = self.objects_db.scan_wrapped_objects().await?;
+        for (uid, wrapping_key_uid) in wrapped {
+            let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+            let indexed_uid = IndexedValue::from(uid.as_bytes());
+            self.findex.insert(keyword, [indexed_uid]).await?;
+        }
+
+        redis::cmd("SET")
+            .arg(WRAPPING_KEY_BACKFILL_PARAM)
+            .arg("true")
+            .query_async::<()>(&mut self.mgr.clone())
+            .await
+            .map_err(|e| {
+                DbError::DatabaseError(format!("Failed to set wrapped_by backfill marker: {e}"))
+            })?;
+        Ok(())
+    }
+
+    /// Test-only accessor to the underlying object store, used to seed a legacy
+    /// (unindexed) object when exercising [`Self::backfill_wrapped_by_index`].
+    #[cfg(test)]
+    pub(crate) fn objects_db(&self) -> &ObjectsDB {
+        &self.objects_db
     }
 
     /// Prepare an object to be inserted
@@ -772,6 +825,113 @@ impl ObjectsStore for RedisWithFindex {
                 )
             })
             .collect())
+    }
+
+    async fn find_by_rotate_name(
+        &self,
+        name: &str,
+        generation: Option<i32>,
+        owner: &str,
+    ) -> InterfaceResult<Vec<(String, Attributes)>> {
+        // Search Findex for objects indexed under this rotate_name keyword
+        let keyword = Keyword::from(format!("rotate_name::{name}").as_bytes());
+        let indexed_uids = self
+            .findex
+            .search(&keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching rotate_name keyword: {e:?}")))?;
+        if indexed_uids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let candidate_uids: HashSet<String> = indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+            .collect();
+
+        // Fetch the candidate objects
+        let redis_db_objects = self.objects_db.objects_get(&candidate_uids).await?;
+
+        // Filter by owner, generation, and latest flag
+        let mut results = Vec::new();
+        for (uid, dbo) in redis_db_objects {
+            if dbo.owner != owner {
+                continue;
+            }
+            let attrs = dbo.attributes.unwrap_or_default();
+            // Filter by generation if requested
+            if let Some(expected_gen) = generation {
+                if attrs.rotate_generation != Some(expected_gen) {
+                    continue;
+                }
+            }
+            results.push((uid, attrs));
+        }
+        Ok(results)
+    }
+
+    async fn find_wrapped_by(
+        &self,
+        wrapping_key_uid: &str,
+        user: &str,
+    ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        // Search Findex for objects indexed under this wrapping key
+        let keyword = Keyword::from(format!("wrapped_by::{wrapping_key_uid}").as_bytes());
+        let indexed_uids = self
+            .findex
+            .search(&keyword)
+            .await
+            .map_err(|e| db_error!(format!("Error searching wrapped_by keyword: {e:?}")))?;
+        if indexed_uids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let candidate_uids: HashSet<String> = indexed_uids
+            .iter()
+            .filter_map(|v| String::from_utf8(v.to_vec()).ok())
+            .collect();
+
+        // Fetch only the candidate objects
+        let redis_db_objects = self.objects_db.objects_get(&candidate_uids).await?;
+
+        // Filter by access: user must own the object or have permissions on it
+        let permissions = self
+            .permission_db
+            .list_user_permissions(&UserId(user.to_owned()))
+            .await?;
+
+        let mut out = Vec::new();
+        for (uid, dbo) in redis_db_objects {
+            let has_access = dbo.owner == user || permissions.contains_key(&ObjectUid(uid.clone()));
+            if !has_access {
+                continue;
+            }
+            let attrs = dbo
+                .object
+                .attributes()
+                .cloned()
+                .unwrap_or_else(|_| Attributes {
+                    object_type: Some(dbo.object.object_type()),
+                    ..Default::default()
+                });
+            out.push((uid, dbo.state, attrs));
+        }
+        Ok(out)
+    }
+
+    /// Scan all objects and return `(uid, owner)` pairs for `Active` objects
+    /// with `rotate_automatic = true` whose next rotation instant is ≤ `now`.
+    ///
+    /// Implemented as an O(N) Redis SCAN.  Acceptable cost because this method
+    /// is only called by the low-frequency auto-rotation cron scheduler.
+    async fn find_due_for_rotation(
+        &self,
+        now: time::OffsetDateTime,
+    ) -> InterfaceResult<Vec<(String, String)>> {
+        self.objects_db
+            .scan_due_for_rotation(now)
+            .await
+            .map_err(InterfaceError::from)
     }
 
     /// Return the count of live (non-destroyed) objects.

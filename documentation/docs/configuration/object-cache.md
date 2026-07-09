@@ -1,0 +1,551 @@
+# Object Cache and Unwrapped Cache
+
+The KMS server uses two in-memory caches backed by
+[`moka::future::Cache`](https://docs.rs/moka/latest/moka/future/struct.Cache.html),
+a lock-free concurrent hash map. Both caches use sharding so multiple
+Actix-web worker threads can read simultaneously without serialization.
+
+---
+
+## Architecture overview
+
+```mermaid
+graph TD
+    CALLER[Caller]
+
+    CALLER -->|retrieve_object| DB[Database]
+    CALLER -->|get_unwrapped| GU[get_unwrapped]
+
+    DB -->|get| OC[ObjectCache]
+    OC -->|miss| BS[(Backing Store<br/>SQLite / Postgres)]
+
+    GU -->|peek| UC[UnwrappedCache]
+    UC -->|miss| CRYPTO[unwrap_object<br/>KEK unwrap]
+
+    OC -->|stores| OC_VAL["wrapped ObjectWithMetadata<br/>+ fingerprint"]
+    UC -->|stores| UC_VAL["unwrapped key material<br/>+ fingerprint of wrapped"]
+
+    style BS fill:#f9f,stroke:#333
+    style CRYPTO fill:#f99,stroke:#333
+    style OC fill:#9f9,stroke:#333
+    style UC fill:#9f9,stroke:#333
+```
+
+| Cache | Key | Value | Miss path |
+|---|---|---|---|
+| **ObjectCache** | UID string | `Arc<ObjectWithMetadata>` (wrapped) + fingerprint | DB fetch → insert → return |
+| **UnwrappedCache** | UID string | unwrapped `Object` + fingerprint of wrapped | Crypto unwrap → insert → return |
+
+---
+
+## ObjectCache
+
+**Source:** `crate/server_database/src/core/object_cache.rs`
+
+Caches full `ObjectWithMetadata` as read from the database to eliminate repeated
+DB round-trips on the hot path.
+
+### Public API
+
+| Method | Returns | Description |
+|---|---|---|
+| `get(uid)` | `Option<Arc<ObjectWithMetadata>>` | Lock-free lookup. Returns cheap `Arc` clone. |
+| `insert(uid, owm)` | `DbResult<()>` | Store with fingerprint of `owm.object()`. |
+| `insert_arc(uid, arc_owm)` | `DbResult<()>` | Store from existing `Arc` (saves one allocation). |
+| `invalidate(uid)` | — | Remove entry. |
+| `validate_cache(uid, current)` | `DbResult<()>` | Compare fingerprints; invalidate on mismatch. |
+
+### Callers
+
+- `Database::retrieve_object()` — `get()` on hot path, `insert()` on miss
+- `Database::retrieve_object_arc()` — `get()`, `insert_arc()` on miss
+- `Database::update_object()` — `invalidate()` on write
+- `Database::validate_cache()` — `validate_cache()` after forced re-fetch
+
+### Scenarios
+
+#### S1 — Cold start (first access)
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant DB as Database
+    participant OC as ObjectCache
+    participant BS as Backing Store
+
+    C->>DB: retrieve_object("key-1")
+    DB->>OC: get("key-1")
+    OC-->>DB: None
+    DB->>BS: retrieve("key-1")
+    BS-->>DB: ObjectWithMetadata (wrapped)
+    DB->>OC: insert("key-1", owm)
+    DB-->>C: owm
+```
+
+#### S2 — Hot path (cache hit)
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant DB as Database
+    participant OC as ObjectCache
+
+    C->>DB: retrieve_object("key-1")
+    DB->>OC: get("key-1")
+    OC-->>DB: cached entry found
+    DB-->>C: owm via Arc unwrap_or_clone
+```
+
+#### S3 — retrieve_object_arc (zero-copy Arc path)
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant DB as Database
+    participant OC as ObjectCache
+    participant BS as Backing Store
+
+    C->>DB: retrieve_object_arc("key-1")
+    DB->>OC: get("key-1")
+    alt Cache hit
+        OC-->>DB: cached Arc found
+        DB-->>C: Arc clone (pointer bump)
+    else Cache miss
+        OC-->>DB: None
+        DB->>BS: retrieve("key-1")
+        BS-->>DB: owm
+        DB->>OC: insert_arc("key-1", Arc.new(owm))
+        DB-->>C: Arc
+    end
+```
+
+#### S4 — Out-of-band mutation detected
+
+```mermaid
+sequenceDiagram
+    participant DB as Database
+    participant OC as ObjectCache
+
+    Note over DB: Another process mutated "key-1"
+    DB->>OC: validate_cache("key-1", current_db_object)
+    OC->>OC: fingerprint(cached) != fingerprint(current)?
+    OC->>OC: invalidate("key-1")
+    Note over OC: Next get() triggers fresh DB fetch
+```
+
+#### S5 — Object update invalidates cache
+
+```mermaid
+sequenceDiagram
+    participant C as Caller
+    participant DB as Database
+    participant OC as ObjectCache
+
+    C->>DB: update_object("key-1", new_obj, new_attrs)
+    DB->>OC: invalidate("key-1")
+    DB->>DB: persist to backing store
+    Note over OC: Entry removed, next get() is miss
+```
+
+#### S6 — Eviction (automatic)
+
+moka eviction requires no explicit call:
+
+| Policy | Trigger | Effect |
+|---|---|---|
+| LRU | `max_capacity` exceeded | Least-recently-used entry evicted |
+| TTL | `time_to_idle` elapsed without access | Entry evicted |
+
+---
+
+## UnwrappedCache
+
+**Source:** `crate/server_database/src/core/unwrapped_cache.rs`
+
+Caches unwrapped key material to avoid repeated KEK-unwrap cryptographic operations.
+The fingerprint of the **wrapped** object is stored alongside the unwrapped payload
+so stale entries (after key re-wrapping or KEK rotation) are silently rejected.
+
+### Public API
+
+| Method | Returns | Description |
+|---|---|---|
+| `peek(uid, wrapped)` | `DbResult<Option<Object>>` | Returns unwrapped object if fingerprint matches. |
+| `insert(uid, wrapped, unwrapped)` | `DbResult<()>` | Stores unwrapped with wrapped fingerprint. |
+| `clear_cache(uid)` | — | Removes entry. |
+| `validate_cache(uid, object)` | `DbResult<()>` | Fingerprint check; invalidate on mismatch. |
+
+**Security guard:** `insert` returns `Err` if `wrapped == unwrapped` (defense-in-depth
+against plaintext-persistence bugs).
+
+### Callers
+
+- `KMS::get_unwrapped()` — `peek()` + `insert()` on miss
+- KMIP ReKey / ReKeyKeyPair — `clear_cache()` after rotation
+- `Database::validate_cache()` chain — `validate_cache()` for defense-in-depth
+
+### Scenarios
+
+#### U1 — First unwrap (cold)
+
+```mermaid
+sequenceDiagram
+    participant G as get_unwrapped()
+    participant UC as UnwrappedCache
+    participant CR as Crypto
+
+    G->>UC: peek("key-1", wrapped_obj)
+    UC-->>G: None (no entry)
+    G->>CR: unwrap_object(wrapped_obj)
+    Note over CR: KEK unwrap
+    CR-->>G: unwrapped Object
+    G->>UC: insert("key-1", wrapped_obj, unwrapped_obj)
+    Note over UC: Stores fingerprint(wrapped) + unwrapped
+    G-->>G: return unwrapped
+```
+
+#### U2 — Subsequent unwrap (hot, zero crypto)
+
+```mermaid
+sequenceDiagram
+    participant G as get_unwrapped()
+    participant UC as UnwrappedCache
+
+    G->>UC: peek("key-1", wrapped_obj)
+    UC->>UC: fingerprint matches?
+    UC-->>G: Some(unwrapped_obj)
+    Note over G: No cryptographic operation
+    G-->>G: return unwrapped
+```
+
+#### U3 — Key re-wrapped (KEK rotation)
+
+```mermaid
+sequenceDiagram
+    participant G as get_unwrapped()
+    participant UC as UnwrappedCache
+    participant CR as Crypto
+
+    Note over G: wrapped_obj changed (new KEK after rotation)
+    G->>UC: peek("key-1", new_wrapped_obj)
+    UC->>UC: fingerprint mismatch
+    UC-->>G: None (stale entry rejected)
+    G->>CR: unwrap_object(new_wrapped_obj)
+    CR-->>G: unwrapped Object
+    G->>UC: insert("key-1", new_wrapped_obj, unwrapped)
+    Note over UC: New fingerprint replaces old entry
+    G-->>G: return unwrapped
+```
+
+#### U4 — Security guard (wrapped == unwrapped)
+
+```mermaid
+sequenceDiagram
+    participant G as get_unwrapped()
+    participant UC as UnwrappedCache
+
+    Note over G: Bug: caller passes already-unwrapped object
+    G->>UC: insert("key-1", obj, obj)
+    UC->>UC: wrapped == unwrapped?
+    UC-->>G: Err("wrapped and unwrapped objects should be different")
+    Note over UC: Prevents plaintext-persistence bugs
+```
+
+#### U5 — Explicit invalidation on key rotation
+
+```mermaid
+sequenceDiagram
+    participant R as ReKey / Rekeyer
+    participant UC as UnwrappedCache
+
+    R->>UC: clear_cache("key-1")
+    Note over UC: Entry removed
+    Note over UC: Next get_unwrapped() triggers crypto unwrap
+```
+
+#### U6 — Concurrent workers (double-unwrap acceptable)
+
+```mermaid
+sequenceDiagram
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+    participant UC as UnwrappedCache
+    participant CR as Crypto
+
+    W1->>UC: peek("key-1", wrapped)
+    UC-->>W1: None (cold)
+    W2->>UC: peek("key-1", wrapped)
+    UC-->>W2: None (W1 has not inserted yet)
+
+    W1->>CR: unwrap_object(...)
+    CR-->>W1: unwrapped
+    W1->>UC: insert("key-1", wrapped, unwrapped)
+
+    Note over W2: Received None, must also unwrap
+    W2->>CR: unwrap_object(...)
+    CR-->>W2: unwrapped
+    W2->>UC: insert("key-1", wrapped, unwrapped)
+    Note over UC: Double unwrap on cold start is acceptable
+```
+
+---
+
+## End-to-end: JOSE decrypt
+
+Full trace of `POST /v1/crypto/decrypt` with `alg: RSA-OAEP`. The RSA wrapping
+key (persistent DB object, identified by `kid`) passes through both caches.
+The CEK (ephemeral, from the JWE `encrypted_key` field) is never cached.
+
+```mermaid
+sequenceDiagram
+    participant J as JOSE /decrypt
+    participant RF as retrieve_object_for_operation
+    participant DB as Database
+    participant OC as ObjectCache
+    participant GU as get_unwrapped()
+    participant UC as UnwrappedCache
+    participant CR as Crypto
+    participant OS as OpenSSL
+
+    J->>RF: retrieve_object_for_operation(kid, Decrypt)
+    RF->>DB: retrieve_objects(kid)
+
+    alt ObjectCache hit
+        DB->>OC: get(kid)
+        OC-->>DB: cached (wrapped)
+    else ObjectCache miss
+        DB->>OC: get(kid)
+        OC-->>DB: None
+        DB->>DB: fetch from SQLite or Postgres
+        DB->>OC: insert(kid, owm)
+    end
+
+    DB-->>RF: owm (wrapped)
+
+    RF->>GU: get_unwrapped(kid, wrapped_obj, user)
+
+    alt UnwrappedCache hit
+        GU->>UC: peek(kid, wrapped_obj)
+        UC-->>GU: Some(unwrapped_obj)
+        Note over GU: No crypto
+    else UnwrappedCache miss
+        GU->>UC: peek(kid, wrapped_obj)
+        UC-->>GU: None
+        GU->>CR: unwrap_object(wrapped_obj)
+        Note over CR: KEK unwrap
+        CR-->>GU: unwrapped Object
+        GU->>UC: insert(kid, wrapped_obj, unwrapped_obj)
+    end
+
+    GU-->>RF: unwrapped Object
+    RF->>RF: owm.set_object(unwrapped)
+    RF-->>J: owm with plaintext key
+
+    J->>OS: kmip_private_key_to_openssl(owm.object())
+    OS-->>J: OpenSSL PKey Private
+
+    J->>OS: RSA private decrypt(encrypted_key)
+    OS-->>J: CEK (Content Encryption Key)
+
+    J->>OS: AES-GCM decrypt(ciphertext, CEK)
+    OS-->>J: plaintext
+
+    J->>UC: insert_cek(sha256(encrypted_key), cek)
+    Note over J,UC: CEK cached in UnwrappedCache for subsequent decrypt calls
+```
+
+---
+
+## Per-scenario cache behavior
+
+| Scenario | ObjectCache | UnwrappedCache | DB round-trip | Crypto unwrap |
+|---|---|---|---|---|
+| 1st access, cold | miss → DB → insert | miss → crypto → insert | ✓ | ✓ |
+| 2nd access, hot | hit | hit | — | — |
+| Key re-wrapped (new KEK) | hit (wrapped) | miss → crypto → insert | — | ✓ |
+| Cache evicted (TTL / LRU) | miss → DB → insert | miss → crypto → insert | ✓ | ✓ |
+| Object updated in DB | invalidated → miss → DB | still valid (fingerprint unchanged) | ✓ | — |
+| KEK rotated (Rekey) | invalidated | `clear_cache()` called explicitly | ✓ | ✓ (next access) |
+
+---
+
+---
+
+## JOSE CEK Cache (RSA-OAEP path)
+
+The `/v1/crypto/encrypt` and `/v1/crypto/decrypt` endpoints support a
+`RSA-OAEP` / `RSA-OAEP-256` key-management algorithm (RFC 7516). Each
+decryption requires an RSA private-key operation to unwrap the ephemeral
+**Content Encryption Key** (CEK). When the same JWE token is decrypted
+repeatedly, this operation is repeated on every call.
+
+The CEK is stored in **`UnwrappedCache`** after the first successful unwrap so
+subsequent requests for the same token skip the RSA operation entirely.
+
+### Cache key
+
+```text
+"jose_cek_{SHA-256-hex(encrypted_key_bytes)}"
+```
+
+The JWE `encrypted_key` field (the RSA-OAEP ciphertext of the CEK) uniquely
+identifies a token because RSA-OAEP encryption is randomised. SHA-256 keeps the
+map key compact: 64 hex chars regardless of RSA key size.
+
+### Fingerprint source
+
+The RSA private-key KMIP `Object` is passed as the fingerprint source at
+`insert()` and `peek()` time. If the key is re-imported or re-wrapped (its
+serialised form changes), the fingerprint stored in the cache entry no longer
+matches and `peek()` returns `None`, forcing a fresh RSA-OAEP unwrap and
+re-population.
+
+### `/encrypt` → `/decrypt` cross-path caching
+
+When `/encrypt` is called, the freshly generated CEK is inserted into the cache
+immediately after wrapping, keyed by the `encrypted_key` returned in the JWE
+response. The first `/decrypt` call for that token will get a cache hit if both
+calls share the same server instance and the key has not changed.
+
+If `/encrypt` uses a public-key KMIP object while `/decrypt` uses the linked
+private-key KMIP object, the fingerprints differ. In that case the first decrypt
+call replaces the stale entry with a correctly fingerprinted one; all subsequent
+decrypts hit the cache.
+
+### TTL and sizing
+
+CEK cache entries share the same `UnwrappedCache` TTL and LRU capacity as
+wrapped KMS keys:
+
+| Parameter | CLI flag | Description |
+|---|---|---|
+| Max entries | `--unwrapped-cache-max-size` | Default 1000. Increase for workloads with many concurrent JWE tokens. |
+| Time-to-idle | `--unwrapped-cache-max-age` | Entries evicted after this idle period. |
+
+### RFC 7516 §11.5 — implicit rejection preserved
+
+Only genuinely unwrapped CEKs are inserted. The random substitute key generated
+when RSA-OAEP decryption fails (padding oracle countermeasure) is **never**
+cached. This preserves the constant-time rejection guarantee: an attacker
+submitting an invalid `encrypted_key` still causes AES-GCM to fail at tag
+verification, and no cache entry is written.
+
+### `dir` mode
+
+The `dir` key-management algorithm uses a KMS-stored symmetric key directly.
+That path delegates to the KMIP `Encrypt`/`Decrypt` pipeline which already
+passes through `UnwrappedCache` via `get_unwrapped()`. No additional caching is
+required.
+
+## Configuration
+
+Both caches are configured via the [server configuration file](server_configuration_file.md)
+or CLI flags:
+
+| Parameter | CLI flag | Default | Description |
+|---|---|---|---|
+| `object_cache_max_size` | `--cache-max-size` | 1000 | Max entries in ObjectCache before LRU eviction |
+| `object_cache_max_age` | `--cache-max-age` | 15 s | Time-to-idle: entry evicted after this idle period (seconds) |
+| `unwrapped_cache_max_size` | `--unwrapped-cache-max-size` | 1000 | Max entries in UnwrappedCache |
+| `unwrapped_cache_max_age` | `--unwrapped-cache-max-age` | 15 s | Time-to-idle for UnwrappedCache entries (seconds) |
+| `unwrapped_cache_max_ttl` | `--unwrapped-cache-max-ttl` | *(none)* | **Absolute** time-to-live ceiling (seconds). When set, every entry is evicted at `min(TTI, TTL)` regardless of access frequency. See [Security considerations](#security-considerations). |
+| `disable_unwrapped_cache` | `--disable-unwrapped-cache` | `false` | Completely bypass the UnwrappedCache. Every operation performs a full KEK unwrap. See [Disabling the UnwrappedCache](#disabling-the-unwrappedcache). |
+
+> **TTL vs TTI**: `max_age` (time-to-idle) resets on every cache hit. A frequently
+> accessed key is **never** evicted by TTI alone. `max_ttl` is an *absolute* ceiling
+> independent of access frequency. For compliance environments that require a maximum
+> plaintext-key exposure window, always set `max_ttl`.
+
+---
+
+## Security considerations
+
+1. **ObjectCache never stores plaintext keys.** It mirrors the database:
+   objects are stored as-retrieved (wrapped). All callers provide the DB state.
+
+2. **UnwrappedCache validates against wrapped fingerprint.** `peek()` compares
+   the caller's `wrapped_object` fingerprint against the stored fingerprint.
+   If the wrapped object changed (re-wrapped, corrupted), the entry is silently
+   rejected.
+
+3. **Security guard rejects `wrapped == unwrapped`.** `insert()` returns an
+   error if the caller passes an already-unwrapped object as the wrapped argument.
+   This is defense-in-depth against plaintext-persistence bugs.
+
+4. **UnwrappedCache does NOT participate in persistence.** Unlike ObjectCache
+   (checked by `retrieve_object` before every DB read), UnwrappedCache is only
+   consulted by `get_unwrapped()`. Objects from UnwrappedCache are consumed
+   in-memory for cryptographic operations and never written back to the database.
+
+5. **Concurrent cold-start double-unwrap is acceptable.** If two workers call
+   `get_unwrapped()` simultaneously for a cold key, both perform the cryptographic
+   unwrap. The second `insert()` overwrites the first. This wastes one unwrap but
+   avoids lock contention — a tradeoff favoring throughput.
+
+6. **TTI amplifies plaintext exposure window.** With the default 15-second
+   time-to-idle, a continuously accessed key's plaintext material stays resident
+   indefinitely. For compliance environments with a bounded key-exposure
+   requirement (e.g. FIPS operational security policies, PCI-DSS, or NIS2),
+   set `--unwrapped-cache-max-ttl` to enforce an absolute ceiling:
+
+   ```bash
+   cosmian_kms --unwrapped-cache-max-ttl 60  # evict plaintext after at most 60 s
+   ```
+
+7. **Memory-zeroization on eviction.** When an entry is evicted from
+   `UnwrappedCache`, the plaintext `Object` is explicitly zeroized before
+   deallocation. All `Zeroizing<Vec<u8>>` byte buffers (symmetric keys, private-key
+   components) and `SafeBigInt` fields are overwritten with zeroes. This reduces
+   the window during which sensitive key material could be recovered from freed
+   memory pages.
+
+8. **CPU-level side-channel risk (CacheFX / Prime+Probe).** Plaintext key
+   material held in the `UnwrappedCache` occupies resident DRAM pages.
+   Modern CPU microarchitectural attacks (Prime+Probe, Flush+Reload) can
+   potentially exfiltrate AES round-key material and RSA/EC private-key bits
+   from shared L3 cache lines. These attacks require local code execution on the
+   same physical host. Mitigations:
+   - Keep `--unwrapped-cache-max-ttl` low (≤ 60 s) to limit the attack window.
+   - Use `--disable-unwrapped-cache` in high-security deployments where KEK
+     unwrap latency is acceptable.
+   - Run the KMS on dedicated (non-shared) hardware or inside a hardware-enforced
+     enclave (SEV-SNP, TDX) to eliminate co-tenant cache-sharing.
+
+---
+
+## Disabling the UnwrappedCache
+
+The `UnwrappedCache` trades security for performance: every cache hit saves a
+full KEK-unwrap operation but keeps plaintext key material in process memory
+between calls.
+
+To disable it entirely — so that every operation performs a fresh cryptographic
+unwrap and no plaintext key material is ever cached — use:
+
+```bash
+# CLI flag
+cosmian_kms --disable-unwrapped-cache
+
+# Environment variable
+KMS_DISABLE_UNWRAPPED_CACHE=true cosmian_kms
+
+# Configuration file  (kms.toml / server.toml)
+disable_unwrapped_cache = true
+```
+
+When disabled:
+
+- `peek()` always returns `None`, causing every `get_unwrapped()` to perform the
+  full KEK-unwrap cryptographic operation.
+- `insert()` is a no-op; plaintext key material is never stored in the cache.
+- The `ObjectCache` (wrapped objects) is **not** affected: database round-trips
+  are still cached for performance.
+
+> **Trade-off**: Disabling the UnwrappedCache increases per-operation latency by
+> one full asymmetric-key operation (RSA-OAEP or ECDH unwrap). For a 2048-bit
+> RSA KEK on a modern server, this is typically 0.5–2 ms per call. For
+> symmetric KEKs (AES-256 key-wrap), the overhead is under 0.1 ms.
+
+The `ObjectCache` can be configured to very short TTI or very small capacity to
+reduce wrapped-object retention, but it cannot be disabled via a flag — set
+`--cache-max-age 1 --cache-max-size 1` to minimise its footprint if needed.

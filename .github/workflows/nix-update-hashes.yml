@@ -1,0 +1,158 @@
+---
+# Local reusable workflow — Update Nix vendor hashes.
+#
+# Runs on a Linux + macOS matrix, recomputes all Nix vendor hash files via
+# `mise run release:nix-update-hashes`, commits the result back to `ref`, and
+# optionally dispatches packaging.yml on the same ref once both platform jobs
+# have completed.
+#
+# Hash files split by platform (the two sets are disjoint so both runners can
+# commit concurrently without conflicts):
+#   Linux  : server.vendor.{static,dynamic}.sha256
+#             cli.vendor.linux.sha256
+#             ui.vendor.{fips,non-fips}.sha256
+#             ui.pnpm.linux.sha256
+#   macOS  : cli.vendor.{static,dynamic}.darwin.sha256
+#             ui.pnpm.darwin.sha256
+#
+# Callers / triggers
+# ──────────────────
+# workflow_dispatch — manual invocation on a branch; trigger_packaging=true by
+#                     default so packaging follows automatically.
+# release.yml       — Job 2: trigger_packaging=false (release.yml has its own
+#                     trigger-packaging job that waits for packaging and polls
+#                     its outcome).
+# (packaging.yml does NOT call this workflow; it is a pure build workflow.)
+
+name: Update Nix vendor hashes
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >
+          Branch to update (leave empty to use the dispatched branch).
+        required: false
+        type: string
+        default: ''
+      new_version:
+        description: >
+          Optional version string appended to the commit message (e.g. "5.20.0").
+        required: false
+        type: string
+        default: ''
+      trigger_packaging:
+        description: >
+          Dispatch packaging.yml on `ref` after all hashes are committed.
+        required: false
+        type: boolean
+        default: true
+
+  workflow_call:
+    inputs:
+      ref:
+        description: >
+          Git ref (branch name) to check out and push updated hashes to.
+          For release.yml this is the release branch (e.g. release/5.20.0).
+        required: true
+        type: string
+      new_version:
+        description: >
+          Optional version string appended to the commit message (e.g. "5.20.0").
+        required: false
+        type: string
+        default: ''
+      trigger_packaging:
+        description: >
+          Dispatch packaging.yml on `ref` after all hashes are committed.
+          Set to false when the caller manages its own packaging dispatch
+          (e.g. release.yml).
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      PAT_TOKEN:
+        description: >
+          Personal Access Token with `repo` + `workflow` scopes.
+          Required so that the push and any subsequent workflow dispatch
+          re-trigger other workflows (GITHUB_TOKEN cannot do this).
+        required: true
+
+jobs:
+  update-nix-hashes:
+    name: Update Nix vendor hashes (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-15]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # workflow_dispatch: fall back to the dispatched branch when no
+          # explicit ref is given.
+          ref: ${{ inputs.ref || github.ref_name }}
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Recompute all Nix vendor hashes
+        run: mise run release:nix-update-hashes
+
+      - name: Commit updated Nix hashes
+        run: |
+          REF="${{ inputs.ref || github.ref_name }}"
+          git add nix/expected-hashes/
+          if git diff --cached --quiet; then
+            echo "Nix hashes are already up-to-date, nothing to commit."
+          else
+            MSG="build: update Nix vendor hashes (${{ runner.os }})"
+            if [ -n "${{ inputs.new_version }}" ]; then
+              MSG="$MSG for ${{ inputs.new_version }}"
+            fi
+            # [skip ci] prevents push-triggered workflows (e.g. nightly.yml)
+            # from re-running on this automated commit and creating a loop.
+            git commit -m "$MSG [skip ci]"
+            # Pull after committing to avoid "index contains uncommitted changes"
+            # error. The two platform jobs touch disjoint file sets so rebase
+            # always succeeds cleanly.
+            git pull --rebase origin "$REF"
+            git push origin "$REF"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Optional follow-up: dispatch packaging.yml on the same ref once BOTH
+  # platform hash-update jobs have completed successfully.
+  #
+  # This keeps packaging.yml a pure build workflow (no commits, no hash logic).
+  # The release workflow sets trigger_packaging=false and manages its own
+  # packaging dispatch with richer polling and SBOM retrieval.
+  # ─────────────────────────────────────────────────────────────────────────────
+  trigger-packaging:
+    name: Dispatch packaging.yml
+    needs: update-nix-hashes
+    if: inputs.trigger_packaging
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Dispatch packaging.yml on ${{ inputs.ref || github.ref_name }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          REF="${{ inputs.ref || github.ref_name }}"
+          echo "Dispatching packaging.yml on ref '$REF'…"
+          gh workflow run packaging.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$REF"

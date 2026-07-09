@@ -231,6 +231,10 @@ compute_sha256() {
 # ── Test helpers ──────────────────────────────────────────────────────────────
 
 build_test_deps() {
+  if [ "${KMS_SKIP_BUILD:-}" = "1" ]; then
+    echo "Skipping build (KMS_SKIP_BUILD=1)"
+    return 0
+  fi
   require_cmd cargo "Cargo is required to build test dependencies."
   cargo build -p ckms "${FEATURES_FLAG[@]}"
   if [ "${VARIANT:-fips}" = "non-fips" ]; then
@@ -251,16 +255,16 @@ _run_workspace_tests() {
   export KMS_TEST_DB="$db"
   case "$db" in
     postgresql)
-      : "${KMS_POSTGRES_URL:=postgresql://kms:kms@127.0.0.1:5432/kms}"
+      : "${KMS_POSTGRES_URL:=postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_PORT:-5432}/kms}"
       export KMS_POSTGRES_URL
       ;;
     mysql)
-      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3306/kms}"
+      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:${KMS_SLOT_MYSQL_PORT:-3306}/kms}"
       export KMS_MYSQL_URL
       ;;
     redis)
       : "${REDIS_HOST:=127.0.0.1}"
-      : "${REDIS_PORT:=6379}"
+      : "${REDIS_PORT:=${KMS_SLOT_REDIS_PORT:-6379}}"
       export REDIS_HOST REDIS_PORT
       ;;
   esac
@@ -290,28 +294,28 @@ setup_db_env() {
       ;;
     postgresql)
       export KMS_TEST_DB="postgresql"
-      : "${KMS_POSTGRES_URL:=postgresql://kms:kms@127.0.0.1:5432/kms}"
+      : "${KMS_POSTGRES_URL:=postgresql://kms:kms@127.0.0.1:${KMS_SLOT_POSTGRES_PORT:-5432}/kms}"
       export KMS_POSTGRES_URL
       ;;
     mysql)
       export KMS_TEST_DB="mysql"
-      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3306/kms}"
+      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:${KMS_SLOT_MYSQL_PORT:-3306}/kms}"
       export KMS_MYSQL_URL
       ;;
     percona)
       export KMS_TEST_DB="mysql"
-      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3307/kms}"
+      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT:-3307}/kms}"
       export KMS_MYSQL_URL
       ;;
     maria)
       export KMS_TEST_DB="mysql"
-      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:3308/kms}"
+      : "${KMS_MYSQL_URL:=mysql://kms:kms@127.0.0.1:${KMS_SLOT_MARIADB_PORT:-3308}/kms}"
       export KMS_MYSQL_URL
       ;;
     redis)
       export KMS_TEST_DB="redis"
       : "${REDIS_HOST:=127.0.0.1}"
-      : "${REDIS_PORT:=6379}"
+      : "${REDIS_PORT:=${KMS_SLOT_REDIS_PORT:-6379}}"
       export REDIS_HOST REDIS_PORT
       ;;
     *)
@@ -340,9 +344,9 @@ check_and_test_db() {
   local pretty="$1" dbkey="$2" host_var="$3" port_var="$4"
   local host="${!host_var:-127.0.0.1}" port="${!port_var:-}"
   case "$dbkey" in
-    postgresql) : "${port:=5432}" ;;
-    mysql) : "${port:=3306}" ;;
-    redis) : "${port:=6379}" ;;
+    postgresql) : "${port:=${KMS_SLOT_POSTGRES_PORT:-5432}}" ;;
+    mysql) : "${port:=${KMS_SLOT_MYSQL_PORT:-3306}}" ;;
+    redis) : "${port:=${KMS_SLOT_REDIS_PORT:-6379}}" ;;
   esac
 
   echo "Checking $pretty at $host:$port..."
@@ -360,10 +364,18 @@ check_and_test_db() {
 
 _warn_system_kms_conf() {
   local default_conf="/etc/cosmian/kms.toml"
+  local disabled_conf="${default_conf}.off"
   if [ -f "$default_conf" ]; then
     echo "WARNING: ${default_conf} exists on this system." >&2
-    echo "         The KMS server will load this file and ignore CLI args" >&2
+    echo "         The KMS server would load this file and ignore CLI args" >&2
     echo "         when started without an explicit --config flag." >&2
+    echo "         Renaming it to ${disabled_conf} for this test run." >&2
+    if mv "$default_conf" "$disabled_conf" 2>/dev/null ||
+      { command -v sudo >/dev/null 2>&1 && sudo -n mv "$default_conf" "$disabled_conf" 2>/dev/null; }; then
+      echo "         Moved ${default_conf} -> ${disabled_conf}" >&2
+    else
+      echo "         ERROR: could not rename ${default_conf}; the server may ignore CLI args." >&2
+    fi
   fi
 }
 

@@ -19,6 +19,7 @@ runs:
       shell: bash
       run: |
         curl -fsSL https://mise.run | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
 
     - name: Configure mise for CI (non-interactive)

@@ -23,7 +23,7 @@ use cosmian_logger::trace;
 use redis::{AsyncCommands, aio::ConnectionManager};
 
 use crate::{
-    error::DbResult,
+    error::{DbError, DbResult},
     stores::{
         REDIS_WITH_FINDEX_MASTER_KEY_LENGTH, RedisWithFindex,
         redis::{
@@ -594,5 +594,91 @@ pub(crate) async fn test_active_key_count_counter() -> DbResult<()> {
     let raw: Option<i64> = db.mgr.clone().get(ACTIVE_KEY_COUNT_KEY).await?;
     assert_eq!(raw, Some(0), "bootstrap must persist the counter to Redis");
 
+    Ok(())
+}
+
+/// Faithful Redis re-index test for the `wrapped_by::<uid>` Findex index.
+///
+/// Seeds a **legacy** wrapped object — stored directly via `object_upsert`, so it
+/// carries no `wrapped_by::` keyword, exactly like an object written before that
+/// index existed — clears the completion marker, then runs
+/// `backfill_wrapped_by_index` and asserts the object becomes discoverable
+/// through `find_wrapped_by` (used by key rotation).
+pub(crate) async fn test_wrapped_by_backfill() -> DbResult<()> {
+    cosmian_logger::log_init(option_env!("RUST_LOG"));
+    let mut rng = CsRng::from_entropy();
+    let redis_url = get_redis_url();
+
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::random(&mut rng);
+    let db = RedisWithFindex::instantiate(&redis_url, master_key, true).await?;
+
+    let owner = "legacy_owner";
+    let wrapping_key_uid = "legacy_kek";
+    let uid = "legacy_wrapped_object";
+
+    // A wrapped symmetric key whose KeyWrappingData references `wrapping_key_uid`.
+    let wrapped_obj: Object = serde_json::from_value(serde_json::json!({
+        "SymmetricKey": {
+            "KeyBlock": {
+                "KeyFormatType": "TransparentSymmetricKey",
+                "CryptographicAlgorithm": "AES",
+                "CryptographicLength": 256,
+                "KeyWrappingData": {
+                    "WrappingMethod": "Encrypt",
+                    "EncryptionKeyInformation": { "UniqueIdentifier": wrapping_key_uid },
+                    "EncodingOption": "TTLVEncoding"
+                }
+            }
+        }
+    }))
+    .map_err(|e| DbError::DatabaseError(format!("failed to build wrapped object: {e}")))?;
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        state: Some(State::Active),
+        ..Default::default()
+    };
+    let dbo = RedisDbObject::new(
+        wrapped_obj,
+        owner.to_owned(),
+        State::Active,
+        Some(HashSet::new()),
+        attributes,
+    );
+
+    // Store the object WITHOUT Findex indexing → simulates a pre-index legacy object.
+    db.objects_db().object_upsert(uid, &dbo).await?;
+
+    // Clear the completion marker so the backfill actually runs.
+    redis::cmd("DEL")
+        .arg("wrapping_key_id_backfilled")
+        .query_async::<()>(&mut db.mgr.clone())
+        .await?;
+
+    // Before backfill: the legacy object is invisible to find_wrapped_by (no keyword).
+    let before = db.find_wrapped_by(wrapping_key_uid, owner).await?;
+    assert!(
+        before.iter().all(|(found, _, _)| found.as_str() != uid),
+        "legacy wrapped object must NOT be found before backfill"
+    );
+
+    // Run the one-time backfill.
+    db.backfill_wrapped_by_index().await?;
+
+    // After backfill: the object is discoverable by its wrapping key.
+    let after = db.find_wrapped_by(wrapping_key_uid, owner).await?;
+    assert!(
+        after.iter().any(|(found, _, _)| found.as_str() == uid),
+        "wrapped object must be discoverable after backfill, got: {after:?}"
+    );
+
+    // Idempotency: re-running is a no-op (marker set) and keeps it discoverable.
+    db.backfill_wrapped_by_index().await?;
+    let again = db.find_wrapped_by(wrapping_key_uid, owner).await?;
+    assert!(
+        again.iter().any(|(found, _, _)| found.as_str() == uid),
+        "wrapped object must remain discoverable after an idempotent re-run"
+    );
+
+    db.delete(uid).await?;
     Ok(())
 }

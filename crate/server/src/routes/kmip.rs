@@ -4,7 +4,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
     http::header::CONTENT_TYPE,
     post,
-    web::{Bytes, Data, Json},
+    web::{Bytes, Data},
 };
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
@@ -20,8 +20,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::symmetric::symmetric_ciphers::AES_128_GCM_MAC_LENGTH,
 };
-use cosmian_logger::{debug, error, info, trace, warn};
-use serde_json::Value;
+use cosmian_logger::{debug, error, trace, warn};
 use time::OffsetDateTime;
 use tracing::Instrument;
 
@@ -152,18 +151,21 @@ pub(crate) async fn kmip_2_1_json(
     req_http: HttpRequest,
     body: String,
     kms: Data<Arc<KMS>>,
-) -> KResult<Json<TTLV>> {
+) -> KResult<HttpResponse> {
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
-    info!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
+    debug!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let span = tracing::info_span!("kmip_2_1", user = user.as_str(), tag = ttlv.tag.as_str());
-    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1))
-        .instrument(span)
-        .await?;
+    let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 
-    Ok(Json(ttlv))
+    // Pre-allocate buffer to avoid repeated reallocations during JSON serialization.
+    // Typical KMIP responses are 300-800 bytes; 512 avoids reallocs for most responses.
+    let mut buf = Vec::with_capacity(512);
+    serde_json::to_writer(&mut buf, &ttlv)?;
+    Ok(HttpResponse::Ok()
+        .content_type("application/json")
+        .body(buf))
 }
 
 /// Handle input TTLV requests
@@ -182,16 +184,21 @@ async fn handle_ttlv(kms: &KMS, ttlv: TTLV, user: &str, major: i32, minor: i32) 
                 return Ok(error_response_ttlv(major, minor, &e.to_string()));
             }
         };
-        let resp = kms.message(req, user).await.unwrap_or_else(|e| {
-            error!(target: "kmip", "Failed to process request: {}", e);
-            invalid_response_message(major, minor, e.to_string())
-        });
-        Ok(to_ttlv(&resp).unwrap_or_else(|e| {
+        let span = tracing::span!(tracing::Level::TRACE, "message");
+        let resp = Box::pin(message(kms, req, user))
+            .instrument(span)
+            .await
+            .unwrap_or_else(|e| {
+                error!(target: "kmip", "Failed to process request: {}", e);
+                invalid_response_message(major, minor, e.to_string())
+            });
+        let ttlv = to_ttlv(&resp).unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to convert response message to TTLV: {}", e);
             error_response_ttlv(major, minor, e.to_string().as_str())
-        }))
+        });
+        Ok(ttlv)
     } else {
-        let operation = Box::pin(dispatch(kms, ttlv, user)).await?;
+        let operation = dispatch(kms, ttlv, user).await?;
         Ok(to_ttlv(&operation)?)
     }
 }
@@ -224,15 +231,22 @@ pub(crate) async fn kmip_json(
     body: Bytes,
     kms: Data<Arc<KMS>>,
 ) -> HttpResponse {
-    let json = Box::pin(kmip_json_inner(req_http, body, kms))
+    let json = kmip_json_inner(req_http, body, kms)
         .await
         .unwrap_or_else(|e| {
             error!(target: "kmip", "Failed to process request: {}", e);
             error_response_ttlv(2, 1, &e.to_string())
         });
+    let mut buf = Vec::with_capacity(512);
+    if let Err(e) = serde_json::to_writer(&mut buf, &json) {
+        error!(target: "kmip", "Failed to serialize response to JSON: {e}");
+        return HttpResponse::InternalServerError()
+            .content_type("application/json")
+            .body(r#"{"error":"internal serialization failure"}"#);
+    }
     HttpResponse::Ok()
         .content_type("application/json")
-        .json(json)
+        .body(buf)
 }
 
 /// Handle KMIP requests with JSON content type
@@ -240,15 +254,15 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
     // Recover the user from the request
     let user = kms.get_user(&req_http);
 
-    // Deserialize the body to a TTLV
-    let body = String::from_utf8(body.to_vec())?;
-    let value: Value = serde_json::from_str(&body)?;
-    let ttlv = serde_json::from_value::<TTLV>(value)?;
+    // Deserialize the body directly to TTLV (avoiding intermediate Vec + Value allocations)
+    let body_str =
+        std::str::from_utf8(&body).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
+    let ttlv: TTLV = serde_json::from_str(body_str)?;
 
     // Check the KMIP version
     let (major, minor) = get_kmip_version(&ttlv)?;
 
-    info!(
+    debug!(
         target: "kmip",
         user=user,
         tag=ttlv.tag.as_str(),
@@ -257,7 +271,7 @@ async fn kmip_json_inner(req_http: HttpRequest, body: Bytes, kms: Data<Arc<KMS>>
 
     if (major == 2 && minor == 1) || (major == 1 && minor == 4) {
         let span = tracing::info_span!("kmip", user = user.as_str(), tag = ttlv.tag.as_str());
-        Box::pin(handle_ttlv(&kms, ttlv, &user, major, minor))
+        handle_ttlv(&kms, ttlv, &user, major, minor)
             .instrument(span)
             .await
     } else {
@@ -292,7 +306,7 @@ pub(crate) async fn handle_ttlv_bytes(user: &str, ttlv_bytes: &[u8], kms: &Arc<K
         return vec![];
     };
     let span = tracing::info_span!("kmip_binary", user = user);
-    Box::pin(handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms))
+    handle_ttlv_bytes_inner(user, ttlv_bytes, major, minor, kms)
         .instrument(span)
         .await
         .unwrap_or_else(|e| {
@@ -339,7 +353,7 @@ async fn handle_ttlv_bytes_inner(
     // parse the TTLV bytes
     let ttlv = TTLV::from_bytes(ttlv_bytes, kmip_flavor).context("Failed to parse TTLV")?;
     let tag = ttlv.tag.clone();
-    info!(
+    debug!(
         target: "kmip",
         user=user,
         tag=tag,
@@ -366,7 +380,7 @@ async fn handle_ttlv_bytes_inner(
         "Request Message: {request_message}"
     );
 
-    let mut response_message = Box::pin(message(kms, request_message, user)).await?;
+    let mut response_message = message(kms, request_message, user).await?;
 
     // Perform 1.1 and 1.2 Response Tweaks to ensure compatibility
     perform_response_tweaks(&mut response_message, major, minor);
@@ -533,128 +547,99 @@ mod local_tests {
 
 /// Perform response tweaks for KMIP 1.1 and 1.2 since we only support structures for KMIP 1.4 and 2.1
 fn perform_response_tweaks(response: &mut ResponseMessage, major: i32, minor: i32) {
-    // KMIP 1.1 and 1.2 Response Tweaks
     if major == 1 && minor <= 2 {
-        // Encrypt Response does not have the Authenticated Encryption Tag,
-        // so we must concatenate the value with the Data field
-        for batch_item in &mut response.batch_item {
-            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
-                continue; // Skip if not V14
-            };
-            // If the operation is Encrypt and the response payload is present,
-            // we need to concatenate the Authenticated Encryption Tag with the Data field
-            // Check if the operation is Encrypt
-            if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::EncryptResponse(
-                encrypt_response,
-            )) = item.response_payload.as_mut()
-            {
-                // Concatenate the Authenticated Encryption Tag with the Data field
-                if let Some(auth_tag) = encrypt_response.authenticated_encryption_tag.take() {
-                    if let Some(data) = encrypt_response.data.as_mut() {
-                        data.extend_from_slice(&auth_tag);
-                    }
+        append_auth_tag_to_encrypt_response(response);
+    }
+    if major == 1 {
+        strip_asymmetric_key_value_attributes(response);
+    }
+    if major == 1 && minor == 0 {
+        strip_kmip_10_unsupported_attrs(response);
+    }
+}
+
+/// KMIP 1.1/1.2: concatenate the AE tag into the Encrypt response `data` field,
+/// because those versions have no dedicated `authenticated_encryption_tag` field.
+fn append_auth_tag_to_encrypt_response(response: &mut ResponseMessage) {
+    use cosmian_kmip::kmip_1_4::kmip_operations::Operation::EncryptResponse;
+    for batch_item in &mut response.batch_item {
+        let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+            continue;
+        };
+        if let Some(EncryptResponse(resp)) = item.response_payload.as_mut() {
+            if let Some(auth_tag) = resp.authenticated_encryption_tag.take() {
+                if let Some(data) = resp.data.as_mut() {
+                    data.extend_from_slice(&auth_tag);
                 }
             }
         }
     }
+}
 
-    // KMIP 1.x interoperability for asymmetric keys:
-    // Some KMIP 1.x clients (e.g. Veeam Backup) do not support attributes
-    // embedded inside KeyValue for asymmetric keys (PublicKey / PrivateKey).
-    // In particular, the Link attribute (which contains a Structure-typed
-    // AttributeValue) and other object-metadata attributes inside KeyValue
-    // cause KMIP decode errors. Strip all KeyValue attributes for asymmetric
-    // keys so that only the key material is returned — cryptographic metadata
-    // (algorithm, length) is already present at the KeyBlock level.
-    if major == 1 {
-        for batch_item in &mut response.batch_item {
-            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
-                continue;
-            };
-            if let Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetResponse(gr)) =
-                item.response_payload.as_mut()
-            {
-                match &gr.object {
-                    cosmian_kmip::kmip_1_4::kmip_objects::Object::PublicKey(_)
-                    | cosmian_kmip::kmip_1_4::kmip_objects::Object::PrivateKey(_) => {
-                        if let Ok(kb) = gr.object.key_block_mut() {
-                            if let Some(
-                                cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
-                                    attribute,
-                                    ..
-                                },
-                            ) = kb.key_value.as_mut()
-                            {
+/// KMIP 1.x: strip all `KeyValue` attributes from asymmetric keys in Get responses.
+/// Some KMIP 1.x clients (e.g. Veeam Backup) cannot decode the `Link` structure
+/// attribute embedded in `KeyValue`; stripping it keeps the wire format compatible.
+fn strip_asymmetric_key_value_attributes(response: &mut ResponseMessage) {
+    use cosmian_kmip::kmip_1_4::{
+        kmip_data_structures::KeyValue, kmip_objects::Object,
+        kmip_operations::Operation::GetResponse,
+    };
+    for batch_item in &mut response.batch_item {
+        let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+            continue;
+        };
+        let Some(GetResponse(gr)) = item.response_payload.as_mut() else {
+            continue;
+        };
+        let is_asymmetric = matches!(&gr.object, Object::PublicKey(_) | Object::PrivateKey(_));
+        if !is_asymmetric {
+            continue;
+        }
+        if let Ok(kb) = gr.object.key_block_mut() {
+            if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
+                *attribute = None;
+            }
+        }
+    }
+}
+
+/// KMIP 1.0: strip attributes that do not exist in that version
+/// (`Fresh`, `InitialDate`) from `Get` and `GetAttributes` responses.
+fn strip_kmip_10_unsupported_attrs(response: &mut ResponseMessage) {
+    use cosmian_kmip::kmip_1_4::{
+        kmip_attributes::Attribute,
+        kmip_data_structures::KeyValue,
+        kmip_operations::Operation::{GetAttributesResponse, GetResponse},
+    };
+    for batch_item in &mut response.batch_item {
+        let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
+            continue;
+        };
+        match item.response_payload.as_mut() {
+            Some(GetResponse(gr)) => {
+                if let Ok(kb) = gr.object.key_block_mut() {
+                    if let Some(KeyValue::Structure { attribute, .. }) = kb.key_value.as_mut() {
+                        if let Some(attrs) = attribute {
+                            // KMIP 1.0: Fresh does not exist; InitialDate rejected by Percona.
+                            attrs.retain(|a| {
+                                !matches!(a, Attribute::Fresh(_) | Attribute::InitialDate(_))
+                            });
+                            if attrs.is_empty() {
                                 *attribute = None;
                             }
                         }
                     }
-                    _ => {}
                 }
             }
-        }
-    }
-
-    // KMIP 1.0 interoperability: the Fresh attribute does not exist in KMIP 1.0.
-    // Our internal models are KMIP 1.4/2.1, so strip it from any 1.0 response.
-    if major == 1 && minor == 0 {
-        for batch_item in &mut response.batch_item {
-            let ResponseMessageBatchItemVersioned::V14(item) = batch_item else {
-                continue;
-            };
-
-            // GetResponse / ExportResponse may carry attributes inside the returned object.
-            // GetAttributesResponse carries attributes at top-level.
-            match item.response_payload.as_mut() {
-                Some(cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetResponse(gr)) => {
-                    if let Ok(kb) = gr.object.key_block_mut() {
-                        if let Some(kv) = kb.key_value.as_mut() {
-                            if let cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
-                                attribute: Some(attrs),
-                                ..
-                            } = kv
-                            {
-                                // KMIP 1.0 interoperability: keep KeyValue attributes (known to
-                                // work with Percona), but drop attributes not supported in 1.0.
-                                // - Fresh does not exist in KMIP 1.0
-                                // - Initial Date is rejected by Percona in KMIP 1.0 sessions
-                                attrs.retain(|a| {
-                                    !matches!(
-                                        a,
-                                        cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
-                                            | cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::InitialDate(_)
-                                    )
-                                });
-                                if attrs.is_empty() {
-                                    if let cosmian_kmip::kmip_1_4::kmip_data_structures::KeyValue::Structure {
-                                        attribute,
-                                        ..
-                                    } = kv
-                                    {
-                                        *attribute = None;
-                                    }
-                                }
-                            }
-                        }
+            Some(GetAttributesResponse(gar)) => {
+                if let Some(attrs) = gar.attribute.as_mut() {
+                    attrs.retain(|a| !matches!(a, Attribute::Fresh(_)));
+                    if attrs.is_empty() {
+                        gar.attribute = None;
                     }
                 }
-                Some(
-                    cosmian_kmip::kmip_1_4::kmip_operations::Operation::GetAttributesResponse(gar),
-                ) => {
-                    if let Some(attributes) = gar.attribute.as_mut() {
-                        attributes.retain(|a| {
-                            !matches!(
-                                a,
-                                cosmian_kmip::kmip_1_4::kmip_attributes::Attribute::Fresh(_)
-                            )
-                        });
-                        if attributes.is_empty() {
-                            gar.attribute = None;
-                        }
-                    }
-                }
-                _ => {}
             }
+            _ => {}
         }
     }
 }

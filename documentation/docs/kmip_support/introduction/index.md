@@ -22,7 +22,7 @@ and encryption clients.
 
 Internally, all KMIP messages are translated to KMIP 2.1 specifications and converted back to KMIP 1.x when necessary.
 The Eviden KMS server implements a targeted subset of
-the [KMIP 2.1 protocol](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html).
+the [KMIP 2.1 protocol](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html).
 
 ## Purpose of KMIP
 

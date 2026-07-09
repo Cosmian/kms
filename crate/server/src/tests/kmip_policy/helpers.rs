@@ -86,11 +86,11 @@ where
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(bits),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
-            activation_date: Some(time_normalize().expect("time_normalize should work")),
             alternative_name: Some(AlternativeName {
                 alternative_name_type: AlternativeNameType::UninterpretedTextString,
                 alternative_name_value: tag.to_owned(),
             }),
+            activation_date: Some(time_normalize()?),
             ..Default::default()
         },
         protection_storage_masks: None,

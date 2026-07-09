@@ -1,20 +1,55 @@
 use cosmian_kms_server_database::reexport::{
-    cosmian_kmip::kmip_2_1::{
-        KmipOperation,
-        kmip_attributes::Attribute,
-        kmip_objects::ObjectType,
-        kmip_operations::{SetAttribute, SetAttributeResponse},
-        kmip_types::UniqueIdentifier,
+    cosmian_kmip::{
+        kmip_0::kmip_types::ErrorReason,
+        kmip_2_1::{
+            KmipOperation,
+            kmip_attributes::Attribute,
+            kmip_objects::ObjectType,
+            kmip_operations::{SetAttribute, SetAttributeResponse},
+            kmip_types::UniqueIdentifier,
+        },
     },
-    cosmian_kms_interfaces::ObjectWithMetadata,
+    cosmian_kms_interfaces::{ObjectWithMetadata, SECS_PER_DAY},
 };
 use cosmian_logger::{debug, trace};
+use time::OffsetDateTime;
+
+/// `SECS_PER_DAY - 1`, used for ceiling integer division of seconds into whole days.
+const SECS_PER_DAY_MINUS_ONE: i64 = SECS_PER_DAY - 1;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::has_prefix},
     error::KmsError,
     result::{KResult, KResultHelper},
 };
+
+/// Extract the PKCS#11 `key_id` from an HSM UID of the form
+/// `hsm::<model>::<slot_id>::<key_id>`.
+///
+/// Returns `None` if the UID cannot be parsed.
+fn extract_hsm_key_id(uid: &str) -> Option<&str> {
+    let prefix = has_prefix(uid)?;
+    // Strip "hsm::<model>::" to get "<slot_id>::<key_id>"
+    let rest = uid.strip_prefix(&format!("{prefix}::"))?;
+    // Skip the slot_id segment
+    rest.split_once("::").map(|(_, key_id)| key_id)
+}
+
+/// Compute the full base UID for an HSM key: `hsm::<prefix>::<slot>::<key_id_without_@N>`.
+///
+/// This is the canonical `rotate_name` for HSM-resident keys — it embeds the slot ID
+/// and is therefore unique across HSM slots.
+fn hsm_base_uid(uid: &str) -> Option<String> {
+    let prefix = has_prefix(uid)?;
+    let rest = uid.strip_prefix(&format!("{prefix}::"))?;
+    let (slot_str, key_id) = rest.split_once("::")?;
+    // Strip any @N generation suffix to get the stable base key_id.
+    let base_key_id = key_id
+        .rsplit_once('@')
+        .and_then(|(base, suffix)| suffix.parse::<i32>().ok().map(|_| base))
+        .unwrap_or(key_id);
+    Some(format!("{prefix}::{slot_str}::{base_key_id}"))
+}
 
 pub(crate) async fn set_attribute(
     kms: &KMS,
@@ -31,6 +66,26 @@ pub(crate) async fn set_attribute(
         .as_str()
         .context("Set Attribute: the unique identifier must be a string")?;
 
+    // Read-only guard — must be checked before the DB round-trip.
+    match &request.new_attribute {
+        Attribute::State(_)
+        | Attribute::RotateGeneration(_)
+        | Attribute::RotateDate(_)
+        | Attribute::RotateLatest(_) => {
+            return Err(KmsError::Kmip21Error(
+                ErrorReason::Attribute_Read_Only,
+                "DENIED: this attribute is server-managed and cannot be set by the user".to_owned(),
+            ));
+        }
+        Attribute::RotateName(name) if name.contains('@') => {
+            return Err(KmsError::InvalidRequest(
+                "SetAttribute: rotate_name must not contain '@' (reserved for keyset versioning)"
+                    .to_owned(),
+            ));
+        }
+        _ => {}
+    }
+
     let mut owm: ObjectWithMetadata = Box::pin(retrieve_object_for_operation(
         uid_or_tags,
         KmipOperation::SetAttribute,
@@ -40,7 +95,68 @@ pub(crate) async fn set_attribute(
     .await?;
     trace!("Set Attribute: Retrieved target object");
 
+    // For SQL objects (non-HSM): rotate_name must equal the object's UID.
+    // This enforces the gen-0 UID = keyset name invariant for deterministic @N addressing.
+    if has_prefix(owm.id()).is_none() {
+        if let Attribute::RotateName(name) = &request.new_attribute {
+            let object_uid = owm.id();
+            if name.as_str() != object_uid {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: rotate_name ('{name}') must equal the object's UID \
+                     ('{object_uid}') — create the object with the keyset name as its ID"
+                )));
+            }
+        }
+    }
+
+    // For HSM keys: rotate_name must be the key's full base UID (hsm::slot::key_id without
+    // any @N suffix).  The slot ID in the UID guarantees uniqueness across HSM slots,
+    // preventing keyset name collisions when multiple slots host keys with the same name.
+    if has_prefix(owm.id()).is_some() {
+        if let Attribute::RotateName(name) = &request.new_attribute {
+            let expected = hsm_base_uid(owm.id()).ok_or_else(|| {
+                KmsError::InvalidRequest(format!(
+                    "SetAttribute: cannot derive base UID from HSM key '{}'",
+                    owm.id()
+                ))
+            })?;
+            if name.as_str() != expected {
+                return Err(KmsError::InvalidRequest(format!(
+                    "SetAttribute: for HSM keys, rotate_name must be the key's base UID \
+                     ('{expected}'), not '{name}'"
+                )));
+            }
+        }
+    }
+
+    // Capture HSM-rotation values before the `match_set_attribute!` macro may
+    // partially move `request.new_attribute`.  We do this here — after object
+    // retrieval — so we can inspect `owm.id()` to confirm it is an HSM key.
+    let (hsm_rotate_name, hsm_rotate_interval_secs) = if has_prefix(owm.id()).is_some() {
+        match &request.new_attribute {
+            Attribute::RotateOffset(_) => {
+                return Err(KmsError::NotSupported(
+                    "SetAttribute: rotate_offset is not supported for HSM keys".to_owned(),
+                ));
+            }
+            Attribute::RotateName(n) => (Some(n.clone()), None::<i64>),
+            Attribute::RotateInterval(n) => (None::<String>, Some(*n)),
+            _ => (None, None),
+        }
+    } else {
+        (None, None)
+    };
+
     let mut attributes = owm.attributes_mut().clone();
+
+    // Capture before the macro runs (which may partially move request.new_attribute).
+    let is_setting_rotate_name_on_sql = matches!(&request.new_attribute, Attribute::RotateName(_))
+        && has_prefix(owm.id()).is_none();
+    // Detect a positive RotateInterval being set on a SQL (non-HSM) key.  Used below to
+    // implicitly enable `rotate_automatic` so the scheduler's `find_due_for_rotation` query
+    // picks up keys where the client only set the schedule (interval/offset) but not the flag.
+    let is_setting_positive_rotate_interval_on_sql = matches!(&request.new_attribute, Attribute::RotateInterval(v) if *v > 0)
+        && has_prefix(owm.id()).is_none();
 
     // Check if the attribute is allowed to be set
     match_set_attribute! {
@@ -97,6 +213,7 @@ pub(crate) async fn set_attribute(
             QuantumSafe => quantum_safe,
             RandomNumberGenerator => random_number_generator,
             RevocationReason => revocation_reason,
+            RotateAutomatic => rotate_automatic,
             RotateDate => rotate_date,
             RotateGeneration => rotate_generation,
             RotateInterval => rotate_interval,
@@ -139,6 +256,93 @@ pub(crate) async fn set_attribute(
     }
 
     let tags = kms.database.retrieve_tags(owm.id()).await?;
+
+    // For SQL keys: initialise keyset metadata when rotate_name is first set.
+    // rotate_generation and rotate_latest are server-managed (read-only guard above),
+    // so they can only be initialised here, not by the user directly.
+    if is_setting_rotate_name_on_sql {
+        if attributes.rotate_generation.is_none() {
+            attributes.rotate_generation = Some(0);
+        }
+        if attributes.rotate_latest.is_none() {
+            attributes.rotate_latest = Some(true);
+        }
+    }
+
+    // When the client sets RotateInterval > 0 on a SQL key without also setting
+    // RotateAutomatic, implicitly enable auto-rotation.  The scheduler's
+    // `find_due_for_rotation` query filters on `rotate_automatic = true`, so a key
+    // that only has an interval set would otherwise never be rotated.
+    // An explicit `rotate_automatic = Some(false)` is respected and not overridden.
+    if is_setting_positive_rotate_interval_on_sql && attributes.rotate_automatic.is_none() {
+        debug!(
+            "SetAttribute: implicitly enabling rotate_automatic for key '{}' (RotateInterval > 0 with no explicit RotateAutomatic)",
+            owm.id()
+        );
+        attributes.rotate_automatic = Some(true);
+    }
+    // `HsmStore::update_object` is a no-op for attributes (the HSM has no
+    // generic KV attribute storage), so we must explicitly write CKA_LABEL and
+    // CKA_START_DATE / CKA_END_DATE when the caller sets rotation metadata.
+    if let Some(rotate_name) = hsm_rotate_name {
+        // Register key in a keyset by writing CKA_LABEL at generation 0.
+        let key_id = extract_hsm_key_id(owm.id()).ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "SetAttribute: cannot parse key_id from HSM UID '{}'",
+                owm.id()
+            ))
+        })?;
+        let label = format!("{rotate_name}::0::{key_id}@latest");
+        trace!(
+            "SetAttribute: writing CKA_LABEL '{}' on HSM key '{}'",
+            label,
+            owm.id()
+        );
+        kms.database.set_key_label(owm.id(), &label).await?;
+    } else if let Some(interval_secs) = hsm_rotate_interval_secs {
+        // CKA_START_DATE / CKA_END_DATE are PKCS#11 CK_DATE fields (year/month/day only —
+        // no sub-day precision).  These dates ARE the scheduling signal used by
+        // HsmStore::find_due_for_rotation to determine when to auto-rotate the key;
+        // HsmStore::update_object is a no-op for KMIP attributes, so there is no other
+        // persistent store for rotate_interval on HSM keys.
+        if interval_secs == 0 {
+            // RotateInterval = 0 disables auto-rotation: clear the PKCS#11 dates so
+            // HsmStore::find_due_for_rotation no longer considers this key overdue.
+            trace!(
+                "SetAttribute: clearing CKA_START_DATE / CKA_END_DATE on HSM key '{}' (rotation disabled)",
+                owm.id()
+            );
+            kms.database
+                .set_key_rotation_dates(owm.id(), None, None)
+                .await?;
+        } else if interval_secs < SECS_PER_DAY {
+            // PKCS#11 CK_DATE only stores year/month/day.  A sub-day interval would map
+            // to end_date = today (0 whole days), causing the key to be immediately due
+            // for rotation on every scheduler tick.  Reject it explicitly so callers get
+            // a clear error instead of unexpected behaviour.
+            return Err(KmsError::InvalidRequest(format!(
+                "SetAttribute: RotateInterval for HSM key '{}' must be at least 86400 seconds \
+                 (1 day) because PKCS#11 CK_DATE has day granularity only. Got {interval_secs} s.",
+                owm.id()
+            )));
+        } else {
+            let today = OffsetDateTime::now_utc().date();
+            // Ceiling-divide so that an interval that is not an exact multiple of
+            // SECS_PER_DAY (86 400) does not map to end_date = today (which would
+            // trigger immediate rotation).
+            let days = (interval_secs + SECS_PER_DAY_MINUS_ONE) / SECS_PER_DAY;
+            let end_date = today + time::Duration::days(days);
+            trace!(
+                "SetAttribute: writing CKA_START_DATE={} CKA_END_DATE={} on HSM key '{}'",
+                today,
+                end_date,
+                owm.id()
+            );
+            kms.database
+                .set_key_rotation_dates(owm.id(), Some(today), Some(end_date))
+                .await?;
+        }
+    }
 
     match owm.object().object_type() {
         ObjectType::PublicKey

@@ -176,7 +176,7 @@ echo "==> Using dynamic ports: KMS=${KMS_PORT}, Vite=${VITE_PORT}"
 ensure_pnpm
 
 echo "==> Installing UI dependencies …"
-rm -rf "${UI_DIR}/node_modules"
+rm -rf "${UI_DIR}/node_modules" 2>/dev/null || true
 run_ui run_pnpm install --frozen-lockfile
 
 echo "==> Building UI (VITE_KMS_URL=https://127.0.0.1:${KMS_PORT}, VITE_DEV_MODE=true) …"
@@ -408,7 +408,11 @@ if [ "${VARIANT}" = "fips" ]; then
   PW_ENV+=(PLAYWRIGHT_FIPS_MODE=true)
 fi
 
-(cd "${UI_DIR}" && env -u LD_PRELOAD -u OPENSSL_CONF -u OPENSSL_MODULES "${PW_ENV[@]}" pnpm run test:e2e) || TEST_EXIT=$?
+# Unset LD_LIBRARY_PATH so Playwright's Chromium can find system libraries
+# (e.g. libglib, libnss, libX11) via ldconfig on arm64 runners where the
+# nix-shell LD_LIBRARY_PATH would otherwise shadow the system library paths.
+# pnpm/node are nix-wrapped (RPATH) so they do not need LD_LIBRARY_PATH.
+(cd "${UI_DIR}" && env -u LD_PRELOAD -u LD_LIBRARY_PATH -u OPENSSL_CONF -u OPENSSL_MODULES "${PW_ENV[@]}" pnpm run test:e2e) || TEST_EXIT=$?
 
 # ── 9. Report server errors ─────────────────────────────────────────────────
 SERVER_ERRORS=$(grep -c ' ERROR ' "${KMS_LOG}" 2>/dev/null) || SERVER_ERRORS=0

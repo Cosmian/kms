@@ -5,6 +5,11 @@ set -exuo pipefail
 # Prefer cargo-installed binaries if present.
 export PATH="$HOME/.cargo/bin:$PATH"
 
+# Port isolation: source test_slots.sh to compute slot-aware ports.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=.mise/lib/test_slots.sh
+source "${SCRIPT_DIR}/../../lib/test_slots.sh"
+
 # Single compose file containing all test stacks.
 # Path is relative to the repo root (the script's working directory).
 COMPOSE_FILE=".mise/scripts/docker-compose.yml"
@@ -19,12 +24,12 @@ echo "Using KMS_TLS_CONFIG_FLAVOR=${KMS_TLS_CONFIG_FLAVOR}"
 CONFIG=~/.cosmian/cosmian-no-tls.toml
 TLS_CONFIG=~/.cosmian/cosmian-tls.toml
 
-# Fixed host ports (compose publishes deterministic ports).
-HOST_HTTP_PORT=9998
-HOST_TLS_PORT=9999
-HOST_TLS13_PORT=10000
-HOST_SOCKET_TLS_PORT=5696
-HOST_SOCKET_TLS13_PORT=5697
+# Host ports (slot-aware via test_slots.sh).
+HOST_HTTP_PORT="${KMS_SLOT_HTTP_PORT}"
+HOST_TLS_PORT="${KMS_SLOT_TLS_PORT}"
+HOST_TLS13_PORT="${KMS_SLOT_TLS13_PORT}"
+HOST_SOCKET_TLS_PORT="${KMS_SLOT_KMIP_PORT}"
+HOST_SOCKET_TLS13_PORT="${KMS_SLOT_KMIP_TLS13_PORT}"
 
 # Cert paths
 CA_CERT="test_data/certificates/client_server/ca/ca.crt"
@@ -38,6 +43,7 @@ KMS_URL_HTTPS="https://127.0.0.1:${HOST_TLS_PORT}"
 # Write CLI config files
 mkdir -p ~/.cosmian
 
+# shellcheck disable=SC2086
 echo '
 print_json = false
 
@@ -45,6 +51,7 @@ print_json = false
 server_url = "'$KMS_URL_HTTP'"
 ' | tee "$CONFIG"
 
+# shellcheck disable=SC2086
 echo '
 print_json = false
 

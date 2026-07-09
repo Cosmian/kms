@@ -24,7 +24,6 @@ use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        operations::key_ops::{ObjectWithMetadataOps, record_cascading_metrics},
         uid_utils::{has_prefix, uids_from_unique_identifier},
     },
     error::KmsError,
@@ -107,12 +106,9 @@ pub(crate) async fn recursively_revoke_key(
                     continue;
                 }
             }
-            if kms
-                .database
-                .update_state(&uid, State::Deactivated)
-                .await
-                .is_ok()
-            {
+            // KMIP 2.1 §6.1.44: KeyCompromise/CACompromise → Compromised; all others → Deactivated
+            let revoked_state = revocation_target_state(&revocation_reason);
+            if kms.database.update_state(&uid, revoked_state).await.is_ok() {
                 count += 1;
                 debug!(
                     "Object with unique identifier: {} revoked by user {}",
@@ -131,18 +127,36 @@ pub(crate) async fn recursively_revoke_key(
 
         let object_type = owm.object().object_type();
         let uid = owm.id().to_owned();
-        if owm.state() != State::Active && owm.state() != State::PreActive {
-            // Special case: if this is the direct target of the Revoke request (first uid) and the
-            // object is already Destroyed / Destroyed_Compromised, KMIP profile AKLC-M-2-21 still
-            // expects a successful Revoke earlier in the sequence (i.e., we shouldn't emit
-            // Item_Not_Found just because a linked public key was previously destroyed). We allow
-            // Destroyed states to pass through without performing a state transition.
-            if owm.state() == State::Destroyed || owm.state() == State::Destroyed_Compromised {
+        // KMIP 2.1 §6.1.44 state-transition guard:
+        // • Active / PreActive → proceed normally.
+        // • Destroyed / Destroyed_Compromised → allow pass-through (AKLC-M-2-21).
+        // • Deactivated → only proceed for Compromise reasons (transition #8).
+        // • anything else → skip.
+        match owm.state() {
+            State::Active | State::PreActive => {}
+            State::Destroyed | State::Destroyed_Compromised => {
                 trace!(
                     "[revoke] proceed-destroyed uid={uid} state={:?}",
                     owm.state()
                 );
-            } else {
+                // AKLC-M-2-21 compatibility: succeed without performing a state
+                // transition. Counting the object prevents a spurious Item_Not_Found
+                // when a cascade Revoke reaches a linked key that was already destroyed.
+                count += 1;
+                continue;
+            }
+            State::Deactivated => {
+                // Transition #8: Deactivated → Compromised is valid only for Compromise reasons.
+                // For all others treat as a no-op so that Revoke → Destroy sequences still succeed.
+                if !matches!(
+                    revocation_reason.revocation_reason_code,
+                    RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise
+                ) {
+                    count += 1;
+                    continue;
+                }
+            }
+            State::Compromised => {
                 trace!(
                     "[revoke] skip uid={uid} reason=state-not-revocable state={:?}",
                     owm.state()
@@ -150,45 +164,48 @@ pub(crate) async fn recursively_revoke_key(
                 continue;
             }
         }
-        if object_type != ObjectType::PrivateKey
-            && object_type != ObjectType::Certificate
-            && object_type != ObjectType::SymmetricKey
-            && object_type != ObjectType::PublicKey
-            && object_type != ObjectType::SecretData
-            && object_type != ObjectType::OpaqueObject
-        {
+        if !matches!(
+            object_type,
+            ObjectType::PrivateKey
+                | ObjectType::Certificate
+                | ObjectType::SymmetricKey
+                | ObjectType::PublicKey
+                | ObjectType::SecretData
+                | ObjectType::OpaqueObject
+        ) {
             continue;
         }
         // if the user is not the owner, we need to check if the user has the right to revoke
-        if !owm
-            .user_can_perform_operation(user, &KmipOperation::Revoke, kms)
+        if !kms
+            .user_can_perform_operation(&owm, user, &KmipOperation::Revoke)
             .await?
         {
             continue;
         }
         count += 1;
         // Perform the chain of revoke operations depending on the type of object
-        let object_type = owm.object().object_type();
         match object_type {
             ObjectType::SymmetricKey
             | ObjectType::Certificate
             | ObjectType::SecretData
             | ObjectType::OpaqueObject => {
                 // revoke the key
-                revoke_key_core(
+                Box::pin(revoke_key_core(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                )
+                ))
                 .await?;
             }
-            ObjectType::PrivateKey => {
-                // add this key to the ids to skip
+            ObjectType::PrivateKey | ObjectType::PublicKey => {
                 ids_to_skip.insert(owm.id().to_owned());
-                // For Covercrypt master secret keys (non-fips), revoke related user decryption keys.
+                // For Covercrypt master secret keys (non-fips), revoke user decryption keys.
                 #[cfg(feature = "non-fips")]
-                if owm.object().key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
+                if object_type == ObjectType::PrivateKey
+                    && owm.object().key_block()?.key_format_type
+                        == KeyFormatType::CoverCryptSecretKey
+                {
                     revoke_user_decryption_keys(
                         &uid,
                         revocation_reason.clone(),
@@ -199,18 +216,24 @@ pub(crate) async fn recursively_revoke_key(
                     )
                     .await?;
                 }
-                // Conditional cascade to the linked public key only when requested via Revoke.cascade=true.
+                // Cascade to the paired counterpart (PrivateKey → PublicKey, PublicKey → PrivateKey)
+                // only when Revoke.cascade=true.
                 if cascade {
-                    if let Some(public_key_id) = owm
+                    let link_type = if object_type == ObjectType::PrivateKey {
+                        LinkType::PublicKeyLink
+                    } else {
+                        LinkType::PrivateKeyLink
+                    };
+                    if let Some(linked_id) = owm
                         .object()
                         .attributes()
                         .unwrap_or_else(|_| owm.attributes())
-                        .get_link(LinkType::PublicKeyLink)
+                        .get_link(link_type)
                         .map(|l| l.to_string())
                     {
-                        if !ids_to_skip.contains(&public_key_id) {
+                        if !ids_to_skip.contains(&linked_id) {
                             recursively_revoke_key(
-                                &UniqueIdentifier::TextString(public_key_id),
+                                &UniqueIdentifier::TextString(linked_id),
                                 revocation_reason.clone(),
                                 compromise_occurrence_date,
                                 cascade,
@@ -219,50 +242,16 @@ pub(crate) async fn recursively_revoke_key(
                                 ids_to_skip.clone(),
                             )
                             .await?;
-                            record_cascading_metrics("Revoke", op_start, kms, user);
+                            kms.record_cascading_metrics("Revoke", op_start, user);
                         }
                     }
                 }
-                revoke_key_core(
+                Box::pin(revoke_key_core(
                     owm,
                     revocation_reason.clone(),
                     compromise_occurrence_date,
                     kms,
-                )
-                .await?;
-            }
-            ObjectType::PublicKey => {
-                ids_to_skip.insert(owm.id().to_owned());
-                // Conditional cascade to the linked private key only when requested via Revoke.cascade=true.
-                if cascade {
-                    if let Some(private_key_id) = owm
-                        .object()
-                        .attributes()
-                        .unwrap_or_else(|_| owm.attributes())
-                        .get_link(LinkType::PrivateKeyLink)
-                        .map(|l| l.to_string())
-                    {
-                        if !ids_to_skip.contains(&private_key_id) {
-                            recursively_revoke_key(
-                                &UniqueIdentifier::TextString(private_key_id),
-                                revocation_reason.clone(),
-                                compromise_occurrence_date,
-                                cascade,
-                                kms,
-                                user,
-                                ids_to_skip.clone(),
-                            )
-                            .await?;
-                            record_cascading_metrics("Revoke", op_start, kms, user);
-                        }
-                    }
-                }
-                revoke_key_core(
-                    owm,
-                    revocation_reason.clone(),
-                    compromise_occurrence_date,
-                    kms,
-                )
+                ))
                 .await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(
@@ -295,16 +284,8 @@ async fn revoke_key_core(
     compromise_occurrence_date: Option<OffsetDateTime>,
     kms: &KMS,
 ) -> KResult<()> {
-    // Update the state of the object to Active and activation date
     let now = time_normalize()?;
-    let state = match revocation_reason {
-        RevocationReason {
-            revocation_reason_code:
-                RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise,
-            ..
-        } => State::Compromised,
-        _ => State::Deactivated,
-    };
+    let state = revocation_target_state(&revocation_reason);
 
     if let Ok(object_attributes) = owm.object_mut().attributes_mut() {
         object_attributes.state = Some(state);
@@ -342,4 +323,17 @@ async fn revoke_key_core(
     debug!("Object with unique identifier: {} revoked", owm.id());
 
     Ok(())
+}
+
+/// Return the [`State`] an object transitions to when revoked for the given `reason`.
+///
+/// - `KeyCompromise` / `CACompromise` → [`State::Compromised`]
+/// - all other reason codes → [`State::Deactivated`]
+const fn revocation_target_state(reason: &RevocationReason) -> State {
+    match reason.revocation_reason_code {
+        RevocationReasonCode::KeyCompromise | RevocationReasonCode::CACompromise => {
+            State::Compromised
+        }
+        _ => State::Deactivated,
+    }
 }

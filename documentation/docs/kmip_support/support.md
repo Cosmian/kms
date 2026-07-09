@@ -226,6 +226,7 @@ Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 | Quantum Safe                        |       ✅ |
 | Random Number Generator             |       ✅ |
 | Revocation Reason                   |       ✅ |
+| Rotate Automatic                    |       ✅ |
 | Rotate Date                         |       ✅ |
 | Rotate Generation                   |       ✅ |
 | Rotate Interval                     |       ✅ |

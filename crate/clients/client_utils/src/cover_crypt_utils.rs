@@ -39,6 +39,7 @@ pub fn build_create_covercrypt_master_keypair_request<T: IntoIterator<Item = imp
         vendor_attributes: Some(vec![vendor_attributes]),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Unrestricted),
         sensitive: sensitive.then_some(true),
+
         activation_date: Some(time_normalize().map_err(|e| UtilsError::Default(e.to_string()))?),
         ..Attributes::default()
     };

@@ -313,6 +313,21 @@ export async function createSymKey(page: Page): Promise<string> {
 }
 
 /**
+ * Create a fresh AES-256 symmetric key with a specific UID and return that UID.
+ *
+ * The server requires rotate_name == key UID; tests that address a key by a
+ * human-readable keyset name must create the key with that name as its UID.
+ */
+export async function createSymKeyWithId(page: Page, id: string): Promise<string> {
+    await gotoAndWait(page, "/ui/sym/keys/create");
+    await expect(page.locator(".ant-select-selection-item").first()).not.toHaveText("", { timeout: UI_READY_TIMEOUT });
+    await page.fill('input[placeholder="Enter key ID"]', id);
+    const text = await submitAndWaitForResponse(page);
+    expect(text).toMatch(/has been created/i);
+    return id;
+}
+
+/**
  * Create a fresh 4096-bit RSA key pair and return both key IDs.
  */
 export async function createRsaKeyPair(page: Page): Promise<{ privKeyId: string; pubKeyId: string }> {

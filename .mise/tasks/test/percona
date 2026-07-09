@@ -8,16 +8,21 @@
 #USAGE }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/softhsm2.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-fips}" "${usage_link:-static}"
 setup_test_logging
+# WITH_HSM=1 must be set before ensure_nix_shell so the Nix shellHook adds
+# the Nix-built SoftHSM2 (linked against Nix OpenSSL FIPS 3.1.2) to PATH.
+export WITH_HSM=1
 ensure_nix_shell
 
 print_header "Running Percona tests (${VARIANT_NAME})"
 
-# CI sets KMS_PERCONA_URL; fall back to port 3307 default
-export KMS_MYSQL_URL="${KMS_PERCONA_URL:-${KMS_MYSQL_URL:-mysql://kms:kms@127.0.0.1:3307/kms}}"
+# CI sets KMS_PERCONA_URL; fall back to slot-aware port default
+export KMS_MYSQL_URL="${KMS_PERCONA_URL:-${KMS_MYSQL_URL:-mysql://kms:kms@127.0.0.1:${KMS_SLOT_PERCONA_PORT:-3307}/kms}}"
 
 check_and_test_db "Percona" "mysql" "PERCONA_HOST" "PERCONA_PORT"
+run_db_softhsm2_tests "mysql_softhsm2"
 
 print_success "Percona tests completed"

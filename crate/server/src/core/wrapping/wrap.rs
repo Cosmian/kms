@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::{
     },
     cosmian_kms_crypto::crypto::wrap::{key_data_to_wrap, wrap_object_with_key},
 };
-use cosmian_logger::{debug, trace, warn};
+use cosmian_logger::{debug, trace};
 
 use crate::{
     core::{KMS, uid_utils::has_prefix, wrapping::unwrap_object},
@@ -59,22 +59,32 @@ pub(crate) async fn wrap_and_cache(
     // or in the HSM.
     // Either the user has provided a wrapping key ID or a key wrapping key is
     // provided in the parameters.
-    let Some(wrapping_key_id) = object
+    let uid_str = unique_identifier.to_string();
+    let explicit_wrapping_key_id = object
         .attributes_mut()
         .ok()
-        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()))
-        .or_else(|| kms.params.key_wrapping_key.clone())
-    else {
-        // no wrapping key provided
-        return Ok(());
+        .and_then(|attrs| attrs.remove_wrapping_key_id(kms.vendor_id()));
+    let wrapping_key_id = if let Some(id) = explicit_wrapping_key_id {
+        id
+    } else {
+        let Some(kek) = kms.params.key_wrapping_key.clone() else {
+            // no wrapping key provided
+            return Ok(());
+        };
+        // HSM-resident keys are hardware-protected: skip the server-wide KEK wrapping
+        // to avoid creating a circular dependency where the KEK would wrap itself.
+        if has_prefix(&uid_str).is_some() {
+            return Ok(());
+        }
+        kek
     };
 
-    // Cannot wrap yourself
-    if wrapping_key_id == unique_identifier.to_string() {
-        if kms.params.key_wrapping_key.is_none() {
-            warn!("Key {wrapping_key_id} attempted to wrap itself");
-        }
-        return Ok(());
+    // A key cannot be its own wrapping key.
+    if wrapping_key_id == uid_str {
+        return Err(KmsError::InvalidRequest(format!(
+            "Key '{wrapping_key_id}' cannot be used as its own wrapping key: \
+             the wrapping key ID must differ from the key ID being created"
+        )));
     }
 
     // This is useful to store a key on the default data store but wrapped by a key stored in an HSM
@@ -245,7 +255,15 @@ async fn wrap_using_kms(
             "The wrapping key {wrapping_key_uid} is not active"
         )));
     }
-    if wrapping_key.owner() != user {
+    // The server-configured key_encryption_key is a shared server resource accessible
+    // to all users, so skip the ownership check for it (mirrors the bypass in
+    // `wrap_using_crypto_oracle` — issue #761).
+    let is_server_kek = kms
+        .params
+        .key_wrapping_key
+        .as_deref()
+        .is_some_and(|kek| kek == wrapping_key_uid);
+    if !is_server_kek && wrapping_key.owner() != user {
         let ops = kms
             .database
             .list_user_operations_on_object(wrapping_key.id(), user, false)
@@ -265,7 +283,7 @@ async fn wrap_using_kms(
     let mut wrapping_key_object = if wrapping_key.object().is_wrapped() {
         debug!("The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first");
         let mut wrapping_key_object = wrapping_key.object().clone();
-        unwrap_object(&mut wrapping_key_object, kms, user).await?;
+        Box::pin(unwrap_object(&mut wrapping_key_object, kms, user)).await?;
         wrapping_key_object.clone()
     } else {
         wrapping_key.object().clone()

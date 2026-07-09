@@ -60,24 +60,47 @@ const HashMapDisplay: React.FC<HashMapDisplayProps> = ({ data }) => {
         return <span>{String(value)}</span>;
     };
 
-    // Create Map preview with syntax highlighting
-    const renderMapPreview = (map: Map<any, any>): React.ReactNode => (
-        <div className="p-2 rounded-md overflow-auto text-sm font-mono border border-gray-300 bg-gray-100">
-            <div className="space-y-2">
-                {Array.from(map.entries()).map(([key, value], index) => (
-                    <div key={index} className="flex">
-                        <span className="text-blue-600">{"{"}</span>
-                        <div className="ml-2">
-                            {formatDisplayKey(key)}
-                            <span className="text-blue-600 mx-2">{" => "}</span>
-                            {renderValueWithColor(value)}
+    // Recursively remove empty values (empty strings, null, undefined, and empty Maps)
+    // from a Map so that certificate attributes with no meaningful data are omitted.
+    const recursivelyCleanEmpty = (map: Map<any, any>): Map<any, any> => {
+        const cleaned = new Map<any, any>();
+        for (const [key, value] of map.entries()) {
+            if (value === "" || value === null || value === undefined) continue;
+            if (value instanceof Map) {
+                const subCleaned = recursivelyCleanEmpty(value);
+                if (subCleaned.size > 0) {
+                    cleaned.set(key, subCleaned);
+                }
+            } else {
+                cleaned.set(key, value);
+            }
+        }
+        return cleaned;
+    };
+
+    // Create Map preview with syntax highlighting.
+    // Empty values are recursively pruned and entries are sorted alphabetically by key.
+    const renderMapPreview = (map: Map<any, any>): React.ReactNode => {
+        const cleaned = recursivelyCleanEmpty(map);
+        const entries = Array.from(cleaned.entries()).sort(([a], [b]) => String(a).localeCompare(String(b)));
+        return (
+            <div className="p-2 rounded-md overflow-auto text-sm font-mono border border-gray-300 bg-gray-100">
+                <div className="space-y-2">
+                    {entries.map(([key, value], index) => (
+                        <div key={index} className="flex">
+                            <span className="text-blue-600">{"{"}</span>
+                            <div className="ml-2">
+                                {formatDisplayKey(key)}
+                                <span className="text-blue-600 mx-2">{" => "}</span>
+                                {renderValueWithColor(value)}
+                            </div>
+                            <span className="text-blue-600">{"}"}</span>
                         </div>
-                        <span className="text-blue-600">{"}"}</span>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <>

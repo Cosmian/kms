@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, OidcConfig,
+        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -78,6 +78,15 @@ pub struct ServerParams {
 
     /// The maximum age of unwrapped objects in the cache
     pub unwrapped_cache_max_age: Duration,
+
+    /// The maximum number of entries in the unwrapped key cache
+    pub unwrapped_cache_max_size: usize,
+
+    /// Absolute time-to-live for unwrapped cache entries (`None` = no ceiling)
+    pub unwrapped_cache_max_ttl: Option<Duration>,
+
+    /// When `true`, the unwrapped cache is bypassed: every unwrap is performed live
+    pub disable_unwrapped_cache: bool,
 
     /// Whether the socket server should be started
     pub start_socket_server: bool,
@@ -155,6 +164,10 @@ pub struct ServerParams {
     /// embedded deployments; production should set this to a positive value such as 100).
     pub rate_limit_per_second: Option<u32>,
 
+    /// Number of actix-web HTTP worker threads. `None` means actix-web default
+    /// (uses `std::thread::available_parallelism`).
+    pub http_workers: Option<usize>,
+
     /// Extra origins allowed to make cross-origin requests to the KMIP API.
     /// Empty in production (same-origin only). Set to `["http://127.0.0.1:5173"]` in
     /// UI E2E tests where the Vite dev server runs on a different port.
@@ -164,6 +177,20 @@ pub struct ServerParams {
     /// Client-supplied `MaximumItems` is clamped to this value; when absent the cap is
     /// applied automatically. Prevents unbounded DB queries and large response payloads.
     pub max_locate_items: u32,
+
+    /// Interval in seconds between background auto-rotation checks.
+    /// 0 means disabled.
+    pub auto_rotation_check_interval_secs: u64,
+
+    /// Depth at which a successful keyset chain decryption triggers a warning.
+    /// Keyset chain traversal is unbounded (stopped only by cycle detection); this
+    /// threshold lets operators know when a ciphertext required walking many
+    /// generations to decrypt — a hint that re-encryption with the latest key may
+    /// be beneficial.
+    pub keyset_warn_depth: u32,
+
+    /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
+    pub jwks_endpoint: JwksEndpointConfig,
 }
 
 /// Represents the server parameters.
@@ -228,75 +255,9 @@ impl ServerParams {
 
         let tls_params = TlsParams::try_from(&conf.tls).context("failed to create TLS params")?;
 
-        // Build HSM instances from config.
-        // If `conf.hsm_instances` is non-empty (TOML [[hsm]] array) use it directly;
-        // otherwise fall back to the legacy flat CLI fields.
-        // Build HSM instances from two sources:
-        //
-        // 1. Legacy flat config (`conf.hsm`): uses the old UID format `hsm::<slot>::<key>`
-        //    with prefix "hsm". This preserves backward compatibility for existing deployments.
-        //
-        // 2. New TOML array (`conf.hsm_instances`): uses the new UID format
-        //    `hsm::<model>::<slot>::<key>` with prefix "hsm::<model>".
-        //    When multiple instances share the same model, disambiguate with a
-        //    numeric suffix: "hsm::<model>", "hsm::<model>_1", "hsm::<model>_2", …
-        let hsm_instances: Vec<HsmInstanceParams> = {
-            let mut instances = Vec::new();
+        let hsm_instances = build_hsm_instances(&conf);
 
-            // Legacy flat config → prefix "hsm" (old format: hsm::<slot>::<key>)
-            if !conf.hsm.hsm_slot.is_empty() {
-                instances.push(HsmInstanceParams {
-                    model: conf.hsm.hsm_model.clone(),
-                    admin: conf.hsm.hsm_admin.clone(),
-                    slot_passwords: conf.hsm.slot_passwords(),
-                    prefix: "hsm".to_owned(),
-                });
-            }
-
-            // New TOML array → prefix "hsm::<model>" (new format: hsm::<model>::<slot>::<key>)
-            let mut model_counts: HashMap<String, usize> = HashMap::new();
-            for inst in conf.hsm_instances.iter().filter(|i| !i.hsm_slot.is_empty()) {
-                let model_lower = inst.hsm_model.to_lowercase();
-                let count = model_counts.entry(model_lower.clone()).or_insert(0);
-                let prefix = if *count == 0 {
-                    format!("hsm::{model_lower}")
-                } else {
-                    format!("hsm::{model_lower}_{count}")
-                };
-                *count += 1;
-                instances.push(HsmInstanceParams {
-                    model: inst.hsm_model.clone(),
-                    admin: inst.hsm_admin.clone(),
-                    slot_passwords: inst.slot_passwords(),
-                    prefix,
-                });
-            }
-
-            instances
-        };
-
-        let kmip_policy_id: Option<String> = conf
-            .kmip_policy
-            .policy_id
-            .as_deref()
-            .map(|raw| {
-                let normalized = raw.trim().to_ascii_uppercase();
-                if normalized == "DEFAULT" || normalized == "CUSTOM" {
-                    Ok(normalized)
-                } else {
-                    Err(KmsError::ServerError(format!(
-                        "Invalid kmip.policy_id: '{raw}'. Valid values are: DEFAULT, CUSTOM",
-                    )))
-                }
-            })
-            .transpose()?;
-
-        // Invalid values are rejected above when building `kmip_policy_id`.
-        let kmip_allowlists = if kmip_policy_id.as_deref() == Some("DEFAULT") {
-            crate::config::KmipAllowlistsConfig::conservative()
-        } else {
-            conf.kmip_policy.allowlists
-        };
+        let (kmip_policy_id, kmip_allowlists) = parse_kmip_policy(&conf)?;
 
         let cors_scheme = if conf.tls.is_tls_enabled() {
             "https"
@@ -327,6 +288,32 @@ impl ServerParams {
             } else {
                 Duration::from_secs(conf.db.unwrapped_cache_max_age * 60)
             },
+            unwrapped_cache_max_size: if conf.db.unwrapped_cache_max_size == 0 {
+                return Err(KmsError::NotSupported(
+                    "unwrapped_cache_max_size must be greater than 0".to_owned(),
+                ));
+            } else {
+                conf.db.unwrapped_cache_max_size
+            },
+            unwrapped_cache_max_ttl: match conf.db.unwrapped_cache_max_ttl {
+                None => None,
+                Some(0) => {
+                    return Err(KmsError::NotSupported(
+                        "unwrapped_cache_max_ttl must be greater than 0 when set".to_owned(),
+                    ));
+                }
+                Some(ttl_min) => {
+                    let ttl = Duration::from_secs(ttl_min * 60);
+                    let tti = Duration::from_secs(conf.db.unwrapped_cache_max_age * 60);
+                    if ttl < tti {
+                        return Err(KmsError::NotSupported(
+                            "unwrapped_cache_max_ttl must be >= unwrapped_cache_max_age".to_owned(),
+                        ));
+                    }
+                    Some(ttl)
+                }
+            },
+            disable_unwrapped_cache: conf.db.disable_unwrapped_cache,
             start_socket_server: conf.socket_server.socket_server_start,
             socket_server_hostname: conf.socket_server.socket_server_hostname,
             socket_server_port: conf.socket_server.socket_server_port,
@@ -342,39 +329,7 @@ impl ServerParams {
             ms_dke_service_url: conf.ms_dke_service_url,
             hsm_instances,
             key_wrapping_key: conf.key_encryption_key,
-            default_unwrap_types: conf
-                .default_unwrap_type
-                .map(|types| {
-                    // Check if "All" is specified
-                    if types.iter().any(|s| s.eq_ignore_ascii_case("All")) {
-                        Ok(vec![
-                            ObjectType::Certificate,
-                            ObjectType::CertificateRequest,
-                            ObjectType::OpaqueObject,
-                            ObjectType::PGPKey,
-                            ObjectType::PrivateKey,
-                            ObjectType::PublicKey,
-                            ObjectType::SecretData,
-                            ObjectType::SplitKey,
-                            ObjectType::SymmetricKey,
-                        ])
-                    } else {
-                        types
-                            .into_iter()
-                            .map(|s| {
-                                ObjectType::from_str(&s).map_err(|e| {
-                                    KmsError::ServerError(format!(
-                                        "Invalid ObjectType: '{s}'. Valid values are: All, \
-                                         Certificate, CertificateRequest, OpaqueObject, PGPKey, \
-                                         PrivateKey, PublicKey, SecretData, SplitKey, \
-                                         SymmetricKey. Error: {e}"
-                                    ))
-                                })
-                            })
-                            .collect::<Result<Vec<ObjectType>, KmsError>>()
-                    }
-                })
-                .transpose()?,
+            default_unwrap_types: parse_default_unwrap_types(conf.default_unwrap_type)?,
             otel_params: if conf.logging.otlp.is_some()
                 || conf.logging.enable_metering
                 || conf.logging.environment.is_some()
@@ -418,10 +373,25 @@ impl ServerParams {
             // Set KMS_RATE_LIMIT_PER_SECOND or `rate_limit_per_second` in the config file
             // to enable rate limiting in production deployments.
             rate_limit_per_second: conf.http.rate_limit_per_second,
+            http_workers: conf.http.http_workers,
             cors_allowed_origins: conf.http.cors_allowed_origins.unwrap_or_else(|| {
                 crate::config::default_cors_origins(cors_scheme, conf.http.port)
             }),
             max_locate_items: 1000,
+            auto_rotation_check_interval_secs: {
+                let v = conf.auto_rotation_check_interval_secs;
+                // 0 means disabled; any non-zero value must be at least 60 seconds to avoid
+                // hammering the database with high-frequency key-rotation scans.
+                if v > 0 && v < 60 {
+                    return Err(KmsError::ServerError(format!(
+                        "auto_rotation_check_interval_secs must be 0 (disabled) or at least 60 \
+                         seconds; {v} is too small and would cause excessive database churn"
+                    )));
+                }
+                v
+            },
+            keyset_warn_depth: conf.keyset_warn_depth,
+            jwks_endpoint: conf.jwks_endpoint,
         };
 
         debug!("{res:#?}");
@@ -429,6 +399,114 @@ impl ServerParams {
         Ok(res)
     }
 }
+
+/// Build the list of `HsmInstanceParams` from the CLI configuration.
+///
+/// Merges the legacy flat HSM config (prefix `"hsm"`) with the new TOML
+/// `[[hsm]]` array (prefix `"hsm::<model>"`), disambiguating duplicate model
+/// names with a numeric suffix.
+fn build_hsm_instances(conf: &ClapConfig) -> Vec<HsmInstanceParams> {
+    let mut instances = Vec::new();
+
+    // Legacy flat config → prefix "hsm" (old UID format: hsm::<slot>::<key>)
+    if !conf.hsm.hsm_slot.is_empty() {
+        instances.push(HsmInstanceParams {
+            model: conf.hsm.hsm_model.clone(),
+            admin: conf.hsm.hsm_admin.clone(),
+            slot_passwords: conf.hsm.slot_passwords(),
+            prefix: "hsm".to_owned(),
+        });
+    }
+
+    // New TOML array → prefix "hsm::<model>" (new UID format: hsm::<model>::<slot>::<key>)
+    let mut model_counts: HashMap<String, usize> = HashMap::new();
+    for inst in conf.hsm_instances.iter().filter(|i| !i.hsm_slot.is_empty()) {
+        let model_lower = inst.hsm_model.to_lowercase();
+        let count = model_counts.entry(model_lower.clone()).or_insert(0);
+        let prefix = if *count == 0 {
+            format!("hsm::{model_lower}")
+        } else {
+            format!("hsm::{model_lower}_{count}")
+        };
+        *count += 1;
+        instances.push(HsmInstanceParams {
+            model: inst.hsm_model.clone(),
+            admin: inst.hsm_admin.clone(),
+            slot_passwords: inst.slot_passwords(),
+            prefix,
+        });
+    }
+
+    instances
+}
+
+/// Validate and normalise the KMIP policy ID, then return the corresponding allowlists.
+///
+/// Returns `(policy_id, allowlists)`.
+fn parse_kmip_policy(
+    conf: &ClapConfig,
+) -> KResult<(Option<String>, crate::config::KmipAllowlistsConfig)> {
+    let policy_id: Option<String> = conf
+        .kmip_policy
+        .policy_id
+        .as_deref()
+        .map(|raw| {
+            let normalized = raw.trim().to_ascii_uppercase();
+            if normalized == "DEFAULT" || normalized == "CUSTOM" {
+                Ok(normalized)
+            } else {
+                Err(KmsError::ServerError(format!(
+                    "Invalid kmip.policy_id: '{raw}'. Valid values are: DEFAULT, CUSTOM",
+                )))
+            }
+        })
+        .transpose()?;
+
+    // DEFAULT enforces the conservative allowlist; any other value uses the configured one.
+    let allowlists = if policy_id.as_deref() == Some("DEFAULT") {
+        crate::config::KmipAllowlistsConfig::conservative()
+    } else {
+        conf.kmip_policy.allowlists.clone()
+    };
+
+    Ok((policy_id, allowlists))
+}
+
+/// Parse the `--default-unwrap-type` CLI list into a typed `Vec<ObjectType>`.
+///
+/// Accepts the special value `"All"` (case-insensitive) to mean every object type.
+fn parse_default_unwrap_types(types: Option<Vec<String>>) -> KResult<Option<Vec<ObjectType>>> {
+    types
+        .map(|ts| {
+            if ts.iter().any(|s| s.eq_ignore_ascii_case("All")) {
+                Ok(vec![
+                    ObjectType::Certificate,
+                    ObjectType::CertificateRequest,
+                    ObjectType::OpaqueObject,
+                    ObjectType::PGPKey,
+                    ObjectType::PrivateKey,
+                    ObjectType::PublicKey,
+                    ObjectType::SecretData,
+                    ObjectType::SplitKey,
+                    ObjectType::SymmetricKey,
+                ])
+            } else {
+                ts.into_iter()
+                    .map(|s| {
+                        ObjectType::from_str(&s).map_err(|e| {
+                            KmsError::ServerError(format!(
+                                "Invalid ObjectType: '{s}'. Valid values are: All, Certificate, \
+                                 CertificateRequest, OpaqueObject, PGPKey, PrivateKey, PublicKey, \
+                                 SecretData, SplitKey, SymmetricKey. Error: {e}"
+                            ))
+                        })
+                    })
+                    .collect()
+            }
+        })
+        .transpose()
+}
+
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut debug_struct = f.debug_struct("ServerParams");
@@ -450,7 +528,10 @@ impl fmt::Debug for ServerParams {
 
         debug_struct
             .field("clear_db_on_start", &self.clear_db_on_start)
-            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age);
+            .field("unwrapped_cache_max_age", &self.unwrapped_cache_max_age)
+            .field("unwrapped_cache_max_size", &self.unwrapped_cache_max_size)
+            .field("unwrapped_cache_max_ttl", &self.unwrapped_cache_max_ttl)
+            .field("disable_unwrapped_cache", &self.disable_unwrapped_cache);
 
         if let Some(ref otel_params) = self.otel_params {
             debug_struct.field("otel_params", otel_params);
@@ -643,8 +724,34 @@ impl fmt::Debug for ServerParams {
         debug_struct.field("ui_index_html_folder", &self.ui_index_html_folder);
         debug_struct.field("ui_enable", &self.ui_enable);
         debug_struct.field("rate_limit_per_second", &self.rate_limit_per_second);
+        debug_struct.field("http_workers", &self.http_workers);
         debug_struct.field("cors_allowed_origins", &self.cors_allowed_origins);
         debug_struct.field("max_locate_items", &self.max_locate_items);
+        debug_struct.field(
+            "auto_rotation_check_interval_secs",
+            &self.auto_rotation_check_interval_secs,
+        );
+        debug_struct.field("keyset_warn_depth", &self.keyset_warn_depth);
+        if self.jwks_endpoint.jwks_endpoint_enabled {
+            debug_struct
+                .field(
+                    "jwks_endpoint_enabled",
+                    &self.jwks_endpoint.jwks_endpoint_enabled,
+                )
+                .field(
+                    "jwks_endpoint_max_keys",
+                    &self.jwks_endpoint.jwks_endpoint_max_keys,
+                )
+                .field(
+                    "jwks_endpoint_auto_tag",
+                    &self.jwks_endpoint.jwks_endpoint_auto_tag,
+                );
+        } else {
+            debug_struct.field(
+                "jwks_endpoint_enabled",
+                &self.jwks_endpoint.jwks_endpoint_enabled,
+            );
+        }
 
         debug_struct.finish()
     }

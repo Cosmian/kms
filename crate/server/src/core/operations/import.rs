@@ -37,7 +37,6 @@ use crate::{
     core::{
         KMS,
         operations::validate::verify_crls,
-        retrieve_object_utils::user_has_permission,
         wrapping::{unwrap_object, wrap_and_cache},
     },
     error::KmsError,
@@ -46,12 +45,7 @@ use crate::{
 };
 
 /// Import a new object
-pub(crate) async fn import(
-    kms: &KMS,
-    request: Import,
-    user: &str,
-    privileged_users: Option<Vec<String>>,
-) -> KResult<ImportResponse> {
+pub(crate) async fn import(kms: &KMS, request: Import, user: &str) -> KResult<ImportResponse> {
     trace!(
         "Entering import KMIP operation: uid={}, object_type={}",
         request.unique_identifier, request.object_type
@@ -71,21 +65,7 @@ pub(crate) async fn import(
 
     // To import an object, ensure the user has the `Create` access right.
     // The `Create` right implicitly grants permission for Create, Import, and Register operations.
-    if let Some(users) = privileged_users {
-        let has_permission = user_has_permission(
-            user,
-            None,
-            &cosmian_kmip::kmip_2_1::KmipOperation::Create,
-            kms,
-        )
-        .await?;
-
-        if !has_permission && !users.iter().any(|u| u == user) {
-            kms_bail!(KmsError::Unauthorized(
-                "User does not have create access-right.".to_owned()
-            ))
-        }
-    }
+    kms.enforce_create_permission(user).await?;
 
     // When replace_existing is requested with an explicit UID, verify the caller owns the
     // target object. Without this check, any user with Create rights could overwrite another
@@ -228,7 +208,7 @@ pub(super) async fn process_symmetric_key(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, user).await?;
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
     }
 
     // Tag the object as a symmetric key
@@ -294,6 +274,9 @@ pub(super) async fn process_symmetric_key(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),
@@ -394,7 +377,7 @@ pub(super) async fn process_public_key(
     // Unwrap the key_block if required.
     {
         if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-            unwrap_object(&mut object, kms, user).await?;
+            Box::pin(unwrap_object(&mut object, kms, user)).await?;
         }
     }
 
@@ -483,6 +466,9 @@ pub(super) async fn process_public_key(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),
@@ -507,7 +493,7 @@ pub(super) async fn process_private_key(
     // Process based on the key block type.
     let mut object = request.object;
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, user).await?;
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
     }
 
     // PKCS12 has its own processing
@@ -615,6 +601,9 @@ pub(super) async fn process_private_key(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),
@@ -836,7 +825,7 @@ async fn process_pkcs12(
     trace!("Private key linked to leaf certificate");
 
     // Keep private key attributes before wrapping/inserting in DB
-    let private_key_attributes = private_key.attributes()?.clone();
+    let mut private_key_attributes = private_key.attributes()?.clone();
 
     // Wrap the private key if requested by the user or on the server params
     Box::pin(wrap_and_cache(
@@ -847,6 +836,9 @@ async fn process_pkcs12(
     ))
     .await?;
     trace!("Private key wrapped and cached");
+    // If the private key was wrapped, record the WrappingKeyLink in stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    private_key.copy_wrapping_key_link_to(&mut private_key_attributes);
 
     // Create an operation to set the private key
     operations.push(single_operation(
@@ -994,7 +986,7 @@ pub(super) async fn process_secret_data(
     let mut object = request.object;
     // Unwrap the Object if required.
     if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-        unwrap_object(&mut object, kms, user).await?;
+        Box::pin(unwrap_object(&mut object, kms, user)).await?;
     }
 
     // Tag the object as a secret data
@@ -1047,6 +1039,9 @@ pub(super) async fn process_secret_data(
         &mut object,
     ))
     .await?;
+    // If the object was wrapped, record the WrappingKeyLink in the stored attributes
+    // so KMIP GetAttributes returns it correctly (KMIP 2.1 §4.31 Link).
+    object.copy_wrapping_key_link_to(&mut attributes);
 
     Ok((
         uid.clone(),

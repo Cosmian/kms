@@ -19,12 +19,12 @@ static TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 use actix_server::ServerHandle;
 use cosmian_kms_client::{
     GmailApiConf, KmsClient, KmsClientConfig, KmsClientError,
-    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN, time_normalize},
+    cosmian_kmip::{KmipResultHelper, kmip_2_1::extra::tagging::VENDOR_ID_COSMIAN},
     kmip_0::kmip_types::CryptographicUsageMask,
     kmip_2_1::{
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::Create,
+        kmip_operations::{Create, Destroy, Locate},
         kmip_types::{CryptographicAlgorithm, UniqueIdentifier},
     },
     kms_client_bail, kms_client_error,
@@ -375,7 +375,6 @@ async fn create_kek_in_db() -> Result<(PathBuf, String), KmsClientError> {
             ),
             object_type: Some(ObjectType::SymmetricKey),
             unique_identifier: Some(UniqueIdentifier::TextString(kek_id.to_owned())),
-            activation_date: Some(time_normalize()?),
             ..Default::default()
         },
         protection_storage_masks: None,
@@ -474,6 +473,9 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
             config.db.sqlite_path = workspace_clone.join("sqlite-data");
             config.workspace.root_data_path = workspace_clone.join("workspace");
             config.workspace.tmp_path = workspace_clone.join("tmp");
+            // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
+            // Falls back to the TOML default (SQLite) when KMS_TEST_DB is unset.
+            apply_test_db_override(config);
         },
         TestClientOptions {
             send_jwt: true,
@@ -496,7 +498,6 @@ async fn create_softhsm2_kek_in_db() -> Result<(PathBuf, String), KmsClientError
             ),
             object_type: Some(ObjectType::SymmetricKey),
             unique_identifier: Some(UniqueIdentifier::TextString(kek_id.clone())),
-            activation_date: Some(time_normalize()?),
             ..Default::default()
         },
         protection_storage_masks: None,
@@ -544,6 +545,9 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek() -> &'static T
             config.workspace.root_data_path = workspace_dir.join("workspace");
             config.workspace.tmp_path = workspace_dir.join("tmp");
             config.key_encryption_key = Some(kek_id);
+            // Switch DB backend to match KMS_TEST_DB (postgresql/mysql/redis).
+            // `clear_database = false` above ensures the KEK persists for non-SQLite.
+            apply_test_db_override(&mut config);
             start_server_from_config(config, &config_path).await
         }),
     )
@@ -588,6 +592,164 @@ pub async fn start_default_test_kms_server_with_softhsm2_and_kek_for_vectors()
     config.workspace.tmp_path = workspace_dir.join("tmp");
     config.key_encryption_key = Some(kek_id);
     config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
+    apply_test_db_override(&mut config);
+    start_server_from_config(config, &config_path).await
+}
+
+/// Remove all test-vector objects (`vec_…` keys) from the active HSM slot
+/// before test steps execute.
+///
+/// Orphaned keys from a previous test run accumulate in the `SoftHSM2` token
+/// across `cargo test` invocations.  When `find(slot, Any)` is called (e.g.
+/// from `is_keyset_latest`), it pre-populates the
+/// [`ObjectHandlesCache`][cosmian_kms_base_hsm::ObjectHandlesCache] with a
+/// handle for every object in the slot.  If a handle belonging to an orphaned
+/// object gets associated with a newly created key ID, the subsequent
+/// `C_SetAttributeValue` call receives a stale handle and fails with
+/// `CKR_OBJECT_HANDLE_INVALID` (return code 130).
+///
+/// Only keys whose KMIP UID contains a `::vec_` segment are destroyed —
+/// this avoids touching KEKs or other non-test objects that share the slot.
+///
+/// Errors are silently swallowed: if an object is already absent or requires
+/// revocation first, the deletion attempt is simply skipped.
+///
+/// **Must be called while the slot-level mutex is held** (see
+/// `HSM_SLOT_MUTEX` in `vector_runner.rs`) to prevent deleting keys that a
+/// concurrently-running `hsm_kek` test has just created on the same slot.
+pub(crate) async fn cleanup_hsm_slot_objects(client: &KmsClient) {
+    let locate = Locate {
+        attributes: Attributes::default(),
+        ..Default::default()
+    };
+    let ids = match client.locate(locate).await {
+        Ok(resp) => resp.unique_identifier.unwrap_or_default(),
+        Err(e) => {
+            trace!("HSM slot pre-cleanup: locate failed: {e}");
+            return;
+        }
+    };
+    // Only target test-vector keys (key_id starts with "vec_") to avoid
+    // destroying KEKs or other non-test objects on the shared slot.
+    let test_ids: Vec<_> = ids
+        .into_iter()
+        .filter(|uid| {
+            let s = uid.to_string();
+            // KMIP UID format: "hsm::<slot>::<key_id>" — keep only vec_ keys.
+            s.split("::")
+                .nth(2)
+                .is_some_and(|key_id| key_id.starts_with("vec_"))
+        })
+        .collect();
+    trace!(
+        "HSM slot pre-cleanup: found {} test-vector object(s) to destroy",
+        test_ids.len()
+    );
+    for uid in test_ids {
+        let req = Destroy {
+            unique_identifier: Some(uid.clone()),
+            remove: true,
+            ..Default::default()
+        };
+        if let Err(e) = client.destroy(req).await {
+            trace!("HSM slot pre-cleanup: could not destroy {uid}: {e}");
+        }
+    }
+}
+
+/// Start a `SoftHSM2` test server **without** a Key Encryption Key.
+///
+/// Used for test vectors that exercise HSM-resident key operations (keyset
+/// addressing, re-key guards, chain-walk semantics) without any KEK wrapping
+/// layer. The server otherwise has identical TLS and auth configuration to
+/// [`start_default_test_kms_server_with_softhsm2_and_kek_for_vectors`].
+///
+/// The vector runner owns the singleton; this function returns a fresh
+/// `TestsContext` each call.
+///
+/// # Errors
+/// Returns an error if the server fails to start.
+///
+/// # Panics
+/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
+pub async fn start_default_test_kms_server_with_softhsm2_for_vectors()
+-> Result<TestsContext, KmsClientError> {
+    let slot = get_softhsm2_slot_id();
+    // Use a unique directory for workspace/tmp (certs, temp files) but a
+    // **stable** path for the SQLite database.  A stable DB path means that
+    // records for keys created by a previous (possibly failed) test run are
+    // still present on the next invocation.  `cleanup_hsm_slot_objects` can
+    // then call `locate()` + `destroy()` to remove both the DB record and the
+    // still-resident HSM object — fixing the "A secret key with this id already
+    // exists" error that arises when the HSM outlives the ephemeral DB.
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_softhsm2_no_kek_{}_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    // Stable across runs — cleaned up by `cleanup_hsm_slot_objects` at startup.
+    let stable_db_path = std::env::temp_dir().join("kms_test_hsm_vec_no_kek_sqlite");
+
+    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let mut config = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_slot = vec![slot];
+    config.db.sqlite_path = stable_db_path;
+    config.db.clear_database = false;
+    config.workspace.root_data_path = workspace_dir.join("workspace");
+    config.workspace.tmp_path = workspace_dir.join("tmp");
+    // No key_encryption_key — this is the plain HSM server (no KEK wrapping).
+    config.google_cse_config.google_cse_enable = false;
+    let ctx = start_server_from_config(config, &config_path).await?;
+    Ok(ctx)
+}
+
+/// Start a `SoftHSM2` + KEK test server where the KEK has **not** been pre-created.
+///
+/// This server type is used to reproduce the self-wrap regression (PR #968):
+/// `wrap_and_cache` must not attempt to wrap an HSM-resident key with the
+/// server-wide KEK, even when the key being created IS the KEK itself.
+///
+/// Concretely, `key_encryption_key` is set to `"hsm::{slot}::kek_bootstrap"`
+/// before the server starts.  The first vector step creates that exact HSM key,
+/// which would have triggered the self-wrap error prior to the fix.
+///
+/// # Errors
+/// Returns an error if the server fails to start.
+///
+/// # Panics
+/// Panics if `HSM_SLOT_ID` is not set or is not a valid `usize`.
+pub async fn start_default_test_kms_server_with_softhsm2_kek_uncreated_for_vectors()
+-> Result<TestsContext, KmsClientError> {
+    let slot = get_softhsm2_slot_id();
+    let workspace_dir = std::env::temp_dir().join(format!(
+        "kms_test_softhsm2_kek_bootstrap_{}_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let kek_id = format!("hsm::{slot}::kek_bootstrap_{}", std::process::id());
+    // Export for {{$HSM_BOOTSTRAP_KEK_ID}} substitution in vector steps.
+    // Called once inside OnceCell initialisation before any vector steps run.
+    crate::test_env::set("HSM_BOOTSTRAP_KEK_ID", &kek_id);
+
+    let config_path = hsm_config_path("hsm_softhsm2_kek.toml");
+    let mut config = load_test_config_from_toml(&config_path)?;
+    config.hsm.hsm_slot = vec![slot];
+    config.db.sqlite_path = workspace_dir.join("sqlite-data");
+    config.workspace.root_data_path = workspace_dir.join("workspace");
+    config.workspace.tmp_path = workspace_dir.join("tmp");
+    config.key_encryption_key = Some(kek_id);
+    config.default_unwrap_type = Some(vec!["SecretData".to_owned(), "SymmetricKey".to_owned()]);
+    // Disable Google CSE: starting with an empty workspace means no Google CSE
+    // RSA keypair exists yet, and this test does not need that feature.
+    config.google_cse_config.google_cse_enable = false;
     start_server_from_config(config, &config_path).await
 }
 
@@ -770,7 +932,9 @@ fn start_test_kms_server(
 
     let thread_handle = thread::spawn(move || {
         // allow others `spawn` to happen within the KMS Server in the future
+        let parallelism = std::thread::available_parallelism().map_or(1, usize::from);
         let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(parallelism)
             .enable_all()
             .build()
             .map_err(|e| {

@@ -13,9 +13,12 @@ pub use hsm::{
 };
 pub use stores::{AtomicOperation, ObjectWithMetadata, ObjectsStore, PermissionsStore};
 
+/// Number of seconds in one day — the finest granularity PKCS#11 `CK_DATE` can represent.
+pub const SECS_PER_DAY: i64 = 24 * 3600;
+
 /// Supported cryptographic object types
 /// in plugins
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum KeyType {
     AesKey,
     RsaPrivateKey,

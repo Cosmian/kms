@@ -80,9 +80,9 @@ const ObjectsOwnedList: React.FC = () => {
                         rowKey="object_id"
                         loading={isLoading}
                         pagination={{
-                            defaultPageSize: 10,
+                            defaultPageSize: 50,
                             showSizeChanger: true,
-                            pageSizeOptions: [10, 20, 50, 100],
+                            pageSizeOptions: [50, 100, 500, 1000],
                         }}
                         className="border rounded"
                     />

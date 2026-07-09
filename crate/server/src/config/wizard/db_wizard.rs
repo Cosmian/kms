@@ -118,5 +118,8 @@ pub fn configure_db() -> KResult<MainDBConfig> {
         clear_database,
         max_connections,
         unwrapped_cache_max_age,
+        unwrapped_cache_max_size: 1000,
+        unwrapped_cache_max_ttl: None,
+        disable_unwrapped_cache: false,
     })
 }

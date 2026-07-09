@@ -6,6 +6,12 @@
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#USAGE flag "-P --protocol <protocol>" env="BENCH_PROTOCOL" help="Protocol to benchmark" default="all" {
+#USAGE   choices "all" "ttlv-json" "ttlv-bytes" "jose"
+#USAGE }
+#USAGE flag "-m --mode <mode>" env="BENCH_MODE" help="Benchmark mode" default="all" {
+#USAGE   choices "all" "encrypt" "key-creation" "sign-verify" "batch"
+#USAGE }
 set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/bench_helpers.sh"
@@ -22,6 +28,15 @@ bench_build_binaries "debug"
 BENCH_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 bench_start_server "$BENCH_PORT" "$TMP_DIR"
 
-"${CKMS_BIN}" --url "http://127.0.0.1:${BENCH_PORT}" bench --speed sanity --format json
+export CRITERION_HOME="${CRITERION_HOME:-${CARGO_TARGET_DIR}/criterion}"
+
+"${CKMS_BIN}" --url "http://127.0.0.1:${BENCH_PORT}" bench \
+  --speed sanity \
+  --format json \
+  --warmup-time 0 \
+  --mode "${usage_mode:-all}" \
+  --protocol "${usage_protocol:-all}"
+
+bench_generate_report "${BENCH_PORT}"
 
 print_success "CI benchmark completed"

@@ -1,6 +1,6 @@
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::{
-        kmip_0::kmip_types::CryptographicUsageMask,
+        kmip_0::kmip_types::{CryptographicUsageMask, State},
         kmip_2_1::{
             KmipOperation,
             kmip_objects::{Object, ObjectType},
@@ -23,7 +23,7 @@ use openssl::pkey::{Id, PKey, Public};
 use crate::{
     core::{
         KMS,
-        operations::{CryptoOpSpec, has_usage_mask, perform_crypto_operation},
+        operations::{CryptoOpSpec, KeysetMode},
     },
     error::KmsError,
     kms_bail,
@@ -44,6 +44,15 @@ impl CryptoOpSpec for SignatureVerifyOp {
         request.unique_identifier.as_ref()
     }
 
+    fn keyset_mode() -> KeysetMode {
+        KeysetMode::TryEach
+    }
+
+    /// `SignatureVerify` accepts Active, Deactivated, and Compromised keys per KMIP 2.1 §3.31.
+    fn accepted_states() -> &'static [State] {
+        &[State::Active, State::Deactivated, State::Compromised]
+    }
+
     fn usage_data_len(request: &Self::Request) -> usize {
         request
             .data
@@ -60,7 +69,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
             // Use Verify mask with lenient=true so imported keys without an explicit mask
             // still work.
             Object::PublicKey { .. } | Object::PrivateKey { .. } => {
-                has_usage_mask(owm, CryptographicUsageMask::Verify, true)
+                owm.has_usage_mask(CryptographicUsageMask::Verify, true)
             }
             _ => false,
         }
@@ -218,10 +227,7 @@ pub(crate) async fn signature_verify(
         ));
     }
 
-    Box::pin(perform_crypto_operation::<SignatureVerifyOp>(
-        kms, request, user,
-    ))
-    .await
+    Box::pin(kms.perform_crypto_operation::<SignatureVerifyOp>(request, user)).await
 }
 
 /// Extract the verification key from a managed object.

@@ -22,7 +22,7 @@ The **Cosmian KMS** presents some unique features, such as:
 - **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), and [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
-- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), and [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md) for interactive API exploration.
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_auto_rotation.md).
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
@@ -34,7 +34,7 @@ The **Cosmian KMS** has extensive online [documentation](https://docs.cosmian.co
 
 ## 🚀 Quick start
 
-Pre-built binaries [are available](https://package.cosmian.com/kms/5.24.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
+Pre-built binaries [are available](https://package.cosmian.com/kms/5.25.0/) for Linux, MacOS, and Windows, as well as Docker images. To run the server binary, OpenSSL must be available in your path (see "building the KMS" below for details); other binaries do not have this requirement.
 
 Using Docker to quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, run the following command:
 
@@ -473,6 +473,7 @@ Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 | Quantum Safe                        |       ✅ |
 | Random Number Generator             |       ✅ |
 | Revocation Reason                   |       ✅ |
+| Rotate Automatic                    |       ✅ |
 | Rotate Date                         |       ✅ |
 | Rotate Generation                   |       ✅ |
 | Rotate Interval                     |       ✅ |

@@ -26,7 +26,8 @@ use time::{OffsetDateTime, format_description::well_known::Iso8601};
 use super::google_cse::utils::google_cse_auth;
 use crate::{
     config::{
-        ClapConfig, GoogleCseConfig, MainDBConfig, ServerParams, SocketServerConfig, TlsConfig,
+        ClapConfig, GoogleCseConfig, HttpConfig, MainDBConfig, ServerParams, SocketServerConfig,
+        TlsConfig,
     },
     core::KMS,
     kms_bail,
@@ -107,6 +108,11 @@ pub(crate) fn https_clap_config_opts(kms_public_url: Option<String>) -> ClapConf
             google_cse_disable_tokens_validation: true,
             google_cse_incoming_url_whitelist: None,
             google_cse_migration_key: None,
+        },
+        http: HttpConfig::default(),
+        jwks_endpoint: crate::config::JwksEndpointConfig {
+            jwks_endpoint_enabled: true,
+            ..Default::default()
         },
         ..Default::default()
     }
@@ -196,7 +202,6 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 /// # Arguments
 ///
 /// * `kms_public_url` - Optional public URL for the KMS server
-/// * `privileged_users` - Optional list of users with elevated permissions
 ///
 /// # Google CSE Support
 ///
@@ -207,7 +212,6 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 /// - Public key stored as  `google_cse_rsa_pk` and exposed via `/google_cse/certs`
 pub(crate) async fn test_app(
     kms_public_url: Option<String>,
-    privileged_users: Option<Vec<String>>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config_opts(kms_public_url);
 
@@ -229,9 +233,9 @@ pub(crate) async fn test_app(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .app_data(Data::new(privileged_users))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
+        .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
         .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)
@@ -266,14 +270,17 @@ pub(crate) async fn test_app(
     app = app.service(google_cse_scope);
 
     let crypto_scope = web::scope("/v1/crypto")
-        .service(routes::crypto::encrypt_handler)
-        .service(routes::crypto::decrypt_handler)
-        .service(routes::crypto::sign_handler)
-        .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler)
-        .service(routes::crypto::create_key_handler)
-        .service(routes::crypto::delete_key_handler)
-        .service(routes::crypto::unwrap_key_handler);
+        .service(routes::jose::encrypt_handler)
+        .service(routes::jose::decrypt_handler)
+        .service(routes::jose::sign_handler)
+        .service(routes::jose::verify_handler)
+        .service(routes::jose::mac_handler)
+        .service(routes::jose::create_key_handler)
+        .service(routes::jose::delete_key_handler)
+        .service(routes::jose::unwrap_key_handler)
+        .service(routes::jose::add_tags_handler)
+        .service(routes::jose::remove_tags_handler)
+        .service(routes::jose::list_tags_handler);
     app = app.service(crypto_scope);
 
     test::init_service(app).await
@@ -285,7 +292,6 @@ pub(crate) async fn test_app(
 /// and enforcement settings and then validate behavior through the HTTP stack.
 pub(crate) async fn test_app_with_clap_config(
     clap_config: ClapConfig,
-    privileged_users: Option<Vec<String>>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let server_params =
         Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
@@ -304,9 +310,9 @@ pub(crate) async fn test_app_with_clap_config(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .app_data(Data::new(privileged_users))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
+        .service(web::scope("/.well-known").service(routes::jwks::get_jwks))
         .service(routes::get_version)
         .service(routes::kmip::kmip_2_1_json)
         .service(routes::kmip::kmip)
@@ -340,14 +346,17 @@ pub(crate) async fn test_app_with_clap_config(
     app = app.service(google_cse_scope);
 
     let crypto_scope = web::scope("/v1/crypto")
-        .service(routes::crypto::encrypt_handler)
-        .service(routes::crypto::decrypt_handler)
-        .service(routes::crypto::sign_handler)
-        .service(routes::crypto::verify_handler)
-        .service(routes::crypto::mac_handler)
-        .service(routes::crypto::create_key_handler)
-        .service(routes::crypto::delete_key_handler)
-        .service(routes::crypto::unwrap_key_handler);
+        .service(routes::jose::encrypt_handler)
+        .service(routes::jose::decrypt_handler)
+        .service(routes::jose::sign_handler)
+        .service(routes::jose::verify_handler)
+        .service(routes::jose::mac_handler)
+        .service(routes::jose::create_key_handler)
+        .service(routes::jose::delete_key_handler)
+        .service(routes::jose::unwrap_key_handler)
+        .service(routes::jose::add_tags_handler)
+        .service(routes::jose::remove_tags_handler)
+        .service(routes::jose::list_tags_handler);
     app = app.service(crypto_scope);
 
     test::init_service(app).await

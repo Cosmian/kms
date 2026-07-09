@@ -47,7 +47,7 @@ async function collectAttributeColumns(page: Page, uidPrefix?: string): Promise<
             const uidText = (await cells.nth(0).textContent()) ?? "";
             if (uidPrefix && !uidText.startsWith(uidPrefix)) continue;
             const typeText = (await cells.nth(1).textContent()) ?? "";
-            const kftText = (await cells.nth(2).textContent()) ?? "";
+            const kftText = (await cells.nth(4).textContent()) ?? "";
             types.push(typeText.trim());
             keyFormatTypes.push(kftText.trim());
         }
@@ -82,7 +82,7 @@ async function findRowByUid(page: Page, uidSubstring: string): Promise<{ type: s
             const uidText = (await cells.nth(0).textContent()) ?? "";
             if (uidText.includes(uidSubstring)) {
                 const typeText = (await cells.nth(1).textContent()) ?? "";
-                const kftText = (await cells.nth(2).textContent()) ?? "";
+                const kftText = (await cells.nth(4).textContent()) ?? "";
                 return { type: typeText.trim(), keyFormatType: kftText.trim() };
             }
         }

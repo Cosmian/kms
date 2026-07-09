@@ -1,4 +1,4 @@
-mod locate_query;
+pub(crate) mod locate_query;
 mod mysql;
 pub(crate) use mysql::MySqlPool;
 mod pgsql;

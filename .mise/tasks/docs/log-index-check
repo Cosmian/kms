@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Check log-reference.md is in sync with source (fails if out of date)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Checking log-reference.md"
+REPO_ROOT="$(get_repo_root)"
+
+if python3 "${REPO_ROOT}/.mise/scripts/docs/update_log_index.py" --check --no-color; then
+  print_success "log-reference.md is up to date"
+else
+  print_error "log-reference.md is out of sync with the source code."
+  echo ""
+  echo "  Fix it by running one of:"
+  echo ""
+  echo "    python3 .mise/scripts/docs/update_log_index.py --non-interactive --no-color"
+  echo "    mise run docs:generate"
+  echo ""
+  echo "  Then review, stage, and commit:"
+  echo ""
+  echo "    git diff documentation/docs/configuration/log-reference.md"
+  echo "    git add documentation/docs/configuration/log-reference.md"
+  echo "    git commit -m 'docs: sync log-reference.md'"
+  exit 1
+fi

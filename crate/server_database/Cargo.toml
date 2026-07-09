@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server_database"
-version = "5.24.0"
+version = "5.25.0"
 authors.workspace = true
 categories.workspace = true
 edition.workspace = true
@@ -31,18 +31,18 @@ interop = ["cosmian_kmip/interop"]
 [dependencies]
 async-trait = { workspace = true }
 cosmian_findex = { version = "8.0.2", optional = true }
-cosmian_kmip = { path = "../kmip", version = "5.24.0" }
-cosmian_kms_crypto = { path = "../crypto", version = "5.24.0" }
-cosmian_kms_interfaces = { path = "../interfaces", version = "5.24.0" }
+cosmian_kmip = { path = "../kmip", version = "5.25.0" }
+cosmian_kms_crypto = { path = "../crypto", version = "5.25.0" }
+cosmian_kms_interfaces = { path = "../interfaces", version = "5.25.0" }
 cosmian_logger = { workspace = true }
 cosmian_sse_memories = { version = "8.0.2", optional = true }
 deadpool-postgres = "0.14"
-lru = { workspace = true }
+moka = { workspace = true }
 mysql_async = { version = "0.37", default-features = false, features = [
   "native-tls-tls",
   "minimal",
 ] }
-num_cpus = { workspace = true }
+
 openssl = "0.10"
 postgres-openssl = "0.5"
 rawsql = "0.1"
@@ -58,6 +58,7 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 strum = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-postgres = { version = "0.7.18", features = [
   "with-uuid-1",
@@ -66,6 +67,7 @@ tokio-postgres = { version = "0.7.18", features = [
 tokio-rusqlite = "0.7"
 url = { workspace = true }
 uuid = { workspace = true }
+zeroize = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

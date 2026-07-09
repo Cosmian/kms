@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use actix_web::{
     HttpRequest, HttpResponse, post,
-    web::{Data, Json, Path, Query},
+    web::{Data, Json, JsonConfig, Path, Query},
 };
-use cosmian_logger::{info, trace};
+use cosmian_logger::{info, trace, warn};
 use serde::Deserialize;
 
 use crate::{
@@ -61,6 +61,27 @@ fn validate_key_name(key_name: &str) -> Result<(), AzureEkmErrorReply> {
 struct AzureEkmQueryParams {
     #[serde(rename = "api-version")]
     pub(crate) api_version: String,
+}
+
+/// A scope-level JSON extractor error handler for Azure EKM routes.
+///
+/// The global `JsonConfig` error handler returns `text/plain`. Azure EKM routes must
+/// always return the spec-mandated `ProxyError` JSON structure, even on deserialization
+/// failures. This handler replaces the global one for the `/azureekm` scope.
+pub(crate) fn azure_ekm_json_error_handler(
+    err: actix_web::error::JsonPayloadError,
+    _req: &HttpRequest,
+) -> actix_web::Error {
+    warn!("Azure EKM JSON deserialization error: {err}");
+    let reply = AzureEkmErrorReply::invalid_request(err.to_string());
+    let response = HttpResponse::from(reply);
+    actix_web::error::InternalError::from_response(err, response).into()
+}
+
+/// Returns a [`JsonConfig`] pre-wired with [`azure_ekm_json_error_handler`].
+/// Register this on the `/azureekm` scope via `.app_data(azure_ekm::ekm_json_config())`.
+pub(crate) fn ekm_json_config() -> JsonConfig {
+    JsonConfig::default().error_handler(azure_ekm_json_error_handler)
 }
 
 // Post request handlers below. The request being trivial, it also directly handles its request.

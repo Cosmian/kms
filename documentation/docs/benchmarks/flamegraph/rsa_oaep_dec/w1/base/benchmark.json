@@ -1,0 +1,1 @@
+{"group_id":"kms_bench","function_id":"rsa_oaep_dec","value_str":"w1","throughput":{"Elements":16},"full_id":"kms_bench/rsa_oaep_dec/w1","directory_name":"kms_bench/rsa_oaep_dec/w1","title":"kms_bench/rsa_oaep_dec/w1"}
