@@ -165,6 +165,10 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.KMS_CI_AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.KMS_CI_AZURE_CLIENT_SECRET }}
           AZURE_KV_NAME: ${{ secrets.KMS_CI_AZURE_KV_NAME }}
+
+          # Provide an authenticated token so mise can install tools from
+          # GitHub releases without hitting the unauthenticated rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -ex
           mise run test:${{ matrix.type }} --variant ${{ matrix.features }}

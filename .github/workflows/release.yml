@@ -14,7 +14,7 @@ name: Release
 #      parallel to recompute all Nix vendor hashes (Linux writes server +
 #      linux-cli + UI wasm hashes; macOS writes darwin-cli + UI pnpm hashes)
 #      and commits the results.
-#   7. Dispatches pr.yml on the release branch to trigger the packaging CI,
+#   7. Dispatches packaging.yml on the release branch to trigger the packaging CI,
 #      then polls until that run completes (the packaging CI publishes SBOMs
 #      to package.cosmian.com at last_build/release/<new_version>).
 #   8. Retrieves the generated SBOMs from package.cosmian.com and commits them.
@@ -22,7 +22,7 @@ name: Release
 #        a. Merges release/<new_version> into main (--no-ff).
 #        b. Creates the annotated tag X.Y.Z on main's merge commit.
 #           (conventional git-flow always tags the main merge commit, not the
-#            release branch — this also triggers pr.yml on:push:tags which
+#            release branch — this also triggers packaging.yml on:push:tags which
 #            builds the final packages and creates the GitHub Release)
 #        c. Merges release/<new_version> into develop (syncs version bump back).
 #        d. Deletes the release branch.
@@ -240,8 +240,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 3 — Trigger packaging CI on the release branch and wait for completion
   #
-  # pr.yml supports `workflow_dispatch` which allows us to trigger it on an
-  # arbitrary ref.  This makes packaging run (including the publish-sbom jobs
+  # packaging.yml supports `workflow_dispatch` which allows us to trigger it on
+  # an arbitrary ref.  This makes packaging run (including the publish-sbom jobs
   # that upload to package.cosmian.com) without requiring an open PR.
   #
   # The SBOMs are published at:
@@ -257,7 +257,7 @@ jobs:
       packaging_run_id: ${{ steps.dispatch.outputs.run_id }}
 
     steps:
-      - name: Dispatch pr.yml on the release branch
+      - name: Dispatch packaging.yml on the release branch
         id: dispatch
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -265,12 +265,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Dispatching pr.yml on branch '$BRANCH'…"
+          echo "Dispatching packaging.yml on branch '$BRANCH'…"
 
           # Capture the timestamp before dispatch so we can find the new run
           BEFORE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          gh workflow run pr.yml \
+          gh workflow run packaging.yml \
             --repo Cosmian/kms \
             --ref "$BRANCH"
 
@@ -281,13 +281,13 @@ jobs:
           RUN_ID=$(GH_PAGER=cat gh run list \
             --repo Cosmian/kms \
             --branch "$BRANCH" \
-            --workflow pr.yml \
+            --workflow packaging.yml \
             --limit 5 \
             --json databaseId,createdAt \
             --jq "[.[] | select(.createdAt > \"$BEFORE\")] | .[0].databaseId // empty")
 
           if [ -z "${RUN_ID:-}" ] || [ "$RUN_ID" = "null" ]; then
-            echo "ERROR: Could not find the dispatched pr.yml run." >&2
+            echo "ERROR: Could not find the dispatched packaging.yml run." >&2
             exit 1
           fi
 
@@ -389,8 +389,8 @@ jobs:
   #   1. Merge release/<version> into main  (--no-ff)
   #   2. Create the annotated tag on the resulting main merge commit
   #      (git-flow always tags main, never the release branch)
-  #      The tag push triggers pr.yml (on:push:tags) which builds the final
-  #      packages and creates the GitHub Release.
+  #      The tag push triggers packaging.yml (on:push:tags) which builds the
+  #      final packages and creates the GitHub Release.
   #   3. Merge release/<version> into develop  (--no-ff, syncs version bump)
   #   4. Delete the release branch
   # ─────────────────────────────────────────────────────────────────────────────
@@ -453,7 +453,7 @@ jobs:
             git tag -a "$TAG" -m "Release $TAG"
             git push origin "$TAG"
             echo "Tag '$TAG' pushed on main."
-            echo "pr.yml (on:push:tags) will now build and publish the release."
+            echo "packaging.yml (on:push:tags) will now build and publish the release."
           fi
 
       - name: Merge release branch into develop
@@ -509,7 +509,7 @@ jobs:
             "$PKG_RUN_ID" "$PKG_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
           printf '| SBOMs | Retrieved and committed |\n' >> "$GITHUB_STEP_SUMMARY"
           printf '| Tag | `%s` on `main` merge commit |\n\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"
-          printf 'The `pr.yml` on-tag pipeline is building the final packages and GitHub Release.\n\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'The `packaging.yml` on-tag pipeline is building the final packages and GitHub Release.\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf '### Remaining manual step\n\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Once the tag pipeline completes, update the GitHub Release notes at:\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'https://github.com/Cosmian/kms/releases/tag/%s\n' "$NEW_VERSION" >> "$GITHUB_STEP_SUMMARY"

@@ -27,8 +27,15 @@ jobs:
 
       - name: Build static OpenSSL
         shell: pwsh
+        env:
+          # Use the pre-installed Strawberry Perl so vcpkg does not attempt to
+          # download it from GitHub (which fails with 504 under rate-limiting).
+          PERL: C:\Strawberry\perl\bin\perl.exe
+          PERL_ROOT: C:\Strawberry\perl
         run: |
+          $ErrorActionPreference = "Stop"
           vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           vcpkg integrate install
 
       - name: Tests
@@ -66,8 +73,13 @@ jobs:
 
       - name: Build static OpenSSL
         shell: pwsh
+        env:
+          PERL: C:\Strawberry\perl\bin\perl.exe
+          PERL_ROOT: C:\Strawberry\perl
         run: |
+          $ErrorActionPreference = "Stop"
           vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           vcpkg integrate install
 
       - name: Install wasm-pack
@@ -105,8 +117,13 @@ jobs:
 
       - name: Build static OpenSSL
         shell: pwsh
+        env:
+          PERL: C:\Strawberry\perl\bin\perl.exe
+          PERL_ROOT: C:\Strawberry\perl
         run: |
+          $ErrorActionPreference = "Stop"
           vcpkg install --triplet x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           vcpkg integrate install
 
       - name: Run CNG KSP integration tests
