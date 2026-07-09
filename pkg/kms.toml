@@ -205,6 +205,21 @@ hostname = "0.0.0.0"
 # addresses; add any custom hostname explicitly. Example: `http://kms.example.com:9998`.
 # cors_allowed_origins = ["http://localhost:9998", "http://127.0.0.1:9998"]
 
+# ── JWKS Endpoint ────────────────────────────────────────────────────────────
+# Expose a public JSON Web Key Set at GET /.well-known/jwks.json (RFC 7517).
+# WARNING: this endpoint is intentionally unauthenticated — any client can read
+# the listed public keys.  Enable only when you want third parties to verify
+# JWT signatures or discover your public keys.
+[jwks_endpoint]
+# Enable the /.well-known/jwks.json endpoint (default: false).
+# jwks_endpoint_enabled = false
+# Maximum number of public keys returned per response (default: 50).
+# Responses exceeding this limit include X-JWKS-Truncated: true.
+# jwks_endpoint_max_keys = 50
+# Automatically tag key pairs created via POST /v1/crypto/keys with "jwks"
+# so they appear in the endpoint immediately (default: true).
+# jwks_endpoint_auto_tag = true
+
 # If using a forward proxy for outbound JWKS requests,
 # set the proxy parameters here.
 [proxy]

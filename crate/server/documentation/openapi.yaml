@@ -72,7 +72,7 @@ components:
           description: >
             Tags to add or remove. Each tag must be a non-empty string and must
             not start with `_` (that prefix is reserved for system tags).
-          example: ["jwks", "prod"]
+          example: [jwks, prod]
 
     TagsResponse:
       description: Response body returned by all three tag management endpoints.
@@ -82,7 +82,7 @@ components:
         kid:
           type: string
           description: KMS unique identifier of the key.
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          example: 550e8400-e29b-41d4-a716-446655440000
         tags:
           type: array
           items:
@@ -90,7 +90,7 @@ components:
           description: >
             Current user-visible tags on the key after the operation, sorted
             alphabetically. System tags (starting with `_`) are never included.
-          example: ["jwks", "prod"]
+          example: [jwks, prod]
 
     # ── TTLV JSON ────────────────────────────────────────────────────────────
 
@@ -3322,3 +3322,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenizeError'
+
+  /.well-known/jwks.json:
+    get:
+      tags: [JWKS]
+      summary: JSON Web Key Set
+      description: |
+        Returns the public key set (RFC 7517) for all KMS keys that carry the
+        `"jwks"` tag and are in Active or Deactivated state.
+
+        This endpoint is **intentionally unauthenticated** — no credentials are
+        required. Enable it only when you want third parties (e.g. JWT verifiers)
+        to discover the server's public keys.
+
+        When the response would exceed `jwks_endpoint_max_keys` entries, the set
+        is truncated and the header `X-JWKS-Truncated: true` is added.
+      operationId: getJwks
+      security: []
+      responses:
+        '200':
+          description: JWK Set
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    description: Array of public JWK objects
+                    items:
+                      type: object
+                      required: [kty, kid]
+                      properties:
+                        kty:
+                          type: string
+                          description: Key type (EC, RSA, OKP)
+                          example: EC
+                        kid:
+                          type: string
+                          description: KMS unique identifier
+                        alg:
+                          type: string
+                          description: JOSE algorithm
+                        use:
+                          type: string
+                          description: Public key use (sig or enc)
+                        key_ops:
+                          type: array
+                          items:
+                            type: string
+                          description: Permitted key operations
+                        crv:
+                          type: string
+                          description: Elliptic curve / OKP curve name
+                        x:
+                          type: string
+                          description: EC/OKP x-coordinate (base64url)
+                        y:
+                          type: string
+                          description: EC y-coordinate (base64url)
+                        n:
+                          type: string
+                          description: RSA modulus (base64url)
+                        e:
+                          type: string
+                          description: RSA public exponent (base64url)
+              example:
+                keys:
+                  - kty: EC
+                    kid: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+                    alg: ES256
+                    use: sig
+                    crv: P-256
+                    x: f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU
+                    y: x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0
+        '500':
+          description: Internal server error
