@@ -4,25 +4,17 @@
 //! It extracts client certificates from TLS connections and validates them to authenticate
 //! users based on the certificate's Common Name (CN) field.
 
-use std::{
-    any::Any,
-    pin::Pin,
-    rc::Rc,
-    task::{Context, Poll},
-};
+use std::any::Any;
 
 use actix_tls::accept::openssl::TlsStream;
 use actix_web::{
     Error, HttpMessage,
-    body::{BoxBody, EitherBody},
-    dev::{Extensions, Service, ServiceRequest, ServiceResponse, Transform},
+    body::MessageBody,
+    dev::{Extensions, ServiceRequest, ServiceResponse},
+    middleware::Next,
     rt::net::TcpStream,
 };
 use cosmian_logger::{debug, trace};
-use futures::{
-    Future,
-    future::{Ready, ok},
-};
 use openssl::{nid::Nid, x509::X509};
 
 use crate::{error::KmsError, kms_bail, middlewares::AuthenticatedUser, result::KResult};
@@ -51,84 +43,34 @@ pub(crate) fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extension
     }
 }
 
-/// The middleware that checks the peer certificate and extracts the common name.
+/// TLS client-certificate authentication middleware.
 ///
-/// This middleware checks and extracts the peer certificate for a common name.
-/// The common name is then added to the request context so that it can be used by other middleware or handlers.
-pub(crate) struct TlsAuth;
-
-impl<S, B> Transform<S, ServiceRequest> for TlsAuth
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
-{
-    type Error = Error;
-    type Future = Ready<Result<Self::Transform, Self::InitError>>;
-    type InitError = ();
-    type Response = ServiceResponse<EitherBody<B, BoxBody>>;
-    type Transform = TlsAuthMiddleware<S>;
-
-    /// Create a new instance of the `TlsAuth` middleware.
-    fn new_transform(&self, service: S) -> Self::Future {
-        debug!("TLS Authentication enabled");
-        // Create a new instance of the `TlsAuthMiddleware`.
-        ok(TlsAuthMiddleware {
-            service: Rc::new(service),
-        })
-    }
-}
-
-pub(crate) struct TlsAuthMiddleware<S> {
-    service: Rc<S>,
-}
-
-impl<S, B> Service<ServiceRequest> for TlsAuthMiddleware<S>
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
-{
-    type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
-    type Response = ServiceResponse<EitherBody<B, BoxBody>>;
-
-    /// Poll the `TlsAuthMiddleware` for readiness.
-    fn poll_ready(&self, ctx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        // Poll the underlying service for readiness.
-        self.service.poll_ready(ctx)
-    }
-
-    /// Call the `TlsAuthMiddleware`.
-    ///
-    /// This function calls the underlying service and checks the peer certificate for a common name.
-    /// If the common name is found, it is added to the request context so that it can be used by other middleware or handlers.
-    /// If the common name is not found, an unauthorized response is returned.
-    fn call(&self, req: ServiceRequest) -> Self::Future {
-        // Log that the middleware is being called.
-        trace!("TLS Authentication...");
-        let service = self.service.clone();
-
-        Box::pin(async move {
-            if req.extensions().contains::<AuthenticatedUser>() {
-                debug!(
-                    "JWT: An authenticated user was found; there is no need to authenticate \
-                     twice..."
-                );
-            } else {
-                match tls_auth(&req) {
-                    Ok(user) => {
-                        // Authentication successful, insert the claim into request extensions
-                        // and proceed with the request
-                        req.extensions_mut().insert(user);
-                    }
-                    Err(e) => {
-                        debug!("Client certificate authentication failed: {e:?}");
-                    }
-                }
+/// Extracts the Common Name (CN) from the peer certificate and injects it as
+/// [`AuthenticatedUser`] in the request extensions. Skips authentication if a
+/// user was already injected by an earlier middleware in the chain.
+///
+/// Use with [`actix_web::middleware::from_fn`]:
+/// ```ignore
+/// app.wrap(actix_web::middleware::from_fn(tls_auth_fn))
+/// ```
+pub(crate) async fn tls_auth_fn<B: MessageBody>(
+    req: ServiceRequest,
+    next: Next<B>,
+) -> Result<ServiceResponse<B>, Error> {
+    trace!("TLS Authentication...");
+    if req.extensions().contains::<AuthenticatedUser>() {
+        debug!("TLS: an authenticated user was already present; skipping certificate check");
+    } else {
+        match tls_auth(&req) {
+            Ok(user) => {
+                req.extensions_mut().insert(user);
             }
-            let res = service.call(req).await?;
-            Ok(res.map_into_left_body())
-        })
+            Err(e) => {
+                debug!("Client certificate authentication failed: {e:?}");
+            }
+        }
     }
+    next.call(req).await
 }
 
 fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {

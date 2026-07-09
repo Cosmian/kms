@@ -45,7 +45,7 @@ pub fn get_default_ui_dist_path() -> String {
 }
 
 #[derive(Default, Debug, Args, ConfigArgs, Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct UiConfig {
     /// Disable the embedded web UI. When set to false, the UI HTML assets are
     /// not served and all `/ui/` routes return 404.
@@ -89,7 +89,7 @@ const fn default_true() -> bool {
 }
 
 #[derive(Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct OidcConfig {
     /// The client ID of the configured OIDC tenant for UI Auth
     #[clap(long, env = "UI_OIDC_CLIENT_ID")]

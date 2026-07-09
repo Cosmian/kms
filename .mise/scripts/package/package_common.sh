@@ -645,7 +645,7 @@ resolve_openssl_path() {
 
 # 2.5) Ensure modern rust toolchain (Cargo 1.90) from Nix is on PATH to avoid rustup downloads
 ensure_modern_rust() {
-  local link="$REPO_ROOT/result-rust-1_91"
+  local link="$REPO_ROOT/result-rust-1_97"
   if [ -L "$link" ] && [ -x "$link/bin/cargo" ] && [ -x "$link/bin/rustc" ]; then
     :
   else

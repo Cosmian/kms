@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self},
     path::PathBuf,
 };
@@ -245,6 +245,84 @@ pub struct ClapConfig {
 }
 
 impl ClapConfig {
+    /// Validate that all top-level TOML keys are known to `ClapConfig`.
+    ///
+    /// Because `ClapConfig` uses `#[serde(flatten)]` for `hsm`, serde's built-in
+    /// `deny_unknown_fields` cannot be applied to the struct itself (it conflicts
+    /// with flatten). This function performs an equivalent check manually after
+    /// parsing the TOML into a `toml::Value`.
+    ///
+    /// # Errors
+    /// Returns an error listing every unknown key found at the top level.
+    pub fn validate_toml_keys(value: &toml::Value) -> KResult<()> {
+        // Complete set of valid top-level keys in a KMS TOML config file.
+        // Scalar fields + table section names, including keys injected via
+        // `#[serde(flatten)]` from `HsmConfig`.
+        // `print_default_config` and `secret_backends` are `#[serde(skip)]`
+        // and therefore never appear in a TOML file.
+        const ALLOWED: &[&str] = &[
+            // ClapConfig scalar fields
+            "config_path",
+            "vendor_identification",
+            "default_username",
+            "force_default_username",
+            "ms_dke_service_url",
+            "info",
+            "hsm_instances",
+            "key_encryption_key",
+            "default_unwrap_type",
+            "kms_public_url",
+            "non_revocable_key_id",
+            "privileged_users",
+            "auto_rotation_check_interval_secs",
+            "keyset_warn_depth",
+            // HsmConfig fields (flattened into ClapConfig at the top level)
+            "hsm_model",
+            "hsm_admin",
+            "hsm_slot",
+            "hsm_password",
+            // Nested table sections
+            "db",
+            "socket_server",
+            "tls",
+            "http",
+            "proxy",
+            "idp_auth",
+            "ui_config",
+            "google_cse_config",
+            "azure_ekm_config",
+            "workspace",
+            "logging",
+            "aws_xks_config",
+            "kmip", // renamed from kmip_policy via #[serde(rename = "kmip")]
+            "jwks_endpoint",
+        ];
+
+        let allowed: HashSet<&str> = ALLOWED.iter().copied().collect();
+
+        let toml::Value::Table(table) = value else {
+            return Err(KmsError::ServerError(
+                "KMS configuration must be a TOML table".to_owned(),
+            ));
+        };
+
+        let unknown: Vec<&str> = table
+            .keys()
+            .filter(|k| !allowed.contains(k.as_str()))
+            .map(String::as_str)
+            .collect();
+
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(KmsError::ServerError(format!(
+                "Unknown key(s) in KMS configuration file: {}. Check for typos or remove \
+                 obsolete fields.",
+                unknown.join(", ")
+            )))
+        }
+    }
+
     /// Serialize the default configuration as TOML with comments extracted from
     /// the clap help strings. Each field is preceded by its `///` doc comment as
     /// TOML `# …` lines, making the output directly useful as a reference config file.
@@ -472,6 +550,8 @@ impl ClapConfig {
                 &mut config_value,
                 &preliminary.secret_backends,
             )?;
+
+            Self::validate_toml_keys(&config_value)?;
 
             config_value.try_into().map_err(|e| {
                 KmsError::ServerError(format!(
@@ -1031,5 +1111,88 @@ mod tests {
         ]);
         let conf_str = toml::to_string_pretty(&conf).unwrap();
         debug!("Configuration TOML: {conf_str}");
+    }
+
+    // ── Strict TOML parsing tests ──────────────────────────────────────────────────
+
+    /// An unknown top-level key must be rejected when loading from a config file.
+    #[test]
+    fn unknown_top_level_key_is_rejected() {
+        with_clean_env(|| {
+            // "typo_database" is not a valid ClapConfig key
+            let bad_file = write_temp("[http]\nport = 9998\n\ntypo_database = \"sqlite\"\n");
+            let args = vec!["kms", "-c", bad_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_err(),
+                "unknown top-level key must cause a parse error"
+            );
+            let err_msg = res.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("Unknown key(s)") || err_msg.contains("typo_database"),
+                "error message must identify the unknown key; got: {err_msg}"
+            );
+            cleanup_temp(&bad_file);
+        });
+    }
+
+    /// An unknown key inside a nested table (`[http]`) must be rejected.
+    #[test]
+    fn unknown_nested_key_is_rejected() {
+        with_clean_env(|| {
+            // "typo_port" is not a valid field inside [http]
+            let bad_file = write_temp("[http]\nport = 9998\ntypo_port = 1234\n");
+            let args = vec!["kms", "-c", bad_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_err(),
+                "unknown key inside [http] section must cause a parse error"
+            );
+            let err_msg = res.unwrap_err().to_string();
+            assert!(
+                err_msg.contains("typo_port") || err_msg.contains("unknown field"),
+                "error message must identify the unknown nested key; got: {err_msg}"
+            );
+            cleanup_temp(&bad_file);
+        });
+    }
+
+    /// A valid minimal config must still load successfully (regression guard).
+    #[test]
+    fn valid_minimal_config_loads_ok() {
+        with_clean_env(|| {
+            let good_file = write_temp("[http]\nport = 9998\n");
+            let args = vec!["kms", "-c", good_file.to_str().unwrap()];
+            let res = ClapConfig::load_from_args(args);
+            assert!(
+                res.is_ok(),
+                "valid config must still load successfully: {:?}",
+                res.err()
+            );
+            cleanup_temp(&good_file);
+        });
+    }
+
+    /// `validate_toml_keys` must reject a `toml::Value` that contains an unknown key.
+    #[test]
+    fn validate_toml_keys_rejects_unknown_key() {
+        let toml_str = "unknown_field = true\n[http]\nport = 9998\n";
+        let value: toml::Value = toml::from_str(toml_str).unwrap();
+        let result = ClapConfig::validate_toml_keys(&value);
+        assert!(result.is_err(), "should reject unknown_field");
+        assert!(
+            result.unwrap_err().to_string().contains("unknown_field"),
+            "error should mention the bad key"
+        );
+    }
+
+    /// `validate_toml_keys` must accept a value with only known keys.
+    #[test]
+    fn validate_toml_keys_accepts_known_keys() {
+        let toml_str = "vendor_identification = \"cosmian\"\n[http]\nport = 9998\n[db]\nsqlite_path = \
+             \"/tmp/kms\"\n";
+        let value: toml::Value = toml::from_str(toml_str).unwrap();
+        let result = ClapConfig::validate_toml_keys(&value);
+        assert!(result.is_ok(), "should accept all-known keys: {:?}", result);
     }
 }

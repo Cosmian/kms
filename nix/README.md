@@ -11,7 +11,7 @@ flowchart TB
     src --> kms_nix
     cargo["Cargo Hash Verify"]
     openssl["OpenSSL 3.6.2 Build"]
-    rust["Rust 1.91.0 Toolchain"]
+    rust["Rust 1.97.0 Toolchain"]
     kms_nix --> cargo & openssl & rust
     compile["Compilation (Static linking)"]
     cargo & openssl & rust --> compile
@@ -264,7 +264,7 @@ All Linux builds (FIPS and non-FIPS) achieve bit-for-bit deterministic reproduci
 flowchart TB
     subgraph inputs["INPUT LAYER (All Cryptographically Pinned)"]
         nixpkgs["Pinned nixpkgs 24.11<br/>Hash: sha256-abc123...<br/>Frozen package set<br/>Provides: gcc, binutils, coreutils (glibc 2.34)"]
-        rust_tc["Rust Toolchain 1.91.0<br/>Exact version from nixpkgs<br/>Flags: -Cdebuginfo=0 -Ccodegen-units=1<br/>SOURCE_DATE_EPOCH=1"]
+        rust_tc["Rust Toolchain 1.97.0<br/>Exact version from nixpkgs<br/>Flags: -Cdebuginfo=0 -Ccodegen-units=1<br/>SOURCE_DATE_EPOCH=1"]
         cargo_hash["Cargo Dependencies (cargoHash)<br/>Hash: sha256-xyz789...<br/>Vendored mode (no network)<br/>Locks ALL transitive deps"]
         openssl_src["OpenSSL 3.6.2 + 3.1.2 Source<br/>Both verified by SRI hash<br/>FIPS 140-3 certified source (3.1.2)"]
         clean_src["Cleaned Source Tree<br/>Filters: result-*, sbom/, target/<br/>Only source code + Cargo.toml/lock"]
@@ -595,7 +595,7 @@ See `nix/signing-keys/README.md` for detailed signing documentation.
 
 ## Rust toolchain (no rustup)
 
-`default.nix` exports `rustToolchain` (Rust 1.91.0). Scripts:
+`default.nix` exports `rustToolchain` (Rust 1.97.0). Scripts:
 
 ```bash
 nix-build -A rustToolchain -o result-rust
@@ -638,7 +638,7 @@ The prewarm steps populate the following paths so packaging can run fully offlin
 - Nix derivations realized locally (symlinks point into the store):
       - `result-openssl-312` → `/nix/store/<hash>-openssl-3.1.2`
       - `result-server-<variant>` → `/nix/store/<hash>-cosmian-kms-server-<version>`
-      - Rust toolchain 1.91.0: `result-rust-1_91` → `/nix/store/<hash>-rust-minimal-1.91.0`
+      - Rust toolchain 1.97.0: `result-rust-1_97` → `/nix/store/<hash>-rust-minimal-1.97.0`
       - Cargo tools:
             - `result-cargo-deb` → `/nix/store/<hash>-cargo-deb-<version>`
             - `result-cargo-generate-rpm` → `/nix/store/<hash>-cargo-generate-rpm-<version>`

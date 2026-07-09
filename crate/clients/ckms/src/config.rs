@@ -201,4 +201,48 @@ mod tests {
 
         assert!(ClientConfig::from_toml(conf_path.to_str().unwrap()).is_ok());
     }
+
+    /// An unknown key in the client TOML config must be rejected.
+    #[test]
+    fn unknown_key_in_client_toml_is_rejected() {
+        use cosmian_config_utils::ConfigUtils;
+        let bad_toml = "[http_config]\nserver_url = \"http://localhost:9998\"\n\nunknown_option \
+                        = true\n";
+        let tmp_path = std::env::temp_dir().join("ckms_bad_unknown_key.toml");
+        let tmp_str = tmp_path.to_str().expect("valid path");
+        std::fs::write(tmp_str, bad_toml).expect("write temp toml");
+        let result = ClientConfig::from_toml(tmp_str);
+        assert!(
+            result.is_err(),
+            "unknown key in client config must be rejected"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("unknown_option") || err_msg.contains("unknown field"),
+            "error message must identify the unknown key; got: {err_msg}"
+        );
+        drop(std::fs::remove_file(tmp_str));
+    }
+
+    /// An unknown key inside `[http_config]` must be rejected.
+    #[test]
+    fn unknown_key_in_http_config_is_rejected() {
+        use cosmian_config_utils::ConfigUtils;
+        let bad_toml =
+            "[http_config]\nserver_url = \"http://localhost:9998\"\ntypo_url = \"wrong\"\n";
+        let tmp_path = std::env::temp_dir().join("ckms_bad_nested_key.toml");
+        let tmp_str = tmp_path.to_str().expect("valid path");
+        std::fs::write(tmp_str, bad_toml).expect("write temp toml");
+        let result = ClientConfig::from_toml(tmp_str);
+        assert!(
+            result.is_err(),
+            "unknown key in [http_config] must be rejected"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("typo_url") || err_msg.contains("unknown field"),
+            "error message must identify the unknown key; got: {err_msg}"
+        );
+        drop(std::fs::remove_file(tmp_str));
+    }
 }

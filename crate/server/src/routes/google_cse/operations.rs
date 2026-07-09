@@ -1178,7 +1178,7 @@ async fn cse_wrapped_key_decrypt(
         authenticated_encryption_additional_data: resource_name,
         authenticated_encryption_tag: Some(authenticated_tag.to_vec()),
     };
-    let key = Box::pin(decrypt(kms, decryption_request, &user)).await?;
+    let key = decrypt(kms, decryption_request, &user).await?;
 
     let data = key.data.ok_or_else(|| {
         KmsError::InvalidRequest("Invalid decrypted key - missing data.".to_owned())
@@ -1216,7 +1216,7 @@ async fn cse_key_encrypt(
         final_indicator: None,
         authenticated_encryption_additional_data: resource_name,
     };
-    let dek = Box::pin(encrypt(kms, encryption_request, &user)).await?;
+    let dek = encrypt(kms, encryption_request, &user).await?;
 
     // re-extract the bytes from the key
     let data = dek.data.ok_or_else(|| {

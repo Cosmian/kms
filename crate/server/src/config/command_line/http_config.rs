@@ -13,7 +13,7 @@ const DEFAULT_HOSTNAME: &str = "127.0.0.1";
 const DEFAULT_HOSTNAME: &str = "0.0.0.0";
 
 #[derive(Args, ConfigArgs, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HttpConfig {
     /// The KMS HTTP server port
     #[clap(long, env = "KMS_PORT", default_value_t = DEFAULT_PORT, verbatim_doc_comment)]

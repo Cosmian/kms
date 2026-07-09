@@ -5,7 +5,7 @@
   # Optional external overrides; if null, will be constructed from nix/openssl.nix
   openssl36 ? null,
   openssl312 ? null,
-  # Provide a rustPlatform that uses the desired Rust (e.g., 1.91.0) but
+  # Provide a rustPlatform that uses the desired Rust (e.g., 1.97.0) but
   # links against pkgs234 (glibc 2.34) on Linux for Rocky Linux 9 compatibility.
   rustPlatform ? pkgs.rustPlatform,
   # KMS version (from Cargo.toml)

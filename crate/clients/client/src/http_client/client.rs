@@ -119,6 +119,7 @@ const fn not(b: &bool) -> bool {
 /// names as distinct fields lets us detect which key was actually present in the
 /// config file and emit a deprecation warning before merging the values.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct HttpClientConfigDeserHelper {
     #[serde(default)]
     accept_invalid_certs: bool,

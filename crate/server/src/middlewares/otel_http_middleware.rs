@@ -5,98 +5,46 @@
 //!
 //! Must be placed as the **outermost** `App`-level wrap to correctly measure total latency.
 
-use std::{
-    future::Future,
-    pin::Pin,
-    rc::Rc,
-    sync::Arc,
-    task::{Context, Poll},
-    time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 
 use actix_web::{
     Error,
+    body::MessageBody,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
+    middleware::{Next, from_fn},
 };
-use futures::future::{Ready, ok};
 
 use crate::core::OtelMetrics;
 
-/// App-level middleware that records HTTP request metrics via OTLP.
+/// Creates the OpenTelemetry HTTP metrics middleware.
 ///
-/// When `metrics` is `None` (OTLP not configured) the middleware is just a
-/// zero-overhead pass-through.
-#[derive(Clone)]
-pub(crate) struct OtelHttpMetrics {
+/// Records `kms.http.requests.total`, `kms.http.request.duration`, and
+/// `kms.active.connections` for every request.
+///
+/// Pass `None` to install a zero-overhead pass-through (metrics disabled).
+///
+/// Place as the **outermost** `App`-level wrap to measure total latency.
+pub(crate) fn otel_http_metrics_middleware<S, B>(
     metrics: Option<Arc<OtelMetrics>>,
-}
-
-impl OtelHttpMetrics {
-    /// Creates a new `OtelHttpMetrics` middleware.
-    ///
-    /// Pass `None` to install the middleware as a no-op (metrics disabled).
-    #[must_use]
-    pub(crate) const fn new(metrics: Option<Arc<OtelMetrics>>) -> Self {
-        Self { metrics }
-    }
-}
-
-impl<S, B> Transform<S, ServiceRequest> for OtelHttpMetrics
+) -> impl Transform<S, ServiceRequest, Response = ServiceResponse<B>, Error = Error, InitError = ()>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
+    B: MessageBody + 'static,
 {
-    type Error = Error;
-    type Future = Ready<Result<Self::Transform, Self::InitError>>;
-    type InitError = ();
-    type Response = ServiceResponse<B>;
-    type Transform = OtelHttpMetricsService<S>;
-
-    fn new_transform(&self, service: S) -> Self::Future {
-        ok(OtelHttpMetricsService {
-            service: Rc::new(service),
-            metrics: self.metrics.clone(),
-        })
-    }
-}
-
-/// The per-request service produced by [`OtelHttpMetrics`].
-pub(crate) struct OtelHttpMetricsService<S> {
-    service: Rc<S>,
-    metrics: Option<Arc<OtelMetrics>>,
-}
-
-impl<S, B> Service<ServiceRequest> for OtelHttpMetricsService<S>
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    S::Future: 'static,
-{
-    type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
-    type Response = ServiceResponse<B>;
-
-    fn poll_ready(&self, ctx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(ctx)
-    }
-
-    fn call(&self, req: ServiceRequest) -> Self::Future {
-        let service = self.service.clone();
-        let metrics = self.metrics.clone();
-
-        // Snapshot method and normalised path before consuming the request.
+    from_fn(move |req: ServiceRequest, next: Next<B>| {
+        let metrics = metrics.clone();
+        // Snapshot method and normalized path before consuming the request.
         let method = req.method().to_string();
         let path = normalize_path(req.path()).to_owned();
 
-        Box::pin(async move {
-            // Increment in-flight counter before calling inner service.
+        async move {
             if let Some(ref m) = metrics {
                 m.increment_active_connections();
             }
 
             let start = Instant::now();
-            let result = service.call(req).await;
+            let result = next.call(req).await;
 
-            // Decrement in-flight counter in both success and error paths.
             if let Some(ref m) = metrics {
                 m.decrement_active_connections();
 
@@ -111,13 +59,13 @@ where
             }
 
             result
-        })
-    }
+        }
+    })
 }
 
 /// Maps a raw request path to a low-cardinality label for OTEL metrics.
 ///
-/// Without normalisation, hashed UI asset filenames (`/ui/assets/index-Ab3Cd.js`)
+/// Without normalization, hashed UI asset filenames (`/ui/assets/index-Ab3Cd.js`)
 /// and per-key UID segments in REST paths would explode the metric cardinality.
 ///
 /// The KMS route set is small and stable; static prefix matching is sufficient
@@ -176,7 +124,7 @@ mod tests {
     use actix_web::{App, web};
     use opentelemetry_sdk::metrics::SdkMeterProvider;
 
-    use super::{OtelHttpMetrics, normalize_path};
+    use super::{normalize_path, otel_http_metrics_middleware};
     use crate::core::OtelMetrics;
 
     #[test]
@@ -246,7 +194,7 @@ mod tests {
     async fn test_middleware_with_otel_metrics_passes_requests() {
         let app = actix_web::test::init_service(
             App::new()
-                .wrap(OtelHttpMetrics::new(Some(make_test_metrics())))
+                .wrap(otel_http_metrics_middleware(Some(make_test_metrics())))
                 .service(web::resource("/kmip/2_1").to(|| async { "ok" })),
         )
         .await;
@@ -263,7 +211,7 @@ mod tests {
     async fn test_middleware_noop_when_metrics_none() {
         let app = actix_web::test::init_service(
             App::new()
-                .wrap(OtelHttpMetrics::new(None))
+                .wrap(otel_http_metrics_middleware(None))
                 .service(web::resource("/health").to(|| async { "ok" })),
         )
         .await;

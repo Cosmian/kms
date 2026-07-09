@@ -35,7 +35,7 @@ pub fn get_default_rolling_log_dir() -> PathBuf {
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default, Args, ConfigArgs, Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LoggingConfig {
     /// An alternative to setting the `RUST_LOG` environment variable.
     /// Setting this variable will override the `RUST_LOG` environment variable
