@@ -1,0 +1,140 @@
+---
+name: Flamegraph
+
+on:
+  # Called by other workflows (e.g. the release workflow) to record a CPU profile.
+  workflow_call:
+    inputs:
+      server_version:
+        description: KMS server version to profile (e.g. 5.24.0); omit to build from the selected branch
+        required: false
+        default: ""
+        type: string
+      variant:
+        description: Build variant (fips|non-fips)
+        required: false
+        default: non-fips
+        type: string
+
+  # Manual trigger from the GitHub UI.
+  # Run separately from the Benchmark workflow: both use the [benchmark] runner
+  # and competing for CPU/memory on the same machine degrades results.
+  workflow_dispatch:
+    inputs:
+      server_version:
+        description: KMS server version to profile (e.g. 5.24.0); omit to build from the selected branch
+        required: false
+        default: ""
+      variant:
+        description: Build variant (fips|non-fips)
+        required: false
+        default: non-fips
+
+jobs:
+  # ── Job 1: run CPU-scaling flamegraph benchmark ───────────────────────────
+  flamegraph:
+    name: Flamegraph KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant }})
+    runs-on: [self-hosted, benchmark]
+    timeout-minutes: 120
+    concurrency:
+      group: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Clean workspace (fix self-hosted runner permission issues)
+        run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          clean: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install system dependencies
+        run: |
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            # linux-tools-generic provides perf on Ubuntu; also try the
+            # kernel-specific package for an exact-version perf binary.
+            sudo apt-get install -y -qq librsvg2-bin \
+              "linux-tools-$(uname -r)" linux-tools-generic 2>/dev/null \
+              || sudo apt-get install -y -qq librsvg2-bin linux-tools-generic
+          fi
+
+      - name: Allow perf for unprivileged processes
+        run: |
+          echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+          echo 0   | sudo tee /proc/sys/kernel/kptr_restrict
+
+      - name: Install cargo-flamegraph
+        run: cargo install flamegraph --locked
+
+      - name: Run CPU-scaling flamegraph benchmark
+        env:
+          # Use frame-pointer unwinding instead of DWARF in CI.
+          # DWARF (dwarf,32768) writes ~32 KB per sample; at 8 workers × 500 Hz
+          # × 15 s the raw perf.data reaches ~2 GB per profile, exhausting runner
+          # memory and causing the OS to kill the process.
+          # fp generates ~800 B/sample; Rust code compiled with
+          # -C force-frame-pointers=yes gives accurate Rust frames; only
+          # non-FP system libs (glibc, OpenSSL) appear as [unknown], which is
+          # acceptable for a CI flamegraph.
+          PERF_CALL_GRAPH: fp
+          # Cap profile time at 10 s (default 15 s) to reduce total runtime.
+          PROFILE_TIME: "10"
+        run: |
+          ARGS=(--variant "${{ inputs.variant }}")
+          [[ -n "${{ inputs.server_version }}" ]] && ARGS+=(--server-version "${{ inputs.server_version }}")
+          mise run bench:flamegraph "${ARGS[@]}"
+
+      - name: Upload flamegraph output
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+          path: documentation/docs/benchmarks/
+          retention-days: 30
+
+  # ── Job 2: publish flamegraph output to package.cosmian.com ──────────────
+  publish-flamegraph:
+    name: Publish flamegraph to package.cosmian.com
+    needs: flamegraph
+    # Only publish when the flamegraph job actually produced output; scp -r on
+    # an empty artifact directory fails and there is nothing useful to publish.
+    if: needs.flamegraph.result == 'success'
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    steps:
+      - name: Download flamegraph artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
+          path: flamegraph-docs
+
+      - name: Push flamegraph output to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph"
+          SSH_OPTS="-o StrictHostKeyChecking=no -i /root/.ssh/id_rsa"
+
+          # Create remote directory.
+          ssh ${SSH_OPTS} cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
+
+          # Copy cpu_scaling.md and flamegraph/ SVGs/PNGs.
+          scp -r ${SSH_OPTS} \
+            flamegraph-docs/. \
+            cosmian@package.cosmian.com:"${REMOTE_DIR}/"
+
+          echo ""
+          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph/cpu_scaling.md"
