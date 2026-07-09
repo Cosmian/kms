@@ -56,6 +56,15 @@ BENCH_OPERATIONS="${BENCH_OPERATIONS:-aes_gcm_enc,rsa_oaep_dec,ecdsa_sign}"
 # than the kernel drains it, producing "lost N chunks" warnings and incomplete traces.
 # 500 Hz halves ring-buffer pressure with negligible impact on flamegraph resolution.
 PERF_FREQ="${PERF_FREQ:-500}"
+# Perf call-graph mode.  "dwarf,32768" gives the best accuracy (resolves all
+# system-library frames, e.g. glibc, OpenSSL) but writes ~32 KB per sample.
+# At 8 workers × 500 Hz × 15 s the raw perf.data reaches ~2 GB per operation
+# profile, which can exhaust runner memory and kill the process.
+# Override with PERF_CALL_GRAPH=fp on memory-constrained machines (CI, laptops):
+# frame-pointer unwinding is negligible in size (~800 B/sample) and accurate
+# for Rust code because we compile with -C force-frame-pointers=yes; only
+# non-FP system-library frames show as [unknown].
+PERF_CALL_GRAPH="${PERF_CALL_GRAPH:-dwarf,32768}"
 SKIP_FLAMEGRAPH="${SKIP_FLAMEGRAPH:-0}"
 SKIP_THROUGHPUT="${SKIP_THROUGHPUT:-0}"
 OUT_MD="${OUT_MD:-${REPO_ROOT}/documentation/docs/benchmarks/cpu_scaling.md}"
@@ -80,6 +89,7 @@ echo "  Variant       : ${VARIANT}"
 echo "  Worker counts : ${WORKER_COUNTS}"
 echo "  Profile time  : ${PROFILE_TIME}s per worker count"
 echo "  perf frequency: ${PERF_FREQ} Hz"
+echo "  Call-graph    : ${PERF_CALL_GRAPH}"
 echo "  Operations    : ${BENCH_OPERATIONS}"
 echo "  Output        : ${OUT_MD}"
 
@@ -93,7 +103,7 @@ fi
 # ── Check / install prerequisites ────────────────────────────────────────────
 if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
   if ! command -v perf >/dev/null 2>&1; then
-    echo "ERROR: 'perf' not found. Install linux-perf (apt-get install linux-perf) and retry."
+    echo "ERROR: 'perf' not found. Install linux-tools-generic (apt-get install linux-tools-generic) and retry."
     echo "       Or set SKIP_FLAMEGRAPH=1 to run the throughput bench only."
     exit 1
   fi
@@ -230,17 +240,17 @@ if [ "${SKIP_FLAMEGRAPH}" != "1" ]; then
       echo "   ${operation} — ${workers} worker(s)  →  ${SVG_OUT}"
       # The -c/--cmd argument to cargo-flamegraph is appended token-by-token to
       # `Command::new("perf")` — do NOT include "perf" itself at the start.
-      # The default args string is "record -F {freq} --call-graph dwarf,64000 -g";
-      # we use DWARF unwinding for maximum accuracy:
+      # The default args string is "record -F {freq} --call-graph dwarf,64000 -g".
       #
-      #   record                    → perf sub-command (required)
-      #   --call-graph dwarf,32768  → DWARF-based unwinding: resolves frames in system
-      #                               libraries (glibc, OpenSSL) that lack frame pointers.
-      #                               32 KB stack dump per sample (default 8 KB is often
-      #                               too shallow for deep async stacks).
-      #   -F ${PERF_FREQ}           → sampling rate; 500 Hz avoids ring-buffer overflow
-      #   -g                        → enable call-graph recording
-      PERF_CMD="record --call-graph dwarf,32768 -F ${PERF_FREQ} -g"
+      # PERF_CALL_GRAPH choices:
+      #   dwarf,32768  (default) — DWARF unwinding, 32 KB stack dump per sample;
+      #                resolves all system-library frames but generates ~2 GB of
+      #                perf.data per profile at 8 workers × 500 Hz × 15 s.
+      #   dwarf,8192             — smaller dump; good trade-off for mid-range machines.
+      #   fp                     — frame-pointer unwinding; negligible perf.data size;
+      #                accurate for Rust (compiled with force-frame-pointers=yes),
+      #                system-library frames show as [unknown]; recommended for CI.
+      PERF_CMD="record --call-graph ${PERF_CALL_GRAPH} -F ${PERF_FREQ} -g"
       CARGO_PROFILE_BENCH_DEBUG=true \
         cargo flamegraph \
         --bench http_throughput \

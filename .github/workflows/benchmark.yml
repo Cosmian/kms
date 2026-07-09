@@ -87,66 +87,12 @@ jobs:
           name: benchmark-report-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
           # The entire version folder: report.md + load/ + criterion/ + raw JSON.
           path: target/criterion/reports/${{ inputs.server_version || github.ref_name }}/
-          retention-days: 365
+          retention-days: 30
 
-  # ── Job 2: run CPU-scaling flamegraph benchmark (parallel with job 1) ────────
-  flamegraph:
-    name: Flamegraph KMS ${{ inputs.server_version || github.ref_name }} (${{ inputs.variant }})
-    runs-on: [self-hosted, benchmark]
-    timeout-minutes: 120
-    concurrency:
-      group: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
-      cancel-in-progress: true
-
-    steps:
-      - name: Clean workspace (fix self-hosted runner permission issues)
-        run: sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
-
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-          clean: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
-      - uses: ./.github/actions/install-mise
-
-      - name: Install system dependencies
-        run: |
-          if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq \
-              linux-perf librsvg2-bin
-          fi
-
-      - name: Allow perf for unprivileged processes
-        run: |
-          echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
-          echo 0   | sudo tee /proc/sys/kernel/kptr_restrict
-
-      - name: Install cargo-flamegraph
-        run: cargo install flamegraph --locked
-
-      - name: Run CPU-scaling flamegraph benchmark
-        run: |
-          mise run bench:flamegraph \
-            --variant "${{ inputs.variant }}"
-
-      - name: Upload flamegraph output
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
-          path: documentation/docs/benchmarks/
-          retention-days: 365
-
-  # ── Job 3: publish benchmark report to package.cosmian.com ────────────────
+  # ── Job 2: publish benchmark report to package.cosmian.com ────────────────
   publish:
     name: Publish to package.cosmian.com
     needs: benchmark
-    if: always() && needs.benchmark.result != 'cancelled'
     runs-on: [self-hosted, not-sgx]
     container:
       image: cosmian/docker_doc_ci
@@ -177,39 +123,3 @@ jobs:
 
           echo ""
           echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/report.md"
-
-  # ── Job 4: publish flamegraph output to package.cosmian.com ──────────────
-  publish-flamegraph:
-    name: Publish flamegraph to package.cosmian.com
-    needs: flamegraph
-    if: always() && needs.flamegraph.result != 'cancelled'
-    runs-on: [self-hosted, not-sgx]
-    container:
-      image: cosmian/docker_doc_ci
-      volumes:
-        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
-
-    steps:
-      - name: Download flamegraph artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: flamegraph-${{ inputs.server_version || github.ref_name }}-${{ inputs.variant }}
-          path: flamegraph-docs
-
-      - name: Push flamegraph output to package.cosmian.com
-        shell: bash
-        run: |
-          set -ex
-          REMOTE_DIR="/mnt/package/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph"
-          SSH_OPTS="-o StrictHostKeyChecking=no -i /root/.ssh/id_rsa"
-
-          # Create remote directory.
-          ssh ${SSH_OPTS} cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
-
-          # Copy cpu_scaling.md and flamegraph/ SVGs/PNGs.
-          scp -r ${SSH_OPTS} \
-            flamegraph-docs/. \
-            cosmian@package.cosmian.com:"${REMOTE_DIR}/"
-
-          echo ""
-          echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/flamegraph/cpu_scaling.md"

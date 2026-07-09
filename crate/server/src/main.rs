@@ -400,6 +400,7 @@ redis_master_password = "[redis master password]"
 clear_database = false
 unwrapped_cache_max_age = 15
 unwrapped_cache_max_size = 1000
+disable_unwrapped_cache = false
 
 [socket_server]
 socket_server_start = false
