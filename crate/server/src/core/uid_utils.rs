@@ -306,7 +306,7 @@ pub(crate) async fn walk_keyset_chain(
         .into_iter()
         .map(|(uid, attrs)| (uid, attrs.rotate_generation.unwrap_or(0)))
         .collect();
-    all_pairs.sort_by(|a, b| b.1.cmp(&a.1));
+    all_pairs.sort_by_key(|b| std::cmp::Reverse(b.1));
     let chain: Vec<String> = all_pairs.into_iter().map(|(uid, _)| uid).collect();
 
     trace!(

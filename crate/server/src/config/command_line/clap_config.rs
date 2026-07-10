@@ -1193,6 +1193,6 @@ mod tests {
              \"/tmp/kms\"\n";
         let value: toml::Value = toml::from_str(toml_str).unwrap();
         let result = ClapConfig::validate_toml_keys(&value);
-        assert!(result.is_ok(), "should accept all-known keys: {:?}", result);
+        assert!(result.is_ok(), "should accept all-known keys: {result:?}");
     }
 }

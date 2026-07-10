@@ -504,7 +504,6 @@ Crate path: `crate/server`
 | `debug` | `DeriveKey: No derivation data provided - this may be acceptable if a Secret Data              object identifier is provided` | `src/core/operations/derive_key.rs` | — | — |
 | `debug` | `Import: certificate is revoked per CRL check,                              setting state to Compromised` | `src/core/operations/import.rs` | — | — |
 | `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/jwt/jwt_middleware.rs` | — | — |
-| `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/jwt/jwt_middleware.rs` | — | — |
 | `debug` | `Request bytes: {}` | `src/routes/kmip.rs` | — | — |
 | `debug` | `Request TTLV: {ttlv:#?}` | `src/routes/kmip.rs` | `ttlv` | — |
 | `debug` | `Response Message Bytes: {}` | `src/routes/kmip.rs` | — | — |
