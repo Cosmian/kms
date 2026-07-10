@@ -29,7 +29,7 @@ flowchart TD
     end
 
     subgraph TestData["Test Data"]
-        TOML["test_data/configs/server/test/*.toml\n(server configs)"]
+        TOML["test_data/configs/server/*.toml\n(server configs)"]
         CERT["test_data/certificates/\n(TLS certs)"]
         XML["kmip/v*/XML/\n(KMIP normative XML vectors)"]
         VEC["test_data/vectors/\n(176 vectors: FIPS/non-FIPS regression + KAT + TLS + integration + negative)"]
@@ -291,7 +291,7 @@ cargo test -p test_kms_server --features non-fips --lib vector_runner
 
 ## Server Configurations for Tests
 
-30 TOML config files in `test_data/configs/server/test/`:
+30 TOML config files in `test_data/configs/server/`:
 
 | Config File | Port | Auth | DB | TLS | Description |
 |-------------|------|------|-----|-----|-------------|
@@ -492,7 +492,7 @@ KMS_MYSQL_URL=mysql://kms:kms@localhost:3306/kms \
   cargo test -p test_kms_server --features non-fips --lib vector_runner
 ```
 
-Backend configuration files live in `test_data/configs/server/test/`:
+Backend configuration files live in `test_data/configs/server/`:
 
 | Backend | Config file | Required env var |
 |---------|-------------|------------------|

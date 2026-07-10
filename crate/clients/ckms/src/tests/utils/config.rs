@@ -25,7 +25,7 @@ fn workspace_root() -> &'static Path {
     })
 }
 
-/// Load a client config template from `test_data/configs/client/test/{template}`,
+/// Load a client config template from `test_data/configs/client/{template}`,
 /// patch the `server_url` port to match the running test server, resolve relative
 /// TLS cert/key paths to absolute paths, write the result to a temp file, and
 /// return the path.
@@ -50,7 +50,7 @@ pub(crate) fn load_client_config(template: &str, ctx: &TestsContext) -> String {
     }
 
     let root = workspace_root();
-    let template_path = root.join("test_data/configs/client/test").join(template);
+    let template_path = root.join("test_data/configs/client").join(template);
 
     let mut conf: ClientConfig = ClientConfig::from_toml(
         template_path
