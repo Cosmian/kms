@@ -117,9 +117,9 @@ jobs:
           ssh ${SSH_OPTS} cosmian@package.cosmian.com mkdir -p "${REMOTE_DIR}"
 
           # Copy the full report folder (report.md + load/ + criterion/ SVGs + raw JSON).
-          scp -r ${SSH_OPTS} \
-            report/. \
-            cosmian@package.cosmian.com:"${REMOTE_DIR}/"
+          # Use tar-over-ssh instead of `scp dir/.` — newer OpenSSH (SFTP mode)
+          # rejects the trailing-dot trick with "unexpected filename: .".
+          tar -C report -cf - . | ssh ${SSH_OPTS} cosmian@package.cosmian.com "tar -xf - -C '${REMOTE_DIR}'"
 
           echo ""
           echo "Published: https://package.cosmian.com/kms/${{ inputs.server_version || github.ref_name }}/benchmarks/report.md"
