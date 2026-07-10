@@ -205,6 +205,7 @@ regex = { version = "1.11", default-features = false }
 reqwest = { version = "0.12", default-features = false }
 scratchstack-aws-signature = "=0.10" # Must stay 0.10 for now (Feb 2026)
 serde = "1.0"
+serde_ignored = "0.1"
 serde_json = "1.0"
 sha2 = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false }

@@ -103,6 +103,7 @@ reqwest = { workspace = true, features = [ # Remove "default" which includes rus
 ] }
 scratchstack-aws-signature = { workspace = true }
 serde = { workspace = true }
+serde_ignored = { workspace = true }
 serde_json = { workspace = true }
 smartcardhsm_pkcs11_loader = { path = "../hsm/smartcardhsm", version = "5.24.0" }
 softhsm2_pkcs11_loader = { path = "../hsm/softhsm2", version = "5.24.0" }
