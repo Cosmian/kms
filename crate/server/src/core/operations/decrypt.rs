@@ -226,11 +226,11 @@ fn decrypt_bulk(
     match &key_block.key_format_type {
         #[cfg(feature = "non-fips")]
         KeyFormatType::CoverCryptSecretKey => {
+            // Clone the request once, then only swap the `data` field per ciphertext
+            // to avoid cloning the whole Decrypt request on every iteration.
+            let mut request = request.clone();
             for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                let request = Decrypt {
-                    data: Some(ciphertext.to_vec()),
-                    ..request.clone()
-                };
+                request.data = Some(ciphertext.to_vec());
                 let response = decrypt_with_covercrypt(owm, &request)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
@@ -240,11 +240,11 @@ fn decrypt_bulk(
         | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
+            // Clone the request once, then only swap the `data` field per ciphertext
+            // to avoid cloning the whole Decrypt request on every iteration.
+            let mut request = request.clone();
             for ciphertext in <BulkData as Into<Vec<Zeroizing<Vec<u8>>>>>::into(bulk_data) {
-                let request = Decrypt {
-                    data: Some(ciphertext.to_vec()),
-                    ..request.clone()
-                };
+                request.data = Some(ciphertext.to_vec());
                 let response = decrypt_with_private_key(owm, &request, server_params)?;
                 plaintexts.push(response.data.unwrap_or_default());
             }
