@@ -84,7 +84,7 @@ let
       hash = "sha256-ROxo4izYh4w04BtV/FFOr3W9OxwtCV3usCL6b4hW0XQ=";
     };
 
-    cargoHash = "sha256-IZ/BxfY4UljVVeXl4AeRLmJzZGuzP10/0WOgWyvqjrs=";
+    cargoHash = "sha256-4TrLIGLubOjppAGz2AIYfZ4LFuUhbObrVEQIYBwQRHg=";
     doCheck = false;
   };
 

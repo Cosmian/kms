@@ -78,8 +78,8 @@ let
   rustOverlay = import (
     builtins.fetchTarball {
       # Mirrored on package.cosmian.com to avoid transient GitHub curl failures on macOS CI runners.
-      url = "https://package.cosmian.com/nixpkgs/rust-overlay-23dd7fa91602a68bd04847ac41bc10af1e6e2fd2.tar.gz";
-      sha256 = "sha256-KvmjUeA7uODwzbcQoN/B8DCZIbhT/Q/uErF1BBMcYnw=";
+      url = "https://package.cosmian.com/nixpkgs/rust-overlay-e598b37857b895b81020a65a802ef55f5bbed72f.tar.gz";
+      sha256 = "sha256-KlepQu/O5m11lAjcJ4ER5bc6bIzyX2UMPDARzMzQfIw=";
     }
   );
   pkgsWithRust = import nixpkgsSrc {
