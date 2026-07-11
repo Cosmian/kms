@@ -549,7 +549,7 @@ description = "Creates an AES-256 symmetric key and retrieves it via Get"
 # Optional: override default server config (defaults to auth_plain.toml)
 # Vectors with server_config start a dedicated server instance instead of
 # using the shared singleton.
-# server_config = "test_data/configs/server/test/cert_auth.toml"
+# server_config = "test_data/configs/server/cert_auth.toml"
 
 # Optional: wire format — "json" (default) or "binary"
 # "json" sends TTLV-JSON to /kmip/2_1

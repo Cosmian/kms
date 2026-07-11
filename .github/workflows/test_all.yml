@@ -244,7 +244,7 @@ jobs:
       - hsm
     uses: ./.github/workflows/cargo-publish.yml
     with:
-      toolchain: 1.91.0
+      toolchain: 1.97.0
     secrets:
       token: ${{ secrets.CRATES_IO }}
 

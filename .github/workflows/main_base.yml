@@ -81,7 +81,7 @@ jobs:
     steps:
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.97.0
           components: rustfmt, clippy
 
       - uses: actions/checkout@v7

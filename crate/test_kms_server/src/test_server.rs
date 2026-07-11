@@ -145,7 +145,7 @@ fn root_dir() -> PathBuf {
 #[must_use]
 pub fn test_config_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test_data/configs/server/test")
+        .join("../../test_data/configs/server")
         .join(name)
 }
 
@@ -227,7 +227,7 @@ fn apply_test_db_override(config: &mut ClapConfig) {
 /// Start a test KMS server in a thread with the default options:
 /// No TLS, no certificate authentication.
 ///
-/// Configuration is loaded from `test_data/configs/server/test/auth_plain.toml` by default.
+/// Configuration is loaded from `test_data/configs/server/auth_plain.toml` by default.
 /// Set `KMS_TEST_DB` to `postgresql`, `mysql`, or `redis-findex` (non-FIPS only) to run
 /// the full test suite against a different database backend transparently.
 ///
@@ -238,7 +238,7 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
     ensure_no_proxy_for_localhost();
     disable_proxies_for_tests();
     Box::pin(ONCE.get_or_try_init(|| async move {
-        let config_path = root_dir().join("../../test_data/configs/server/test/auth_plain.toml");
+        let config_path = root_dir().join("../../test_data/configs/server/auth_plain.toml");
         let mut config = load_test_config_from_toml(&config_path)?;
         apply_test_db_override(&mut config);
         start_server_from_config(config, &config_path).await
@@ -252,14 +252,14 @@ pub async fn start_default_test_kms_server() -> &'static TestsContext {
 
 /// TLS + certificate authentication.
 ///
-/// Configuration is loaded from `test_data/configs/server/test/cert_auth.toml`.
+/// Configuration is loaded from `test_data/configs/server/cert_auth.toml`.
 pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();
     trace!("Starting test server with cert auth");
     ONCE_SERVER_WITH_AUTH
         .get_or_try_init(|| async move {
             start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/test/cert_auth.toml"),
+                &root_dir().join("../../test_data/configs/server/cert_auth.toml"),
             )
             .await
         })
@@ -272,14 +272,14 @@ pub async fn start_default_test_kms_server_with_cert_auth() -> &'static TestsCon
 
 /// Plain-HTTP server with JWT authentication enabled (Auth0 `IdP`).
 ///
-/// Configuration is loaded from `test_data/configs/server/test/auth_plain_jwt.toml`.
+/// Configuration is loaded from `test_data/configs/server/auth_plain_jwt.toml`.
 pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsContext {
     crate::init_openssl_providers_for_tests();
     trace!("Starting test server with JWT auth");
     ONCE_SERVER_WITH_JWT_AUTH
         .get_or_try_init(|| async move {
             start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/test/auth_plain_jwt.toml"),
+                &root_dir().join("../../test_data/configs/server/auth_plain_jwt.toml"),
             )
             .await
         })
@@ -292,7 +292,7 @@ pub async fn start_default_test_kms_server_with_jwt_auth() -> &'static TestsCont
 
 /// Non-revocable key IDs.
 ///
-/// Base configuration is loaded from `test_data/configs/server/test/non_revocable.toml`;
+/// Base configuration is loaded from `test_data/configs/server/non_revocable.toml`;
 /// the `non_revocable_key_id` field is injected from the argument.
 pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     non_revocable_key_id: Option<Vec<String>>,
@@ -300,8 +300,7 @@ pub async fn start_default_test_kms_server_with_non_revocable_key_ids(
     trace!("Starting test server with non-revocable key ids");
     ONCE_SERVER_WITH_NON_REVOCABLE_KEY
         .get_or_try_init(|| async move {
-            let config_path =
-                root_dir().join("../../test_data/configs/server/test/non_revocable.toml");
+            let config_path = root_dir().join("../../test_data/configs/server/non_revocable.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.non_revocable_key_id = non_revocable_key_id;
             start_server_from_config(config, &config_path).await
@@ -318,10 +317,8 @@ pub async fn start_default_test_kms_server_with_utimaco_hsm() -> &'static TestsC
     trace!("Starting test server with Utimaco HSM");
     ONCE_SERVER_WITH_HSM
         .get_or_try_init(|| async move {
-            start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/test/hsm.toml"),
-            )
-            .await
+            start_test_server_from_toml(&root_dir().join("../../test_data/configs/server/hsm.toml"))
+                .await
         })
         .await
         .unwrap_or_else(|e| {
@@ -814,7 +811,7 @@ pub async fn start_default_test_kms_server_with_three_softhsm2() -> &'static Tes
 
 /// Privileged users — two distinct identities in the list.
 ///
-/// Base configuration is loaded from `test_data/configs/server/test/privileged_users.toml`;
+/// Base configuration is loaded from `test_data/configs/server/privileged_users.toml`;
 /// the `privileged_users` field is hardcoded to `["owner.client@acme.com", "user.privileged@acme.com"]`.
 ///
 /// Uses a dedicated [`ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS`] cell so that
@@ -825,7 +822,7 @@ pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'st
     ONCE_SERVER_WITH_MULTI_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
             let config_path =
-                root_dir().join("../../test_data/configs/server/test/privileged_users.toml");
+                root_dir().join("../../test_data/configs/server/privileged_users.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.privileged_users = Some(vec![
                 "owner.client@acme.com".to_owned(),
@@ -842,7 +839,7 @@ pub async fn start_default_test_kms_server_with_multi_privileged_users() -> &'st
 
 /// Privileged users.
 ///
-/// Base configuration is loaded from `test_data/configs/server/test/privileged_users.toml`;
+/// Base configuration is loaded from `test_data/configs/server/privileged_users.toml`;
 /// the `privileged_users` field is injected from the argument.
 pub async fn start_default_test_kms_server_with_privileged_users(
     privileged_users: Vec<String>,
@@ -851,7 +848,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
     ONCE_SERVER_WITH_PRIVILEGED_USERS
         .get_or_try_init(|| async move {
             let config_path =
-                root_dir().join("../../test_data/configs/server/test/privileged_users.toml");
+                root_dir().join("../../test_data/configs/server/privileged_users.toml");
             let mut config = load_test_config_from_toml(&config_path)?;
             config.privileged_users = Some(privileged_users);
             start_server_from_config(config, &config_path).await
@@ -865,7 +862,7 @@ pub async fn start_default_test_kms_server_with_privileged_users(
 
 /// PQC TLS server — uses an ML-DSA-44 certificate for its HTTPS endpoint.
 ///
-/// Configuration is loaded from `test_data/configs/server/test/pqc_tls.toml`.
+/// Configuration is loaded from `test_data/configs/server/pqc_tls.toml`.
 /// The test that uses this is `#[ignore]` because most TLS clients (native-tls
 /// on macOS, etc.) do not yet support PQC signature schemes in the TLS handshake.
 ///
@@ -879,7 +876,7 @@ pub async fn start_test_kms_server_with_pqc_tls() -> &'static TestsContext {
     ONCE_PQC_TLS
         .get_or_try_init(|| async move {
             start_test_server_from_toml(
-                &root_dir().join("../../test_data/configs/server/test/pqc_tls.toml"),
+                &root_dir().join("../../test_data/configs/server/pqc_tls.toml"),
             )
             .await
         })
@@ -1187,7 +1184,7 @@ async fn start_server_from_config(
 ///
 /// # Arguments
 /// * `config_path` — Path to a TOML file that can be deserialized into `ClapConfig`
-///   (e.g. `test_data/configs/server/test/auth_plain.toml`).
+///   (e.g. `test_data/configs/server/auth_plain.toml`).
 ///
 /// # Errors
 /// Returns an error if the file cannot be read/parsed, or if the server fails to start.
@@ -1466,7 +1463,7 @@ async fn test_start_server() -> Result<(), KmsClientError> {
 #[allow(clippy::panic_in_result_fn)]
 #[tokio::test]
 async fn test_start_server_from_toml() -> Result<(), KmsClientError> {
-    let config_path = Path::new("../../test_data/configs/server/test/auth_plain.toml");
+    let config_path = Path::new("../../test_data/configs/server/auth_plain.toml");
     let context = start_test_server_from_toml(config_path).await?;
     assert!(context.server_port > 0, "Server should be assigned a port");
     // Verify the server is responding

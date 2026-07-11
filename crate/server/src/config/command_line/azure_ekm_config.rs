@@ -12,7 +12,7 @@ fn is_false(b: &bool) -> bool {
     !b
 }
 #[derive(Debug, Args, ConfigArgs, Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 #[derive(Default)]
 pub struct AzureEkmConfig {
     /// This setting turns on/off the endpoints handling Azure EKM features

@@ -104,11 +104,11 @@ handle — is passed directly to the PostgreSQL driver.
 
 Use the `target_session_attrs` query parameter to control which node the driver connects to:
 
-| Value | Behaviour |
-|---|---|
-| `read-write` | Connect only to the primary (default for HA) |
-| `any` | Connect to any available node (suitable for read replicas) |
-| `read-only` | Connect only to a standby |
+| Value        | Behaviour                                                  |
+| ------------ | ---------------------------------------------------------- |
+| `read-write` | Connect only to the primary (default for HA)               |
+| `any`        | Connect to any available node (suitable for read replicas) |
+| `read-only`  | Connect only to a standby                                  |
 
 **Example — two-node HA cluster:**
 
@@ -136,12 +136,12 @@ When a PostgreSQL primary fails over, the driver may return transient connection
 the new primary is ready. The KMS automatically retries failed queries with **exponential
 backoff** for the following PostgreSQL SQLSTATE codes:
 
-| SQLSTATE | Meaning |
-|---|---|
-| `08001` | `sqlclient_unable_to_establish_sqlconnection` |
-| `08004` | `sqlserver_rejected_establishment_of_sqlconnection` |
-| `57P02` | `crash_shutdown` |
-| `57P03` | `cannot_connect_now` |
+| SQLSTATE | Meaning                                             |
+| -------- | --------------------------------------------------- |
+| `08001`  | `sqlclient_unable_to_establish_sqlconnection`       |
+| `08004`  | `sqlserver_rejected_establishment_of_sqlconnection` |
+| `57P02`  | `crash_shutdown`                                    |
+| `57P03`  | `cannot_connect_now`                                |
 
 No additional configuration is required; the retry behaviour is enabled automatically for all
 PostgreSQL connections.
@@ -252,12 +252,12 @@ for PostgreSQL and MySQL-compatible databases. All TLS parameters are configured
 
 PostgreSQL TLS is configured using the standard `libpq`-style query parameters in the connection URL.
 
-| Parameter     | Description                                     |
-|---------------|-------------------------------------------------|
+| Parameter     | Description                                                                    |
+| ------------- | ------------------------------------------------------------------------------ |
 | `sslmode`     | TLS mode: `disable`, `prefer` (default), `require`, `verify-ca`, `verify-full` |
-| `sslrootcert` | Path to the CA certificate (PEM) used to verify the server |
-| `sslcert`     | Path to the client certificate (PEM) for mTLS   |
-| `sslkey`      | Path to the client private key (PEM) for mTLS   |
+| `sslrootcert` | Path to the CA certificate (PEM) used to verify the server                     |
+| `sslcert`     | Path to the client certificate (PEM) for mTLS                                  |
+| `sslkey`      | Path to the client private key (PEM) for mTLS                                  |
 
 **Server-authenticated TLS only** (encrypt the connection and verify the server certificate):
 
@@ -306,12 +306,12 @@ PostgreSQL TLS is configured using the standard `libpq`-style query parameters i
 MySQL TLS is configured using query parameters in the connection URL.
 Both dash (`ssl-mode`) and underscore (`ssl_mode`) variants are accepted.
 
-| Parameter                       | Description                                                |
-|---------------------------------|------------------------------------------------------------|
-| `ssl-mode`                      | TLS mode: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY` |
-| `ssl-ca`                        | Path to the CA certificate (PEM) for server verification   |
-| `ssl-client-identity`           | Path to the client PKCS#12 (`.p12`) bundle for mTLS        |
-| `ssl-client-identity-password`  | Password protecting the PKCS#12 bundle                     |
+| Parameter                      | Description                                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `ssl-mode`                     | TLS mode: `DISABLED`, `PREFERRED`, `REQUIRED`, `VERIFY_CA`, `VERIFY_IDENTITY` |
+| `ssl-ca`                       | Path to the CA certificate (PEM) for server verification                      |
+| `ssl-client-identity`          | Path to the client PKCS#12 (`.p12`) bundle for mTLS                           |
+| `ssl-client-identity-password` | Password protecting the PKCS#12 bundle                                        |
 
 **Server-authenticated TLS only** (encrypt the connection and verify the server certificate):
 

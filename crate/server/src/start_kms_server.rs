@@ -20,7 +20,7 @@ use actix_web::{
     App, HttpRequest, HttpResponse, HttpServer,
     cookie::{Key, time::Duration},
     dev::ServerHandle,
-    middleware::{Condition, DefaultHeaders},
+    middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
 use cosmian_kms_server_database::reexport::{
@@ -52,8 +52,8 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        ApiTokenAuth, EnsureAuth, JwksManager, JwtAuth, JwtConfig, OtelHttpMetrics, TlsAuth,
-        extract_peer_certificate,
+        JwksManager, JwtConfig, api_token_middleware, ensure_auth_middleware,
+        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware, tls_auth_fn,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -787,7 +787,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
-            .wrap(OtelHttpMetrics::new(kms_server_for_http.metrics.clone()))
+            .wrap(otel_http_metrics_middleware(kms_server_for_http.metrics.clone()))
             .wrap(Condition::new(
                 rate_limit_enabled,
                 crate::middlewares::RateLimiterMiddleware::new(&rate_limiter_config),
@@ -859,19 +859,19 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // decryption oracles. Microsoft's DKE protocol uses Azure AD tokens;
             // we enforce the same auth stack as the main KMIP scope.
             let ms_dke_scope = web::scope("/ms_dke")
-                .wrap(EnsureAuth::new(
+                .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
                     use_jwt_auth || use_cert_auth || use_api_token_auth,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
-                    ApiTokenAuth::new(kms_server_for_http.clone()),
+                    api_token_middleware(kms_server_for_http.clone()),
                 ))
                 .wrap(Condition::new(
                     use_jwt_auth,
-                    JwtAuth::new(jwt_configurations.clone()),
+                    jwt_auth_middleware(jwt_configurations.clone()),
                 ))
-                .wrap(Condition::new(use_cert_auth, TlsAuth))
+                .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
                 .wrap(Cors::permissive())
                 .service(ms_dke::version)
                 .service(ms_dke::get_key)
@@ -918,11 +918,11 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .app_data(azure_ekm::ekm_json_config())
                 .wrap(Condition::new(
                     !kms_server.params.azure_ekm.azure_ekm_disable_client_auth,
-                    EnsureAuth::new(kms_server_for_http.clone(), use_cert_auth),
+                    ensure_auth_middleware(kms_server_for_http.clone(), use_cert_auth),
                 ))
                 .wrap(Condition::new(
                     !kms_server.params.azure_ekm.azure_ekm_disable_client_auth && use_cert_auth,
-                    TlsAuth,
+                    from_fn(tls_auth_fn),
                 ))
                 .wrap(
                     // EKM is a server-to-server mTLS API: deny all browser cross-origin requests.
@@ -946,20 +946,20 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .app_data(web::JsonConfig::default().limit(65_536))
                 .wrap(Condition::new(
                     use_jwt_auth || use_cert_auth || use_api_token_auth,
-                    EnsureAuth::new(
+                    ensure_auth_middleware(
                         kms_server_for_http.clone(),
                         use_jwt_auth || use_cert_auth || use_api_token_auth,
                     ),
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
-                    ApiTokenAuth::new(kms_server_for_http.clone()),
+                    api_token_middleware(kms_server_for_http.clone()),
                 ))
                 .wrap(Condition::new(
                     use_jwt_auth,
-                    JwtAuth::new(jwt_configurations.clone()),
+                    jwt_auth_middleware(jwt_configurations.clone()),
                 ))
-                .wrap(Condition::new(use_cert_auth, TlsAuth))
+                .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
                 .wrap(Cors::permissive())
                 .service(tokenize::hash)
                 .service(tokenize::noise)
@@ -1083,19 +1083,19 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 web::JsonConfig::default()
                     .error_handler(jose::crypto_json_error_handler),
             )
-            .wrap(EnsureAuth::new(
+            .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
-                ApiTokenAuth::new(kms_server_for_http.clone()),
+                api_token_middleware(kms_server_for_http.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
-                JwtAuth::new(jwt_configurations.clone()),
+                jwt_auth_middleware(jwt_configurations.clone()),
             ))
-            .wrap(Condition::new(use_cert_auth, TlsAuth))
+            .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
             .wrap(Cors::permissive())
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
@@ -1112,19 +1112,19 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         // The default scope serves from the root / the KMIP, permissions, and TEE endpoints
         let default_scope = web::scope("")
-            .wrap(EnsureAuth::new(
+            .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
-                ApiTokenAuth::new(kms_server_for_http.clone()),
+                api_token_middleware(kms_server_for_http.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
-                JwtAuth::new(jwt_configurations.clone()),
+                jwt_auth_middleware(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
-            .wrap(Condition::new(use_cert_auth, TlsAuth)) // Use certificates for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn))) // Use certificates for authentication if necessary.
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
             // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes

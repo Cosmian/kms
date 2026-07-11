@@ -111,8 +111,8 @@ All three test layers must pass before merging (E2E Playwright, Vitest integrati
 If you have never worked with Rust before, you will have to complete the following steps:
 
 1. Install Rust using [rustup](https://rustup.rs/)
-2. Install the required stable toolchain: `rustup toolchain install 1.91.0`
-3. Install required components: `rustup component add rustfmt clippy --toolchain 1.91.0`
+2. Install the required stable toolchain: `rustup toolchain install 1.97.0`
+3. Install required components: `rustup component add rustfmt clippy --toolchain 1.97.0`
 4. Build the project: `cargo build --release`
 
 For build commands and local setup, see [Quick start](README.md#-quick-start) in the README. For Nix-based

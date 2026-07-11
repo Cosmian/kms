@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// It is **distinct** from the `JwksManager` used internally to *fetch* public keys
 /// from identity providers in order to validate incoming bearer tokens.
 #[derive(Debug, Args, ConfigArgs, Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct JwksEndpointConfig {
     /// Enable the `GET /.well-known/jwks.json` endpoint.
     ///

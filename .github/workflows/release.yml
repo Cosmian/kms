@@ -161,7 +161,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.97.0
 
       - uses: ./.github/actions/install-mise
 

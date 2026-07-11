@@ -246,7 +246,6 @@ Crate path: `crate/server`
 | `debug` | `socket server: received request: {}` | `src/socket_server.rs` | - | - |
 | `debug` | `success` | `src/routes/google_cse/operations.rs` | - | - |
 | `debug` | `The wrapping key {wrapping_key_uid} is itself wrapped, unwrapping it first` | `src/core/wrapping/wrap.rs` | `wrapping_key_uid`: UID of the wrapping key | - |
-| `debug` | `TLS Authentication enabled` | `src/middlewares/tls_auth.rs` | - | - |
 | `debug` | `tls_config: {config:#?}` | `src/config/params/tls_params.rs` | `config`: configuration (debug display) | - |
 | `debug` | `Token authentication successful` | `src/middlewares/api_token/api_token_auth.rs` | - | - |
 | `debug` | `unwrap key` | `src/routes/google_cse/operations.rs` | - | ×2 in this file |
@@ -505,7 +504,6 @@ Crate path: `crate/server`
 | `debug` | `DeriveKey: No derivation data provided - this may be acceptable if a Secret Data              object identifier is provided` | `src/core/operations/derive_key.rs` | — | — |
 | `debug` | `Import: certificate is revoked per CRL check,                              setting state to Compromised` | `src/core/operations/import.rs` | — | — |
 | `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/jwt/jwt_middleware.rs` | — | — |
-| `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/tls_auth.rs` | — | — |
 | `debug` | `Request bytes: {}` | `src/routes/kmip.rs` | — | — |
 | `debug` | `Request TTLV: {ttlv:#?}` | `src/routes/kmip.rs` | `ttlv` | — |
 | `debug` | `Response Message Bytes: {}` | `src/routes/kmip.rs` | — | — |
@@ -624,6 +622,7 @@ Crate path: `crate/server`
 | `warn` | `JOSE CEK cache: unexpected object type for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
+| `debug` | `TLS: an authenticated user was already present; skipping certificate check` | `src/middlewares/tls_auth.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
