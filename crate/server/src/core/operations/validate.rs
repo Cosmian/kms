@@ -24,6 +24,7 @@ use crate::{
     config::ProxyParams,
     core::{
         KMS, operations::certify::rfc9608, retrieve_object_utils::retrieve_object_for_operation,
+        uid_utils::ObjectHandle,
     },
     error::KmsError,
     result::KResult,
@@ -731,20 +732,18 @@ async fn certificates_by_uid(
         debug!("{} identifiers", uid);
     }
     let mut results = Vec::new();
-    for unique_identifier in unique_identifiers {
-        let unique_identifier = unique_identifier.as_str().ok_or_else(|| {
-            KmsError::Certificate("as_str returned None in certificates_by_uid".to_owned())
-        })?;
-        let result = Box::pin(certificate_by_uid(unique_identifier, kms, user)).await?;
+    for unique_identifier in &unique_identifiers {
+        let handle = ObjectHandle::try_from(unique_identifier)?;
+        let result = Box::pin(certificate_by_uid(handle, kms, user)).await?;
         results.push(result);
     }
     Ok(results)
 }
 
 // Fetches a certificate. If it fails, returns the according error
-async fn certificate_by_uid(unique_identifier: &str, kms: &KMS, user: &str) -> KResult<Vec<u8>> {
+async fn certificate_by_uid(handle: ObjectHandle<'_>, kms: &KMS, user: &str) -> KResult<Vec<u8>> {
     let uid_owm = Box::pin(retrieve_object_for_operation(
-        unique_identifier,
+        handle,
         KmipOperation::Validate,
         kms,
         user,

@@ -8,7 +8,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::trace;
 
 use crate::{
-    core::{KMS, retrieve_object_utils::retrieve_object_for_operation},
+    core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -22,8 +22,8 @@ use crate::{
 ///
 /// Retrieval is done by following links through the public key when necessary.
 pub(crate) async fn retrieve_issuer_private_key_and_certificate(
-    private_key_id: Option<String>,
-    certificate_id: Option<String>,
+    private_key_id: Option<ObjectHandle<'_>>,
+    certificate_id: Option<ObjectHandle<'_>>,
     kms: &KMS,
     user: &str,
 ) -> KResult<(ObjectWithMetadata, ObjectWithMetadata)> {
@@ -31,7 +31,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
         "Retrieving issuer private key and certificate: private_key_id: {:?}, certificate_id: {:?}",
         private_key_id, certificate_id
     );
-    if let (Some(private_key_id), Some(certificate_id)) = (&private_key_id, &certificate_id) {
+    if let (Some(private_key_id), Some(certificate_id)) = (private_key_id, certificate_id) {
         // Retrieve the certificate
         let certificate = Box::pin(retrieve_object_for_operation(
             certificate_id,
@@ -50,7 +50,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
         return Ok((private_key, certificate));
     }
 
-    if let Some(private_key_id) = &private_key_id {
+    if let Some(private_key_id) = private_key_id {
         let private_key = Box::pin(retrieve_object_for_operation(
             private_key_id,
             KmipOperation::Certify,
@@ -68,7 +68,7 @@ pub(crate) async fn retrieve_issuer_private_key_and_certificate(
         return Ok((private_key, certificate));
     }
 
-    if let Some(certificate_id) = &certificate_id {
+    if let Some(certificate_id) = certificate_id {
         // Retrieve the certificate
         let certificate = Box::pin(retrieve_object_for_operation(
             certificate_id,
@@ -137,7 +137,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
 
     // retrieve the certificate
     let cert_owm = Box::pin(retrieve_object_for_operation(
-        &certificate_id.to_string(),
+        ObjectHandle::from(&certificate_id.to_string()),
         operation_type,
         kms,
         user,
@@ -156,17 +156,17 @@ pub(crate) async fn retrieve_certificate_for_private_key(
 
 /// Retrieve the certificate associated to the given private key
 pub(crate) async fn retrieve_private_key_for_certificate(
-    certificate_uid_or_tags: &str,
+    certificate_handle: ObjectHandle<'_>,
     operation_type: KmipOperation,
     kms: &KMS,
     user: &str,
 ) -> Result<ObjectWithMetadata, KmsError> {
     trace!(
-        "Retrieving private key for certificate: certificate_uid_or_tags: {:?}",
-        certificate_uid_or_tags
+        "Retrieving private key for certificate: certificate_handle: {:?}",
+        certificate_handle
     );
     let owm = Box::pin(retrieve_object_for_operation(
-        certificate_uid_or_tags,
+        certificate_handle,
         KmipOperation::GetAttributes,
         kms,
         user,
@@ -198,7 +198,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     };
     // retrieve the private key
     Box::pin(retrieve_object_for_operation(
-        &private_key_id.to_string(),
+        ObjectHandle::from(&private_key_id.to_string()),
         operation_type,
         kms,
         user,
@@ -218,7 +218,7 @@ async fn find_link_in_public_key(
 ) -> Result<LinkedObjectIdentifier, KmsError> {
     // TODO: retrieve only the attributes when #88 is fixed
     let public_key_owm = Box::pin(retrieve_object_for_operation(
-        &public_key_id.to_string(),
+        ObjectHandle::from(&public_key_id.to_string()),
         operation_type,
         kms,
         user,

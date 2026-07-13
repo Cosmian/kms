@@ -9,7 +9,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{trace, warn};
 
 use crate::{
-    core::{KMS, uid_utils::has_prefix},
+    core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
     result::KResult,
 };
@@ -26,17 +26,17 @@ use crate::{
 /// This function assumes that if the user can `Get` the object,
 /// it can then also perform any other operation with it.
 pub(crate) async fn retrieve_object_for_operation(
-    uid_or_tags: &str,
+    object_handle: ObjectHandle<'_>,
     operation_type: KmipOperation,
     kms: &KMS,
     user: &str,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
-        "uid_or_tags: {uid_or_tags:?}, user: {user}, \
-         operation_type: {operation_type:?}"
+        "object_handle: {object_handle}, user: {user}, \
+         operation_type: {operation_type:?}",
     );
 
-    for owm in kms.database.retrieve_objects(uid_or_tags).await?.values() {
+    for owm in kms.database.retrieve_objects(object_handle).await?.values() {
         trace!("Checking key with ID: {}", owm.id());
         let state = owm.state();
         // Allow retrieval based on state and operation semantics.
@@ -251,7 +251,7 @@ pub(crate) async fn retrieve_object_for_operation(
 
     Err(KmsError::Kmip21Error(
         ErrorReason::Object_Not_Found,
-        format!("object not found for identifier {uid_or_tags}"),
+        format!("object not found for identifier {object_handle}"),
     ))
 }
 
@@ -280,7 +280,7 @@ pub(crate) async fn user_has_permission(
     };
 
     // HSM keys: admins have full access to all keys in their HSM instance(s).
-    if has_prefix(id).is_some() {
+    if ObjectHandle::from(id).is_hsm() {
         let is_hsm_admin = kms
             .params
             .hsm_instances
@@ -306,7 +306,7 @@ pub(crate) async fn user_has_permission(
     // HSM keys: each operation must be explicitly granted — no generic Get wildcard.
     // Exception: Get and Export are semantically equivalent (both read key material),
     // so holding either permission grants access for both operations.
-    if has_prefix(id).is_some() {
+    if ObjectHandle::from(id).is_hsm() {
         if permissions.contains(operation_type) {
             return Ok(true);
         }

@@ -24,7 +24,7 @@ use crate::core::cover_crypt::revoke_user_decryption_keys;
 use crate::{
     core::{
         KMS,
-        uid_utils::{has_prefix, uids_from_unique_identifier},
+        uid_utils::{ObjectHandle, resolve_uids},
     },
     error::KmsError,
     kms_bail,
@@ -86,7 +86,7 @@ pub(crate) async fn recursively_revoke_key(
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
-    let uids = uids_from_unique_identifier(unique_identifier, kms)
+    let uids = resolve_uids(ObjectHandle::try_from(unique_identifier)?, kms)
         .await
         .context("Revoke")?;
     let op_start = std::time::Instant::now();
@@ -95,7 +95,7 @@ pub(crate) async fn recursively_revoke_key(
     for uid in uids {
         // Revoke does not apply to prefixed objects
         // TODO: this should probably be a setting on the Objects Store, i.e. whether the store supports objects states
-        if let Some(prefix) = has_prefix(&uid) {
+        if let ObjectHandle::Hsm { prefix, .. } = ObjectHandle::from(&uid) {
             // ensure user can revoke
             if !kms.database.is_object_owned_by(&uid, user).await? {
                 let ops = kms

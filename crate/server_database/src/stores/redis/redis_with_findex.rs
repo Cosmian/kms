@@ -424,7 +424,7 @@ impl ObjectsStore for RedisWithFindex {
 
     /// Retrieve objects from the database.
     ///
-    /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
+    /// The `uid` parameter can be either a `uid` or a comma-separated list of tags
     /// in a JSON array.
     async fn retrieve(&self, uid: &str) -> InterfaceResult<Option<ObjectWithMetadata>> {
         Ok(self.objects_db.object_get(uid).await.map(|o| {

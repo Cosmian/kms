@@ -16,7 +16,7 @@ use super::{
     CryptoApiError, CryptoResult, SignRequest, SignResponse as CryptoSignResponse, b64_decode,
     b64_encode, ecdsa_coord_size, ecdsa_der_to_p1363, jose_to_kmip_params,
 };
-use crate::core::{KMS, retrieve_object_utils::retrieve_object_for_operation};
+use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
 
 /// `POST /v1/crypto/sign` — Detached JWS signature over arbitrary payload.
 ///
@@ -41,7 +41,7 @@ pub(crate) async fn sign(
     // symmetric keys and standalone keys that have no PublicKeyLink.
     let signing_kid = {
         let owm = Box::pin(retrieve_object_for_operation(
-            &body.kid,
+            ObjectHandle::from(&body.kid),
             KmipOperation::GetAttributes,
             &kms,
             &user,

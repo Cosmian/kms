@@ -9,7 +9,7 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
-use cosmian_kms_interfaces::{AtomicOperation, ObjectWithMetadata, ObjectsStore};
+use cosmian_kms_interfaces::{AtomicOperation, ObjectHandle, ObjectWithMetadata, ObjectsStore};
 use time::Date;
 
 use crate::{
@@ -209,38 +209,30 @@ impl Database {
 
     /// Retrieve objects from the database.
     ///
-    /// The `uid_or_tags` parameter can be either a `uid` or a JSON array of tags.
-    ///
-    /// The `user_filter` parameter allows filtering based on user permissions.
-    ///
-    /// The `state_filter` parameter allows filtering based on the state of the objects.
-    ///
-    /// The `params` parameter allows passing additional parameters for the database query.
+    /// The `object_handle` classifies the request identifier: an [`ObjectHandle::Tags`]
+    /// expands to every object carrying all of the requested tags, while any other variant
+    /// resolves to the single UID it wraps.
     ///
     /// Returns a `DbResult` containing a `HashMap` where the keys are the `uid`s and the values are the `ObjectWithMetadata`.
     ///
     /// # Arguments
     ///
-    /// * `uid_or_tags` - A string representing either a `uid` or a JSON array of tags.
-    /// * `user` - A string representing the user requesting the objects.
-    /// * `user_filter` - A `UserFilter` enum to filter objects based on user permissions.
-    /// * `state_filter` - A `StateFilter` enum to filter objects based on their state.
-    /// * `params` - An optional reference to `ExtraStoreParams` for additional query parameters.
+    /// * `object_handle` - the classified request identifier (a UID or a tag-array).
     ///
     /// # Returns
     ///
     /// * `DbResult<HashMap<String, ObjectWithMetadata>>` - A result containing a map of `uid`s to `ObjectWithMetadata`.
     pub async fn retrieve_objects(
         &self,
-        uid_or_tags: &str,
+        object_handle: ObjectHandle<'_>,
     ) -> DbResult<HashMap<String, ObjectWithMetadata>> {
         Box::pin(self.record("retrieve_objects", async move {
-            let uids = if uid_or_tags.starts_with('[') {
-                // tags
-                let tags: HashSet<String> = serde_json::from_str(uid_or_tags)?;
-                self.list_uids_for_tags(&tags).await?
-            } else {
-                HashSet::from([uid_or_tags.to_owned()])
+            let uids = match object_handle {
+                ObjectHandle::Tags(json) => {
+                    let tags: HashSet<String> = serde_json::from_str(json)?;
+                    self.list_uids_for_tags(&tags).await?
+                }
+                handle => HashSet::from([handle.as_str().to_owned()]),
             };
             let mut results: HashMap<String, ObjectWithMetadata> = HashMap::new();
             for uid in &uids {

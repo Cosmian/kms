@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use super::key_ops::ObjectLifecycleExt;
 use crate::{
-    core::{KMS, uid_utils::has_prefix, wrapping::wrap_and_cache},
+    core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -78,14 +78,14 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
         let uid_str = unique_identifier.as_str().ok_or_else(|| {
             KmsError::InvalidRequest("Create: unique_identifier must be a TextString".to_owned())
         })?;
-        if has_prefix(uid_str).is_none() && rotate_name.as_str() != uid_str {
+        if !ObjectHandle::from(uid_str).is_hsm() && rotate_name.as_str() != uid_str {
             return Err(KmsError::InvalidRequest(format!(
                 "Create: rotate_name ('{rotate_name}') must equal the key's unique_identifier \
                  ('{uid_str}') — set the key ID to the keyset name at creation time"
             )));
         }
         // Initialise keyset metadata for SQL keys: generation 0, the current (only) member.
-        if has_prefix(uid_str).is_none() {
+        if !ObjectHandle::from(uid_str).is_hsm() {
             attributes.rotate_generation = Some(0);
             attributes.rotate_latest = Some(true);
         }
