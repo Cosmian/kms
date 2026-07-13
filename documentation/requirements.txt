@@ -1,0 +1,23 @@
+# Pinned Python dependencies for building the KMS documentation with mkdocs.
+#
+# These versions MUST match what is used to build the production site
+# (docs.cosmian.com). Unpinned installs can silently drift between a
+# developer's local environment and the production build pipeline, causing
+# pages that rely on mkdocs-material internals or theme_overrides/ (e.g.
+# configuration/log-reference.md's JS-driven colors/filters) to render
+# correctly in one environment and break in the other.
+#
+# Update these pins deliberately, then verify configuration/log-reference.md
+# still renders its colors and level filters (`mkdocs serve`) before merging.
+mkdocs==1.6.1
+mkdocs-material==9.7.6
+mkdocs-kroki-plugin==1.6.0
+mkdocs-meta-descriptions-plugin==4.1.0
+mkdocs-enumerate-headings-plugin==0.7.0
+mkdocs-mermaid2-plugin==1.2.3
+markdown-include==0.8.1
+markdown-katex==202406.1035
+pymdown-extensions==11.0.1
+Markdown==3.10.2
+Pygments==2.20.0
+pydoc-markdown

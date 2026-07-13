@@ -4,7 +4,10 @@ virtualenv env
 
 source env/bin/activate
 
-pip3 install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git \
-  mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-enumerate-headings-plugin \
-  mkdocs-material mkdocs-mermaid2-plugin pandoc-latex-admonition markdown-katex \
+# Pinned versions live in requirements.txt so that local (dev) and production
+# builds of the documentation use the exact same mkdocs / mkdocs-material
+# release. See requirements.txt for why this matters.
+pip3 install -r "$(dirname "${BASH_SOURCE[0]}")/requirements.txt" \
+  git+https://github.com/twardoch/mkdocs-combine.git \
+  pandoc-latex-admonition \
   git+https://gitlab.com/myriacore/pandoc-kroki-filter.git

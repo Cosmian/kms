@@ -62,6 +62,43 @@ jobs:
           echo ""
           echo "════════════════════════════════════════════════════════════"
 
+  docs-build:
+    name: Documentation — mkdocs build (pinned deps, prod-like)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned mkdocs dependencies
+        run: pip install -r documentation/requirements.txt
+
+      - name: Build documentation site
+        working-directory: documentation
+        run: mkdocs build --site-dir /tmp/mkdocs-site
+
+      - name: Verify log-reference.md pulled in the interactive JS/CSS
+        working-directory: documentation
+        run: |
+          set -euo pipefail
+          page="/tmp/mkdocs-site/configuration/log-reference/index.html"
+          if [ ! -f "$page" ]; then
+            echo "log-reference/index.html was not generated" >&2
+            exit 1
+          fi
+          grep -q 'javascripts/log_filter.js' "$page" || {
+            echo "log_filter.js is not referenced from log-reference/index.html" >&2
+            exit 1
+          }
+          [ -f /tmp/mkdocs-site/javascripts/log_filter.js ] || {
+            echo "javascripts/log_filter.js was not copied into the built site" >&2
+            exit 1
+          }
+
   forward-proxy:
     uses: ./.github/workflows/forward_proxy.yml
     with:

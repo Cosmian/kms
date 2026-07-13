@@ -36,10 +36,15 @@ python3 -m venv .venv
 
 source .venv/bin/activate
 
-pip3 install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git \
-mkdocs-kroki-plugin mkdocs-meta-descriptions-plugin mkdocs-enumerate-headings-plugin \
-mkdocs-material mkdocs-mermaid2-plugin pandoc-latex-admonition markdown-katex \
-git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
+# requirements.txt pins mkdocs / mkdocs-material / plugin versions so that
+# your local build matches the production build exactly. Do not install
+# these packages unpinned — version drift between dev and prod is a known
+# cause of pages (e.g. configuration/log-reference.md) rendering
+# differently between the two (missing colors/filters, broken hooks, etc.).
+pip3 install -r requirements.txt \
+  git+https://github.com/twardoch/mkdocs-combine.git \
+  pandoc-latex-admonition \
+  git+https://gitlab.com/myriacore/pandoc-kroki-filter.git
 ```
 
 ### Using mkdocs
