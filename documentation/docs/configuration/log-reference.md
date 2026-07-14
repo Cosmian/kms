@@ -1021,6 +1021,7 @@ Crate path: `crate/clients/client`
 | `debug` | `CONNECT tunnel: {proxy_addr} → {target_host}:{target_port}` | `src/http_client/proxy.rs` | `proxy_addr`, `target_host`, `target_port` | — |
 | `trace` | `Error response on {endpoint}: status={status}, body={text}` | `src/kms_rest_client.rs` | `endpoint`, `status`, `text` | — |
 | `warn` | `` ckms config: `{}` is deprecated — rename it to `{}` in your                          ckms.toml to silence this warning. `` | `src/http_client/client.rs` | - | - |
+| `debug` | `Stale connection from pool, retrying (is_connect): {e}` | `src/http_client/client.rs` | `e` | - |
 
 ---
 

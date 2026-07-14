@@ -695,3 +695,122 @@ mod custom_headers_tests {
         );
     }
 }
+
+/// Regression tests for <https://github.com/Cosmian/kms/issues/1056>.
+///
+/// Verifies that [`HttpClient`] transparently retries a request when hyper's
+/// connection pool returns a stale idle connection — one that the server has
+/// already closed (e.g. due to a keep-alive timeout).
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod stale_connection_retry_tests {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        thread,
+    };
+
+    use crate::http_client::{HttpClient, HttpClientConfig};
+
+    /// Spawns a minimal HTTP/1.1 server that handles every request on a fresh
+    /// TCP connection: it reads the request headers, returns `200 OK` with an
+    /// empty body, and then immediately **closes the socket**.
+    ///
+    /// This mimics a server-side keep-alive timeout: every connection in
+    /// hyper's idle pool will be dead by the time the next request arrives.
+    ///
+    /// Returns `(port, accepted_connections_counter)`.
+    fn start_close_after_response_server() -> (u16, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let conn_count = Arc::new(AtomicUsize::new(0));
+        let conn_count_clone = conn_count.clone();
+
+        thread::spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(mut s) => {
+                        conn_count_clone.fetch_add(1, Ordering::SeqCst);
+                        // Consume the request headers into a growing buffer
+                        // (read until double CRLF, or the buffer reaches its limit).
+                        let mut buf: Vec<u8> = Vec::with_capacity(4096);
+                        let mut tmp = [0_u8; 1024];
+                        loop {
+                            match s.read(&mut tmp) {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => {
+                                    buf.extend_from_slice(tmp.get(..n).unwrap_or_default());
+                                    if buf.windows(4).any(|w| w == b"\r\n\r\n")
+                                        || buf.len() >= 65_536
+                                    {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        // Respond then immediately close (TCP FIN goes to client).
+                        s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                            .ok();
+                        s.flush().ok();
+                        // `s` is dropped here → connection closed.
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        (port, conn_count)
+    }
+
+    /// Makes `n` sequential `GET` requests with the same long-lived
+    /// [`HttpClient`] and returns `(successes, tcp_connections_accepted)`.
+    ///
+    /// With a server that always closes connections after responding, hyper's
+    /// pool will frequently hand back dead connections.  Without the retry fix
+    /// some of these requests would fail with `client error (Connect)`.
+    async fn run_sequential_requests(n: usize) -> (usize, usize) {
+        let (port, conn_count) = start_close_after_response_server();
+        let url = format!("http://127.0.0.1:{port}/test");
+
+        let config = HttpClientConfig {
+            server_url: format!("http://127.0.0.1:{port}"),
+            ..Default::default()
+        };
+        let client = HttpClient::instantiate(&config).unwrap();
+
+        let mut successes = 0_usize;
+        for _ in 0..n {
+            if client.get(&url).await.is_ok() {
+                successes += 1;
+            }
+        }
+
+        (successes, conn_count.load(Ordering::SeqCst))
+    }
+
+    /// Every request must succeed even though the server closes each TCP
+    /// connection immediately after responding (simulating a server-side
+    /// keep-alive timeout).  The `HttpClient` retry-on-stale-connection logic
+    /// must handle this transparently.
+    #[tokio::test]
+    async fn test_all_requests_succeed_despite_server_closing_connections() {
+        const N: usize = 5;
+        let (successes, connections) = run_sequential_requests(N).await;
+
+        assert_eq!(
+            successes, N,
+            "All {N} requests must succeed; {successes} succeeded, server accepted \
+             {connections} connections"
+        );
+        // Each request must have resulted in a new TCP connection because the
+        // server closes every connection after responding.
+        assert_eq!(
+            connections, N,
+            "Expected {N} TCP connections (one per request), got {connections}"
+        );
+    }
+}

@@ -528,13 +528,72 @@ impl HttpClient {
     }
 
     /// Send a prepared HTTP request and collect the response.
+    ///
+    /// Retries once on a connection-level error (`is_connect()`), which occurs when
+    /// hyper's connection pool hands back a stale idle connection that the server has
+    /// already closed (e.g. after a keep-alive timeout).  The retry opens a fresh
+    /// TCP connection, making the failure transparent to callers.
     async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
-        let response: http::Response<Incoming> = self
-            .client
-            .request(request)
-            .await
-            .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?;
+        // Pre-build both the first-attempt and the potential retry request
+        // *before* any `.await`.  This keeps `parts`/`body` out of the async
+        // state machine, avoiding the `clippy::large_futures` size penalty that
+        // would otherwise cascade to every caller.
+        let (req, retry_req) = Self::prepare_requests(request)?;
 
+        let response = match self.client.request(req).await {
+            Ok(r) => r,
+            Err(e) if e.is_connect() => {
+                // Stale pooled connection — retry once with a fresh connection.
+                tracing::debug!("Stale connection from pool, retrying (is_connect): {e}");
+                self.client
+                    .request(*retry_req)
+                    .await
+                    .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?
+            }
+            Err(e) => {
+                return Err(HttpClientError::Default(format!(
+                    "HTTP request failed: {e}"
+                )));
+            }
+        };
+
+        Self::collect_response(response).await
+    }
+
+    /// Decompose `request` and clone it into two identical instances.
+    ///
+    /// The second one is boxed so that the caller only has to store a pointer in
+    /// its async state machine (avoids inflating future sizes).
+    // The return type encodes a specific ownership pattern (one owned + one boxed) needed
+    // to keep the async state machine small; a type alias would obscure that intent.
+    #[allow(clippy::type_complexity)]
+    fn prepare_requests(
+        request: http::Request<Full<Bytes>>,
+    ) -> HttpClientResult<(http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>)> {
+        let (parts, body) = request.into_parts();
+
+        let build = |p: &http::request::Parts,
+                     b: &Full<Bytes>|
+         -> HttpClientResult<http::Request<Full<Bytes>>> {
+            let mut builder = http::Request::builder()
+                .method(p.method.clone())
+                .uri(p.uri.clone())
+                .version(p.version);
+            for (name, value) in &p.headers {
+                builder = builder.header(name, value);
+            }
+            builder
+                .body(b.clone())
+                .map_err(|e| HttpClientError::Default(format!("Failed to build request: {e}")))
+        };
+
+        Ok((build(&parts, &body)?, Box::new(build(&parts, &body)?)))
+    }
+
+    /// Consume a hyper response and convert it to [`HttpResponse`].
+    async fn collect_response(
+        response: http::Response<Incoming>,
+    ) -> HttpClientResult<HttpResponse> {
         let status = response.status();
         let headers = response.headers().clone();
         let body = response
