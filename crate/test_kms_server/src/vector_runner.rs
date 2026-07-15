@@ -4469,6 +4469,16 @@ ObjectType = "SymmetricKey"
         run_test_vector("test_data/vectors/fips/serialization/import_destroy_reimport").await
     }
 
+    // ── K8s KMS Plugin vectors ────────────────────────────────────────────
+
+    /// Verifies the AES-256-GCM wrap/unwrap flow used by `cosmian-kms-plugin`
+    /// when `kube-apiserver` calls Encrypt (wrap DEK) and Decrypt (unwrap DEK).
+    #[tokio::test]
+    async fn test_vec_k8s_plugin_dek_wrap_unwrap() -> Result<(), KmsClientError> {
+        crate::init_test_logging();
+        run_test_vector("test_data/vectors/fips/k8s_plugin/dek_wrap_unwrap").await
+    }
+
     // ─── Keyset resolution & try-each-key vectors ────────────────────────────
 
     #[tokio::test]

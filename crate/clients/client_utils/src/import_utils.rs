@@ -9,6 +9,7 @@ use cosmian_kmip::{
     time_normalize,
     ttlv::{TTLV, from_ttlv},
 };
+#[cfg(not(target_arch = "wasm32"))]
 use cosmian_logger::info;
 use serde::Deserialize;
 use strum::{EnumIter, EnumString};
@@ -77,6 +78,7 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, UtilsError> {
     match object.object_type() {
         ObjectType::PrivateKey | ObjectType::PublicKey => {
             if !objects.is_empty() {
+                #[cfg(not(target_arch = "wasm32"))]
                 info!(
                     "WARNING: the PEM file contains multiple objects. Only the private key will \
                      be imported. A corresponding public key will be generated automatically."

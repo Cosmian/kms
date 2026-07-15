@@ -268,6 +268,17 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: windows
 
+  k8s-plugin-e2e:
+    name: KMS plugin E2E (Minikube)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/k8s_plugin_e2e.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+
   # cargo publish is placed in test_all.yml to ensure the publication of crates is possible (no git deps, etc.). The publication will be done on tags only.
   cargo-publish:
     needs:
