@@ -20,20 +20,17 @@ The KMS server is a high-performance, FIPS 140-3 compliant server application th
 ### Security Features
 
 - **FIPS 140-3 Compliance**: Certified cryptographic modules
-- **Multi-Factor Authentication**: Support for various authentication methods
-- **Access Control**: Fine-grained permissions and role-based access
-- **Audit Logging**: Comprehensive logging of all operations
 - **HSM Integration**: Hardware Security Module support
 
 ### Compilation Features
 
 The KMS server provides several features which can be enabled at compilation time:
 
-| Feature    | Description                                                                                                         | Development | Production |
-| ---------- | ------------------------------------------------------------------------------------------------------------------- | ----------- | ---------- |
-| `non-fips` | Enable non-FIPS cryptographic algorithms and features                                                              | ✅          |            |
-| `insecure` | Disable authentication and use HTTP (development only)                                                             | ✅          |            |
-| `timeout`  | Binary stops after 3 months from compilation date                                                                  |             |            |
+| Feature    | Description                                            | Development | Production |
+| ---------- | ------------------------------------------------------ | ----------- | ---------- |
+| `non-fips` | Enable non-FIPS cryptographic algorithms and features  | ✅          |            |
+| `insecure` | Disable authentication and use HTTP (development only) | ✅          |            |
+| `timeout`  | Binary stops after 3 months from compilation date      |             |            |
 
 **Legend**: ✅ = Recommended for this environment
 
