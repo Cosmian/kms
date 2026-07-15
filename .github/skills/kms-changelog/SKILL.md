@@ -27,18 +27,16 @@ Example: branch `fix/kmip-auth-bypass` → `CHANGELOG/fix_kmip-auth-bypass.md`
 
 ## Step 2 — Assess Whether an Entry Is Warranted
 
-Write a changelog entry **only** when the change is:
+Write a changelog entry for **any** of the following (when in doubt, write one):
 
-- A new feature (user-visible or operator-visible)
-- A bug fix
-- A security hardening or vulnerability fix
-- A behavioral change (default behavior, error messages, CLI output)
-- A breaking change (API signatures, CLI flags, config keys, supported algorithms)
-- A significant refactor that materially affects operators or contributors
+- Bug fix (any user- or operator-observable error, crash, or wrong behaviour)
+- New feature (user-visible or operator-visible)
+- Security hardening or vulnerability fix
+- Behavioral change (default behaviour, error messages, CLI output)
+- Breaking change (API signatures, CLI flags, config keys, algorithms)
+- Significant refactor that materially affects operators or contributors
 
-**Skip** for: routine internal implementation, formatting, minor refactors, test-only changes that don't affect observable behavior, CI pipeline adjustments.
-
-If unsure, ask the user: "Does this change any of: public API signatures, CLI flags/output, config file keys, default behavior, supported algorithms, or error messages visible to operators?"
+**Skip** for: routine internal implementation, formatting, test-only changes with no observable behaviour difference, CI pipeline adjustments.
 
 ## Step 3 — Gather Information
 
