@@ -43,7 +43,7 @@ The HSM is responsible for storing the Master keys and securing the Eviden KMS k
    # this is the region you Eviden KMS is deployed in
    aws_xks_region = "us-east-1"
    # keep this to this value
-   aws_xks_service = "xks-kms"
+   aws_xks_service = "kms-xks-proxy"
    # used for sigv4. The values set here must match the values configured
    # when setting up the KMS as an external keystore for AWS KMS (see next step)
    aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"

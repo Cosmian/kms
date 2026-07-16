@@ -358,7 +358,7 @@ mod tests {
             aws_xks_config: AwsXksConfig {
                 aws_xks_enable: true,
                 aws_xks_region: Some("us-east-1".to_owned()),
-                aws_xks_service: Some("xks-kms".to_owned()),
+                aws_xks_service: Some("kms-xks-proxy".to_owned()),
                 aws_xks_sigv4_access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_owned()),
                 aws_xks_sigv4_secret_access_key: Some(
                     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_owned(),
@@ -462,7 +462,7 @@ ansi_colors = false
 [aws_xks_config]
 aws_xks_enable = true
 aws_xks_region = "us-east-1"
-aws_xks_service = "xks-kms"
+aws_xks_service = "kms-xks-proxy"
 aws_xks_sigv4_access_key_id = "AKIAIOSFODNN7EXAMPLE"
 aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
