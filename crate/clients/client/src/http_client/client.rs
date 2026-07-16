@@ -1,9 +1,14 @@
+use std::time::Duration;
+
 use bytes::Bytes;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper_openssl::client::legacy::HttpsConnector;
-use hyper_util::{client::legacy::Client, rt::TokioExecutor};
+use hyper_util::{
+    client::legacy::Client,
+    rt::{TokioExecutor, TokioTimer},
+};
 use serde::{Deserialize, Deserializer, Serialize};
 use tracing::{info, warn};
 
@@ -271,6 +276,10 @@ impl std::fmt::Debug for HttpClient {
 }
 
 impl HttpClient {
+    /// Pool idle timeout — must stay below the server keep-alive window (120 s, see
+    /// `start_kms_server.rs`) so idle connections are evicted before the server closes them.
+    const POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+
     /// Instantiate a new HTTP(S) Client backed by OpenSSL for TLS.
     ///
     /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.2.
@@ -362,8 +371,11 @@ impl HttpClient {
                 HttpClientError::Default(format!("Failed to build HTTPS connector: {e}"))
             })?;
 
-        // Build hyper client with connection pooling
-        let client = Client::builder(TokioExecutor::new()).build(https_connector);
+        // Evict idle connections before the server's keep-alive window closes them.
+        let client = Client::builder(TokioExecutor::new())
+            .pool_idle_timeout(Duration::from_secs(Self::POOL_IDLE_TIMEOUT_SECS))
+            .pool_timer(TokioTimer::new())
+            .build(https_connector);
 
         Ok(Self {
             server_url,
@@ -528,13 +540,65 @@ impl HttpClient {
     }
 
     /// Send a prepared HTTP request and collect the response.
+    ///
+    /// Retries once on a connection-level error (`is_connect()`), which occurs when
+    /// hyper's connection pool hands back a stale idle connection that the server has
+    /// already closed (e.g. after a keep-alive timeout).  The retry opens a fresh
+    /// TCP connection, making the failure transparent to callers.
     async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
-        let response: http::Response<Incoming> = self
-            .client
-            .request(request)
-            .await
-            .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?;
+        let (req, retry_req) = Self::split_for_retry(request)?;
+        let response = match self.client.request(req).await {
+            Ok(r) => r,
+            Err(e) if e.is_connect() => {
+                // Stale pooled connection — retry once with a fresh connection.
+                tracing::debug!("Stale connection from pool, retrying (is_connect): {e}");
+                self.client
+                    .request(*retry_req)
+                    .await
+                    .map_err(|e| HttpClientError::Default(format!("HTTP request failed: {e}")))?
+            }
+            Err(e) => {
+                return Err(HttpClientError::Default(format!(
+                    "HTTP request failed: {e}"
+                )));
+            }
+        };
 
+        Self::collect_response(response).await
+    }
+
+    /// Clone `request` for a potential retry and return both the original and
+    /// the boxed copy.
+    ///
+    /// [`http::request::Parts`] does not implement `Clone` (extensions are
+    /// type-erased), so method, URI, version, and headers are copied
+    /// individually.  The copy is `Box`ed so the async state machine in
+    /// [`send`](Self::send) only stores a pointer (8 bytes) across the first
+    /// `.await`, avoiding `clippy::large_futures` in callers.
+    #[expect(
+        clippy::type_complexity,
+        reason = "Box is load-bearing for state machine compactness; a type alias would obscure this"
+    )]
+    fn split_for_retry(
+        request: http::Request<Full<Bytes>>,
+    ) -> HttpClientResult<(http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>)> {
+        let mut builder = http::Request::builder()
+            .method(request.method().clone())
+            .uri(request.uri().clone())
+            .version(request.version());
+        for (name, value) in request.headers() {
+            builder = builder.header(name, value);
+        }
+        let retry = builder
+            .body(request.body().clone())
+            .map_err(|e| HttpClientError::Default(format!("Failed to build request: {e}")))?;
+        Ok((request, Box::new(retry)))
+    }
+
+    /// Consume a hyper response and convert it to [`HttpResponse`].
+    async fn collect_response(
+        response: http::Response<Incoming>,
+    ) -> HttpClientResult<HttpResponse> {
         let status = response.status();
         let headers = response.headers().clone();
         let body = response
