@@ -276,6 +276,10 @@ impl std::fmt::Debug for HttpClient {
 }
 
 impl HttpClient {
+    /// Pool idle timeout — must stay below the server keep-alive window (120 s, see
+    /// `start_kms_server.rs`) so idle connections are evicted before the server closes them.
+    const POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+
     /// Instantiate a new HTTP(S) Client backed by OpenSSL for TLS.
     ///
     /// Supports PQC algorithms (ML-DSA, ML-KEM, SLH-DSA) via OpenSSL 3.6.2.
@@ -367,13 +371,9 @@ impl HttpClient {
                 HttpClientError::Default(format!("Failed to build HTTPS connector: {e}"))
             })?;
 
-        // Build hyper client with connection pooling.
-        // `pool_idle_timeout` is set below the server's keep-alive window (120 s default
-        // for Actix-web) so idle connections are evicted before the server closes them,
-        // reducing the frequency of stale-connection races.  The `is_connect()` retry in
-        // `send()` handles any residual race that slips through.
+        // Evict idle connections before the server's keep-alive window closes them.
         let client = Client::builder(TokioExecutor::new())
-            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_idle_timeout(Duration::from_secs(Self::POOL_IDLE_TIMEOUT_SECS))
             .pool_timer(TokioTimer::new())
             .build(https_connector);
 
@@ -546,12 +546,7 @@ impl HttpClient {
     /// already closed (e.g. after a keep-alive timeout).  The retry opens a fresh
     /// TCP connection, making the failure transparent to callers.
     async fn send(&self, request: http::Request<Full<Bytes>>) -> HttpClientResult<HttpResponse> {
-        // Pre-build both the first-attempt and the potential retry request
-        // *before* any `.await`.  This keeps `parts`/`body` out of the async
-        // state machine, avoiding the `clippy::large_futures` size penalty that
-        // would otherwise cascade to every caller.
-        let (req, retry_req) = Self::prepare_requests(request)?;
-
+        let (req, retry_req) = Self::split_for_retry(request)?;
         let response = match self.client.request(req).await {
             Ok(r) => r,
             Err(e) if e.is_connect() => {
@@ -572,34 +567,32 @@ impl HttpClient {
         Self::collect_response(response).await
     }
 
-    /// Decompose `request` and clone it into two identical instances.
+    /// Clone `request` for a potential retry and return both the original and
+    /// the boxed copy.
     ///
-    /// The second one is boxed so that the caller only has to store a pointer in
-    /// its async state machine (avoids inflating future sizes).
-    // The return type encodes a specific ownership pattern (one owned + one boxed) needed
-    // to keep the async state machine small; a type alias would obscure that intent.
-    #[allow(clippy::type_complexity)]
-    fn prepare_requests(
+    /// [`http::request::Parts`] does not implement `Clone` (extensions are
+    /// type-erased), so method, URI, version, and headers are copied
+    /// individually.  The copy is `Box`ed so the async state machine in
+    /// [`send`](Self::send) only stores a pointer (8 bytes) across the first
+    /// `.await`, avoiding `clippy::large_futures` in callers.
+    #[expect(
+        clippy::type_complexity,
+        reason = "Box is load-bearing for state machine compactness; a type alias would obscure this"
+    )]
+    fn split_for_retry(
         request: http::Request<Full<Bytes>>,
     ) -> HttpClientResult<(http::Request<Full<Bytes>>, Box<http::Request<Full<Bytes>>>)> {
-        let (parts, body) = request.into_parts();
-
-        let build = |p: &http::request::Parts,
-                     b: &Full<Bytes>|
-         -> HttpClientResult<http::Request<Full<Bytes>>> {
-            let mut builder = http::Request::builder()
-                .method(p.method.clone())
-                .uri(p.uri.clone())
-                .version(p.version);
-            for (name, value) in &p.headers {
-                builder = builder.header(name, value);
-            }
-            builder
-                .body(b.clone())
-                .map_err(|e| HttpClientError::Default(format!("Failed to build request: {e}")))
-        };
-
-        Ok((build(&parts, &body)?, Box::new(build(&parts, &body)?)))
+        let mut builder = http::Request::builder()
+            .method(request.method().clone())
+            .uri(request.uri().clone())
+            .version(request.version());
+        for (name, value) in request.headers() {
+            builder = builder.header(name, value);
+        }
+        let retry = builder
+            .body(request.body().clone())
+            .map_err(|e| HttpClientError::Default(format!("Failed to build request: {e}")))?;
+        Ok((request, Box::new(retry)))
     }
 
     /// Consume a hyper response and convert it to [`HttpResponse`].
