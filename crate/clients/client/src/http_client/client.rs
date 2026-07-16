@@ -1,9 +1,14 @@
+use std::time::Duration;
+
 use bytes::Bytes;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper_openssl::client::legacy::HttpsConnector;
-use hyper_util::{client::legacy::Client, rt::TokioExecutor};
+use hyper_util::{
+    client::legacy::Client,
+    rt::{TokioExecutor, TokioTimer},
+};
 use serde::{Deserialize, Deserializer, Serialize};
 use tracing::{info, warn};
 
@@ -362,8 +367,15 @@ impl HttpClient {
                 HttpClientError::Default(format!("Failed to build HTTPS connector: {e}"))
             })?;
 
-        // Build hyper client with connection pooling
-        let client = Client::builder(TokioExecutor::new()).build(https_connector);
+        // Build hyper client with connection pooling.
+        // `pool_idle_timeout` is set below the server's keep-alive window (120 s default
+        // for Actix-web) so idle connections are evicted before the server closes them,
+        // reducing the frequency of stale-connection races.  The `is_connect()` retry in
+        // `send()` handles any residual race that slips through.
+        let client = Client::builder(TokioExecutor::new())
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_timer(TokioTimer::new())
+            .build(https_connector);
 
         Ok(Self {
             server_url,
