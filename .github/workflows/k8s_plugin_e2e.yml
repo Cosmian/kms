@@ -60,6 +60,7 @@ jobs:
           helm install my-kms charts/cosmian-kms \
             --namespace kms-plugin-e2e \
             --set kms.database.type=sqlite \
+            --set image.tag=latest \
             --wait --timeout 120s
           echo "KMS deployed and ready"
 
