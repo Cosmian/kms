@@ -1428,6 +1428,7 @@ dependencies = [
  "serde",
  "serde_ignored",
  "serde_json",
+ "sha2 0.10.9",
  "smartcardhsm_pkcs11_loader",
  "softhsm2_pkcs11_loader",
  "strum 0.27.2",

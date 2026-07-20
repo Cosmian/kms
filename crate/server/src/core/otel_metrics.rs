@@ -20,6 +20,7 @@ use opentelemetry::{
     metrics::{Counter, Gauge, Histogram, Meter, MeterProvider, UpDownCounter},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
+use sha2::{Digest, Sha256};
 
 use crate::{error::KmsError, result::KResult};
 
@@ -37,6 +38,11 @@ pub(crate) const MAX_TRACKED_CARDINALITY: usize = 10_000;
 
 /// Sentinel label value emitted when the cardinality cap is reached.
 const OVERFLOW_USER_LABEL: &str = "__overflow__";
+
+/// Number of hex characters kept from the SHA-256 digest used for the `user`
+/// metric label (64 bits — negligible collision risk at `MAX_TRACKED_CARDINALITY`
+/// scale, short enough to stay readable in dashboards).
+const USER_LABEL_HASH_HEX_LEN: usize = 16;
 
 /// One-liner builder for an OpenTelemetry metric instrument.
 /// Usage: `metric!(meter, u64_counter, "name", "description", "unit")`
@@ -344,7 +350,11 @@ impl OtelMetrics {
         })
     }
 
-    /// Record a KMIP operation
+    /// Record a KMIP operation.
+    ///
+    /// `user` is only ever used to update the in-process active-user tracker
+    /// and, hashed, as the `kms.kmip.operations.per_user.total` label — see
+    /// [`Self::bounded_user_label`].
     pub fn record_kmip_operation(&self, operation: &str, user: &str) {
         self.kmip_operations_total
             .add(1, &[KeyValue::new("operation", operation.to_owned())]);
@@ -367,7 +377,11 @@ impl OtelMetrics {
         );
     }
 
-    /// Record a permission grant
+    /// Record a permission grant.
+    ///
+    /// `user` is only ever used, hashed, as the
+    /// `kms.permissions.granted.per_user.total` label — see
+    /// [`Self::bounded_user_label`].
     pub fn record_permission_grant(&self, user: &str, permission_type: &str) {
         let effective_user = self.bounded_user_label(user);
         self.permissions_granted_per_user.add(
@@ -380,18 +394,32 @@ impl OtelMetrics {
         self.permissions_granted_total.add(1, &[]);
     }
 
-    /// Returns the user label to use for per-user metrics.
+    /// Returns the `user` label to use for per-user metrics.
     ///
-    /// Returns the real user string if the cardinality cap has not been reached,
-    /// or `"__overflow__"` when it has.
+    /// The raw username is never exported: this returns a non-reversible,
+    /// truncated SHA-256 hash of the user identity if the cardinality cap has
+    /// not been reached, or the literal `"__overflow__"` sentinel when it has.
+    /// Real user identity is recorded only in the audit log
+    /// (`middlewares/audit.rs`), never in OTEL metrics.
     fn bounded_user_label(&self, user: &str) -> String {
         if self.active_users_tracker.contains_key(user)
             || self.active_users_tracker.len() < MAX_TRACKED_CARDINALITY
         {
-            user.to_owned()
+            Self::hash_user(user)
         } else {
             OVERFLOW_USER_LABEL.to_owned()
         }
+    }
+
+    /// Hashes a user identity into a short, non-reversible hex digest suitable
+    /// for use as a metric label (per OTEL's `user.hash` semantic convention).
+    fn hash_user(user: &str) -> String {
+        let digest = Sha256::digest(user.as_bytes());
+        let full_hex = hex::encode(digest);
+        full_hex
+            .get(..USER_LABEL_HASH_HEX_LEN)
+            .unwrap_or(&full_hex)
+            .to_owned()
     }
 
     /// Update active user tracking.
@@ -707,6 +735,33 @@ mod tests {
         0
     }
 
+    /// Collects every `user` attribute value recorded for a `u64` counter metric
+    /// across all data points in the last exported batch.
+    fn user_labels(exporter: &InMemoryMetricExporter, name: &str) -> Vec<String> {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return vec![];
+        };
+        let mut labels = vec![];
+        for sm in &last.scope_metrics {
+            for metric in &sm.metrics {
+                if metric.name.as_ref() != name {
+                    continue;
+                }
+                if let Some(sum) = metric.data.as_any().downcast_ref::<Sum<u64>>() {
+                    for dp in &sum.data_points {
+                        for kv in &dp.attributes {
+                            if kv.key.as_str() == "user" {
+                                labels.push(kv.value.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        labels
+    }
+
     // ── Smoke tests (construction + no-panic; no value assertions needed) ─────
 
     #[test]
@@ -733,6 +788,17 @@ mod tests {
         metrics.record_kmip_operation("Create", "user2");
         provider.force_flush().expect("flush");
         assert_eq!(last_counter_u64(&exporter, "kms.kmip.operations.total"), 3);
+
+        let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        assert!(!labels.is_empty());
+        assert!(
+            labels.iter().all(|l| l != "user1" && l != "user2"),
+            "raw username must never appear in the `user` metric label: {labels:?}"
+        );
+        assert!(
+            labels.iter().all(|l| l.len() == USER_LABEL_HASH_HEX_LEN),
+            "expected {USER_LABEL_HASH_HEX_LEN}-hex-char hash labels: {labels:?}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -745,6 +811,43 @@ mod tests {
         assert_eq!(
             last_counter_u64(&exporter, "kms.permissions.granted.total"),
             3
+        );
+
+        let labels = user_labels(&exporter, "kms.permissions.granted.per_user.total");
+        assert!(!labels.is_empty());
+        assert!(
+            labels.iter().all(|l| l != "user1" && l != "user2"),
+            "raw username must never appear in the `user` metric label: {labels:?}"
+        );
+    }
+
+    #[test]
+    fn test_user_label_hash_is_deterministic() {
+        assert_eq!(
+            OtelMetrics::hash_user("alice@example.com"),
+            OtelMetrics::hash_user("alice@example.com")
+        );
+        assert_ne!(
+            OtelMetrics::hash_user("alice@example.com"),
+            OtelMetrics::hash_user("bob@example.com")
+        );
+        assert_eq!(
+            OtelMetrics::hash_user("alice@example.com").len(),
+            USER_LABEL_HASH_HEX_LEN
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_user_label_overflow_stays_literal_sentinel() {
+        let (metrics, provider, exporter) = setup_observing_metrics();
+        for i in 0..=MAX_TRACKED_CARDINALITY {
+            metrics.record_kmip_operation("Create", &format!("user{i}"));
+        }
+        provider.force_flush().expect("flush");
+        let labels = user_labels(&exporter, "kms.kmip.operations.per_user.total");
+        assert!(
+            labels.iter().any(|l| l == OVERFLOW_USER_LABEL),
+            "expected literal overflow sentinel once cardinality cap is exceeded: {labels:?}"
         );
     }
 
