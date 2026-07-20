@@ -348,29 +348,6 @@ fi
 echo
 echo "==> Configuring IRIS TLS configuration and KMIP server…"
 
-# IRIS may briefly inhibit database access while the write daemon (re)starts
-# after the heavy baseline writes above. The transient message
-# ("Access to database inhibited ... waiting for write daemon to start")
-# desyncs the piped ^SECURITY menu answers and ends the routine in <HALTED>.
-# Wait for the write daemon to settle before driving any interactive menu.
-iris_wait_wd_ready() {
-  local _i out
-  for _i in $(seq 1 30); do
-    out=$(printf 'write "WD_OK",!\nhalt\n' |
-      docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
-    if echo "${out}" | grep -q "^WD_OK$" &&
-      ! echo "${out}" | grep -qiE "inhibited|write daemon"; then
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
-}
-if ! iris_wait_wd_ready; then
-  echo "ERROR: IRIS write daemon not ready after 60 s." >&2
-  exit 1
-fi
-
 # NOTE on success detection: IRIS terminal ECHOES each command before running
 # it, e.g.  WRITE "IRIS_TLS_OK",!   The echo line contains the marker quoted.
 # Anchoring the grep (^MARKER$) matches only the bare output line produced by
@@ -413,40 +390,39 @@ if ! echo "${KMIP_MENU_PROBE}" | grep -qi "KMIP"; then
   echo "==> SKIPPED: IRIS KMIP support not available (likely Community edition); mTLS checks passed."
   exit 0
 fi
-configure_iris_kmip() {
-  printf '%s\n' \
-    'zn "%SYS"' \
-    'do ^SECURITY' \
-    '14' \
-    '1' \
-    'CosmianKMS' \
-    'Cosmian KMS - mTLS CI test' \
-    "${KMS_HOST_FROM_IRIS}" \
-    "${KMS_KMIP_PORT}" \
-    '6' \
-    'CosmianKMSTLS' \
-    'Y' \
-    'N' \
-    '30' \
-    'N' \
-    'N' \
-    'Y' \
-    '' \
-    '8' \
-    '17' \
-    'halt' |
-    docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true
-}
-iris_wait_wd_ready || true
-KMIP_OUTPUT=$(configure_iris_kmip)
-# A checkpoint firing mid-menu re-inhibits the DB and desyncs the piped answers
-# (symptom: "inhibited"/"write daemon" text ending in <HALTED>). Retry once
-# after the write daemon settles before treating it as a real failure.
-if echo "${KMIP_OUTPUT}" | grep -qiE "inhibited|write daemon"; then
-  echo "WARNING: transient write-daemon inhibition during KMIP config — retrying once." >&2
-  iris_wait_wd_ready || true
-  KMIP_OUTPUT=$(configure_iris_kmip)
-fi
+# Write the KMIP menu answers to a file inside the container and use file-based
+# stdin redirection (same pattern as the TLS config above). This avoids the
+# write-daemon inhibition race: when IRIS inhibits a new session during a
+# checkpoint, it auto-halts the session and drains a piped stdin, consuming all
+# queued answers. A local file is not affected — the session simply continues
+# reading from the file after the write daemon restarts.
+KMIP_OUTPUT=$(docker exec \
+  -e _KMS_HOST="${KMS_HOST_FROM_IRIS}" \
+  -e _KMS_PORT="${KMS_KMIP_PORT}" \
+  "${IRIS_CONTAINER_NAME}" bash -c '
+    printf "%s\n" \
+      "zn \"%SYS\"" \
+      "do ^SECURITY" \
+      "14" \
+      "1" \
+      "CosmianKMS" \
+      "Cosmian KMS - mTLS CI test" \
+      "${_KMS_HOST}" \
+      "${_KMS_PORT}" \
+      "6" \
+      "CosmianKMSTLS" \
+      "Y" \
+      "N" \
+      "30" \
+      "N" \
+      "N" \
+      "Y" \
+      "" \
+      "8" \
+      "17" \
+      "halt" > /tmp/iris_kmip.input
+    iris session IRIS -B < /tmp/iris_kmip.input
+  ' 2>&1 || true)
 echo "IRIS KMIP server setup output: ${KMIP_OUTPUT}"
 if echo "${KMIP_OUTPUT}" | grep -qiE "creat.*CosmianKMS|CosmianKMS.*creat|KMIP server.*created|created.*KMIP"; then
   echo "==> PASS: IRIS KMIP server configuration created via ^SECURITY."
