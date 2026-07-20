@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 /// The finalised, persisted audit event including its hash-chain fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,6 +17,10 @@ pub struct AuditEvent {
     pub client_ip: Option<String>,
     pub result: AuditResult,
     pub duration_ms: u64,
+    /// Shared across all `BatchItem` drafts produced from the same HTTP request.
+    /// `None` only for synthetic events or test fixtures that predate this field.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub request_id: Option<Uuid>,
     /// SHA-256 of the previous row (all-zeros for the first row).
     #[serde(with = "hex::serde")]
     pub prev_hash: [u8; 32],
@@ -62,6 +67,8 @@ pub struct AuditEventDraft {
     pub client_ip: Option<String>,
     pub result: AuditResult,
     pub duration_ms: u64,
+    /// Shared across all `BatchItem` drafts from the same HTTP request.
+    pub request_id: Option<Uuid>,
 }
 
 #[cfg(test)]
@@ -94,6 +101,7 @@ mod tests {
             client_ip: Some("127.0.0.1".to_owned()),
             result: AuditResult::Success,
             duration_ms: 5,
+            request_id: None,
         };
         assert_eq!(draft.operation, "Encrypt");
     }

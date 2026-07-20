@@ -46,10 +46,29 @@ When `audit.file.path` is omitted the file defaults to `<root-data-path>/audit.j
 | `--audit-enable`           | `KMS_AUDIT_ENABLE`           | `false`                        | Enable the audit pipeline. When `false` no file is created and no writer thread is spawned.                                              |
 | `--audit-file-path`        | `KMS_AUDIT_FILE_PATH`        | `<root-data-path>/audit.jsonl` | Absolute path to the JSONL audit log file. Parent directories are created automatically on first write.                                  |
 | `--audit-channel-capacity` | `KMS_AUDIT_CHANNEL_CAPACITY` | `4096`                         | Capacity of the bounded in-memory channel between request threads and the writer task. Each event is ≈ 500 B (≈ 2 MiB total at default). |
+| `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(empty)_                    | Comma-separated CIDR blocks (e.g. `10.0.0.0/8,172.16.0.0/12`) of reverse proxies/load balancers allowed to set `client_ip` via `X-Forwarded-For`. See [Client IP and reverse proxies](#client-ip-and-reverse-proxies). |
 
 > **Tip**: if you see `AuditFileStore: channel full` in the server log under sustained high load, raise
 > `--audit-channel-capacity`. When the channel is full the event is dropped (non-blocking) and an
 > `error!` line is emitted — the request itself is never blocked.
+
+### Client IP and reverse proxies
+
+By default (`--audit-trusted-proxy-cidrs` empty), `client_ip` in every audit event is always the
+direct TCP peer address — the `X-Forwarded-For` header is ignored entirely.
+
+If the KMS runs **directly reachable** by clients (no reverse proxy/load balancer in front), leave
+this unset: the TCP peer address is always the real client.
+
+If the KMS runs **behind a reverse proxy or load balancer**, the direct TCP peer is always the
+proxy, not the real client. Set `--audit-trusted-proxy-cidrs` to the proxy's IP/CIDR so the audit
+middleware knows it can trust `X-Forwarded-For` coming from that address — otherwise every audit
+event will record the proxy's IP instead of the real client's.
+
+**Never** trust `X-Forwarded-For` unconditionally: any direct caller can set that header to an
+arbitrary value, corrupting the forensic trail (e.g. framing another IP, or hiding its own).
+Restricting trust to known proxy CIDRs prevents this while still letting a legitimate reverse
+proxy forward the real client IP.
 
 ---
 
