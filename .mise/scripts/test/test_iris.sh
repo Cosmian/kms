@@ -42,6 +42,13 @@ REPO_ROOT=$(get_repo_root "$SCRIPT_DIR")
 init_build_env "$@"
 setup_test_logging
 
+run_iris_session() {
+  local script_content
+  script_content=$(cat)
+  local tmp_file="/tmp/iris_script_${RANDOM}.cos"
+  docker exec -i "${IRIS_CONTAINER_NAME}" bash -c "cat > ${tmp_file} && iris session IRIS -B < ${tmp_file}" <<< "${script_content}"
+}
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 : "${IRIS_DOCKER_IMAGE:=intersystemsdc/iris-community:latest}"
 : "${IRIS_CONTAINER_NAME:=iris-kmip-test}"
@@ -238,7 +245,7 @@ echo "Waiting for IRIS to initialize (up to 120 s)…"
 IRIS_READY=false
 for _i in $(seq 1 120); do
   SESSION_CHECK=$(docker exec "${IRIS_CONTAINER_NAME}" bash -c \
-    'echo halt | iris session IRIS -B 2>&1' || true)
+    'echo halt > /tmp/halt.cos && iris session IRIS -B < /tmp/halt.cos 2>&1' || true)
   if ! echo "${SESSION_CHECK}" | grep -qi "not running\|failed\|error"; then
     IRIS_READY=true
     break
@@ -258,7 +265,7 @@ echo "IRIS is running."
 USER_NS_READY=false
 for _i in $(seq 1 30); do
   NS_CHECK=$(docker exec "${IRIS_CONTAINER_NAME}" bash -c \
-    'printf "zn \"USER\"\nwrite \"NS_OK\",!\nh\n" | iris session IRIS -B 2>&1' || true)
+    'printf "zn \"USER\"\nwrite \"NS_OK\",!\nh\n" > /tmp/ns.cos && iris session IRIS -B < /tmp/ns.cos 2>&1' || true)
   if echo "${NS_CHECK}" | grep -q "^NS_OK$"; then
     USER_NS_READY=true
     break
@@ -295,7 +302,7 @@ BASELINE_INSERT_OUT=$(printf '%s\n' \
   "set ^IrisMtlsCI(\"baseline\") = \"${BASELINE_VALUE}\"" \
   'write "BASELINE_INSERT_OK",!' \
   'h' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 if ! echo "${BASELINE_INSERT_OUT}" | grep -q "^BASELINE_INSERT_OK$"; then
   echo "ERROR: Failed to insert baseline data into USER namespace." >&2
   echo "${BASELINE_INSERT_OUT}" >&2
@@ -309,7 +316,7 @@ BASELINE_READ_OUT=$(printf '%s\n' \
   'write ^IrisMtlsCI("baseline"),!' \
   'write "BASELINE_READ_OK",!' \
   'h' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 if echo "${BASELINE_READ_OUT}" | grep -q "^BASELINE_READ_OK$" &&
   echo "${BASELINE_READ_OUT}" | grep -q "${BASELINE_VALUE}"; then
   echo "==> PASS (read): Baseline data IS readable via IRIS session."
@@ -385,7 +392,7 @@ KMIP_MENU_PROBE=$(printf '%s\n' \
   'do ^SECURITY' \
   '14' \
   'halt' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 if ! echo "${KMIP_MENU_PROBE}" | grep -qi "KMIP"; then
   echo "==> SKIPPED: IRIS KMIP support not available (likely Community edition); mTLS checks passed."
   exit 0
@@ -448,7 +455,7 @@ KMIP_PROBE=$(printf '%s\n' \
   '1' \
   'q' \
   'halt' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 if echo "${KMIP_PROBE}" | grep -qi "#1224"; then
   echo "==> SKIPPED: IRIS KMIP client cannot reach '${KMS_HOST_FROM_IRIS}:${KMS_KMIP_PORT}' (#1224)."
   echo "  This typically means Community Edition (no licensed KMIP client) or a network issue."
@@ -487,7 +494,7 @@ KEY_OUTPUT=$(printf '%s\n' \
   '0' \
   'q' \
   'halt' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 
 echo "Key creation output: ${KEY_OUTPUT}"
 
@@ -512,7 +519,7 @@ LIST_OUTPUT=$(printf '%s\n' \
   '0' \
   'q' \
   'halt' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 echo "Key list output: ${LIST_OUTPUT}"
 
 # A successful list produces a table of keys, "No keys found", or a KMIP error.
@@ -556,7 +563,7 @@ ACTIVATE_OUT=$(printf '%s\n' \
   '' \
   'q' \
   'halt' |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 echo "Key activation output: ${ACTIVATE_OUT}"
 if echo "${ACTIVATE_OUT}" | grep -qiE "activat|key.*activat|[0-9a-fA-F-]{36}"; then
   echo "==> PASS: KMIP key activated for database encryption."
@@ -590,7 +597,7 @@ if [ "${IRIS_KEY_ACTIVATED}" = true ]; then
     '3' \
     '7' \
     'halt' |
-    docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+    run_iris_session 2>&1 || true)
   USER_DB_IDX=$(echo "${DB_LIST_OUT}" | grep -oE '[0-9]+\) /usr/irissys/mgr/user/' | grep -oE '^[0-9]+' || true)
   USER_DB_IDX="${USER_DB_IDX:-3}"
 
@@ -605,7 +612,7 @@ if [ "${IRIS_KEY_ACTIVATED}" = true ]; then
     'Yes' \
     'q' \
     'halt' |
-    docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+    run_iris_session 2>&1 || true)
   echo "Database encryption enable output: ${ENC_ENABLE_OUT}"
   # Option 7 does not print a clear "OK" marker; check for absence of ERROR
   if echo "${ENC_ENABLE_OUT}" | grep -qiE "error|fail|#[0-9]"; then
@@ -630,7 +637,7 @@ set obj = ##class(SYS.Database).%OpenId(\"/usr/irissys/mgr/user/\")
 write obj.EncryptedDB,\"|\",obj.EncryptionKeyID,!
 h"
 ENC_STATUS=$(printf '%s\n' "${ENC_CHECK_SCRIPT}" |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 echo "DB encryption status output: ${ENC_STATUS}"
 ENC_LINE=$(echo "${ENC_STATUS}" | grep -oE '^[01]\|[0-9a-f-]*' || true)
 ENCRYPTED_FLAG=$(echo "${ENC_LINE}" | cut -d'|' -f1)
@@ -658,7 +665,7 @@ set ^DemoKMS(\"patient\",\"data\")   = \"CONFIDENTIAL-${TIMESTAMP}\"
 write \"IRIS_INSERT_OK\",!
 h"
 INSERT_OUT=$(printf '%s\n' "${INSERT_SCRIPT}" |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 if echo "${INSERT_OUT}" | grep -q "^IRIS_INSERT_OK$"; then
   echo "==> PASS: Test records inserted into encrypted namespace TEST."
 else
@@ -671,7 +678,7 @@ fi
 # ExternalFreeze/ExternalThaw is the official IRIS mechanism for
 # guaranteeing on-disk consistency (used before online backups).
 docker exec "${IRIS_CONTAINER_NAME}" bash -c \
-  'printf "%s\n" "zn \"%SYS\"" "do ##class(Backup.General).ExternalFreeze()" "do ##class(Backup.General).ExternalThaw()" "h" | iris session IRIS -B 2>/dev/null || true'
+  'printf "%s\n" "zn \"%SYS\"" "do ##class(Backup.General).ExternalFreeze()" "do ##class(Backup.General).ExternalThaw()" "h" > /tmp/freeze.cos && iris session IRIS -B < /tmp/freeze.cos 2>/dev/null || true'
 echo "  (database flushed to disk)"
 
 # ── Step 8c: Prove data is NOT readable in the raw file ───────────────
@@ -707,7 +714,7 @@ write \"data     : \",^DemoKMS(\"patient\",\"data\"),!
 write \"IRIS_READ_OK\",!
 h"
 READ_OUT=$(printf '%s\n' "${READ_SCRIPT}" |
-  docker exec -i "${IRIS_CONTAINER_NAME}" iris session IRIS -B 2>&1 || true)
+  run_iris_session 2>&1 || true)
 echo "${READ_OUT}" | grep -E "value|name|firstname|data" || true
 if echo "${READ_OUT}" | grep -q "^IRIS_READ_OK$"; then
   echo "==> PASS: Encrypted data is correctly readable through IRIS."

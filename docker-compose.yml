@@ -218,6 +218,7 @@ services:
   iris:
     image: ${IRIS_DOCKER_IMAGE:-intersystemsdc/iris-community:latest}
     container_name: ${IRIS_CONTAINER_NAME:-iris-kmip-test}
+    shm_size: 512m
     # The Community image is amd64-only; Rosetta handles this on Apple Silicon.
     platform: linux/amd64
     pull_policy: always

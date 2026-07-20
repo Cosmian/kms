@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Run IRIS mTLS integration tests"
-#MISE depends=["build:kms"]
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
