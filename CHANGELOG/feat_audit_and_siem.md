@@ -59,8 +59,19 @@ as ArcSight, Splunk, or QRadar.
 
 | CLI flag                   | Env var                      | Default      | Description                                                                               |
 | -------------------------- | ---------------------------- | ------------ | ----------------------------------------------------------------------------------------- |
-| `--audit-log-path`         | `KMS_AUDIT_LOG_PATH`         | _(disabled)_ | Path to the JSONL audit log file. Audit logging is disabled when unset.                   |
+| `--audit-enable`           | `KMS_AUDIT_ENABLE`           | `false`      | Enable the audit event pipeline.                                                          |
+| `--audit-file-path`        | `KMS_AUDIT_FILE_PATH`        | _(disabled)_ | Path to the JSONL audit log file. Audit logging is disabled when unset.                   |
 | `--audit-channel-capacity` | `KMS_AUDIT_CHANNEL_CAPACITY` | `4096`       | In-memory channel capacity. Raise if you see `"AuditFileStore: channel full"` in the log. |
+
+In `server.toml`, these nest under `[audit]` / `[audit.file]` (not a flat `[audit] path`):
+
+```toml
+[audit]
+enabled = true
+
+[audit.file]
+path = "/var/log/cosmian-kms/audit.jsonl"
+```
 
 ### Security hardening (this session)
 
