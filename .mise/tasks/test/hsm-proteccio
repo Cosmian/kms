@@ -19,7 +19,22 @@ ensure_nix_shell
 print_header "Running Proteccio HSM tests (${VARIANT_NAME})"
 
 # Prepare Proteccio HSM libraries: downloads, extracts, and installs to /lib/.
-bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_proteccio.sh"
+prepare_proteccio_with_retry() {
+  local attempts=3
+  local attempt
+  for attempt in $(seq 1 "${attempts}"); do
+    if bash "${MISE_CONFIG_ROOT}/.github/reusable_scripts/prepare_proteccio.sh"; then
+      return 0
+    fi
+    if [ "${attempt}" -lt "${attempts}" ]; then
+      print_warning "Proteccio environment setup failed (attempt ${attempt}/${attempts}), retrying..."
+      sleep 5
+    fi
+  done
+  return 1
+}
+
+prepare_proteccio_with_retry
 
 require_cmd cargo
 
