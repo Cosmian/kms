@@ -45,8 +45,33 @@ setup_test_logging
 run_iris_session() {
   local script_content
   script_content=$(cat)
-  local tmp_file="/tmp/iris_script_${RANDOM}.cos"
-  docker exec -i "${IRIS_CONTAINER_NAME}" bash -c "cat > ${tmp_file} && iris session IRIS -B < ${tmp_file}" <<< "${script_content}"
+  local max_attempts=5
+  local attempt=1
+  local tmp_file
+  local session_output
+  local session_status
+
+  while [ "${attempt}" -le "${max_attempts}" ]; do
+    tmp_file="/tmp/iris_script_${RANDOM}_${attempt}.cos"
+
+    set +e
+    session_output=$(docker exec -i "${IRIS_CONTAINER_NAME}" bash -c \
+      "cat > ${tmp_file} && iris session IRIS -B < ${tmp_file}; status=\$?; rm -f ${tmp_file}; exit \$status" \
+      <<< "${script_content}" 2>&1)
+    session_status=$?
+    set -e
+
+    if echo "${session_output}" | grep -q "Access to database inhibited"; then
+      if [ "${attempt}" -lt "${max_attempts}" ]; then
+        sleep 2
+        attempt=$((attempt + 1))
+        continue
+      fi
+    fi
+
+    echo "${session_output}"
+    return "${session_status}"
+  done
 }
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -403,33 +428,28 @@ fi
 # checkpoint, it auto-halts the session and drains a piped stdin, consuming all
 # queued answers. A local file is not affected — the session simply continues
 # reading from the file after the write daemon restarts.
-KMIP_OUTPUT=$(docker exec \
-  -e _KMS_HOST="${KMS_HOST_FROM_IRIS}" \
-  -e _KMS_PORT="${KMS_KMIP_PORT}" \
-  "${IRIS_CONTAINER_NAME}" bash -c '
-    printf "%s\n" \
-      "zn \"%SYS\"" \
-      "do ^SECURITY" \
-      "14" \
-      "1" \
-      "CosmianKMS" \
-      "Cosmian KMS - mTLS CI test" \
-      "${_KMS_HOST}" \
-      "${_KMS_PORT}" \
-      "6" \
-      "CosmianKMSTLS" \
-      "Y" \
-      "N" \
-      "30" \
-      "N" \
-      "N" \
-      "Y" \
-      "" \
-      "8" \
-      "17" \
-      "halt" > /tmp/iris_kmip.input
-    iris session IRIS -B < /tmp/iris_kmip.input
-  ' 2>&1 || true)
+KMIP_OUTPUT=$(printf '%s\n' \
+  'zn "%SYS"' \
+  'do ^SECURITY' \
+  '14' \
+  '1' \
+  'CosmianKMS' \
+  'Cosmian KMS - mTLS CI test' \
+  "${KMS_HOST_FROM_IRIS}" \
+  "${KMS_KMIP_PORT}" \
+  '6' \
+  'CosmianKMSTLS' \
+  'Y' \
+  'N' \
+  '30' \
+  'N' \
+  'N' \
+  'Y' \
+  '' \
+  '8' \
+  '17' \
+  'halt' |
+  run_iris_session 2>&1 || true)
 echo "IRIS KMIP server setup output: ${KMIP_OUTPUT}"
 if echo "${KMIP_OUTPUT}" | grep -qiE "creat.*CosmianKMS|CosmianKMS.*creat|KMIP server.*created|created.*KMIP"; then
   echo "==> PASS: IRIS KMIP server configuration created via ^SECURITY."
