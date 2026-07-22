@@ -1,0 +1,57 @@
+[package]
+name = "cosmian_kms_csi_provider"
+version.workspace = true
+authors.workspace = true
+categories.workspace = true
+edition.workspace = true
+keywords = ["kms", "kubernetes", "k8s", "cosmian", "csi"]
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Kubernetes Secrets Store CSI Driver Provider for Cosmian KMS"
+readme = "../../../../README.md"
+
+[[bin]]
+name = "cosmian-kms-csi-provider"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+# prost is a false positive: it is used by code generated in src/provider.rs
+[package.metadata.cargo-machete]
+ignored = ["prost"]
+
+[dependencies]
+clap = { workspace = true, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
+cosmian_kms_client = { path = "../../client", version = "5.24.0" }
+cosmian_logger = { workspace = true }
+prost = "0.13"
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = { version = "0.10", default-features = false }
+hex = "0.4"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+  "rt-multi-thread",
+  "macros",
+  "net",
+  "signal",
+] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { version = "0.12", features = ["transport"] }
+tracing = { workspace = true }
+zeroize = { workspace = true, features = ["zeroize_derive"] }
+
+[dev-dependencies]
+test_kms_server = { path = "../../../test_kms_server" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

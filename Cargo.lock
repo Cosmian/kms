@@ -1583,6 +1583,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_kms_csi_provider"
+version = "5.25.0"
+dependencies = [
+ "clap",
+ "cosmian_kms_client",
+ "cosmian_logger",
+ "hex",
+ "prost 0.13.5",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "test_kms_server",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tonic 0.12.3",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_kms_interfaces"
 version = "5.25.0"
 dependencies = [

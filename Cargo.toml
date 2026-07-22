@@ -15,6 +15,7 @@ members = [
   "crate/clients/ckms",
   "crate/clients/k8s/plugin",
   "crate/clients/k8s/operator",
+  "crate/clients/k8s/csi_provider",
   "crate/clients/pkcs11/module",
   "crate/clients/pkcs11/provider",
   "crate/clients/cng",
