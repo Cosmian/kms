@@ -27,6 +27,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -79,7 +80,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
         _kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        _user: &str,
+        _user: &UserId,
     ) -> KResult<Self::Response> {
         let verification_key = extract_verification_key(owm.object())?;
 
@@ -216,7 +217,7 @@ impl CryptoOpSpec for SignatureVerifyOp {
 pub(crate) async fn signature_verify(
     kms: &KMS,
     request: SignatureVerify,
-    user: &str,
+    user: &UserId,
 ) -> KResult<SignatureVerifyResponse> {
     trace!("{request}");
 

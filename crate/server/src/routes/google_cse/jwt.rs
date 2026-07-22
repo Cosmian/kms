@@ -8,7 +8,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     kms_ensure,
-    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim},
+    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim, UserId},
     result::KResult,
     routes::google_cse::build_google_cse_url,
 };
@@ -461,7 +461,7 @@ pub(super) async fn validate_tokens(
         authentication_token,
         cse_config,
         &google_cse_kacls_url,
-        &kms.params.default_username,
+        &UserId::from(kms.params.default_username.as_str()),
         None,
     )
     .await?;

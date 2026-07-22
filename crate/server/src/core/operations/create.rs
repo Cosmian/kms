@@ -14,10 +14,11 @@ use crate::{
     core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
-pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<CreateResponse> {
+pub(crate) async fn create(kms: &KMS, request: Create, owner: &UserId) -> KResult<CreateResponse> {
     trace!("{request}");
     KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
     kms.enforce_create_permission(owner).await?;
@@ -115,7 +116,7 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
         .await?;
     info!(
         uid = uid,
-        user = owner,
+        user = owner.as_str(),
         "Created Object of type {:?}",
         &object_type,
     );

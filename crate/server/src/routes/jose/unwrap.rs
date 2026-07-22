@@ -48,7 +48,7 @@ pub(crate) async fn unwrap_key(
     let user = kms.get_user(&req);
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/keys/unwrap");
+    trace!(user = user.as_str(), "POST /v1/crypto/keys/unwrap");
 
     // Parse the protected header
     let header_bytes = b64_decode("protected", &body.protected)?;

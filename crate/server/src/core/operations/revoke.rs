@@ -28,13 +28,14 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
 pub(crate) async fn revoke_operation(
     kms: &KMS,
     request: Revoke,
-    user: &str,
+    user: &UserId,
 ) -> KResult<RevokeResponse> {
     trace!("{request}");
     // there must be an identifier
@@ -82,7 +83,7 @@ pub(crate) async fn recursively_revoke_key(
     compromise_occurrence_date: Option<OffsetDateTime>,
     cascade: bool,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     // keys that should be skipped
     mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
@@ -261,7 +262,7 @@ pub(crate) async fn recursively_revoke_key(
 
         info!(
             uid = uid,
-            user = user,
+            user = user.as_str(),
             "Revoked object type: {}",
             object_type,
         );
@@ -307,7 +308,7 @@ async fn revoke_key_core(
 
     kms.database
         .atomic(
-            &kms.params.default_username,
+            &UserId::from(kms.params.default_username.as_str()),
             &[
                 AtomicOperation::UpdateObject((
                     owm.id().to_owned(),

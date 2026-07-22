@@ -20,6 +20,7 @@ use cosmian_kms_server_database::reexport::{
 use super::super::common::{RekeyOperation, ReplacementObject, RotationCandidate, reject_hsm_uid};
 use crate::{
     core::{KMS, operations::key_ops::KeySelectionSpec, uid_utils::from_request},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -58,7 +59,7 @@ impl RekeyOperation for SqlSymmetricRekeyer {
         &self,
         kms: &KMS,
         request: &ReKey,
-        user: &str,
+        user: &UserId,
     ) -> KResult<[RotationCandidate; 1]> {
         KMS::reject_protection_storage_masks(request.protection_storage_masks.is_some())?;
 

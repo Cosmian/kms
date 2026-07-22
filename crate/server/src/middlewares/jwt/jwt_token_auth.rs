@@ -13,7 +13,7 @@ use cosmian_logger::{debug, trace, warn};
 use super::UserClaim;
 use crate::{
     error::KmsError,
-    middlewares::{AuthMethod, AuthenticatedUser, jwt::JwtConfig},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId, jwt::JwtConfig},
     result::KResult,
 };
 
@@ -99,7 +99,7 @@ pub(super) async fn handle_jwt(
             // Authentication successful with valid email
             debug!("JWT Access granted to {email}!");
             Ok(AuthenticatedUser {
-                username: email,
+                username: UserId::from(email),
                 auth_method: AuthMethod::OidcJwt,
             })
         }

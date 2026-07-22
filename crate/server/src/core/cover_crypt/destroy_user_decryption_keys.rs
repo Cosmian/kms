@@ -5,6 +5,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_types::U
 use super::locate_usk;
 use crate::{
     core::{KMS, operations::recursively_destroy_object},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -14,7 +15,7 @@ pub(crate) async fn destroy_user_decryption_keys(
     remove: bool,
     cascade: bool,
     kms: &KMS,
-    owner: &str,
+    owner: &UserId,
     // keys that should be skipped
     ids_to_skip: HashSet<String>,
 ) -> KResult<()> {

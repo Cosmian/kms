@@ -14,7 +14,7 @@ use cosmian_kms_crypto::reexport::cosmian_crypto_core::{
     CsRng,
     reexport::rand_core::{RngCore, SeedableRng},
 };
-use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore};
+use cosmian_kms_interfaces::{AtomicOperation, ObjectsStore, UserId};
 use cosmian_logger::log_init;
 use uuid::Uuid;
 
@@ -59,20 +59,24 @@ pub(super) async fn tx_and_list<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let operations = vec![
         AtomicOperation::Create((
             uid_1.clone(),
+            UserId::from(owner),
             symmetric_key_1.clone(),
             symmetric_key_1.attributes()?.clone(),
             HashSet::new(),
         )),
         AtomicOperation::Create((
             uid_2.clone(),
+            UserId::from(owner),
             symmetric_key_2.clone(),
             symmetric_key_2.attributes()?.clone(),
             HashSet::new(),
         )),
     ];
-    db.atomic(owner, &operations).await?;
+    db.atomic(&UserId::from(owner), &operations).await?;
 
-    let list = db.find(None, None, owner, true, VENDOR_ID_COSMIAN).await?;
+    let list = db
+        .find(None, None, &UserId::from(owner), true, VENDOR_ID_COSMIAN)
+        .await?;
     match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
         Some((uid_, state_, _attrs)) => {
             assert_eq!(&uid_1, uid_);
@@ -136,16 +140,18 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let uid_2 = Uuid::new_v4().to_string();
 
     db.atomic(
-        owner,
+        &UserId::from(owner),
         &[
             AtomicOperation::Create((
                 uid_1.clone(),
+                UserId::from(owner),
                 symmetric_key_1.clone(),
                 symmetric_key_1.attributes()?.clone(),
                 HashSet::new(),
             )),
             AtomicOperation::Create((
                 uid_2.clone(),
+                UserId::from(owner),
                 symmetric_key_2.clone(),
                 symmetric_key_2.attributes()?.clone(),
                 HashSet::new(),
@@ -159,16 +165,18 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     // create the uid 1 twice. This should fail
     let atomic = db
         .atomic(
-            owner,
+            &UserId::from(owner),
             &[
                 AtomicOperation::Create((
                     uid_1.clone(),
+                    UserId::from(owner),
                     symmetric_key_1.clone(),
                     symmetric_key_1.attributes()?.clone(),
                     HashSet::new(),
                 )),
                 AtomicOperation::Create((
                     uid_2.clone(),
+                    UserId::from(owner),
                     symmetric_key_2.clone(),
                     symmetric_key_2.attributes()?.clone(),
                     HashSet::new(),
@@ -180,7 +188,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 
     // this however should work
     db.atomic(
-        owner,
+        &UserId::from(owner),
         &[
             AtomicOperation::Upsert((
                 uid_1.clone(),
@@ -231,7 +239,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     )?;
     db.create(
         Some(uid_3.clone()),
-        owner,
+        &UserId::from(owner),
         &symmetric_key_3,
         symmetric_key_3.attributes()?,
         &HashSet::new(),
@@ -245,7 +253,7 @@ pub(super) async fn atomic<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     deactivated_object.attributes_mut()?.state = Some(State::Deactivated);
 
     db.atomic(
-        owner,
+        &UserId::from(owner),
         &[
             AtomicOperation::UpdateObject((
                 uid_3.clone(),
@@ -295,7 +303,7 @@ pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 
     db.create(
         Some(uid.clone()),
-        owner,
+        &UserId::from(owner),
         &symmetric_key,
         symmetric_key.attributes()?,
         &HashSet::new(),
@@ -314,7 +322,7 @@ pub(super) async fn upsert<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
 
     // Upsert is only carried out via atomic operations
     db.atomic(
-        owner,
+        &UserId::from(owner),
         &[AtomicOperation::Upsert((
             uid.clone(),
             owm.object().clone(),
@@ -371,7 +379,7 @@ pub(super) async fn crud<DB: ObjectsStore>(db: &DB) -> DbResult<()> {
     let uid_ = db
         .create(
             Some(uid.clone()),
-            owner,
+            &UserId::from(owner),
             &symmetric_key,
             symmetric_key.attributes()?,
             &HashSet::new(),
@@ -464,7 +472,7 @@ pub(super) async fn block_cipher_mode_migration_after_json_deserialization<DB: O
     // Store the object in the database, it will encode to 0x8000_000D
     db.create(
         Some(uid.clone()),
-        owner,
+        &UserId::from(owner),
         &object,
         &attributes,
         &HashSet::new(),
@@ -547,7 +555,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
     };
     db.create(
         Some(uid_due.clone()),
-        owner,
+        &UserId::from(owner),
         &make_key(&mut rng)?,
         &attrs_due,
         &HashSet::new(),
@@ -566,7 +574,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
     };
     db.create(
         Some(uid_not_due.clone()),
-        owner,
+        &UserId::from(owner),
         &make_key(&mut rng)?,
         &attrs_not_due,
         &HashSet::new(),
@@ -584,7 +592,7 @@ pub(super) async fn find_due_for_rotation_test<DB: ObjectsStore>(db: &DB) -> DbR
     };
     db.create(
         Some(uid_no_auto.clone()),
-        owner,
+        &UserId::from(owner),
         &make_key(&mut rng)?,
         &attrs_no_auto,
         &HashSet::new(),
@@ -660,7 +668,7 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
     };
     db.create(
         Some(wrapped_uid.clone()),
-        owner,
+        &UserId::from(owner),
         &wrapped_obj,
         &attributes,
         &HashSet::new(),
@@ -683,7 +691,7 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
     .map_err(|e| DbError::ServerError(e.to_string()))?;
     db.create(
         Some(plain_uid.clone()),
-        owner,
+        &UserId::from(owner),
         &plain_obj,
         &attributes,
         &HashSet::new(),
@@ -691,7 +699,9 @@ pub(super) async fn wrapping_key_link_test<DB: ObjectsStore>(db: &DB) -> DbResul
     .await?;
 
     // ── Assert ────────────────────────────────────────────────────────────
-    let found = db.find_wrapped_by(wrapping_key_uid, owner).await?;
+    let found = db
+        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
+        .await?;
     let found_uids: HashSet<&str> = found.iter().map(|(uid, _, _)| uid.as_str()).collect();
 
     if !found_uids.contains(wrapped_uid.as_str()) {

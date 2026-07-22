@@ -23,7 +23,7 @@ use cosmian_kms_server_database::reexport::{
 use cosmian_logger::{debug, trace};
 
 use super::KMS;
-use crate::{core::ObjectHandle, error::KmsError, kms_bail, result::KResult};
+use crate::{core::ObjectHandle, error::KmsError, kms_bail, middlewares::UserId, result::KResult};
 
 /// Create a User Decryption Key in the KMS.
 ///
@@ -32,7 +32,7 @@ pub(crate) async fn create_user_decryption_key(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     create_request: &Create,
-    owner: &str,
+    owner: &UserId,
     sensitive: bool,
 ) -> KResult<Object> {
     let msk_handle = create_request

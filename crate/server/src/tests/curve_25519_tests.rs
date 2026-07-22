@@ -39,6 +39,7 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
     tests::test_utils::https_clap_config,
 };
@@ -48,7 +49,7 @@ async fn test_curve_25519() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = Uuid::new_v4().to_string();
+    let owner = UserId::new(Uuid::new_v4().to_string());
 
     // request key pair creation
     let request = create_ec_key_pair_request(
@@ -216,7 +217,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = Uuid::new_v4().to_string();
+    let owner = UserId::new(Uuid::new_v4().to_string());
 
     let request = RequestMessage {
         request_header: RequestMessageHeader {

@@ -25,7 +25,10 @@ use super::{
     JoseAlgorithm, JoseEncAlgorithm, aes_gcm::aes_gcm_decrypt, b64_decode, b64_encode, cek_cache,
     cek_size_bytes, encrypt::build_jwe_aad, jose_oaep_hashes, jose_to_kmip_params,
 };
-use crate::core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation};
+use crate::{
+    core::{KMS, ObjectHandle, retrieve_object_utils::retrieve_object_for_operation},
+    middlewares::UserId,
+};
 
 /// `POST /v1/crypto/decrypt` — JOSE content decryption (JWE Flattened JSON).
 ///
@@ -43,7 +46,7 @@ pub(crate) async fn decrypt(
     let user = kms.get_user(&req);
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/decrypt");
+    trace!(user = user.as_str(), "POST /v1/crypto/decrypt");
 
     // Parse protected header
     let header_bytes = b64_decode("protected", &body.protected)?;
@@ -94,7 +97,7 @@ pub(crate) async fn decrypt(
 /// Direct AES-GCM decryption — delegates to the KMIP Decrypt pipeline.
 async fn decrypt_dir(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     kid: String,
     alg: JoseAlgorithm,
     enc: JoseEncAlgorithm,
@@ -162,7 +165,7 @@ async fn decrypt_dir(
 /// 4. Return uniform "Decryption failed" on any failure
 async fn decrypt_rsa_oaep(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     kid: String,
     alg: JoseAlgorithm,
     enc: JoseEncAlgorithm,

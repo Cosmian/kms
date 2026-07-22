@@ -11,6 +11,8 @@ use cosmian_kmip::{
     time_normalize,
 };
 
+use crate::UserId;
+
 /// An object with its metadata such as owner, permissions and state
 ///
 /// This is the main representation of objects through the KMS server.
@@ -20,24 +22,24 @@ pub struct ObjectWithMetadata {
     id: String,
     // this is the object as registered in the DN. For a key, it may be wrapped or unwrapped
     object: Object,
-    owner: String,
+    owner: UserId,
     state: State,
     attributes: Attributes,
 }
 
 impl ObjectWithMetadata {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         id: String,
         object: Object,
-        owner: String,
+        owner: impl Into<UserId>,
         state: State,
         attributes: Attributes,
     ) -> Self {
         Self {
             id,
             object,
-            owner,
+            owner: owner.into(),
             state,
             attributes,
         }
@@ -68,6 +70,12 @@ impl ObjectWithMetadata {
 
     #[must_use]
     pub fn owner(&self) -> &str {
+        &self.owner
+    }
+
+    /// Return the owner as a typed [`UserId`].
+    #[must_use]
+    pub const fn owner_id(&self) -> &UserId {
         &self.owner
     }
 

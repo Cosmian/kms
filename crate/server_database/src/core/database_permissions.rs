@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
+use cosmian_kms_interfaces::UserId;
 
 use super::Database;
 use crate::error::DbResult;
@@ -14,7 +15,7 @@ impl Database {
     /// where `operations` is a list of KMIP operations that `user` can perform on the object
     pub async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> DbResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
         self.record("list_user_ops_granted", async move {
             Ok(self.permissions.list_user_operations_granted(user).await?)
@@ -39,7 +40,7 @@ impl Database {
     pub async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> DbResult<()> {
         self.record("grant_ops", async move {
@@ -56,7 +57,7 @@ impl Database {
     pub async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> DbResult<()> {
         self.record("remove_ops", async move {
@@ -75,7 +76,7 @@ impl Database {
     pub async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> DbResult<HashSet<KmipOperation>> {
         self.record("list_user_ops_on_object", async move {

@@ -8,7 +8,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operatio
 use cosmian_logger::trace;
 
 use super::{CryptoApiError, TagsRequest, TagsResponse};
-use crate::{core::KMS, error::KmsError};
+use crate::{core::KMS, error::KmsError, middlewares::UserId};
 
 /// `POST /v1/crypto/keys/{kid}/tags` — add user tags to a key.
 ///
@@ -25,7 +25,7 @@ pub(crate) async fn add_tags(
     let kid = kid.into_inner();
     let body = body.into_inner();
 
-    trace!(user = user, "POST /v1/crypto/keys/{kid}/tags");
+    trace!(user = user.as_str(), "POST /v1/crypto/keys/{kid}/tags");
 
     validate_user_tags(&body.tags)?;
 
@@ -52,7 +52,7 @@ pub(crate) async fn remove_tags(
     let kid = kid.into_inner();
     let body = body.into_inner();
 
-    trace!(user = user, "DELETE /v1/crypto/keys/{kid}/tags");
+    trace!(user = user.as_str(), "DELETE /v1/crypto/keys/{kid}/tags");
 
     validate_user_tags(&body.tags)?;
 
@@ -77,7 +77,7 @@ pub(crate) async fn list_tags(
     let user = kms.get_user(&req);
     let kid = kid.into_inner();
 
-    trace!(user = user, "GET /v1/crypto/keys/{kid}/tags");
+    trace!(user = user.as_str(), "GET /v1/crypto/keys/{kid}/tags");
 
     let all_tags = fetch_all_tags(&kms, &kid, &user).await?;
 
@@ -110,7 +110,7 @@ fn validate_user_tags(tags: &[String]) -> Result<(), CryptoApiError> {
 async fn fetch_all_tags(
     kms: &Arc<KMS>,
     kid: &str,
-    user: &str,
+    user: &UserId,
 ) -> Result<HashSet<String>, CryptoApiError> {
     // Auth / existence gate.
     kms.get_attributes(GetAttributes::from(kid), user)

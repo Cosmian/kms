@@ -39,6 +39,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::KMS,
+    middlewares::UserId,
     routes::aws_xks::error::{XksErrorName, XksErrorReply},
 };
 
@@ -304,7 +305,7 @@ async fn get_aws_key(
                 key_format_type: Some(KeyFormatType::Raw),
                 ..Default::default()
             },
-            sigv4_access_key_user,
+            &UserId::from(sigv4_access_key_user),
         )
         .await
         .map_err(|e| {

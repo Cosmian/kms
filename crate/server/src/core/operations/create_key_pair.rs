@@ -31,6 +31,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
 use cosmian_logger::warn;
 use cosmian_logger::{debug, info, trace};
 use uuid::Uuid;
+use crate::middlewares::UserId;
 use crate::{
     core::{KMS, uid_utils::ObjectHandle, wrapping::wrap_and_cache},
     error::KmsError,
@@ -42,7 +43,7 @@ use super::key_ops::ObjectLifecycleExt;
 pub(crate) async fn create_key_pair(
     kms: &KMS,
     request: CreateKeyPair,
-    owner: &str,
+    owner: &UserId,
 ) -> KResult<CreateKeyPairResponse> {
     debug!("Create key pair: {request}");
 
@@ -168,12 +169,14 @@ pub(crate) async fn create_key_pair(
     let operations = vec![
         AtomicOperation::Create((
             sk_uid.clone(),
+            owner.to_owned(),
             private_key.clone(),
             private_key_attributes,
             private_key_tags,
         )),
         AtomicOperation::Create((
             pk_uid.clone(),
+            owner.to_owned(),
             public_key.clone(),
             public_key_attributes,
             public_key_tags,
@@ -190,7 +193,7 @@ pub(crate) async fn create_key_pair(
 
     info!(
         uid = sk_uid,
-        user = owner,
+        user = owner.as_str(),
         "Created Key Pair with cryptographic algorithm {:?}",
         cryptographic_algorithm
     );

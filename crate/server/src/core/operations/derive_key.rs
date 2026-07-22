@@ -26,6 +26,7 @@ use crate::{
     core::{KMS, retrieve_object_utils::user_has_permission, uid_utils::ObjectHandle},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -35,7 +36,7 @@ const DEFAULT_PBKDF2_ITERATIONS: u32 = 600_000; // OWASP recommendation for PBKD
 pub(crate) async fn derive_key(
     kms: &KMS,
     request: DeriveKey,
-    user: &str,
+    user: &UserId,
 ) -> KResult<DeriveKeyResponse> {
     debug!("DeriveKey operation starting");
 
