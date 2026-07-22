@@ -319,7 +319,7 @@ struct SqliteHealthProbe {
 }
 
 impl SqliteHealthProbe {
-    #[allow(clippy::missing_const_for_fn)]
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
     fn new(store: Arc<SqlitePool>) -> Self {
         Self { store }
     }
@@ -337,7 +337,7 @@ struct PgHealthProbe {
 }
 
 impl PgHealthProbe {
-    #[allow(clippy::missing_const_for_fn)]
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
     fn new(store: Arc<PgPool>) -> Self {
         Self { store }
     }
@@ -355,7 +355,7 @@ struct MySqlHealthProbe {
 }
 
 impl MySqlHealthProbe {
-    #[allow(clippy::missing_const_for_fn)]
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
     fn new(store: Arc<MySqlPool>) -> Self {
         Self { store }
     }
@@ -375,7 +375,7 @@ struct RedisFindexHealthProbe {
 
 #[cfg(feature = "non-fips")]
 impl RedisFindexHealthProbe {
-    #[allow(clippy::missing_const_for_fn)]
+    #[allow(clippy::missing_const_for_fn)] // async_trait erases constness of the trait impl anyway
     fn new(store: Arc<RedisWithFindex>) -> Self {
         Self { store }
     }
@@ -387,7 +387,7 @@ impl DatabaseHealth for RedisFindexHealthProbe {
     async fn check(&self) -> Result<(), String> {
         let mut mgr = self.store.mgr.clone();
         let pong: String = mgr.ping().await.map_err(|e| e.to_string())?;
-        #[allow(clippy::manual_ignore_case_cmp)]
+        #[allow(clippy::manual_ignore_case_cmp)] // `eq_ignore_ascii_case` is clearer here than a case-insensitive match
         if pong.eq_ignore_ascii_case("PONG") {
             Ok(())
         } else {

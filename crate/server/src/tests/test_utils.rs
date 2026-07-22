@@ -210,6 +210,14 @@ pub(crate) fn get_tmp_sqlite_path() -> PathBuf {
 /// The app automatically generates and manages RSA keypairs for JWT authentication:
 /// - Private key stored as `google_cse_rsa`
 /// - Public key stored as  `google_cse_rsa_pk` and exposed via `/google_cse/certs`
+/// `log_init(None)` + `test_app` combo — cuts 2-line boilerplate to 1 per test.
+pub(crate) async fn setup_app(
+    kms_public_url: Option<String>,
+) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    cosmian_logger::log_init(None);
+    test_app(kms_public_url).await
+}
+
 pub(crate) async fn test_app(
     kms_public_url: Option<String>,
 ) -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {

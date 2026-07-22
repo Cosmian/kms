@@ -1062,17 +1062,14 @@ pub(super) async fn update_state_(
 }
 
 pub(super) async fn delete_(uid: &str, tx: &mut Transaction<'_>) -> DbResult<()> {
-    // delete the object
     tx.exec_drop(get_mysql_query!("delete-object"), (uid,))
         .await
         .map_err(DbError::from)?;
 
-    // delete the tags
     tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
         .await
         .map_err(DbError::from)?;
 
-    // delete the read_access
     tx.exec_drop(get_mysql_query!("delete-read-access-for-object"), (uid,))
         .await
         .map_err(DbError::from)?;
@@ -1113,11 +1110,9 @@ pub(super) async fn upsert_(
 
     // Insert the new tags if present
     if let Some(tags) = tags {
-        // delete the existing tags
         tx.exec_drop(get_mysql_query!("delete-tags"), (uid,))
             .await
             .map_err(DbError::from)?;
-        // insert the new ones
         for tag in tags {
             tx.exec_drop(get_mysql_query!("insert-tags"), (uid, tag.as_str()))
                 .await

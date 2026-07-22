@@ -401,7 +401,6 @@ impl ObjectsStore for SqlitePool {
             .call(
                 move |c: &mut rusqlite::Connection| -> Result<(), rusqlite::Error> {
                     let tx = c.transaction()?;
-                    // Insert object
                     tx.execute(
                         &insert_object,
                         rusqlite::params![
@@ -413,7 +412,6 @@ impl ObjectsStore for SqlitePool {
                             wrapping_key_id,
                         ],
                     )?;
-                    // Insert tags
                     for tag in &tags_owned {
                         tx.execute(&insert_tag, params_from_iter([&uid_clone, tag.as_str()]))?;
                     }
