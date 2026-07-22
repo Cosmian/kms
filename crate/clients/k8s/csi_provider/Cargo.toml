@@ -18,9 +18,7 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
-# prost is a false positive: it is used by code generated in src/provider.rs
-[package.metadata.cargo-machete]
-ignored = ["prost"]
+
 
 [dependencies]
 clap = { workspace = true, features = [
@@ -53,5 +51,4 @@ tracing = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive"] }
 
 [dev-dependencies]
-test_kms_server = { path = "../../../test_kms_server" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
