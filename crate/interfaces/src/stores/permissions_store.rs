@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use cosmian_kmip::{kmip_0::kmip_types::State, kmip_2_1::KmipOperation};
 
-use crate::InterfaceResult;
+use crate::{InterfaceResult, UserId};
 
 /// Trait that the stores must implement to store permissions
 #[async_trait(?Send)]
@@ -15,7 +15,7 @@ pub trait PermissionsStore {
     /// where `operations` is a list of operations that `user` can perform on the object
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>>;
 
     /// List all the KMIP operations granted per `user`
@@ -30,7 +30,7 @@ pub trait PermissionsStore {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()>;
 
@@ -39,7 +39,7 @@ pub trait PermissionsStore {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()>;
 
@@ -50,7 +50,7 @@ pub trait PermissionsStore {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>>;
 }

@@ -25,6 +25,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -51,7 +52,7 @@ pub(crate) async fn get_issuer<'a>(
     subject: &'a Subject,
     kms: &KMS,
     request: &Certify,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Issuer<'a>> {
     let (issuer_certificate_id, issuer_private_key_id) =
         request
@@ -109,7 +110,7 @@ async fn fetch_object_from_attributes(
     link_type: LinkType,
     kms: &KMS,
     attributes: &Attributes,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Option<ObjectWithMetadata>> {
     if let Some(object_id) = attributes.get_link(link_type) {
         let object = Box::pin(retrieve_object_for_operation(
@@ -127,7 +128,7 @@ async fn fetch_object_from_attributes(
 async fn issuer_for_self_signed_certificate<'a>(
     subject: &'a Subject,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<Issuer<'a>> {
     match subject {
         Subject::X509Req(_, _) => {

@@ -168,7 +168,7 @@ async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
             kmip_attributes::Attributes, kmip_objects::Object, kmip_types::CryptographicAlgorithm,
         },
     };
-    use cosmian_kms_interfaces::ObjectsStore;
+    use cosmian_kms_interfaces::{ObjectsStore, UserId};
     use uuid::Uuid;
 
     log_init(Some("info"));
@@ -230,7 +230,9 @@ async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
     let pool = SqlitePool::instantiate(&db_file, false, None).await?;
 
     // The pre-existing wrapped object must now be discoverable by its wrapping key.
-    let found = pool.find_wrapped_by(wrapping_key_uid, owner).await?;
+    let found = pool
+        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
+        .await?;
     let found_uids: HashSet<&str> = found.iter().map(|(uid, _, _)| uid.as_str()).collect();
     if !found_uids.contains(wrapped_uid.as_str()) {
         return Err(DbError::ServerError(format!(
@@ -241,7 +243,9 @@ async fn test_sqlite_wrapping_key_id_backfill_migration() -> DbResult<()> {
 
     // Re-opening must be a no-op (marker set): the object stays discoverable.
     let pool2 = SqlitePool::instantiate(&db_file, false, None).await?;
-    let found2 = pool2.find_wrapped_by(wrapping_key_uid, owner).await?;
+    let found2 = pool2
+        .find_wrapped_by(wrapping_key_uid, &UserId::from(owner))
+        .await?;
     if found2.iter().all(|(uid, _, _)| uid != &wrapped_uid) {
         return Err(DbError::ServerError(
             "backfill migration: wrapped object lost after re-opening the database".to_owned(),

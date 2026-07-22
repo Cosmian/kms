@@ -19,6 +19,7 @@ use crate::{
         KMS,
         uid_utils::{ObjectHandle, from_request, resolve_uid_or_keyset},
     },
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -28,7 +29,7 @@ use crate::{
 /// - For HSM-resident keys (UID starts with `hsm::`): calls `C_GenerateKey` on the same HSM
 ///   slot, assigns a generation-suffix UID (`original::N+1`), and updates `CKA_LABEL` /
 ///   `CKA_START_DATE` / `CKA_END_DATE` on both the old and new keys.
-pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &str) -> KResult<ReKeyResponse> {
+pub(crate) async fn rekey(kms: &KMS, request: ReKey, owner: &UserId) -> KResult<ReKeyResponse> {
     trace!("ReKey: {}", serde_json::to_string(&request)?);
     let uid = from_request(request.unique_identifier.as_ref(), "ReKey")?
         .as_str()

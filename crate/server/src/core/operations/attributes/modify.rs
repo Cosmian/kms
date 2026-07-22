@@ -17,6 +17,7 @@ use cosmian_logger::{debug, trace};
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -36,7 +37,7 @@ use crate::{
 pub(crate) async fn modify_attribute(
     kms: &KMS,
     request: ModifyAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ModifyAttributeResponse> {
     debug!("{request}");
 

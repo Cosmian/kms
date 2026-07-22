@@ -28,8 +28,10 @@ pub(crate) async fn get_current_user(
     kms: Data<Arc<KMS>>,
 ) -> KResult<Json<CurrentUserResponse>> {
     let user = kms.get_user(&req);
-    info!(user = user, "GET /me {user}");
-    Ok(Json(CurrentUserResponse { user }))
+    info!(user = user.as_str(), "GET /me {user}");
+    Ok(Json(CurrentUserResponse {
+        user: user.into_string(),
+    }))
 }
 
 #[derive(Serialize)]
@@ -48,7 +50,7 @@ pub(crate) async fn list_owned_objects(
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
-    info!(user = user, "GET /access/owned {user}");
+    info!(user = user.as_str(), "GET /access/owned {user}");
 
     let list = kms.list_owned_objects(&user).await?;
 
@@ -66,7 +68,7 @@ pub(crate) async fn list_access_rights_obtained(
     let _enter = span.enter();
 
     let user = kms.get_user(&req);
-    info!(user = user, "GET /access/obtained {user}");
+    info!(user = user.as_str(), "GET /access/obtained {user}");
 
     let list = kms.list_access_rights_obtained(&user).await?;
 
@@ -85,7 +87,7 @@ pub(crate) async fn list_accesses(
 
     let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
     let user = kms.get_user(&req);
-    info!(user = user, "GET /access/list/{object_id} {user}");
+    info!(user = user.as_str(), "GET /access/list/{object_id} {user}");
 
     let list = kms.list_accesses(&object_id, &user).await?;
 
@@ -105,7 +107,7 @@ pub(crate) async fn grant_access(
     let access = access.into_inner();
     let user = kms.get_user(&req);
     info!(
-        user = user,
+        user = user.as_str(),
         access = access.to_string(),
         "POST /access/grant"
     );
@@ -131,7 +133,7 @@ pub(crate) async fn revoke_access(
     let access = access.into_inner();
     let user = kms.get_user(&req);
     info!(
-        user = user,
+        user = user.as_str(),
         access = access.to_string(),
         "POST /access/revoke"
     );
@@ -156,7 +158,7 @@ pub(crate) async fn get_create_access(
     let user = kms.get_user(&req);
 
     let has_create_permission = match kms.params.privileged_users.as_ref() {
-        Some(users) if users.contains(&user) => true,
+        Some(users) if users.iter().any(|u| u == user.as_str()) => true,
         Some(_) => {
             user_has_permission(
                 &user,
@@ -188,7 +190,7 @@ pub(crate) async fn get_privileged_access(
         .params
         .privileged_users
         .as_ref()
-        .is_some_and(|users| users.contains(&user));
+        .is_some_and(|users| users.iter().any(|u| u == user.as_str()));
     Ok(Json(PrivilegedAccessResponse {
         has_privileged_access,
     }))

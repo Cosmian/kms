@@ -9,7 +9,9 @@ use cosmian_kmip::{
     kmip_0::kmip_types::State,
     kmip_2_1::{kmip_attributes::Attributes, kmip_objects::Object},
 };
-use cosmian_kms_interfaces::{AtomicOperation, ObjectHandle, ObjectWithMetadata, ObjectsStore};
+use cosmian_kms_interfaces::{
+    AtomicOperation, ObjectHandle, ObjectWithMetadata, ObjectsStore, UserId,
+};
 use time::Date;
 
 use crate::{
@@ -192,7 +194,7 @@ impl Database {
     pub async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -398,7 +400,7 @@ impl Database {
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    pub async fn is_object_owned_by(&self, uid: &str, owner: &str) -> DbResult<bool> {
+    pub async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> DbResult<bool> {
         self.record("is_object_owned_by", async move {
             let db = self.get_object_store(uid).await?;
             Ok(db.is_object_owned_by(uid, owner).await?)
@@ -424,7 +426,7 @@ impl Database {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
@@ -453,7 +455,7 @@ impl Database {
     pub async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> DbResult<Vec<(String, State, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, State, Attributes)> = Vec::new();
@@ -488,7 +490,7 @@ impl Database {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> DbResult<Vec<(String, Attributes)>> {
         let map = self.objects.read().await;
         let mut results: Vec<(String, Attributes)> = Vec::new();
@@ -547,7 +549,7 @@ impl Database {
     /// cannot be accessed.
     pub async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> DbResult<Vec<String>> {
         if operations.is_empty() {
@@ -565,8 +567,11 @@ impl Database {
         // invalidate of clear cache for all operations
         for op in operations {
             match op {
-                AtomicOperation::Create((uid, object, ..))
-                | AtomicOperation::UpdateObject((uid, object, ..))
+                AtomicOperation::Create((uid, _owner, object, ..)) => {
+                    self.object_cache.invalidate(uid).await;
+                    self.unwrapped_cache.validate_cache(uid, object).await?;
+                }
+                AtomicOperation::UpdateObject((uid, object, ..))
                 | AtomicOperation::Upsert((uid, object, ..)) => {
                     self.object_cache.invalidate(uid).await;
                     self.unwrapped_cache.validate_cache(uid, object).await?;
@@ -596,6 +601,7 @@ mod tests {
         time::Duration,
     };
 
+    use cosmian_kms_interfaces::UserId;
     use tempfile::TempDir;
 
     use super::Database;
@@ -678,13 +684,19 @@ mod tests {
         .expect("Failed to instantiate database with mock recorder");
 
         // list_user_operations_granted: exercises the permissions facade path.
-        drop(db.list_user_operations_granted("test_user").await);
+        drop(
+            db.list_user_operations_granted(&UserId::from("test_user"))
+                .await,
+        );
 
         // retrieve_object on a non-existent uid → Ok(None) → outcome "success"
         drop(db.retrieve_object("non-existent-uid-xyz").await);
 
         // find with no filters → Ok([]) → outcome "success"
-        drop(db.find(None, None, "test_user", false, "").await);
+        drop(
+            db.find(None, None, &UserId::from("test_user"), false, "")
+                .await,
+        );
 
         let recorded = calls.lock().expect("mutex poisoned").clone();
 

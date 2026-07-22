@@ -18,6 +18,7 @@ use time::OffsetDateTime;
 use crate::{
     core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -26,7 +27,7 @@ impl KMS {
     pub(super) async fn latest_hsm_keyset_uid(
         &self,
         rotate_name: &str,
-        user: &str,
+        user: &UserId,
     ) -> Option<String> {
         self.database
             .find_by_rotate_name(rotate_name, None, user)
@@ -48,7 +49,7 @@ impl KMS {
         &self,
         uid: &str,
         full_base_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ReKeyResponse> {
         if let Some(latest) = self.latest_hsm_keyset_uid(full_base_uid, user).await {
             Box::pin(self.rekey_hsm_symmetric(&latest, user)).await
@@ -84,7 +85,7 @@ impl KMS {
     pub(super) async fn rekey_hsm_symmetric(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ReKeyResponse> {
         self.enforce_create_permission(user).await?;
 

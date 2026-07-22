@@ -26,6 +26,7 @@ use crate::{
         operations::{create_key_pair::generate_key_pair, key_ops::KeySelectionSpec},
         uid_utils::from_request,
     },
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -74,7 +75,7 @@ impl RekeyOperation for SqlKeypairRekeyer {
         &self,
         kms: &KMS,
         request: &ReKeyKeyPair,
-        user: &str,
+        user: &UserId,
     ) -> KResult<[RotationCandidate; 2]> {
         KMS::reject_protection_storage_masks(
             request.common_protection_storage_masks.is_some()

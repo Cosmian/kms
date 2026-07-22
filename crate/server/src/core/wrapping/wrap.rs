@@ -20,13 +20,14 @@ use crate::{
     core::{KMS, uid_utils::ObjectHandle, wrapping::unwrap_object},
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
 /// Wrap the object using a wrapping key from the database or HSM, then cache the unwrapped copy.
 pub(crate) async fn wrap_and_cache(
     kms: &KMS,
-    owner: &str,
+    owner: &UserId,
     unique_identifier: &UniqueIdentifier,
     object: &mut Object,
 ) -> Result<(), KmsError> {
@@ -141,7 +142,7 @@ pub(crate) async fn wrap_object(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<()> {
     // recover the wrapping key uid
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
@@ -188,7 +189,7 @@ async fn wrap_using_kms(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     handle: ObjectHandle<'_>,
 ) -> KResult<()> {
     let wrapping_key_uid = handle.as_str();
@@ -318,7 +319,7 @@ async fn wrap_using_crypto_oracle(
     object: &mut Object,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     handle: ObjectHandle<'_>,
     prefix: &str,
 ) -> KResult<()> {

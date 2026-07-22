@@ -16,7 +16,9 @@ use cosmian_logger::debug;
 
 use crate::{
     core::KMS,
-    middlewares::{AuthMethod, AuthenticatedUser, api_token::api_token_auth::handle_api_token},
+    middlewares::{
+        AuthMethod, AuthenticatedUser, UserId, api_token::api_token_auth::handle_api_token,
+    },
 };
 
 /// Creates the API token authentication middleware.
@@ -43,7 +45,7 @@ where
                 match handle_api_token(&kms_server, &req).await {
                     Ok(()) => {
                         req.extensions_mut().insert(AuthenticatedUser {
-                            username: kms_server.params.default_username.clone(),
+                            username: UserId::from(kms_server.params.default_username.as_str()),
                             auth_method: AuthMethod::ApiToken,
                         });
                     }

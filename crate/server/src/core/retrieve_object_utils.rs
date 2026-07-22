@@ -11,6 +11,7 @@ use cosmian_logger::{trace, warn};
 use crate::{
     core::{KMS, uid_utils::ObjectHandle},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -29,7 +30,7 @@ pub(crate) async fn retrieve_object_for_operation(
     object_handle: ObjectHandle<'_>,
     operation_type: KmipOperation,
     kms: &KMS,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ObjectWithMetadata> {
     trace!(
         "object_handle: {object_handle}, user: {user}, \
@@ -268,7 +269,7 @@ pub(crate) async fn retrieve_object_for_operation(
 ///  * `Ok(true)` if the user has permission to perform the operation on the object.
 ///  * `Ok(false)` if the user does not have permission to perform the operation on the object.
 pub(crate) async fn user_has_permission(
-    user: &str,
+    user: &UserId,
     owm: Option<&ObjectWithMetadata>,
     operation_type: &KmipOperation,
     kms: &KMS,

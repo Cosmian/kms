@@ -17,7 +17,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
-    middlewares::AuthenticatedUser,
+    middlewares::{AuthenticatedUser, UserId},
     result::{KResult, KResultHelper},
 };
 
@@ -25,13 +25,13 @@ impl KMS {
     /// Grant access to a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub(crate) async fn grant_access(&self, access: &Access, owner: &str) -> KResult<()> {
+    pub(crate) async fn grant_access(&self, access: &Access, owner: &UserId) -> KResult<()> {
         // if create access right is set, grant access to Create for the * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
             if let Some(ref users) = self.params.privileged_users {
-                if !users.contains(&owner.to_owned()) {
+                if !users.iter().any(|u| u.as_str() == owner.as_str()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."
                             .to_owned()
@@ -44,13 +44,14 @@ impl KMS {
                          granted or revoked."
                     )))
                 }
+                let user_id_typed = UserId::from(user_id.as_str());
                 self.database
-                    .grant_operations("*", user_id, HashSet::from([KmipOperation::Create]))
+                    .grant_operations("*", &user_id_typed, HashSet::from([KmipOperation::Create]))
                     .await?;
 
                 // Record metrics for Create permission grant
                 if let Some(ref metrics) = self.metrics {
-                    metrics.record_permission_grant(user_id, "Create");
+                    metrics.record_permission_grant(user_id.as_str(), "Create");
                 }
             }
         }
@@ -67,7 +68,7 @@ impl KMS {
             }
 
             // check if an owner is trying to grant themselves
-            if owner == access.user_id {
+            if *owner == access.user_id {
                 kms_bail!(KmsError::Unauthorized(
                     "You can't grant yourself, you have already all rights on your own objects"
                         .to_owned()
@@ -88,10 +89,11 @@ impl KMS {
                 }
             }
 
+            let grant_user_id = UserId::from(access.user_id.as_str());
             self.database
                 .grant_operations(
                     uid,
-                    &access.user_id,
+                    &grant_user_id,
                     HashSet::from_iter(updated_operations_types.clone()),
                 )
                 .await?;
@@ -109,13 +111,13 @@ impl KMS {
     /// Remove an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub(crate) async fn revoke_access(&self, access: &Access, owner: &str) -> KResult<()> {
+    pub(crate) async fn revoke_access(&self, access: &Access, owner: &UserId) -> KResult<()> {
         // if create access right is set, revoke access Create for * object
         let mut updated_operations_types = access.operation_types.clone();
         if updated_operations_types.contains(&KmipOperation::Create) {
             updated_operations_types.retain(|op| op != &KmipOperation::Create);
             if let Some(ref users) = self.params.privileged_users {
-                if !users.contains(&owner.to_owned()) {
+                if !users.iter().any(|u| u.as_str() == owner.as_str()) {
                     kms_bail!(KmsError::Unauthorized(
                         "Only privileged users can grant/revoke create access right to a user."
                             .to_owned()
@@ -128,8 +130,9 @@ impl KMS {
                          granted or revoked."
                     )))
                 }
+                let user_id_typed = UserId::from(user_id.as_str());
                 self.database
-                    .remove_operations("*", user_id, HashSet::from([KmipOperation::Create]))
+                    .remove_operations("*", &user_id_typed, HashSet::from([KmipOperation::Create]))
                     .await?;
             }
         }
@@ -145,17 +148,18 @@ impl KMS {
             }
 
             // check if the owner is trying to revoke itself
-            if owner == access.user_id {
+            if *owner == access.user_id {
                 kms_bail!(KmsError::Unauthorized(
                     "You cannot revoke yourself; you should keep all rights to your objects."
                         .to_owned()
                 ))
             }
 
+            let revoke_user_id = UserId::from(access.user_id.as_str());
             self.database
                 .remove_operations(
                     uid,
-                    &access.user_id,
+                    &revoke_user_id,
                     HashSet::from_iter(updated_operations_types),
                 )
                 .await?;
@@ -168,7 +172,7 @@ impl KMS {
     pub(crate) async fn list_accesses(
         &self,
         object_id: &UniqueIdentifier,
-        owner: &str,
+        owner: &UserId,
     ) -> KResult<Vec<UserAccessResponse>> {
         let object_id = object_id
             .as_str()
@@ -199,7 +203,7 @@ impl KMS {
     /// Get all the objects owned by a given user (the owner)
     pub(crate) async fn list_owned_objects(
         &self,
-        owner: &str,
+        owner: &UserId,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
         let list = self
             .database
@@ -212,7 +216,7 @@ impl KMS {
     /// Get all the access rights granted to a given user
     pub(crate) async fn list_access_rights_obtained(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> KResult<Vec<AccessRightsObtainedResponse>> {
         let list = self.database.list_user_operations_granted(user).await?;
         let ids: Vec<AccessRightsObtainedResponse> = list
@@ -243,10 +247,10 @@ impl KMS {
     /// - be the `default_username` (unauthenticated / local access).
     ///
     /// This check applies uniformly to `Create`, `CreateKeyPair`, `Import`, and `Register`.
-    pub(crate) async fn enforce_create_permission(&self, user: &str) -> KResult<()> {
+    pub(crate) async fn enforce_create_permission(&self, user: &UserId) -> KResult<()> {
         if let Some(ref users) = self.params.privileged_users {
-            if user == self.params.default_username
-                || users.iter().any(|u| u == user)
+            if *user == self.params.default_username
+                || users.iter().any(|u| u == user.as_str())
                 || user_has_permission(user, None, &KmipOperation::Create, self).await?
             {
                 return Ok(());
@@ -278,7 +282,7 @@ impl KMS {
     pub(crate) async fn user_can_perform_operation(
         &self,
         owm: &ObjectWithMetadata,
-        user: &str,
+        user: &UserId,
         operation: &KmipOperation,
     ) -> KResult<bool> {
         if user == owm.owner() {
@@ -292,15 +296,15 @@ impl KMS {
     }
 
     /// Get the user from the request depending on the authentication method.
-    pub(crate) fn get_user(&self, req_http: &HttpRequest) -> String {
+    pub(crate) fn get_user(&self, req_http: &HttpRequest) -> UserId {
         if self.params.force_default_username {
-            return self.params.default_username.clone();
+            return UserId::from(self.params.default_username.as_str());
         }
         req_http
             .extensions()
             .get::<AuthenticatedUser>()
             .map_or_else(
-                || self.params.default_username.clone(),
+                || UserId::from(self.params.default_username.as_str()),
                 |au| au.username.clone(),
             )
     }

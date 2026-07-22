@@ -26,6 +26,7 @@ use tracing::{debug, info};
 
 use crate::{
     core::KMS,
+    middlewares::UserId,
     routes::aws_xks::error::{XksErrorName, XksErrorReply},
 };
 
@@ -203,7 +204,7 @@ async fn get_key_metadata_inner(
                 unique_identifier: Some(UniqueIdentifier::TextString(key_id)),
                 attribute_reference: None,
             },
-            &user,
+            &UserId::from(user.as_str()),
         )
         .await
         .map_err(|e| XksErrorReply {
@@ -311,7 +312,10 @@ async fn create_key(
         protection_storage_masks: None,
     };
 
-    if let Err(e) = kms.create(create, &kms.params.default_username).await {
+    if let Err(e) = kms
+        .create(create, &UserId::from(kms.params.default_username.as_str()))
+        .await
+    {
         // If the key already exists, ignore the creation error (idempotent CreateKey).
         let get_att_response = kms
             .get_attributes(
@@ -319,7 +323,7 @@ async fn create_key(
                     unique_identifier: Some(uid.clone()),
                     attribute_reference: None,
                 },
-                &kms.params.default_username,
+                &UserId::from(kms.params.default_username.as_str()),
             )
             .await
             .map_err(|e| XksErrorReply {
@@ -346,7 +350,7 @@ async fn create_key(
                     KmipOperation::GetAttributes,
                 ],
             },
-            &kms.params.default_username,
+            &UserId::from(kms.params.default_username.as_str()),
         )
         .await
         .map_err(|e| XksErrorReply {

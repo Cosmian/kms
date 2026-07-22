@@ -21,13 +21,14 @@ use crate::{
         uid_utils::{ObjectHandle, from_request},
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
 pub(crate) async fn add_attribute(
     kms: &KMS,
     request: AddAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<AddAttributeResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 

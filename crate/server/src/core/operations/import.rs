@@ -42,11 +42,12 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
 /// Import a new object
-pub(crate) async fn import(kms: &KMS, request: Import, user: &str) -> KResult<ImportResponse> {
+pub(crate) async fn import(kms: &KMS, request: Import, user: &UserId) -> KResult<ImportResponse> {
     trace!(
         "Entering import KMIP operation: uid={}, object_type={}",
         request.unique_identifier, request.object_type
@@ -142,11 +143,11 @@ pub(crate) async fn import(kms: &KMS, request: Import, user: &str) -> KResult<Im
     // process the request based on the object type,
     let (uid, operations) = match request.object.object_type() {
         ObjectType::SymmetricKey => Box::pin(process_symmetric_key(kms, request, user)).await?,
-        ObjectType::Certificate => process_certificate(kms.vendor_id(), request)?,
+        ObjectType::Certificate => process_certificate(kms.vendor_id(), request, user)?,
         ObjectType::PublicKey => Box::pin(process_public_key(kms, request, user)).await?,
         ObjectType::PrivateKey => Box::pin(process_private_key(kms, request, user)).await?,
         ObjectType::SecretData => Box::pin(process_secret_data(kms, request, user)).await?,
-        ObjectType::OpaqueObject => process_opaque_object(kms.vendor_id(), request)?,
+        ObjectType::OpaqueObject => process_opaque_object(kms.vendor_id(), request, user)?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -193,7 +194,7 @@ pub(super) fn recover_tags(
 pub(super) async fn process_symmetric_key(
     kms: &KMS,
     request: Import,
-    user: &str,
+    user: &UserId,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -290,6 +291,7 @@ pub(super) async fn process_symmetric_key(
             object,
             attributes,
             uid,
+            user,
         )],
     ))
 }
@@ -297,6 +299,7 @@ pub(super) async fn process_symmetric_key(
 pub(super) fn process_certificate(
     vendor_id: &str,
     request: Import,
+    user: &UserId,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -365,6 +368,7 @@ pub(super) fn process_certificate(
             object,
             attributes,
             uid,
+            user,
         )],
     ))
 }
@@ -372,7 +376,7 @@ pub(super) fn process_certificate(
 pub(super) async fn process_public_key(
     kms: &KMS,
     request: Import,
-    user: &str,
+    user: &UserId,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -483,6 +487,7 @@ pub(super) async fn process_public_key(
             object,
             attributes,
             uid,
+            user,
         )],
     ))
 }
@@ -490,7 +495,7 @@ pub(super) async fn process_public_key(
 pub(super) async fn process_private_key(
     kms: &KMS,
     request: Import,
-    user: &str,
+    user: &UserId,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // Whether the object will be replaced if it already exists.
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -624,6 +629,7 @@ pub(super) async fn process_private_key(
             object,
             attributes,
             uid,
+            user,
         )],
     ))
 }
@@ -634,6 +640,7 @@ fn single_operation(
     object: Object,
     attributes: Attributes,
     uid: String,
+    owner: &UserId,
 ) -> AtomicOperation {
     // Sync the Object::Attributes with input Attributes
     let mut object = object;
@@ -645,13 +652,13 @@ fn single_operation(
     if replace_existing {
         AtomicOperation::Upsert((uid, object, attributes, Some(tags), state))
     } else {
-        AtomicOperation::Create((uid, object, attributes, tags))
+        AtomicOperation::Create((uid, owner.to_owned(), object, attributes, tags))
     }
 }
 
 async fn process_pkcs12(
     kms: &KMS,
-    user: &str,
+    user: &UserId,
     unique_identifier: &UniqueIdentifier,
     object: Object,
     request_attributes: Attributes,
@@ -858,6 +865,7 @@ async fn process_pkcs12(
         private_key,
         private_key_attributes,
         private_key_id.clone(),
+        user,
     ));
     trace!("Private key operation created");
 
@@ -869,6 +877,7 @@ async fn process_pkcs12(
         public_key,
         public_key_attributes,
         public_key_id.clone(),
+        user,
     ));
 
     let mut leaf_attributes = request_attributes.clone();
@@ -926,6 +935,7 @@ async fn process_pkcs12(
         leaf_certificate,
         leaf_attributes,
         leaf_certificate_id,
+        user,
     ));
 
     let mut parent_certificate_id: Option<String> = None;
@@ -971,6 +981,7 @@ async fn process_pkcs12(
             chain_certificate,
             chain_attributes,
             chain_certificate_uid.clone(),
+            user,
         ));
         parent_certificate_id = Some(chain_certificate_uid);
     }
@@ -982,7 +993,7 @@ async fn process_pkcs12(
 pub(super) async fn process_secret_data(
     kms: &KMS,
     request: Import,
-    user: &str,
+    user: &UserId,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     trace!("import secret_data: uid={}", request.unique_identifier);
     // check if the object will be replaced if it already exists
@@ -1068,6 +1079,7 @@ pub(super) async fn process_secret_data(
             object,
             attributes,
             uid,
+            user,
         )],
     ))
 }
@@ -1075,6 +1087,7 @@ pub(super) async fn process_secret_data(
 pub(super) fn process_opaque_object(
     vendor_id: &str,
     request: Import,
+    user: &UserId,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     trace!("import opaque_object: uid={}", request.unique_identifier);
     // check if the object will be replaced if it already exists
@@ -1108,6 +1121,7 @@ pub(super) fn process_opaque_object(
             request.object,
             attributes,
             uid,
+            user,
         )],
     ))
 }

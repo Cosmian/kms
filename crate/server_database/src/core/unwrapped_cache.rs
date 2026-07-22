@@ -213,6 +213,7 @@ mod tests {
         CsRng,
         reexport::rand_core::{RngCore, SeedableRng},
     };
+    use cosmian_kms_interfaces::UserId;
     use cosmian_logger::log_init;
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -259,7 +260,7 @@ mod tests {
         let uid_ = database
             .create(
                 Some(uid.clone()),
-                owner,
+                &UserId::from(owner),
                 &symmetric_key,
                 symmetric_key.attributes()?,
                 &HashSet::new(),

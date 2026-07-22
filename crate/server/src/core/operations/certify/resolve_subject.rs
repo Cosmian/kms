@@ -36,6 +36,7 @@ use crate::{
     },
     error::KmsError,
     kms_bail,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -79,7 +80,7 @@ fn cryptographic_usage_mask_public_key(
 /// - a certificate
 /// - a key pair and a subject name
 /// - a CSR
-pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &str) -> KResult<Subject> {
+pub(crate) async fn get_subject(kms: &KMS, request: &Certify, user: &UserId) -> KResult<Subject> {
     // Did the user provide a CSR?
     if let Some(pkcs10_bytes) = request.certificate_request_value.as_ref() {
         let x509_req = match &request

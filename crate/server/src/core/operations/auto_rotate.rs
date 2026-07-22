@@ -22,6 +22,7 @@ use crate::{
         },
         uid_utils::ObjectHandle,
     },
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -65,7 +66,13 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
     );
 
     for (uid, owner) in &due_keys {
-        if let Err(e) = Box::pin(rotate_one_key(kms, ObjectHandle::from(uid), owner)).await {
+        if let Err(e) = Box::pin(rotate_one_key(
+            kms,
+            ObjectHandle::from(uid),
+            &UserId::from(owner.as_str()),
+        ))
+        .await
+        {
             // Logged inside rotate_one_key; the outer loop continues.
             debug!("[auto-rotate] rotate_one_key returned: {e}");
         }
@@ -80,7 +87,7 @@ pub(crate) async fn run_auto_rotation(kms: &KMS) {
 /// AWS KMS, Azure Key Vault, and GCP Cloud KMS.
 ///
 /// Errors are also logged as `warn!` here so the caller loop can continue.
-async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &str) -> KResult<()> {
+async fn rotate_one_key(kms: &KMS, handle: ObjectHandle<'_>, owner: &UserId) -> KResult<()> {
     let uid = handle.as_str();
     // HSM keys: the KMS cannot generate new key material inside an HSM
     if handle.is_hsm() {
@@ -354,6 +361,7 @@ mod tests {
                 set_attribute,
             },
         },
+        middlewares::UserId,
         result::KResult,
         tests::test_utils::https_clap_config,
     };
@@ -517,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn test_auto_rotation_rotates_due_symmetric_key() -> KResult<()> {
         let kms = test_kms().await?;
-        let owner = "auto_rotate_test_owner@example.com";
+        let owner = UserId::new("auto_rotate_test_owner@example.com");
         let now = time::OffsetDateTime::now_utc();
 
         // Create a key that is 2 h past its 1-h rotation deadline
@@ -534,7 +542,7 @@ mod tests {
         kms.database
             .create(
                 Some(uid.clone()),
-                owner,
+                &owner,
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
@@ -581,7 +589,7 @@ mod tests {
     #[tokio::test]
     async fn test_auto_rotation_skips_hsm_keys() -> KResult<()> {
         let kms = test_kms().await?;
-        let owner = "auto_rotate_hsm_test@example.com";
+        let owner = UserId::new("auto_rotate_hsm_test@example.com");
         let now = time::OffsetDateTime::now_utc();
 
         // Store a key with an HSM-style UID (bypasses database-level HSM routing
@@ -603,7 +611,7 @@ mod tests {
             .database
             .create(
                 Some(hsm_uid.clone()),
-                owner,
+                &owner,
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
@@ -642,7 +650,7 @@ mod tests {
     #[tokio::test]
     async fn test_auto_rotation_implicit_enable_via_set_interval() -> KResult<()> {
         let kms = test_kms().await?;
-        let owner = "implicit_enable_test@example.com";
+        let owner = UserId::new("implicit_enable_test@example.com");
         let now = time::OffsetDateTime::now_utc();
 
         // Create an overdue key — but WITHOUT rotate_automatic, simulating a key
@@ -660,7 +668,7 @@ mod tests {
         kms.database
             .create(
                 Some(uid.clone()),
-                owner,
+                &owner,
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
@@ -688,7 +696,7 @@ mod tests {
                 unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
                 new_attribute: Attribute::RotateInterval(3600),
             },
-            owner,
+            &owner,
         )
         .await?;
 
@@ -748,7 +756,7 @@ mod tests {
         };
 
         let kms = test_kms().await?;
-        let owner = "initial_date_cert_test@example.com";
+        let owner = UserId::new("initial_date_cert_test@example.com");
 
         // Create a self-signed EC certificate.
         let certify_req = Certify {
@@ -766,7 +774,7 @@ mod tests {
             ..Certify::default()
         };
         let cert_id = kms
-            .certify(certify_req, owner)
+            .certify(certify_req, &owner)
             .await?
             .unique_identifier
             .to_string();
@@ -791,7 +799,7 @@ mod tests {
                 unique_identifier: Some(UniqueIdentifier::TextString(cert_id.clone())),
                 new_attribute: Attribute::RotateInterval(3600),
             },
-            owner,
+            &owner,
         )
         .await?;
 
@@ -825,7 +833,7 @@ mod tests {
         };
 
         let kms = test_kms().await?;
-        let owner = "certify_with_policy_test@example.com";
+        let owner = UserId::new("certify_with_policy_test@example.com");
 
         // Certify with rotation policy baked in — no separate SetAttribute needed.
         let certify_req = Certify {
@@ -845,7 +853,7 @@ mod tests {
             ..Certify::default()
         };
         let cert_id = kms
-            .certify(certify_req, owner)
+            .certify(certify_req, &owner)
             .await?
             .unique_identifier
             .to_string();
@@ -883,7 +891,7 @@ mod tests {
         };
 
         let kms = test_kms().await?;
-        let owner = "auto_rotate_cert_test@example.com";
+        let owner = UserId::new("auto_rotate_cert_test@example.com");
         let now = time::OffsetDateTime::now_utc();
 
         // Step 1: Create a self-signed EC certificate via the Certify operation.
@@ -904,7 +912,7 @@ mod tests {
             ..Certify::default()
         };
         let cert_id = kms
-            .certify(certify_req, owner)
+            .certify(certify_req, &owner)
             .await?
             .unique_identifier
             .to_string();
@@ -980,7 +988,7 @@ mod tests {
     #[tokio::test]
     async fn test_auto_rotation_perpetual_chain() -> KResult<()> {
         let kms = test_kms().await?;
-        let owner = "perpetual_chain_test@example.com";
+        let owner = UserId::new("perpetual_chain_test@example.com");
         let now = time::OffsetDateTime::now_utc();
 
         // Create a key that is 2 h past its 1-h rotation deadline.
@@ -997,7 +1005,7 @@ mod tests {
         kms.database
             .create(
                 Some(uid.clone()),
-                owner,
+                &owner,
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
@@ -1063,7 +1071,7 @@ mod tests {
     #[tokio::test]
     async fn test_renewal_warning_deduplication() -> KResult<()> {
         let kms = test_kms().await?;
-        let owner = "warning_dedup_test@example.com";
+        let owner = UserId::new("warning_dedup_test@example.com");
         let now = time::OffsetDateTime::now_utc();
 
         // Create a key due in 5 days — matches the 7-day threshold.
@@ -1080,7 +1088,7 @@ mod tests {
         kms.database
             .create(
                 Some(uid.clone()),
-                owner,
+                &owner,
                 &key_object,
                 &key_attrs,
                 &HashSet::new(),
@@ -1149,7 +1157,7 @@ mod tests {
         };
 
         let kms = test_kms().await?;
-        let owner = "certify_keypair_rotation_test@example.com";
+        let owner = UserId::new("certify_keypair_rotation_test@example.com");
 
         // Create a self-signed RSA certificate via Certify — this also creates a fresh RSA
         // keypair internally (the `Subject::KeypairAndSubjectName` code path).
@@ -1165,7 +1173,7 @@ mod tests {
             ..Certify::default()
         };
         let cert_id = kms
-            .certify(certify_req, owner)
+            .certify(certify_req, &owner)
             .await?
             .unique_identifier
             .to_string();
@@ -1210,7 +1218,7 @@ mod tests {
                 unique_identifier: Some(UniqueIdentifier::TextString(sk_uid.clone())),
                 new_attribute: Attribute::RotateInterval(3600),
             },
-            owner,
+            &owner,
         )
         .await?;
 
@@ -1277,7 +1285,7 @@ mod tests {
         };
 
         let kms = test_kms().await?;
-        let owner = "keyset_cert_uid_test@example.com";
+        let owner = UserId::new("keyset_cert_uid_test@example.com");
         let now = time::OffsetDateTime::now_utc();
 
         // Issue a self-signed EC certificate; its auto-assigned UID becomes the keyset name.
@@ -1296,7 +1304,7 @@ mod tests {
             ..Certify::default()
         };
         let cert_id = kms
-            .certify(certify_req, owner)
+            .certify(certify_req, &owner)
             .await?
             .unique_identifier
             .to_string();

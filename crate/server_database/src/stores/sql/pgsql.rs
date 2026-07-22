@@ -7,7 +7,7 @@ use cosmian_kmip::{
 };
 use cosmian_kms_interfaces::{
     AtomicOperation, InterfaceError, InterfaceResult, ObjectWithMetadata, ObjectsStore,
-    PermissionsStore,
+    PermissionsStore, UserId,
 };
 use cosmian_logger::reexport::tracing;
 use deadpool_postgres::{Config as PgConfig, GenericClient, ManagerConfig, Pool, RecyclingMethod};
@@ -494,7 +494,7 @@ impl ObjectsStore for PgPool {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        owner: &UserId,
         object: &Object,
         attributes: &Attributes,
         tags: &HashSet<String>,
@@ -685,7 +685,7 @@ impl ObjectsStore for PgPool {
 
     async fn atomic(
         &self,
-        user: &str,
+        user: &UserId,
         operations: &[AtomicOperation],
     ) -> InterfaceResult<Vec<String>> {
         async fn transact(
@@ -696,7 +696,7 @@ impl ObjectsStore for PgPool {
             let mut uids = Vec::with_capacity(operations.len());
             for op in operations {
                 match op {
-                    AtomicOperation::Create((uid, object, attributes, tags)) => {
+                    AtomicOperation::Create((uid, owner, object, attributes, tags)) => {
                         // inline create within same transaction
                         let object_json = serde_json::to_string(object).map_err(DbError::from)?;
                         let attributes_json =
@@ -708,6 +708,7 @@ impl ObjectsStore for PgPool {
                             .await
                             .map_err(DbError::from)?;
                         let attrs_param = Json(&attributes_json);
+                        let owner_s: &str = owner;
                         tx.execute(
                             &stmt,
                             &[
@@ -715,7 +716,7 @@ impl ObjectsStore for PgPool {
                                 &object_json,
                                 &attrs_param,
                                 &state,
-                                &user,
+                                &owner_s,
                                 &wrapping_key_id,
                             ],
                         )
@@ -848,14 +849,15 @@ impl ObjectsStore for PgPool {
         pg_retry_tx!(self.pool, |tx| transact(&tx, user, operations).await)
     }
 
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> InterfaceResult<bool> {
+    async fn is_object_owned_by(&self, uid: &str, owner: &UserId) -> InterfaceResult<bool> {
+        let owner_s: &str = owner;
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare_cached(get_pgsql_query!("has-row-objects"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let row = client
-                .query_opt(&stmt, &[&uid, &owner])
+                .query_opt(&stmt, &[&uid, &owner_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(row.is_some())
@@ -889,7 +891,7 @@ impl ObjectsStore for PgPool {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<State>,
-        user: &str,
+        user: &UserId,
         user_must_be_owner: bool,
         vendor_id: &str,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
@@ -943,12 +945,13 @@ impl ObjectsStore for PgPool {
     async fn find_wrapped_by(
         &self,
         wrapping_key_uid: &str,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<Vec<(String, State, Attributes)>> {
+        let user_s: &str = user;
         pg_retry!(self.pool, |client| {
             let sql = get_pgsql_query!("find-wrapped-by");
             let rows = client
-                .query(sql, &[&wrapping_key_uid, &user])
+                .query(sql, &[&wrapping_key_uid, &user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let mut out = Vec::new();
@@ -996,7 +999,7 @@ impl ObjectsStore for PgPool {
         &self,
         name: &str,
         generation: Option<i32>,
-        owner: &str,
+        owner: &UserId,
     ) -> InterfaceResult<Vec<(String, Attributes)>> {
         let name = name.to_owned();
         let owner = owner.to_owned();
@@ -1126,15 +1129,16 @@ impl Migrate for PgPool {
 impl PermissionsStore for PgPool {
     async fn list_user_operations_granted(
         &self,
-        user: &str,
+        user: &UserId,
     ) -> InterfaceResult<HashMap<String, (String, State, HashSet<KmipOperation>)>> {
+        let user_s: &str = user;
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare_cached(get_pgsql_query!("select-objects-access-obtained"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let rows = client
-                .query(&stmt, &[&user])
+                .query(&stmt, &[&user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let mut map = HashMap::with_capacity(rows.len());
@@ -1181,9 +1185,10 @@ impl PermissionsStore for PgPool {
     async fn grant_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
+        let user_s: &str = user;
         // Merge with existing permissions (this read is itself retried)
         let existing = self.list_user_operations_on_object(uid, user, true).await?;
         let mut combined = existing;
@@ -1196,7 +1201,7 @@ impl PermissionsStore for PgPool {
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&stmt, &[&uid, &user, &json])
+                .execute(&stmt, &[&uid, &user_s, &json])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
@@ -1206,9 +1211,10 @@ impl PermissionsStore for PgPool {
     async fn remove_operations(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operations: HashSet<KmipOperation>,
     ) -> InterfaceResult<()> {
+        let user_s: &str = user;
         let current = self.list_user_operations_on_object(uid, user, true).await?;
         let remaining: HashSet<KmipOperation> = current.difference(&operations).copied().collect();
         pg_retry!(self.pool, |client| {
@@ -1218,7 +1224,7 @@ impl PermissionsStore for PgPool {
                     .await
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 client
-                    .execute(&d, &[&uid, &user])
+                    .execute(&d, &[&uid, &user_s])
                     .await
                     .map_err(|e| InterfaceError::from(DbError::from(e)))?;
                 return Ok(());
@@ -1230,7 +1236,7 @@ impl PermissionsStore for PgPool {
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             client
-                .execute(&u, &[&uid, &user, &json])
+                .execute(&u, &[&uid, &user_s, &json])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             Ok(())
@@ -1240,16 +1246,17 @@ impl PermissionsStore for PgPool {
     async fn list_user_operations_on_object(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         no_inherited_access: bool,
     ) -> InterfaceResult<HashSet<KmipOperation>> {
+        let user_s: &str = user;
         pg_retry!(self.pool, |client| {
             let stmt = client
                 .prepare_cached(get_pgsql_query!("select-user-accesses-for-object"))
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?;
             let mut perms: HashSet<KmipOperation> = match client
-                .query_opt(&stmt, &[&uid, &user])
+                .query_opt(&stmt, &[&uid, &user_s])
                 .await
                 .map_err(|e| InterfaceError::from(DbError::from(e)))?
             {

@@ -57,6 +57,7 @@ use crate::{
         },
     },
     error::KmsError,
+    middlewares::UserId,
     result::{KResult, KResultHelper},
 };
 
@@ -204,7 +205,7 @@ pub(crate) trait CryptoOpSpec {
     fn map_selection_error(
         e: KmsError,
         unique_identifier: &UniqueIdentifier,
-        _user: &str,
+        _user: &UserId,
     ) -> KmsError {
         match e {
             KmsError::ItemNotFound(_) | KmsError::Unauthorized(_) => KmsError::Kmip21Error(
@@ -223,7 +224,7 @@ pub(crate) trait CryptoOpSpec {
         kms: &KMS,
         owm: &ObjectWithMetadata,
         request: &Self::Request,
-        user: &str,
+        user: &UserId,
     ) -> impl std::future::Future<Output = KResult<Self::Response>> + Send;
 
     /// Execute the operation via a crypto oracle (HSM / external key store).
@@ -282,7 +283,7 @@ impl KMS {
         &self,
         candidates: Vec<ObjectWithMetadata>,
         uid_display: &str,
-        user: &str,
+        user: &UserId,
         extra_validation: F,
     ) -> KResult<ObjectWithMetadata>
     where
@@ -381,7 +382,7 @@ impl KMS {
     pub(crate) async fn perform_crypto_operation<Op: CryptoOpSpec>(
         &self,
         request: Op::Request,
-        user: &str,
+        user: &UserId,
     ) -> KResult<Op::Response> {
         let unique_identifier =
             Op::unique_identifier(&request).ok_or(KmsError::UnsupportedPlaceholder)?;
@@ -423,7 +424,7 @@ impl KMS {
         &self,
         owm: &ObjectWithMetadata,
         request: &Op::Request,
-        user: &str,
+        user: &UserId,
     ) -> KResult<Op::Response> {
         let data_len = Op::usage_data_len(request);
 
@@ -497,7 +498,7 @@ impl KMS {
         &self,
         chain: &[String],
         request: &Op::Request,
-        user: &str,
+        user: &UserId,
     ) -> KResult<Op::Response> {
         let mut last_err: Option<KmsError> = None;
 
@@ -588,7 +589,7 @@ impl KMS {
     pub(crate) async fn is_user_authorized_with_get_wildcard(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operation: KmipOperation,
     ) -> KResult<bool> {
         if self.database.is_object_owned_by(uid, user).await? {
@@ -606,7 +607,7 @@ impl KMS {
     pub(crate) async fn is_owm_authorized_with_get_wildcard(
         &self,
         owm: &ObjectWithMetadata,
-        user: &str,
+        user: &UserId,
         operation: KmipOperation,
     ) -> KResult<bool> {
         if owm.owner() == user {
@@ -626,7 +627,7 @@ impl KMS {
     async fn user_has_granted_operation(
         &self,
         uid: &str,
-        user: &str,
+        user: &UserId,
         operation: KmipOperation,
     ) -> KResult<bool> {
         let ops = self
@@ -703,7 +704,7 @@ impl KMS {
         op_name: &str,
         candidate_uids: &HashSet<String>,
         unique_identifier: &UniqueIdentifier,
-        user: &str,
+        user: &UserId,
     ) -> KResult<Option<(String, String)>> {
         let mut eligible: Vec<(String, String)> = Vec::new();
         for uid in candidate_uids {
@@ -742,7 +743,7 @@ impl KMS {
     async fn resolve_key_for_operation<Op: CryptoOpSpec>(
         &self,
         unique_identifier: &UniqueIdentifier,
-        user: &str,
+        user: &UserId,
     ) -> KResult<ResolvedKey> {
         let uid_str = unique_identifier
             .as_str()

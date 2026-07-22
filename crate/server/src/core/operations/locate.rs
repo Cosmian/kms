@@ -9,6 +9,7 @@ use cosmian_logger::trace;
 
 use crate::{
     core::{KMS, uid_utils::ObjectHandle},
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -22,7 +23,7 @@ pub(crate) async fn locate(
     kms: &KMS,
     request: Locate,
     state: Option<State>,
-    user: &str,
+    user: &UserId,
 ) -> KResult<LocateResponse> {
     trace!("{}", request);
     // Determine the effective state filter: prefer explicit parameter, else Attributes.state

@@ -14,7 +14,7 @@
 //! verify the state of attributes.
 //!
 //! # Constants
-//! - `USER`: A constant string representing the user identifier.
+//! - `&UserId::from(USER)`: A constant string representing the user identifier.
 //!
 //! # Functions
 //! - `get_attributes`: Asynchronously retrieves attributes from the KMIP server.
@@ -48,7 +48,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+    config::ServerParams, core::KMS, middlewares::UserId, result::KResult,
+    tests::test_utils::https_clap_config,
 };
 
 const USER: &str = "eyJhbGciOiJSUzI1Ni";
@@ -59,7 +60,7 @@ async fn get_attributes(kms: &Arc<KMS>, uid: &str, tag: Tag) -> KResult<GetAttri
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             attribute_reference: Some(vec![AttributeReference::Standard(tag)]),
         },
-        USER,
+        &UserId::from(USER),
     )
     .await
 }
@@ -70,14 +71,15 @@ async fn set_attribute(kms: &Arc<KMS>, uid: &str, attribute: Attribute) -> KResu
             unique_identifier: Some(UniqueIdentifier::TextString(uid.to_owned())),
             new_attribute: attribute,
         },
-        USER,
+        &UserId::from(USER),
     )
     .await?;
     Ok(())
 }
 
 async fn delete_attribute(kms: &Arc<KMS>, delete_request: DeleteAttribute) -> KResult<()> {
-    kms.delete_attribute(delete_request, USER).await?;
+    kms.delete_attribute(delete_request, &UserId::from(USER))
+        .await?;
     Ok(())
 }
 
@@ -106,7 +108,7 @@ pub(crate) async fn test_set_attribute_server() -> KResult<()> {
     kms.database
         .create(
             Some(uid.clone()),
-            USER,
+            &UserId::from(USER),
             &sym_key_object,
             sym_key_object.attributes()?,
             &HashSet::new(),
@@ -202,7 +204,7 @@ async fn set_link_attribute_and_remove_it(
             attribute_references: Some(vec![AttributeReference::Standard(tag)]),
             ..DeleteAttribute::default()
         },
-        USER,
+        &UserId::from(USER),
     )
     .await?;
 

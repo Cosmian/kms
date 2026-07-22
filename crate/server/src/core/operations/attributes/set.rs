@@ -24,6 +24,7 @@ use crate::{
         uid_utils::{ObjectHandle, from_request},
     },
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -53,7 +54,7 @@ fn hsm_base_uid(uid: &str) -> Option<String> {
 pub(crate) async fn set_attribute(
     kms: &KMS,
     request: SetAttribute,
-    user: &str,
+    user: &UserId,
 ) -> KResult<SetAttributeResponse> {
     debug!("{request}");
 

@@ -14,7 +14,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::debug;
 
 use crate::{
-    config::ServerParams, core::KMS, error::KmsError,
+    config::ServerParams, core::KMS, error::KmsError, middlewares::UserId,
     tests::test_utils::https_clap_config_with_external_proxy,
 };
 
@@ -34,13 +34,13 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
 
     let clap_config = https_clap_config_with_external_proxy();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
     let request = Validate {
         certificate: Some([root_cert.clone()].to_vec()),
         unique_identifier: None,
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await?;
+    let res = kms.validate(request, &owner).await?;
     assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root certificate");
     let request = Validate {
@@ -48,7 +48,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         unique_identifier: None,
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await?;
+    let res = kms.validate(request, &owner).await?;
     assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate certificates");
     let request = Validate {
@@ -63,7 +63,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         unique_identifier: None,
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await;
+    let res = kms.validate(request, &owner).await;
     res.unwrap_err();
     debug!("OK: Validate root/intermediate/leaf1 certificates - invalid (revoked)");
     let request = Validate {
@@ -78,7 +78,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         unique_identifier: None,
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await?;
+    let res = kms.validate(request, &owner).await?;
     assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate/leaf certificates - valid");
     let request = Validate {
@@ -94,7 +94,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_owned()), // this is supposed to work but it does not.
         Some("4804152030Z".to_owned())
     };
-    let res = kms.validate(request, owner).await;
+    let res = kms.validate(request, &owner).await;
     res.unwrap_err();
     debug!("OK: Validate root/intermediate/leaf2 certificates - invalid");
     let request = Validate {
@@ -102,7 +102,7 @@ pub(crate) async fn test_validate_with_certificates_bytes() -> Result<(), KmsErr
         unique_identifier: None,
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await;
+    let res = kms.validate(request, &owner).await;
     res.unwrap_err();
     debug!("OK: Validate root/leaf2 certificates - missing intermediate");
 
@@ -126,7 +126,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
 
     let clap_config = https_clap_config_with_external_proxy();
     let kms = Arc::new(KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = UserId::new("eyJhbGciOiJSUzI1Ni");
     // add certificates to kms
     // root
     let root_request = Import {
@@ -143,7 +143,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: root_cert.clone(),
         }),
     };
-    let res_root = kms.import(root_request, owner).await?;
+    let res_root = kms.import(root_request, &owner).await?;
     // intermediate
     let intermediate_request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -159,7 +159,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: intermediate_cert.clone(),
         }),
     };
-    let res_intermediate = kms.import(intermediate_request, owner).await?;
+    let res_intermediate = kms.import(intermediate_request, &owner).await?;
     // leaf1
     let leaf1_request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -175,14 +175,14 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
             certificate_value: leaf1_cert.clone(),
         }),
     };
-    let res_leaf1 = kms.import(leaf1_request, owner).await?;
+    let res_leaf1 = kms.import(leaf1_request, &owner).await?;
     // Only the root, it is valid by default
     let request = Validate {
         certificate: None,
         unique_identifier: Some([res_root.unique_identifier.clone()].to_vec()),
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await?;
+    let res = kms.validate(request, &owner).await?;
     assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root - valid");
 
@@ -195,7 +195,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         ]),
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await?;
+    let res = kms.validate(request, &owner).await?;
     assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate certificates - valid");
 
@@ -209,7 +209,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         ]),
         validity_time: None,
     };
-    let res = kms.validate(request, owner).await;
+    let res = kms.validate(request, &owner).await;
     res.unwrap_err();
     debug!("OK: Validate root/intermediate/leaf1 certificates - invalid (revoked)");
 
@@ -219,7 +219,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         unique_identifier: None,
         validity_time: None,
     };
-    let res = Box::pin(kms.validate(request, owner)).await;
+    let res = Box::pin(kms.validate(request, &owner)).await;
     res.unwrap_err();
 
     // Root and intermediate valid certificates. Leaf valid. Test returns valid.
@@ -231,7 +231,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         ]),
         validity_time: None,
     };
-    let res = Box::pin(kms.validate(request, owner)).await?;
+    let res = Box::pin(kms.validate(request, &owner)).await?;
     assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate/leaf2 certificates - valid");
 
@@ -246,7 +246,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         ]),
         validity_time: None,
     };
-    let res = Box::pin(kms.validate(request, owner)).await?;
+    let res = Box::pin(kms.validate(request, &owner)).await?;
     assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
     debug!("OK: Validate root/intermediate/leaf2 certificates - valid");
 
@@ -262,7 +262,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         validity_time: //Some(Asn1Time::days_from_now(3651).unwrap().to_owned()), // this is supposed to work but it does not.
         Some("4804152030Z".to_owned())
     };
-    let res = Box::pin(kms.validate(request, owner)).await;
+    let res = Box::pin(kms.validate(request, &owner)).await;
     res.unwrap_err();
     debug!(
         "OK: Validate root/intermediate/leaf2 certificates - invalid (won't be valid in the \
@@ -275,7 +275,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         unique_identifier: Some(vec![res_root.unique_identifier.clone()]),
         validity_time: None,
     };
-    let res = Box::pin(kms.validate(request, owner)).await;
+    let res = Box::pin(kms.validate(request, &owner)).await;
     res.unwrap_err();
 
     debug!("OK: Validate root/leaf2 certificates - invalid (missing intermediate)");
@@ -285,7 +285,7 @@ pub(crate) async fn test_validate_with_certificates_ids() -> Result<(), KmsError
         unique_identifier: Some([res_intermediate.unique_identifier.clone()].to_vec()),
         validity_time: None,
     };
-    let res = Box::pin(kms.validate(request, owner)).await;
+    let res = Box::pin(kms.validate(request, &owner)).await;
     res.unwrap_err();
     debug!("OK: Validate root/leaf2 certificates - invalid (missing root)");
 
@@ -334,7 +334,7 @@ mod pqc_validate_tests {
     use x509_parser::prelude::{FromDer, X509Certificate};
 
     use crate::{
-        config::ServerParams, core::KMS, error::KmsError, result::KResult,
+        config::ServerParams, core::KMS, error::KmsError, middlewares::UserId, result::KResult,
         tests::test_utils::https_clap_config,
     };
 
@@ -443,14 +443,14 @@ authorityKeyIdentifier=keyid:always,issuer
         };
 
         let cert_id = kms
-            .certify(certify_req, owner)
+            .certify(certify_req, &UserId::from(owner))
             .await?
             .unique_identifier
             .to_string();
 
         // Retrieve the private key ID stored as PrivateKeyLink on the certificate.
         let attrs = kms
-            .get_attributes(GetAttributes::from(cert_id.clone()), owner)
+            .get_attributes(GetAttributes::from(cert_id.clone()), &UserId::from(owner))
             .await?
             .attributes;
         let sk_id = attrs
@@ -478,7 +478,7 @@ authorityKeyIdentifier=keyid:always,issuer
             unique_identifier: unique_identifiers,
             validity_time: None,
         };
-        let res = Box::pin(kms.validate(req, owner)).await;
+        let res = Box::pin(kms.validate(req, &UserId::from(owner))).await;
         assert!(
             matches!(
                 res,
@@ -506,7 +506,7 @@ authorityKeyIdentifier=keyid:always,issuer
             unique_identifier: unique_identifiers,
             validity_time: Some(validity_time.to_owned()),
         };
-        let res = Box::pin(kms.validate(req, owner)).await;
+        let res = Box::pin(kms.validate(req, &UserId::from(owner))).await;
         assert!(
             res.is_err(),
             "expected an error (expired/invalid chain), got: {res:?}"
@@ -521,10 +521,10 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_dsa44_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
         let (cert_id, _sk_id) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root",
             None,
@@ -532,7 +532,7 @@ authorityKeyIdentifier=keyid:always,issuer
             PQC_ROOT_EXT,
         )
         .await?;
-        assert_chain_valid(&kms, owner, &[&cert_id]).await;
+        assert_chain_valid(&kms, &owner, &[&cert_id]).await;
         Ok(())
     }
 
@@ -540,10 +540,10 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_dsa65_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
         let (cert_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Root",
             None,
@@ -551,7 +551,7 @@ authorityKeyIdentifier=keyid:always,issuer
             PQC_ROOT_EXT,
         )
         .await?;
-        assert_chain_valid(&kms, owner, &[&cert_id]).await;
+        assert_chain_valid(&kms, &owner, &[&cert_id]).await;
         Ok(())
     }
 
@@ -559,10 +559,10 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_dsa87_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
         let (cert_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Root",
             None,
@@ -570,7 +570,7 @@ authorityKeyIdentifier=keyid:always,issuer
             PQC_ROOT_EXT,
         )
         .await?;
-        assert_chain_valid(&kms, owner, &[&cert_id]).await;
+        assert_chain_valid(&kms, &owner, &[&cert_id]).await;
         Ok(())
     }
 
@@ -578,10 +578,10 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_slhdsa_sha2_128s_self_signed() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
         let (cert_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::SLHDSA_SHA2_128s,
             "SLH-DSA-SHA2-128s Root",
             None,
@@ -589,7 +589,7 @@ authorityKeyIdentifier=keyid:always,issuer
             PQC_ROOT_EXT,
         )
         .await?;
-        assert_chain_valid(&kms, owner, &[&cert_id]).await;
+        assert_chain_valid(&kms, &owner, &[&cert_id]).await;
         Ok(())
     }
 
@@ -601,12 +601,12 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa44_root_mldsa44_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         // Root CA (self-signed)
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -618,7 +618,7 @@ authorityKeyIdentifier=keyid:always,issuer
         // Leaf (signed by root)
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Leaf",
             Some(&root_id),
@@ -627,7 +627,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -635,11 +635,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa44_root_mldsa87_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -649,7 +649,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Leaf",
             Some(&root_id),
@@ -658,7 +658,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -667,11 +667,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa44_root_mlkem512_leaf_rfc9935() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -681,7 +681,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLKEM_512,
             "ML-KEM-512 Leaf",
             Some(&root_id),
@@ -690,7 +690,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -698,11 +698,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa65_root_mlkem768_leaf_rfc9935() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Root CA",
             None,
@@ -712,7 +712,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLKEM_768,
             "ML-KEM-768 Leaf",
             Some(&root_id),
@@ -721,7 +721,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -729,11 +729,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_mldsa87_root_mlkem1024_leaf_rfc9935() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Root CA",
             None,
@@ -743,7 +743,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLKEM_1024,
             "ML-KEM-1024 Leaf",
             Some(&root_id),
@@ -752,7 +752,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -760,11 +760,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_slhdsa_root_mldsa44_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::SLHDSA_SHA2_128s,
             "SLH-DSA Root CA",
             None,
@@ -774,7 +774,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Leaf",
             Some(&root_id),
@@ -783,7 +783,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -791,11 +791,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_slhdsa_root_mlkem512_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::SLHDSA_SHA2_128s,
             "SLH-DSA Root CA",
             None,
@@ -805,7 +805,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLKEM_512,
             "ML-KEM-512 Leaf",
             Some(&root_id),
@@ -814,7 +814,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -830,12 +830,12 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_all_mldsa_variants() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         // Root CA (self-signed ML-DSA-44)
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -847,7 +847,7 @@ authorityKeyIdentifier=keyid:always,issuer
         // Intermediate CA (ML-DSA-65, signed by root)
         let (int_id, int_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Intermediate CA",
             Some(&root_id),
@@ -859,7 +859,7 @@ authorityKeyIdentifier=keyid:always,issuer
         // Leaf (ML-DSA-87, signed by intermediate)
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Leaf",
             Some(&int_id),
@@ -868,7 +868,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &int_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &int_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -877,11 +877,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_mldsa65_chain_mlkem768_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Root CA",
             None,
@@ -891,7 +891,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (int_id, int_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Intermediate CA",
             Some(&root_id),
@@ -901,7 +901,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLKEM_768,
             "ML-KEM-768 Leaf",
             Some(&int_id),
@@ -910,7 +910,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &int_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &int_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -919,11 +919,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_slhdsa_root_mldsa_chain() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::SLHDSA_SHA2_128s,
             "SLH-DSA Root CA",
             None,
@@ -933,7 +933,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (int_id, int_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Intermediate CA",
             Some(&root_id),
@@ -943,7 +943,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Leaf",
             Some(&int_id),
@@ -952,7 +952,7 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &int_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &int_id, &leaf_id]).await;
         Ok(())
     }
 
@@ -961,11 +961,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_unordered_input_still_valid() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -975,7 +975,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (int_id, int_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Intermediate CA",
             Some(&root_id),
@@ -985,7 +985,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Leaf",
             Some(&int_id),
@@ -995,7 +995,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
 
         // Supply in reverse order — sort_certificates must handle this.
-        assert_chain_valid(&kms, owner, &[&leaf_id, &int_id, &root_id]).await;
+        assert_chain_valid(&kms, &owner, &[&leaf_id, &int_id, &root_id]).await;
         Ok(())
     }
 
@@ -1009,7 +1009,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_kem_self_signed_is_rejected_at_certify() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let attributes = {
             let subject_name = "C=FR, ST=IdF, L=Paris, O=PQCTest, CN=ML-KEM Self-Signed";
@@ -1032,7 +1032,7 @@ authorityKeyIdentifier=keyid:always,issuer
             ..Certify::default()
         };
 
-        let result = kms.certify(certify_req, owner).await;
+        let result = kms.certify(certify_req, &owner).await;
         assert!(
             result.is_err(),
             "ML-KEM self-signed certificate creation must be rejected, but it succeeded"
@@ -1049,7 +1049,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_ml_kem768_self_signed_is_rejected_at_certify() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let attrs = Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::MLKEM_768),
@@ -1064,7 +1064,7 @@ authorityKeyIdentifier=keyid:always,issuer
                     attributes: Some(attrs),
                     ..Certify::default()
                 },
-                owner,
+                &owner,
             )
             .await;
         assert!(result.is_err(), "ML-KEM-768 self-signed must be rejected");
@@ -1076,11 +1076,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_2level_chain_future_validity_time_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -1090,7 +1090,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Leaf",
             Some(&root_id),
@@ -1100,10 +1100,10 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
 
         // Chain must be valid today.
-        assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
 
         // Year 4804 is well beyond the 365-day default validity.
-        assert_chain_invalid_at(&kms, owner, &[&root_id, &leaf_id], "4804152030Z").await;
+        assert_chain_invalid_at(&kms, &owner, &[&root_id, &leaf_id], "4804152030Z").await;
         Ok(())
     }
 
@@ -1111,11 +1111,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_chain_future_validity_time_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -1125,7 +1125,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (int_id, int_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Intermediate CA",
             Some(&root_id),
@@ -1135,7 +1135,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Leaf",
             Some(&int_id),
@@ -1144,8 +1144,8 @@ authorityKeyIdentifier=keyid:always,issuer
         )
         .await?;
 
-        assert_chain_valid(&kms, owner, &[&root_id, &int_id, &leaf_id]).await;
-        assert_chain_invalid_at(&kms, owner, &[&root_id, &int_id, &leaf_id], "4804152030Z").await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &int_id, &leaf_id]).await;
+        assert_chain_invalid_at(&kms, &owner, &[&root_id, &int_id, &leaf_id], "4804152030Z").await;
         Ok(())
     }
 
@@ -1154,11 +1154,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_missing_intermediate_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -1168,7 +1168,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (int_id, int_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Intermediate CA",
             Some(&root_id),
@@ -1178,7 +1178,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Leaf",
             Some(&int_id),
@@ -1188,7 +1188,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
 
         // Full chain is valid.
-        assert_chain_valid(&kms, owner, &[&root_id, &int_id, &leaf_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_id, &int_id, &leaf_id]).await;
 
         // Missing intermediate — must fail.
         let req = Validate {
@@ -1199,7 +1199,7 @@ authorityKeyIdentifier=keyid:always,issuer
             ]),
             validity_time: None,
         };
-        let res = Box::pin(kms.validate(req, owner)).await;
+        let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
             res.is_err(),
             "missing intermediate must cause validation failure, got: {res:?}"
@@ -1211,11 +1211,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_3level_missing_root_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -1225,7 +1225,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (int_id, int_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Intermediate CA",
             Some(&root_id),
@@ -1235,7 +1235,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "ML-DSA-87 Leaf",
             Some(&int_id),
@@ -1253,7 +1253,7 @@ authorityKeyIdentifier=keyid:always,issuer
             ]),
             validity_time: None,
         };
-        let res = Box::pin(kms.validate(req, owner)).await;
+        let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
             res.is_err(),
             "missing root must cause validation failure, got: {res:?}"
@@ -1265,14 +1265,14 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_empty_chain_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let req = Validate {
             certificate: None,
             unique_identifier: None,
             validity_time: None,
         };
-        let res = Box::pin(kms.validate(req, owner)).await;
+        let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
             res.is_err(),
             "empty chain must return an error, got: {res:?}"
@@ -1285,12 +1285,12 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_leaf_with_wrong_issuer_fails() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         // Chain A: ML-DSA-44 root A → ML-DSA-65 leaf A
         let (root_a_id, root_a_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "Root CA - A",
             None,
@@ -1300,7 +1300,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_a_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "Leaf - A",
             Some(&root_a_id),
@@ -1312,7 +1312,7 @@ authorityKeyIdentifier=keyid:always,issuer
         // Chain B: ML-DSA-87 root B (independent)
         let (root_b_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_87,
             "Root CA - B",
             None,
@@ -1330,14 +1330,14 @@ authorityKeyIdentifier=keyid:always,issuer
             ]),
             validity_time: None,
         };
-        let res = Box::pin(kms.validate(req, owner)).await;
+        let res = Box::pin(kms.validate(req, &owner)).await;
         assert!(
             res.is_err(),
             "leaf from chain-A validated with root from chain-B must fail, got: {res:?}"
         );
 
         // Verify that the correct pairing still works.
-        assert_chain_valid(&kms, owner, &[&root_a_id, &leaf_a_id]).await;
+        assert_chain_valid(&kms, &owner, &[&root_a_id, &leaf_a_id]).await;
         Ok(())
     }
 
@@ -1350,7 +1350,7 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_all_mldsa_variants_as_self_signed_root() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         for (algo, label) in [
             (CryptographicAlgorithm::MLDSA_44, "ML-DSA-44"),
@@ -1358,8 +1358,8 @@ authorityKeyIdentifier=keyid:always,issuer
             (CryptographicAlgorithm::MLDSA_87, "ML-DSA-87"),
         ] {
             let (cert_id, _) =
-                pqc_certify(&kms, owner, algo, label, None, None, PQC_ROOT_EXT).await?;
-            assert_chain_valid(&kms, owner, &[&cert_id]).await;
+                pqc_certify(&kms, &owner, algo, label, None, None, PQC_ROOT_EXT).await?;
+            assert_chain_valid(&kms, &owner, &[&cert_id]).await;
         }
         Ok(())
     }
@@ -1370,12 +1370,12 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_all_mlkem_variants_as_ca_issued_leaf() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         // One shared root CA
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -1391,7 +1391,7 @@ authorityKeyIdentifier=keyid:always,issuer
         ] {
             let (leaf_id, _) = pqc_certify(
                 &kms,
-                owner,
+                &owner,
                 algo,
                 label,
                 Some(&root_id),
@@ -1399,7 +1399,7 @@ authorityKeyIdentifier=keyid:always,issuer
                 PQC_LEAF_EXT,
             )
             .await?;
-            assert_chain_valid(&kms, owner, &[&root_id, &leaf_id]).await;
+            assert_chain_valid(&kms, &owner, &[&root_id, &leaf_id]).await;
         }
         Ok(())
     }
@@ -1409,11 +1409,11 @@ authorityKeyIdentifier=keyid:always,issuer
     #[tokio::test]
     async fn test_validate_pqc_duplicate_ids_are_deduplicated() -> KResult<()> {
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         let (root_id, root_sk) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 Root CA",
             None,
@@ -1423,7 +1423,7 @@ authorityKeyIdentifier=keyid:always,issuer
         .await?;
         let (leaf_id, _) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_65,
             "ML-DSA-65 Leaf",
             Some(&root_id),
@@ -1443,7 +1443,7 @@ authorityKeyIdentifier=keyid:always,issuer
             ]),
             validity_time: None,
         };
-        let res = Box::pin(kms.validate(req, owner)).await?;
+        let res = Box::pin(kms.validate(req, &owner)).await?;
         assert_eq!(res.validity_indicator, ValidityIndicator::Valid);
         Ok(())
     }
@@ -1461,12 +1461,12 @@ authorityKeyIdentifier=keyid:always,issuer
         // DER value bytes (without tag/length): 55 1D 38
         const NO_REV_AVAIL: &[u8] = &[0x55, 0x1d, 0x38];
         let kms = make_kms().await?;
-        let owner = "pqc_test_owner";
+        let owner = UserId::new("pqc_test_owner");
 
         // Certify a self-signed ML-DSA-44 cert with no crlDistributionPoints.
         let (cert_id, _sk_id) = pqc_certify(
             &kms,
-            owner,
+            &owner,
             CryptographicAlgorithm::MLDSA_44,
             "ML-DSA-44 noRevAvail Root",
             None,
@@ -1482,7 +1482,7 @@ authorityKeyIdentifier=keyid:always,issuer
                     unique_identifier: Some(UniqueIdentifier::TextString(cert_id.clone())),
                     ..Get::default()
                 },
-                owner,
+                &owner,
             )
             .await?;
         let cert_der = match get_response.object {
@@ -1505,7 +1505,7 @@ authorityKeyIdentifier=keyid:always,issuer
         );
 
         // Chain validation must succeed: noRevAvail triggers CRL skip in verify_crls.
-        assert_chain_valid(&kms, owner, &[&cert_id]).await;
+        assert_chain_valid(&kms, &owner, &[&cert_id]).await;
         Ok(())
     }
 }

@@ -16,6 +16,7 @@ use cosmian_logger::trace;
 use crate::{
     core::{KMS, retrieve_object_utils::retrieve_object_for_operation, uid_utils::from_request},
     error::KmsError,
+    middlewares::UserId,
     result::KResult,
 };
 
@@ -52,7 +53,7 @@ use crate::{
 pub(crate) async fn activate(
     kms: &KMS,
     request: Activate,
-    user: &str,
+    user: &UserId,
 ) -> KResult<ActivateResponse> {
     trace!("{}", serde_json::to_string(&request)?);
 
