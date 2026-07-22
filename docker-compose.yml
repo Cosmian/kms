@@ -216,7 +216,7 @@ services:
   # Started on demand with: docker compose up -d iris
   # The profile keeps it out of the default `docker compose up -d` that runs
   iris:
-    image: ${IRIS_DOCKER_IMAGE:-intersystemsdc/iris-community:latest}
+    image: ${IRIS_DOCKER_IMAGE:-intersystems/iris-community:2026.1}
     container_name: ${IRIS_CONTAINER_NAME:-iris-kmip-test}
     # The Community image is amd64-only; Rosetta handles this on Apple Silicon.
     platform: linux/amd64
