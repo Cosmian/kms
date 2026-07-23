@@ -1,5 +1,8 @@
 mod audit;
-pub(crate) use audit::{AuditMiddleware, KmipAlgorithm, KmipObjectUid, KmipOperationName};
+pub(crate) use audit::{
+    AuditMiddleware, BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid,
+    KmipOperationName,
+};
 
 mod tls_auth;
 pub(crate) use tls_auth::{extract_peer_certificate, tls_auth_fn};

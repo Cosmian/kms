@@ -17,7 +17,7 @@ Accepted
 ## Context
 
 Every KMIP operation — including authentication failures — must produce an audit event
-(see ADR-0003). The challenge is *where* in the call stack to intercept it. The KMS has
+(see ADR-0003). The challenge is _where_ in the call stack to intercept it. The KMS has
 a layered architecture:
 
 ```
@@ -32,9 +32,9 @@ HTTP client
 Two hard requirements compete:
 
 1. **401/403 authentication failures must be audited.** This means the audit hook must run
-   *outside* the auth middlewares so it sees their rejection responses.
+   _outside_ the auth middlewares so it sees their rejection responses.
 2. **Per-operation context (`object_uid`, `algorithm`) should be captured.** This context
-   only exists *inside* the KMIP dispatch layer, deep in the stack.
+   only exists _inside_ the KMIP dispatch layer, deep in the stack.
 
 Instrumenting every individual KMIP operation handler (≈40 operations) would satisfy
 requirement 2 but misses requirement 1 for failed auth. A pure outer middleware satisfies
@@ -63,13 +63,13 @@ before** the CORS middleware in `start_kms_server.rs`:
 The KMIP route handler, after TTLV parsing but before (or after) dispatch, injects
 structured context into the Actix request extensions:
 
-| Extension type      | Populated by          | Content                                       |
-|---------------------|-----------------------|-----------------------------------------------|
-| `KmipOperationName` | TTLV parser           | `"Encrypt"`, `"Create"`, `"Create+Destroy"` … |
-| `KmipObjectUid`     | route handler         | UID from request or server-assigned (Create)  |
-| `KmipAlgorithm`     | route handler         | `"AES"`, `"RSA"`, …                           |
+| Extension type      | Populated by  | Content                                       |
+| ------------------- | ------------- | --------------------------------------------- |
+| `KmipOperationName` | TTLV parser   | `"Encrypt"`, `"Create"`, `"Create+Destroy"` … |
+| `KmipObjectUid`     | route handler | UID from request or server-assigned (Create)  |
+| `KmipAlgorithm`     | route handler | `"AES"`, `"RSA"`, …                           |
 
-The outer middleware reads these extensions when composing the `AuditEventDraft`.  If an
+The outer middleware reads these extensions when composing the `AuditEventDraft`. If an
 extension is absent (e.g. non-KMIP endpoint, or extraction failed) the field defaults to
 `None` — the audit record is degraded but the request is never affected.
 
@@ -123,7 +123,7 @@ mechanism is in place; filling it is incremental per-operation work.
 ### `From<ServiceResponse>` extraction only (no extension injection)
 
 - **ALT-003 Description**: The outer middleware attempts to infer `object_uid` and
-  `algorithm` by deserialising the TTLV *response* body.
+  `algorithm` by deserialising the TTLV _response_ body.
 - **ALT-004 Rejection Reason**: TTLV response bodies are not always structured to expose
   UIDs (e.g. `EncryptResponse` does not echo back the key UID). Response bodies can be
   large. Double-parsing the body adds latency and complexity. The extension injection
@@ -146,7 +146,7 @@ mechanism is in place; filling it is incremental per-operation work.
 - **IMP-003**: Injection site: `crate/server/src/routes/kmip/audit.rs`
   (`inject_kmip_audit_context()` called from KMIP route handlers)
 - **IMP-004**: Middleware registration: `crate/server/src/start_kms_server.rs`
-  (`.wrap(AuditMiddleware::new(audit_store.clone()))` before `.wrap(cors)`)
+  (`.wrap(AuditMiddleware::new(audit_store.clone(), trusted_proxy_cidrs.clone()))` before `.wrap(cors)`)
 - **IMP-005**: To fill T1 — inject `KmipObjectUid` from each operation handler's
   request/response TTLV; see `tradeoofs.md` and `.agents/prompts/fill-audit-object-uid.md`
 - **IMP-006**: Infallibility rule: all functions in `routes/kmip/audit.rs` must be
