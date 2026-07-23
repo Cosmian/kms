@@ -55,7 +55,7 @@ When the channel is full, incoming events are **dropped (drop-newest)** and an `
 logged. The writer never blocks the request path. The hash chain advances normally; the
 compliance log has a gap but stays structurally valid.
 
-Ring-buffer semantics (drop-oldest) were explicitly rejected — see *Alternatives Considered*.
+Ring-buffer semantics (drop-oldest) were explicitly rejected — see _Alternatives Considered_.
 
 ### Channel capacity
 
@@ -91,8 +91,10 @@ load at 1 000 req/s given one `fsync` ≈ 1 ms on NVMe storage (4 096 × ~500 B 
 - **NEG-003**: `object_uid` and `algorithm` fields are always `None` — the HTTP middleware
   layer does not have access to the deserialized KMIP payload. Filling these requires injecting
   KMIP-layer extensions into the request context (tracked in `tradeoofs.md` T1).
-- **NEG-004**: Batch KMIP requests produce one audit event for N operations; individual
-  per-operation outcomes and object_uids are not recorded (tracked in `tradeoofs.md` T2).
+- **NEG-004** ✅ **Resolved**: Batch KMIP requests now produce one audit event **per `BatchItem`**,
+  linked by a shared `request_id` (UUID v4). Each item carries its own `operation`,
+  `object_uid`, `algorithm`, and per-item `result` parsed from the `ResponseMessage`
+  `ResultStatus`/`ResultReason`. See `tradeoofs.md` T2.
 
 ## Alternatives Considered
 
