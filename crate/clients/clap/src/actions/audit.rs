@@ -275,7 +275,7 @@ impl VerifyAuditAction {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use std::{io::Write as _, path::PathBuf};
 
@@ -299,9 +299,11 @@ mod tests {
         let mut file = std::fs::File::create(path).unwrap();
 
         for i in 0..n {
-            let prev_hash = events.last().map_or([0u8; 32], |e: &AuditEvent| e.row_hash);
+            let prev_hash = events
+                .last()
+                .map_or([0_u8; 32], |e: &AuditEvent| e.row_hash);
             let mut event = AuditEvent {
-                id: i as i64,
+                id: i64::try_from(i).unwrap(),
                 timestamp: OffsetDateTime::now_utc(),
                 operation: format!("Op{i}"),
                 user: "test-user".to_owned(),
@@ -310,8 +312,9 @@ mod tests {
                 client_ip: Some("127.0.0.1".to_owned()),
                 result: AuditResult::Success,
                 duration_ms: 1,
+                request_id: None,
                 prev_hash,
-                row_hash: [0u8; 32],
+                row_hash: [0_u8; 32],
             };
             event.row_hash = compute_row_hash(&event);
             writeln!(file, "{}", serde_json::to_string(&event).unwrap()).unwrap();
@@ -457,10 +460,10 @@ mod tests {
         // Write 3 events: one before, one at cutoff, one after
         let mut file = std::fs::File::create(&path).unwrap();
         let timestamps = [before, cutoff, after];
-        let mut prev_hash = [0u8; 32];
+        let mut prev_hash = [0_u8; 32];
         for (i, ts) in timestamps.iter().enumerate() {
             let mut ev = AuditEvent {
-                id: i as i64,
+                id: i64::try_from(i).unwrap(),
                 timestamp: *ts,
                 operation: "Encrypt".to_owned(),
                 user: "u".to_owned(),
@@ -469,8 +472,9 @@ mod tests {
                 client_ip: None,
                 result: AuditResult::Success,
                 duration_ms: 1,
+                request_id: None,
                 prev_hash,
-                row_hash: [0u8; 32],
+                row_hash: [0_u8; 32],
             };
             ev.row_hash = compute_row_hash(&ev);
             prev_hash = ev.row_hash;

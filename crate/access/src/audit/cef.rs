@@ -96,6 +96,10 @@ pub fn to_cef_line(event: &AuditEvent, kms_version: &str) -> String {
         .unwrap_or_else(|_| "1970-01-01T00:00:00Z".to_owned());
     let _ = write!(ext, " cs4={} cs4Label=timestamp", escape_ext_value(&ts_str));
 
+    if let Some(rid) = &event.request_id {
+        let _ = write!(ext, " cs5={} cs5Label=requestId", rid.hyphenated());
+    }
+
     format!("{header}{ext}")
 }
 
@@ -151,6 +155,7 @@ mod tests {
             client_ip: Some("10.0.1.42".to_owned()),
             result,
             duration_ms: 12,
+            request_id: None,
             prev_hash: [0u8; 32],
             row_hash: [0u8; 32],
         };
@@ -233,5 +238,34 @@ mod tests {
     #[test]
     fn escape_ext_value_backslash() {
         assert_eq!(escape_ext_value("a\\b"), "a\\\\b");
+    }
+
+    #[test]
+    fn cef_line_includes_request_id() {
+        use uuid::Uuid;
+        let mut ev = make_event(AuditResult::Success);
+        let rid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        ev.request_id = Some(rid);
+        ev.row_hash = compute_row_hash(&ev);
+        let line = to_cef_line(&ev, "5.0.0");
+        assert!(
+            line.contains("cs5=550e8400-e29b-41d4-a716-446655440000"),
+            "expected cs5 in: {line}"
+        );
+        assert!(
+            line.contains("cs5Label=requestId"),
+            "expected cs5Label in: {line}"
+        );
+    }
+
+    #[test]
+    fn cef_line_omits_request_id_when_none() {
+        let ev = make_event(AuditResult::Success);
+        assert!(ev.request_id.is_none());
+        let line = to_cef_line(&ev, "5.0.0");
+        assert!(
+            !line.contains("cs5"),
+            "cs5 must be absent when request_id is None: {line}"
+        );
     }
 }

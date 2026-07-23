@@ -59,8 +59,19 @@ as ArcSight, Splunk, or QRadar.
 
 | CLI flag                   | Env var                      | Default      | Description                                                                               |
 | -------------------------- | ---------------------------- | ------------ | ----------------------------------------------------------------------------------------- |
-| `--audit-log-path`         | `KMS_AUDIT_LOG_PATH`         | _(disabled)_ | Path to the JSONL audit log file. Audit logging is disabled when unset.                   |
+| `--audit-enable`           | `KMS_AUDIT_ENABLE`           | `false`      | Enable the audit event pipeline.                                                          |
+| `--audit-file-path`        | `KMS_AUDIT_FILE_PATH`        | _(disabled)_ | Path to the JSONL audit log file. Audit logging is disabled when unset.                   |
 | `--audit-channel-capacity` | `KMS_AUDIT_CHANNEL_CAPACITY` | `4096`       | In-memory channel capacity. Raise if you see `"AuditFileStore: channel full"` in the log. |
+
+In `server.toml`, these nest under `[audit]` / `[audit.file]` (not a flat `[audit] path`):
+
+```toml
+[audit]
+enabled = true
+
+[audit.file]
+path = "/var/log/cosmian-kms/audit.jsonl"
+```
 
 ### Security hardening (this session)
 
@@ -83,3 +94,45 @@ Implemented during code review of the initial `file_store.rs`:
   `enqueue_drops_when_channel_full`, `chain_resumes_on_restart`,
   `write_failure_does_not_advance_chain`, plus
   `resume_rejects_tampered_last_line`.
+
+### Per-`BatchItem` audit events with `request_id`
+
+Each HTTP request now receives a UUID v4 `request_id` stamped on every
+`AuditEventDraft` it produces. For batch `RequestMessage` calls the middleware
+fans out one event per `BatchItem` — each carrying its own `operation`,
+`object_uid`, `algorithm`, and per-item `result` parsed from the
+`ResponseMessage` `ResultStatus`/`ResultReason`. All events in a batch share
+the same `request_id`, enabling correlation in SIEM / log-analysis tools.
+
+The field is optional (`#[serde(skip_serializing_if = "Option::is_none")]`) so
+existing audit files without it remain valid and hash-chain-verifiable.
+
+CEF output gains a `cs5=<uuid> cs5Label=requestId` extension field when
+`request_id` is `Some`.
+
+### Drop-detection sentinel (T3)
+
+Previously, events dropped by `try_send` when the channel was full were silently
+lost with only a log-level `error!`. The hash chain stayed valid but the
+compliance log had invisible gaps.
+
+Now `AuditFileStore` tracks a `dropped_count: Arc<AtomicU64>`. On
+`TrySendError::Full` the counter is incremented. Before writing each real
+event the writer loop swaps the counter to zero; if non-zero, a synthetic
+`operation = "audit:eviction"` sentinel event is written into the chain first —
+making drops **detectable** by `ckms audit verify` and any log-scanning tool.
+
+### XFF trust validation (T7)
+
+`X-Forwarded-For` was previously accepted unconditionally, allowing any client
+to spoof its apparent IP in the audit log.
+
+The middleware now consults a configurable trusted-proxy CIDR list. XFF is only
+honoured when the direct TCP peer address falls within a trusted CIDR.
+
+| CLI flag                      | Env var                         | Default  | Description                                    |
+| ----------------------------- | ------------------------------- | -------- | ---------------------------------------------- |
+| `--audit-trusted-proxy-cidrs` | `KMS_AUDIT_TRUSTED_PROXY_CIDRS` | _(none)_ | Comma-separated CIDR ranges of trusted proxies |
+
+Default is an empty list — no behaviour change unless opted in.
+Single IPs can be expressed as `/32` (IPv4) or `/128` (IPv6).

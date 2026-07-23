@@ -12,42 +12,59 @@
 // never a panic. A failure here affects only the audit record, not the KMIP response.
 
 use actix_web::{HttpMessage, HttpRequest};
+use cosmian_kms_access::audit::AuditResult;
 use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::{TTLV, TTLValue};
 
-use crate::middlewares::{KmipAlgorithm, KmipObjectUid, KmipOperationName};
+use crate::middlewares::{
+    BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid, KmipOperationName,
+};
 
 /// Extracts the specific KMIP operation name from a TTLV for audit purposes.
 ///
 /// * Single-operation requests (e.g. `"Encrypt"`, `"Create"`): returns `ttlv.tag`.
-/// * `RequestMessage` (batch): returns all `BatchItem` operation names joined with `+`
-///   (e.g. `"Create+Encrypt+Destroy"`), or `"Message"` if none can be found.
+/// * `RequestMessage` (batch): returns `"RequestMessage"` — callers that need
+///   per-item operation names should use `extract_batch_audit_contexts` instead.
 pub(super) fn extract_kmip_op_from_ttlv(ttlv: &TTLV) -> String {
-    if ttlv.tag != "RequestMessage" {
-        return ttlv.tag.clone();
-    }
-    if let TTLValue::Structure(items) = &ttlv.value {
-        let ops: Vec<String> = items
-            .iter()
-            .filter(|item| item.tag == "BatchItem")
-            .filter_map(|item| {
-                if let TTLValue::Structure(fields) = &item.value {
-                    fields.iter().find(|f| f.tag == "Operation").and_then(|f| {
-                        if let TTLValue::Enumeration(ev) = &f.value {
-                            Some(ev.name.clone())
-                        } else {
-                            None
-                        }
-                    })
+    ttlv.tag.clone()
+}
+
+/// Extracts per-`BatchItem` audit context from a `RequestMessage` TTLV.
+///
+/// For each `BatchItem` in the message, extracts:
+/// * `operation` — the KMIP operation enum name (e.g. `"Create"`, `"Locate"`)
+/// * `object_uid` — `UniqueIdentifier` direct child (absent for Create/CreateKeyPair)
+/// * `algorithm` — `CryptographicAlgorithm` from `Attributes` or `CryptographicParameters`
+///
+/// Infallible: missing or unexpected structure yields `None` fields, never a panic.
+/// `result` is `None` until backfilled by `inject_batch_response_contexts`.
+pub(super) fn extract_batch_audit_contexts(ttlv: &TTLV) -> Vec<BatchItemAuditContext> {
+    let TTLValue::Structure(items) = &ttlv.value else {
+        return vec![];
+    };
+    items
+        .iter()
+        .filter(|item| item.tag == "BatchItem")
+        .filter_map(|item| {
+            let TTLValue::Structure(fields) = &item.value else {
+                return None;
+            };
+            let op_name = fields.iter().find(|f| f.tag == "Operation").and_then(|f| {
+                if let TTLValue::Enumeration(ev) = &f.value {
+                    Some(ev.name.clone())
                 } else {
                     None
                 }
+            })?;
+            let object_uid = extract_object_uid(item, &op_name, false);
+            let algorithm = extract_algorithm(item, &op_name);
+            Some(BatchItemAuditContext {
+                operation: op_name,
+                object_uid,
+                algorithm,
+                result: None,
             })
-            .collect();
-        if !ops.is_empty() {
-            return ops.join("+"); // TODO: this is not standard, but it will be worked on in the future
-        }
-    }
-    "Message".to_owned()
+        })
+        .collect()
 }
 
 /// Depth-first search for the first `TTLV` node with the given tag.
@@ -152,10 +169,20 @@ fn extract_algorithm(ttlv: &TTLV, op_name: &str) -> Option<String> {
     }
 }
 
-/// Injects `KmipOperationName`, `KmipObjectUid`, and `KmipAlgorithm` into the
-/// request extensions for the audit middleware. Returns the operation name.
+/// Injects audit extensions into the request.
+///
+/// * **Batch** (`RequestMessage`): injects `KmipBatchOperations` with one entry per
+///   `BatchItem`. The middleware fans these out into separate `AuditEventDraft`s.
+/// * **Single-op**: injects `KmipOperationName`, `KmipObjectUid`, `KmipAlgorithm` as before.
+///
+/// Returns the operation name (tag) for use by `inject_response_uid`.
 /// `RefMut` is dropped on return — safe to call before `.await`.
 pub(super) fn inject_audit_request(req: &HttpRequest, ttlv: &TTLV) -> String {
+    if ttlv.tag == "RequestMessage" {
+        let contexts = extract_batch_audit_contexts(ttlv);
+        req.extensions_mut().insert(KmipBatchOperations(contexts));
+        return "RequestMessage".to_owned();
+    }
     let op_name = extract_kmip_op_from_ttlv(ttlv);
     let mut ext = req.extensions_mut();
     ext.insert(KmipOperationName(op_name.clone()));
@@ -170,9 +197,94 @@ pub(super) fn inject_audit_request(req: &HttpRequest, ttlv: &TTLV) -> String {
 
 /// Backfills `KmipObjectUid` from the response TTLV for `Create` / `CreateKeyPair`,
 /// where the UID is server-generated and absent from the request.
+///
+/// For **batch** requests (`KmipBatchOperations` present), iterates the `BatchItem`
+/// children of the `ResponseMessage` and per-item backfills:
+/// * `object_uid` for `Create`/`CreateKeyPair` items (server-generated UID)
+/// * `result` from the item's `ResultStatus`/`ResultReason`
+///
+/// Correlation is by position (index). When `BatchErrorContinuationOption` is used,
+/// the server may omit failed items from the response — in that case trailing items
+/// will not be backfilled. `UniqueBatchItemID` correlation is a future improvement.
 pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_name: &str) {
-    if !op_name.contains('+')
-        && (op_name == "Create" || op_name == "CreateKeyPair")
+    // Batch path
+    if op_name == "RequestMessage" {
+        let mut ext = req.extensions_mut();
+        let Some(batch_ops) = ext.get_mut::<KmipBatchOperations>() else {
+            return;
+        };
+        let response_items = match &response_ttlv.value {
+            TTLValue::Structure(children) => children
+                .iter()
+                .filter(|c| c.tag == "BatchItem")
+                .collect::<Vec<_>>(),
+            _ => return,
+        };
+        for (ctx, resp_item) in batch_ops.0.iter_mut().zip(response_items.iter()) {
+            let TTLValue::Structure(fields) = &resp_item.value else {
+                continue;
+            };
+            // Backfill UID for Create/CreateKeyPair from response
+            if ctx.object_uid.is_none()
+                && (ctx.operation == "Create" || ctx.operation == "CreateKeyPair")
+            {
+                ctx.object_uid = find_ttlv_recursive(resp_item, "UniqueIdentifier").and_then(|t| {
+                    if let TTLValue::TextString(s) = &t.value {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                });
+            }
+            // Backfill per-item result from ResultStatus/ResultReason
+            let result_status = fields
+                .iter()
+                .find(|f| f.tag == "ResultStatus")
+                .and_then(|f| {
+                    if let TTLValue::Enumeration(ev) = &f.value {
+                        Some(ev.name.as_str())
+                    } else {
+                        None
+                    }
+                });
+            ctx.result = match result_status {
+                Some("Success" | "OperationPending" | "OperationUndone") => {
+                    Some(AuditResult::Success)
+                }
+                Some(status) => {
+                    let reason = fields
+                        .iter()
+                        .find(|f| f.tag == "ResultReason")
+                        .and_then(|f| {
+                            if let TTLValue::Enumeration(ev) = &f.value {
+                                Some(ev.name.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .or_else(|| {
+                            fields
+                                .iter()
+                                .find(|f| f.tag == "ResultMessage")
+                                .and_then(|f| {
+                                    if let TTLValue::TextString(s) = &f.value {
+                                        Some(s.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                        })
+                        .unwrap_or_else(|| status.to_owned());
+                    Some(AuditResult::Failure(reason))
+                }
+                None => None,
+            };
+        }
+        return;
+    }
+
+    // Single-op path — backfill UID for Create/CreateKeyPair
+    if (op_name == "Create" || op_name == "CreateKeyPair")
         && req.extensions().get::<KmipObjectUid>().is_none()
     {
         if let Some(uid) = extract_object_uid(response_ttlv, op_name, true) {
@@ -182,6 +294,7 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing)]
 mod extraction_tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::{
         KmipEnumerationVariant, TTLV, TTLValue,
@@ -311,5 +424,55 @@ mod extraction_tests {
         );
         let found = find_ttlv_recursive(&ttlv, "Target");
         assert!(matches!(found, Some(node) if node.tag == "Target"));
+    }
+
+    /// Batch with two items → two contexts with correct operation names.
+    #[test]
+    fn extract_batch_contexts_two_items() {
+        use super::extract_batch_audit_contexts;
+        let batch = structure(
+            "RequestMessage",
+            vec![
+                structure(
+                    "BatchItem",
+                    vec![
+                        enumv("Operation", "Create"),
+                        structure("Attributes", vec![]),
+                    ],
+                ),
+                structure("BatchItem", vec![enumv("Operation", "Locate")]),
+            ],
+        );
+        let contexts = extract_batch_audit_contexts(&batch);
+        assert_eq!(contexts.len(), 2);
+        assert_eq!(contexts[0].operation, "Create");
+        assert_eq!(contexts[1].operation, "Locate");
+    }
+
+    /// `BatchItem` with a direct `UniqueIdentifier` → context has `object_uid`.
+    #[test]
+    fn extract_batch_contexts_includes_uid() {
+        use super::extract_batch_audit_contexts;
+        let batch = structure(
+            "RequestMessage",
+            vec![structure(
+                "BatchItem",
+                vec![
+                    enumv("Operation", "Encrypt"),
+                    text("UniqueIdentifier", "key-abc"),
+                ],
+            )],
+        );
+        let contexts = extract_batch_audit_contexts(&batch);
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0].object_uid.as_deref(), Some("key-abc"));
+    }
+
+    /// `RequestMessage` with no `BatchItem` children → empty vec.
+    #[test]
+    fn extract_batch_contexts_empty_batch() {
+        use super::extract_batch_audit_contexts;
+        let batch = structure("RequestMessage", vec![]);
+        assert!(extract_batch_audit_contexts(&batch).is_empty());
     }
 }

@@ -39,6 +39,23 @@ pub(crate) struct KmipObjectUid(pub String);
 #[derive(Debug, Clone)]
 pub(crate) struct KmipAlgorithm(pub String);
 
+/// Per-BatchItem audit context extracted from a `RequestMessage` TTLV.
+/// Injected by the KMIP route handler for batch requests.
+#[derive(Debug, Clone)]
+pub(crate) struct BatchItemAuditContext {
+    pub operation: String,
+    pub object_uid: Option<String>,
+    pub algorithm: Option<String>,
+    /// Per-item result backfilled from the `ResponseMessage` after dispatch.
+    pub result: Option<cosmian_kms_access::audit::AuditResult>,
+}
+
+/// Container for per-`BatchItem` audit contexts extracted from a `RequestMessage`.
+/// Injected into request extensions by `inject_audit_request`; consumed by the
+/// audit middleware to fan out one `AuditEventDraft` per item.
+#[derive(Debug, Clone)]
+pub(crate) struct KmipBatchOperations(pub Vec<BatchItemAuditContext>);
+
 use std::{
     pin::Pin,
     rc::Rc,
@@ -51,12 +68,14 @@ use actix_web::{
     body::{BoxBody, EitherBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
 };
-use cosmian_kms_access::audit::AuditEventDraft;
+use cosmian_kms_access::audit::{AuditEventDraft, AuditResult};
 use futures::{
     Future,
     future::{Ready, ok},
 };
+use ipnet::IpNet;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 use crate::{
     core::audit::{AuditFileStore, make_failure_draft, make_success_draft},
@@ -68,15 +87,22 @@ const UNAUTHENTICATED: &str = "unauthenticated";
 #[derive(Clone)]
 pub(crate) struct AuditMiddleware {
     store: Option<AuditFileStore>,
+    /// Only used when parsing `X-Forwarded-For`. Empty means always use peer address.
+    trusted_proxies: Vec<IpNet>,
 }
 
 impl AuditMiddleware {
     /// Creates a new `AuditMiddleware`.
     ///
     /// When `store` is `None` the middleware is a no-op pass-through.
+    /// `trusted_proxies` is the list of CIDR ranges whose `X-Forwarded-For` headers
+    /// are trusted; an empty list disables XFF processing entirely.
     #[must_use]
-    pub(crate) const fn new(store: Option<AuditFileStore>) -> Self {
-        Self { store }
+    pub(crate) const fn new(store: Option<AuditFileStore>, trusted_proxies: Vec<IpNet>) -> Self {
+        Self {
+            store,
+            trusted_proxies,
+        }
     }
 }
 
@@ -96,6 +122,7 @@ where
         ok(AuditService {
             service: Rc::new(service),
             store: self.store.clone(),
+            trusted_proxies: self.trusted_proxies.clone(),
         })
     }
 }
@@ -103,6 +130,7 @@ where
 pub(crate) struct AuditService<S> {
     service: Rc<S>,
     store: Option<AuditFileStore>,
+    trusted_proxies: Vec<IpNet>,
 }
 
 impl<S, B> Service<ServiceRequest> for AuditService<S>
@@ -132,7 +160,7 @@ where
         };
 
         let operation = extract_operation(req.path());
-        let client_ip = extract_client_ip(&req);
+        let client_ip = extract_client_ip(&req, &self.trusted_proxies);
 
         let user = req
             .extensions()
@@ -148,6 +176,7 @@ where
 
             let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
             let status = res.status();
+            let request_id = Uuid::new_v4();
 
             let final_user = res
                 .request()
@@ -155,6 +184,48 @@ where
                 .get::<AuthenticatedUser>()
                 .map_or(user, |u| u.username.clone());
 
+            // Batch path: fan out one draft per BatchItem
+            let batch_drafts: Option<Vec<AuditEventDraft>> = res
+                .request()
+                .extensions()
+                .get::<KmipBatchOperations>()
+                .map(|batch_ops| {
+                    batch_ops
+                        .0
+                        .iter()
+                        .map(|ctx| {
+                            let item_result = ctx.result.clone().unwrap_or_else(|| {
+                                if status.is_success() || status.is_redirection() {
+                                    AuditResult::Success
+                                } else {
+                                    AuditResult::Failure(format!(
+                                        "{} {}",
+                                        status.as_u16(),
+                                        status.canonical_reason().unwrap_or("Unknown")
+                                    ))
+                                }
+                            });
+                            AuditEventDraft {
+                                timestamp,
+                                operation: ctx.operation.clone(),
+                                user: final_user.clone(),
+                                object_uid: ctx.object_uid.clone(),
+                                algorithm: ctx.algorithm.clone(),
+                                client_ip: client_ip.clone(),
+                                result: item_result,
+                                duration_ms,
+                                request_id: Some(request_id),
+                            }
+                        })
+                        .collect()
+                });
+
+            if let Some(drafts) = batch_drafts {
+                store.enqueue(drafts);
+                return Ok(res.map_into_left_body());
+            }
+
+            // Single-op path
             let final_operation = res
                 .request()
                 .extensions()
@@ -173,7 +244,7 @@ where
                 .get::<KmipAlgorithm>()
                 .map(|k| k.0.clone());
 
-            let draft: AuditEventDraft = if status.is_success() || status.is_redirection() {
+            let mut draft: AuditEventDraft = if status.is_success() || status.is_redirection() {
                 make_success_draft(
                     timestamp,
                     final_operation,
@@ -200,8 +271,9 @@ where
                     reason,
                 )
             };
+            draft.request_id = Some(request_id);
 
-            store.enqueue(draft);
+            store.enqueue(std::iter::once(draft));
 
             Ok(res.map_into_left_body())
         })
@@ -222,24 +294,37 @@ fn extract_operation(path: &str) -> String {
     }
 }
 
-/// Extracts the client IP from the `X-Forwarded-For` header or the peer address.
-fn extract_client_ip(req: &ServiceRequest) -> Option<String> {
-    // TODO: XFF header can be spoofed by clients when there is no trusted reverse
-    //       proxy in front of the KMS; validate against an IP allowlist in production.
-    if let Some(xff) = req.headers().get("x-forwarded-for") {
-        if let Ok(val) = xff.to_str() {
-            if let Some(ip) = val.split(',').next() {
-                let ip = ip.trim();
-                if !ip.is_empty() {
-                    return Some(ip.to_owned());
+/// Extracts the client IP address.
+///
+/// The `X-Forwarded-For` header is only trusted when the direct TCP peer address
+/// falls within one of the `trusted_proxies` CIDR ranges.  If the peer is not a
+/// trusted proxy, or if `trusted_proxies` is empty, the peer address is used
+/// directly — preventing clients from spoofing their apparent IP.
+fn extract_client_ip(req: &ServiceRequest, trusted_proxies: &[IpNet]) -> Option<String> {
+    let peer_ip = req.peer_addr().map(|a| a.ip());
+
+    let peer_is_trusted = peer_ip
+        .as_ref()
+        .is_some_and(|ip| trusted_proxies.iter().any(|cidr| cidr.contains(ip)));
+
+    if peer_is_trusted {
+        if let Some(xff) = req.headers().get("x-forwarded-for") {
+            if let Ok(val) = xff.to_str() {
+                if let Some(ip) = val.split(',').next() {
+                    let ip = ip.trim();
+                    if !ip.is_empty() {
+                        return Some(ip.to_owned());
+                    }
                 }
             }
         }
     }
-    req.peer_addr().map(|addr| addr.ip().to_string())
+
+    peer_ip.map(|ip| ip.to_string())
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -342,5 +427,68 @@ mod tests {
             &draft.result,
             AuditResult::Failure(reason) if reason == "401 Unauthorized"
         ));
+    }
+
+    // ── extract_client_ip tests ──────────────────────────────────────────────
+
+    /// Helper: build a minimal `ServiceRequest` with a given peer address and
+    /// optional `X-Forwarded-For` header.  Uses `actix_web::test::TestRequest`.
+    fn make_request(peer: &str, xff: Option<&str>) -> actix_web::test::TestRequest {
+        let mut req = actix_web::test::TestRequest::default().peer_addr(peer.parse().unwrap());
+        if let Some(v) = xff {
+            req = req.insert_header(("x-forwarded-for", v));
+        }
+        req
+    }
+
+    #[test]
+    fn xff_ignored_when_no_trusted_proxies() {
+        let req = make_request("1.2.3.4:9000", Some("10.0.0.1")).to_srv_request();
+        let ip = extract_client_ip(&req, &[]);
+        assert_eq!(ip.as_deref(), Some("1.2.3.4"), "peer IP used, XFF ignored");
+    }
+
+    #[test]
+    fn xff_ignored_when_peer_not_in_trusted_cidr() {
+        let cidrs: Vec<IpNet> = vec!["10.0.0.0/8".parse().unwrap()];
+        let req = make_request("1.2.3.4:9000", Some("192.168.1.1")).to_srv_request();
+        let ip = extract_client_ip(&req, &cidrs);
+        assert_eq!(
+            ip.as_deref(),
+            Some("1.2.3.4"),
+            "peer is not in CIDR, XFF ignored"
+        );
+    }
+
+    #[test]
+    fn xff_used_when_peer_in_trusted_cidr() {
+        let cidrs: Vec<IpNet> = vec!["10.0.0.0/8".parse().unwrap()];
+        let req = make_request("10.0.0.1:9000", Some("203.0.113.5")).to_srv_request();
+        let ip = extract_client_ip(&req, &cidrs);
+        assert_eq!(
+            ip.as_deref(),
+            Some("203.0.113.5"),
+            "peer in CIDR, XFF first IP used"
+        );
+    }
+
+    #[test]
+    fn xff_first_ip_taken_from_comma_list() {
+        let cidrs: Vec<IpNet> = vec!["10.0.0.0/8".parse().unwrap()];
+        let req = make_request("10.0.0.2:9000", Some("203.0.113.5, 10.0.0.1")).to_srv_request();
+        let ip = extract_client_ip(&req, &cidrs);
+        assert_eq!(ip.as_deref(), Some("203.0.113.5"), "first XFF entry used");
+    }
+
+    #[test]
+    fn xff_absent_with_trusted_proxy_falls_back_to_peer() {
+        let cidrs: Vec<IpNet> = vec!["10.0.0.0/8".parse().unwrap()];
+        let req = make_request("10.0.0.1:9000", None).to_srv_request();
+        let ip = extract_client_ip(&req, &cidrs);
+        assert_eq!(
+            ip.as_deref(),
+            Some("10.0.0.1"),
+            "no XFF header, peer IP used"
+        );
     }
 }

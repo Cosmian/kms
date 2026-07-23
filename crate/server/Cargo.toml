@@ -85,6 +85,7 @@ rand = { workspace = true }
 rand_chacha = "0.10"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+ipnet = { version = "2", features = ["serde"] }
 jsonwebtoken = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",
