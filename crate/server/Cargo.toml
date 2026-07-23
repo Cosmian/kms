@@ -82,6 +82,7 @@ futures = { workspace = true }
 governor = { version = "0.10", features = ["std"] }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+ipnet = { version = "2", features = ["serde"] }
 jsonwebtoken = { workspace = true }
 num-bigint-dig = { workspace = true, features = [
   "std",

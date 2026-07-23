@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 
 /// Default capacity of the bounded in-memory channel between request threads and
@@ -75,6 +76,26 @@ pub struct AuditConfig {
     )]
     #[serde(rename = "channel_capacity", default = "default_channel_capacity")]
     pub audit_channel_capacity: usize,
+
+    /// Only set this if the KMS sits behind a reverse proxy or load balancer.
+    ///
+    /// When set, the audit middleware trusts the `X-Forwarded-For` header only if
+    /// the direct TCP peer is one of the proxy addresses listed here, and records
+    /// the header's value as `client_ip` instead. This must be scoped to your
+    /// proxy's own address(es) — trusting it from any peer lets a remote attacker
+    /// forge `client_ip` in the audit trail.
+    ///
+    /// Format: comma-separated IP addresses or CIDR blocks, e.g.
+    /// `"10.0.0.0/8,172.16.0.0/12"`. Single IPs can be expressed as `/32` (IPv4)
+    /// or `/128` (IPv6).
+    #[clap(
+        long = "audit-trusted-proxy-cidrs",
+        env = "KMS_AUDIT_TRUSTED_PROXY_CIDRS",
+        value_delimiter = ',',
+        verbatim_doc_comment
+    )]
+    #[serde(rename = "trusted_proxy_cidrs", default)]
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
 }
 
 /// Serde default helper for `AuditConfig::audit_channel_capacity`.

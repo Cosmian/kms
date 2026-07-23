@@ -33,12 +33,16 @@ fn temp_path(label: &str) -> PathBuf {
 
 /// End-to-end audit chain test.
 ///
-/// Sends four KMIP operations through a live in-process KMS with `AuditMiddleware`
+/// Sends five KMIP operations through a live in-process KMS with `AuditMiddleware`
 /// wired in, then reads the resulting JSONL file and verifies:
-///  * Four events were recorded (Create, Encrypt, Decrypt-failure, Create+Locate batch).
-///  * Operation names match.
-///  * Result types are correct (Success / Failure as expected).
-///  * `object_uid` is populated on Create, Encrypt, and Decrypt.
+///  * Six events were recorded:
+///    [0] Create, [1] Encrypt, [2] Decrypt-failure,
+///    [3] batch-Create, [4] batch-Locate  ← two events from one `RequestMessage`
+///    [5] standalone-Locate
+///  * Per-item operation names, results, and `object_uid` are correct.
+///  * Events [3] and [4] share the same `request_id` (same batch).
+///  * Event [3]'s `request_id` differs from event [0]'s (different HTTP requests).
+///  * All single-op events carry a `request_id`.
 ///  * The hash chain is intact (`verify_event` + `verify_chain_link`).
 ///  * Every event produces a well-formed CEF line (`to_cef_line`).
 #[tokio::test]
@@ -127,9 +131,8 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
 
         // 5. Standalone Locate → ensures a single-op "Locate" operation also appears
         //    in the audit log (not just as part of a batch "Create+Locate").
-        let locate_request = cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Locate {
-            ..Default::default()
-        };
+        let locate_request =
+            cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::Locate::default();
         let _locate_resp: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::LocateResponse =
             post_2_1(&app, locate_request).await?;
 
@@ -157,8 +160,8 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
 
     assert_eq!(
         events.len(),
-        5,
-        "expected 5 audit events, got {}",
+        6,
+        "expected 6 audit events, got {}",
         events.len()
     );
 
@@ -166,8 +169,9 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
     assert_eq!(events[0].operation, "Create", "event 0");
     assert_eq!(events[1].operation, "Encrypt", "event 1");
     assert_eq!(events[2].operation, "Decrypt", "event 2");
-    assert_eq!(events[3].operation, "Create+Locate", "event 3 (batch)");
-    assert_eq!(events[4].operation, "Locate", "event 4 (standalone)");
+    assert_eq!(events[3].operation, "Create", "event 3 (batch-Create)");
+    assert_eq!(events[4].operation, "Locate", "event 4 (batch-Locate)");
+    assert_eq!(events[5].operation, "Locate", "event 5 (standalone)");
 
     // Results
     assert_eq!(
@@ -193,7 +197,12 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
     assert_eq!(
         events[4].result,
         AuditResult::Success,
-        "event 4 (standalone Locate) should be Success"
+        "event 4 should be Success"
+    );
+    assert_eq!(
+        events[5].result,
+        AuditResult::Success,
+        "event 5 (standalone Locate) should be Success"
     );
 
     // Object UIDs: Create fills it from the response; Encrypt/Decrypt read it from the request
@@ -213,6 +222,36 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
         Some("00000000-0000-0000-0000-000000000000"),
         "event 2 uid"
     );
+    // batch-Create: UID backfilled from the response
+    assert!(
+        events[3].object_uid.is_some(),
+        "event 3 (batch-Create) should have a uid"
+    );
+
+    // request_id: batch items [3] and [4] share the same request_id
+    assert!(
+        events[3].request_id.is_some(),
+        "event 3 must have request_id"
+    );
+    assert!(
+        events[4].request_id.is_some(),
+        "event 4 must have request_id"
+    );
+    assert_eq!(
+        events[3].request_id, events[4].request_id,
+        "batch items share the same request_id"
+    );
+    assert_ne!(
+        events[3].request_id, events[0].request_id,
+        "different HTTP requests must have different request_ids"
+    );
+    // All single-op events carry a request_id
+    for (i, ev) in events.iter().enumerate() {
+        assert!(
+            ev.request_id.is_some(),
+            "event {i} should have a request_id"
+        );
+    }
 
     // Hash chain integrity
     let mut prev = None;
@@ -251,6 +290,14 @@ async fn audit_records_create_encrypt_failure_and_batch() -> KResult<()> {
             "unexpected CEF header for event id={}: {cef}",
             ev.id
         );
+        // Events with request_id must include cs5
+        if ev.request_id.is_some() {
+            assert!(
+                cef.contains("cs5Label=requestId"),
+                "CEF missing cs5Label for event id={}: {cef}",
+                ev.id
+            );
+        }
     }
 
     Ok(())
