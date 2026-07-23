@@ -480,6 +480,13 @@ jwks_endpoint_enabled = false
 jwks_endpoint_max_keys = 50
 jwks_endpoint_auto_tag = true
 
+[audit]
+enabled = false
+channel_capacity = 0
+trusted_proxy_cidrs = []
+
+[audit.file]
+
 [vault]
 vault_api_enabled = false
 vault_auth_verifier_accept_invalid_certs = false
