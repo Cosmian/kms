@@ -383,7 +383,7 @@ jobs:
         run: |
           # The KEK (AES-256 symmetric key) already in KMS is used as the
           # test secret — its 32 raw bytes will be written as the file.
-          OBJECTS_YAML=$(printf '- objectName: kek-file\n  kmsUID: %s\n  objectVersion: ""\n' "$KEK_UID")
+          OBJECTS_YAML=$(printf -- '- objectName: kek-file\n  kmsUID: %s\n  objectVersion: ""\n' "$KEK_UID")
 
           kubectl apply -f - << EOF
           apiVersion: secrets-store.csi.x-k8s.io/v1
