@@ -1414,9 +1414,9 @@ dependencies = [
  "cosmian_kmip",
  "hex",
  "serde",
- "serde_json",
  "sha2 0.10.9",
  "time",
+ "uuid",
 ]
 
 [[package]]
@@ -1706,6 +1706,7 @@ dependencies = [
  "governor",
  "hex",
  "http 1.5.0",
+ "ipnet",
  "jsonwebtoken",
  "native-tls",
  "num-bigint-dig",
@@ -3556,6 +3557,9 @@ name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d98f6fed1fde3f8c21bc40a1abb88dd75e67924f9cffc3ef95607bad8017f8e2"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "is_terminal_polyfill"
@@ -7051,6 +7055,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b913a3b5fe84142e269d63cc62b64319ccaf89b748fc31fe025177f767a756c4"
 dependencies = [
  "getrandom 0.2.17",
+ "serde",
 ]
 
 [[package]]

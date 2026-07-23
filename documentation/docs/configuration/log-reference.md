@@ -111,7 +111,7 @@ Crate path: `crate/server`
 | `info` | `POST /kms/xks/v1/keys/{key_id}/encrypt - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/encrypt_decrypt/encrypt_.rs` | `key_id`: XKS key identifier | - |
 | `info` | `POST /kms/xks/v1/keys/{key_id}/metadata - operation: {} - id: {} - user: {}` | `src/routes/aws_xks/key_metadata.rs` | `key_id`: XKS key identifier | - |
 | `info` | `Refreshing JWKS` | `src/middlewares/jwt/jwks.rs` | - | - |
-| `info` | `Response TTLV: {ttlv:?}` | `src/routes/kmip.rs` | `ttlv`: TTLV-encoded response | - |
+| `info` | `Response TTLV: {ttlv:?}` | `src/routes/kmip/handlers.rs` | `ttlv`: TTLV-encoded response | - |
 | `info` | `Revoked object type: {}` | `src/core/operations/revoke.rs` | - | - |
 | `info` | `RSA Keypair for Google CSE already exists (detected by UNIQUE constraint). Continuing without error.` | `src/start_kms_server.rs` | - | - |
 | `info` | `RSA Keypair for Google CSE already exists (pre-check).` | `src/start_kms_server.rs` | - | - |
@@ -476,17 +476,17 @@ Crate path: `crate/server`
 | `trace` | `{}` | `src/core/operations/attributes/delete.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/certify/certify_op.rs` | — | — |
 | `trace` | `{}` | `src/core/operations/locate.rs` | — | — |
-| `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip.rs` | — | ×2 in this file |
-| `error` | `Failed to find KMIP version` | `src/routes/kmip.rs` | — | — |
-| `error` | `Failed to parse RequestMessage: {}` | `src/routes/kmip.rs` | — | — |
-| `error` | `Failed to process request: {}` | `src/routes/kmip.rs` | — | ×2 in this file |
+| `error` | `Failed to convert response message to TTLV: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
+| `error` | `Failed to find KMIP version` | `src/routes/kmip/handlers.rs` | — | — |
+| `error` | `Failed to parse RequestMessage: {}` | `src/routes/kmip/handlers.rs` | — | — |
+| `error` | `Failed to process request: {}` | `src/routes/kmip/handlers.rs` | — | ×2 in this file |
 | `error` | `OpenSSL does not appear to be available (version number is 0).              Please verify that OpenSSL is correctly installed and accessible.` | `src/main.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 25519 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `An Edwards Keypair on curve 448 should not be requested to perform                              ECDH. Creating anyway.` | `src/core/operations/create_key_pair.rs` | — | — |
 | `warn` | `CRL signature could not be verified against chain issuers; issuer: {:?}.                          Continuing with status checks.` | `src/core/operations/validate.rs` | — | — |
 | `warn` | `Import: CRL check could not be completed ({e}),                              proceeding with {desired_state:?} state` | `src/core/operations/import.rs` | `e`, `desired_state` | — |
 | `warn` | `The UI index HTML folder does not contain an index.html file:                  {ui_index_html_folder:#?}` | `src/config/params/server_params.rs` | `ui_index_html_folder` | — |
-| `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip.rs` | `x` | — |
+| `warn` | `Unsupported Block Cipher Mode for AES: {x:?}. The Authenticated                                  Encryption Tag will NOT be extracted.` | `src/routes/kmip/handlers.rs` | `x` | — |
 | `warn` | `User-supplied keyUsage in extension config overrides the RFC-mandated PQC keyUsage              extension (RFC 9881/9909/9935)` | `src/core/operations/certify/build_certificate.rs` | — | — |
 | `debug` | `...unwrapping the key block with key uid: {unwrapping_key_uid} using an encryption              oracle, user: {user}` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid`, `user` | — |
 | `debug` | `...unwrapping the key block with key uid: {unwrapping_key_uid} using the KMS, user:              {user}` | `src/core/wrapping/unwrap.rs` | `unwrapping_key_uid`, `user` | — |
@@ -503,12 +503,12 @@ Crate path: `crate/server`
 | `debug` | `DeriveKey: No derivation data provided - this may be acceptable if a Secret Data              object identifier is provided` | `src/core/operations/derive_key.rs` | — | — |
 | `debug` | `Import: certificate is revoked per CRL check,                              setting state to Compromised` | `src/core/operations/import.rs` | — | — |
 | `debug` | `JWT: An authenticated user was found; there is no need to authenticate                      twice...` | `src/middlewares/jwt/jwt_middleware.rs` | — | — |
-| `debug` | `Request bytes: {}` | `src/routes/kmip.rs` | — | — |
-| `debug` | `Request TTLV: {ttlv:#?}` | `src/routes/kmip.rs` | `ttlv` | — |
-| `debug` | `Response Message Bytes: {}` | `src/routes/kmip.rs` | — | — |
-| `debug` | `Response Message TTLV: {response_ttlv:#?}` | `src/routes/kmip.rs` | `response_ttlv` | — |
+| `debug` | `Request bytes: {}` | `src/routes/kmip/handlers.rs` | — | — |
+| `debug` | `Request TTLV: {ttlv:#?}` | `src/routes/kmip/handlers.rs` | `ttlv` | — |
+| `debug` | `Response Message Bytes: {}` | `src/routes/kmip/handlers.rs` | — | — |
+| `debug` | `Response Message TTLV: {response_ttlv:#?}` | `src/routes/kmip/handlers.rs` | `response_ttlv` | — |
 | `debug` | `The user: {user}, is authorized to wrap with the key {wrapping_key_uid}. Encoding: {:?},          format: {}` | `src/core/wrapping/wrap.rs` | `user`, `wrapping_key_uid` | — |
-| `debug` | `This is a {major}.{minor} Decrypt message. Extracting                                      Authenticated Encryption Tag of length {len} from Data field` | `src/routes/kmip.rs` | `major`, `minor`, `len` | — |
+| `debug` | `This is a {major}.{minor} Decrypt message. Extracting                                      Authenticated Encryption Tag of length {len} from Data field` | `src/routes/kmip/handlers.rs` | `major`, `minor`, `len` | — |
 | `trace` | `Certify PublicKeyAndSubjectName:{unique_identifier}: public key:                  {from_public_key}` | `src/core/operations/certify/certify_op.rs` | `unique_identifier`, `from_public_key` | — |
 | `trace` | `ciphertext: {ciphertext:?}, nonce: {nonce:?}, aad: {aad:?}, tag: {tag:?},              padding_method: {padding_method:?}` | `src/core/operations/decrypt.rs` | `ciphertext`, `nonce`, `aad`, `tag`, `padding_method` | — |
 | `trace` | `enter export_get op={:?} req={}` | `src/core/operations/export_get.rs` | — | ×2 in this file |
@@ -521,13 +521,13 @@ Crate path: `crate/server`
 | `trace` | `process_symmetric_key set Raw uid={}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `process_symmetric_key set TransparentSymmetricKey uid={}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `processing symmetric key uid={} state={:?} requested_format={:?}` | `src/core/operations/export_get.rs` | — | — |
-| `trace` | `Request Message: {request_message}` | `src/routes/kmip.rs` | `request_message` | — |
-| `trace` | `Response Message: {response_message}` | `src/routes/kmip.rs` | `response_message` | — |
+| `trace` | `Request Message: {request_message}` | `src/routes/kmip/handlers.rs` | `request_message` | — |
+| `trace` | `Response Message: {response_message}` | `src/routes/kmip/handlers.rs` | `response_message` | — |
 | `trace` | `retrieved object uid={} type={:?} state={:?} key_fmt={:?}` | `src/core/operations/export_get.rs` | — | — |
 | `trace` | `uid_or_tags: {uid_or_tags:?}, user: {user},          operation_type: {operation_type:?}` | `src/core/retrieve_object_utils.rs` | `uid_or_tags`, `user`, `operation_type` | — |
-| `error` | `Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}` | `src/routes/kmip.rs` | — | — |
-| `warn` | `Failed to process request:\n{response_message}` | `src/routes/kmip.rs` | `response_message` | — |
-| `info` | `\n{:?}` | `src/routes/kmip.rs` | — | — |
+| `error` | `Failed to convert Response TTLV to bytes: {}: TTLV:\n{:#?}` | `src/routes/kmip/handlers.rs` | — | — |
+| `warn` | `Failed to process request:\n{response_message}` | `src/routes/kmip/handlers.rs` | `response_message` | — |
+| `info` | `\n{:?}` | `src/routes/kmip/handlers.rs` | — | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/middlewares/jwt/jwt_config.rs` | `jwk` | — |
 | `trace` | `JWK has been found:\n{jwk:?}` | `src/routes/google_cse/jwt.rs` | `jwk` | — |
 | `warn` | `Failed to persist auto-deactivation of object {}: {}` | `src/core/retrieve_object_utils.rs` | - | ×2 in this file |
@@ -608,12 +608,12 @@ Crate path: `crate/server`
 | `trace` | `GET /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
 | `trace` | `` JWKS key order is database insertion order — not stable across restarts or backends.          Returning {} eligible key(s); consumers must match by `kid`, not position. `` | `src/routes/jwks.rs` | - | - |
 | `trace` | `POST /v1/crypto/keys/{kid}/tags` | `src/routes/jose/tags.rs` | `kid` | - |
-| `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip.rs` | `e` | - |
+| `error` | `Failed to serialize response to JSON: {e}` | `src/routes/kmip/handlers.rs` | `e` | - |
 | `info` | `http_workers not configured; defaulting to total core count ({total})` | `src/start_kms_server.rs` | `total` | - |
 | `info` | `KMS HTTP server configured with {http_workers} worker thread(s)` | `src/start_kms_server.rs` | `http_workers` | - |
-| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
-| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
-| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip.rs` | - | - |
+| `debug` | `POST /kmip {}.{} Binary. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
+| `debug` | `POST /kmip {}.{} JSON. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
+| `debug` | `POST /kmip/2_1. Request: {:?} {}` | `src/routes/kmip/handlers.rs` | - | - |
 | `warn` | `JOSE CEK cache insert error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
 | `warn` | `JOSE CEK cache peek error for {uid}: {e}` | `src/routes/jose/cek_cache.rs` | `uid`, `e` | - |
 | `warn` | `JOSE CEK cache: failed to construct KMIP SymmetricKey: {e}` | `src/routes/jose/cek_cache.rs` | `e` | - |
@@ -669,9 +669,13 @@ Crate path: `crate/server`
 | `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | Emitted when the web UI is enabled but `ui_session_salt` (or `KMS_UI_SESSION_SALT`) is not configured. Sessions will not survive server restarts. Set a stable secret value for production. |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | JWKS cache force-refresh was requested but the cooldown window has not elapsed; the refresh is skipped to prevent DoS via repeated JWKS fetches. |
 | `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
-| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
-| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
-| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `error` | `AuditFileStore: channel full, dropping audit event` | `src/core/audit/file_store.rs` | - | Channel at capacity; event dropped, accounted for by an eviction sentinel on next successful write |
+| `error` | `AuditFileStore: failed to write event id={}: {e} — event dropped` | `src/core/audit/file_store.rs` | `id`, `e` | `id`/`prev_hash` not advanced; next event reuses this slot to preserve chain continuity |
+| `error` | `AuditFileStore: final sync failed: {e}` | `src/core/audit/file_store.rs` | `e` | `fsync` failure during graceful shutdown |
+| `error` | `AuditFileStore: id counter overflow at i64::MAX —                      audit logging stopped. Rotate the log file and restart.` | `src/core/audit/file_store.rs` | - | id space exhausted; audit logging halts until the log file is rotated |
+| `error` | `AuditFileStore: writer task has stopped, audit event dropped` | `src/core/audit/file_store.rs` | - | Channel closed; `enqueue` silently drops the event |
+| `debug` | `AuditFileStore: resuming at id={next_id}, prev_hash={}` | `src/core/audit/file_store.rs` | `next_id`, `prev_hash` | `prev_hash` is truncated to its first 8 bytes (hex) |
+| `debug` | `AuditFileStore: writer loop exited (channel closed)` | `src/core/audit/file_store.rs` | - | Graceful shutdown complete |
 
 ### `cosmian_kms_server_database`
 
