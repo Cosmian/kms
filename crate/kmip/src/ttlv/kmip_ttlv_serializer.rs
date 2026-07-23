@@ -32,10 +32,9 @@ impl<T> Stack<T>
 where
     T: Debug,
 {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
-            // Pre-allocate for typical KMIP message nesting depth (avoids reallocations)
-            elements: Vec::with_capacity(8),
+            elements: Vec::new(),
         }
     }
 
@@ -69,7 +68,7 @@ pub struct TtlvSerializer {
 
 impl TtlvSerializer {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             stack: Stack::new(),
             byte_accumulator: None,
@@ -147,6 +146,11 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     type SerializeTuple = &'a mut TtlvSerializer;
     type SerializeTupleStruct = &'a mut TtlvSerializer;
     type SerializeTupleVariant = &'a mut TtlvSerializer;
+
+    // TTLV is a binary, non-human-readable format.
+    fn is_human_readable(&self) -> bool {
+        false
+    }
 
     #[instrument(level = "trace", skip(self))]
     fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
@@ -547,11 +551,6 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
             &self.current_tag()
         );
         self.serialize_struct(name, len)
-    }
-
-    #[inline]
-    fn is_human_readable(&self) -> bool {
-        true
     }
 }
 

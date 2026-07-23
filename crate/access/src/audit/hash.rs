@@ -25,7 +25,14 @@ use super::event::AuditEvent;
 /// || result canonical string (UTF-8, e.g. "Success" / "Failure:401 …")
 /// || NUL
 /// || duration_ms (8 bytes, big-endian u64)
+/// [optional, only when Some:]
+/// || NUL
+/// || request_id (hyphenated UUID, UTF-8)
 /// ```
+///
+/// The `request_id` segment is appended only when present so that events
+/// written before this field was introduced produce the same bytes as before,
+/// preserving hash-chain verification for existing logs.
 pub(crate) fn canonical_bytes(event: &AuditEvent) -> Vec<u8> {
     let mut buf = Vec::with_capacity(256);
 
@@ -59,6 +66,11 @@ pub(crate) fn canonical_bytes(event: &AuditEvent) -> Vec<u8> {
 
     buf.extend_from_slice(&event.duration_ms.to_be_bytes());
 
+    if let Some(rid) = &event.request_id {
+        buf.push(0x00);
+        buf.extend_from_slice(rid.hyphenated().to_string().as_bytes());
+    }
+
     buf
 }
 
@@ -87,11 +99,6 @@ pub fn verify_event(event: &AuditEvent) -> bool {
 ///
 /// Note: this function does **not** call [`verify_event`]; call that
 /// separately to check the row's own integrity.
-///
-/// TODO: log rotation — when verifying a rotated file that starts from id > 0
-/// the caller must supply the tail hash of the previous file (or the CLI should
-/// expose a `--prev-hash` flag) so the first link is not treated as a fresh
-/// chain start.
 #[must_use]
 pub fn verify_chain_link(current: &AuditEvent, prev: Option<&AuditEvent>) -> bool {
     prev.map_or_else(
@@ -119,6 +126,7 @@ mod tests {
             client_ip: Some("127.0.0.1".to_owned()),
             result,
             duration_ms: 10,
+            request_id: None,
             prev_hash,
             row_hash: [0u8; 32],
         };
@@ -180,5 +188,22 @@ mod tests {
         let mut row1 = make_event(1, row0.row_hash, AuditResult::Success);
         row1.prev_hash = [0u8; 32]; // break the link
         assert!(!verify_chain_link(&row1, Some(&row0)));
+    }
+
+    #[test]
+    fn canonical_bytes_includes_request_id() {
+        use uuid::Uuid;
+        let ev1 = make_event(0, [0u8; 32], AuditResult::Success);
+        let mut ev2 = ev1.clone();
+        ev2.request_id = Some(Uuid::new_v4());
+        assert_ne!(canonical_bytes(&ev1), canonical_bytes(&ev2));
+    }
+
+    #[test]
+    fn existing_event_without_request_id_still_verifies() {
+        // An event with request_id = None must verify — backward compatibility guarantee.
+        let ev = make_event(0, [0u8; 32], AuditResult::Success);
+        assert!(ev.request_id.is_none());
+        assert!(verify_event(&ev));
     }
 }
