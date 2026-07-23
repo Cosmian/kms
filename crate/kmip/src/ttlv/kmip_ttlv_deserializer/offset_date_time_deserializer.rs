@@ -6,12 +6,11 @@ use tracing::instrument;
 use super::Result;
 use crate::ttlv::TtlvError;
 
-/// The `OffsetDateTimeDeserializer` is used to deserialize a `time::OffsetDateTime`
-/// ... from another `OffsetDateTime`
+/// Serde `Deserializer` that feeds a `time::OffsetDateTime` to the `time` crate's tuple visitor.
 ///
-/// The `OffsetDateTime` visitor expects calls to `visit_seq` passing all the elements
-/// og the tuple in order (year, day of year, hour, etc..)
-/// see <https://github.com/time-rs/time/blob/main/time/src/serde/visitor.rs#L80>
+/// The visitor expects `visit_seq` with fields in this order:
+/// year, ordinal, hour, minute, second, nanosecond, offset_hours, offset_minutes, offset_seconds.
+/// See <https://github.com/time-rs/time/blob/main/time/src/serde/visitor.rs#L80>.
 pub(super) struct OffsetDateTimeDeserializer {
     // The tag of the array
     tag: String,
@@ -25,16 +24,6 @@ pub(super) struct OffsetDateTimeDeserializer {
 
 impl OffsetDateTimeDeserializer {
     pub(super) fn new(tag: &str, dt: OffsetDateTime) -> Self {
-        // let year = dt.year();
-        // let ordinal = dt.ordinal();
-        // let hour = dt.hour();
-        // let minute = dt.minute();
-        // let second = dt.second();
-        // let nanosecond = dt.nanosecond();
-        // let offset_hours = dt.offset().whole_hours();
-        // let offset_minutes = dt.offset().whole_minutes() % 60;
-        // let offset_seconds = dt.offset().whole_seconds() % 60;
-
         Self {
             tag: tag.to_owned(),
             dt,

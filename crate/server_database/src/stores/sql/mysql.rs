@@ -73,17 +73,6 @@ macro_rules! get_mysql_query {
     };
 }
 
-/// Convert a `MySQL` row into an `ObjectWithMetadata`
-/// This function is used to convert the result of a SQL query into an `ObjectWithMetadata`.
-/// This is used in the `retrieve_` function.
-/// # Arguments
-/// * `row` - The `MySQL` row to convert
-/// # Returns
-/// * An `ObjectWithMetadata` object
-/// # Errors
-/// * If the deserialization of the object or the attributes fails
-/// * If the state is not a valid `StateEnumeration`
-/// * If the conversion fails
 fn my_sql_row_to_owm(row: &mysql_async::Row) -> Result<ObjectWithMetadata, DbError> {
     let id: String = row.get(0).context("missing id")?;
     let object_json: String = row.get(1).context("missing object")?;
