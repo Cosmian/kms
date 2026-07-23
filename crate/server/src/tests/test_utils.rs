@@ -403,7 +403,7 @@ pub(crate) async fn test_app_with_audit(
 
     let mut app = App::new()
         .app_data(Data::new(kms_server.clone()))
-        .wrap(AuditMiddleware::new(Some(store.clone())))
+        .wrap(AuditMiddleware::new(Some(store.clone()), vec![]))
         .service(routes::root_redirect::root_redirect_to_ui)
         .service(routes::health::get_health)
         .service(web::scope("/.well-known").service(routes::jwks::get_jwks))

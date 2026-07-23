@@ -5,6 +5,7 @@ use cosmian_kms_server_database::{
     CeremonyKeys, MainDbParams, reexport::cosmian_kmip::kmip_2_1::kmip_objects::ObjectType,
 };
 use cosmian_logger::{debug, warn};
+use ipnet::IpNet;
 
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
@@ -216,6 +217,10 @@ pub struct ServerParams {
     /// audit writer task.  Propagated from `--audit-channel-capacity` /
     /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
     pub audit_channel_capacity: usize,
+
+    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
+    /// the direct TCP peer address falls within one of these ranges.
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
 
     // ── Vault-compatible API ──────────────────────────────────────────────────
     /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
@@ -565,6 +570,7 @@ impl ServerParams {
                 None
             },
             audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
             // Vault-compatible API — opt-in via config file or CLI flags.
             vault_api_enabled: conf.vault.vault_api_enabled,
             vault_auth_verifier_url: conf
@@ -977,6 +983,7 @@ impl fmt::Debug for ServerParams {
         }
         debug_struct.field("audit_file_path", &self.audit_file_path);
         debug_struct.field("audit_channel_capacity", &self.audit_channel_capacity);
+        debug_struct.field("audit_trusted_proxy_cidrs", &self.audit_trusted_proxy_cidrs);
 
         // Vault API fields
         debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
