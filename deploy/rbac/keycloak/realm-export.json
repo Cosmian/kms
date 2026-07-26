@@ -1,0 +1,136 @@
+{
+  "realm": "kms",
+  "displayName": "Cosmian KMS",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Full KMS administration \u2014 all KMIP operations"
+      },
+      {
+        "name": "operator",
+        "description": "Key management and cryptographic operations"
+      },
+      {
+        "name": "auditor",
+        "description": "Read-only inspection and compliance auditing"
+      },
+      {
+        "name": "readonly",
+        "description": "Minimal access \u2014 list and inspect metadata only"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "cosmian-kms",
+      "name": "Cosmian KMS",
+      "description": "Public OIDC client for Cosmian KMS CLI and web UI",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "protocolMappers": [
+        {
+          "name": "audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "cosmian-kms",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@cosmian.com",
+      "email": "admin@cosmian.com",
+      "firstName": "KMS",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Admin1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ]
+    },
+    {
+      "username": "operator@cosmian.com",
+      "email": "operator@cosmian.com",
+      "firstName": "KMS",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Operator1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "operator"
+      ]
+    },
+    {
+      "username": "auditor@cosmian.com",
+      "email": "auditor@cosmian.com",
+      "firstName": "KMS",
+      "lastName": "Auditor",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Auditor1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "auditor"
+      ]
+    },
+    {
+      "username": "readonly@cosmian.com",
+      "email": "readonly@cosmian.com",
+      "firstName": "KMS",
+      "lastName": "Readonly",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Readonly1234!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "readonly"
+      ]
+    }
+  ]
+}

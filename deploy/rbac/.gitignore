@@ -1,0 +1,2 @@
+# TLS certificates issued by step-ca at runtime — do not commit
+certs/
