@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig,
     MainDBConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
-    ui_config::UiConfig,
+    ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
     config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
@@ -75,6 +75,7 @@ impl Default for ClapConfig {
             keyset_warn_depth: 5,
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
+            vault: VaultConfig::default(),
         }
     }
 }
@@ -242,6 +243,11 @@ pub struct ClapConfig {
 
     #[command(flatten)]
     pub jwks_endpoint: JwksEndpointConfig,
+
+    /// Configuration for the Vault-compatible REST API (`/v1/transit/` and `/v1/<pki_mount>/`).
+    #[command(flatten)]
+    #[serde(default)]
+    pub vault: VaultConfig,
 }
 
 impl ClapConfig {

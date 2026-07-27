@@ -16,6 +16,9 @@ pub(crate) use rate_limiter::{RateLimiterConfig, RateLimiterMiddleware};
 mod otel_http_middleware;
 pub(crate) use otel_http_middleware::otel_http_metrics_middleware;
 
+mod vault_token;
+pub(crate) use vault_token::{VaultTokenCache, vault_token_middleware};
+
 /// Represents an authenticated user
 ///
 /// This struct is stored in the request extensions after successful

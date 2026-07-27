@@ -623,6 +623,24 @@ Crate path: `crate/server`
 | `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `TLS: an authenticated user was already present; skipping certificate check` | `src/middlewares/tls_auth.rs` | - | - |
+| `warn` | `Vault API internal error: {m}` | `src/routes/vault/error.rs` | `m` | - |
+| `warn` | `vault_api_enabled = true but vault_auth_verifier_url is not set —                      Vault-compatible API will NOT be registered.                      Set vault_auth_verifier_url in the server config.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `vault_token_middleware: validation failed: {e}` | `src/middlewares/vault_token.rs` | `e` | - |
+| `info` | `Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}` | `src/start_kms_server.rs` | `transit_mount`, `pki_mount` | - |
+| `debug` | `vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')` | `src/routes/vault/pki.rs` | `days`, `ttl_str` | - |
+| `debug` | `vault pki: signed intermediate certificate uid={cert_uid}` | `src/routes/vault/pki.rs` | `cert_uid` | - |
+| `debug` | `vault pki: using CA private key uid={ca_private_key_uid}` | `src/routes/vault/pki.rs` | `ca_private_key_uid` | - |
+| `debug` | `vault transit: created EC key '{name}' type={}` | `src/routes/vault/transit.rs` | `name` | - |
+| `debug` | `vault transit: created ML-DSA-65 key '{name}'` | `src/routes/vault/transit.rs` | `name` | - |
+| `debug` | `vault transit: created RSA key '{name}' bits={bits}` | `src/routes/vault/transit.rs` | `name`, `bits` | - |
+| `debug` | `vault transit: deleted key '{name}'` | `src/routes/vault/transit.rs` | `name` | - |
+| `debug` | `vault_token_middleware: non-ASCII X-Vault-Token header` | `src/middlewares/vault_token.rs` | - | - |
+| `debug` | `vault_token_middleware: validated entity={}` | `src/middlewares/vault_token.rs` | - | - |
+| `trace` | `POST vault transit keys/{name} type={}` | `src/routes/vault/transit.rs` | `name` | - |
+| `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/vault/transit.rs` | - | - |
+| `trace` | `POST vault transit sign/{name}/{hash_alg_path}` | `src/routes/vault/transit.rs` | `name`, `hash_alg_path` | - |
+| `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/vault/pki.rs` | - | - |
+| `trace` | `vault_token_middleware: missing X-Vault-Token header` | `src/middlewares/vault_token.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

@@ -132,6 +132,7 @@ nav:
           - OpenSSH: integrations/openssh.md
           - PyKMIP: integrations/pykmip.md
           - S/MIME Email encryption: integrations/smime.md
+          - SPIRE / SPIFFE (Zero-Trust M2M): integrations/spire_spiffe.md
   - Installation:
       - Getting started: installation/installation_getting_started.md
       - Deploying in a Cosmian Confidential VM: installation/marketplace_guide.md
@@ -204,6 +205,8 @@ nav:
           - Auto-Rotation Policy: kmip_support/key_rotation/auto_rotation_policy.md
       - Revoke: kmip_support/_revoke.md
       - Sign: kmip_support/_signature.md
+  - Architecture Decision Records:
+      - SPIRE/SPIFFE via Vault-Compatible API: adr/2026-07-26-spire-spiffe-via-vault-api.md
   - Benchmarks:
       - Reports: benchmarks/ckms_bench/report.md
       - CPU Scaling & Flamegraphs: benchmarks/cpu_scaling.md

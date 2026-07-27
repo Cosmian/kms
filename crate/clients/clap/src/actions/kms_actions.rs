@@ -21,7 +21,8 @@ use crate::{
         elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
         login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands,
         pkcs11::Pkcs11Commands, rng::RngAction, rsa::RsaCommands, secret_data::SecretDataCommands,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, vault::VaultCommands,
+        version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -131,6 +132,9 @@ pub enum KmsActions {
     SecretData(SecretDataCommands),
     #[command(subcommand)]
     Sym(SymmetricCommands),
+    /// Vault-compatible `AppRole` identity management.
+    #[command(subcommand)]
+    Vault(VaultCommands),
 }
 
 impl KmsActions {
@@ -298,6 +302,7 @@ impl KmsActions {
             Self::OpaqueObject(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Sym(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::SecretData(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Vault(action) => Box::pin(action.process(kms_rest_client)).await?,
         }
 
         Ok(new_config)
