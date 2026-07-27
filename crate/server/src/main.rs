@@ -473,6 +473,14 @@ aws_xks_sigv4_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 jwks_endpoint_enabled = false
 jwks_endpoint_max_keys = 50
 jwks_endpoint_auto_tag = true
+
+[vault]
+vault_api_enabled = false
+vault_auth_verifier_accept_invalid_certs = false
+vault_transit_mount = ""
+vault_pki_mount = ""
+vault_pki_ca_key_label = ""
+vault_token_cache_ttl_secs = 0
 "#;
 
         assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());

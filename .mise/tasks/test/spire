@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-#MISE description="SPIRE + Mistral client full integration tests (non-FIPS)"
+#MISE description="SPIRE + Mistral client full integration tests (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
@@ -7,6 +10,10 @@ set -euo pipefail
 
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "SPIRE tests require non-fips variant (got: ${usage_variant})"
+fi
 
 # SPIRE tests require the Vault API which is non-FIPS only
 kms_init_env "non-fips" "${usage_link:-static}"
