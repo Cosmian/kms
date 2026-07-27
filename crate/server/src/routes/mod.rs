@@ -33,6 +33,7 @@ pub mod swagger;
 pub(crate) mod tokenize;
 pub mod ui_auth;
 mod utils;
+pub(crate) mod vault;
 
 impl actix_web::error::ResponseError for KmsError {
     fn status_code(&self) -> StatusCode {
