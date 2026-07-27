@@ -191,6 +191,45 @@ pub struct ServerParams {
 
     /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
     pub jwks_endpoint: JwksEndpointConfig,
+
+    // ── Vault-compatible API ──────────────────────────────────────────────────
+    /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
+    /// are registered at startup.  Defaults to `false`.
+    pub vault_api_enabled: bool,
+
+    /// Base URL of the auth-verifier server used for token validation.
+    ///
+    /// Required when `vault_api_enabled = true`.
+    /// Example: `"https://auth.example.com"`
+    pub vault_auth_verifier_url: Option<url::Url>,
+
+    /// Path to a PEM-encoded CA certificate for verifying the auth-verifier's TLS cert.
+    ///
+    /// When set, the reqwest client used by `vault_token_middleware` will trust this CA.
+    pub vault_auth_verifier_ca_cert: Option<std::path::PathBuf>,
+
+    /// When `true`, TLS certificate verification is disabled for auth-verifier connections.
+    ///
+    /// **Security warning**: only use in test/dev environments.
+    pub vault_auth_verifier_accept_invalid_certs: bool,
+
+    /// Vault transit mount name.  Defaults to `"transit"`.
+    /// Transit keys are served at `/v1/<vault_transit_mount>/keys/<name>`.
+    pub vault_transit_mount: String,
+
+    /// Vault PKI mount name.  Defaults to `"pki"`.
+    /// PKI sign-intermediate is served at `/v1/<vault_pki_mount>/root/sign-intermediate`.
+    pub vault_pki_mount: String,
+
+    /// KMIP Label of the KMS key to use as the intermediate CA signing key.
+    /// The key must already exist in the KMS (create it with `ckms ec create` or similar).
+    pub vault_pki_ca_key_label: String,
+
+    /// Lifetime of vault token validation cache entries in seconds.
+    /// The KMS caches successful `lookup-self` responses for this duration
+    /// to avoid a round-trip to auth-verifier on every transit/PKI request.
+    /// Defaults to `30`.
+    pub vault_token_cache_ttl_secs: u64,
 }
 
 /// Represents the server parameters.
@@ -392,6 +431,28 @@ impl ServerParams {
             },
             keyset_warn_depth: conf.keyset_warn_depth,
             jwks_endpoint: conf.jwks_endpoint,
+            // Vault-compatible API — opt-in via config file or CLI flags.
+            vault_api_enabled: conf.vault.vault_api_enabled,
+            vault_auth_verifier_url: conf
+                .vault
+                .vault_auth_verifier_url
+                .as_deref()
+                .map(url::Url::parse)
+                .transpose()
+                .map_err(|e| {
+                    KmsError::InvalidRequest(format!("invalid vault_auth_verifier_url: {e}"))
+                })?,
+            vault_auth_verifier_ca_cert: conf
+                .vault
+                .vault_auth_verifier_ca_cert
+                .map(std::path::PathBuf::from),
+            vault_auth_verifier_accept_invalid_certs: conf
+                .vault
+                .vault_auth_verifier_accept_invalid_certs,
+            vault_transit_mount: conf.vault.vault_transit_mount,
+            vault_pki_mount: conf.vault.vault_pki_mount,
+            vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
+            vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
         };
 
         debug!("{res:#?}");
@@ -751,6 +812,28 @@ impl fmt::Debug for ServerParams {
                 "jwks_endpoint_enabled",
                 &self.jwks_endpoint.jwks_endpoint_enabled,
             );
+        }
+
+        // Vault API fields
+        debug_struct.field("vault_api_enabled", &self.vault_api_enabled);
+        if self.vault_api_enabled {
+            debug_struct
+                .field("vault_auth_verifier_url", &self.vault_auth_verifier_url)
+                .field(
+                    "vault_auth_verifier_ca_cert",
+                    &self.vault_auth_verifier_ca_cert,
+                )
+                .field(
+                    "vault_auth_verifier_accept_invalid_certs",
+                    &self.vault_auth_verifier_accept_invalid_certs,
+                )
+                .field("vault_transit_mount", &self.vault_transit_mount)
+                .field("vault_pki_mount", &self.vault_pki_mount)
+                .field("vault_pki_ca_key_label", &self.vault_pki_ca_key_label)
+                .field(
+                    "vault_token_cache_ttl_secs",
+                    &self.vault_token_cache_ttl_secs,
+                );
         }
 
         debug_struct.finish()

@@ -40,6 +40,7 @@ jobs:
           - secret_aws
           - secret_azure
           - secret_cosmian_kms
+          - spire
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips

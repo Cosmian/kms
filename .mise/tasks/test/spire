@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+#MISE description="SPIRE + Mistral client full integration tests (non-FIPS)"
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+
+# SPIRE tests require the Vault API which is non-FIPS only
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+TEST_DATA="${REPO_ROOT}/test_data/spire"
+AUTH_PID=""
+AUTH_LOG="/tmp/auth-verifier-spire.log"
+SPIRE_SECRETS_ENV="/tmp/spire-secrets.env"
+
+# ── Cleanup on exit ───────────────────────────────────────────────────────────
+cleanup() {
+  print_info "Cleaning up SPIRE integration test resources..."
+
+  # Capture SPIRE server logs before stopping (helps debug failures)
+  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^spire-server$'; then
+    echo "--- SPIRE SERVER LOGS (last 40 lines) ---"
+    docker logs spire-server 2>&1 | tail -40 || true
+    echo "--- END SPIRE SERVER LOGS ---"
+  fi
+
+  # Stop auth-verifier
+  if [[ -n "${AUTH_PID:-}" ]]; then
+    kill "${AUTH_PID}" 2>/dev/null || true
+    wait "${AUTH_PID}" 2>/dev/null || true
+    AUTH_PID=""
+  fi
+
+  # Stop KMS
+  kms_stop
+
+  # Stop all SPIRE profile containers and standalone agent
+  docker rm -f spire-agent-override 2>/dev/null || true
+  docker compose --profile spire down --volumes 2>/dev/null || true
+
+  # Clean up temp files
+  rm -f "${SPIRE_SECRETS_ENV}" 2>/dev/null || true
+  rm -f /tmp/spire-join-token.txt 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# ── Prerequisites ─────────────────────────────────────────────────────────────
+require_cmd docker
+require_cmd cargo
+require_cmd openssl
+
+if [[ ! -d "${TEST_DATA}" ]]; then
+  print_error "test_data/spire not found. Make sure the test_data submodule is on branch 'spire-integration-tests'."
+fi
+
+print_header "SPIRE + Mistral Client Integration Tests"
+
+# ── Step 1: Generate TLS certificates if missing ─────────────────────────────
+print_status "Checking TLS certificates..."
+if [[ ! -f "${TEST_DATA}/certs/ca.crt" || ! -f "${TEST_DATA}/certs/jwt.key.pem" ]]; then
+  print_info "Generating test TLS certificates..."
+  bash "${TEST_DATA}/certs/generate-test-certs.sh"
+else
+  print_info "TLS certificates already present."
+fi
+
+# ── Step 2: Build binaries ────────────────────────────────────────────────────
+print_status "Building KMS server (non-fips)..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+print_status "Building auth-verifier..."
+cargo build --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" \
+  --bin auth_verifier 2>&1 | grep -E "^(error|warning|   Compiling|   Finished)" || true
+
+AUTH_BIN="$(cd "${REPO_ROOT}/authentication" && cargo metadata --no-deps --format-version 1 |
+  python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])")/debug/auth_verifier"
+
+print_status "Building ckms CLI..."
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+# ── Step 3: Start auth-verifier ───────────────────────────────────────────────
+print_status "Starting auth-verifier on port 8443..."
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" \
+  >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+
+print_info "Waiting for auth-verifier (PID=${AUTH_PID})..."
+if ! wait_for_port 127.0.0.1 8443 60; then
+  print_error "auth-verifier failed to start. Check ${AUTH_LOG}"
+fi
+print_success "auth-verifier ready on port 8443."
+
+# ── Step 4: Start KMS ─────────────────────────────────────────────────────────
+print_status "Starting KMS server on port 9998..."
+KMS_LOG_FILE="/tmp/kms-spire.log"
+KMS_CONFIG_FILE="${TEST_DATA}/config/kms.toml"
+
+"$(get_kms_bin)" --config "${KMS_CONFIG_FILE}" \
+  >"${KMS_LOG_FILE}" 2>&1 &
+KMS_PID=$!
+
+print_info "Waiting for KMS (PID=${KMS_PID})..."
+if ! wait_for_port 127.0.0.1 9998 120; then
+  print_error "KMS failed to start. Check ${KMS_LOG_FILE}"
+fi
+print_success "KMS server ready on port 9998."
+
+# ── Step 5: Create PKI CA key in KMS ─────────────────────────────────────────
+# Generate a P-384 key pair AND a self-signed root CA certificate in one shot.
+# Both the root CA and any signed intermediate must have basicConstraints=CA:TRUE
+# so that Go's x509 path validation accepts them as signers.
+print_status "Creating self-signed PKI CA key and certificate in KMS (tag: vault_pki_ca)..."
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+
+# Write a temp extensions file for the root CA
+_VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
+cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign,digitalSignature
+EXTEOF
+
+"$(get_ckms_bin)" --conf-path "${CKMS_CONF}" \
+  --accept-invalid-certs \
+  certificates certify \
+  --generate-key-pair \
+  --algorithm nist-p384 \
+  --certificate-id vault_pki_ca_cert \
+  --subject-name "CN=Cosmian KMS Root CA,O=Cosmian,C=FR" \
+  --tag vault_pki_ca \
+  --days 3650 \
+  --certificate-extensions "${_VAULT_EXT_FILE}" \
+  2>&1 | grep -v "^$"
+
+rm -f "${_VAULT_EXT_FILE}"
+print_success "PKI CA key created."
+
+# ── Step 6: Start vault-proxy (nginx) ────────────────────────────────────────
+print_status "Starting vault-proxy (nginx)..."
+docker compose --profile spire up -d vault-proxy
+
+if ! wait_for_port 127.0.0.1 8200 30; then
+  print_error "vault-proxy failed to start."
+fi
+print_success "vault-proxy ready on port 8200."
+
+# ── Step 7: Provision AppRoles and test connectivity ─────────────────────────
+print_status "Running provision.sh to create AppRoles..."
+AUTH_VERIFIER_URL="https://localhost:8443" \
+  VAULT_ADDR="https://localhost:8200" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  SECRETS_ENV_FILE="${SPIRE_SECRETS_ENV}" \
+  bash "${TEST_DATA}/setup/provision.sh"
+
+if [[ ! -f "${SPIRE_SECRETS_ENV}" ]]; then
+  print_error "provision.sh did not write ${SPIRE_SECRETS_ENV}"
+fi
+
+print_success "AppRoles provisioned."
+
+# ── Step 8: Start SPIRE server with injected AppRole credentials ──────────────
+print_status "Starting SPIRE server..."
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+export APPROLE_ROLE_ID APPROLE_SECRET_ID
+# Map to VAULT_-prefixed names expected by SPIRE vault UpstreamAuthority plugin
+export VAULT_APPROLE_ID="${APPROLE_ROLE_ID}"
+export VAULT_APPROLE_SECRET_ID="${APPROLE_SECRET_ID}"
+
+docker compose --profile spire up -d spire-server
+
+print_info "Waiting for SPIRE server to become healthy..."
+local_tries=0
+until docker inspect --format='{{.State.Health.Status}}' spire-server 2>/dev/null | grep -q healthy; do
+  local_tries=$((local_tries + 1))
+  if [[ "${local_tries}" -ge 24 ]]; then
+    print_error "SPIRE server did not become healthy in time. Check: docker logs spire-server"
+  fi
+  sleep 5
+done
+print_success "SPIRE server healthy."
+
+# ── Step 9: Generate join token and start SPIRE agent ────────────────────────
+print_status "Generating SPIRE join token..."
+JOIN_TOKEN=$(docker exec spire-server \
+  /opt/spire/bin/spire-server token generate \
+  -spiffeID "spiffe://cosmian-test.local/spire-agent" \
+  -socketPath /tmp/spire-server/private/api.sock |
+  awk '/^Token:/{print $2}')
+
+if [[ -z "${JOIN_TOKEN}" ]]; then
+  print_error "Failed to generate SPIRE join token."
+fi
+
+echo "JOIN_TOKEN=${JOIN_TOKEN}" >/tmp/spire-join-token.txt
+print_info "Join token: ${JOIN_TOKEN:0:8}..."
+
+# Patch agent config with the generated token
+mkdir -p /tmp/spire-agent-config
+sed "s/join_token = \"cosmian-test-join-token-12345\"/join_token = \"${JOIN_TOKEN}\"/" \
+  "${TEST_DATA}/config/spire-agent.conf" >/tmp/spire-agent-config/agent.conf
+
+mkdir -p /tmp/spire-agent
+
+# Remove any stale agent container from a previous run
+docker rm -f spire-agent-override 2>/dev/null || true
+
+# Start agent with the patched config (real join token injected)
+SPIRE_AGENT_CONF_OVERRIDE="/tmp/spire-agent-config/agent.conf"
+docker run -d \
+  --name spire-agent-override \
+  --network kms_alt5_default \
+  --pid host \
+  --add-host host.docker.internal:host-gateway \
+  -v "${SPIRE_AGENT_CONF_OVERRIDE}:/etc/spire/agent/agent.conf:ro" \
+  -v "${TEST_DATA}/certs/ca.crt:/etc/spire/agent/ca.crt:ro" \
+  -v /tmp/spire-agent:/tmp/spire-agent \
+  ghcr.io/spiffe/spire-agent:1.9.6 \
+  -config /etc/spire/agent/agent.conf
+
+print_info "Waiting for SPIRE agent workload API socket..."
+agent_tries=0
+until [[ -S /tmp/spire-agent/public/api.sock ]]; do
+  agent_tries=$((agent_tries + 1))
+  if [[ "${agent_tries}" -ge 24 ]]; then
+    docker logs spire-agent-override 2>&1 | tail -20 || true
+    print_error "SPIRE agent socket did not appear in time."
+  fi
+  sleep 5
+done
+print_success "SPIRE agent started."
+
+# ── Step 10: Register workload entries ────────────────────────────────────────
+print_status "Registering Mistral workload entries..."
+AGENT_SPIFFE_ID="spiffe://cosmian-test.local/spire-agent"
+WORKLOAD_SPIFFE_ID="spiffe://cosmian-test.local/mistral-agent"
+
+# The mistral-client image runs as the non-root "mistral" user (uid 1000, see
+# test_data/spire/mistral-client/Dockerfile), so the workload entry's unix
+# selector must match uid 1000, not root.
+docker exec spire-server \
+  /opt/spire/bin/spire-server entry create \
+  -socketPath /tmp/spire-server/private/api.sock \
+  -spiffeID "${WORKLOAD_SPIFFE_ID}" \
+  -parentID "${AGENT_SPIFFE_ID}" \
+  -selector "unix:uid:1000" \
+  2>&1 | grep -v "^$" || true
+
+print_success "Workload entries registered."
+
+# ── Step 11: Run Mistral agent tests ─────────────────────────────────────────
+print_status "Running Mistral agent 1 identity test..."
+docker compose --profile spire run --rm mistral-agent-1
+print_success "Mistral agent 1 passed."
+
+print_status "Running Mistral agent 2 identity test..."
+docker compose --profile spire run --rm mistral-agent-2
+print_success "Mistral agent 2 passed."
+
+print_success "SPIRE integration tests completed successfully!"

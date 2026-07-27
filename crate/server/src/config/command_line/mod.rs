@@ -13,6 +13,7 @@ pub mod secret_backends;
 mod socket_server_config;
 mod tls_config;
 mod ui_config;
+mod vault_config;
 mod workspace;
 
 pub use azure_ekm_config::AzureEkmConfig;
@@ -37,4 +38,5 @@ pub use secret_backends::{
 pub use socket_server_config::SocketServerConfig;
 pub use tls_config::TlsConfig;
 pub use ui_config::{OidcConfig, UiConfig, get_default_ui_dist_path};
+pub use vault_config::VaultConfig;
 pub use workspace::WorkspaceConfig;

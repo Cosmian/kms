@@ -372,6 +372,7 @@ mod tests {
             print_default_config: false,
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
+            vault: cosmian_kms_server::config::VaultConfig::default(),
         };
 
         let toml_string = r#"

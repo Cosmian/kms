@@ -52,8 +52,9 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        JwksManager, JwtConfig, api_token_middleware, ensure_auth_middleware,
+        JwksManager, JwtConfig, VaultTokenCache, api_token_middleware, ensure_auth_middleware,
         extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware, tls_auth_fn,
+        vault_token_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -66,6 +67,13 @@ use crate::{
         kmip::{self, handle_ttlv_bytes},
         ms_dke, root_redirect, swagger,
         ui_auth::configure_auth_routes,
+        vault::{
+            pki::sign_intermediate,
+            transit::{
+                configure_transit_key, create_transit_key, delete_transit_key, get_transit_key,
+                list_transit_keys, sign_with_transit_key,
+            },
+        },
     },
     socket_server::{SocketServer, SocketServerParams},
     start_kms_server::google_cse::operations::GOOGLE_CSE_ID,
@@ -766,6 +774,33 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
 
+    // Pre-build the reqwest client for auth-verifier token validation.
+    // Must be done here (outside the HttpServer closure) so that `?` propagates properly.
+    let vault_http_client: Arc<reqwest::Client> =
+        {
+            let mut builder = reqwest::Client::builder();
+            if kms_server.params.vault_auth_verifier_accept_invalid_certs {
+                builder = builder.danger_accept_invalid_certs(true);
+            } else if let Some(ca_cert_path) = &kms_server.params.vault_auth_verifier_ca_cert {
+                let cert_pem = std::fs::read(ca_cert_path).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "cannot read vault_auth_verifier_ca_cert '{}': {e}",
+                        ca_cert_path.display()
+                    ))
+                })?;
+                let cert = reqwest::Certificate::from_pem(&cert_pem).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "invalid vault_auth_verifier_ca_cert '{}': {e}",
+                        ca_cert_path.display()
+                    ))
+                })?;
+                builder = builder.add_root_certificate(cert);
+            }
+            Arc::new(builder.build().map_err(|e| {
+                KmsError::ServerError(format!("cannot build vault HTTP client: {e}"))
+            })?)
+        };
+
     // Extract http_workers before the closure moves kms_server
     let http_workers = kms_server.params.http_workers;
 
@@ -970,6 +1005,55 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 .service(tokenize::aggregate_date)
                 .service(tokenize::scale_number);
             app = app.service(tokenize_scope);
+        }
+
+        // ── Vault-compatible API (Transit + PKI) ──────────────────────────────
+        // Enabled only when `vault_api_enabled = true` in server config.
+        // Authentication: `X-Vault-Token` header validated by `vault_token_middleware`
+        // which calls `GET <vault_auth_verifier_url>/v1/auth/token/lookup-self`.
+        if kms_server_for_http.params.vault_api_enabled {
+            if let Some(auth_verifier_url) =
+                kms_server_for_http.params.vault_auth_verifier_url.clone()
+            {
+                let vault_cache = VaultTokenCache::new(
+                    kms_server_for_http.params.vault_token_cache_ttl_secs,
+                );
+
+                let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
+                let transit_scope_path = format!("/v1/{transit_mount}");
+                let transit_scope = web::scope(&transit_scope_path)
+                    .wrap(vault_token_middleware(
+                        vault_cache.clone(),
+                        auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                    ))
+                    .wrap(Cors::permissive())
+                    .service(create_transit_key)
+                    .service(configure_transit_key)
+                    .service(get_transit_key)
+                    .service(list_transit_keys)
+                    .service(delete_transit_key)
+                    .service(sign_with_transit_key);
+                app = app.service(transit_scope);
+
+                let pki_mount = kms_server_for_http.params.vault_pki_mount.clone();
+                let pki_scope_path = format!("/v1/{pki_mount}");
+                let pki_scope = web::scope(&pki_scope_path)
+                    .wrap(vault_token_middleware(vault_cache, auth_verifier_url, vault_http_client.clone()))
+                    .wrap(Cors::permissive())
+                    .service(sign_intermediate);
+                app = app.service(pki_scope);
+
+                info!(
+                    "Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}"
+                );
+            } else {
+                warn!(
+                    "vault_api_enabled = true but vault_auth_verifier_url is not set — \
+                     Vault-compatible API will NOT be registered. \
+                     Set vault_auth_verifier_url in the server config."
+                );
+            }
         }
 
         let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
