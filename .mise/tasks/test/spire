@@ -218,10 +218,18 @@ mkdir -p /tmp/spire-agent
 docker rm -f spire-agent-override 2>/dev/null || true
 
 # Start agent with the patched config (real join token injected)
+# Determine the actual docker-compose network name dynamically: the compose
+# project name (and therefore the "<project>_default" network name) depends
+# on the checkout directory name, which differs between local dev (kms_alt5)
+# and CI (kms) -- so it must not be hardcoded.
 SPIRE_AGENT_CONF_OVERRIDE="/tmp/spire-agent-config/agent.conf"
+COMPOSE_NETWORK="$(docker inspect spire-server --format '{{range $net, $v := .NetworkSettings.Networks}}{{$net}}{{end}}')"
+if [[ -z "${COMPOSE_NETWORK}" ]]; then
+  print_error "Could not determine the docker-compose network for spire-server."
+fi
 docker run -d \
   --name spire-agent-override \
-  --network kms_alt5_default \
+  --network "${COMPOSE_NETWORK}" \
   --pid host \
   --add-host host.docker.internal:host-gateway \
   -v "${SPIRE_AGENT_CONF_OVERRIDE}:/etc/spire/agent/agent.conf:ro" \
