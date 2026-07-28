@@ -387,7 +387,8 @@ impl DatabaseHealth for RedisFindexHealthProbe {
     async fn check(&self) -> Result<(), String> {
         let mut mgr = self.store.mgr.clone();
         let pong: String = mgr.ping().await.map_err(|e| e.to_string())?;
-        #[allow(clippy::manual_ignore_case_cmp)] // `eq_ignore_ascii_case` is clearer here than a case-insensitive match
+        #[allow(clippy::manual_ignore_case_cmp)]
+        // `eq_ignore_ascii_case` is clearer here than a case-insensitive match
         if pong.eq_ignore_ascii_case("PONG") {
             Ok(())
         } else {

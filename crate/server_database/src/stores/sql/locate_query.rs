@@ -375,7 +375,8 @@ ON objects.id = matched_tags.id"
         query = format!("{query} AND state = {}", qb.bind_text(state_s));
     }
 
-    #[allow(clippy::collapsible_match)] // nested match segregates the UniqueIdentifier variant check from unrelated attribute checks below
+    #[allow(clippy::collapsible_match)]
+    // nested match segregates the UniqueIdentifier variant check from unrelated attribute checks below
     if let Some(attributes) = attributes {
         // UniqueIdentifier
         if let Some(uid) = &attributes.unique_identifier {

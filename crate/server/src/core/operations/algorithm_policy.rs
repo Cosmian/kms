@@ -83,7 +83,8 @@ pub(crate) fn enforce_kmip_algorithm_policy_for_operation(
 
     let wl = KmipWhitelists::from_params(&params.kmip_policy);
 
-    #[allow(clippy::match_same_arms)] // arms bind distinct request types; merging with `|` would lose the typed `ref req` binding
+    #[allow(clippy::match_same_arms)]
+    // arms bind distinct request types; merging with `|` would lose the typed `ref req` binding
     match op {
         Operation::Create(ref req) => validate_create(req, &wl),
         Operation::CreateKeyPair(ref req) => validate_create_key_pair(req.as_ref(), &wl),
