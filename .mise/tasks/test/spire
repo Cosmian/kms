@@ -81,8 +81,9 @@ print_status "Building KMS server (non-fips)..."
 kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 
 print_status "Building auth-verifier..."
+# Note: grep -E changes the exit code; check build exit separately via set -o pipefail.
 cargo build --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" \
-  --bin auth_verifier 2>&1 | grep -E "^(error|warning|   Compiling|   Finished)" || true
+  --bin auth_verifier
 
 AUTH_BIN="$(cd "${REPO_ROOT}/authentication" && cargo metadata --no-deps --format-version 1 |
   python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])")/debug/auth_verifier"
@@ -90,7 +91,7 @@ AUTH_BIN="$(cd "${REPO_ROOT}/authentication" && cargo metadata --no-deps --forma
 print_status "Building ckms CLI..."
 kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 
-# ── Step 3: Start auth-verifier ───────────────────────────────────────────────
+# ── Step 3: Start auth-verifier ──────────────────────────────────────────────
 print_status "Starting auth-verifier on port 8443..."
 "${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" \
   >"${AUTH_LOG}" 2>&1 &
@@ -147,7 +148,7 @@ EXTEOF
 rm -f "${_VAULT_EXT_FILE}"
 print_success "PKI CA key created."
 
-# ── Step 6: Provision AppRoles and test connectivity ─────────────────────────
+# ── Step 6: Provision AppRoles ────────────────────────────────────────────────
 # KMS proxies /v1/auth/* → auth-verifier /auth/*, so VAULT_ADDR points to KMS.
 print_status "Running provision.sh to create AppRoles..."
 AUTH_VERIFIER_URL="https://localhost:8443" \
@@ -159,8 +160,20 @@ AUTH_VERIFIER_URL="https://localhost:8443" \
 if [[ ! -f "${SPIRE_SECRETS_ENV}" ]]; then
   print_error "provision.sh did not write ${SPIRE_SECRETS_ENV}"
 fi
-
 print_success "AppRoles provisioned."
+
+# ── Step 6b: Vault API conformance tests ──────────────────────────────────────
+# Prove that every HTTP contract SPIRE relies on (§3 auth, §4 PKI, §5 transit)
+# is correctly implemented before starting the real SPIRE runtime.
+print_status "Running Vault API conformance tests (vault-technical-integration.txt)..."
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  APPROLE_ROLE_ID="${APPROLE_ROLE_ID}" \
+  APPROLE_SECRET_ID="${APPROLE_SECRET_ID}" \
+  bash "${TEST_DATA}/setup/test_vault_api.sh"
+print_success "Vault API conformance tests passed."
 
 # ── Step 7: Start SPIRE server with injected AppRole credentials ──────────────
 print_status "Starting SPIRE server..."
@@ -239,12 +252,13 @@ docker exec spire-server \
   -socketPath /tmp/spire-server/private/api.sock \
   -spiffeID "${WORKLOAD_SPIFFE_ID}" \
   -parentID "${AGENT_SPIFFE_ID}" \
-  -selector "unix:uid:1000" \
-  2>&1 | grep -v "^$" || true
+  -selector "unix:uid:1000"
 
 print_success "Workload entries registered."
 
 # ── Step 10: Run Mistral agent tests ─────────────────────────────────────────
+# docker compose run exits with the container's exit code; any non-zero exit
+# propagates immediately via set -euo pipefail — no || true needed here.
 print_status "Running Mistral agent 1 identity test..."
 docker compose --profile spire run --rm mistral-agent-1
 print_success "Mistral agent 1 passed."
@@ -252,5 +266,7 @@ print_success "Mistral agent 1 passed."
 print_status "Running Mistral agent 2 identity test..."
 docker compose --profile spire run --rm mistral-agent-2
 print_success "Mistral agent 2 passed."
+
+print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid drop-in replacement for HashiCorp Vault"
 
 print_success "SPIRE integration tests completed successfully!"

@@ -138,6 +138,32 @@ pub(crate) struct SignTransitResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/// Derive the Vault transit key type string from an OpenSSL `PKey<Public>`.
+///
+/// Reading the curve from the actual key material is authoritative; the
+/// `find` result's `Attributes` often omits `cryptographic_domain_parameters`
+/// for keys created via `create_ec_key_pair_request`, causing P-384 keys to
+/// be incorrectly reported as `ecdsa-p256` when relying on stored attrs alone.
+fn transit_key_type_from_pkey(pkey: &openssl::pkey::PKey<openssl::pkey::Public>) -> &'static str {
+    use openssl::pkey::Id;
+
+    match pkey.id() {
+        Id::EC => pkey
+            .ec_key()
+            .map_or("ecdsa-p256", |ec| match ec.group().curve_name() {
+                Some(openssl::nid::Nid::SECP384R1) => "ecdsa-p384",
+                _ => "ecdsa-p256",
+            }),
+        Id::RSA => match pkey.rsa().map(|r| r.size() * 8) {
+            Ok(4096) => "rsa-4096",
+            _ => "rsa-2048",
+        },
+        #[cfg(feature = "non-fips")]
+        Id::ED25519 => "ed25519",
+        _ => "ecdsa-p256",
+    }
+}
+
 /// Derive a Vault transit key type string from KMIP `Attributes` (G3 fix).
 ///
 /// Used by `GET /keys/{name}` to reconstruct the type from stored metadata.
@@ -355,9 +381,6 @@ pub(crate) async fn get_transit_key(
         .next()
         .ok_or_else(|| SpireApiError::NotFound(format!("transit key '{name}' not found")))?;
 
-    // G3: derive vault key type from stored KMIP attributes
-    let key_type = transit_key_type_from_attrs(&attrs).to_owned();
-
     // Creation timestamp (RFC3339) for the key version map
     let creation_time = attrs
         .initial_date
@@ -368,19 +391,33 @@ pub(crate) async fn get_transit_key(
                 .unwrap_or_default()
         });
 
-    // G1: retrieve linked public key and export as SPKI PEM
-    let public_key_pem = match attrs.get_link(LinkType::PublicKeyLink) {
+    // Retrieve linked public key; derive key type from the PKey object (not from
+    // stored Attributes, which may lack cryptographic_domain_parameters after find).
+    let fallback = || {
+        (
+            String::new(),
+            transit_key_type_from_attrs(&attrs).to_owned(),
+        )
+    };
+    let (public_key_pem, key_type) = match attrs.get_link(LinkType::PublicKeyLink) {
         Some(LinkedObjectIdentifier::TextString(pub_uid)) => {
             match kms.database.retrieve_object(&pub_uid).await {
-                Ok(Some(owm)) => kmip_public_key_to_openssl(owm.object())
-                    .ok()
-                    .and_then(|pkey| pkey.public_key_to_pem().ok())
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
-                    .unwrap_or_default(),
-                _ => String::new(),
+                Ok(Some(owm)) => kmip_public_key_to_openssl(owm.object()).map_or_else(
+                    |_| fallback(),
+                    |pkey| {
+                        let ktype = transit_key_type_from_pkey(&pkey).to_owned();
+                        let pem = pkey
+                            .public_key_to_pem()
+                            .ok()
+                            .and_then(|b| String::from_utf8(b).ok())
+                            .unwrap_or_default();
+                        (pem, ktype)
+                    },
+                ),
+                _ => fallback(),
             }
         }
-        _ => String::new(),
+        _ => fallback(),
     };
 
     let mut keys = HashMap::new();

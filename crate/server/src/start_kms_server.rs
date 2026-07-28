@@ -1051,11 +1051,19 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 // which is forwarded here to the auth-verifier unchanged.
                 // The KMS token-validation middleware still calls auth-verifier directly
                 // (server-to-server) — transit/PKI hot-path requests are never proxied.
+                //
+                // NOTE: In Actix-web 4, a Scope with *only* default_service and no
+                // explicit .service() registrations is silently dropped from the router.
+                // We must register at least one resource; the wildcard `/{tail:.*}` catches
+                // all sub-paths for all HTTP methods, which is exactly what the proxy needs.
                 let auth_scope = web::scope("/v1/auth")
                     .app_data(web::Data::new(vault_http_client.clone()))
                     .app_data(web::Data::new(auth_verifier_url))
                     .wrap(Cors::permissive())
-                    .default_service(web::route().to(proxy_auth_request));
+                    .service(
+                        web::resource("/{tail:.*}")
+                            .route(web::route().to(proxy_auth_request)),
+                    );
                 app = app.service(auth_scope);
 
                 info!(

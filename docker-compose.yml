@@ -324,6 +324,9 @@ services:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - AGENT_ID=mistral-agent-1
       - TRUST_DOMAIN=cosmian-test.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
 
   mistral-agent-2:
     build:
@@ -339,6 +342,9 @@ services:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - AGENT_ID=mistral-agent-2
       - TRUST_DOMAIN=cosmian-test.local
+      - EXPECTED_SPIFFE_PATH=/mistral-agent
+      - JWT_AUDIENCE=cosmian-kms
+      - MAX_SVID_TTL_SECONDS=7200
 
 volumes:
   spire-data:
