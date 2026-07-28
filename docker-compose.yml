@@ -303,13 +303,35 @@ services:
       spire-server:
         condition: service_healthy
     volumes:
-      - ./test_data/spire/config/spire-agent.conf:/etc/spire/agent/agent.conf:ro
+      # SPIRE_AGENT_CONFIG_FILE can be overridden via env var to inject a
+      # real join token (generated at runtime). Defaults to the template
+      # config with a placeholder token.
+      - ${SPIRE_AGENT_CONFIG_FILE:-./test_data/spire/config/spire-agent.conf}:/etc/spire/agent/agent.conf:ro
       - ./test_data/spire/certs/ca.crt:/etc/spire/agent/ca.crt:ro
-      - /tmp/spire-agent:/tmp/spire-agent
+      # Named volume (not a host bind mount) so the unix socket at
+      # /tmp/spire-agent/public/api.sock is correctly shared with the
+      # mistral-agent containers on all platforms, including macOS Docker
+      # Desktop where host-bind-mount unix sockets are not accessible
+      # between containers.
+      - spire-agent-socket:/tmp/spire-agent
     command: [-config, /etc/spire/agent/agent.conf]
     pid: host
     extra_hosts:
       - host.docker.internal:host-gateway
+    healthcheck:
+      # Use the SPIRE agent binary itself: the image is distroless and has no
+      # shell or 'test' utility. Reports healthy once the workload API socket
+      # is ready and accepting connections.
+      test:
+        - CMD
+        - /opt/spire/bin/spire-agent
+        - healthcheck
+        - -socketPath
+        - /tmp/spire-agent/public/api.sock
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 15s
 
   mistral-agent-1:
     build:
@@ -318,9 +340,9 @@ services:
     container_name: mistral-agent-1
     depends_on:
       spire-agent:
-        condition: service_started
+        condition: service_healthy
     volumes:
-      - /tmp/spire-agent:/tmp/spire-agent:ro
+      - spire-agent-socket:/tmp/spire-agent:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - AGENT_ID=mistral-agent-1
@@ -333,9 +355,9 @@ services:
     container_name: mistral-agent-2
     depends_on:
       spire-agent:
-        condition: service_started
+        condition: service_healthy
     volumes:
-      - /tmp/spire-agent:/tmp/spire-agent:ro
+      - spire-agent-socket:/tmp/spire-agent:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - AGENT_ID=mistral-agent-2
@@ -343,3 +365,4 @@ services:
 
 volumes:
   spire-data:
+  spire-agent-socket:
