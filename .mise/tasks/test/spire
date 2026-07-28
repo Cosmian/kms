@@ -46,8 +46,8 @@ cleanup() {
   # Stop KMS
   kms_stop
 
-  # Stop all SPIRE profile containers and standalone agent
-  docker rm -f spire-agent-override 2>/dev/null || true
+  # Stop all SPIRE profile containers (including spire-agent, which is now
+  # managed by compose) and remove named volumes (incl. spire-agent-socket).
   docker compose --profile spire down --volumes 2>/dev/null || true
 
   # Clean up temp files
@@ -212,38 +212,22 @@ mkdir -p /tmp/spire-agent-config
 sed "s/join_token = \"cosmian-test-join-token-12345\"/join_token = \"${JOIN_TOKEN}\"/" \
   "${TEST_DATA}/config/spire-agent.conf" >/tmp/spire-agent-config/agent.conf
 
-mkdir -p /tmp/spire-agent
-
-# Remove any stale agent container from a previous run
-docker rm -f spire-agent-override 2>/dev/null || true
-
-# Start agent with the patched config (real join token injected)
-# Determine the actual docker-compose network name dynamically: the compose
-# project name (and therefore the "<project>_default" network name) depends
-# on the checkout directory name, which differs between local dev (kms_alt5)
-# and CI (kms) -- so it must not be hardcoded.
-SPIRE_AGENT_CONF_OVERRIDE="/tmp/spire-agent-config/agent.conf"
-COMPOSE_NETWORK="$(docker inspect spire-server --format '{{range $net, $v := .NetworkSettings.Networks}}{{$net}}{{end}}')"
-if [[ -z "${COMPOSE_NETWORK}" ]]; then
-  print_error "Could not determine the docker-compose network for spire-server."
-fi
-docker run -d \
-  --name spire-agent-override \
-  --network "${COMPOSE_NETWORK}" \
-  --pid host \
-  --add-host host.docker.internal:host-gateway \
-  -v "${SPIRE_AGENT_CONF_OVERRIDE}:/etc/spire/agent/agent.conf:ro" \
-  -v "${TEST_DATA}/certs/ca.crt:/etc/spire/agent/ca.crt:ro" \
-  -v /tmp/spire-agent:/tmp/spire-agent \
-  ghcr.io/spiffe/spire-agent:1.9.6 \
-  -config /etc/spire/agent/agent.conf
+# Start the SPIRE agent via docker compose, injecting the patched config file
+# (with the real join token) via the SPIRE_AGENT_CONFIG_FILE env var.
+# Using compose (with a named Docker volume for the socket directory) ensures
+# the unix socket is correctly shared with the mistral-agent containers on all
+# platforms, including macOS Docker Desktop where host bind-mount unix sockets
+# are not accessible between containers.
+export SPIRE_AGENT_CONFIG_FILE="/tmp/spire-agent-config/agent.conf"
+docker compose --profile spire up -d spire-agent
 
 print_info "Waiting for SPIRE agent workload API socket..."
 agent_tries=0
-until [[ -S /tmp/spire-agent/public/api.sock ]]; do
+until docker exec spire-agent /opt/spire/bin/spire-agent healthcheck \
+  -socketPath /tmp/spire-agent/public/api.sock 2>/dev/null; do
   agent_tries=$((agent_tries + 1))
   if [[ "${agent_tries}" -ge 24 ]]; then
-    docker logs spire-agent-override 2>&1 | tail -20 || true
+    docker logs spire-agent 2>&1 | tail -20 || true
     print_error "SPIRE agent socket did not appear in time."
   fi
   sleep 5

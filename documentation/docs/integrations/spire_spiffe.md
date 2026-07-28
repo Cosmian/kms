@@ -1,6 +1,6 @@
-# SPIRE / SPIFFE — Zero-Trust Workload Identity
+# SPIRE / SPIFFE — Workload Identity and FIPS-Backed PKI
 
-> **Zero-Trust M2M for AI agents and services** — Cosmian KMS exposes the HTTP API
+> Cosmian KMS exposes the HTTP API
 > expected by SPIRE's `upstreamauthority "vault"` and `keymanager "hashicorp_vault"` plugins
 > (`/v1/transit/*`, `/v1/<pki_mount>/*`), while the Cosmian Authentication Server
 > (auth-verifier) exposes the matching auth API (`/v1/auth/*`). Together they let
@@ -20,9 +20,11 @@ sequenceDiagram
     participant Agent as SPIRE Agent
     participant Mistral as AI Agent Workload<br/>(e.g. Mistral agent)
 
-    Admin->>AuthV: 1. Create AppRole "spire-server"<br/>POST /v1/auth/approle/role/spire-server
-    AuthV-->>Admin: role_id + secret_id
-    Note over Admin,Server: Admin configures SPIRE with role_id + secret_id
+    Admin->>KMS: 0. Create PKI CA key<br/>ckms certificates certify --tag vault_pki_ca
+    KMS-->>Admin: 200 OK (key stored, tag: vault_pki_ca)
+    Admin->>AuthV: 1. Create AppRoles ("spire-server" + "mistral-agents")<br/>POST /v1/auth/approle/role/{name}
+    AuthV-->>Admin: role_id + secret_id (per role)
+    Note over Admin,Server: Admin configures SPIRE with spire-server role_id + secret_id
     Server->>Proxy: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
     Proxy->>AuthV: forward /v1/auth/*
     AuthV-->>Server: Vault token (hvs.xxxx)
@@ -67,7 +69,7 @@ stored, and used exclusively inside the FIPS 140-3-validated KMS.
 
 ## Who should use it?
 
-- **Platform/security teams** implementing Zero-Trust machine-to-machine (M2M) authentication
+- **Platform/security teams** implementing machine-to-machine (M2M) workload authentication
   between services or AI agents, who already run (or plan to run) Cosmian KMS.
 - **SPIRE operators** who want FIPS 140-3/HSM-backed key custody for SPIRE's CA and
   transit keys without deploying and operating a separate secrets management cluster.
@@ -116,10 +118,33 @@ existence beyond that split.
 
 ## Detailed flows
 
+### 0. PKI CA key provisioning (prerequisite)
+
+Before SPIRE can sign its intermediate CA, the KMS must hold a CA key with the tag
+configured in `--vault-pki-ca-key-label` (default: `vault_pki_ca`). Create it once with
+the `ckms` CLI:
+
+```bash
+# Generate a P-384 key pair and a self-signed root CA certificate in KMS.
+# The --tag value must match vault_pki_ca_key_label in the KMS configuration.
+ckms --accept-invalid-certs \
+  certificates certify \
+  --generate-key-pair \
+  --algorithm nist-p384 \
+  --certificate-id vault_pki_ca_cert \
+  --subject-name "CN=My Root CA,O=Acme,C=FR" \
+  --tag vault_pki_ca \
+  --days 3650
+```
+
+> This step must complete **before** SPIRE server starts — the
+> `POST /v1/pki/root/sign-intermediate` call (step 3 of the end-to-end flow) fails
+> immediately if the key is absent.
+
 ### 1. AppRole provisioning (admin bootstrap)
 
-An administrator provisions one `AppRole` per consumer (e.g. one for the SPIRE server
-itself, one for a group of AI agent workloads that also need direct transit signing).
+An administrator provisions one `AppRole` per consumer: one for the SPIRE server itself
+and one for the AI agent workloads that need direct transit signing.
 
 ```mermaid
 sequenceDiagram
@@ -133,6 +158,12 @@ sequenceDiagram
     Admin->>AuthV: GET /v1/auth/approle/role/spire-server/role-id
     AuthV-->>Admin: {"data":{"role_id":"..."}}
     Admin->>AuthV: POST /v1/auth/approle/role/spire-server/secret-id
+    AuthV-->>Admin: {"data":{"secret_id":"...","secret_id_accessor":"..."}}
+    Admin->>AuthV: POST /v1/auth/approle/role/mistral-agents<br/>{token_ttl, token_policies, secret_id_ttl}
+    AuthV-->>Admin: 200 OK
+    Admin->>AuthV: GET /v1/auth/approle/role/mistral-agents/role-id
+    AuthV-->>Admin: {"data":{"role_id":"..."}}
+    Admin->>AuthV: POST /v1/auth/approle/role/mistral-agents/secret-id
     AuthV-->>Admin: {"data":{"secret_id":"...","secret_id_accessor":"..."}}
 ```
 
@@ -231,23 +262,47 @@ sequenceDiagram
 ## Quick start (local demo stack)
 
 The KMS repository ships a working end-to-end demo under `test_data/spire/` (used by the
-project's own integration tests). It runs Cosmian KMS and auth-verifier as regular
-processes and everything else (nginx, SPIRE server/agent, two example AI agent workload
-containers) via Docker Compose.
+project's own integration tests). It runs Cosmian KMS and auth-verifier as regular host
+processes and everything else (nginx, SPIRE server/agent, AI agent workload containers)
+via Docker Compose.
+
+The fastest way to run the full stack from source:
 
 ```bash
-# 1. Generate local test TLS certificates
+mise run test:spire --variant non-fips
+```
+
+For a step-by-step breakdown (matching the numbered steps in the end-to-end flow diagram
+above):
+
+```bash
+# 0. Generate local test TLS certificates (once)
 bash test_data/spire/certs/generate-test-certs.sh
 
-# 2. Start Cosmian KMS and auth-verifier with the Vault API enabled (see
-#    "Configuration reference" below), then start the SPIRE stack:
-docker compose --profile spire up -d
+# Start auth-verifier and KMS as host processes (vault API enabled in kms.toml)
+auth_verifier test_data/spire/config/auth_verifier.toml &
+cosmian_kms --config test_data/spire/config/kms.toml &
 
-# 3. Provision AppRole credentials and the PKI CA key
-docker compose --profile spire exec cosmian-auth bash /setup/provision.sh
+# 0. Create the PKI CA key in KMS (must exist before SPIRE starts)
+ckms --accept-invalid-certs \
+  certificates certify --generate-key-pair --algorithm nist-p384 \
+  --certificate-id vault_pki_ca_cert \
+  --subject-name "CN=Cosmian KMS Root CA,O=Cosmian,C=FR" \
+  --tag vault_pki_ca --days 3650
 
-# 4. Watch SPIRE and the workload containers come up
-docker compose --profile spire logs -f spire-server spire-agent mistral-agent-1 mistral-agent-2
+# Start vault-proxy (the single vault_addr SPIRE connects to)
+docker compose --profile spire up -d vault-proxy
+
+# 1. Provision AppRoles (spire-server + mistral-agents) and verify connectivity
+AUTH_VERIFIER_URL=https://localhost:8443 \
+  VAULT_ADDR=https://localhost:8200 \
+  VAULT_CACERT=test_data/spire/certs/ca.crt \
+  bash test_data/spire/setup/provision.sh
+
+# 2–4. Start SPIRE server (injects APPROLE_* env from provision output),
+#       generate join token, start SPIRE agent
+docker compose --profile spire up -d spire-server
+# ... (see .mise/tasks/test/spire for the full token-generation and agent-start sequence)
 ```
 
 A successful run shows the SPIRE server signing its intermediate CA through the PKI

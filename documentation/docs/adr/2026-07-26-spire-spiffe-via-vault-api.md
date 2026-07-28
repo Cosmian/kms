@@ -3,7 +3,7 @@ title: "ADR-2026-07-26: SPIRE/SPIFFE Integration via Vault-Compatible API (KMS C
 status: "Accepted"
 date: "2026-07-26"
 authors: "Architecture Team"
-tags: ["architecture", "spiffe", "spire", "vault", "kms", "mercedes-benz-rfi"]
+tags: ["architecture", "spiffe", "spire", "vault", "kms"]
 supersedes: ""
 superseded_by: ""
 ---
@@ -16,8 +16,7 @@ Accepted
 
 ## Context
 
-The Mercedes-Benz SPEYER initiative (Zero Trust M2M RFI, June 2026) requires SPIRE to use an
-enterprise KMS as both UpstreamAuthority (PKI engine: sign intermediate CA certificates) and
+Production SPIRE deployments require an enterprise KMS as both UpstreamAuthority (PKI engine: sign intermediate CA certificates) and
 KeyManager (Transit engine: key-as-a-service, signing only — private keys never leave the backend).
 
 SPIRE's two relevant plugins call the HashiCorp Vault HTTP API:
@@ -62,9 +61,9 @@ destroy-secret-id) in the KMS CLI for AppRole credential provisioning against au
   in KMS. Each server evolves independently.
 - **POS-002** KMS retains FIPS 140-3 compliance. All crypto operations (sign, certify) go
   through the existing KMIP core and HSM oracle stack.
-- **POS-003** HSM/PKCS#11 backing satisfies RFI FR-2.6 ("private keys must never be
-  persisted to disk") without additional work.
-- **POS-004** PQC readiness (FR-2.14, NFR-11) — ML-DSA-65 mapped as a transit key type
+- **POS-003** HSM/PKCS#11 backing ensures private keys are never persisted to disk,
+  without additional work.
+- **POS-004** PQC readiness — ML-DSA-65 mapped as a transit key type
   in non-FIPS mode; algorithm policy changes take effect at next SPIRE key rotation.
 - **POS-005** Multiple SPIRE servers sharing one backend are handled by SPIRE's own
   `{SERVER-ID}-{UUID}-{SPIRE-KEY-ID}` transit key naming convention; no KMS changes needed.
@@ -96,8 +95,8 @@ destroy-secret-id) in the KMS CLI for AppRole credential provisioning against au
 
 - auth-verifier serves transit/PKI endpoints and proxies crypto calls to KMS.
 - **Rejected**: Every transit call would traverse two network hops. auth-verifier has no
-  KMIP client today, adding significant new scope. The proxy adds latency that conflicts
-  with NFR-2 (certificate issuance < 500ms, DPoP validation < 5ms).
+  KMIP client today, adding significant new scope. The proxy adds latency incompatible
+  with low-latency targets (certificate issuance < 500ms, DPoP validation < 5ms).
 
 ### Alternative C — Dedicated Vault adapter shim microservice
 
@@ -127,7 +126,7 @@ vault_pki_ca_key_label = "spire-intermediate-ca"
 vault_token_cache_ttl_secs = 30
 ```
 
-Multi-mount segmentation (FR-2.18, PKI-5) is deferred post-beta; the single-mount config
+Multi-mount segmentation is deferred post-beta; the single-mount config
 is forward-compatible — upgrading to a HashMap requires only a config-file change.
 
 ### Transit key type mapping
@@ -145,7 +144,7 @@ is forward-compatible — upgrading to a HashMap requires only a config-file cha
 
 All transit sign responses: `vault:v1:<base64(raw_sig)>`. SPIRE strips this prefix.
 ECDSA returns ASN.1 DER. The `exportable: false` invariant is enforced server-side
-unconditionally, satisfying FR-2.15 regardless of client request body.
+unconditionally regardless of client request body.
 
 ### PKI sign-intermediate validation
 
