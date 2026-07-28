@@ -1,4 +1,4 @@
-//! Shared error type for the Vault-compatible API routes.
+//! Shared error type for the SPIRE-compatible API routes.
 
 use actix_web::HttpResponse;
 use cosmian_logger::warn;
@@ -6,9 +6,9 @@ use serde_json::json;
 
 use crate::error::KmsError;
 
-/// Error type for Vault-compatible API routes.
+/// Error type for SPIRE-compatible API routes.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum VaultApiError {
+pub(crate) enum SpireApiError {
     #[error("bad request: {0}")]
     BadRequest(String),
     #[error("not found: {0}")]
@@ -19,7 +19,7 @@ pub(crate) enum VaultApiError {
     InternalError(String),
 }
 
-impl From<KmsError> for VaultApiError {
+impl From<KmsError> for SpireApiError {
     fn from(e: KmsError) -> Self {
         match e {
             KmsError::Unauthorized(_) => Self::Forbidden(e.to_string()),
@@ -29,14 +29,14 @@ impl From<KmsError> for VaultApiError {
     }
 }
 
-impl actix_web::error::ResponseError for VaultApiError {
+impl actix_web::error::ResponseError for SpireApiError {
     fn error_response(&self) -> HttpResponse {
         let (status, msg) = match self {
             Self::BadRequest(m) => (actix_web::http::StatusCode::BAD_REQUEST, m.clone()),
             Self::NotFound(m) => (actix_web::http::StatusCode::NOT_FOUND, m.clone()),
             Self::Forbidden(m) => (actix_web::http::StatusCode::FORBIDDEN, m.clone()),
             Self::InternalError(m) => {
-                warn!("Vault API internal error: {m}");
+                warn!("SPIRE API internal error: {m}");
                 (
                     actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
                     m.clone(),
@@ -47,5 +47,5 @@ impl actix_web::error::ResponseError for VaultApiError {
     }
 }
 
-/// Convenience alias for Vault API results.
-pub(crate) type VaultResult<T> = Result<T, VaultApiError>;
+/// Convenience alias for SPIRE API results.
+pub(crate) type SpireResult<T> = Result<T, SpireApiError>;
