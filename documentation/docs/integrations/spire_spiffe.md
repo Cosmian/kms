@@ -1,35 +1,35 @@
 # SPIRE / SPIFFE — Workload Identity and FIPS-Backed PKI
 
-> Cosmian KMS exposes the HTTP API
-> expected by SPIRE's `upstreamauthority "vault"` and `keymanager "hashicorp_vault"` plugins
-> (`/v1/transit/*`, `/v1/<pki_mount>/*`), while the Cosmian Authentication Server
-> (auth-verifier) exposes the matching auth API (`/v1/auth/*`). Together they let
+> Cosmian KMS serves as the single `vault_addr` for SPIRE: it implements the
+> transit and PKI engines (`/v1/transit/*`, `/v1/{pki_mount}/*`) directly, and
+> transparently proxies all auth requests (`/v1/auth/*`) to the Cosmian Authentication
+> Server (auth-verifier), which handles AppRole login, token lifecycle, and
+> Kubernetes auth. Together they let
 > [SPIRE](https://spiffe.io/docs/latest/spire-about/) (the SPIFFE Runtime Environment)
 > use Cosmian's FIPS 140-3 KMS as its certificate authority and key custodian —
-> **without requiring a separate secrets management cluster**.
+> **without requiring a separate secrets management cluster or a reverse proxy**.
 
 ## End-to-end flow
 
 ```mermaid
 sequenceDiagram
     participant Admin as Platform Admin
-    participant AuthV as auth-verifier<br/>(/v1/auth/*)
-    participant Proxy as vault-proxy<br/>(nginx, single vault_addr)
-    participant KMS as Cosmian KMS<br/>(/v1/transit/*, /v1/pki/*)
+    participant AuthV as auth-verifier<br/>(/v1/auth/* — admin API)
+    participant KMS as Cosmian KMS<br/>(vault_addr — /v1/auth/* proxy<br/>+ /v1/transit/*, /v1/pki/*)
     participant Server as SPIRE Server
     participant Agent as SPIRE Agent
     participant Mistral as AI Agent Workload<br/>(e.g. Mistral agent)
 
     Admin->>KMS: 0. Create PKI CA key<br/>ckms certificates certify --tag vault_pki_ca
     KMS-->>Admin: 200 OK (key stored, tag: vault_pki_ca)
-    Admin->>AuthV: 1. Create AppRoles ("spire-server" + "mistral-agents")<br/>POST /v1/auth/approle/role/{name}
+    Admin->>AuthV: 1. Create AppRoles ("spire-server" + "mistral-agents")<br/>POST /v1/auth/approle/role/{name} (admin session cookie)
     AuthV-->>Admin: role_id + secret_id (per role)
     Note over Admin,Server: Admin configures SPIRE with spire-server role_id + secret_id
-    Server->>Proxy: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
-    Proxy->>AuthV: forward /v1/auth/*
+    Server->>KMS: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
+    KMS->>AuthV: proxy /v1/auth/*
     AuthV-->>Server: Vault token (hvs.xxxx)
-    Server->>Proxy: 3. Sign intermediate CA<br/>POST /v1/pki/root/sign-intermediate<br/>(X-Vault-Token, CSR, uri_sans)
-    Proxy->>KMS: forward /v1/pki/*
+    Server->>KMS: 3. Sign intermediate CA<br/>POST /v1/pki/root/sign-intermediate<br/>(X-Vault-Token, CSR, uri_sans)
+    Note over KMS: validate X-Vault-Token via AuthV<br/>(30 s cache), KMIP Certify
     KMS-->>Server: signed cert + ca_chain
     Note over Server,Agent: 4. SPIRE Agent attests to SPIRE Server<br/>(join_token in this demo)
     Agent-->>Mistral: 5. Workload API (unix socket)<br/>fetch JWT-SVID
@@ -49,12 +49,12 @@ SPIRE needs two things from an external secrets/PKI backend:
 - A **`KeyManager`** to store the private keys it uses internally.
 
 Both of SPIRE's built-in `vault` plugins use a specific HTTP API for crypto operations and
-authentication. Cosmian KMS implements the subset of that API SPIRE needs — the
+authentication. Cosmian KMS implements the subset of that API SPIRE needs: it handles the
 **Transit engine** (`/v1/transit/*`) and the **PKI engine**
-(`/v1/<pki_mount>/root/sign-intermediate`) — while the Cosmian Authentication Server
-implements the **AppRole auth method** (`/v1/auth/*`). Point SPIRE's `vault_addr` at a
-Cosmian deployment, and every private key SPIRE would normally manage itself is generated,
-stored, and used exclusively inside the FIPS 140-3-validated KMS.
+(`/v1/{pki_mount}/root/sign-intermediate`) natively, and transparently proxies all
+**AppRole auth** calls (`/v1/auth/*`) to the Cosmian Authentication Server. Point SPIRE's
+`vault_addr` at the KMS, and every private key SPIRE would normally manage itself is
+generated, stored, and used exclusively inside the FIPS 140-3-validated KMS.
 
 ## Why use it?
 
@@ -65,7 +65,7 @@ stored, and used exclusively inside the FIPS 140-3-validated KMS.
 | **No additional cluster to operate** | Reuses infrastructure you already run (Cosmian KMS + auth-verifier) instead of standing up and hardening a separate secrets management cluster just for SPIRE. |
 | **Centralized audit trail** | Every CA signature and transit `sign` call is a KMIP operation logged by the KMS with identity, timestamp, and key identifier. |
 | **Post-quantum-ready transit keys** | Transit keys support `ml-dsa-65` (non-FIPS builds) alongside classical `ecdsa-p256/p384` and `rsa-2048/4096`. |
-| **Drop-in `vault_addr`** | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "vault"` plugins need no code changes — only configuration pointing at the Cosmian-fronted `vault_addr`. |
+| **Drop-in `vault_addr`** | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "vault"` plugins need no code changes — only configuration pointing `vault_addr` at the KMS. No nginx or extra proxy required. |
 
 ## Who should use it?
 
@@ -79,18 +79,18 @@ stored, and used exclusively inside the FIPS 140-3-validated KMS.
 
 ## Architecture
 
-The reference deployment (see `docker-compose.yml`, `spire` profile) fronts both Cosmian
-servers with a single nginx reverse proxy so that SPIRE only needs one `vault_addr`:
+KMS acts as the single `vault_addr` for the entire SPIRE deployment. Internally it routes
+by path: `/v1/transit/*` and `/v1/pki/*` are handled directly, while `/v1/auth/*` is
+transparently proxied to auth-verifier. SPIRE never needs to know about the two-service
+split — it connects to one endpoint.
 
 ```mermaid
 flowchart LR
     subgraph Cosmian ["Cosmian Backend"]
         direction TB
-        Proxy["vault-proxy (nginx)\nsingle vault_addr :8200"]
-        AuthV["auth-verifier :8443\n/v1/auth/*"]
-        KMS["Cosmian KMS :9998\n/v1/transit/*, /v1/pki/*"]
-        Proxy -- "/v1/auth/*" --> AuthV
-        Proxy -- "/v1/transit/*\n/v1/pki/*" --> KMS
+        KMS["Cosmian KMS :9998\nvault_addr\n/v1/auth/* → proxy\n/v1/transit/*, /v1/pki/* → native"]
+        AuthV["auth-verifier :8443\n/v1/auth/* (AppRole, token)"]
+        KMS -- "/v1/auth/* proxy\n(AppRole login,\ntoken lookup)" --> AuthV
         KMS -. "token lookup-self\n(30 s cache)" .-> AuthV
     end
     subgraph SPIRE ["SPIRE Runtime"]
@@ -107,14 +107,14 @@ flowchart LR
 
     Admin(["Platform Admin"])
     Admin -- "1. provision AppRoles\n+ PKI CA key" --> Cosmian
-    SS -- "2. vault_addr\n(AppRole login,\nPKI/transit calls)" --> Proxy
+    SS -- "2. vault_addr\n(AppRole login,\nPKI/transit calls)" --> KMS
     SA -- "Workload API\n(unix socket)" --> MA1
     SA -- "Workload API\n(unix socket)" --> MA2
 ```
 
-nginx routes purely by path prefix: `/v1/auth/*` goes to auth-verifier, `/v1/transit/*`
-and `/v1/pki/*` go to the KMS. Neither Cosmian service needs to know about the other's
-existence beyond that split.
+KMS proxies `/v1/auth/*` to the auth-verifier URL configured via
+`vault_auth_verifier_url`. No nginx or additional reverse proxy is needed — the same
+TLS client already used for token validation is reused for the proxy.
 
 ## Detailed flows
 
@@ -175,16 +175,14 @@ to be signed as its intermediate CA.
 ```mermaid
 sequenceDiagram
     participant Server as SPIRE Server
-    participant Proxy as vault-proxy
-    participant AuthV as auth-verifier
     participant KMS as Cosmian KMS
+    participant AuthV as auth-verifier
 
-    Server->>Proxy: POST /v1/auth/approle/login<br/>{role_id, secret_id}
-    Proxy->>AuthV: forward
+    Server->>KMS: POST /v1/auth/approle/login<br/>{role_id, secret_id}
+    KMS->>AuthV: proxy /v1/auth/*
     AuthV-->>Server: {"auth":{"client_token":"hvs.xxxx", ...}}
-    Server->>Proxy: POST /v1/pki/root/sign-intermediate<br/>X-Vault-Token: hvs.xxxx<br/>{csr, uri_sans, common_name, ttl}
-    Proxy->>KMS: forward (validates X-Vault-Token first)
-    Note over KMS: KMIP Certify using the key<br/>tagged vault_pki_ca_key_label
+    Server->>KMS: POST /v1/pki/root/sign-intermediate<br/>X-Vault-Token: hvs.xxxx<br/>{csr, uri_sans, common_name, ttl}
+    Note over KMS: validate X-Vault-Token via AuthV (30 s cache)<br/>KMIP Certify using vault_pki_ca_key_label
     KMS-->>Server: {"data":{"certificate","issuing_ca","ca_chain"}}
 ```
 
@@ -200,18 +198,14 @@ Transit API directly, the lifecycle is the same:
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Proxy as vault-proxy
     participant KMS as Cosmian KMS
 
-    Client->>Proxy: POST /v1/transit/keys/{name}<br/>{"type":"ecdsa-p256"}
-    Proxy->>KMS: forward
+    Client->>KMS: POST /v1/transit/keys/{name}<br/>{"type":"ecdsa-p256"}
     Note over KMS: KMIP CreateKeyPair<br/>tag vault_transit:{name}<br/>exportable forced false
     KMS-->>Client: 204 No Content
-    Client->>Proxy: GET /v1/transit/keys/{name}
-    Proxy->>KMS: forward
+    Client->>KMS: GET /v1/transit/keys/{name}
     KMS-->>Client: {"data":{"name","type","latest_version":1,<br/>"keys":{"1":{"public_key":"<PEM>","creation_time"}}}}
-    Client->>Proxy: POST /v1/transit/sign/{name}/{alg}<br/>{"input":"<base64>","prehashed":true}
-    Proxy->>KMS: forward
+    Client->>KMS: POST /v1/transit/sign/{name}/{alg}<br/>{"input":"<base64>","prehashed":true}
     Note over KMS: KMIP Sign
     KMS-->>Client: {"data":{"signature":"vault:v1:<base64>"}}
 ```
@@ -263,8 +257,8 @@ sequenceDiagram
 
 The KMS repository ships a working end-to-end demo under `test_data/spire/` (used by the
 project's own integration tests). It runs Cosmian KMS and auth-verifier as regular host
-processes and everything else (nginx, SPIRE server/agent, AI agent workload containers)
-via Docker Compose.
+processes and the SPIRE server, SPIRE agent, and AI agent workload containers via Docker
+Compose.
 
 The fastest way to run the full stack from source:
 
@@ -290,12 +284,11 @@ ckms --accept-invalid-certs \
   --subject-name "CN=Cosmian KMS Root CA,O=Cosmian,C=FR" \
   --tag vault_pki_ca --days 3650
 
-# Start vault-proxy (the single vault_addr SPIRE connects to)
-docker compose --profile spire up -d vault-proxy
-
-# 1. Provision AppRoles (spire-server + mistral-agents) and verify connectivity
+# 1. Provision AppRoles (spire-server + mistral-agents)
+#    Admin API calls go directly to auth-verifier (port 8443).
+#    The smoke-test login uses the KMS vault_addr (port 9998), which proxies to auth-verifier.
 AUTH_VERIFIER_URL=https://localhost:8443 \
-  VAULT_ADDR=https://localhost:8200 \
+  VAULT_ADDR=https://localhost:9998 \
   VAULT_CACERT=test_data/spire/certs/ca.crt \
   bash test_data/spire/setup/provision.sh
 
@@ -321,14 +314,19 @@ Enable the SPIRE-compatible API on the KMS with these flags/environment variable
 
 | Flag | Environment variable | Default | Description |
 |---|---|---|---|
-| `--vault-api-enabled` | `KMS_VAULT_API_ENABLED` | `false` | Enables the `/v1/transit/*` and `/v1/<vault_pki_mount>/*` scopes. |
-| `--vault-auth-verifier-url` | `KMS_VAULT_AUTH_VERIFIER_URL` | *(none)* | Base URL of the auth-verifier instance used to validate `X-Vault-Token` headers. Required when the API is enabled. |
+| `--vault-api-enabled` | `KMS_VAULT_API_ENABLED` | `false` | Enables the `/v1/transit/*`, `/v1/<vault_pki_mount>/*`, and `/v1/auth/*` (proxy) scopes. |
+| `--vault-auth-verifier-url` | `KMS_VAULT_AUTH_VERIFIER_URL` | *(none)* | Base URL of auth-verifier. Used for both `X-Vault-Token` validation (middleware) **and** as the upstream target for the `/v1/auth/*` proxy. Required when the API is enabled. |
 | `--vault-auth-verifier-ca-cert` | `KMS_VAULT_AUTH_VERIFIER_CA_CERT` | *(none)* | PEM CA certificate used to verify auth-verifier's TLS certificate (for self-signed/private CAs). |
 | `--vault-auth-verifier-accept-invalid-certs` | `KMS_VAULT_AUTH_VERIFIER_ACCEPT_INVALID_CERTS` | `false` | Skip TLS verification when calling auth-verifier. **Test/dev only** — use `--vault-auth-verifier-ca-cert` in production. |
 | `--vault-transit-mount` | `KMS_VAULT_TRANSIT_MOUNT` | `transit` | Mount name served at `/v1/<mount>/keys/…`. |
 | `--vault-pki-mount` | `KMS_VAULT_PKI_MOUNT` | `pki` | Mount name served at `/v1/<mount>/root/sign-intermediate`. |
 | `--vault-pki-ca-key-label` | `KMS_VAULT_PKI_CA_KEY_LABEL` | `vault_pki_ca` | KMIP tag of the KMS key used as the PKI engine's signing key. Must already exist in the KMS. |
 | `--vault-token-cache-ttl-secs` | `KMS_VAULT_TOKEN_CACHE_TTL_SECS` | `30` | Lifetime of cached `lookup-self` results. Set to `0` to disable caching. |
+
+> **No extra proxy configuration is needed.** The `/v1/auth/*` proxy reuses
+> `vault_auth_verifier_url` and the same TLS client built from
+> `vault_auth_verifier_ca_cert` (or `vault_auth_verifier_accept_invalid_certs`).
+> Set SPIRE's `vault_addr` to the KMS HTTPS address (e.g. `https://kms.example.com:9998`).
 
 ## CLI reference
 
@@ -403,9 +401,10 @@ Admin subcommands take `--auth-verifier-url`/`CKMS_VAULT_AUTH_URL`,
 | Symptom | Cause | Fix |
 |---|---|---|
 | SPIRE startup fails with "key not found" | AppRole credentials/PKI CA key not provisioned yet | Run the provisioning step (`provision.sh` or equivalent `ckms vault approle` calls) before starting SPIRE. |
-| nginx `502 Bad Gateway` from vault-proxy | auth-verifier or KMS not yet healthy/reachable | Confirm both services are up and reachable at the addresses configured in the nginx proxy before starting SPIRE. |
+| KMS returns `502 Bad Gateway` on `/v1/auth/*` calls | auth-verifier not reachable by KMS | Confirm auth-verifier is up and `vault_auth_verifier_url` is correctly set in the KMS config. |
 | Workload can't obtain an SVID | SPIRE workload registration entry missing or selector mismatch | List registered entries on the SPIRE server and verify the workload's selector matches its registration. |
 | `403 permission denied` calling `/v1/transit/*` or `/v1/pki/*` | Invalid, expired, or unrecognized `X-Vault-Token` | Re-run AppRole login to obtain a fresh token; confirm `vault_auth_verifier_url` on the KMS points to the correct auth-verifier instance. |
+| `403 permission denied` calling `/v1/auth/approle/login` | Invalid `role_id` or `secret_id` | Verify the AppRole was provisioned via the auth-verifier admin API; re-run `provision.sh` if credentials were lost. |
 
 ## See also
 

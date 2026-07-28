@@ -1,4 +1,4 @@
-//! Vault-compatible PKI engine — sign-intermediate.
+//! SPIRE-compatible PKI engine — sign-intermediate.
 //!
 //! Route:
 //!   `POST /root/sign-intermediate` — sign a CSR with the configured CA key
@@ -35,7 +35,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     core::KMS,
-    routes::vault::error::{VaultApiError, VaultResult},
+    routes::spire::error::{SpireApiError, SpireResult},
 };
 
 // ── Request / Response types ──────────────────────────────────────────────────
@@ -149,12 +149,12 @@ fn parse_ttl_days(ttl: &str) -> Option<i32> {
 }
 
 /// Convert an X509 DER certificate to a PEM string.
-fn cert_to_pem(cert: &X509) -> Result<String, VaultApiError> {
+fn cert_to_pem(cert: &X509) -> Result<String, SpireApiError> {
     let pem_bytes = cert
         .to_pem()
-        .map_err(|e| VaultApiError::InternalError(format!("X509 to PEM failed: {e}")))?;
+        .map_err(|e| SpireApiError::InternalError(format!("X509 to PEM failed: {e}")))?;
     String::from_utf8(pem_bytes)
-        .map_err(|e| VaultApiError::InternalError(format!("PEM utf8 error: {e}")))
+        .map_err(|e| SpireApiError::InternalError(format!("PEM utf8 error: {e}")))
 }
 
 /// Find the CA private key UID by its configured label tag.
@@ -162,27 +162,27 @@ async fn find_ca_private_key_uid(
     kms: &KMS,
     label: &str,
     user: &str,
-) -> Result<String, VaultApiError> {
+) -> Result<String, SpireApiError> {
     let mut filter = Attributes {
         object_type: Some(ObjectType::PrivateKey),
         ..Default::default()
     };
     filter
         .set_tags(kms.vendor_id(), [label])
-        .map_err(|e| VaultApiError::InternalError(format!("tag filter error: {e}")))?;
+        .map_err(|e| SpireApiError::InternalError(format!("tag filter error: {e}")))?;
 
     let results = kms
         .database
         .find(Some(&filter), None, user, false, kms.vendor_id())
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
     results
         .into_iter()
         .next()
         .map(|(uid, _, _)| uid)
         .ok_or_else(|| {
-            VaultApiError::InternalError(format!(
+            SpireApiError::InternalError(format!(
                 "PKI CA private key with tag '{label}' not found in KMS. \
                  Create a key pair and tag it with '{label}' first."
             ))
@@ -206,23 +206,23 @@ pub(crate) async fn sign_intermediate(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
     body: Bytes,
-) -> VaultResult<Json<SignIntermediateResponse>> {
+) -> SpireResult<Json<SignIntermediateResponse>> {
     let user = kms.get_user(&req);
     let body: SignIntermediateRequest = serde_json::from_slice(&body)
-        .map_err(|e| VaultApiError::BadRequest(format!("invalid sign-intermediate body: {e}")))?;
+        .map_err(|e| SpireApiError::BadRequest(format!("invalid sign-intermediate body: {e}")))?;
 
     trace!(user = user, "POST/PUT vault pki root/sign-intermediate");
 
     // Reject if uri_sans is empty — SPIFFE identity is mandatory.
     if body.uri_sans.is_empty() {
-        return Err(VaultApiError::BadRequest(
+        return Err(SpireApiError::BadRequest(
             "uri_sans must not be empty — a SPIFFE ID URI SAN is required".to_owned(),
         ));
     }
 
     let ca_label = &kms.params.vault_pki_ca_key_label;
     if ca_label.is_empty() {
-        return Err(VaultApiError::InternalError(
+        return Err(SpireApiError::InternalError(
             "vault_pki_ca_key_label is not configured on this KMS server".to_owned(),
         ));
     }
@@ -271,7 +271,7 @@ pub(crate) async fn sign_intermediate(
     let certify_resp = kms
         .certify(certify_req, &user)
         .await
-        .map_err(VaultApiError::from)?;
+        .map_err(SpireApiError::from)?;
 
     let cert_uid = certify_resp.unique_identifier.to_string();
     debug!("vault pki: signed intermediate certificate uid={cert_uid}");
@@ -281,13 +281,13 @@ pub(crate) async fn sign_intermediate(
         .database
         .retrieve_object(&cert_uid)
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| {
-            VaultApiError::InternalError("signed certificate not found after certify".to_owned())
+            SpireApiError::InternalError("signed certificate not found after certify".to_owned())
         })?;
 
     let signed_cert_x509 = kmip_certificate_to_openssl(cert_owm.object())
-        .map_err(|e| VaultApiError::InternalError(format!("certificate conversion failed: {e}")))?;
+        .map_err(|e| SpireApiError::InternalError(format!("certificate conversion failed: {e}")))?;
 
     let certificate_pem = cert_to_pem(&signed_cert_x509)?;
 
@@ -314,7 +314,7 @@ async fn get_issuing_ca_pem(
     kms: &KMS,
     ca_label: &str,
     user: &str,
-) -> Result<String, VaultApiError> {
+) -> Result<String, SpireApiError> {
     // First find the CA private key
     let mut filter = Attributes {
         object_type: Some(ObjectType::PrivateKey),
@@ -322,16 +322,16 @@ async fn get_issuing_ca_pem(
     };
     filter
         .set_tags(kms.vendor_id(), [ca_label])
-        .map_err(|e| VaultApiError::InternalError(format!("tag filter error: {e}")))?;
+        .map_err(|e| SpireApiError::InternalError(format!("tag filter error: {e}")))?;
 
     let results = kms
         .database
         .find(Some(&filter), None, user, false, kms.vendor_id())
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
     let (ca_sk_uid, _, _) = results.into_iter().next().ok_or_else(|| {
-        VaultApiError::InternalError(format!("CA private key with tag '{ca_label}' not found"))
+        SpireApiError::InternalError(format!("CA private key with tag '{ca_label}' not found"))
     })?;
 
     // Retrieve the CA private key to get the public key link
@@ -339,8 +339,8 @@ async fn get_issuing_ca_pem(
         .database
         .retrieve_object(&ca_sk_uid)
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?
-        .ok_or_else(|| VaultApiError::InternalError("CA private key not found".to_owned()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?
+        .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;
 
     // Follow PublicKeyLink → CertificateLink
     let ca_cert_pem =
@@ -350,7 +350,7 @@ async fn get_issuing_ca_pem(
                 .database
                 .retrieve_object(&pk_uid)
                 .await
-                .map_err(|e| VaultApiError::InternalError(e.to_string()))?
+                .map_err(|e| SpireApiError::InternalError(e.to_string()))?
             {
                 if let Some(cert_link) = pk_owm.attributes().get_link(LinkType::CertificateLink) {
                     let cert_uid = cert_link.to_string();
@@ -358,10 +358,10 @@ async fn get_issuing_ca_pem(
                         .database
                         .retrieve_object(&cert_uid)
                         .await
-                        .map_err(|e| VaultApiError::InternalError(e.to_string()))?
+                        .map_err(|e| SpireApiError::InternalError(e.to_string()))?
                     {
                         let x509 = kmip_certificate_to_openssl(cert_owm.object())
-                            .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+                            .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
                         Some(cert_to_pem(&x509)?)
                     } else {
                         None
@@ -377,7 +377,7 @@ async fn get_issuing_ca_pem(
         };
 
     ca_cert_pem.ok_or_else(|| {
-        VaultApiError::InternalError(
+        SpireApiError::InternalError(
             "No CA certificate found linked to vault_pki_ca_key_label. \
              Import or certify the CA certificate and link it to the CA key pair."
                 .to_owned(),

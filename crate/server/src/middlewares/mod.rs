@@ -16,8 +16,8 @@ pub(crate) use rate_limiter::{RateLimiterConfig, RateLimiterMiddleware};
 mod otel_http_middleware;
 pub(crate) use otel_http_middleware::otel_http_metrics_middleware;
 
-mod vault_token;
-pub(crate) use vault_token::{VaultTokenCache, vault_token_middleware};
+mod spire_token;
+pub(crate) use spire_token::{SpireTokenCache, spire_token_middleware};
 
 /// Represents an authenticated user
 ///
