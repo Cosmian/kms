@@ -1,11 +1,12 @@
-# SPIRE / SPIFFE — Zero-Trust Workload Identity (Vault-Compatible API)
+# SPIRE / SPIFFE — Zero-Trust Workload Identity
 
-> **Zero-Trust M2M for AI agents and services** — Cosmian KMS exposes a
-> `HashiCorp`-Vault-compatible HTTP API (`/v1/transit/*`, `/v1/<pki_mount>/*`) and the
-> Cosmian Authentication Server (auth-verifier) exposes a Vault-compatible auth API
-> (`/v1/auth/*`). Together they let [SPIRE](https://spiffe.io/docs/latest/spire-about/)
-> (the SPIFFE Runtime Environment) use Cosmian's FIPS 140-3 KMS as its certificate
-> authority and key custodian — with **no HashiCorp Vault deployment required**.
+> **Zero-Trust M2M for AI agents and services** — Cosmian KMS exposes the HTTP API
+> expected by SPIRE's `upstreamauthority "vault"` and `keymanager "hashicorp_vault"` plugins
+> (`/v1/transit/*`, `/v1/<pki_mount>/*`), while the Cosmian Authentication Server
+> (auth-verifier) exposes the matching auth API (`/v1/auth/*`). Together they let
+> [SPIRE](https://spiffe.io/docs/latest/spire-about/) (the SPIFFE Runtime Environment)
+> use Cosmian's FIPS 140-3 KMS as its certificate authority and key custodian —
+> **without requiring a separate secrets management cluster**.
 
 ## End-to-end flow
 
@@ -21,7 +22,8 @@ sequenceDiagram
 
     Admin->>AuthV: 1. Create AppRole "spire-server"<br/>POST /v1/auth/approle/role/spire-server
     AuthV-->>Admin: role_id + secret_id
-    Server->>Proxy: 2. AppRole login<br/>POST /v1/auth/approle/login
+    Note over Admin,Server: Admin configures SPIRE with role_id + secret_id
+    Server->>Proxy: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
     Proxy->>AuthV: forward /v1/auth/*
     AuthV-->>Server: Vault token (hvs.xxxx)
     Server->>Proxy: 3. Sign intermediate CA<br/>POST /v1/pki/root/sign-intermediate<br/>(X-Vault-Token, CSR, uri_sans)
@@ -44,13 +46,13 @@ SPIRE needs two things from an external secrets/PKI backend:
 - An **`UpstreamAuthority`** to sign its intermediate CA certificate.
 - A **`KeyManager`** to store the private keys it uses internally.
 
-Both of SPIRE's built-in `vault` plugins speak the HashiCorp Vault HTTP API. Cosmian KMS
-implements the subset of that API SPIRE needs — the **Transit engine** (`/v1/transit/*`)
-and the **PKI engine** (`/v1/<pki_mount>/root/sign-intermediate`) — while the Cosmian
-Authentication Server implements Vault's **AppRole auth method** (`/v1/auth/*`). Point
-SPIRE's `vault_addr` at a Cosmian deployment instead of a real Vault cluster, and every
-private key SPIRE would normally manage itself is generated, stored, and used exclusively
-inside the FIPS 140-3-validated KMS.
+Both of SPIRE's built-in `vault` plugins use a specific HTTP API for crypto operations and
+authentication. Cosmian KMS implements the subset of that API SPIRE needs — the
+**Transit engine** (`/v1/transit/*`) and the **PKI engine**
+(`/v1/<pki_mount>/root/sign-intermediate`) — while the Cosmian Authentication Server
+implements the **AppRole auth method** (`/v1/auth/*`). Point SPIRE's `vault_addr` at a
+Cosmian deployment, and every private key SPIRE would normally manage itself is generated,
+stored, and used exclusively inside the FIPS 140-3-validated KMS.
 
 ## Why use it?
 
@@ -58,7 +60,7 @@ inside the FIPS 140-3-validated KMS.
 |---|---|
 | **Private-key custody** | SPIRE's CA and transit keys are generated and stored exclusively inside Cosmian KMS — never on the SPIRE server's local disk. |
 | **FIPS 140-3 compliance** | All signing operations (CA rotation, transit `sign`) are executed by the FIPS-validated KMS, not by SPIRE's built-in `disk`/`memory` key manager. |
-| **No Vault cluster to operate** | Reuses infrastructure you already run (Cosmian KMS + auth-verifier) instead of standing up and hardening a separate HashiCorp Vault cluster just for SPIRE. |
+| **No additional cluster to operate** | Reuses infrastructure you already run (Cosmian KMS + auth-verifier) instead of standing up and hardening a separate secrets management cluster just for SPIRE. |
 | **Centralized audit trail** | Every CA signature and transit `sign` call is a KMIP operation logged by the KMS with identity, timestamp, and key identifier. |
 | **Post-quantum-ready transit keys** | Transit keys support `ml-dsa-65` (non-FIPS builds) alongside classical `ecdsa-p256/p384` and `rsa-2048/4096`. |
 | **Drop-in `vault_addr`** | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "vault"` plugins need no code changes — only configuration pointing at the Cosmian-fronted `vault_addr`. |
@@ -68,7 +70,7 @@ inside the FIPS 140-3-validated KMS.
 - **Platform/security teams** implementing Zero-Trust machine-to-machine (M2M) authentication
   between services or AI agents, who already run (or plan to run) Cosmian KMS.
 - **SPIRE operators** who want FIPS 140-3/HSM-backed key custody for SPIRE's CA and
-  transit keys without deploying and operating a separate HashiCorp Vault cluster.
+  transit keys without deploying and operating a separate secrets management cluster.
 - **Teams issuing identities to AI agent workloads** (e.g. LLM-backed autonomous agents)
   that need short-lived, verifiable SPIFFE identities (JWT-SVIDs or X.509-SVIDs) to
   authenticate to each other and to internal services.
@@ -80,24 +82,32 @@ servers with a single nginx reverse proxy so that SPIRE only needs one `vault_ad
 
 ```mermaid
 flowchart LR
-    subgraph SPIRE
+    subgraph Cosmian ["Cosmian Backend"]
+        direction TB
+        Proxy["vault-proxy (nginx)\nsingle vault_addr :8200"]
+        AuthV["auth-verifier :8443\n/v1/auth/*"]
+        KMS["Cosmian KMS :9998\n/v1/transit/*, /v1/pki/*"]
+        Proxy -- "/v1/auth/*" --> AuthV
+        Proxy -- "/v1/transit/*\n/v1/pki/*" --> KMS
+        KMS -. "token lookup-self\n(30 s cache)" .-> AuthV
+    end
+    subgraph SPIRE ["SPIRE Runtime"]
+        direction TB
         SS[SPIRE Server]
         SA[SPIRE Agent]
+        SS -- "CA + transit keys" --> SA
     end
-    subgraph Workloads
-        MA1[AI Agent Workload #1]
-        MA2[AI Agent Workload #2]
+    subgraph Workloads ["Workloads"]
+        direction TB
+        MA1[AI Agent #1]
+        MA2[AI Agent #2]
     end
-    Proxy["vault-proxy (nginx)<br/>single vault_addr :8200"]
-    AuthV["auth-verifier :8443<br/>/v1/auth/*"]
-    KMS["Cosmian KMS :9998<br/>/v1/transit/*, /v1/pki/*"]
 
-    SS -- "vault_addr" --> Proxy
-    Proxy -- "/v1/auth/*" --> AuthV
-    Proxy -- "/v1/transit/*, /v1/pki/*" --> KMS
-    SA -- "attestation + SVID issuance" --> SS
-    MA1 -- "Workload API (unix socket)" --> SA
-    MA2 -- "Workload API (unix socket)" --> SA
+    Admin(["Platform Admin"])
+    Admin -- "1. provision AppRoles\n+ PKI CA key" --> Cosmian
+    SS -- "2. vault_addr\n(AppRole login,\nPKI/transit calls)" --> Proxy
+    SA -- "Workload API\n(unix socket)" --> MA1
+    SA -- "Workload API\n(unix socket)" --> MA2
 ```
 
 nginx routes purely by path prefix: `/v1/auth/*` goes to auth-verifier, `/v1/transit/*`
@@ -251,7 +261,7 @@ check.
 
 ## Configuration reference
 
-Enable the Vault-compatible API on the KMS with these flags/environment variables
+Enable the SPIRE-compatible API on the KMS with these flags/environment variables
 (`crate/server/src/config/command_line/vault_config.rs`):
 
 | Flag | Environment variable | Default | Description |

@@ -1,14 +1,14 @@
 ---
-title: "ADR-2026-07-26: SPIRE/SPIFFE Integration via Vault-Compatible API"
+title: "ADR-2026-07-26: SPIRE/SPIFFE Integration via Vault-Compatible API (KMS Crypto Layer)"
 status: "Accepted"
 date: "2026-07-26"
 authors: "Architecture Team"
-tags: ["architecture", "spiffe", "spire", "vault", "kms", "auth-verifier", "mercedes-benz-rfi"]
+tags: ["architecture", "spiffe", "spire", "vault", "kms", "mercedes-benz-rfi"]
 supersedes: ""
 superseded_by: ""
 ---
 
-# ADR-2026-07-26: SPIRE/SPIFFE Integration via Vault-Compatible API
+# ADR-2026-07-26: SPIRE/SPIFFE Integration via Vault-Compatible API (KMS Crypto Layer)
 
 ## Status
 
@@ -26,31 +26,33 @@ SPIRE's two relevant plugins call the HashiCorp Vault HTTP API:
 - `keymanager "hashicorp_vault"`: POST `/<transit>/keys/<name>`, GET, LIST, POST sign, DELETE
 
 Both plugins first authenticate with one of four Vault auth methods (Token, Cert, AppRole,
-Kubernetes), obtain an opaque `client_token`, then carry `X-Vault-Token: <token>` on all
-subsequent requests.
+Kubernetes) against a Vault-compatible auth endpoint, obtain an opaque `client_token`, then
+carry `X-Vault-Token: <token>` on all subsequent requests to the crypto engines above.
 
-The Cosmian stack has two servers:
+The Cosmian stack splits this across two servers:
 
-- **auth-verifier**: Actix-web HTTPS, handles authentication, sessions, realm management
+- **auth-verifier**: Actix-web HTTPS, handles authentication, sessions, realm management —
+  owns the `/v1/auth/` scope (AppRole/Kubernetes login, token lookup/renew/revoke). See the
+  auth-verifier repository's own ADR for that implementation:
+  `authentication/server/documentation/adr/2026-07-26-vault-compatible-auth-api-for-spire.md`.
 - **KMS**: Actix-web HTTPS, FIPS 140-3, KMIP 2.1, HSM/PKCS#11, existing signing and CA
-  certificate issuance primitives
+  certificate issuance primitives — owns the crypto-facing `/v1/transit/` and
+  `/v1/<pki_mount>/` scopes described by this ADR.
 
-The decision covers where to implement Vault auth endpoints and Vault crypto endpoints.
+This ADR covers only the KMS side of that split: why the crypto engines live in the KMS
+rather than in auth-verifier or a third component, and how they are implemented.
 
 ## Decision
-
-**Auth layer** → auth-verifier, new `/v1/auth/` Actix scope.
-Implements: AppRole login + admin CRUD, Kubernetes service-account JWT login,
-token lookup-self / renew-self / revoke-self.
 
 **Crypto layer** → KMS, new `/v1/transit/` and `/v1/<pki_mount>/` Actix scopes.
 Implements: transit key CRUD + sign, PKI sign-intermediate.
 
 **Token validation**: on each transit/PKI request the KMS middleware calls
-`GET /v1/auth/token/lookup-self` on auth-verifier with a 30-second in-memory cache.
+`GET /v1/auth/token/lookup-self` on auth-verifier (see the auth-verifier ADR referenced
+above for the auth-verifier side of this contract) with a 30-second in-memory cache.
 
 **CLI**: `ckms vault approle` subcommands (create-role, get-role-id, generate-secret-id,
-destroy-secret-id) in the KMS CLI for AppRole credential provisioning.
+destroy-secret-id) in the KMS CLI for AppRole credential provisioning against auth-verifier.
 
 ## Consequences
 
@@ -58,17 +60,15 @@ destroy-secret-id) in the KMS CLI for AppRole credential provisioning.
 
 - **POS-001** Clean separation of concerns — authentication in auth-verifier, cryptography
   in KMS. Each server evolves independently.
-- **POS-002** Auth-verifier reuses its existing `JwksManager` for K8s JWT validation,
-  `AdminAuth` middleware for AppRole provisioning, and multi-backend DB layer.
-- **POS-003** KMS retains FIPS 140-3 compliance. All crypto operations (sign, certify) go
+- **POS-002** KMS retains FIPS 140-3 compliance. All crypto operations (sign, certify) go
   through the existing KMIP core and HSM oracle stack.
-- **POS-004** HSM/PKCS#11 backing satisfies RFI FR-2.6 ("private keys must never be
+- **POS-003** HSM/PKCS#11 backing satisfies RFI FR-2.6 ("private keys must never be
   persisted to disk") without additional work.
-- **POS-005** PQC readiness (FR-2.14, NFR-11) — ML-DSA-65 mapped as a transit key type
+- **POS-004** PQC readiness (FR-2.14, NFR-11) — ML-DSA-65 mapped as a transit key type
   in non-FIPS mode; algorithm policy changes take effect at next SPIRE key rotation.
-- **POS-006** Multiple SPIRE servers sharing one backend are handled by SPIRE's own
+- **POS-005** Multiple SPIRE servers sharing one backend are handled by SPIRE's own
   `{SERVER-ID}-{UUID}-{SPIRE-KEY-ID}` transit key naming convention; no KMS changes needed.
-- **POS-007** Drop-in replacement: SPIRE operator changes only `vault_addr` in SPIRE config;
+- **POS-006** Drop-in replacement: SPIRE operator changes only `vault_addr` in SPIRE config;
   the auth method and plugin config are otherwise identical to a real Vault deployment.
 
 ### Negative
@@ -107,27 +107,14 @@ destroy-secret-id) in the KMS CLI for AppRole credential provisioning.
 
 ## Implementation Notes
 
-### New DB tables (auth-verifier)
+### auth-verifier side
 
-```sql
--- Vault tokens
-vault_tokens(token_hash BLOB PK, entity TEXT, policies TEXT,
-             expiry TIMESTAMP, renewable BOOL, lease_duration_secs INT, created_at TIMESTAMP)
-
--- AppRole
-vault_approle_roles(name TEXT PK, role_id TEXT UNIQUE, secret_id_ttl_secs INT,
-                    token_ttl_secs INT, bind_secret_id BOOL, token_policies TEXT)
-vault_secret_ids(accessor TEXT PK, secret_id_hash BLOB, role_name TEXT FK,
-                 expiry TIMESTAMP, num_uses_remaining INT)
-
--- Kubernetes
-vault_k8s_roles(name TEXT PK, jwks_url TEXT, bound_sa_names TEXT,
-                bound_sa_namespaces TEXT, token_ttl_secs INT)
-```
-
-### Token format
-
-`hvs.<base64url(32 random bytes)>`, stored as `SHA-256(token)` in the database.
+The `/v1/auth/` scope, its database schema (`vault_tokens`, `vault_approle_roles`,
+`vault_secret_ids`, `vault_k8s_roles`), and the `hvs.<base64url(...)>` token format are
+implemented and documented entirely in the auth-verifier repository — see
+`authentication/server/documentation/adr/2026-07-26-vault-compatible-auth-api-for-spire.md`.
+This ADR only depends on that contract through the `X-Vault-Token` header and the
+`GET /v1/auth/token/lookup-self` validation call described below.
 
 ### KMS config for vault API (beta)
 
