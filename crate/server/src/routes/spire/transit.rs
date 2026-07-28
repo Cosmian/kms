@@ -1,4 +1,4 @@
-//! Vault-compatible Transit engine — key management and signing.
+//! SPIRE-compatible Transit engine — key management and signing.
 //!
 //! Routes:
 //!   `POST   /keys/{name}`             — create transit key
@@ -51,7 +51,7 @@ use crate::{
     core::KMS,
     error::KmsError,
     result::KResult,
-    routes::vault::error::{VaultApiError, VaultResult},
+    routes::spire::error::{SpireApiError, SpireResult},
 };
 
 /// Tag prefix used to identify transit keys in the KMS object store.
@@ -141,7 +141,7 @@ pub(crate) struct SignTransitResponse {
 /// Derive a Vault transit key type string from KMIP `Attributes` (G3 fix).
 ///
 /// Used by `GET /keys/{name}` to reconstruct the type from stored metadata.
-fn vault_attrs_to_key_type(attrs: &Attributes) -> &'static str {
+fn transit_key_type_from_attrs(attrs: &Attributes) -> &'static str {
     match attrs.cryptographic_algorithm {
         Some(CryptographicAlgorithm::EC) => {
             match attrs
@@ -167,7 +167,7 @@ fn vault_attrs_to_key_type(attrs: &Attributes) -> &'static str {
 }
 
 /// Map a Vault key type string to a KMS `RecommendedCurve` (for EC keys).
-fn vault_type_to_curve(key_type: &str) -> Option<RecommendedCurve> {
+fn transit_curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
     match key_type {
         "ecdsa-p256" => Some(RecommendedCurve::P256),
         "ecdsa-p384" => Some(RecommendedCurve::P384),
@@ -178,7 +178,7 @@ fn vault_type_to_curve(key_type: &str) -> Option<RecommendedCurve> {
 }
 
 /// Map a Vault key type string to an RSA bit count.
-fn vault_type_to_rsa_bits(key_type: &str) -> Option<usize> {
+fn transit_rsa_bits_from_key_type(key_type: &str) -> Option<usize> {
     match key_type {
         "rsa-2048" => Some(2048),
         "rsa-4096" => Some(4096),
@@ -187,7 +187,7 @@ fn vault_type_to_rsa_bits(key_type: &str) -> Option<usize> {
 }
 
 /// Map a Vault `hash_algorithm` URL path segment to a KMIP `HashingAlgorithm`.
-fn vault_hash_alg_to_kmip(
+fn transit_hash_alg_to_kmip(
     hash_alg: &str,
 ) -> cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm {
     use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
@@ -223,7 +223,7 @@ pub(crate) async fn create_transit_key(
     kms: Data<Arc<KMS>>,
     name: Path<String>,
     body: Json<CreateTransitKeyRequest>,
-) -> VaultResult<Json<TransitKeyInfoWrapper>> {
+) -> SpireResult<Json<TransitKeyInfoWrapper>> {
     let user = kms.get_user(&req);
     let name = name.into_inner();
     let body = body.into_inner();
@@ -237,14 +237,14 @@ pub(crate) async fn create_transit_key(
     let tags = [tag.as_str()];
 
     // EC key types (also handles ed25519 in non-FIPS via curve matching)
-    if let Some(curve) = vault_type_to_curve(&body.key_type) {
+    if let Some(curve) = transit_curve_from_key_type(&body.key_type) {
         let create_req =
             create_ec_key_pair_request(kms.vendor_id(), None, tags, curve, false, None)
-                .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+                .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
         kms.create_key_pair(create_req, &user)
             .await
-            .map_err(VaultApiError::from)?;
+            .map_err(SpireApiError::from)?;
 
         debug!(
             "vault transit: created EC key '{name}' type={}",
@@ -275,11 +275,11 @@ pub(crate) async fn create_transit_key(
             CryptographicAlgorithm::MLDSA_65,
             false,
         )
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
         kms.create_key_pair(create_req, &user)
             .await
-            .map_err(VaultApiError::from)?;
+            .map_err(SpireApiError::from)?;
 
         debug!("vault transit: created ML-DSA-65 key '{name}'");
         return Ok(Json(TransitKeyInfoWrapper {
@@ -295,14 +295,14 @@ pub(crate) async fn create_transit_key(
     }
 
     // RSA key types
-    if let Some(bits) = vault_type_to_rsa_bits(&body.key_type) {
+    if let Some(bits) = transit_rsa_bits_from_key_type(&body.key_type) {
         let create_req =
             create_rsa_key_pair_request(kms.vendor_id(), None, tags, bits, false, None)
-                .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+                .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
         kms.create_key_pair(create_req, &user)
             .await
-            .map_err(VaultApiError::from)?;
+            .map_err(SpireApiError::from)?;
 
         debug!("vault transit: created RSA key '{name}' bits={bits}");
         return Ok(Json(TransitKeyInfoWrapper {
@@ -317,7 +317,7 @@ pub(crate) async fn create_transit_key(
         }));
     }
 
-    Err(VaultApiError::BadRequest(format!(
+    Err(SpireApiError::BadRequest(format!(
         "unsupported transit key type '{}'. Supported: ecdsa-p256, ecdsa-p384, rsa-2048, rsa-4096{}",
         body.key_type,
         if cfg!(feature = "non-fips") {
@@ -338,25 +338,25 @@ pub(crate) async fn get_transit_key(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
     name: Path<String>,
-) -> VaultResult<Json<TransitKeyInfoWrapper>> {
+) -> SpireResult<Json<TransitKeyInfoWrapper>> {
     let user = kms.get_user(&req);
     let name = name.into_inner();
 
-    let filter = transit_key_filter(&kms, &name).map_err(VaultApiError::from)?;
+    let filter = transit_key_filter(&kms, &name).map_err(SpireApiError::from)?;
 
     let results = kms
         .database
         .find(Some(&filter), None, &user, false, kms.vendor_id())
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
     let (_priv_uid, _state, attrs) = results
         .into_iter()
         .next()
-        .ok_or_else(|| VaultApiError::NotFound(format!("transit key '{name}' not found")))?;
+        .ok_or_else(|| SpireApiError::NotFound(format!("transit key '{name}' not found")))?;
 
     // G3: derive vault key type from stored KMIP attributes
-    let key_type = vault_attrs_to_key_type(&attrs).to_owned();
+    let key_type = transit_key_type_from_attrs(&attrs).to_owned();
 
     // Creation timestamp (RFC3339) for the key version map
     let creation_time = attrs
@@ -416,7 +416,7 @@ pub(crate) async fn configure_transit_key(
     _kms: Data<Arc<KMS>>,
     name: Path<String>,
     _body: Json<serde_json::Value>,
-) -> VaultResult<HttpResponse> {
+) -> SpireResult<HttpResponse> {
     trace!(
         "POST vault transit keys/{}/config (no-op)",
         name.into_inner()
@@ -429,7 +429,7 @@ pub(crate) async fn configure_transit_key(
 pub(crate) async fn list_transit_keys(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
-) -> VaultResult<Json<TransitKeyListWrapper>> {
+) -> SpireResult<Json<TransitKeyListWrapper>> {
     let user = kms.get_user(&req);
 
     let filter = Attributes {
@@ -441,7 +441,7 @@ pub(crate) async fn list_transit_keys(
         .database
         .find(Some(&filter), None, &user, false, kms.vendor_id())
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
     let mut names = Vec::new();
     for (_uid, _state, attrs) in results {
@@ -466,20 +466,20 @@ pub(crate) async fn delete_transit_key(
     req: HttpRequest,
     kms: Data<Arc<KMS>>,
     name: Path<String>,
-) -> VaultResult<HttpResponse> {
+) -> SpireResult<HttpResponse> {
     let user = kms.get_user(&req);
     let name = name.into_inner();
 
-    let filter = transit_key_filter(&kms, &name).map_err(VaultApiError::from)?;
+    let filter = transit_key_filter(&kms, &name).map_err(SpireApiError::from)?;
 
     let results = kms
         .database
         .find(Some(&filter), None, &user, false, kms.vendor_id())
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
     if results.is_empty() {
-        return Err(VaultApiError::NotFound(format!(
+        return Err(SpireApiError::NotFound(format!(
             "transit key '{name}' not found"
         )));
     }
@@ -504,7 +504,7 @@ pub(crate) async fn delete_transit_key(
         };
         kms.destroy(destroy_req, &user)
             .await
-            .map_err(VaultApiError::from)?;
+            .map_err(SpireApiError::from)?;
     }
 
     debug!("vault transit: deleted key '{name}'");
@@ -521,7 +521,7 @@ pub(crate) async fn sign_with_transit_key(
     kms: Data<Arc<KMS>>,
     path: Path<(String, String)>,
     body: Json<SignTransitRequest>,
-) -> VaultResult<Json<SignTransitResponse>> {
+) -> SpireResult<Json<SignTransitResponse>> {
     let user = kms.get_user(&req);
     let (name, hash_alg_path) = path.into_inner();
     let body = body.into_inner();
@@ -533,22 +533,22 @@ pub(crate) async fn sign_with_transit_key(
 
     let input_bytes = BASE64_STANDARD
         .decode(&body.input)
-        .map_err(|_e| VaultApiError::BadRequest("invalid base64 in 'input' field".to_owned()))?;
+        .map_err(|_e| SpireApiError::BadRequest("invalid base64 in 'input' field".to_owned()))?;
 
-    let filter = transit_key_filter(&kms, &name).map_err(VaultApiError::from)?;
+    let filter = transit_key_filter(&kms, &name).map_err(SpireApiError::from)?;
 
     let results = kms
         .database
         .find(Some(&filter), None, &user, false, kms.vendor_id())
         .await
-        .map_err(|e| VaultApiError::InternalError(e.to_string()))?;
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
     let (private_key_uid, _state, _attrs) = results
         .into_iter()
         .next()
-        .ok_or_else(|| VaultApiError::NotFound(format!("transit key '{name}' not found")))?;
+        .ok_or_else(|| SpireApiError::NotFound(format!("transit key '{name}' not found")))?;
 
-    let hash_alg = vault_hash_alg_to_kmip(&hash_alg_path);
+    let hash_alg = transit_hash_alg_to_kmip(&hash_alg_path);
 
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_uid)),
@@ -572,10 +572,10 @@ pub(crate) async fn sign_with_transit_key(
     let resp = kms
         .sign(sign_req, &user)
         .await
-        .map_err(VaultApiError::from)?;
+        .map_err(SpireApiError::from)?;
 
     let sig_bytes = resp.signature_data.ok_or_else(|| {
-        VaultApiError::InternalError("Sign response missing signature_data".to_owned())
+        SpireApiError::InternalError("Sign response missing signature_data".to_owned())
     })?;
 
     // Vault signature format: vault:v1:<base64(raw_sig)>

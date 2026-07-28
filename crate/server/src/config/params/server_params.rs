@@ -205,7 +205,7 @@ pub struct ServerParams {
 
     /// Path to a PEM-encoded CA certificate for verifying the auth-verifier's TLS cert.
     ///
-    /// When set, the reqwest client used by `vault_token_middleware` will trust this CA.
+    /// When set, the reqwest client used by `spire_token_middleware` will trust this CA.
     pub vault_auth_verifier_ca_cert: Option<std::path::PathBuf>,
 
     /// When `true`, TLS certificate verification is disabled for auth-verifier connections.

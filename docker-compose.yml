@@ -242,36 +242,13 @@ services:
 
   # ── SPIRE integration test services ────────────────────────────────────────
   # Start with: docker compose --profile spire up -d
-  # Both cosmian-kms and auth-verifier run on the host via `cargo run`.
-  # Nginx routes to them through host.docker.internal.
-
-  vault-proxy:
-    image: nginx:1.27-alpine
-    profiles: [spire]
-    container_name: vault-proxy
-    ports:
-      - ${KMS_VAULT_PROXY_PORT:-8200}:8200
-    volumes:
-      - ./test_data/spire/nginx/vault-proxy.conf:/etc/nginx/nginx.conf:ro
-      - ./test_data/spire/certs/ca.crt:/etc/nginx/certs/ca.crt:ro
-      - ./test_data/spire/certs/vault-proxy.crt:/etc/nginx/certs/proxy.crt:ro
-      - ./test_data/spire/certs/vault-proxy.key:/etc/nginx/certs/proxy.key:ro
-    extra_hosts:
-      # Reach host-local cargo-run services from inside the container.
-      - host.docker.internal:host-gateway
-    healthcheck:
-      test: [CMD-SHELL, nginx -t 2>/dev/null && echo ok]
-      interval: 5s
-      timeout: 3s
-      retries: 6
+  # cosmian-kms and auth-verifier run on the host via `cargo run`.
+  # KMS proxies /v1/auth/* to auth-verifier; no nginx vault-proxy needed.
 
   spire-server:
     image: ghcr.io/spiffe/spire-server:1.9.6
     profiles: [spire]
     container_name: spire-server
-    depends_on:
-      vault-proxy:
-        condition: service_healthy
     ports:
       - 8081:8081     # SPIRE server gRPC
     volumes:

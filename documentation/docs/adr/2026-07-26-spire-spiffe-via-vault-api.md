@@ -1,7 +1,8 @@
 ---
 title: "ADR-2026-07-26: SPIRE/SPIFFE Integration via Vault-Compatible API (KMS Crypto Layer)"
-status: "Accepted"
+status: "Amended"
 date: "2026-07-26"
+amended: "2026-07-28"
 authors: "Architecture Team"
 tags: ["architecture", "spiffe", "spire", "vault", "kms"]
 supersedes: ""
@@ -12,7 +13,7 @@ superseded_by: ""
 
 ## Status
 
-Accepted
+Accepted — amended 2026-07-28 (see Amendment below)
 
 ## Context
 
@@ -76,7 +77,9 @@ destroy-secret-id) in the KMS CLI for AppRole credential provisioning against au
   validation. Mitigated by 30-second cache; cache miss on auth-verifier outage will fail
   new transit requests until auth-verifier recovers.
 - **NEG-002** Two services must be co-deployed and co-configured. Operators must manage
-  two TLS endpoints and two database schemas.
+  two TLS endpoints and two database schemas. *(An nginx vault-proxy was previously also
+  required as a third operational component; this was eliminated by the 2026-07-28
+  amendment — see below.)*
 - **NEG-003** 30-second cache staleness window — a revoked token remains valid at the KMS
   for up to 30 seconds. Acceptable for the beta; production hardening may reduce this or
   add a revocation push notification.
@@ -90,6 +93,9 @@ destroy-secret-id) in the KMS CLI for AppRole credential provisioning against au
   KMIP-centric; a parallel Vault token model creates two competing auth subsystems. Auth
   logic is better co-located in auth-verifier, which already owns realm management, JWKS
   validation, and session lifecycle.
+- **Note**: The 2026-07-28 amendment adds a *transparent proxy* (not token issuance) for
+  `/v1/auth/*` in the KMS, which resolves the `vault_addr` routing problem without
+  duplicating the auth subsystem — see Amendment below.
 
 ### Alternative B — All in auth-verifier (transit as HTTP proxy to KMS)
 
@@ -152,3 +158,69 @@ Requests with empty `uri_sans` are rejected with HTTP 400 — at least one SPIFF
 is required per SPIRE plugin contract. Response de-duplication follows Vault ≥1.11: root
 cert stripped from `ca_chain`; signed certificate stripped from `ca_chain` (already
 present in `certificate`).
+
+---
+
+## Amendment — 2026-07-28: Remove nginx vault-proxy; KMS proxies `/v1/auth/*`
+
+### Problem
+
+SPIRE's `vault_addr` must be a **single URL** covering both the auth API
+(`/v1/auth/*`) and the crypto engines (`/v1/transit/*`, `/v1/pki/*`). The original
+design resolved this by fronting both services with an nginx reverse proxy. This added a
+third operational component with its own TLS certificates, Docker image, and health check.
+
+### Decision
+
+**KMS adds a transparent reverse proxy** for the `/v1/auth/*` scope: every request
+arriving at `KMS:9998/v1/auth/*` is forwarded byte-for-byte to the auth-verifier
+instance already configured via `vault_auth_verifier_url`. The TLS client used for
+token validation is reused, so no new configuration keys are needed.
+
+SPIRE's `vault_addr` now points directly at the KMS. The nginx vault-proxy service is
+removed from the reference deployment.
+
+### Why this is not a rejection of Alternative A
+
+Alternative A was "implement token issuance in KMS". This amendment does **not** do that:
+
+- Token generation (`hvs.` tokens), AppRole role storage, and secret-id lifecycle remain
+  entirely in auth-verifier.
+- The KMS proxy is stateless and transparent — it does not inspect, modify, or cache the
+  auth payload. It is equivalent to nginx's `proxy_pass /v1/auth/*` directive, but
+  implemented inside the KMS process.
+- The "two competing auth subsystems" concern that rejected Alternative A still does not
+  apply: auth-verifier remains the sole authority for authentication.
+
+### Consequences
+
+| | Before | After |
+|---|---|---|
+| Services to deploy | KMS + auth-verifier + nginx vault-proxy | KMS + auth-verifier |
+| TLS certificates | 3 (kms, auth, vault-proxy) | 2 (kms, auth) |
+| SPIRE `vault_addr` | `https://vault-proxy:8200` | `https://kms:9998` |
+| Auth path routing | nginx path-prefix | KMS built-in proxy scope |
+| Auth token issuance | auth-verifier | auth-verifier (unchanged) |
+| `/v1/auth/*` extra hop | none (nginx → auth-verifier direct) | one (KMS → auth-verifier) |
+
+The extra network hop introduced by the KMS proxy only affects authentication calls
+(AppRole login, token renewal), which are infrequent (once per token TTL, typically 1 h).
+Transit and PKI requests are handled by KMS natively — their latency is unchanged.
+
+The 30-second token validation cache in the KMS middleware is also unchanged: cache-hit
+transit/PKI calls never call auth-verifier at all, whether nginx was present or not.
+
+### Implementation
+
+- `crate/server/src/routes/vault/auth_proxy.rs` — `proxy_auth_request` handler
+- `crate/server/src/start_kms_server.rs` — `/v1/auth` scope registered alongside
+  transit and PKI scopes inside the `vault_api_enabled` guard
+- `test_data/spire/` — nginx configuration removed; `spire-server.conf` updated to
+  `vault_addr = "https://host.docker.internal:9998"`
+- `docker-compose.yml` — `vault-proxy` service removed from the `spire` profile
+
+### auth-verifier side (co-shipped)
+
+The amendment also ships the AppRole and token endpoints in auth-verifier that the KMS
+now proxies to (`/v1/auth/approle/*`, `/v1/auth/token/*`). See
+`authentication/server/documentation/adr/2026-07-26-vault-compatible-auth-api-for-spire.md`.

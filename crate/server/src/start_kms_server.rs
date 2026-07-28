@@ -52,9 +52,9 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        JwksManager, JwtConfig, VaultTokenCache, api_token_middleware, ensure_auth_middleware,
-        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware, tls_auth_fn,
-        vault_token_middleware,
+        JwksManager, JwtConfig, SpireTokenCache, api_token_middleware, ensure_auth_middleware,
+        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
+        spire_token_middleware, tls_auth_fn,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -65,15 +65,17 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect, swagger,
-        ui_auth::configure_auth_routes,
-        vault::{
+        ms_dke, root_redirect,
+        spire::{
+            auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
             transit::{
                 configure_transit_key, create_transit_key, delete_transit_key, get_transit_key,
                 list_transit_keys, sign_with_transit_key,
             },
         },
+        swagger,
+        ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
     start_kms_server::google_cse::operations::GOOGLE_CSE_ID,
@@ -1009,21 +1011,21 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
         // ── Vault-compatible API (Transit + PKI) ──────────────────────────────
         // Enabled only when `vault_api_enabled = true` in server config.
-        // Authentication: `X-Vault-Token` header validated by `vault_token_middleware`
+        // Authentication: `X-Vault-Token` header validated by `spire_token_middleware`
         // which calls `GET <vault_auth_verifier_url>/v1/auth/token/lookup-self`.
         if kms_server_for_http.params.vault_api_enabled {
             if let Some(auth_verifier_url) =
                 kms_server_for_http.params.vault_auth_verifier_url.clone()
             {
-                let vault_cache = VaultTokenCache::new(
+                let spire_cache = SpireTokenCache::new(
                     kms_server_for_http.params.vault_token_cache_ttl_secs,
                 );
 
                 let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
                 let transit_scope_path = format!("/v1/{transit_mount}");
                 let transit_scope = web::scope(&transit_scope_path)
-                    .wrap(vault_token_middleware(
-                        vault_cache.clone(),
+                    .wrap(spire_token_middleware(
+                        spire_cache.clone(),
                         auth_verifier_url.clone(),
                         vault_http_client.clone(),
                     ))
@@ -1039,13 +1041,25 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let pki_mount = kms_server_for_http.params.vault_pki_mount.clone();
                 let pki_scope_path = format!("/v1/{pki_mount}");
                 let pki_scope = web::scope(&pki_scope_path)
-                    .wrap(vault_token_middleware(vault_cache, auth_verifier_url, vault_http_client.clone()))
+                    .wrap(spire_token_middleware(spire_cache, auth_verifier_url.clone(), vault_http_client.clone()))
                     .wrap(Cors::permissive())
                     .service(sign_intermediate);
                 app = app.service(pki_scope);
 
+                // Auth proxy scope: forward /v1/auth/* to the auth-verifier.
+                // SPIRE authenticates via AppRole login at vault_addr/v1/auth/approle/login,
+                // which is forwarded here to the auth-verifier unchanged.
+                // The KMS token-validation middleware still calls auth-verifier directly
+                // (server-to-server) — transit/PKI hot-path requests are never proxied.
+                let auth_scope = web::scope("/v1/auth")
+                    .app_data(web::Data::new(vault_http_client.clone()))
+                    .app_data(web::Data::new(auth_verifier_url))
+                    .wrap(Cors::permissive())
+                    .default_service(web::route().to(proxy_auth_request));
+                app = app.service(auth_scope);
+
                 info!(
-                    "Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}"
+                    "Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}, auth proxy at /v1/auth"
                 );
             } else {
                 warn!(
