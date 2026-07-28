@@ -9,5 +9,9 @@ KMIP operation handlers in `cosmian_kms_server` deserialize requests from this c
 The XML → TTLV helper used in tests enforces strict KMIP enumeration and usage
 mask validation by default. Unknown enumeration tokens, unknown
 `CryptographicUsageMask` textual values, or unknown `AttributeReference` names
-produce errors. If your custom vectors fail, ensure all textual enumeration
-and usage mask tokens are valid per the KMIP specification.
+produce errors. The only tolerated deviation (for interoperability with some
+public test vectors) is that a missing `type="Structure"` attribute on a
+container element is still accepted and treated as a Structure.
+
+If your custom vectors fail, ensure all textual enumeration and usage mask
+tokens are valid per the KMIP specification.
