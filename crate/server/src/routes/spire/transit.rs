@@ -73,6 +73,12 @@ pub(crate) struct CreateTransitKeyRequest {
     #[serde(default)]
     #[allow(dead_code)]
     pub exportable: bool,
+    /// Vault's key auto-rotation interval. The KMS performs **no** time-based
+    /// key rotation, so only a disabled value (absent, `0`, `"0"`, `""` or
+    /// `null`) is accepted; any non-zero interval is rejected with `400` rather
+    /// than silently ignored. SPIRE always sends `0`.
+    #[serde(default)]
+    pub auto_rotate_period: Option<serde_json::Value>,
 }
 
 /// Per-version metadata returned inside the `keys` map.
@@ -328,6 +334,21 @@ fn transit_key_filter(kms: &KMS, name: &str) -> KResult<Attributes> {
     Ok(filter)
 }
 
+/// Return `true` when a Vault `auto_rotate_period` value disables rotation.
+///
+/// Vault accepts the interval as either an integer number of seconds or a
+/// duration string. Since the KMS performs no time-based rotation, only a value
+/// that unambiguously means "no rotation" is accepted; anything else is treated
+/// as an unsupported request by the caller.
+fn auto_rotate_disabled(value: Option<&serde_json::Value>) -> bool {
+    match value {
+        None | Some(serde_json::Value::Null) => true,
+        Some(serde_json::Value::Number(n)) => n.as_f64() == Some(0.0),
+        Some(serde_json::Value::String(s)) => matches!(s.trim(), "" | "0" | "0s" | "0m" | "0h"),
+        Some(_) => false,
+    }
+}
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 /// Create a non-FIPS-only transit key (currently ML-DSA-65).
@@ -407,6 +428,16 @@ pub(crate) async fn create_transit_key(
         user = user,
         "POST vault transit keys/{name} type={}", body.key_type
     );
+
+    // The KMS performs no time-based key rotation; reject a non-zero
+    // auto_rotate_period rather than silently ignoring it. SPIRE sends `0`.
+    if !auto_rotate_disabled(body.auto_rotate_period.as_ref()) {
+        return Err(SpireApiError::BadRequest(
+            "auto_rotate_period is not supported: the KMS performs no time-based key rotation \
+             (send 0 or omit the field)"
+                .to_owned(),
+        ));
+    }
 
     let tag = transit_tag_name(&name);
     let tags = [tag.as_str()];
@@ -781,9 +812,25 @@ mod tests {
     };
 
     use super::{
-        rsa_digital_signature_algorithm, transit_curve_from_key_type, transit_hash_alg_to_kmip,
-        transit_key_type_from_attrs, transit_rsa_bits_from_key_type, transit_tag_name,
+        auto_rotate_disabled, rsa_digital_signature_algorithm, transit_curve_from_key_type,
+        transit_hash_alg_to_kmip, transit_key_type_from_attrs, transit_rsa_bits_from_key_type,
+        transit_tag_name,
     };
+
+    #[test]
+    fn auto_rotate_disabled_accepts_zero_forms() {
+        use serde_json::json;
+        assert!(auto_rotate_disabled(None));
+        assert!(auto_rotate_disabled(Some(&json!(null))));
+        assert!(auto_rotate_disabled(Some(&json!(0))));
+        assert!(auto_rotate_disabled(Some(&json!("0"))));
+        assert!(auto_rotate_disabled(Some(&json!("0s"))));
+        assert!(auto_rotate_disabled(Some(&json!(""))));
+        // Any real rotation interval is rejected.
+        assert!(!auto_rotate_disabled(Some(&json!(3600))));
+        assert!(!auto_rotate_disabled(Some(&json!("24h"))));
+        assert!(!auto_rotate_disabled(Some(&json!("720h"))));
+    }
 
     #[test]
     fn tag_name_is_prefixed() {
