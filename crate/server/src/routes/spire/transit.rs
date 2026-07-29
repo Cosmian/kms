@@ -765,3 +765,180 @@ pub(crate) async fn sign_with_transit_key(
         data: SignTransitData { signature },
     }))
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::{
+        kmip_0::kmip_types::HashingAlgorithm,
+        kmip_2_1::{
+            kmip_attributes::Attributes,
+            kmip_types::{
+                CryptographicAlgorithm, CryptographicDomainParameters, DigitalSignatureAlgorithm,
+                RecommendedCurve,
+            },
+        },
+    };
+
+    use super::{
+        rsa_digital_signature_algorithm, transit_curve_from_key_type, transit_hash_alg_to_kmip,
+        transit_key_type_from_attrs, transit_rsa_bits_from_key_type, transit_tag_name,
+    };
+
+    #[test]
+    fn tag_name_is_prefixed() {
+        assert_eq!(transit_tag_name("my-key"), "vault_transit:my-key");
+    }
+
+    #[test]
+    fn curve_from_key_type_maps_fips_curves() {
+        assert_eq!(
+            transit_curve_from_key_type("ecdsa-p256"),
+            Some(RecommendedCurve::P256)
+        );
+        assert_eq!(
+            transit_curve_from_key_type("ecdsa-p384"),
+            Some(RecommendedCurve::P384)
+        );
+        assert_eq!(transit_curve_from_key_type("rsa-2048"), None);
+        assert_eq!(transit_curve_from_key_type("unknown"), None);
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn curve_from_key_type_maps_ed25519_in_non_fips() {
+        assert_eq!(
+            transit_curve_from_key_type("ed25519"),
+            Some(RecommendedCurve::CURVEED25519)
+        );
+    }
+
+    #[cfg(not(feature = "non-fips"))]
+    #[test]
+    fn curve_from_key_type_rejects_ed25519_in_fips() {
+        assert_eq!(transit_curve_from_key_type("ed25519"), None);
+    }
+
+    #[test]
+    fn rsa_bits_from_key_type_maps_supported_sizes() {
+        assert_eq!(transit_rsa_bits_from_key_type("rsa-2048"), Some(2048));
+        assert_eq!(transit_rsa_bits_from_key_type("rsa-4096"), Some(4096));
+        assert_eq!(transit_rsa_bits_from_key_type("rsa-1024"), None);
+        assert_eq!(transit_rsa_bits_from_key_type("ecdsa-p256"), None);
+    }
+
+    #[test]
+    fn hash_alg_to_kmip_maps_vault_names() {
+        assert_eq!(
+            transit_hash_alg_to_kmip("sha2-256"),
+            HashingAlgorithm::SHA256
+        );
+        assert_eq!(
+            transit_hash_alg_to_kmip("sha2-384"),
+            HashingAlgorithm::SHA384
+        );
+        assert_eq!(
+            transit_hash_alg_to_kmip("sha-384"),
+            HashingAlgorithm::SHA384
+        );
+        assert_eq!(
+            transit_hash_alg_to_kmip("sha2-512"),
+            HashingAlgorithm::SHA512
+        );
+        assert_eq!(
+            transit_hash_alg_to_kmip("sha-512"),
+            HashingAlgorithm::SHA512
+        );
+        // Unknown values fall back to SHA-256.
+        assert_eq!(transit_hash_alg_to_kmip("md5"), HashingAlgorithm::SHA256);
+    }
+
+    fn ec_attrs(curve: Option<RecommendedCurve>) -> Attributes {
+        Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+            cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                recommended_curve: curve,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn key_type_from_attrs_maps_ec_and_rsa() {
+        assert_eq!(
+            transit_key_type_from_attrs(&ec_attrs(Some(RecommendedCurve::P256))),
+            "ecdsa-p256"
+        );
+        assert_eq!(
+            transit_key_type_from_attrs(&ec_attrs(Some(RecommendedCurve::P384))),
+            "ecdsa-p384"
+        );
+        // Missing curve defaults to P-256.
+        assert_eq!(transit_key_type_from_attrs(&ec_attrs(None)), "ecdsa-p256");
+
+        let rsa4096 = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            cryptographic_length: Some(4096),
+            ..Default::default()
+        };
+        assert_eq!(transit_key_type_from_attrs(&rsa4096), "rsa-4096");
+
+        let rsa_default = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            ..Default::default()
+        };
+        assert_eq!(transit_key_type_from_attrs(&rsa_default), "rsa-2048");
+    }
+
+    #[cfg(feature = "non-fips")]
+    #[test]
+    fn key_type_from_attrs_maps_non_fips_algorithms() {
+        assert_eq!(
+            transit_key_type_from_attrs(&ec_attrs(Some(RecommendedCurve::CURVEED25519))),
+            "ed25519"
+        );
+        let mldsa = Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::MLDSA_65),
+            ..Default::default()
+        };
+        assert_eq!(transit_key_type_from_attrs(&mldsa), "ml-dsa-65");
+    }
+
+    #[test]
+    fn rsa_signature_algorithm_defaults_to_pss() {
+        assert_eq!(
+            rsa_digital_signature_algorithm(None, HashingAlgorithm::SHA256).unwrap(),
+            DigitalSignatureAlgorithm::RSASSAPSS
+        );
+        assert_eq!(
+            rsa_digital_signature_algorithm(Some("pss"), HashingAlgorithm::SHA512).unwrap(),
+            DigitalSignatureAlgorithm::RSASSAPSS
+        );
+    }
+
+    #[test]
+    fn rsa_signature_algorithm_maps_pkcs1v15_per_hash() {
+        assert_eq!(
+            rsa_digital_signature_algorithm(Some("pkcs1v15"), HashingAlgorithm::SHA256).unwrap(),
+            DigitalSignatureAlgorithm::SHA256WithRSAEncryption
+        );
+        assert_eq!(
+            rsa_digital_signature_algorithm(Some("pkcs1v15"), HashingAlgorithm::SHA384).unwrap(),
+            DigitalSignatureAlgorithm::SHA384WithRSAEncryption
+        );
+        assert_eq!(
+            rsa_digital_signature_algorithm(Some("pkcs1v15"), HashingAlgorithm::SHA512).unwrap(),
+            DigitalSignatureAlgorithm::SHA512WithRSAEncryption
+        );
+    }
+
+    #[test]
+    fn rsa_signature_algorithm_rejects_unknown_scheme() {
+        let result = rsa_digital_signature_algorithm(Some("nope"), HashingAlgorithm::SHA256);
+        assert!(matches!(
+            result,
+            Err(crate::routes::spire::error::SpireApiError::BadRequest(_))
+        ));
+    }
+}

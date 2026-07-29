@@ -391,3 +391,64 @@ async fn get_issuing_ca_pem(
         )
     })
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use serde::Deserialize;
+
+    use super::{deserialize_string_or_vec, parse_ttl_days};
+
+    #[test]
+    fn parse_ttl_days_handles_all_units() {
+        // Hours, rounded up to whole days.
+        assert_eq!(parse_ttl_days("8760h"), Some(365));
+        assert_eq!(parse_ttl_days("1h"), Some(1));
+        assert_eq!(parse_ttl_days("25h"), Some(2));
+        // Days pass through unchanged.
+        assert_eq!(parse_ttl_days("365d"), Some(365));
+        // Seconds, rounded up to whole days.
+        assert_eq!(parse_ttl_days("86400s"), Some(1));
+        assert_eq!(parse_ttl_days("3600s"), Some(1));
+        // Bare integer treated as seconds.
+        assert_eq!(parse_ttl_days("86400"), Some(1));
+    }
+
+    #[test]
+    fn parse_ttl_days_rejects_invalid_input() {
+        assert_eq!(parse_ttl_days(""), None);
+        assert_eq!(parse_ttl_days("   "), None);
+        assert_eq!(parse_ttl_days("abc"), None);
+        assert_eq!(parse_ttl_days("12x"), None);
+    }
+
+    #[derive(Deserialize)]
+    struct Holder {
+        #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+        values: Vec<String>,
+    }
+
+    #[test]
+    fn string_or_vec_accepts_json_array() {
+        let h: Holder = serde_json::from_str(r#"{"values": ["a", "b", "c"]}"#).unwrap();
+        assert_eq!(h.values, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn string_or_vec_splits_comma_separated_string() {
+        let h: Holder = serde_json::from_str(r#"{"values": "a, b ,c"}"#).unwrap();
+        assert_eq!(h.values, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn string_or_vec_filters_empty_segments() {
+        let h: Holder = serde_json::from_str(r#"{"values": "a,,b,"}"#).unwrap();
+        assert_eq!(h.values, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn string_or_vec_defaults_to_empty() {
+        let h: Holder = serde_json::from_str("{}").unwrap();
+        assert!(h.values.is_empty());
+    }
+}
