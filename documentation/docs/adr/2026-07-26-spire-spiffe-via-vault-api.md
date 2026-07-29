@@ -84,6 +84,18 @@ destroy-secret-id) in the KMS CLI for AppRole credential provisioning against au
   for up to 30 seconds. Acceptable for the beta; production hardening may reduce this or
   add a revocation push notification.
 
+### Known Limitations (beta)
+
+These are accepted limitations of the beta implementation, surfaced in code review and
+recorded here so they are tracked before longer-lived production rollouts.
+
+- **LIM-001** Single-tier CA chain — the PKI `sign-intermediate` response builds `ca_chain`
+  as a single element (`[issuing_ca]`) by following `CA private key → PublicKeyLink →
+  CertificateLink` exactly one hop. This is correct for a single-tier CA but returns an
+  incomplete chain for a root→intermediate→leaf hierarchy, where SPIRE expects the *last*
+  `ca_chain` element to be the true root. Multi-tier CA traversal is deferred; production
+  multi-tier rollouts must account for this until full chain-walking is implemented.
+
 ## Alternatives Considered
 
 ### Alternative A — All auth and crypto in the KMS
