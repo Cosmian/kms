@@ -272,7 +272,16 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
-If the prompt adds a new security feature, hardens an existing one, or fixes a security bug, update SECURITY.md with a brief summary. Link to the relevant CHANGELOG entry and test vector.
+Update SECURITY.md **only when the security change fixes a vulnerability that was already
+shipped in a tagged KMS release (vX.Y.Z)**. The key question is: *were real users exposed?*
+
+- **Released code → update SECURITY.md**: the `Affected` range references real version tags
+  (e.g., `from 5.0.0 before 5.23.0`). Add a `COSMIAN-<year>-NNN` entry with severity,
+  affected range, fixed-in version, summary, impact, and mitigation. Link to the relevant
+  CHANGELOG entry and test vector.
+- **Unreleased code → do NOT update SECURITY.md**: if the bug exists only on a branch or
+  in code that has never appeared in a tagged release, no users are exposed and no entry
+  should be added.
 
 ### 6. Post-task self-review
 
