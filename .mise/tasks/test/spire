@@ -216,11 +216,15 @@ rm -f "${_VAULT_EXT_FILE}"
 print_success "PKI CA key created."
 
 # ── Step 6: Provision AppRoles ────────────────────────────────────────────────
-# KMS proxies /v1/auth/* → auth-verifier /auth/*, so VAULT_ADDR points to KMS.
-print_status "Running provision.sh to create AppRoles..."
+# Admin AppRole CRUD uses `ckms vault approle` directly against the auth-verifier
+# (the KMS does not proxy the admin API). The transit smoke test inside
+# provision.sh still goes through the KMS (VAULT_ADDR).
+print_status "Running provision.sh to create AppRoles (via ckms)..."
 AUTH_VERIFIER_URL="https://localhost:8443" \
   VAULT_ADDR="https://localhost:9998" \
   VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
   SECRETS_ENV_FILE="${SPIRE_SECRETS_ENV}" \
   bash "${TEST_DATA}/setup/provision.sh"
 

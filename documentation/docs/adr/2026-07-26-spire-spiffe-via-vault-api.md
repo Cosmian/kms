@@ -110,6 +110,15 @@ recorded here so they are tracked before longer-lived production rollouts.
   therefore compile in CI but are not exercised end-to-end. This is a deliberate scoping
   decision for the beta: a FIPS CI cell for SPIRE is deferred until the FIPS-approved
   algorithm subset for transit is finalised.
+- **LIM-004** No Web UI for `ckms vault approle` — the seven-subcommand `ckms vault approle`
+  admin surface (create-role, list-roles, get-role-id, generate-secret-id, destroy-secret-id,
+  delete-role) has no `ui/` counterpart, so it does not yet satisfy AGENTS.md §8.1 ("every CLI
+  feature must be synced to the Web UI"). This is a deliberate beta scoping decision: AppRole
+  provisioning is a management-plane operation performed by operators directly against the
+  auth-verifier (see the two-plane model), and it is intentionally kept off the KMS Web UI —
+  which is a data-plane / KMIP surface — so the public UI never exposes privileged
+  AppRole-creation controls. A UI follow-up (or an explicit decision to keep it CLI-only) is
+  deferred until after the beta.
 
 ## Alternatives Considered
 

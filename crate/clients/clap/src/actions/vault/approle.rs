@@ -3,8 +3,11 @@
 //! Manage Vault-compatible `AppRole` identities in the Cosmian Authentication
 //! Server (`auth-verifier`).
 //!
-//! ## Unauthenticated commands
-//! - `login` — exchange `role_id` + `secret_id` for a Vault token.
+//! All sub-commands are **admin (management-plane)** operations: they require an
+//! admin session cookie obtained from the auth-verifier's `/login?realm=_`, so
+//! `--auth-verifier-url` must point **directly at the auth-verifier** (a separate
+//! endpoint), not at the KMS. SPIRE performs the data-plane `AppRole` *login*
+//! itself against the KMS `vault_addr`; there is no `login` sub-command here.
 //!
 //! ## Admin commands (require `--admin-user` + `--admin-password`)
 //! - `create-role` — create or update a role.
@@ -14,20 +17,12 @@
 //! - `destroy-secret-id` — invalidate a secret ID by accessor.
 //! - `delete-role` — permanently delete a role.
 
-use std::collections::HashMap;
-
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::{actions::console::Stdout, error::result::KmsCliResult};
 
 // ── Wire types (mirrors auth_client dto/vault.rs) ────────────────────────────
-
-#[derive(Serialize)]
-struct AppRoleLoginRequest<'a> {
-    role_id: &'a str,
-    secret_id: &'a str,
-}
 
 #[derive(Serialize)]
 struct AppRoleRoleRequest {
@@ -46,20 +41,6 @@ struct AppRoleSecretIdRequest {
 #[derive(Serialize)]
 struct AppRoleDestroySecretIdRequest<'a> {
     secret_id_accessor: &'a str,
-}
-
-#[derive(Deserialize)]
-struct VaultAuthResponse {
-    auth: VaultAuth,
-}
-
-#[derive(Deserialize)]
-struct VaultAuth {
-    client_token: String,
-    lease_duration: i64,
-    policies: Vec<String>,
-    #[allow(dead_code)]
-    metadata: HashMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -107,20 +88,31 @@ struct AuthVerifierLoginRequest {
 ///
 /// # Errors
 /// Returns an error if the HTTP request fails or admin credentials are invalid.
-async fn admin_client(
-    auth_url: &str,
-    admin_user: &str,
-    admin_password: &str,
-) -> KmsCliResult<reqwest::Client> {
-    let client = reqwest::Client::builder()
-        .cookie_store(true)
+async fn admin_client(admin: &AdminArgs) -> KmsCliResult<reqwest::Client> {
+    let mut builder = reqwest::Client::builder().cookie_store(true);
+    if admin.accept_invalid_certs {
+        builder = builder.danger_accept_invalid_certs(true);
+    } else if let Some(ca_path) = &admin.auth_verifier_ca_cert {
+        let pem = std::fs::read(ca_path).map_err(|e| {
+            crate::error::KmsCliError::Default(format!(
+                "cannot read auth-verifier CA cert '{ca_path}': {e}"
+            ))
+        })?;
+        let cert = reqwest::Certificate::from_pem(&pem).map_err(|e| {
+            crate::error::KmsCliError::Default(format!(
+                "invalid auth-verifier CA cert '{ca_path}': {e}"
+            ))
+        })?;
+        builder = builder.add_root_certificate(cert);
+    }
+    let client = builder
         .build()
         .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-    let login_url = format!("{auth_url}/login?realm=_");
+    let login_url = format!("{}/login?realm=_", admin.auth_verifier_url);
     let resp = client
         .post(&login_url)
-        .basic_auth(admin_user, Some(admin_password))
+        .basic_auth(&admin.admin_user, Some(&admin.admin_password))
         .json(&AuthVerifierLoginRequest {
             public_key_pem: None,
             totp_code: None,
@@ -139,18 +131,36 @@ async fn admin_client(
     Ok(client)
 }
 
+/// Build an auth-verifier `AppRole` **admin** endpoint URL.
+///
+/// The admin API is served **directly** by the auth-verifier under
+/// `/auth/approle` — never under the KMS `/v1/auth/*` proxy, which only exposes
+/// the data-plane login/token routes and cannot carry the admin session cookie.
+/// `suffix` is appended verbatim, e.g. `"/role/my-role"` or `"/role?list=true"`.
+fn approle_admin_url(auth_verifier_url: &str, suffix: &str) -> String {
+    format!(
+        "{}/auth/approle{suffix}",
+        auth_verifier_url.trim_end_matches('/')
+    )
+}
+
 // ── Shared admin flags ────────────────────────────────────────────────────────
 
 /// Shared flags for admin `AppRole` operations.
 #[derive(Parser, Debug)]
 pub(crate) struct AdminArgs {
-    /// URL of the Cosmian Authentication Server (auth-verifier).
+    /// URL of the Cosmian Authentication Server (auth-verifier), reached
+    /// **directly** — NOT via the KMS proxy.
     ///
-    /// Example: `https://auth.example.com:8443`
+    /// Admin `AppRole` management needs an admin session cookie from the
+    /// auth-verifier's `/login?realm=_`, which the KMS does not proxy, so this
+    /// is the auth-verifier's own address (a separate endpoint; keep it on a
+    /// limited-exposure network where possible). Example:
+    /// `https://auth.example.com:8443`
     #[clap(
         long,
         env = "CKMS_VAULT_AUTH_URL",
-        help = "Base URL of the Cosmian Authentication Server"
+        help = "Base URL of the Cosmian Authentication Server (auth-verifier, reached directly)"
     )]
     auth_verifier_url: String,
 
@@ -166,6 +176,17 @@ pub(crate) struct AdminArgs {
         hide_env_values = true
     )]
     admin_password: String,
+
+    /// Path to a PEM CA certificate used to verify the auth-verifier's TLS
+    /// certificate (e.g. a private/self-signed CA). Ignored when
+    /// `--accept-invalid-certs` is set.
+    #[clap(long, env = "CKMS_VAULT_AUTH_CA_CERT")]
+    auth_verifier_ca_cert: Option<String>,
+
+    /// Skip TLS certificate verification for the auth-verifier connection.
+    /// Development/test only — never use against an untrusted network.
+    #[clap(long, default_value = "false")]
+    accept_invalid_certs: bool,
 }
 
 // ── Sub-commands ──────────────────────────────────────────────────────────────
@@ -173,10 +194,6 @@ pub(crate) struct AdminArgs {
 /// Manage Vault-compatible `AppRole` identities in the Authentication Server.
 #[derive(Subcommand, Debug)]
 pub enum AppRoleCommands {
-    /// Exchange a `role_id` + `secret_id` for a Vault token.
-    ///
-    /// This is the unauthenticated login step used by SPIRE agents.
-    Login(AppRoleLoginCmd),
     /// Create or update an `AppRole` role.
     #[command(name = "create-role")]
     CreateRole(AppRoleCreateRoleCmd),
@@ -204,7 +221,6 @@ impl AppRoleCommands {
     /// Returns an error if the underlying HTTP call or response parsing fails.
     pub async fn process(&self) -> KmsCliResult<()> {
         match self {
-            Self::Login(cmd) => cmd.process().await,
             Self::CreateRole(cmd) => cmd.process().await,
             Self::ListRoles(cmd) => cmd.process().await,
             Self::GetRoleId(cmd) => cmd.process().await,
@@ -212,59 +228,6 @@ impl AppRoleCommands {
             Self::DestroySecretId(cmd) => cmd.process().await,
             Self::DeleteRole(cmd) => cmd.process().await,
         }
-    }
-}
-
-// ── login ─────────────────────────────────────────────────────────────────────
-
-/// Exchange a `role_id` + `secret_id` for a Vault token.
-#[derive(Parser, Debug)]
-#[clap(verbatim_doc_comment)]
-pub struct AppRoleLoginCmd {
-    /// URL of the Cosmian Authentication Server.
-    #[clap(long, env = "CKMS_VAULT_AUTH_URL")]
-    auth_verifier_url: String,
-
-    /// Stable role identifier (UUID).
-    #[clap(long)]
-    role_id: String,
-
-    /// Secret ID credential (single-use or limited-use).
-    #[clap(long)]
-    secret_id: String,
-}
-
-impl AppRoleLoginCmd {
-    async fn process(&self) -> KmsCliResult<()> {
-        let client = reqwest::Client::new();
-        let url = format!("{}/v1/auth/approle/login", self.auth_verifier_url);
-        let resp = client
-            .post(&url)
-            .json(&AppRoleLoginRequest {
-                role_id: &self.role_id,
-                secret_id: &self.secret_id,
-            })
-            .send()
-            .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(crate::error::KmsCliError::Default(format!(
-                "Login failed (HTTP {status}): {body}"
-            )));
-        }
-
-        let auth: VaultAuthResponse = resp
-            .json()
-            .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
-
-        Stdout::new(&format!("client_token: {}", auth.auth.client_token)).write()?;
-        Stdout::new(&format!("lease_duration: {}s", auth.auth.lease_duration)).write()?;
-        Stdout::new(&format!("policies: {}", auth.auth.policies.join(", "))).write()?;
-        Ok(())
     }
 }
 
@@ -299,16 +262,11 @@ pub struct AppRoleCreateRoleCmd {
 
 impl AppRoleCreateRoleCmd {
     async fn process(&self) -> KmsCliResult<()> {
-        let client = admin_client(
-            &self.admin.auth_verifier_url,
-            &self.admin.admin_user,
-            &self.admin.admin_password,
-        )
-        .await?;
+        let client = admin_client(&self.admin).await?;
 
-        let url = format!(
-            "{}/v1/auth/approle/role/{}",
-            self.admin.auth_verifier_url, self.role_name
+        let url = approle_admin_url(
+            &self.admin.auth_verifier_url,
+            &format!("/role/{}", self.role_name),
         );
         let resp = client
             .post(&url)
@@ -345,17 +303,9 @@ pub struct AppRoleListRolesCmd {
 
 impl AppRoleListRolesCmd {
     async fn process(&self) -> KmsCliResult<()> {
-        let client = admin_client(
-            &self.admin.auth_verifier_url,
-            &self.admin.admin_user,
-            &self.admin.admin_password,
-        )
-        .await?;
+        let client = admin_client(&self.admin).await?;
 
-        let url = format!(
-            "{}/v1/auth/approle/role?list=true",
-            self.admin.auth_verifier_url
-        );
+        let url = approle_admin_url(&self.admin.auth_verifier_url, "/role?list=true");
         let resp = client
             .get(&url)
             .send()
@@ -401,16 +351,11 @@ pub struct AppRoleGetRoleIdCmd {
 
 impl AppRoleGetRoleIdCmd {
     async fn process(&self) -> KmsCliResult<()> {
-        let client = admin_client(
-            &self.admin.auth_verifier_url,
-            &self.admin.admin_user,
-            &self.admin.admin_password,
-        )
-        .await?;
+        let client = admin_client(&self.admin).await?;
 
-        let url = format!(
-            "{}/v1/auth/approle/role/{}/role-id",
-            self.admin.auth_verifier_url, self.role_name
+        let url = approle_admin_url(
+            &self.admin.auth_verifier_url,
+            &format!("/role/{}/role-id", self.role_name),
         );
         let resp = client
             .get(&url)
@@ -458,16 +403,11 @@ pub struct AppRoleGenerateSecretIdCmd {
 
 impl AppRoleGenerateSecretIdCmd {
     async fn process(&self) -> KmsCliResult<()> {
-        let client = admin_client(
-            &self.admin.auth_verifier_url,
-            &self.admin.admin_user,
-            &self.admin.admin_password,
-        )
-        .await?;
+        let client = admin_client(&self.admin).await?;
 
-        let url = format!(
-            "{}/v1/auth/approle/role/{}/secret-id",
-            self.admin.auth_verifier_url, self.role_name
+        let url = approle_admin_url(
+            &self.admin.auth_verifier_url,
+            &format!("/role/{}/secret-id", self.role_name),
         );
         let resp = client
             .post(&url)
@@ -520,16 +460,11 @@ pub struct AppRoleDestroySecretIdCmd {
 
 impl AppRoleDestroySecretIdCmd {
     async fn process(&self) -> KmsCliResult<()> {
-        let client = admin_client(
-            &self.admin.auth_verifier_url,
-            &self.admin.admin_user,
-            &self.admin.admin_password,
-        )
-        .await?;
+        let client = admin_client(&self.admin).await?;
 
-        let url = format!(
-            "{}/v1/auth/approle/role/{}/secret-id/destroy",
-            self.admin.auth_verifier_url, self.role_name
+        let url = approle_admin_url(
+            &self.admin.auth_verifier_url,
+            &format!("/role/{}/secret-id/destroy", self.role_name),
         );
         let resp = client
             .post(&url)
@@ -566,16 +501,11 @@ pub struct AppRoleDeleteRoleCmd {
 
 impl AppRoleDeleteRoleCmd {
     async fn process(&self) -> KmsCliResult<()> {
-        let client = admin_client(
-            &self.admin.auth_verifier_url,
-            &self.admin.admin_user,
-            &self.admin.admin_password,
-        )
-        .await?;
+        let client = admin_client(&self.admin).await?;
 
-        let url = format!(
-            "{}/v1/auth/approle/role/{}",
-            self.admin.auth_verifier_url, self.role_name
+        let url = approle_admin_url(
+            &self.admin.auth_verifier_url,
+            &format!("/role/{}", self.role_name),
         );
         let resp = client
             .delete(&url)
@@ -591,5 +521,37 @@ impl AppRoleDeleteRoleCmd {
             )));
         }
         Stdout::new(&format!("Role '{}' deleted.", self.role_name)).write()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::approle_admin_url;
+
+    #[test]
+    fn admin_url_targets_auth_verifier_without_v1_prefix() {
+        // Admin AppRole CRUD must hit the auth-verifier's `/auth/approle/*`
+        // routes directly — never the KMS `/v1/auth/*` proxy (which cannot carry
+        // the admin session cookie). This guards against reintroducing the `/v1`
+        // prefix that made the admin commands 404.
+        let base = "https://auth.example.com:8443";
+        let url = approle_admin_url(base, "/role/spire-server");
+        assert_eq!(
+            url,
+            "https://auth.example.com:8443/auth/approle/role/spire-server"
+        );
+        assert!(
+            !url.contains("/v1/"),
+            "admin URL must not contain the KMS /v1 proxy prefix"
+        );
+    }
+
+    #[test]
+    fn admin_url_trims_trailing_slash() {
+        let url = approle_admin_url("https://auth.example.com:8443/", "/role?list=true");
+        assert_eq!(
+            url,
+            "https://auth.example.com:8443/auth/approle/role?list=true"
+        );
     }
 }
