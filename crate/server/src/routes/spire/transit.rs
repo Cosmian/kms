@@ -627,7 +627,7 @@ pub(crate) async fn configure_transit_key(
 
 /// `GET /keys` — list all transit key names.
 ///
-/// Note: unlike HashiCorp Vault — whose `LIST` on an empty/absent path returns
+/// Note: unlike `HashiCorp` Vault — whose `LIST` on an empty/absent path returns
 /// `404` — this endpoint always returns `200` with a (possibly empty) `keys`
 /// array. This is an intentional, SPIRE-compatible superset: SPIRE's Go SDK
 /// treats an empty list and a 404 identically, and a plain `200` avoids the
