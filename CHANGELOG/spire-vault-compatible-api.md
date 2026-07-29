@@ -1,5 +1,12 @@
 ## Bug Fixes
 
+- **Reject empty SPIRE identities to preserve per-tenant isolation (security)**: the SPIRE
+  token middleware now fails closed (HTTP 403) when the auth-verifier `lookup-self` response
+  carries an empty or blank `entity_id`. That `entity_id` becomes the KMS owner for every
+  transit/PKI object created or accessed through the token; an empty value would collapse
+  *all* SPIRE clients onto a single shared owner, letting one tenant's token read, sign with,
+  or delete another tenant's transit keys. Tokens without a distinct identity are now rejected
+  rather than mapped to an ambiguous shared owner.
 - **Auth proxy path-traversal hardening (security)**: the unauthenticated `/v1/auth/*`
   reverse proxy now rejects (HTTP 400) any request whose path contains a `.` or `..`
   segment, in plain or percent-encoded (`%2e`) form, before building the outgoing request.
