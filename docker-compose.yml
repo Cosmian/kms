@@ -252,7 +252,7 @@ services:
 
   # ── Tenant A: trust domain cosmian-test-a.local ─────────────────────────────
   spire-server-a:
-    image: ghcr.io/spiffe/spire-server:1.9.6
+    image: ghcr.io/spiffe/spire-server:1.15.2
     profiles: [spire]
     container_name: spire-server-a
     ports:
@@ -280,7 +280,7 @@ services:
       retries: 12
 
   spire-agent-a:
-    image: ghcr.io/spiffe/spire-agent:1.9.6
+    image: ghcr.io/spiffe/spire-agent:1.15.2
     profiles: [spire]
     container_name: spire-agent-a
     depends_on:
@@ -355,7 +355,7 @@ services:
 
   # ── Tenant B: trust domain cosmian-test-b.local ─────────────────────────────
   spire-server-b:
-    image: ghcr.io/spiffe/spire-server:1.9.6
+    image: ghcr.io/spiffe/spire-server:1.15.2
     profiles: [spire]
     container_name: spire-server-b
     ports:
@@ -380,7 +380,7 @@ services:
       retries: 12
 
   spire-agent-b:
-    image: ghcr.io/spiffe/spire-agent:1.9.6
+    image: ghcr.io/spiffe/spire-agent:1.15.2
     profiles: [spire]
     container_name: spire-agent-b
     depends_on:

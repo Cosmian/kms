@@ -1,7 +1,8 @@
 //! SPIRE-compatible Transit engine — key management and signing.
 //!
 //! Routes:
-//!   `POST   /keys/{name}`             — create transit key
+//!   `POST/PUT /keys/{name}`           — create transit key (PUT: SPIRE 1.15+
+//!                                       `hashicorp_vault` `KeyManager` plugin)
 //!   `POST   /keys/{name}/config`      — update key config (`deletion_allowed`; no-op)
 //!   `GET    /keys/{name}`             — read transit key info (public key + version map)
 //!   `GET    /keys`                    — list transit keys
@@ -22,7 +23,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use actix_web::{
-    HttpRequest, HttpResponse, delete, get, post,
+    HttpRequest, HttpResponse, delete, get, post, put,
     web::{Data, Json, Path},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
@@ -420,13 +421,40 @@ pub(crate) async fn create_transit_key(
     name: Path<String>,
     body: Json<CreateTransitKeyRequest>,
 ) -> SpireResult<Json<TransitKeyInfoWrapper>> {
+    create_transit_key_impl(req, kms, name, body).await
+}
+
+/// `PUT /keys/{name}` — same as `POST /keys/{name}` (see below).
+///
+/// SPIRE's `hashicorp_vault` `KeyManager` plugin (landed in SPIRE 1.15.0) issues
+/// `PUT /v1/transit/keys/{name}` to create its signing keys, while the Vault
+/// HTTP API itself (and this KMS's own negative-scenario tests) use `POST` —
+/// both must create the same key.
+#[put("/keys/{name}")]
+pub(crate) async fn create_transit_key_put(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+    name: Path<String>,
+    body: Json<CreateTransitKeyRequest>,
+) -> SpireResult<Json<TransitKeyInfoWrapper>> {
+    create_transit_key_impl(req, kms, name, body).await
+}
+
+async fn create_transit_key_impl(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+    name: Path<String>,
+    body: Json<CreateTransitKeyRequest>,
+) -> SpireResult<Json<TransitKeyInfoWrapper>> {
     let user = kms.get_user(&req);
     let name = name.into_inner();
     let body = body.into_inner();
 
     trace!(
         user = user,
-        "POST vault transit keys/{name} type={}", body.key_type
+        "{} vault transit keys/{name} type={}",
+        req.method(),
+        body.key_type
     );
 
     // The KMS performs no time-based key rotation; reject a non-zero
@@ -729,13 +757,37 @@ pub(crate) async fn sign_with_transit_key(
     path: Path<(String, String)>,
     body: Json<SignTransitRequest>,
 ) -> SpireResult<Json<SignTransitResponse>> {
+    sign_with_transit_key_impl(req, kms, path, body).await
+}
+
+/// `PUT /sign/{name}/{hash_alg}` — same as `POST /sign/{name}/{hash_alg}` (see below).
+///
+/// SPIRE's `hashicorp_vault` `KeyManager` plugin issues `PUT` for its transit
+/// sign calls, while the Vault HTTP API itself uses `POST`.
+#[put("/sign/{name}/{hash_alg}")]
+pub(crate) async fn sign_with_transit_key_put(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+    path: Path<(String, String)>,
+    body: Json<SignTransitRequest>,
+) -> SpireResult<Json<SignTransitResponse>> {
+    sign_with_transit_key_impl(req, kms, path, body).await
+}
+
+async fn sign_with_transit_key_impl(
+    req: HttpRequest,
+    kms: Data<Arc<KMS>>,
+    path: Path<(String, String)>,
+    body: Json<SignTransitRequest>,
+) -> SpireResult<Json<SignTransitResponse>> {
     let user = kms.get_user(&req);
     let (name, hash_alg_path) = path.into_inner();
     let body = body.into_inner();
 
     trace!(
         user = user,
-        "POST vault transit sign/{name}/{hash_alg_path}"
+        "{} vault transit sign/{name}/{hash_alg_path}",
+        req.method()
     );
 
     let input_bytes = BASE64_STANDARD
