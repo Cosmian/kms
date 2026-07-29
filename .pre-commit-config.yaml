@@ -305,6 +305,7 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+        stages: [manual]
 
       - id: nix-build-all
         name: Nix build all derivations (ui → cli → server)
