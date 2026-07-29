@@ -1,5 +1,11 @@
 ## Bug Fixes
 
+- **Transit keys are now genuinely non-exportable**: SPIRE transit (and PKI CA-linked)
+  private keys are created with `sensitive: true`, so the KMIP `Get`/`Export` guard denies
+  retrieval of the raw private key for *all* API surfaces (KMIP, `ckms`), not only the
+  Vault-compatible HTTP dialect. This enforces the ADR's `exportable: false` invariant
+  server-side unconditionally. Signing and certificate signing are server-side operations
+  and remain unaffected.
 - **`GET /keys/{name}` now returns the full Vault-compatible key metadata** required
   by SPIRE's `KeyManager` plugin at startup:
     - `latest_version: 1` field added to `TransitKeyInfo`.
