@@ -366,6 +366,141 @@ if [[ "${LOG_GATE_FAILED}" -ne 0 ]]; then
 fi
 print_success "SPIRE server log gate passed — no errors on any server."
 
+# ── Step 12: Adversarial / negative-scenario tests ────────────────────────────
+# Attack the live stack: cross-tenant isolation, proxy path traversal,
+# secret_id num_uses race, exportable bypass + sensitive-key export refusal,
+# and malformed-input fuzzing of the auth/PKI/transit surfaces. Maps to the
+# scenario matrix in reviews_spire_live.md (scenarios 11, 9, 1, 5, 4, 8, 7, 12).
+print_status "Running adversarial negative-scenario tests..."
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  AUTH_VERIFIER_URL="https://localhost:8443" \
+  ADMIN_USER="admin" \
+  ADMIN_PASS="change_me" \
+  SPIRE_ROLE_ID_A="${SPIRE_ROLE_ID_A}" \
+  SPIRE_SECRET_ID_A="${SPIRE_SECRET_ID_A}" \
+  SPIRE_ROLE_ID_B="${SPIRE_ROLE_ID_B}" \
+  SPIRE_SECRET_ID_B="${SPIRE_SECRET_ID_B}" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  bash "${TEST_DATA}/setup/test_negative_scenarios.sh"
+print_success "Adversarial negative-scenario tests passed."
+
+# ── Step 13: Scenario 6 — algorithm allow-list (transit) ──────────────────────
+# NOTE: True FIPS-mode algorithm *rejection* cannot be exercised here because
+# the SPIRE stack is non-FIPS only (the Vault API requires the non-fips build).
+# We instead assert the adjacent invariant that always holds: the transit engine
+# refuses an unknown/unsupported key type with a clean 4xx (no 5xx, no panic).
+print_status "Scenario 6: transit algorithm allow-list (unsupported type → 4xx)..."
+# Obtain a tenant-a token via the KMS proxy.
+S6_TOKEN=$(curl -s --cacert "${TEST_DATA}/certs/ca.crt" -X POST \
+  -H "Content-Type: application/json" \
+  -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+  "https://localhost:9998/v1/auth/approle/login" |
+  python3 -c "import sys,json; print(json.load(sys.stdin)['auth']['client_token'])")
+S6_CODE=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X POST -H "X-Vault-Token: ${S6_TOKEN}" -H "Content-Type: application/json" \
+  -d '{"type":"totally-bogus-algo","exportable":false}' \
+  "https://localhost:9998/v1/transit/keys/bogus-algo-key")
+if [[ "${S6_CODE}" =~ ^4[0-9][0-9]$ ]]; then
+  print_success "Scenario 6: unsupported transit key type rejected with HTTP ${S6_CODE}."
+else
+  print_error "Scenario 6: expected 4xx for unsupported key type, got ${S6_CODE}."
+fi
+
+# ── Step 14: Scenario 10 — KMS with a bad PKI CA key label fails fast ──────────
+# Start a SECOND, throwaway KMS on port 9997 whose PKI CA label points at a key
+# that does not exist. A sign-intermediate call must fail cleanly (5xx) with a
+# message naming the missing label — never hang or panic.
+print_status "Scenario 10: second KMS with an invalid PKI CA key label..."
+BAD_KMS_LOG="/tmp/kms-spire-badca.log"
+BAD_KMS_CONF="/tmp/kms-spire-badca.toml"
+BAD_CA_LABEL="nonexistent-ca-label-${RANDOM}"
+# Derive a config: port 9997, isolated empty DB, deliberately bad CA label.
+sed -e 's/^port     = 9998/port     = 9997/' \
+  -e 's#^sqlite_path   = "/tmp/kms-spire-test"#sqlite_path   = "/tmp/kms-spire-test-badca"#' \
+  -e "s/^vault_pki_ca_key_label     = \"vault_pki_ca\"/vault_pki_ca_key_label     = \"${BAD_CA_LABEL}\"/" \
+  "${KMS_CONFIG_FILE}" >"${BAD_KMS_CONF}"
+
+"$(get_kms_bin)" --config "${BAD_KMS_CONF}" >"${BAD_KMS_LOG}" 2>&1 &
+BAD_KMS_PID=$!
+if ! wait_for_port 127.0.0.1 9997 120; then
+  cat "${BAD_KMS_LOG}" || true
+  kill "${BAD_KMS_PID}" 2>/dev/null || true
+  print_error "Second (bad-CA) KMS failed to start. Check ${BAD_KMS_LOG}"
+fi
+
+S10_TOKEN=$(curl -s --cacert "${TEST_DATA}/certs/ca.crt" -X POST \
+  -H "Content-Type: application/json" \
+  -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+  "https://localhost:9997/v1/auth/approle/login" |
+  python3 -c "import sys,json; print(json.load(sys.stdin)['auth']['client_token'])")
+
+# Build a valid CSR so the request reaches the CA-key-lookup stage.
+S10_CSR_KEY=$(mktemp /tmp/s10-csr.key.XXXXXX)
+S10_CSR_PEM=$(mktemp /tmp/s10-csr.pem.XXXXXX)
+openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+  -keyout "${S10_CSR_KEY}" -out "${S10_CSR_PEM}" -subj "/CN=s10/O=Test/C=FR" 2>/dev/null
+S10_CSR_JSON=$(python3 -c "import json; print(json.dumps(open('${S10_CSR_PEM}').read()))")
+S10_BODY_FILE=$(mktemp /tmp/s10-body.XXXXXX)
+S10_STATUS=$(curl -s -o "${S10_BODY_FILE}" -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X POST -H "X-Vault-Token: ${S10_TOKEN}" -H "Content-Type: application/json" \
+  -d "{\"csr\": ${S10_CSR_JSON}, \"uri_sans\": \"spiffe://cosmian-test-a.local/x\"}" \
+  "https://localhost:9997/v1/pki/root/sign-intermediate")
+S10_BODY=$(cat "${S10_BODY_FILE}")
+kill "${BAD_KMS_PID}" 2>/dev/null || true
+wait "${BAD_KMS_PID}" 2>/dev/null || true
+rm -f "${BAD_KMS_CONF}" "${BAD_KMS_LOG}" "${S10_CSR_KEY}" "${S10_CSR_PEM}" "${S10_BODY_FILE}"
+rm -f /tmp/kms-spire-test-badca* 2>/dev/null || true
+
+if [[ "${S10_STATUS}" =~ ^5[0-9][0-9]$ ]] && echo "${S10_BODY}" | grep -q "${BAD_CA_LABEL}"; then
+  print_success "Scenario 10: bad CA label rejected cleanly (HTTP ${S10_STATUS}, names missing label)."
+else
+  print_error "Scenario 10: expected 5xx naming '${BAD_CA_LABEL}', got HTTP ${S10_STATUS}. Body: ${S10_BODY:0:300}"
+fi
+
+# ── Step 15: Scenario 2 — auth-verifier outage → clean 502 (run LAST) ──────────
+# With the auth-verifier down, the KMS /v1/auth proxy must return 502 Bad Gateway
+# (not 500/hang). Restart it afterwards and confirm the auth path recovers.
+# Runs last because it deliberately kills the auth-verifier.
+print_status "Scenario 2: auth-verifier outage → 502 via KMS proxy..."
+if [[ -n "${AUTH_PID:-}" ]]; then
+  kill "${AUTH_PID}" 2>/dev/null || true
+  wait "${AUTH_PID}" 2>/dev/null || true
+  AUTH_PID=""
+fi
+# Give the socket a moment to close.
+sleep 2
+S2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X GET -H "X-Vault-Token: s.some-token" \
+  "https://localhost:9998/v1/auth/token/lookup-self")
+if [[ "${S2_STATUS}" == "502" ]]; then
+  print_success "Scenario 2: auth-verifier down yields HTTP 502 (Bad Gateway)."
+else
+  print_error "Scenario 2: expected HTTP 502 with auth-verifier down, got ${S2_STATUS}."
+fi
+
+# Restart the auth-verifier and confirm recovery.
+print_status "Scenario 2: restarting auth-verifier and confirming recovery..."
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+if ! wait_for_port 127.0.0.1 8443 60; then
+  print_error "auth-verifier failed to restart. Check ${AUTH_LOG}"
+fi
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+S2_RECOVER=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X POST -H "Content-Type: application/json" \
+  -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+  "https://localhost:9998/v1/auth/approle/login")
+if [[ "${S2_RECOVER}" == "200" ]]; then
+  print_success "Scenario 2: auth path recovered after restart (HTTP 200)."
+else
+  print_error "Scenario 2: auth path did not recover after restart, got ${S2_RECOVER}."
+fi
+
 print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid multi-tenant drop-in replacement for HashiCorp Vault"
 
 print_success "SPIRE integration tests completed successfully!"
