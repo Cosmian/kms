@@ -644,6 +644,7 @@ Crate path: `crate/server`
 | `debug` | `spire_token_middleware: validated entity={}` | `src/middlewares/spire_token.rs` | - | - |
 | `trace` | `spire_token_middleware: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | - | - |
 | `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` — the offending request path (with `/v1` stripped) that contained a `.`/`..` segment | Security: emitted when the unauthenticated `/v1/auth/*` proxy blocks a path-traversal attempt (HTTP 400). Repeated occurrences may indicate probing of internal auth-verifier endpoints. |
+| `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
