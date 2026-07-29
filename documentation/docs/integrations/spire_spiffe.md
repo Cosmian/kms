@@ -36,7 +36,23 @@ sequenceDiagram
     Note over Server,Agent: 4. SPIRE Agent attests to SPIRE Server<br/>(join_token in this demo)
     Agent-->>Mistral: 5. Workload API (unix socket)<br/>fetch JWT-SVID
     Mistral->>Mistral: 6. Validate SPIFFE ID,<br/>trust domain, expiry
+    Note over Admin,Mistral: AI agent is provisioned with the "mistral-agents" role_id + secret_id
+    Mistral->>KMS: 7. AppRole login (own credentials)<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
+    KMS->>AuthV: proxy /v1/auth/* → /auth/*
+    AuthV-->>Mistral: Vault token (hvs.yyyy)
+    Mistral->>KMS: 8. Transit crypto with own token<br/>POST /v1/transit/keys/{name} · /sign/{name}/{hash}<br/>(X-Vault-Token)
+    Note over KMS: validate X-Vault-Token via AuthV (30 s cache)<br/>owner = "mistral-agents" → keys isolated from other tenants
+    KMS-->>Mistral: transit key / signature
 ```
+
+Steps 1–6 establish SPIFFE identity (the SPIRE server chains its CA to the KMS PKI engine,
+and the AI agent workload receives a SPIFFE SVID). Steps 7–8 are where the **`mistral-agents`
+AppRole** (created in 1b) is used: the AI agent authenticates to the KMS's Vault-compatible
+**transit** engine with its *own* AppRole token to create/use keys — which the KMS scopes to
+the `mistral-agents` owner, keeping them isolated from the SPIRE server's (and any other
+tenant's) objects. The two are independent capabilities: SPIFFE identity (5–6) is for the
+agent to authenticate to *other* services, while the transit flow (7–8) is the agent using the
+KMS as its FIPS-backed crypto backend.
 
 ## What is it?
 
