@@ -41,8 +41,11 @@ reset_spire_state() {
   docker compose --profile spire down --volumes 2>/dev/null || true
   # Remove the persistent auth-verifier DB (WAL/SHM sidecars included).
   rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm" 2>/dev/null || true
-  # Remove temp files carrying credentials/tokens from a previous run.
+  # Remove temp files/dirs carrying credentials/tokens from a previous run,
+  # including the per-tenant patched agent configs and captured server logs.
   rm -f "${SPIRE_SECRETS_ENV}" /tmp/spire-join-token.txt 2>/dev/null || true
+  rm -rf /tmp/spire-agent-config-* 2>/dev/null || true
+  rm -f /tmp/spire-server-*.log 2>/dev/null || true
 }
 
 # ── Cleanup on exit ───────────────────────────────────────────────────────────
@@ -50,11 +53,13 @@ cleanup() {
   print_info "Cleaning up SPIRE integration test resources..."
 
   # Capture SPIRE server logs before stopping (helps debug failures)
-  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q '^spire-server$'; then
-    echo "--- SPIRE SERVER LOGS (last 40 lines) ---"
-    docker logs spire-server 2>&1 | tail -40 || true
-    echo "--- END SPIRE SERVER LOGS ---"
-  fi
+  for _t in a b; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^spire-server-${_t}$"; then
+      echo "--- SPIRE SERVER '${_t}' LOGS (last 40 lines) ---"
+      docker logs "spire-server-${_t}" 2>&1 | tail -40 || true
+      echo "--- END SPIRE SERVER '${_t}' LOGS ---"
+    fi
+  done
 
   # Stop auth-verifier
   if [[ -n "${AUTH_PID:-}" ]]; then
@@ -72,6 +77,42 @@ cleanup() {
   reset_spire_state
 }
 trap cleanup EXIT
+
+# ── Multi-tenant topology ─────────────────────────────────────────────────────
+# Two INDEPENDENT SPIRE deployments (tenants "a" and "b") run against the SAME
+# KMS, each with its own trust domain, AppRole, agent, and 2 Mistral workloads.
+# Adding a 3rd tenant means: one compose stanza, one server+agent config pair,
+# one AppRole in provision.sh, and one entry in TENANTS below.
+TENANTS=("a" "b")
+
+# Trust domain for a tenant, e.g. tenant "a" → cosmian-test-a.local
+tenant_trust_domain() { echo "cosmian-test-$1.local"; }
+
+# Block until spire-server-<tenant> reports healthy, or fail the task.
+wait_server_healthy() {
+  local t="$1" tries=0
+  until docker inspect --format='{{.State.Health.Status}}' "spire-server-${t}" 2>/dev/null | grep -q healthy; do
+    tries=$((tries + 1))
+    if [[ "${tries}" -ge 24 ]]; then
+      print_error "SPIRE server '${t}' did not become healthy in time. Check: docker logs spire-server-${t}"
+    fi
+    sleep 5
+  done
+}
+
+# Block until spire-agent-<tenant>'s workload API socket is ready, or fail.
+wait_agent_ready() {
+  local t="$1" tries=0
+  until docker exec "spire-agent-${t}" /opt/spire/bin/spire-agent healthcheck \
+    -socketPath /tmp/spire-agent/public/api.sock 2>/dev/null; do
+    tries=$((tries + 1))
+    if [[ "${tries}" -ge 24 ]]; then
+      docker logs "spire-agent-${t}" 2>&1 | tail -20 || true
+      print_error "SPIRE agent '${t}' socket did not appear in time."
+    fi
+    sleep 5
+  done
+}
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 require_cmd docker
@@ -190,109 +231,141 @@ print_success "AppRoles provisioned."
 
 # ── Step 6b: Vault API conformance tests ──────────────────────────────────────
 # Prove that every HTTP contract SPIRE relies on (§3 auth, §4 PKI, §5 transit)
-# is correctly implemented before starting the real SPIRE runtime.
+# is correctly implemented before starting the real SPIRE runtime. Tenant-a's
+# AppRole is used as a representative caller (both tenants share the same KMS API).
 print_status "Running Vault API conformance tests (vault-technical-integration.txt)..."
 # shellcheck disable=SC1090
 source "${SPIRE_SECRETS_ENV}"
 VAULT_ADDR="https://localhost:9998" \
   VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
-  APPROLE_ROLE_ID="${APPROLE_ROLE_ID}" \
-  APPROLE_SECRET_ID="${APPROLE_SECRET_ID}" \
+  APPROLE_ROLE_ID="${SPIRE_ROLE_ID_A}" \
+  APPROLE_SECRET_ID="${SPIRE_SECRET_ID_A}" \
   bash "${TEST_DATA}/setup/test_vault_api.sh"
 print_success "Vault API conformance tests passed."
 
-# ── Step 7: Start SPIRE server with injected AppRole credentials ──────────────
-print_status "Starting SPIRE server..."
+# ── Step 7: Start every SPIRE server with its tenant AppRole credentials ───────
+# Each server sees ONLY its own tenant role under the fixed env names the SPIRE
+# vault plugin expects (VAULT_APPROLE_ID / VAULT_APPROLE_SECRET_ID). The compose
+# file maps VAULT_APPROLE_ID_<T>/… to those names per service.
+print_status "Starting ${#TENANTS[@]} SPIRE servers (one per tenant)..."
 # shellcheck disable=SC1090
 source "${SPIRE_SECRETS_ENV}"
-export APPROLE_ROLE_ID APPROLE_SECRET_ID
-# Map to VAULT_-prefixed names expected by SPIRE vault UpstreamAuthority plugin
-export VAULT_APPROLE_ID="${APPROLE_ROLE_ID}"
-export VAULT_APPROLE_SECRET_ID="${APPROLE_SECRET_ID}"
 
-docker compose --profile spire up -d spire-server
-
-print_info "Waiting for SPIRE server to become healthy..."
-local_tries=0
-until docker inspect --format='{{.State.Health.Status}}' spire-server 2>/dev/null | grep -q healthy; do
-  local_tries=$((local_tries + 1))
-  if [[ "${local_tries}" -ge 24 ]]; then
-    print_error "SPIRE server did not become healthy in time. Check: docker logs spire-server"
-  fi
-  sleep 5
+for t in "${TENANTS[@]}"; do
+  tu=$(echo "${t}" | tr '[:lower:]' '[:upper:]')
+  role_var="SPIRE_ROLE_ID_${tu}"
+  secret_var="SPIRE_SECRET_ID_${tu}"
+  export "VAULT_APPROLE_ID_${tu}=${!role_var}"
+  export "VAULT_APPROLE_SECRET_ID_${tu}=${!secret_var}"
+  print_info "Starting spire-server-${t} (trust domain $(tenant_trust_domain "${t}"))..."
+  docker compose --profile spire up -d "spire-server-${t}"
 done
-print_success "SPIRE server healthy."
 
-# ── Step 8: Generate join token and start SPIRE agent ────────────────────────
-print_status "Generating SPIRE join token..."
-JOIN_TOKEN=$(docker exec spire-server \
-  /opt/spire/bin/spire-server token generate \
-  -spiffeID "spiffe://cosmian-test.local/spire-agent" \
-  -socketPath /tmp/spire-server/private/api.sock |
-  awk '/^Token:/{print $2}')
-
-if [[ -z "${JOIN_TOKEN}" ]]; then
-  print_error "Failed to generate SPIRE join token."
-fi
-
-echo "JOIN_TOKEN=${JOIN_TOKEN}" >/tmp/spire-join-token.txt
-print_info "Join token: ${JOIN_TOKEN:0:8}..."
-
-# Patch agent config with the generated token
-mkdir -p /tmp/spire-agent-config
-sed "s/join_token = \"cosmian-test-join-token-12345\"/join_token = \"${JOIN_TOKEN}\"/" \
-  "${TEST_DATA}/config/spire-agent.conf" >/tmp/spire-agent-config/agent.conf
-
-# Start the SPIRE agent via docker compose, injecting the patched config file
-# (with the real join token) via the SPIRE_AGENT_CONFIG_FILE env var.
-# Using compose (with a named Docker volume for the socket directory) ensures
-# the unix socket is correctly shared with the mistral-agent containers on all
-# platforms, including macOS Docker Desktop where host bind-mount unix sockets
-# are not accessible between containers.
-export SPIRE_AGENT_CONFIG_FILE="/tmp/spire-agent-config/agent.conf"
-docker compose --profile spire up -d spire-agent
-
-print_info "Waiting for SPIRE agent workload API socket..."
-agent_tries=0
-until docker exec spire-agent /opt/spire/bin/spire-agent healthcheck \
-  -socketPath /tmp/spire-agent/public/api.sock 2>/dev/null; do
-  agent_tries=$((agent_tries + 1))
-  if [[ "${agent_tries}" -ge 24 ]]; then
-    docker logs spire-agent 2>&1 | tail -20 || true
-    print_error "SPIRE agent socket did not appear in time."
-  fi
-  sleep 5
+for t in "${TENANTS[@]}"; do
+  print_info "Waiting for spire-server-${t} to become healthy..."
+  wait_server_healthy "${t}"
+  print_success "SPIRE server '${t}' healthy."
 done
-print_success "SPIRE agent started."
 
-# ── Step 9: Register workload entries ────────────────────────────────────────
-print_status "Registering Mistral workload entries..."
-AGENT_SPIFFE_ID="spiffe://cosmian-test.local/spire-agent"
-WORKLOAD_SPIFFE_ID="spiffe://cosmian-test.local/mistral-agent"
+# ── Step 8: Generate join tokens and start each SPIRE agent ───────────────────
+for t in "${TENANTS[@]}"; do
+  td=$(tenant_trust_domain "${t}")
+  print_status "Generating join token for tenant '${t}'..."
+  JOIN_TOKEN=$(docker exec "spire-server-${t}" \
+    /opt/spire/bin/spire-server token generate \
+    -spiffeID "spiffe://${td}/spire-agent" \
+    -socketPath /tmp/spire-server/private/api.sock |
+    awk '/^Token:/{print $2}')
 
+  if [[ -z "${JOIN_TOKEN}" ]]; then
+    print_error "Failed to generate SPIRE join token for tenant '${t}'."
+  fi
+  print_info "Tenant '${t}' join token: ${JOIN_TOKEN:0:8}..."
+
+  # Patch the tenant's agent config with the generated one-time token.
+  mkdir -p "/tmp/spire-agent-config-${t}"
+  sed "s/join_token = \"cosmian-test-join-token-12345\"/join_token = \"${JOIN_TOKEN}\"/" \
+    "${TEST_DATA}/config/spire-agent-${t}.conf" >"/tmp/spire-agent-config-${t}/agent.conf"
+
+  # Start the SPIRE agent via docker compose, injecting the patched config file
+  # (with the real join token) via the per-tenant SPIRE_AGENT_CONFIG_FILE_<T> env
+  # var. Using compose (with a named Docker volume for the socket directory)
+  # ensures the unix socket is correctly shared with the mistral-agent containers
+  # on all platforms, including macOS Docker Desktop where host bind-mount unix
+  # sockets are not accessible between containers.
+  tu=$(echo "${t}" | tr '[:lower:]' '[:upper:]')
+  export "SPIRE_AGENT_CONFIG_FILE_${tu}=/tmp/spire-agent-config-${t}/agent.conf"
+  docker compose --profile spire up -d "spire-agent-${t}"
+done
+
+for t in "${TENANTS[@]}"; do
+  print_info "Waiting for spire-agent-${t} workload API socket..."
+  wait_agent_ready "${t}"
+  print_success "SPIRE agent '${t}' started."
+done
+
+# ── Step 9: Register workload entries for each tenant ─────────────────────────
 # The mistral-client image runs as the non-root "mistral" user (uid 1000, see
 # test_data/spire/mistral-client/Dockerfile), so the workload entry's unix
-# selector must match uid 1000, not root.
-docker exec spire-server \
-  /opt/spire/bin/spire-server entry create \
-  -socketPath /tmp/spire-server/private/api.sock \
-  -spiffeID "${WORKLOAD_SPIFFE_ID}" \
-  -parentID "${AGENT_SPIFFE_ID}" \
-  -selector "unix:uid:1000"
+# selector must match uid 1000, not root. Both Mistral agents of a tenant share
+# the same SPIFFE ID and unix:uid:1000 selector under that tenant's agent.
+for t in "${TENANTS[@]}"; do
+  td=$(tenant_trust_domain "${t}")
+  print_status "Registering Mistral workload entry for tenant '${t}'..."
+  docker exec "spire-server-${t}" \
+    /opt/spire/bin/spire-server entry create \
+    -socketPath /tmp/spire-server/private/api.sock \
+    -spiffeID "spiffe://${td}/mistral-agent" \
+    -parentID "spiffe://${td}/spire-agent" \
+    -selector "unix:uid:1000"
+  print_success "Tenant '${t}' workload entry registered."
+done
 
-print_success "Workload entries registered."
-
-# ── Step 10: Run Mistral agent tests ─────────────────────────────────────────
+# ── Step 10: Run Mistral agent identity tests (2 per tenant) ──────────────────
 # docker compose run exits with the container's exit code; any non-zero exit
 # propagates immediately via set -euo pipefail — no || true needed here.
-print_status "Running Mistral agent 1 identity test..."
-docker compose --profile spire run --rm mistral-agent-1
-print_success "Mistral agent 1 passed."
+for t in "${TENANTS[@]}"; do
+  for n in 1 2; do
+    agent="mistral-agent-${t}${n}"
+    print_status "Running ${agent} identity test..."
+    docker compose --profile spire run --rm "${agent}"
+    print_success "${agent} passed."
+  done
+done
 
-print_status "Running Mistral agent 2 identity test..."
-docker compose --profile spire run --rm mistral-agent-2
-print_success "Mistral agent 2 passed."
+# ── Step 11: SPIRE server log gate ────────────────────────────────────────────
+# Capture each SPIRE server's full logs and fail if any error/fatal line is
+# present. SPIRE uses logrus: long form "level=error"/"level=fatal" and the
+# short codes "ERROR"/"FATA". Warnings are printed but do not fail the gate.
+print_status "Extracting SPIRE server logs and checking for errors..."
+LOG_GATE_FAILED=0
+for t in "${TENANTS[@]}"; do
+  server_log="/tmp/spire-server-${t}.log"
+  docker logs "spire-server-${t}" >"${server_log}" 2>&1 || true
+  total_lines=$(wc -l <"${server_log}" | tr -d ' ')
+  print_info "spire-server-${t}: ${total_lines} log lines saved to ${server_log}"
 
-print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid drop-in replacement for HashiCorp Vault"
+  # Report (non-fatal) warnings for visibility.
+  warn_count=$(grep -c -E 'level=warn|level=warning|[[:space:]]WARN' "${server_log}" || true)
+  if [[ "${warn_count}" -gt 0 ]]; then
+    print_info "spire-server-${t}: ${warn_count} warning line(s) (non-fatal)."
+  fi
+
+  # Fail the gate on error/fatal.
+  if error_lines=$(grep -n -E 'level=error|level=fatal|[[:space:]]ERROR|[[:space:]]FATA' "${server_log}"); then
+    print_info "spire-server-${t}: ERROR/FATAL log lines detected:"
+    echo "${error_lines}"
+    LOG_GATE_FAILED=1
+  else
+    print_success "spire-server-${t}: no error/fatal log lines."
+  fi
+done
+
+if [[ "${LOG_GATE_FAILED}" -ne 0 ]]; then
+  print_error "SPIRE server log gate failed: one or more servers logged errors (see above)."
+fi
+print_success "SPIRE server log gate passed — no errors on any server."
+
+print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid multi-tenant drop-in replacement for HashiCorp Vault"
 
 print_success "SPIRE integration tests completed successfully!"
