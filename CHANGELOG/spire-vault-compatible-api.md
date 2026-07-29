@@ -41,9 +41,15 @@
     - Added `vault_api_enabled`, `vault_auth_verifier_url`, `vault_transit_mount`,
     `vault_pki_mount`, `vault_pki_ca_key_label`, and `vault_token_cache_ttl_secs`
     configuration fields to `ServerParams`.
-    - Added `VaultTokenCache` middleware (`crate/server/src/middlewares/vault_token.rs`)
+    - Added `SpireTokenCache` middleware (`crate/server/src/middlewares/spire_token.rs`)
     for validating Vault-compatible tokens via the Cosmian Authentication Server
-    (`auth-verifier`); uses a 30-second DashMap cache to reduce round-trips.
+    (`auth-verifier`); uses a DashMap cache (TTL from `vault_token_cache_ttl_secs`,
+    default 30 seconds) with a bounded entry cap to reduce round-trips.
+    - Added a transparent reverse proxy (`crate/server/src/routes/spire/auth_proxy.rs`)
+    that forwards `/v1/auth/*` requests (`AppRole` login, token lookup/renewal) to the
+    configured `vault_auth_verifier_url`, stripping the `/v1` prefix. This lets SPIRE
+    point a single `vault_addr` at the KMS for auth, transit, and PKI — no external
+    reverse proxy is required.
     - Added Vault Transit engine routes under `/v1/{transit_mount}/keys`:
         - `POST /keys/{name}` — create a transit key (EC P-256/P-384, RSA-2048/4096,
       and `ed25519`/`ml-dsa-65` under `non-fips`);
@@ -71,17 +77,19 @@
 
 ## Testing
 
-- **`tests/spire/` — SPIRE + Cosmian integration test stack** added:
-    - `docker-compose.yml` — 8-service stack: PostgreSQL, auth-verifier, KMS, nginx
-    Vault proxy, SPIRE server, SPIRE agent, and two simulated Mistral AI agents.
+- **`test_data/spire/` — SPIRE + Cosmian integration test stack** added, driven by
+  `mise run test:spire`:
+    - `auth-verifier` and the KMS run as host processes; the KMS proxies `/v1/auth/*`
+    directly to the auth-verifier (no nginx / reverse proxy component), so SPIRE points a
+    single `vault_addr` at the KMS for auth, transit, and PKI.
+    - PostgreSQL, the SPIRE server, the SPIRE agent, and two simulated Mistral AI agents
+    run in Docker under the `spire` compose profile.
     - `certs/generate-test-certs.sh` — generates self-signed CA + leaf TLS certs for
     all services.
-    - `nginx/vault-proxy.conf` — routes `/v1/auth/*` → auth-verifier,
-    `/v1/transit/*` + `/v1/pki/*` → KMS, presenting a single `vault_addr` to SPIRE.
     - `config/spire-server.conf` / `spire-agent.conf` — SPIRE configuration with
-    Vault `KeyManager` and `UpstreamAuthority` plugins pointing to the nginx proxy.
+    Vault `KeyManager` and `UpstreamAuthority` plugins pointing at the KMS `vault_addr`.
     - `config/kms.toml` / `auth_verifier.toml` — service configuration files.
-    - `setup/provision.sh` — creates two AppRoles (`spire-server` and `mistral-agents`,
-    G5 fix), generates secret-IDs, and creates the PKI CA key in KMS.
+    - `setup/provision.sh` — creates two AppRoles (`spire-server` and `mistral-agents`),
+    generates secret-IDs, and creates the PKI CA key in KMS.
     - `mistral-client/` — Python 3.12 Dockerfile + `test_spiffe_identity.py` that
     fetches a JWT-SVID from the Workload API and validates the SPIFFE ID and expiry.
