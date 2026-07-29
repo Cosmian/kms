@@ -631,9 +631,7 @@ Crate path: `crate/server`
 | `debug` | `vault transit: created ML-DSA-65 key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
 | `debug` | `vault transit: created RSA key '{name}' bits={bits}` | `src/routes/spire/transit.rs` | `name`, `bits` | - |
 | `debug` | `vault transit: deleted key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
-| `trace` | `POST vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
 | `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
-| `trace` | `POST vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
 | `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
 | `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e`: reqwest error detail | Raised when KMS cannot reach auth-verifier to forward a `/v1/auth/*` request; SPIRE will fail to authenticate |
 | `info` | `Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_mount`: configured transit mount name, `pki_mount`: configured PKI mount name | Emitted once on startup when `vault_api_enabled = true` and `vault_auth_verifier_url` is set |
@@ -644,6 +642,8 @@ Crate path: `crate/server`
 | `debug` | `spire_token_middleware: validated entity={}` | `src/middlewares/spire_token.rs` | - | - |
 | `trace` | `spire_token_middleware: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | - | - |
 | `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` — the offending request path (with `/v1` stripped) that contained a `.`/`..` segment | Security: emitted when the unauthenticated `/v1/auth/*` proxy blocks a path-traversal attempt (HTTP 400). Repeated occurrences may indicate probing of internal auth-verifier endpoints. |
+| `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
 | `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`

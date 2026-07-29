@@ -71,8 +71,8 @@ use crate::{
             pki::sign_intermediate,
             transit::{
                 configure_transit_key, create_transit_key, create_transit_key_put,
-                delete_transit_key, get_transit_key,
-                list_transit_keys, sign_with_transit_key, sign_with_transit_key_put,
+                delete_transit_key, get_transit_key, list_transit_keys, sign_with_transit_key,
+                sign_with_transit_key_put,
             },
         },
         swagger,
