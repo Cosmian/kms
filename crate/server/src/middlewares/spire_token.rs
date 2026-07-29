@@ -395,6 +395,51 @@ mod tests {
         );
     }
 
+    /// Insert → lookup returns the user.
+    #[test]
+    fn cache_insert_then_lookup() {
+        let (cache, hash, _token) = make_cache_with_user("entity-001");
+        let found = cache.lookup(&hash).expect("should find inserted user");
+        assert_eq!(found.entity, "entity-001");
+        assert_eq!(found.policies, vec!["default"]);
+    }
+
+    /// Lookup for an unknown hash returns None.
+    #[test]
+    fn cache_lookup_miss_returns_none() {
+        let cache = SpireTokenCache::new(30);
+        let unknown_hash = compute_hash("no-such-token");
+        assert!(cache.lookup(&unknown_hash).is_none());
+    }
+
+    /// A second lookup after the TTL has passed returns None.
+    #[test]
+    fn cache_entry_expires_after_ttl() {
+        let cache = SpireTokenCache::new(1); // 1-second TTL
+        let hash = compute_hash("expire-me");
+        cache.insert(
+            hash,
+            SpireAuthenticatedUser {
+                entity: "ephemeral".into(),
+                policies: vec![],
+            },
+        );
+        assert!(
+            cache.lookup(&hash).is_some(),
+            "should be found before expiry"
+        );
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(cache.lookup(&hash).is_none(), "should be expired after TTL");
+    }
+
+    /// Insert, then lookup with a different hash returns None.
+    #[test]
+    fn cache_lookup_wrong_hash_returns_none() {
+        let (cache, _hash, _token) = make_cache_with_user("alice");
+        let wrong_hash = compute_hash("bob-token");
+        assert!(cache.lookup(&wrong_hash).is_none());
+    }
+
     // ── Middleware unit tests ────────────────────────────────────────────
 
     /// Cache-hit path: the middleware injects **both** [`SpireAuthenticatedUser`]
