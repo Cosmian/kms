@@ -32,6 +32,20 @@ pub(crate) async fn proxy_auth_request(
     // Strip it from the incoming KMS path so `/v1/auth/{tail}` → `/auth/{tail}`.
     let base = auth_verifier_url.as_str().trim_end_matches('/');
     let path = req.path().strip_prefix("/v1").unwrap_or_else(|| req.path());
+
+    // Security: this proxy is intentionally unauthenticated and scoped to `/auth/*`.
+    // Actix does not normalize the path, so `req.path()` may still contain `.`/`..`
+    // segments. If we forwarded them verbatim, the outgoing `reqwest` URL parser would
+    // resolve `.../auth/../admin` down to `.../admin`, escaping the `/auth/*` scope and
+    // reaching arbitrary auth-verifier endpoints. Reject such paths *before* building
+    // the outgoing request rather than relying on the HTTP client to "do the right thing".
+    if path_has_dot_segment(path) {
+        warn!("SPIRE auth proxy: rejected path traversal attempt: {path}");
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "errors": ["invalid path: '.' and '..' segments are not allowed"]
+        }));
+    }
+
     let target = if req.query_string().is_empty() {
         format!("{base}{path}")
     } else {
@@ -88,5 +102,65 @@ pub(crate) async fn proxy_auth_request(
                 "errors": [format!("auth-verifier unreachable: {e}")]
             }))
         }
+    }
+}
+
+/// Return `true` if any segment of `path` resolves to a `.` or `..` (dot or
+/// dot-dot) segment, in either plain or percent-encoded form.
+///
+/// Only the literal `.` character and its percent-encoding `%2e`/`%2E` decode to
+/// `.`, so normalizing `%2e` to `.` (case-insensitively) is sufficient to detect
+/// every encoding of a dot segment. This is used to block path-traversal attempts
+/// in the unauthenticated auth proxy before the path is handed to the outgoing
+/// HTTP client (whose URL parser would otherwise silently collapse `..`).
+fn path_has_dot_segment(path: &str) -> bool {
+    path.split('/').any(|segment| {
+        let normalized = segment.to_ascii_lowercase().replace("%2e", ".");
+        normalized == "." || normalized == ".."
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::path_has_dot_segment;
+
+    #[test]
+    fn rejects_plain_dot_segments() {
+        assert!(path_has_dot_segment("/auth/../admin"));
+        assert!(path_has_dot_segment("/auth/./admin"));
+        assert!(path_has_dot_segment("/../admin"));
+        assert!(path_has_dot_segment("/auth/.."));
+        assert!(path_has_dot_segment(".."));
+        assert!(path_has_dot_segment("."));
+    }
+
+    #[test]
+    fn rejects_percent_encoded_dot_segments() {
+        assert!(path_has_dot_segment("/auth/%2e%2e/admin"));
+        assert!(path_has_dot_segment("/auth/%2E%2E/admin"));
+        assert!(path_has_dot_segment("/auth/%2e/admin"));
+        assert!(path_has_dot_segment("/auth/.%2e/admin"));
+        assert!(path_has_dot_segment("/auth/%2e./admin"));
+    }
+
+    #[test]
+    fn accepts_safe_paths() {
+        assert!(!path_has_dot_segment("/auth/approle/login"));
+        assert!(!path_has_dot_segment("/auth/token/lookup-self"));
+        assert!(!path_has_dot_segment("/auth/token/renew-self"));
+        assert!(!path_has_dot_segment(
+            "/auth/approle/role/spire-server/secret-id"
+        ));
+        assert!(!path_has_dot_segment("/"));
+        assert!(!path_has_dot_segment(""));
+    }
+
+    #[test]
+    fn accepts_segments_containing_but_not_equal_to_dots() {
+        // Dots inside a longer segment are legitimate and must not be flagged.
+        assert!(!path_has_dot_segment("/auth/token.self"));
+        assert!(!path_has_dot_segment("/auth/v1.2/login"));
+        assert!(!path_has_dot_segment("/auth/...login"));
+        assert!(!path_has_dot_segment("/auth/a..b"));
     }
 }

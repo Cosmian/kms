@@ -1,5 +1,11 @@
 ## Bug Fixes
 
+- **Auth proxy path-traversal hardening (security)**: the unauthenticated `/v1/auth/*`
+  reverse proxy now rejects (HTTP 400) any request whose path contains a `.` or `..`
+  segment, in plain or percent-encoded (`%2e`) form, before building the outgoing request.
+  Previously such segments were forwarded verbatim and the outgoing HTTP client's URL parser
+  would collapse them (e.g. `/v1/auth/../admin` → `/admin`), letting a caller escape the
+  `/auth/*` scope and reach unrelated auth-verifier endpoints without authentication.
 - **RSA transit signatures now honor the requested `signature_algorithm`**: the Vault
   Transit `POST /sign/{name}/{hash}` handler reads the `signature_algorithm` field
   (`pss` or `pkcs1v15`) and threads it through to the KMIP `Sign` request for RSA keys.
