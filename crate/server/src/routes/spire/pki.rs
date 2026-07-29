@@ -227,8 +227,15 @@ pub(crate) async fn sign_intermediate(
         ));
     }
 
+    // The PKI CA key is a server-level resource created and owned by the server
+    // admin (default_username).  AppRole authentication only proves who the caller
+    // is; all CA key operations must be performed as the server admin so that any
+    // authenticated SPIRE client can trigger certificate signing regardless of which
+    // user identity their token maps to.
+    let ca_user = kms.params.default_username.clone();
+
     // Find the CA private key
-    let ca_private_key_uid = find_ca_private_key_uid(&kms, ca_label, &user).await?;
+    let ca_private_key_uid = find_ca_private_key_uid(&kms, ca_label, &ca_user).await?;
     debug!("vault pki: using CA private key uid={ca_private_key_uid}");
 
     // Build the Certify request
@@ -269,7 +276,7 @@ pub(crate) async fn sign_intermediate(
     };
 
     let certify_resp = kms
-        .certify(certify_req, &user)
+        .certify(certify_req, &ca_user)
         .await
         .map_err(SpireApiError::from)?;
 
@@ -294,7 +301,7 @@ pub(crate) async fn sign_intermediate(
     // Retrieve the issuing CA certificate (linked to the CA private key's public key)
     // For the beta, we return the signed cert + minimal chain.
     // The issuing_ca is the CA cert linked to the CA private key.
-    let issuing_ca_pem = get_issuing_ca_pem(&kms, ca_label, &user).await?;
+    let issuing_ca_pem = get_issuing_ca_pem(&kms, ca_label, &ca_user).await?;
 
     // Build ca_chain: [issuing_ca_pem] — root excluded, no duplication of signed cert
     let ca_chain = vec![issuing_ca_pem.clone()];

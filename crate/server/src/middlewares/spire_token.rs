@@ -4,7 +4,10 @@
 //! the SPIRE vault plugin), computes `SHA-256(token)`, and checks a 30-second
 //! in-memory cache.  On a cache miss, calls
 //! `GET /auth/token/lookup-self` on the auth-verifier instance and
-//! caches the result.  Injects [`SpireAuthenticatedUser`] into request extensions.
+//! caches the result.  Injects both [`SpireAuthenticatedUser`] and
+//! [`AuthenticatedUser`] into request extensions so that the KMS permission
+//! system correctly attributes requests to the caller instead of falling back
+//! to `default_username`.
 
 use std::{
     sync::Arc,
@@ -22,6 +25,8 @@ use dashmap::DashMap;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::Url;
+
+use super::AuthenticatedUser;
 
 /// The `X-Vault-Token` header name (wire protocol used by the SPIRE vault plugin).
 pub(crate) const VAULT_TOKEN_HEADER: &str = "X-Vault-Token";
@@ -58,7 +63,7 @@ impl SpireTokenCache {
         })
     }
 
-    fn lookup(&self, hash: &[u8; 32]) -> Option<SpireAuthenticatedUser> {
+    pub(super) fn lookup(&self, hash: &[u8; 32]) -> Option<SpireAuthenticatedUser> {
         if let Some(entry) = self.inner.get(hash) {
             if entry.expires_at > Instant::now() {
                 return Some(entry.user.clone());
@@ -69,7 +74,7 @@ impl SpireTokenCache {
         None
     }
 
-    fn insert(&self, hash: [u8; 32], user: SpireAuthenticatedUser) {
+    pub(super) fn insert(&self, hash: [u8; 32], user: SpireAuthenticatedUser) {
         self.inner.insert(
             hash,
             CacheEntry {
@@ -134,7 +139,7 @@ async fn validate_against_auth_verifier(
 /// - Reads `X-Vault-Token` (wire protocol header used by the SPIRE vault plugin)
 /// - Checks/updates the 30-second in-memory cache
 /// - On miss: calls auth-verifier `GET /auth/token/lookup-self`
-/// - Injects `SpireAuthenticatedUser` into extensions
+/// - Injects both [`SpireAuthenticatedUser`] and [`AuthenticatedUser`] into extensions
 pub(crate) fn spire_token_middleware<S, B>(
     cache: Arc<SpireTokenCache>,
     auth_verifier_url: Url,
@@ -176,8 +181,11 @@ where
             let hash_bytes: [u8; 32] = Sha256::digest(raw_token.as_bytes()).into();
 
             // Cache hit path
-            if let Some(user) = cache.lookup(&hash_bytes) {
-                req.extensions_mut().insert(user);
+            if let Some(ref user) = cache.lookup(&hash_bytes) {
+                req.extensions_mut().insert(AuthenticatedUser {
+                    username: user.entity.clone(),
+                });
+                req.extensions_mut().insert(user.clone());
                 return next
                     .call(req)
                     .await
@@ -189,6 +197,9 @@ where
                 Ok(user) => {
                     debug!("spire_token_middleware: validated entity={}", user.entity);
                     cache.insert(hash_bytes, user.clone());
+                    req.extensions_mut().insert(AuthenticatedUser {
+                        username: user.entity.clone(),
+                    });
                     req.extensions_mut().insert(user);
                     next.call(req)
                         .await
@@ -206,4 +217,239 @@ where
             }
         }
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use std::time::Duration;
+
+    use actix_web::{App, HttpMessage, HttpResponse, web};
+    use sha2::{Digest, Sha256};
+
+    use super::*;
+
+    // ── helpers ──────────────────────────────────────────────────────────
+
+    fn compute_hash(token: &str) -> [u8; 32] {
+        Sha256::digest(token.as_bytes()).into()
+    }
+
+    fn make_cache_with_user(entity: &str) -> (Arc<SpireTokenCache>, [u8; 32], String) {
+        let cache = SpireTokenCache::new(30);
+        let token = format!("test-token-{entity}");
+        let hash = compute_hash(&token);
+        cache.insert(
+            hash,
+            SpireAuthenticatedUser {
+                entity: entity.to_owned(),
+                policies: vec!["default".into()],
+            },
+        );
+        (cache, hash, token)
+    }
+
+    // ── Cache unit tests ─────────────────────────────────────────────────
+
+    /// Insert → lookup returns the user.
+    #[test]
+    fn cache_insert_then_lookup() {
+        let (cache, hash, _token) = make_cache_with_user("entity-001");
+        let found = cache.lookup(&hash).expect("should find inserted user");
+        assert_eq!(found.entity, "entity-001");
+        assert_eq!(found.policies, vec!["default"]);
+    }
+
+    /// Lookup for an unknown hash returns None.
+    #[test]
+    fn cache_lookup_miss_returns_none() {
+        let cache = SpireTokenCache::new(30);
+        let unknown_hash = compute_hash("no-such-token");
+        assert!(cache.lookup(&unknown_hash).is_none());
+    }
+
+    /// A second lookup after the TTL has passed returns None.
+    #[test]
+    fn cache_entry_expires_after_ttl() {
+        let cache = SpireTokenCache::new(1); // 1-second TTL
+        let hash = compute_hash("expire-me");
+        cache.insert(
+            hash,
+            SpireAuthenticatedUser {
+                entity: "ephemeral".into(),
+                policies: vec![],
+            },
+        );
+        assert!(
+            cache.lookup(&hash).is_some(),
+            "should be found before expiry"
+        );
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(cache.lookup(&hash).is_none(), "should be expired after TTL");
+    }
+
+    /// Insert, then lookup with a different hash returns None.
+    #[test]
+    fn cache_lookup_wrong_hash_returns_none() {
+        let (cache, _hash, _token) = make_cache_with_user("alice");
+        let wrong_hash = compute_hash("bob-token");
+        assert!(cache.lookup(&wrong_hash).is_none());
+    }
+
+    // ── Middleware unit tests ────────────────────────────────────────────
+
+    /// Cache-hit path: the middleware injects **both** [`SpireAuthenticatedUser`]
+    /// and [`AuthenticatedUser`] into request extensions.
+    #[actix_web::test]
+    async fn middleware_cache_hit_injects_both_user_types() {
+        let (cache, _hash, token) = make_cache_with_user("spire-entity-42");
+
+        // Dummy URL and client — won't be used on cache hit.
+        let dummy_url = url::Url::parse("http://127.0.0.1:1").unwrap();
+        let client = Arc::new(reqwest::Client::new());
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(spire_token_middleware(
+                    cache.clone(),
+                    dummy_url,
+                    client.clone(),
+                ))
+                .route(
+                    "/test",
+                    web::get().to(|req: actix_web::HttpRequest| async move {
+                        let extensions = req.extensions();
+                        let spire = extensions
+                            .get::<SpireAuthenticatedUser>()
+                            .expect("SpireAuthenticatedUser missing");
+                        let auth = extensions
+                            .get::<AuthenticatedUser>()
+                            .expect("AuthenticatedUser missing");
+                        assert_eq!(spire.entity, "spire-entity-42");
+                        assert_eq!(auth.username, "spire-entity-42");
+                        HttpResponse::Ok().body("ok")
+                    }),
+                ),
+        )
+        .await;
+
+        let req = actix_web::test::TestRequest::get()
+            .uri("/test")
+            .insert_header((VAULT_TOKEN_HEADER, token.as_str()))
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        assert_eq!(resp.status().as_u16(), 200);
+    }
+
+    /// Requests without the `X-Vault-Token` header are rejected with 403.
+    #[actix_web::test]
+    async fn middleware_missing_header_returns_403() {
+        let cache = SpireTokenCache::new(30);
+        let dummy_url = url::Url::parse("http://127.0.0.1:1").unwrap();
+        let client = Arc::new(reqwest::Client::new());
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(spire_token_middleware(
+                    cache.clone(),
+                    dummy_url,
+                    client.clone(),
+                ))
+                .route("/test", web::get().to(|| async { "should not reach" })),
+        )
+        .await;
+
+        let req = actix_web::test::TestRequest::get()
+            .uri("/test")
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        assert_eq!(resp.status().as_u16(), 403);
+    }
+
+    /// Requests with unknown tokens that miss the cache AND the auth-verifier
+    /// are rejected with 403 (cache-miss + unreachable auth-verifier).
+    #[actix_web::test]
+    async fn middleware_cache_miss_unreachable_auth_verifier_returns_403() {
+        let cache = SpireTokenCache::new(30);
+        // Use a non-routable address so the HTTP call fails fast.
+        let bad_url = url::Url::parse("http://127.0.0.1:1").unwrap();
+        let client = Arc::new(
+            reqwest::Client::builder()
+                .timeout(Duration::from_millis(100))
+                .build()
+                .unwrap(),
+        );
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(spire_token_middleware(
+                    cache.clone(),
+                    bad_url,
+                    client.clone(),
+                ))
+                .route("/test", web::get().to(|| async { "should not reach" })),
+        )
+        .await;
+
+        let req = actix_web::test::TestRequest::get()
+            .uri("/test")
+            .insert_header((VAULT_TOKEN_HEADER, "unknown-token-not-in-cache"))
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        assert_eq!(resp.status().as_u16(), 403);
+    }
+
+    /// Multiple cache hits with different tokens inject the correct,
+    /// per-token entity IDs — verifying no cross-contamination between
+    /// cached entries.
+    #[actix_web::test]
+    async fn middleware_two_different_tokens_get_correct_users() {
+        let (cache, _hash1, token1) = make_cache_with_user("alice");
+        let token2 = "bob-token".to_owned();
+        let hash2 = compute_hash(&token2);
+        cache.insert(
+            hash2,
+            SpireAuthenticatedUser {
+                entity: "bob".into(),
+                policies: vec!["admin".into()],
+            },
+        );
+
+        let dummy_url = url::Url::parse("http://127.0.0.1:1").unwrap();
+        let client = Arc::new(reqwest::Client::new());
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(spire_token_middleware(
+                    cache.clone(),
+                    dummy_url,
+                    client.clone(),
+                ))
+                .route(
+                    "/whoami",
+                    web::get().to(|req: actix_web::HttpRequest| async move {
+                        let extensions = req.extensions();
+                        let auth = extensions.get::<AuthenticatedUser>().unwrap();
+                        HttpResponse::Ok().body(auth.username.clone())
+                    }),
+                ),
+        )
+        .await;
+
+        // Alice
+        let req = actix_web::test::TestRequest::get()
+            .uri("/whoami")
+            .insert_header((VAULT_TOKEN_HEADER, token1.as_str()))
+            .to_request();
+        let body = actix_web::test::call_and_read_body(&app, req).await;
+        assert_eq!(body, &b"alice"[..]);
+
+        // Bob
+        let req = actix_web::test::TestRequest::get()
+            .uri("/whoami")
+            .insert_header((VAULT_TOKEN_HEADER, token2.as_str()))
+            .to_request();
+        let body = actix_web::test::call_and_read_body(&app, req).await;
+        assert_eq!(body, &b"bob"[..]);
+    }
 }
