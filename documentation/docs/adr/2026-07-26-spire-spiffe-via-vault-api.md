@@ -103,6 +103,13 @@ recorded here so they are tracked before longer-lived production rollouts.
   string-based newest-key tiebreak is non-deterministic. Acceptable for the beta given
   SPIRE key ids are effectively unique per rotation; sub-second precision would require
   threading a higher-resolution creation timestamp through the KMIP object metadata.
+- **LIM-003** FIPS transit/PKI paths untested in CI — the `spire` CI job runs only with the
+  `non-fips` feature set, because the transit key-creation path exercises algorithms and
+  Vault-API compatibility behaviour that are non-FIPS-only. The FIPS-mode SPIRE code paths
+  (the `#[cfg(not(feature = "non-fips"))]` stubs and the FIPS-approved transit/PKI subset)
+  therefore compile in CI but are not exercised end-to-end. This is a deliberate scoping
+  decision for the beta: a FIPS CI cell for SPIRE is deferred until the FIPS-approved
+  algorithm subset for transit is finalised.
 
 ## Alternatives Considered
 
