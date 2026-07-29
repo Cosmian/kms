@@ -1,0 +1,133 @@
+# =============================================================================
+# Eviden KMS — configuration for the SPIRE / Vault PoC (poc-mcds.cosmian.dev)
+# =============================================================================
+#
+# This is the OPERATOR-side KMS configuration. It exposes the Vault-compatible
+# API (`/v1/auth/*`, `/v1/transit/*`, `/v1/pki/*`) that SPIRE servers consume,
+# and forwards authentication to the auth-verifier (see
+# `authentication/server/auth_verifier.spire.toml`).
+#
+# Start the KMS with:
+#   cosmian_kms --config /path/to/kms.toml
+#
+# Log verbosity is controlled by the RUST_LOG environment variable, e.g.
+#   RUST_LOG="info,cosmian_kms_server=debug" cosmian_kms --config kms.toml
+#
+# ── Do I need to enable a KMS auth method for SPIRE? ─────────────────────────
+# NO — not for the SPIRE/Vault interaction itself. The `/v1/transit/*`,
+# `/v1/pki/*` and `/v1/auth/*` scopes are authenticated INDEPENDENTLY of the
+# KMS's own auth stack: callers present an AppRole `X-Vault-Token` that the KMS
+# validates against the auth-verifier. Enabling `[idp_auth]` / API-token /
+# client-cert auth does NOT gate those scopes.
+#
+# YES — you should still protect the REST of the KMS (KMIP, REST, Web UI) on a
+# publicly reachable PoC, otherwise every non-Vault request is treated as the
+# unauthenticated `default_username` below (i.e. anyone could create/read/delete
+# keys via KMIP/REST). Pick ONE method and uncomment it further down:
+#   • `[http] api_token_id`      — simplest: a shared bearer token
+#   • `[idp_auth] jwt_auth_provider` — OAuth2/OIDC (Google, Azure AD, Keycloak…)
+#   • `[tls] clients_ca_cert_file`   — mutual-TLS client certificates
+#
+# CAVEAT if you enable an auth method: the PKI root CA key is ALWAYS accessed as
+# `default_username`. Create/own the `vault_pki_ca` key as that same identity
+# (or set `force_default_username = true`) so `sign-intermediate` can find it.
+# =============================================================================
+
+# The default identity used for unauthenticated requests, and the owner under
+# which the Vault PKI CA key is looked up. Keep this stable.
+default_username = "admin"
+
+# When true, authenticate the caller but always act as `default_username`.
+# Useful if you enable an auth method but want all objects owned by one identity
+# (keeps the vault PKI CA key reachable regardless of who signs in).
+force_default_username = false
+
+# Public URL clients use to reach this KMS. Must match what SPIRE puts in
+# `vault_addr` and what the TLS certificate is issued for.
+kms_public_url = "https://poc-mcds.cosmian.dev"
+
+# ── Database ─────────────────────────────────────────────────────────────────
+# Persistent store. clear_database MUST be false in a PoC/production deployment
+# (true wipes all objects on every start — dev/test only).
+[db]
+database_type  = "sqlite"
+sqlite_path    = "/var/lib/cosmian/kms-data"
+clear_database = false
+
+# ── HTTP binding ─────────────────────────────────────────────────────────────
+# Bind on all interfaces. If a reverse proxy terminates TLS on 443 and forwards
+# to this port, keep 9998 here; if the KMS serves 443 directly, set port = 443.
+[http]
+hostname = "0.0.0.0"
+port     = 9998
+
+# The browser Web UI requires the public origin in the CORS allow-list.
+cors_allowed_origins = ["https://poc-mcds.cosmian.dev"]
+
+# OPTION A — protect KMIP/REST with a shared API token (simplest).
+# Clients then send:  Authorization: Bearer <secret-api-token>
+# api_token_id = "<secret-api-token>"
+
+# ── TLS ──────────────────────────────────────────────────────────────────────
+# Server certificate presented to clients (SPIRE, ckms, the Web UI). It MUST be
+# valid for `poc-mcds.cosmian.dev`. Use a real (e.g. Let's Encrypt / internal CA)
+# certificate for the PoC. If a reverse proxy terminates TLS instead, point it
+# at this server and adjust accordingly.
+[tls]
+tls_cert_file = "/etc/cosmian/certs/kms.crt"
+tls_key_file  = "/etc/cosmian/certs/kms.key"
+# tls_chain_file = "/etc/cosmian/certs/kms.chain.crt"
+
+# OPTION C — require client certificates (mutual TLS) for KMIP/REST callers.
+# clients_ca_cert_file = "/etc/cosmian/certs/clients-ca.crt"
+
+# ── Identity-provider (JWT/OIDC) auth — OPTION B ─────────────────────────────
+# Protect KMIP/REST with OAuth2/OIDC bearer tokens. Format per provider:
+#   "JWT_ISSUER_URI,JWKS_URI,AUDIENCE_1,AUDIENCE_2,..."
+[idp_auth]
+# jwt_auth_provider = [
+#   "https://login.microsoftonline.com/<tenant>/v2.0,https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys,<audience>"
+# ]
+
+# ── Vault-compatible API (required for SPIRE) ────────────────────────────────
+# Enables the `/v1/auth/*`, `/v1/transit/*` and `/v1/pki/*` scopes.
+#
+# PROVISIONING NOTE (two-plane model): the KMS proxies only the DATA-plane auth
+# routes (`/v1/auth/approle/login`, `/v1/auth/token/*`). Creating AppRoles is a
+# MANAGEMENT-plane operation done by operators DIRECTLY against the auth-verifier
+# (`/login` + `/auth/approle/*`), e.g. `ckms vault approle create-role
+# --auth-verifier-url https://<auth-verifier>:8443 ...`. The KMS never proxies
+# the admin API — the auth-verifier is a separate endpoint operators reach
+# directly (keep it on a limited-exposure network where possible).
+[vault]
+vault_api_enabled       = true
+
+# Internal URL of the auth-verifier this KMS proxies `/v1/auth/*` to.
+vault_auth_verifier_url = "https://127.0.0.1:8443"
+
+# CA certificate that signs the auth-verifier's TLS certificate (same file as
+# the auth-verifier's server_ca_chain).
+vault_auth_verifier_ca_cert = "/etc/cosmian/auth-verifier/certs/auth.ca.pem"
+
+# Skip verification of the auth-verifier certificate. Takes PRECEDENCE over
+# vault_auth_verifier_ca_cert. Leave false in a PoC/production; set true ONLY in
+# throwaway/dev environments.
+vault_auth_verifier_accept_invalid_certs = false
+
+# Engine mount points (must match what SPIRE is configured with).
+vault_transit_mount    = "transit"
+vault_pki_mount        = "pki"
+
+# KMIP tag of the KMS key used as the PKI root CA signing key. Create it once as
+# `default_username` before SPIRE connects, e.g.:
+#   ckms certificates certify --generate-key-pair --algorithm nist-p384 \
+#     --subject-name "CN=Eviden KMS Root CA,O=Eviden,C=FR" --tag vault_pki_ca --days 3650 ...
+vault_pki_ca_key_label = "vault_pki_ca"
+
+# Seconds to cache successful auth-verifier token validations (0 disables).
+vault_token_cache_ttl_secs = 30
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+[logging]
+rust_log    = "info,cosmian_kms_server=info"
+ansi_colors = false
