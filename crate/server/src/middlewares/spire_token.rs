@@ -53,14 +53,38 @@ struct CacheEntry {
 pub(crate) struct SpireTokenCache {
     inner: DashMap<[u8; 32], CacheEntry>,
     ttl: Duration,
+    max_entries: usize,
 }
+
+/// Number of cached entries that triggers an opportunistic sweep of expired
+/// entries on `insert`. This bounds resident memory to roughly the number of
+/// *unexpired* tokens rather than every token ever validated, without needing a
+/// background sweeper task.
+const DEFAULT_MAX_ENTRIES: usize = 100_000;
 
 impl SpireTokenCache {
     pub(crate) fn new(ttl_secs: u64) -> Arc<Self> {
+        Self::with_max_entries(ttl_secs, DEFAULT_MAX_ENTRIES)
+    }
+
+    fn with_max_entries(ttl_secs: u64, max_entries: usize) -> Arc<Self> {
         Arc::new(Self {
             inner: DashMap::new(),
             ttl: Duration::from_secs(ttl_secs),
+            max_entries,
         })
+    }
+
+    /// Remove every expired entry from the cache.
+    ///
+    /// Called opportunistically from `insert` once the cache grows past
+    /// `max_entries`, so a token that validates once and is never presented
+    /// again (client crash, superseded login, revoked token) cannot linger past
+    /// its TTL. Failed validations are never cached, so only genuine expiries
+    /// are swept here.
+    fn evict_expired(&self) {
+        let now = Instant::now();
+        self.inner.retain(|_, entry| entry.expires_at > now);
     }
 
     pub(super) fn lookup(&self, hash: &[u8; 32]) -> Option<SpireAuthenticatedUser> {
@@ -75,6 +99,11 @@ impl SpireTokenCache {
     }
 
     pub(super) fn insert(&self, hash: [u8; 32], user: SpireAuthenticatedUser) {
+        // Opportunistically bound memory: purge accumulated expired entries
+        // before the map can grow without limit.
+        if self.inner.len() >= self.max_entries {
+            self.evict_expired();
+        }
         self.inner.insert(
             hash,
             CacheEntry {
@@ -294,6 +323,38 @@ mod tests {
         let (cache, _hash, _token) = make_cache_with_user("alice");
         let wrong_hash = compute_hash("bob-token");
         assert!(cache.lookup(&wrong_hash).is_none());
+    }
+
+    /// Once the cache grows past `max_entries`, the next insert sweeps expired
+    /// entries so tokens that were never looked up again cannot linger forever.
+    #[test]
+    fn cache_evicts_expired_entries_when_over_capacity() {
+        // ttl = 0 → every inserted entry is immediately expired; cap = 3.
+        let cache = SpireTokenCache::with_max_entries(0, 3);
+        for i in 0..3 {
+            cache.insert(
+                compute_hash(&format!("stale-{i}")),
+                SpireAuthenticatedUser {
+                    entity: format!("e{i}"),
+                    policies: vec![],
+                },
+            );
+        }
+        assert_eq!(cache.inner.len(), 3, "cap reached with stale entries");
+
+        // The 4th insert trips the sweep, purging the 3 expired entries first.
+        cache.insert(
+            compute_hash("stale-3"),
+            SpireAuthenticatedUser {
+                entity: "e3".into(),
+                policies: vec![],
+            },
+        );
+        assert_eq!(
+            cache.inner.len(),
+            1,
+            "expired entries swept, only the newest insert remains"
+        );
     }
 
     // ── Middleware unit tests ────────────────────────────────────────────
