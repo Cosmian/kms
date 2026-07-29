@@ -205,8 +205,8 @@ sequenceDiagram
     KMS-->>Client: 204 No Content
     Client->>KMS: GET /v1/transit/keys/{name}
     KMS-->>Client: {"data":{"name","type","latest_version":1,<br/>"keys":{"1":{"public_key":"<PEM>","creation_time"}}}}
-    Client->>KMS: POST /v1/transit/sign/{name}/{alg}<br/>{"input":"<base64>","prehashed":true}
-    Note over KMS: KMIP Sign
+    Client->>KMS: POST /v1/transit/sign/{name}/{alg}<br/>{"input":"<base64>","prehashed":true,<br/>"signature_algorithm":"pss|pkcs1v15"}
+    Note over KMS: KMIP Sign<br/>(RSA: signature_algorithm honored, default pss)
     KMS-->>Client: {"data":{"signature":"vault:v1:<base64>"}}
 ```
 
@@ -367,17 +367,39 @@ Admin subcommands take `--auth-verifier-url`/`CKMS_VAULT_AUTH_URL`,
 > service-account JWT), for workloads running inside a Kubernetes cluster instead of
 > using AppRole credentials.
 
-**Cosmian KMS** (`/v1/transit/*`, `/v1/<pki_mount>/*`):
+**Cosmian KMS — Transit engine** (mount: `{vault_transit_mount}`, default `transit`):
 
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/v1/transit/keys/{name}` | Create a transit key. |
-| `POST` | `/v1/transit/keys/{name}/config` | Update key config (`deletion_allowed`; accepted, no-op). |
-| `GET` | `/v1/transit/keys/{name}` | Read key info (type, public key, version map). |
-| `GET` | `/v1/transit/keys` | List transit keys. |
-| `DELETE` | `/v1/transit/keys/{name}` | Delete a transit key. |
-| `POST` | `/v1/transit/sign/{name}/{alg}` | Sign pre-hashed or raw data. |
-| `POST`/`PUT` | `/v1/<pki_mount>/root/sign-intermediate` | Sign a CSR with the configured CA key. |
+Each transit key is stored as an asymmetric **key pair** (`PrivateKey` + `PublicKey`) in
+the KMS.
+Both objects carry the tag `vault_transit:{name}`.
+`sensitive=true` is set at creation time so the private key is permanently non-exportable
+at every API surface (Vault HTTP, KMIP, `ckms`).
+Signing is always performed server-side.
+
+| Method | Path | KMIP operation | KMS object(s) | Tag / identifier | Key types |
+|---|---|---|---|---|---|
+| `POST` | `/v1/{mount}/keys/{name}` | `CreateKeyPair` | `PrivateKey` + `PublicKey` **created**; `sensitive=true` | `vault_transit:{name}` on both objects | `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`, `rsa-4096` (FIPS + non-FIPS); `ed25519`, `ml-dsa-65` (non-FIPS only) |
+| `GET` | `/v1/{mount}/keys/{name}` | `Find` → `Get` | `PrivateKey` **read** (by tag) → follows `PublicKeyLink` → `PublicKey` **read** (for PEM) | `vault_transit:{name}` | — |
+| `GET` | `/v1/{mount}/keys` | `Find` (all `PrivateKey`) | All `PrivateKey` objects **read**, filtered by tag prefix | prefix `vault_transit:` | — |
+| `POST` | `/v1/{mount}/keys/{name}/config` | *(no-op)* | none | — | — |
+| `DELETE` | `/v1/{mount}/keys/{name}` | `Revoke` (cascade) + `Destroy` (cascade, `remove=true`) | `PrivateKey` + linked `PublicKey` **permanently deleted** | `vault_transit:{name}` | — |
+| `POST` | `/v1/{mount}/sign/{name}/{alg}` | `Sign` | `PrivateKey` **used** (never exported); signature prefixed `vault:v1:` | `vault_transit:{name}` | — |
+
+**Cosmian KMS — PKI engine** (mount: `{vault_pki_mount}`, default `pki`):
+
+The PKI CA key is a server-level resource owned by the server admin (`default_username`).
+All three steps of the sign-intermediate flow execute as the server admin, regardless of
+which AppRole token the caller presents — the token is validated for authentication only.
+
+| Method | Path | KMIP operation(s) | KMS object(s) | Tag / identifier |
+|---|---|---|---|---|
+| `POST` / `PUT` | `/v1/{mount}/root/sign-intermediate` | ① `Find` (CA `PrivateKey`) → ② `Certify` (creates signed `Certificate`) → ③ `Find`+`Get` (CA `Certificate`) | ① CA `PrivateKey` **read** as server admin; ② signed `Certificate` **created** in KMS (returned in response); ③ CA `Certificate` **read** via link chain: CA `PrivateKey → PublicKeyLink → PublicKey → CertificateLink → Certificate` | CA key tag: `vault_pki_ca_key_label` config (default `vault_pki_ca`); signed cert: auto-assigned UID; CA cert: resolved by KMIP link traversal |
+
+> **Provisioning prerequisite**: the CA `PrivateKey` and its linked CA `Certificate` must
+> be created **before** SPIRE starts.
+> Use `ckms certificates certify --generate-key-pair --tag vault_pki_ca ...` (see the
+> [PKI CA key provisioning](#0-pki-ca-key-provisioning-prerequisite) section above).
+> The endpoint returns HTTP 500 if the CA key is absent.
 
 ## Security notes
 

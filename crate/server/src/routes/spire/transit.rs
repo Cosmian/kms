@@ -34,8 +34,8 @@ use cosmian_kms_server_database::reexport::{
             kmip_objects::ObjectType,
             kmip_operations::{Destroy, Revoke, Sign},
             kmip_types::{
-                CryptographicAlgorithm, CryptographicParameters, LinkType, LinkedObjectIdentifier,
-                RecommendedCurve, UniqueIdentifier,
+                CryptographicAlgorithm, CryptographicParameters, DigitalSignatureAlgorithm,
+                LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
             },
             requests::{create_ec_key_pair_request, create_rsa_key_pair_request},
         },
@@ -120,6 +120,15 @@ pub(crate) struct SignTransitRequest {
     /// When `true` (default), `input` is already a hash digest (prehashed).
     #[serde(default = "default_true")]
     pub prehashed: bool,
+    /// RSA signature scheme requested by the client: `"pss"` (default) or
+    /// `"pkcs1v15"`.
+    ///
+    /// This field applies to RSA keys only and is ignored for other key types,
+    /// matching Vault (which documents it as RSA-only). When absent the default is
+    /// `"pss"`, mirroring Vault's own documented default. SPIRE's `hashicorp_vault`
+    /// key manager always sends this field explicitly for RSA keys.
+    #[serde(default)]
+    pub signature_algorithm: Option<String>,
 }
 
 const fn default_true() -> bool {
@@ -221,6 +230,36 @@ fn transit_hash_alg_to_kmip(
         "sha2-384" | "sha-384" => HashingAlgorithm::SHA384,
         "sha2-512" | "sha-512" => HashingAlgorithm::SHA512,
         _ => HashingAlgorithm::SHA256,
+    }
+}
+
+/// Map a Vault `signature_algorithm` value to a KMIP `DigitalSignatureAlgorithm`
+/// for RSA keys.
+///
+/// - `Some("pkcs1v15")` → `SHA{256,384,512}WithRSAEncryption` (PKCS#1 v1.5),
+///   selected from the request's hashing algorithm.
+/// - `Some("pss")` or `None` → `RSASSAPSS` (Vault's documented default).
+///
+/// Returns a `BadRequest` error for any other value, or for a hashing algorithm
+/// that has no PKCS#1 v1.5 mapping.
+fn rsa_digital_signature_algorithm(
+    signature_algorithm: Option<&str>,
+    hash_alg: cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm,
+) -> SpireResult<DigitalSignatureAlgorithm> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_0::kmip_types::HashingAlgorithm;
+    match signature_algorithm {
+        Some("pkcs1v15") => match hash_alg {
+            HashingAlgorithm::SHA256 => Ok(DigitalSignatureAlgorithm::SHA256WithRSAEncryption),
+            HashingAlgorithm::SHA384 => Ok(DigitalSignatureAlgorithm::SHA384WithRSAEncryption),
+            HashingAlgorithm::SHA512 => Ok(DigitalSignatureAlgorithm::SHA512WithRSAEncryption),
+            other => Err(SpireApiError::BadRequest(format!(
+                "unsupported hashing algorithm {other:?} for pkcs1v15 RSA signing"
+            ))),
+        },
+        Some("pss") | None => Ok(DigitalSignatureAlgorithm::RSASSAPSS),
+        Some(other) => Err(SpireApiError::BadRequest(format!(
+            "unsupported signature_algorithm '{other}'. Supported: pss, pkcs1v15"
+        ))),
     }
 }
 
@@ -586,17 +625,32 @@ pub(crate) async fn sign_with_transit_key(
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
-    let (private_key_uid, _state, _attrs) = results
+    let (private_key_uid, _state, attrs) = results
         .into_iter()
         .next()
         .ok_or_else(|| SpireApiError::NotFound(format!("transit key '{name}' not found")))?;
 
     let hash_alg = transit_hash_alg_to_kmip(&hash_alg_path);
 
+    // The Vault `signature_algorithm` field (pss | pkcs1v15) is RSA-only. For RSA
+    // keys, translate it into the KMIP `DigitalSignatureAlgorithm` so the requested
+    // scheme is actually honored; without this the RSA default (RSASSA-PSS) would be
+    // used regardless of what the client asked for. Non-RSA keys ignore the field.
+    let digital_signature_algorithm =
+        if attrs.cryptographic_algorithm == Some(CryptographicAlgorithm::RSA) {
+            Some(rsa_digital_signature_algorithm(
+                body.signature_algorithm.as_deref(),
+                hash_alg,
+            )?)
+        } else {
+            None
+        };
+
     let sign_req = Sign {
         unique_identifier: Some(UniqueIdentifier::TextString(private_key_uid)),
         cryptographic_parameters: Some(CryptographicParameters {
             hashing_algorithm: Some(hash_alg),
+            digital_signature_algorithm,
             ..Default::default()
         }),
         digested_data: if body.prehashed {
