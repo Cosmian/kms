@@ -1,5 +1,11 @@
 ## Bug Fixes
 
+- **RSA transit signatures now honor the requested `signature_algorithm`**: the Vault
+  Transit `POST /sign/{name}/{hash}` handler reads the `signature_algorithm` field
+  (`pss` or `pkcs1v15`) and threads it through to the KMIP `Sign` request for RSA keys.
+  Previously the field was ignored and RSA always signed with PSS, so a client that asked
+  for `pkcs1v15` received signatures that failed verification. When the field is absent the
+  default is `pss` (matching Vault). The field is RSA-only and ignored for other key types.
 - **Transit keys are now genuinely non-exportable**: SPIRE transit (and PKI CA-linked)
   private keys are created with `sensitive: true`, so the KMIP `Get`/`Export` guard denies
   retrieval of the raw private key for *all* API surfaces (KMIP, `ckms`), not only the
