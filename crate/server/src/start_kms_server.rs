@@ -70,8 +70,9 @@ use crate::{
             auth_proxy::proxy_auth_request,
             pki::sign_intermediate,
             transit::{
-                configure_transit_key, create_transit_key, delete_transit_key, get_transit_key,
-                list_transit_keys, sign_with_transit_key,
+                configure_transit_key, create_transit_key, create_transit_key_put,
+                delete_transit_key, get_transit_key,
+                list_transit_keys, sign_with_transit_key, sign_with_transit_key_put,
             },
         },
         swagger,
@@ -1024,6 +1025,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
                 let transit_scope_path = format!("/v1/{transit_mount}");
                 let transit_scope = web::scope(&transit_scope_path)
+                    // SPIRE's `hashicorp_vault` KeyManager plugin (SPIRE >= 1.15.0) does
+                    // not always set a `Content-Type: application/json` header on its
+                    // `PUT` key-creation request; accept the JSON body regardless.
+                    .app_data(JsonConfig::default().content_type_required(false))
                     .wrap(spire_token_middleware(
                         spire_cache.clone(),
                         auth_verifier_url.clone(),
@@ -1031,11 +1036,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     ))
                     .wrap(Cors::default())
                     .service(create_transit_key)
+                    .service(create_transit_key_put)
                     .service(configure_transit_key)
                     .service(get_transit_key)
                     .service(list_transit_keys)
                     .service(delete_transit_key)
-                    .service(sign_with_transit_key);
+                    .service(sign_with_transit_key)
+                    .service(sign_with_transit_key_put);
                 app = app.service(transit_scope);
 
                 let pki_mount = kms_server_for_http.params.vault_pki_mount.clone();
