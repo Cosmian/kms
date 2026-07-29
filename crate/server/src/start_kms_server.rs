@@ -1029,7 +1029,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                         auth_verifier_url.clone(),
                         vault_http_client.clone(),
                     ))
-                    .wrap(Cors::permissive())
+                    .wrap(Cors::default())
                     .service(create_transit_key)
                     .service(configure_transit_key)
                     .service(get_transit_key)
@@ -1042,7 +1042,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let pki_scope_path = format!("/v1/{pki_mount}");
                 let pki_scope = web::scope(&pki_scope_path)
                     .wrap(spire_token_middleware(spire_cache, auth_verifier_url.clone(), vault_http_client.clone()))
-                    .wrap(Cors::permissive())
+                    .wrap(Cors::default())
                     .service(sign_intermediate);
                 app = app.service(pki_scope);
 
@@ -1059,7 +1059,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let auth_scope = web::scope("/v1/auth")
                     .app_data(web::Data::new(vault_http_client.clone()))
                     .app_data(web::Data::new(auth_verifier_url))
-                    .wrap(Cors::permissive())
+                    .wrap(Cors::default())
                     .service(
                         web::resource("/{tail:.*}")
                             .route(web::route().to(proxy_auth_request)),
