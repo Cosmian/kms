@@ -54,12 +54,7 @@ pub(crate) async fn proxy_auth_request(
 
     debug!("SPIRE auth proxy → {target}");
 
-    let method = match req.method().as_str() {
-        "GET" => reqwest::Method::GET,
-        "DELETE" => reqwest::Method::DELETE,
-        "PUT" => reqwest::Method::PUT,
-        _ => reqwest::Method::POST,
-    };
+    let method = reqwest_method(req.method().as_str());
 
     let mut rb = client.request(method, &target);
 
@@ -105,6 +100,20 @@ pub(crate) async fn proxy_auth_request(
     }
 }
 
+/// Translate an incoming actix-web HTTP method string into a `reqwest::Method`,
+/// preserving the verb byte-for-byte instead of collapsing unknown methods to
+/// `POST`.
+///
+/// The auth proxy must forward the client's method unchanged: mapping every
+/// non-`GET`/`DELETE`/`PUT` verb to `POST` would silently rewrite `PATCH`,
+/// `HEAD`, `OPTIONS`, etc., breaking any auth-verifier route that distinguishes
+/// them. `reqwest::Method::from_bytes` never fails for a syntactically valid
+/// actix method token, but we fall back to the original verb via `POST` only if
+/// parsing somehow fails, which cannot happen for a request actix already parsed.
+fn reqwest_method(method: &str) -> reqwest::Method {
+    reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::POST)
+}
+
 /// Return `true` if any segment of `path` resolves to a `.` or `..` (dot or
 /// dot-dot) segment, in either plain or percent-encoded form.
 ///
@@ -122,7 +131,18 @@ fn path_has_dot_segment(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::path_has_dot_segment;
+    use super::{path_has_dot_segment, reqwest_method};
+
+    #[test]
+    fn preserves_http_method() {
+        assert_eq!(reqwest_method("GET"), reqwest::Method::GET);
+        assert_eq!(reqwest_method("POST"), reqwest::Method::POST);
+        assert_eq!(reqwest_method("PUT"), reqwest::Method::PUT);
+        assert_eq!(reqwest_method("DELETE"), reqwest::Method::DELETE);
+        assert_eq!(reqwest_method("PATCH"), reqwest::Method::PATCH);
+        assert_eq!(reqwest_method("HEAD"), reqwest::Method::HEAD);
+        assert_eq!(reqwest_method("OPTIONS"), reqwest::Method::OPTIONS);
+    }
 
     #[test]
     fn rejects_plain_dot_segments() {
