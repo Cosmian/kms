@@ -255,6 +255,11 @@ services:
     image: ghcr.io/spiffe/spire-server:1.15.2
     profiles: [spire]
     container_name: spire-server-a
+    # SPIRE 1.15+ images run as non-root (uid 1000); the root-owned named
+    # data volume and the SQLite datastore/keys.json under /data would fail
+    # with "unable to open database file". Run as root to allow writes
+    # (matches the pre-1.15 image behaviour; test-only compose).
+    user: 0:0
     ports:
       - 8081:8081     # SPIRE server gRPC (tenant a)
     volumes:
@@ -283,6 +288,9 @@ services:
     image: ghcr.io/spiffe/spire-agent:1.15.2
     profiles: [spire]
     container_name: spire-agent-a
+    # See spire-server-a: run as root so the agent can write its data_dir
+    # (/data/spire-agent) under the non-root 1.15+ image.
+    user: 0:0
     depends_on:
       spire-server-a:
         condition: service_healthy
@@ -358,6 +366,9 @@ services:
     image: ghcr.io/spiffe/spire-server:1.15.2
     profiles: [spire]
     container_name: spire-server-b
+    # See spire-server-a: run as root so the 1.15+ non-root image can write
+    # its SQLite datastore and keys.json under /data/spire-server.
+    user: 0:0
     ports:
       - 8091:8081     # SPIRE server gRPC (tenant b)
     volumes:
@@ -383,6 +394,9 @@ services:
     image: ghcr.io/spiffe/spire-agent:1.15.2
     profiles: [spire]
     container_name: spire-agent-b
+    # See spire-server-a: run as root so the agent can write its data_dir
+    # (/data/spire-agent) under the non-root 1.15+ image.
+    user: 0:0
     depends_on:
       spire-server-b:
         condition: service_healthy
