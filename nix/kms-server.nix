@@ -75,7 +75,6 @@ let
   # Compute the actual hash file path for writing during build
 
   filteredSrc = mkFilteredSrc [
-    "nix/expected-hashes"
     "test_data"
     "documentation"
   ];
