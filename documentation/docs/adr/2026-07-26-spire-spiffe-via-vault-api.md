@@ -95,6 +95,14 @@ recorded here so they are tracked before longer-lived production rollouts.
   incomplete chain for a root→intermediate→leaf hierarchy, where SPIRE expects the *last*
   `ca_chain` element to be the true root. Multi-tier CA traversal is deferred; production
   multi-tier rollouts must account for this until full chain-walking is implemented.
+- **LIM-002** Whole-second `creation_time` precision — transit key `creation_time` is
+  formatted from KMIP's `InitialDate`, a POSIX-seconds timestamp with no sub-second
+  component, so the RFC 3339 string never carries a fractional part (unlike real Vault,
+  which returns nanosecond timestamps). If two keys for the same logical SPIRE key id are
+  created within the same wall-clock second (e.g. a fast rotation-retry loop), SPIRE's
+  string-based newest-key tiebreak is non-deterministic. Acceptable for the beta given
+  SPIRE key ids are effectively unique per rotation; sub-second precision would require
+  threading a higher-resolution creation timestamp through the KMIP object metadata.
 
 ## Alternatives Considered
 
