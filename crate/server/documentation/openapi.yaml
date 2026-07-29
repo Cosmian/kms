@@ -1596,19 +1596,10 @@ components:
           type: array
           items:
             type: string
-          description: SPIFFE URI SANs. Must contain at least one entry.
-        common_name:
-          type: string
-          description: Certificate Common Name (optional).
-          example: SPIRE Intermediate CA
-        organization:
-          type: string
-          description: Certificate Organization field (optional).
-          example: Cosmian
-        country:
-          type: string
-          description: ISO 3166-1 alpha-2 country code (optional).
-          example: FR
+          description: |
+            SPIFFE URI SANs. Must contain at least one entry. Used only to reject
+            requests carrying no SPIFFE identity; the SANs and Subject on the signed
+            certificate are taken from the CSR, not from this field.
         ttl:
           type: string
           description: |
@@ -3834,7 +3825,8 @@ paths:
               $ref: '#/components/schemas/SignIntermediateRequest'
             example:
               csr: "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----\n"
-              common_name: SPIRE Intermediate CA
+              uri_sans:
+                - spiffe://example.org/spire/server
               ttl: 8760h
       security:
         - vaultToken: []

@@ -7,8 +7,11 @@
 //! configured in `ServerParams`.
 //!
 //! Request:
-//!   `{ "csr": "<PEM>", "uri_sans": ["spiffe://..."], "common_name": "...",
-//!     "organization": "...", "country": "...", "ttl": "8760h" }`
+//!   `{ "csr": "<PEM>", "uri_sans": ["spiffe://..."], "ttl": "8760h" }`
+//!
+//! The signed certificate's Subject and SANs come from the CSR itself; the
+//! `Certify` operation signs the CSR as presented. `common_name`/`organization`/
+//! `country` are therefore not accepted — SPIRE encodes them in the CSR.
 //!
 //! Response:
 //!   `{ "data": { "certificate": "<PEM>", "issuing_ca": "<PEM>",
@@ -77,21 +80,22 @@ where
     deserializer.deserialize_any(StringOrVec)
 }
 
-#[allow(dead_code)] // extra fields accepted from Vault API callers but not yet used
 #[derive(Deserialize)]
 pub(crate) struct SignIntermediateRequest {
     /// PEM-encoded CSR from the workload (SPIRE SVID or intermediate CA).
+    ///
+    /// The signed certificate's Subject and SANs are taken **from this CSR** —
+    /// the KMS `Certify` operation signs the CSR as presented. SPIRE builds the
+    /// CSR with the correct Subject/URI-SANs before calling this endpoint, so no
+    /// server-side Subject construction is performed.
     pub csr: String,
     /// SPIFFE URI SANs — accepts a JSON string (comma-separated) or array.
     /// The Vault Go SDK / SPIRE vault plugin sends this as a plain string.
+    ///
+    /// Used only to reject requests that carry no SPIFFE identity; the actual
+    /// SANs on the signed certificate come from the CSR.
     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub uri_sans: Vec<String>,
-    #[serde(default)]
-    pub common_name: Option<String>,
-    #[serde(default)]
-    pub organization: Option<String>,
-    #[serde(default)]
-    pub country: Option<String>,
     /// Certificate validity duration (e.g. `"8760h"`, `"1h"`, `"3600s"`, `"365d"`).
     /// Parsed and forwarded to the KMS `Certify` operation as `requested_validity_days`.
     #[serde(default)]
