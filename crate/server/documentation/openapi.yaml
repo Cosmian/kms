@@ -3607,7 +3607,6 @@ paths:
         Create a new asymmetric transit key pair stored in the KMS under the tag
         `vault_transit:{name}`. Supported types: `ecdsa-p256`, `ecdsa-p384`,
         `rsa-2048`, `rsa-4096`. Non-FIPS only: `ed25519`, `ml-dsa-65`.
-        Returns `409 Conflict` if a key with the same name already exists.
       operationId: vaultTransitCreateKey
       parameters:
         - name: name
@@ -3635,8 +3634,6 @@ paths:
                 $ref: '#/components/schemas/TransitKeyInfoWrapper'
         '400':
           description: Unsupported key type.
-        '409':
-          description: A transit key with this name already exists.
         '500':
           description: Internal error.
 
