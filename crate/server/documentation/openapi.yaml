@@ -1482,6 +1482,14 @@ components:
           type: boolean
           default: false
           description: Accepted but always forced to `false` — transit keys are not exportable.
+        auto_rotate_period:
+          description: |
+            Vault's key auto-rotation interval. The KMS performs **no** time-based
+            key rotation, so only a disabled value (`0`, `"0"`, `""`, `null`, or the
+            field omitted) is accepted. Any non-zero interval is rejected with
+            `400`. SPIRE always sends `0`.
+          default: 0
+          example: 0
 
     TransitKeyVersion:
       type: object
