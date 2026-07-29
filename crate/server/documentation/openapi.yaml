@@ -3802,6 +3802,8 @@ paths:
               example:
                 data:
                   signature: vault:v1:MEUCIQDtv...
+        '400':
+          description: Invalid request (e.g. malformed base64 `input` or unsupported hash algorithm).
         '404':
           description: Key not found.
         '500':
