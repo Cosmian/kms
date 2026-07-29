@@ -3855,3 +3855,44 @@ paths:
           description: Missing or empty `uri_sans`, or `vault_pki_ca_key_label` not configured.
         '500':
           description: Internal error (CSR parsing, CA key not found, Certify failure).
+  # ── Vault Auth (transparent proxy) ─────────────────────────────────────────
+
+  /v1/auth/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema:
+          type: string
+        description: |
+          Arbitrary sub-path under `/v1/auth/` (e.g. `approle/login`,
+          `token/lookup-self`, `token/renew-self`, `token/revoke-self`).
+        example: approle/login
+    get: &vaultAuthProxy
+      tags: [Vault Auth]
+      summary: Transparent auth proxy
+      description: |
+        Catch-all reverse proxy for the Vault auth API. When the
+        Vault-compatible API is enabled, the KMS becomes the single `vault_addr`
+        endpoint for SPIRE, so every `/v1/auth/*` request (AppRole login, token
+        `lookup-self`, `renew-self`, `revoke-self`) is forwarded **unchanged** to
+        the auth-verifier configured via `vault_auth_verifier_url`, with the
+        `/v1` prefix stripped.
+
+        This route is intentionally **unauthenticated** (it carries the login
+        credentials themselves) and accepts **any HTTP method**; the client's
+        verb, query string, `X-Vault-Token`/`Authorization`/`Content-Type`
+        headers, and raw body are preserved. Paths containing `.`/`..` segments
+        are rejected with `400` to prevent traversal outside the `/auth/*` scope.
+        The auth-verifier response status and body are returned byte-for-byte.
+      operationId: vaultAuthProxy
+      responses:
+        '200':
+          description: Response forwarded verbatim from the auth-verifier.
+        '400':
+          description: Invalid path (`.`/`..` segments are not allowed).
+        '502':
+          description: The auth-verifier is unreachable.
+    post: *vaultAuthProxy
+    put: *vaultAuthProxy
+    delete: *vaultAuthProxy
