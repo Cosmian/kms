@@ -24,8 +24,10 @@ sequenceDiagram
     KMS-->>Admin: 200 OK (key stored, tag: vault_pki_ca)
     Admin->>AuthV: 1a. Admin login (directly)<br/>POST /login?realm=_ (HTTP Basic)
     AuthV-->>Admin: session cookie
-    Admin->>AuthV: 1b. Create AppRoles ("spire-server" + "mistral-agents")<br/>POST /auth/approle/role/{name} (session cookie)
-    AuthV-->>Admin: role_id + secret_id (per role)
+    loop for each identity: "spire-server", "mistral-agents"
+        Admin->>AuthV: 1b. Create AppRole, read role_id, mint secret_id<br/>POST .../role/{name} · GET .../role/{name}/role-id · POST .../role/{name}/secret-id
+        AuthV-->>Admin: role_id + secret_id
+    end
     Note over Admin,Server: Admin configures SPIRE with spire-server role_id + secret_id
     Server->>KMS: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
     KMS->>AuthV: proxy /v1/auth/* → /auth/*
@@ -76,14 +78,14 @@ generated, stored, and used exclusively inside the FIPS 140-3-validated KMS.
 
 ## Why use it?
 
-| Need | How this integration addresses it |
-|---|---|
-| **Private-key custody** | SPIRE's CA and transit keys are generated and stored exclusively inside Cosmian KMS — never on the SPIRE server's local disk. |
-| **FIPS 140-3 compliance** | All signing operations (CA rotation, transit `sign`) are executed by the FIPS-validated KMS, not by SPIRE's built-in `disk`/`memory` key manager. |
-| **No additional cluster to operate** | Reuses infrastructure you already run (Cosmian KMS + auth-verifier) instead of standing up and hardening a separate secrets management cluster just for SPIRE. |
-| **Centralized audit trail** | Every CA signature and transit `sign` call is a KMIP operation logged by the KMS with identity, timestamp, and key identifier. |
-| **Post-quantum-ready transit keys** | Transit keys support `ml-dsa-65` (non-FIPS builds) alongside classical `ecdsa-p256/p384` and `rsa-2048/4096`. |
-| **Drop-in `vault_addr`** | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "vault"` plugins need no code changes — only configuration pointing `vault_addr` at the KMS. No nginx or extra proxy required. |
+| Need                                 | How this integration addresses it                                                                                                                                                  |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Private-key custody**              | SPIRE's CA and transit keys are generated and stored exclusively inside Cosmian KMS — never on the SPIRE server's local disk.                                                      |
+| **FIPS 140-3 compliance**            | All signing operations (CA rotation, transit `sign`) are executed by the FIPS-validated KMS, not by SPIRE's built-in `disk`/`memory` key manager.                                  |
+| **No additional cluster to operate** | Reuses infrastructure you already run (Cosmian KMS + auth-verifier) instead of standing up and hardening a separate secrets management cluster just for SPIRE.                     |
+| **Centralized audit trail**          | Every CA signature and transit `sign` call is a KMIP operation logged by the KMS with identity, timestamp, and key identifier.                                                     |
+| **Post-quantum-ready transit keys**  | Transit keys support `ml-dsa-65` (non-FIPS builds) alongside classical `ecdsa-p256/p384` and `rsa-2048/4096`.                                                                      |
+| **Drop-in `vault_addr`**             | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "vault"` plugins need no code changes — only configuration pointing `vault_addr` at the KMS. No nginx or extra proxy required. |
 
 ## Who should use it?
 
@@ -139,10 +141,10 @@ TLS client already used for token validation is reused for the proxy.
 This deployment has **two distinct access planes**, and conflating them is the most
 common source of confusion:
 
-| Plane | Who | Reaches | Endpoints |
-|-------|-----|---------|-----------|
-| **Data plane** | SPIRE servers, workloads | the **KMS only** | `/v1/auth/approle/login`, `/v1/auth/token/*`, `/v1/transit/*`, `/v1/pki/*` |
-| **Management plane** | Platform operators | the **auth-verifier directly** | `/login?realm=_` (admin), `/auth/approle/*` (role/secret-id CRUD) |
+| Plane                | Who                      | Reaches                        | Endpoints                                                                  |
+| -------------------- | ------------------------ | ------------------------------ | -------------------------------------------------------------------------- |
+| **Data plane**       | SPIRE servers, workloads | the **KMS only**               | `/v1/auth/approle/login`, `/v1/auth/token/*`, `/v1/transit/*`, `/v1/pki/*` |
+| **Management plane** | Platform operators       | the **auth-verifier directly** | `/login?realm=_` (admin), `/auth/approle/*` (role/secret-id CRUD)          |
 
 Why AppRole **creation** is not on the data plane: creating a role or minting a
 `secret_id` requires an **admin session cookie** obtained from the auth-verifier's
@@ -183,6 +185,126 @@ ckms vault approle generate-secret-id spire-prod
 Equivalent raw calls (used by the test harness `provision.sh`): `POST /login?realm=_`
 for the admin cookie, then `POST /auth/approle/role/{name}` and
 `POST /auth/approle/role/{name}/secret-id` against the auth-verifier.
+
+## Setup (installation and configuration)
+
+This section is the systematic, production-oriented checklist to stand up the full
+stack. Each step links to the detailed reference for that component. In order:
+
+| # | Step | What you do | Reference |
+|---|------|-------------|-----------|
+| 1 | **Install Cosmian KMS** | Install and start the KMS (Docker, Linux packages, macOS, or Windows). | [KMS installation](../installation/installation_getting_started.md) |
+| 2 | **Install the auth-verifier** | Deploy the Cosmian Authentication Server that the KMS proxies `/v1/auth/*` to. | `authentication/server/documentation/installation.md` |
+| 3 | **Enable the Vault API on the KMS** | Turn on the SPIRE-compatible API and point it at the auth-verifier. | [Configuration reference](#configuration-reference) |
+| 4 | **Create the PKI CA key** | Create the KMS key the PKI engine signs intermediate CAs with. | [PKI CA key provisioning](#0-pki-ca-key-provisioning-prerequisite) |
+| 5 | **Provision AppRoles** | Create one AppRole per SPIRE server (and per workload group) and hand out `role_id`/`secret_id`. | [Provisioning AppRoles](#provisioning-approles-operator-management-plane) |
+| 6 | **Configure the SPIRE server** | Point SPIRE's `vault_addr` at the KMS and wire the `UpstreamAuthority`/`KeyManager` plugins. | [SPIRE server configuration](#spire-server-configuration) |
+| 7 | **Start SPIRE and verify** | Start the SPIRE server/agent and confirm the intermediate CA is signed and SVIDs issue. | [Quick start](#quick-start-local-demo-stack) |
+
+### Step 3 — Enable the Vault API on the KMS
+
+Set at least these in the KMS configuration (full list in the
+[Configuration reference](#configuration-reference)):
+
+```toml
+[vault]
+vault_api_enabled          = true
+# The auth-verifier from step 2 — reached internally by the KMS (server-to-server).
+vault_auth_verifier_url    = "https://auth.example.com:8443"
+vault_auth_verifier_ca_cert = "/etc/cosmian/certs/auth-verifier-ca.crt"
+vault_transit_mount        = "transit"
+vault_pki_mount            = "pki"
+vault_pki_ca_key_label     = "vault_pki_ca"
+```
+
+### SPIRE server configuration
+
+Point SPIRE's `vault_addr` at the **KMS** (not the auth-verifier — the KMS proxies
+`/v1/auth/*` for you). A complete `server.conf`:
+
+```hcl
+server {
+    bind_address = "0.0.0.0"
+    bind_port    = "8081"
+
+    # Trust domain — must match the SPIFFE IDs used by your workloads.
+    trust_domain = "example.org"
+
+    data_dir  = "/var/lib/spire/server"
+    log_level = "INFO"
+
+    ca_subject = {
+        country      = ["FR"],
+        organization = ["Example"],
+        common_name  = "Example SPIRE Intermediate CA",
+    }
+
+    ca_ttl                = "24h"   # how often SPIRE rotates its intermediate CA
+    default_x509_svid_ttl = "1h"    # workload SVID lifetime
+}
+
+plugins {
+    # ── Upstream Authority: Cosmian KMS PKI engine (Vault-compatible) ─────────
+    # Signs SPIRE's intermediate CA CSR via the KMS. Built-in to SPIRE — no
+    # plugin_cmd required. vault_addr points at the KMS; the KMS proxies
+    # /v1/auth/* to the auth-verifier and handles /v1/pki/* natively.
+    UpstreamAuthority "vault" {
+        plugin_data {
+            vault_addr   = "https://kms.example.com:9998"
+            # CA cert that verifies the KMS TLS certificate.
+            ca_cert_path = "/etc/spire/server/kms-ca.crt"
+
+            # AppRole login — credentials are read from the environment variables
+            # VAULT_APPROLE_ID and VAULT_APPROLE_SECRET_ID (the role_id/secret_id
+            # you provisioned in step 5). Do not hard-code the secret here.
+            approle_auth {
+                approle_auth_mount_point = "approle"
+            }
+
+            # Must match vault_pki_mount on the KMS (default: "pki").
+            pki_mount_point = "pki"
+        }
+    }
+
+    # ── Key Manager ───────────────────────────────────────────────────────────
+    # Stores SPIRE's own signing keys. "disk" is built-in and sufficient for most
+    # deployments. SPIRE's Vault-backed KeyManager ("vault") is a separate,
+    # externally-distributed plugin (not bundled in the SPIRE image); if you use
+    # it, point transit_engine_path at the KMS transit mount.
+    KeyManager "disk" {
+        plugin_data {
+            keys_path = "/var/lib/spire/server/keys.json"
+        }
+    }
+
+    # ── Node Attestor ─────────────────────────────────────────────────────────
+    # join_token is the simplest for a first bring-up; for production prefer a
+    # stronger attestor such as x509pop or a platform-specific one (TPM, k8s_psat).
+    NodeAttestor "join_token" {
+        plugin_data {}
+    }
+
+    # ── Data Store ────────────────────────────────────────────────────────────
+    DataStore "sql" {
+        plugin_data {
+            database_type     = "sqlite3"
+            connection_string = "/var/lib/spire/server/datastore.sqlite3"
+        }
+    }
+}
+```
+
+Provide the AppRole credentials from step 5 to the SPIRE server process via
+environment variables (e.g. in the systemd unit or container env):
+
+```bash
+export VAULT_APPROLE_ID="<role_id>"
+export VAULT_APPROLE_SECRET_ID="<secret_id>"
+```
+
+> The AppRole **name** (e.g. `spire-prod`) becomes the KMS object owner, so each
+> SPIRE server gets an isolated key namespace on the shared KMS. See
+> [Cross-AppRole isolation](#cross-approle-isolation).
 
 ## Detailed flows
 
@@ -239,18 +361,18 @@ sequenceDiagram
 
 Two distinct kinds of "admin" appear in this integration — do not confuse them:
 
-| Term | What it is | Used for |
-|---|---|---|
-| **Auth-verifier admin** | A **human** administrator account (`Admin` struct) authenticated with username + password in the `_` realm. | Calling `POST /v1/auth/approle/role/{name}` and other role-management endpoints. |
-| **AppRole** | A **machine** identity with `role_id` + `secret_id` credentials. No relationship to the `Admin` concept. | Used by SPIRE server and AI-agent workloads to obtain `hvs.*` tokens from auth-verifier. |
+| Term                    | What it is                                                                                                  | Used for                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Auth-verifier admin** | A **human** administrator account (`Admin` struct) authenticated with username + password in the `_` realm. | Calling `POST /v1/auth/approle/role/{name}` and other role-management endpoints.         |
+| **AppRole**             | A **machine** identity with `role_id` + `secret_id` credentials. No relationship to the `Admin` concept.    | Used by SPIRE server and AI-agent workloads to obtain `hvs.*` tokens from auth-verifier. |
 
 An AppRole has three credentials, each with a distinct purpose and lifecycle:
 
-| Credential | What it is | Analogy | Stability |
-|---|---|---|---|
-| `role_id` | Stable UUID auto-assigned by auth-verifier when the AppRole is created. | Machine *username*. | **Permanent.** Changing it requires reconfiguring all consumers (SPIRE config, agent config). |
-| `secret_id` | A one-time or time-limited random secret generated on demand by an admin. | Machine *password*. | **Ephemeral.** Rotate freely via `generate-secret-id`; invalidate the old one via its `secret_id_accessor`. |
-| `secret_id_accessor` | Opaque UUID returned alongside `secret_id`. | *Revocation handle.* | Never given to SPIRE — kept by the human admin for rotation and revocation only. |
+| Credential           | What it is                                                                | Analogy              | Stability                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `role_id`            | Stable UUID auto-assigned by auth-verifier when the AppRole is created.   | Machine *username*.  | **Permanent.** Changing it requires reconfiguring all consumers (SPIRE config, agent config).               |
+| `secret_id`          | A one-time or time-limited random secret generated on demand by an admin. | Machine *password*.  | **Ephemeral.** Rotate freely via `generate-secret-id`; invalidate the old one via its `secret_id_accessor`. |
+| `secret_id_accessor` | Opaque UUID returned alongside `secret_id`.                               | *Revocation handle.* | Never given to SPIRE — kept by the human admin for rotation and revocation only.                            |
 
 ##### From AppRole credentials to KMS object ownership — the exact chain
 
@@ -274,10 +396,10 @@ human-readable string like `"spire-server"` or `"mistral-agents"`.
 
 The mapping from AppRole name to KMS owner is therefore 1-to-1:
 
-| AppRole name | KMS `username` | KMS objects owned |
-|---|---|---|
-| `spire-server` | `spire-server` | Signed intermediate certificates (stored in KMS after `Certify`) |
-| `mistral-agents` | `mistral-agents` | Transit key pairs tagged `vault_transit:{name}` |
+| AppRole name     | KMS `username`   | KMS objects owned                                                |
+| ---------------- | ---------------- | ---------------------------------------------------------------- |
+| `spire-server`   | `spire-server`   | Signed intermediate certificates (stored in KMS after `Certify`) |
+| `mistral-agents` | `mistral-agents` | Transit key pairs tagged `vault_transit:{name}`                  |
 
 `mistral-agents` cannot read, sign with, or delete objects owned by `spire-server`,
 and vice versa — each AppRole has a **fully isolated KMS object namespace**.
@@ -436,16 +558,16 @@ check.
 Enable the SPIRE-compatible API on the KMS with these flags/environment variables
 (`crate/server/src/config/command_line/vault_config.rs`):
 
-| Flag | Environment variable | Default | Description |
-|---|---|---|---|
-| `--vault-api-enabled` | `KMS_VAULT_API_ENABLED` | `false` | Enables the `/v1/transit/*`, `/v1/<vault_pki_mount>/*`, and `/v1/auth/*` (proxy) scopes. |
-| `--vault-auth-verifier-url` | `KMS_VAULT_AUTH_VERIFIER_URL` | *(none)* | Base URL of auth-verifier. Used for both `X-Vault-Token` validation (middleware) **and** as the upstream target for the `/v1/auth/*` proxy. Required when the API is enabled. |
-| `--vault-auth-verifier-ca-cert` | `KMS_VAULT_AUTH_VERIFIER_CA_CERT` | *(none)* | PEM CA certificate used to verify auth-verifier's TLS certificate (for self-signed/private CAs). |
-| `--vault-auth-verifier-accept-invalid-certs` | `KMS_VAULT_AUTH_VERIFIER_ACCEPT_INVALID_CERTS` | `false` | Skip TLS verification when calling auth-verifier. **Test/dev only** — use `--vault-auth-verifier-ca-cert` in production. |
-| `--vault-transit-mount` | `KMS_VAULT_TRANSIT_MOUNT` | `transit` | Mount name served at `/v1/<mount>/keys/…`. |
-| `--vault-pki-mount` | `KMS_VAULT_PKI_MOUNT` | `pki` | Mount name served at `/v1/<mount>/root/sign-intermediate`. |
-| `--vault-pki-ca-key-label` | `KMS_VAULT_PKI_CA_KEY_LABEL` | `vault_pki_ca` | KMIP tag of the KMS key used as the PKI engine's signing key. Must already exist in the KMS. |
-| `--vault-token-cache-ttl-secs` | `KMS_VAULT_TOKEN_CACHE_TTL_SECS` | `30` | Lifetime of cached `lookup-self` results. Set to `0` to disable caching. |
+| Flag                                         | Environment variable                           | Default        | Description                                                                                                                                                                   |
+| -------------------------------------------- | ---------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--vault-api-enabled`                        | `KMS_VAULT_API_ENABLED`                        | `false`        | Enables the `/v1/transit/*`, `/v1/<vault_pki_mount>/*`, and `/v1/auth/*` (proxy) scopes.                                                                                      |
+| `--vault-auth-verifier-url`                  | `KMS_VAULT_AUTH_VERIFIER_URL`                  | *(none)*       | Base URL of auth-verifier. Used for both `X-Vault-Token` validation (middleware) **and** as the upstream target for the `/v1/auth/*` proxy. Required when the API is enabled. |
+| `--vault-auth-verifier-ca-cert`              | `KMS_VAULT_AUTH_VERIFIER_CA_CERT`              | *(none)*       | PEM CA certificate used to verify auth-verifier's TLS certificate (for self-signed/private CAs).                                                                              |
+| `--vault-auth-verifier-accept-invalid-certs` | `KMS_VAULT_AUTH_VERIFIER_ACCEPT_INVALID_CERTS` | `false`        | Skip TLS verification when calling auth-verifier. **Test/dev only** — use `--vault-auth-verifier-ca-cert` in production.                                                      |
+| `--vault-transit-mount`                      | `KMS_VAULT_TRANSIT_MOUNT`                      | `transit`      | Mount name served at `/v1/<mount>/keys/…`.                                                                                                                                    |
+| `--vault-pki-mount`                          | `KMS_VAULT_PKI_MOUNT`                          | `pki`          | Mount name served at `/v1/<mount>/root/sign-intermediate`.                                                                                                                    |
+| `--vault-pki-ca-key-label`                   | `KMS_VAULT_PKI_CA_KEY_LABEL`                   | `vault_pki_ca` | KMIP tag of the KMS key used as the PKI engine's signing key. Must already exist in the KMS.                                                                                  |
+| `--vault-token-cache-ttl-secs`               | `KMS_VAULT_TOKEN_CACHE_TTL_SECS`               | `30`           | Lifetime of cached `lookup-self` results. Set to `0` to disable caching.                                                                                                      |
 
 > **No extra proxy configuration is needed.** The `/v1/auth/*` proxy reuses
 > `vault_auth_verifier_url` and the same TLS client built from
@@ -457,14 +579,14 @@ Enable the SPIRE-compatible API on the KMS with these flags/environment variable
 `ckms vault approle` provisions and manages `AppRole` identities in auth-verifier
 (`crate/clients/clap/src/actions/vault/approle.rs`):
 
-| Subcommand | Auth required | Purpose |
-|---|---|---|
-| `create-role` | auth-verifier admin¹ | Create or update a role (`token_ttl`, `token_policies`, `secret_id_ttl`). |
-| `list-roles` | auth-verifier admin¹ | List all roles. |
-| `get-role-id` | auth-verifier admin¹ | Retrieve a role's stable `role_id`. |
-| `generate-secret-id` | auth-verifier admin¹ | Generate a new `secret_id` for a role. |
-| `destroy-secret-id` | auth-verifier admin¹ | Invalidate a `secret_id` by its accessor. |
-| `delete-role` | auth-verifier admin¹ | Permanently delete a role. |
+| Subcommand           | Auth required        | Purpose                                                                   |
+| -------------------- | -------------------- | ------------------------------------------------------------------------- |
+| `create-role`        | auth-verifier admin¹ | Create or update a role (`token_ttl`, `token_policies`, `secret_id_ttl`). |
+| `list-roles`         | auth-verifier admin¹ | List all roles.                                                           |
+| `get-role-id`        | auth-verifier admin¹ | Retrieve a role's stable `role_id`.                                       |
+| `generate-secret-id` | auth-verifier admin¹ | Generate a new `secret_id` for a role.                                    |
+| `destroy-secret-id`  | auth-verifier admin¹ | Invalidate a `secret_id` by its accessor.                                 |
+| `delete-role`        | auth-verifier admin¹ | Permanently delete a role.                                                |
 
 ¹ "auth-verifier admin" means a **human administrator account** (`Admin` struct) in the
 `_` realm of the Cosmian Authentication Server — not an AppRole.
@@ -480,18 +602,18 @@ when the auth-verifier uses a self-signed/private CA. SPIRE performs the data-pl
 
 **auth-verifier** (`/v1/auth/*`):
 
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/v1/auth/approle/login` | Exchange `role_id`+`secret_id` for a Vault token (unauthenticated). |
-| `POST` | `/v1/auth/approle/role/{name}` | Create/update a role (admin). |
-| `GET` | `/v1/auth/approle/role/{name}/role-id` | Read a role's `role_id` (admin). |
-| `POST` | `/v1/auth/approle/role/{name}/secret-id` | Generate a `secret_id` (admin). |
-| `POST` | `/v1/auth/approle/role/{name}/secret-id/destroy` | Invalidate a `secret_id` (admin). |
-| `DELETE` | `/v1/auth/approle/role/{name}` | Delete a role (admin). |
-| `GET` | `/v1/auth/approle/role` | List roles (admin). |
-| `GET` | `/v1/auth/token/lookup-self` | Validate the caller's own token (used by the KMS middleware). |
-| `POST` | `/v1/auth/token/renew-self` | Renew the caller's own token. |
-| `POST` | `/v1/auth/token/revoke-self` | Revoke the caller's own token. |
+| Method   | Path                                             | Purpose                                                             |
+| -------- | ------------------------------------------------ | ------------------------------------------------------------------- |
+| `POST`   | `/v1/auth/approle/login`                         | Exchange `role_id`+`secret_id` for a Vault token (unauthenticated). |
+| `POST`   | `/v1/auth/approle/role/{name}`                   | Create/update a role (admin).                                       |
+| `GET`    | `/v1/auth/approle/role/{name}/role-id`           | Read a role's `role_id` (admin).                                    |
+| `POST`   | `/v1/auth/approle/role/{name}/secret-id`         | Generate a `secret_id` (admin).                                     |
+| `POST`   | `/v1/auth/approle/role/{name}/secret-id/destroy` | Invalidate a `secret_id` (admin).                                   |
+| `DELETE` | `/v1/auth/approle/role/{name}`                   | Delete a role (admin).                                              |
+| `GET`    | `/v1/auth/approle/role`                          | List roles (admin).                                                 |
+| `GET`    | `/v1/auth/token/lookup-self`                     | Validate the caller's own token (used by the KMS middleware).       |
+| `POST`   | `/v1/auth/token/renew-self`                      | Renew the caller's own token.                                       |
+| `POST`   | `/v1/auth/token/revoke-self`                     | Revoke the caller's own token.                                      |
 
 > `/v1/auth/kubernetes/*` is also available as an alternative login method (Kubernetes
 > service-account JWT), for workloads running inside a Kubernetes cluster instead of
@@ -506,14 +628,14 @@ Both objects carry the tag `vault_transit:{name}`.
 at every API surface (Vault HTTP, KMIP, `ckms`).
 Signing is always performed server-side.
 
-| Method | Path | KMIP operation | KMS object(s) | Tag / identifier | Key types |
-|---|---|---|---|---|---|
-| `POST` | `/v1/{mount}/keys/{name}` | `CreateKeyPair` | `PrivateKey` + `PublicKey` **created**; `sensitive=true` | `vault_transit:{name}` on both objects | `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`, `rsa-4096` (FIPS + non-FIPS); `ed25519`, `ml-dsa-65` (non-FIPS only) |
-| `GET` | `/v1/{mount}/keys/{name}` | `Find` → `Get` | `PrivateKey` **read** (by tag) → follows `PublicKeyLink` → `PublicKey` **read** (for PEM) | `vault_transit:{name}` | — |
-| `GET` | `/v1/{mount}/keys` | `Find` (all `PrivateKey`) | All `PrivateKey` objects **read**, filtered by tag prefix | prefix `vault_transit:` | — |
-| `POST` | `/v1/{mount}/keys/{name}/config` | *(no-op)* | none | — | — |
-| `DELETE` | `/v1/{mount}/keys/{name}` | `Revoke` (cascade) + `Destroy` (cascade, `remove=true`) | `PrivateKey` + linked `PublicKey` **permanently deleted** | `vault_transit:{name}` | — |
-| `POST` | `/v1/{mount}/sign/{name}/{alg}` | `Sign` | `PrivateKey` **used** (never exported); signature prefixed `vault:v1:` | `vault_transit:{name}` | — |
+| Method   | Path                             | KMIP operation                                          | KMS object(s)                                                                             | Tag / identifier                       | Key types                                                                                                    |
+| -------- | -------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `POST`   | `/v1/{mount}/keys/{name}`        | `CreateKeyPair`                                         | `PrivateKey` + `PublicKey` **created**; `sensitive=true`                                  | `vault_transit:{name}` on both objects | `ecdsa-p256`, `ecdsa-p384`, `rsa-2048`, `rsa-4096` (FIPS + non-FIPS); `ed25519`, `ml-dsa-65` (non-FIPS only) |
+| `GET`    | `/v1/{mount}/keys/{name}`        | `Find` → `Get`                                          | `PrivateKey` **read** (by tag) → follows `PublicKeyLink` → `PublicKey` **read** (for PEM) | `vault_transit:{name}`                 | —                                                                                                            |
+| `GET`    | `/v1/{mount}/keys`               | `Find` (all `PrivateKey`)                               | All `PrivateKey` objects **read**, filtered by tag prefix                                 | prefix `vault_transit:`                | —                                                                                                            |
+| `POST`   | `/v1/{mount}/keys/{name}/config` | *(no-op)*                                               | none                                                                                      | —                                      | —                                                                                                            |
+| `DELETE` | `/v1/{mount}/keys/{name}`        | `Revoke` (cascade) + `Destroy` (cascade, `remove=true`) | `PrivateKey` + linked `PublicKey` **permanently deleted**                                 | `vault_transit:{name}`                 | —                                                                                                            |
+| `POST`   | `/v1/{mount}/sign/{name}/{alg}`  | `Sign`                                                  | `PrivateKey` **used** (never exported); signature prefixed `vault:v1:`                    | `vault_transit:{name}`                 | —                                                                                                            |
 
 **Cosmian KMS — PKI engine** (mount: `{vault_pki_mount}`, default `pki`):
 
@@ -521,8 +643,8 @@ The PKI CA key is a server-level resource owned by the server admin (`default_us
 All three steps of the sign-intermediate flow execute as the server admin, regardless of
 which AppRole token the caller presents — the token is validated for authentication only.
 
-| Method | Path | KMIP operation(s) | KMS object(s) | Tag / identifier |
-|---|---|---|---|---|
+| Method         | Path                                 | KMIP operation(s)                                                                                           | KMS object(s)                                                                                                                                                                                                                         | Tag / identifier                                                                                                                               |
+| -------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST` / `PUT` | `/v1/{mount}/root/sign-intermediate` | ① `Find` (CA `PrivateKey`) → ② `Certify` (creates signed `Certificate`) → ③ `Find`+`Get` (CA `Certificate`) | ① CA `PrivateKey` **read** as server admin; ② signed `Certificate` **created** in KMS (returned in response); ③ CA `Certificate` **read** via link chain: CA `PrivateKey → PublicKeyLink → PublicKey → CertificateLink → Certificate` | CA key tag: `vault_pki_ca_key_label` config (default `vault_pki_ca`); signed cert: auto-assigned UID; CA cert: resolved by KMIP link traversal |
 
 > **Provisioning prerequisite**: the CA `PrivateKey` and its linked CA `Certificate` must
@@ -586,20 +708,20 @@ Mistral workloads) and a SPIRE-server log gate, it runs a suite of **adversarial
 negative-path** tests that attack the auth, PKI, and transit surfaces. Each maps to a
 numbered scenario; all are asserted **live** against a running KMS + auth-verifier stack.
 
-| # | Attack / edge case | Expected behaviour | Where it runs |
-|---|---|---|---|
-| 1 | `secret_id` created with `num_uses=1`, 10 concurrent logins | Exactly **one** login succeeds (`BEGIN IMMEDIATE` + `rows_affected` guard) | `test_negative_scenarios.sh` |
-| 2 | auth-verifier killed, then a proxied `/v1/auth/*` call | KMS returns **502 Bad Gateway**; recovers after restart | `.mise/tasks/test/spire` (inline) |
-| 3 | Token self-revoked, then replayed | Rejected (**403**); the `vault_token_cache_ttl_secs` window is the theoretical worst case | `test_negative_scenarios.sh` |
-| 4 | `sign-intermediate` with empty/missing `uri_sans`, malformed CSR, or no token | **4xx** (SPIFFE URI SAN mandatory; auth required) | `test_negative_scenarios.sh` |
-| 5 | Transit key requested with `exportable:true`; unwrapped export of a sensitive key | `exportable` forced **false**; unwrapped export **DENIED** (`ResultReason=Sensitive`) | `test_negative_scenarios.sh` |
-| 6 | Unsupported transit key type (FIPS algorithm rejection is a documented SKIP here) | Unknown type → **4xx** (no 5xx / panic) | `.mise/tasks/test/spire` (inline) |
-| 7 | Kubernetes login with unknown role, `alg:none` forged JWT, or missing fields | **4xx** — never a 5xx | `test_negative_scenarios.sh` |
-| 8 | AppRole login fuzzing: empty / non-JSON / wrong types / deeply nested / 1 MB body / wrong method | **4xx** (413 for oversize); auth path healthy afterwards | `test_negative_scenarios.sh` |
-| 9 | Proxy path traversal `/v1/auth/../admins`, `%2e%2e`, nested `..`; unauthenticated admin CRUD via the proxy | Dot-segments → **400**; unauth admin CRUD → **401** | `test_negative_scenarios.sh` |
-| 10 | KMS started with a non-existent `vault_pki_ca_key_label` | `sign-intermediate` fails fast with **500** naming the missing label (no hang/panic) | `.mise/tasks/test/spire` (inline) |
-| 11 | Cross-tenant: one tenant's token used to get / sign / delete / list another tenant's transit key | **404** on every cross-tenant access; key stays isolated and intact | `test_negative_scenarios.sh` |
-| 12 | Two-step delete, then recreate a key with the same name | Delete → `GET` **404**; recreate → **200** and usable (no orphaned KMIP object) | `test_negative_scenarios.sh` |
+| #   | Attack / edge case                                                                                         | Expected behaviour                                                                        | Where it runs                     |
+| --- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------- |
+| 1   | `secret_id` created with `num_uses=1`, 10 concurrent logins                                                | Exactly **one** login succeeds (`BEGIN IMMEDIATE` + `rows_affected` guard)                | `test_negative_scenarios.sh`      |
+| 2   | auth-verifier killed, then a proxied `/v1/auth/*` call                                                     | KMS returns **502 Bad Gateway**; recovers after restart                                   | `.mise/tasks/test/spire` (inline) |
+| 3   | Token self-revoked, then replayed                                                                          | Rejected (**403**); the `vault_token_cache_ttl_secs` window is the theoretical worst case | `test_negative_scenarios.sh`      |
+| 4   | `sign-intermediate` with empty/missing `uri_sans`, malformed CSR, or no token                              | **4xx** (SPIFFE URI SAN mandatory; auth required)                                         | `test_negative_scenarios.sh`      |
+| 5   | Transit key requested with `exportable:true`; unwrapped export of a sensitive key                          | `exportable` forced **false**; unwrapped export **DENIED** (`ResultReason=Sensitive`)     | `test_negative_scenarios.sh`      |
+| 6   | Unsupported transit key type (FIPS algorithm rejection is a documented SKIP here)                          | Unknown type → **4xx** (no 5xx / panic)                                                   | `.mise/tasks/test/spire` (inline) |
+| 7   | Kubernetes login with unknown role, `alg:none` forged JWT, or missing fields                               | **4xx** — never a 5xx                                                                     | `test_negative_scenarios.sh`      |
+| 8   | AppRole login fuzzing: empty / non-JSON / wrong types / deeply nested / 1 MB body / wrong method           | **4xx** (413 for oversize); auth path healthy afterwards                                  | `test_negative_scenarios.sh`      |
+| 9   | Proxy path traversal `/v1/auth/../admins`, `%2e%2e`, nested `..`; unauthenticated admin CRUD via the proxy | Dot-segments → **400**; unauth admin CRUD → **401**                                       | `test_negative_scenarios.sh`      |
+| 10  | KMS started with a non-existent `vault_pki_ca_key_label`                                                   | `sign-intermediate` fails fast with **500** naming the missing label (no hang/panic)      | `.mise/tasks/test/spire` (inline) |
+| 11  | Cross-tenant: one tenant's token used to get / sign / delete / list another tenant's transit key           | **404** on every cross-tenant access; key stays isolated and intact                       | `test_negative_scenarios.sh`      |
+| 12  | Two-step delete, then recreate a key with the same name                                                    | Delete → `GET` **404**; recreate → **200** and usable (no orphaned KMIP object)           | `test_negative_scenarios.sh`      |
 
 > **Cross-tenant isolation (scenario 11)** is the strongest guarantee here: because the KMS
 > object owner is the AppRole *name* (see [AppRole credentials](#approle-credentials--what-role_id-and-secret_id-mean)),
@@ -609,16 +731,18 @@ numbered scenario; all are asserted **live** against a running KMS + auth-verifi
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| SPIRE startup fails with "key not found" | AppRole credentials/PKI CA key not provisioned yet | Run the provisioning step (`provision.sh` or equivalent `ckms vault approle` calls) before starting SPIRE. |
-| KMS returns `502 Bad Gateway` on `/v1/auth/*` calls | auth-verifier not reachable by KMS | Confirm auth-verifier is up and `vault_auth_verifier_url` is correctly set in the KMS config. |
-| Workload can't obtain an SVID | SPIRE workload registration entry missing or selector mismatch | List registered entries on the SPIRE server and verify the workload's selector matches its registration. |
-| `403 permission denied` calling `/v1/transit/*` or `/v1/pki/*` | Invalid, expired, or unrecognized `X-Vault-Token` | Re-run AppRole login to obtain a fresh token; confirm `vault_auth_verifier_url` on the KMS points to the correct auth-verifier instance. |
-| `403 permission denied` calling `/v1/auth/approle/login` | Invalid `role_id` or `secret_id` | Verify the AppRole was provisioned via the auth-verifier admin API; re-run `provision.sh` if credentials were lost. |
+| Symptom                                                        | Cause                                                          | Fix                                                                                                                                      |
+| -------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| SPIRE startup fails with "key not found"                       | AppRole credentials/PKI CA key not provisioned yet             | Run the provisioning step (`provision.sh` or equivalent `ckms vault approle` calls) before starting SPIRE.                               |
+| KMS returns `502 Bad Gateway` on `/v1/auth/*` calls            | auth-verifier not reachable by KMS                             | Confirm auth-verifier is up and `vault_auth_verifier_url` is correctly set in the KMS config.                                            |
+| Workload can't obtain an SVID                                  | SPIRE workload registration entry missing or selector mismatch | List registered entries on the SPIRE server and verify the workload's selector matches its registration.                                 |
+| `403 permission denied` calling `/v1/transit/*` or `/v1/pki/*` | Invalid, expired, or unrecognized `X-Vault-Token`              | Re-run AppRole login to obtain a fresh token; confirm `vault_auth_verifier_url` on the KMS points to the correct auth-verifier instance. |
+| `403 permission denied` calling `/v1/auth/approle/login`       | Invalid `role_id` or `secret_id`                               | Verify the AppRole was provisioned via the auth-verifier admin API; re-run `provision.sh` if credentials were lost.                      |
 
 ## See also
 
+- [Cosmian KMS installation](../installation/installation_getting_started.md) — install and run the KMS (Docker, Linux packages, macOS, Windows).
+- **auth-verifier installation** — `authentication/server/documentation/installation.md` — deploy the Cosmian Authentication Server that backs the KMS `/v1/auth/*` proxy.
 - [Architecture Decision Record: SPIRE/SPIFFE via Vault-Compatible API](../adr/2026-07-26-spire-spiffe-via-vault-api.md) — full design rationale, alternatives considered, and database schema.
 - `crate/server/documentation/openapi.yaml` — OpenAPI schema for the `/v1/transit/*` and `/v1/<pki_mount>/*` paths.
 - `ckms vault approle --help` — full CLI reference for AppRole provisioning.
