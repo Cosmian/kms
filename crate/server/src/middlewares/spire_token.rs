@@ -157,9 +157,28 @@ async fn validate_against_auth_verifier(
         .map_err(|e| format!("auth-verifier lookup-self parse error: {e}"))?;
 
     Ok(SpireAuthenticatedUser {
-        entity: body.data.entity_id,
+        entity: validated_entity(body.data.entity_id)?,
         policies: body.data.policies,
     })
+}
+
+/// Reject an empty or blank `entity_id`.
+///
+/// The `entity_id` becomes the KMS owner identity for every transit/PKI object
+/// created or accessed through a SPIRE token (via `get_user`). An empty owner
+/// string would collapse *all* SPIRE clients onto a single shared owner,
+/// defeating per-tenant isolation: any token could then read, sign with, or
+/// delete another tenant's transit keys. We therefore fail closed rather than
+/// map a token to an ambiguous, shared identity.
+fn validated_entity(entity_id: String) -> Result<String, String> {
+    if entity_id.trim().is_empty() {
+        return Err(
+            "auth-verifier lookup-self returned an empty entity_id; refusing to map the token \
+             to a shared owner identity"
+                .to_owned(),
+        );
+    }
+    Ok(entity_id)
 }
 
 /// Creates the SPIRE app-token authentication middleware for KMS SPIRE-compatible scopes.
@@ -279,6 +298,25 @@ mod tests {
     }
 
     // ── Cache unit tests ─────────────────────────────────────────────────
+
+    /// A non-empty entity id is accepted and returned unchanged.
+    #[test]
+    fn validated_entity_accepts_non_empty() {
+        assert_eq!(
+            validated_entity("entity-abc".to_owned()).unwrap(),
+            "entity-abc"
+        );
+    }
+
+    /// An empty or whitespace-only entity id is rejected (fail closed) so that
+    /// SPIRE tokens without a distinct identity cannot collapse onto a shared
+    /// KMS owner and cross tenant boundaries.
+    #[test]
+    fn validated_entity_rejects_empty_or_blank() {
+        validated_entity(String::new()).unwrap_err();
+        validated_entity("   ".to_owned()).unwrap_err();
+        validated_entity("\t\n".to_owned()).unwrap_err();
+    }
 
     /// Insert → lookup returns the user.
     #[test]
