@@ -606,6 +606,11 @@ pub(crate) async fn get_transit_key(
 /// can be deleted.  In Cosmian KMS, deletion policy is controlled server-side;
 /// this endpoint accepts the request and returns `204 No Content` so SPIRE's
 /// background delete worker can proceed to the actual `DELETE /keys/{name}` call.
+///
+/// This is an intentional no-op: it deliberately does **not** verify that the
+/// named key exists (nor that the caller owns it). The subsequent
+/// `DELETE /keys/{name}` performs the real owner-scoped lookup and returns
+/// `404` if the key is absent, so nothing is leaked by always answering `204`.
 #[post("/keys/{name}/config")]
 pub(crate) async fn configure_transit_key(
     _req: HttpRequest,
@@ -621,6 +626,12 @@ pub(crate) async fn configure_transit_key(
 }
 
 /// `GET /keys` — list all transit key names.
+///
+/// Note: unlike HashiCorp Vault — whose `LIST` on an empty/absent path returns
+/// `404` — this endpoint always returns `200` with a (possibly empty) `keys`
+/// array. This is an intentional, SPIRE-compatible superset: SPIRE's Go SDK
+/// treats an empty list and a 404 identically, and a plain `200` avoids the
+/// ambiguity of a 404 that could also mean "route not found".
 #[get("/keys")]
 pub(crate) async fn list_transit_keys(
     req: HttpRequest,
