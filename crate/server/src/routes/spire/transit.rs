@@ -264,9 +264,14 @@ pub(crate) async fn create_transit_key(
 
     // EC key types (also handles ed25519 in non-FIPS via curve matching)
     if let Some(curve) = transit_curve_from_key_type(&body.key_type) {
-        let create_req =
-            create_ec_key_pair_request(kms.vendor_id(), None, tags, curve, false, None)
-                .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
+        // `sensitive = true` marks the private key as non-exportable at the KMIP
+        // level: the `Get`/`Export` guard in `core::operations::export_get` denies
+        // retrieval whenever `sensitive == Some(true)`. This enforces the
+        // `exportable: false` invariant server-side for *all* API surfaces (KMIP,
+        // `ckms`), not just the Vault-compatible HTTP dialect. Signing happens
+        // server-side and does not require export, so it is unaffected.
+        let create_req = create_ec_key_pair_request(kms.vendor_id(), None, tags, curve, true, None)
+            .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
         kms.create_key_pair(create_req, &user)
             .await
@@ -299,7 +304,8 @@ pub(crate) async fn create_transit_key(
             kms.vendor_id(),
             tags,
             CryptographicAlgorithm::MLDSA_65,
-            false,
+            // sensitive = true → non-exportable at KMIP level (see EC branch).
+            true,
         )
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
@@ -322,9 +328,9 @@ pub(crate) async fn create_transit_key(
 
     // RSA key types
     if let Some(bits) = transit_rsa_bits_from_key_type(&body.key_type) {
-        let create_req =
-            create_rsa_key_pair_request(kms.vendor_id(), None, tags, bits, false, None)
-                .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
+        // sensitive = true → non-exportable at KMIP level (see EC branch).
+        let create_req = create_rsa_key_pair_request(kms.vendor_id(), None, tags, bits, true, None)
+            .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
 
         kms.create_key_pair(create_req, &user)
             .await
