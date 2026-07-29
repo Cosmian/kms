@@ -82,7 +82,18 @@ pub(crate) async fn proxy_auth_request(
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("application/json")
                 .to_owned();
-            let resp_body = resp.bytes().await.unwrap_or_default();
+            // A mid-transfer body read failure (e.g. connection reset) must not be
+            // silently turned into an empty, success-shaped response: surface it as
+            // a 502 so the caller can distinguish it from a legitimately empty body.
+            let resp_body = match resp.bytes().await {
+                Ok(body) => body,
+                Err(e) => {
+                    warn!("vault auth proxy: failed to read auth-verifier response body: {e}");
+                    return HttpResponse::BadGateway().json(serde_json::json!({
+                        "errors": [format!("auth-verifier response body read failed: {e}")]
+                    }));
+                }
+            };
 
             HttpResponse::build(
                 actix_web::http::StatusCode::from_u16(status)

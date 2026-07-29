@@ -14,7 +14,7 @@
 ```mermaid
 sequenceDiagram
     participant Admin as Platform Admin
-    participant AuthV as auth-verifier<br/>(/v1/auth/* — admin API)
+    participant AuthV as auth-verifier<br/>(/login + /auth/* — admin API)
     participant KMS as Cosmian KMS<br/>(vault_addr — /v1/auth/* proxy<br/>+ /v1/transit/*, /v1/pki/*)
     participant Server as SPIRE Server
     participant Agent as SPIRE Agent
@@ -22,11 +22,13 @@ sequenceDiagram
 
     Admin->>KMS: 0. Create PKI CA key<br/>ckms certificates certify --tag vault_pki_ca
     KMS-->>Admin: 200 OK (key stored, tag: vault_pki_ca)
-    Admin->>AuthV: 1. Create AppRoles ("spire-server" + "mistral-agents")<br/>POST /v1/auth/approle/role/{name} (admin session cookie)
+    Admin->>AuthV: 1a. Admin login (directly)<br/>POST /login?realm=_ (HTTP Basic)
+    AuthV-->>Admin: session cookie
+    Admin->>AuthV: 1b. Create AppRoles ("spire-server" + "mistral-agents")<br/>POST /auth/approle/role/{name} (session cookie)
     AuthV-->>Admin: role_id + secret_id (per role)
     Note over Admin,Server: Admin configures SPIRE with spire-server role_id + secret_id
     Server->>KMS: 2. AppRole login<br/>POST /v1/auth/approle/login<br/>{role_id, secret_id}
-    KMS->>AuthV: proxy /v1/auth/*
+    KMS->>AuthV: proxy /v1/auth/* → /auth/*
     AuthV-->>Server: Vault token (hvs.xxxx)
     Server->>KMS: 3. Sign intermediate CA<br/>POST /v1/pki/root/sign-intermediate<br/>(X-Vault-Token, CSR, uri_sans)
     Note over KMS: validate X-Vault-Token via AuthV<br/>(30 s cache), KMIP Certify
@@ -115,6 +117,56 @@ flowchart LR
 KMS proxies `/v1/auth/*` to the auth-verifier URL configured via
 `vault_auth_verifier_url`. No nginx or additional reverse proxy is needed — the same
 TLS client already used for token validation is reused for the proxy.
+
+### Two planes: data plane vs management plane
+
+This deployment has **two distinct access planes**, and conflating them is the most
+common source of confusion:
+
+| Plane | Who | Reaches | Endpoints |
+|-------|-----|---------|-----------|
+| **Data plane** | SPIRE servers, workloads | the **KMS only** | `/v1/auth/approle/login`, `/v1/auth/token/*`, `/v1/transit/*`, `/v1/pki/*` |
+| **Management plane** | Platform operators | the **auth-verifier directly** | `/login?realm=_` (admin), `/auth/approle/*` (role/secret-id CRUD) |
+
+Why AppRole **creation** is not on the data plane: creating a role or minting a
+`secret_id` requires an **admin session cookie** obtained from the auth-verifier's
+`POST /login?realm=_` (HTTP Basic admin credentials). The KMS proxy only forwards
+`/v1/auth/*` and does **not** forward cookies or expose `/login`, so admin operations
+**cannot** and **should not** traverse the KMS. This is deliberate: the public,
+SPIRE-facing endpoint (the KMS) never carries privileged admin credentials.
+
+**Consequence for deployment:** the auth-verifier's admin API is reached **directly** by
+operators — it is a **separate endpoint** from the KMS, never proxied by it. Because that
+admin API mints AppRoles (and therefore access to any tenant's keys), it is strongly
+recommended to keep it on a limited-exposure endpoint (a private network, `localhost` on
+the host, or an mTLS-gated ingress) rather than the open internet. The KMS remains the
+only endpoint SPIRE workloads ever touch.
+
+### Provisioning AppRoles (operator, management plane)
+
+An operator creates one AppRole per SPIRE tenant and hands the tenant its `role_id` +
+`secret_id` out-of-band. Point `--auth-verifier-url` **directly at the auth-verifier**
+(all `ckms vault approle` sub-commands are admin operations against it):
+
+```bash
+export CKMS_VAULT_AUTH_URL="https://auth-verifier.internal:8443"   # the auth-verifier
+export CKMS_VAULT_ADMIN_USER="admin"
+export CKMS_VAULT_ADMIN_PASSWORD="…"
+
+# 1. Create a role for a SPIRE server (its NAME becomes the KMS object owner).
+ckms vault approle create-role spire-prod --token-ttl 3600 --token-policies default
+
+# 2. Read the stable role_id and mint a secret_id — give both to the SPIRE operator.
+ckms vault approle get-role-id spire-prod
+ckms vault approle generate-secret-id spire-prod
+```
+
+> SPIRE performs the data-plane AppRole *login* itself against the KMS `vault_addr`
+> (`POST /v1/auth/approle/login`); there is no `login` sub-command in `ckms vault approle`.
+
+Equivalent raw calls (used by the test harness `provision.sh`): `POST /login?realm=_`
+for the admin cookie, then `POST /auth/approle/role/{name}` and
+`POST /auth/approle/role/{name}/secret-id` against the auth-verifier.
 
 ## Detailed flows
 
@@ -391,7 +443,6 @@ Enable the SPIRE-compatible API on the KMS with these flags/environment variable
 
 | Subcommand | Auth required | Purpose |
 |---|---|---|
-| `login` | none | Exchange `role_id` + `secret_id` for a Vault token. |
 | `create-role` | auth-verifier admin¹ | Create or update a role (`token_ttl`, `token_policies`, `secret_id_ttl`). |
 | `list-roles` | auth-verifier admin¹ | List all roles. |
 | `get-role-id` | auth-verifier admin¹ | Retrieve a role's stable `role_id`. |
@@ -405,7 +456,9 @@ These subcommands authenticate to auth-verifier with
 `--admin-user`/`CKMS_VAULT_ADMIN_USER` and `--admin-password`/`CKMS_VAULT_ADMIN_PASSWORD`
 (plain username + password, distinct from the `role_id`/`secret_id` machine credentials).
 The `--auth-verifier-url`/`CKMS_VAULT_AUTH_URL` flag points directly at auth-verifier,
-bypassing the KMS proxy.
+bypassing the KMS proxy. Add `--accept-invalid-certs` (or `--auth-verifier-ca-cert <pem>`)
+when the auth-verifier uses a self-signed/private CA. SPIRE performs the data-plane AppRole
+*login* itself against the KMS `vault_addr`, so there is no `login` subcommand here.
 
 ## HTTP endpoint reference
 
@@ -463,6 +516,36 @@ which AppRole token the caller presents — the token is validated for authentic
 > The endpoint returns HTTP 500 if the CA key is absent.
 
 ## Security notes
+
+### Cross-AppRole isolation
+
+**Auth-verifier alone is sufficient to enforce per-AppRole object isolation in the KMS.**
+No additional access-control configuration is required.
+
+The guarantee holds because:
+
+1. Auth-verifier maps `role_id` → AppRole `name` and embeds it as `entity_id` in the issued token.
+2. The KMS `spire_token_middleware` reads `entity_id` from the `lookup-self` response and
+   sets `AuthenticatedUser { username: entity_id }`.
+3. Every `Find`, `Get`, `Sign`, `Revoke`, and `Destroy` call in the transit handler passes
+   this `username` to the KMS database, which enforces:
+
+   ```sql
+   WHERE (objects.owner = :username OR read_access.userid = :username)
+   ```
+
+A token for `"mistral-agents"` therefore returns an empty result set for any object owned
+by `"spire-server"` — not a 403, but a 404 (object not found).
+This is enforced at the database layer and cannot be circumvented by manipulating HTTP headers.
+
+> **⚠ Do not set `KMS_FORCE_DEFAULT_USERNAME=true`** (or `--force-default-username`) on a
+> KMS instance used with this integration.
+> That option replaces every authenticated identity — including AppRole tokens — with the
+> server's `default_username`, collapsing all AppRoles into a single shared owner and
+> eliminating all cross-tenant isolation.
+> Its default is `false`; the SPIRE integration requires it stays that way.
+
+### Other security notes
 
 - `exportable` is always forced to `false` server-side, regardless of what a client
   requests — transit private keys can never leave the KMS.

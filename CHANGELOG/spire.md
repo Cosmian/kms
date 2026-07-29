@@ -1,5 +1,26 @@
 ## Bug Fixes
 
+- **`ckms vault approle` admin sub-commands now target the auth-verifier directly**:
+  the admin AppRole CRUD commands (`create-role`, `list-roles`, `get-role-id`,
+  `generate-secret-id`, `destroy-secret-id`, `delete-role`) built their request URLs with a
+  `/v1/auth/approle/...` prefix — a path that exists only on the KMS `/v1/auth/*` proxy, not
+  on the auth-verifier where these commands authenticate (`/login?realm=_`). Because the KMS
+  proxy neither exposes `/login` nor forwards the admin session cookie, the commands always
+  hit a non-existent route and failed. They now call the auth-verifier's own
+  `/auth/approle/...` endpoints, consistent with the admin login. AppRole provisioning is a
+  management-plane operation done directly against the auth-verifier (a separate endpoint);
+  the KMS never proxies the admin API.
+- **Removed the `ckms vault approle login` sub-command**: it was the only sub-command that
+  targeted the KMS data plane (while the six admin commands target the auth-verifier), reusing
+  the same `--auth-verifier-url`, which was confusing. SPIRE performs the data-plane AppRole
+  login itself against the KMS `vault_addr`, so the command was redundant and unused. All
+  `ckms vault approle` sub-commands are now consistently auth-verifier admin operations with a
+  single `--auth-verifier-url`.
+- **`ckms vault approle` admin commands now accept TLS options**: added `--accept-invalid-certs`
+  and `--auth-verifier-ca-cert <pem>` so the CLI can reach an auth-verifier that presents a
+  self-signed or private-CA certificate (previously the admin client used a bare HTTP client
+  with the system trust store only). The SPIRE integration test's `provision.sh` now creates
+  AppRoles via `ckms vault approle` (instead of raw curl), exercising this path end-to-end.
 - **Reject empty SPIRE identities to preserve per-tenant isolation (security)**: the SPIRE
   token middleware now fails closed (HTTP 403) when the auth-verifier `lookup-self` response
   carries an empty or blank `entity_id`. That `entity_id` becomes the KMS owner for every
