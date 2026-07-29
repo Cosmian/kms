@@ -24,6 +24,26 @@ TEST_DATA="${REPO_ROOT}/test_data/spire"
 AUTH_PID=""
 AUTH_LOG="/tmp/auth-verifier-spire.log"
 SPIRE_SECRETS_ENV="/tmp/spire-secrets.env"
+# Persistent auth-verifier SQLite DB (see connection_url in
+# test_data/spire/config/auth_verifier.toml). Unlike the KMS DB (clear_database=true),
+# this file is NOT wiped by the process on start, so the harness must remove it to
+# guarantee a clean state between runs — otherwise stale AppRole role_ids/secret_ids
+# leak across runs and can cause SPIRE login 403s ("invalid role_id or secret_id").
+AUTH_DB_FILE="/tmp/auth-verifier-spire-test.db"
+
+# Remove all leftover SPIRE test state (stale containers/volumes, persistent auth DB,
+# and temp files) so each run starts from a clean, deterministic environment. Used both
+# for the up-front reset and by the exit-time cleanup.
+reset_spire_state() {
+  # Stop all SPIRE profile containers (including spire-agent) and remove named
+  # volumes (incl. spire-agent-socket) so `up -d` never reuses a stale container
+  # carrying outdated AppRole credentials.
+  docker compose --profile spire down --volumes 2>/dev/null || true
+  # Remove the persistent auth-verifier DB (WAL/SHM sidecars included).
+  rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm" 2>/dev/null || true
+  # Remove temp files carrying credentials/tokens from a previous run.
+  rm -f "${SPIRE_SECRETS_ENV}" /tmp/spire-join-token.txt 2>/dev/null || true
+}
 
 # ── Cleanup on exit ───────────────────────────────────────────────────────────
 cleanup() {
@@ -47,12 +67,9 @@ cleanup() {
   kms_stop
 
   # Stop all SPIRE profile containers (including spire-agent, which is now
-  # managed by compose) and remove named volumes (incl. spire-agent-socket).
-  docker compose --profile spire down --volumes 2>/dev/null || true
-
-  # Clean up temp files
-  rm -f "${SPIRE_SECRETS_ENV}" 2>/dev/null || true
-  rm -f /tmp/spire-join-token.txt 2>/dev/null || true
+  # managed by compose), remove named volumes (incl. spire-agent-socket), the
+  # persistent auth-verifier DB, and temp credential/token files.
+  reset_spire_state
 }
 trap cleanup EXIT
 
@@ -64,6 +81,15 @@ require_cmd openssl
 if [[ ! -d "${TEST_DATA}" ]]; then
   print_error "test_data/spire not found. Make sure the test_data submodule is on branch 'spire-integration-tests'."
 fi
+
+# ── Clean state ───────────────────────────────────────────────────────────────
+# Remove any leftover state from a previous (possibly crashed) run BEFORE starting.
+# cleanup() only runs on EXIT, so an interrupted run can leave stale spire containers
+# or a stale auth-verifier DB whose AppRole credentials no longer match the freshly
+# provisioned ones, yielding a SPIRE login 403. Resetting up front makes the task
+# idempotent regardless of prior residue.
+print_status "Resetting SPIRE test state (removing any leftover containers/DB)..."
+reset_spire_state
 
 print_header "SPIRE + Mistral Client Integration Tests"
 
