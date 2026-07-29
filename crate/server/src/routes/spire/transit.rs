@@ -147,6 +147,65 @@ pub(crate) struct SignTransitResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Non-FIPS-only key-type mappings.
+//
+// These are isolated behind function-level `#[cfg(feature = "non-fips")]` (with
+// FIPS-build stubs) so that no feature gate sits inside another function's body,
+// per the cardinal rule in AGENTS.md §4. In a FIPS build the stubs return `None`,
+// making `ed25519`/`ml-dsa-65` genuinely unreachable at compile time.
+
+/// Map an OpenSSL key `Id` to a non-FIPS transit key type (`ed25519`).
+#[cfg(feature = "non-fips")]
+fn nonfips_transit_key_type_from_pkey_id(id: openssl::pkey::Id) -> Option<&'static str> {
+    (id == openssl::pkey::Id::ED25519).then_some("ed25519")
+}
+
+/// FIPS-build stub: no non-FIPS key `Id` mapping exists.
+#[cfg(not(feature = "non-fips"))]
+const fn nonfips_transit_key_type_from_pkey_id(_id: openssl::pkey::Id) -> Option<&'static str> {
+    None
+}
+
+/// Map a KMIP `RecommendedCurve` to a non-FIPS transit key type (`ed25519`).
+#[cfg(feature = "non-fips")]
+fn nonfips_transit_key_type_from_curve(curve: Option<RecommendedCurve>) -> Option<&'static str> {
+    matches!(curve, Some(RecommendedCurve::CURVEED25519)).then_some("ed25519")
+}
+
+/// FIPS-build stub: no non-FIPS curve mapping exists.
+#[cfg(not(feature = "non-fips"))]
+const fn nonfips_transit_key_type_from_curve(
+    _curve: Option<RecommendedCurve>,
+) -> Option<&'static str> {
+    None
+}
+
+/// Map a KMIP `CryptographicAlgorithm` to a non-FIPS transit key type (`ml-dsa-65`).
+#[cfg(feature = "non-fips")]
+fn nonfips_transit_key_type_from_alg(alg: Option<CryptographicAlgorithm>) -> Option<&'static str> {
+    matches!(alg, Some(CryptographicAlgorithm::MLDSA_65)).then_some("ml-dsa-65")
+}
+
+/// FIPS-build stub: no non-FIPS algorithm mapping exists.
+#[cfg(not(feature = "non-fips"))]
+const fn nonfips_transit_key_type_from_alg(
+    _alg: Option<CryptographicAlgorithm>,
+) -> Option<&'static str> {
+    None
+}
+
+/// Map a Vault key type string to a non-FIPS `RecommendedCurve` (`ed25519`).
+#[cfg(feature = "non-fips")]
+fn nonfips_curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
+    (key_type == "ed25519").then_some(RecommendedCurve::CURVEED25519)
+}
+
+/// FIPS-build stub: no non-FIPS key type maps to a curve.
+#[cfg(not(feature = "non-fips"))]
+const fn nonfips_curve_from_key_type(_key_type: &str) -> Option<RecommendedCurve> {
+    None
+}
+
 /// Derive the Vault transit key type string from an OpenSSL `PKey<Public>`.
 ///
 /// Reading the curve from the actual key material is authoritative; the
@@ -167,9 +226,7 @@ fn transit_key_type_from_pkey(pkey: &openssl::pkey::PKey<openssl::pkey::Public>)
             Ok(4096) => "rsa-4096",
             _ => "rsa-2048",
         },
-        #[cfg(feature = "non-fips")]
-        Id::ED25519 => "ed25519",
-        _ => "ecdsa-p256",
+        other => nonfips_transit_key_type_from_pkey_id(other).unwrap_or("ecdsa-p256"),
     }
 }
 
@@ -179,25 +236,21 @@ fn transit_key_type_from_pkey(pkey: &openssl::pkey::PKey<openssl::pkey::Public>)
 fn transit_key_type_from_attrs(attrs: &Attributes) -> &'static str {
     match attrs.cryptographic_algorithm {
         Some(CryptographicAlgorithm::EC) => {
-            match attrs
+            let curve = attrs
                 .cryptographic_domain_parameters
                 .as_ref()
-                .and_then(|p| p.recommended_curve)
-            {
+                .and_then(|p| p.recommended_curve);
+            match curve {
                 Some(RecommendedCurve::P256) => "ecdsa-p256",
                 Some(RecommendedCurve::P384) => "ecdsa-p384",
-                #[cfg(feature = "non-fips")]
-                Some(RecommendedCurve::CURVEED25519) => "ed25519",
-                _ => "ecdsa-p256",
+                other => nonfips_transit_key_type_from_curve(other).unwrap_or("ecdsa-p256"),
             }
         }
         Some(CryptographicAlgorithm::RSA) => match attrs.cryptographic_length {
             Some(4096) => "rsa-4096",
             _ => "rsa-2048",
         },
-        #[cfg(feature = "non-fips")]
-        Some(CryptographicAlgorithm::MLDSA_65) => "ml-dsa-65",
-        _ => "ecdsa-p256",
+        other => nonfips_transit_key_type_from_alg(other).unwrap_or("ecdsa-p256"),
     }
 }
 
@@ -206,9 +259,7 @@ fn transit_curve_from_key_type(key_type: &str) -> Option<RecommendedCurve> {
     match key_type {
         "ecdsa-p256" => Some(RecommendedCurve::P256),
         "ecdsa-p384" => Some(RecommendedCurve::P384),
-        #[cfg(feature = "non-fips")]
-        "ed25519" => Some(RecommendedCurve::CURVEED25519),
-        _ => None,
+        other => nonfips_curve_from_key_type(other),
     }
 }
 
@@ -279,6 +330,65 @@ fn transit_key_filter(kms: &KMS, name: &str) -> KResult<Attributes> {
 
 // ── Route handlers ────────────────────────────────────────────────────────────
 
+/// Create a non-FIPS-only transit key (currently ML-DSA-65).
+///
+/// Returns `Some(response)` when `body.key_type` names a non-FIPS key type this
+/// function handles, or `None` to let the caller fall through to the
+/// FIPS-approved key types. Isolated behind a function-level `#[cfg]` so no
+/// feature gate sits inside `create_transit_key`'s body (AGENTS.md §4).
+#[cfg(feature = "non-fips")]
+async fn create_nonfips_transit_key(
+    kms: &KMS,
+    user: &str,
+    name: &str,
+    body: &CreateTransitKeyRequest,
+    tags: [&str; 1],
+) -> SpireResult<Option<Json<TransitKeyInfoWrapper>>> {
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::requests::create_pqc_key_pair_request;
+
+    if body.key_type != "ml-dsa-65" {
+        return Ok(None);
+    }
+
+    let create_req = create_pqc_key_pair_request(
+        kms.vendor_id(),
+        tags,
+        CryptographicAlgorithm::MLDSA_65,
+        // sensitive = true → non-exportable at KMIP level (see EC branch).
+        true,
+    )
+    .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
+
+    kms.create_key_pair(create_req, user)
+        .await
+        .map_err(SpireApiError::from)?;
+
+    debug!("vault transit: created ML-DSA-65 key '{name}'");
+    Ok(Some(Json(TransitKeyInfoWrapper {
+        data: TransitKeyInfo {
+            name: name.to_owned(),
+            key_type: body.key_type.clone(),
+            exportable: false,
+            allow_deletion: true,
+            latest_version: 1,
+            keys: HashMap::new(),
+        },
+    })))
+}
+
+/// FIPS-build stub: no non-FIPS transit key types exist.
+#[cfg(not(feature = "non-fips"))]
+#[allow(clippy::unused_async)] // async required to match the non-fips signature awaited by the caller
+async fn create_nonfips_transit_key(
+    _kms: &KMS,
+    _user: &str,
+    _name: &str,
+    _body: &CreateTransitKeyRequest,
+    _tags: [&str; 1],
+) -> SpireResult<Option<Json<TransitKeyInfoWrapper>>> {
+    Ok(None)
+}
+
 /// `POST /keys/{name}` — create a new transit signing key.
 ///
 /// `exportable` is silently forced to `false` — transit keys cannot be exported.
@@ -332,37 +442,10 @@ pub(crate) async fn create_transit_key(
         }));
     }
 
-    // ML-DSA (non-FIPS only)
-    #[cfg(feature = "non-fips")]
-    if body.key_type == "ml-dsa-65" {
-        use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
-            kmip_types::CryptographicAlgorithm, requests::create_pqc_key_pair_request,
-        };
-
-        let create_req = create_pqc_key_pair_request(
-            kms.vendor_id(),
-            tags,
-            CryptographicAlgorithm::MLDSA_65,
-            // sensitive = true → non-exportable at KMIP level (see EC branch).
-            true,
-        )
-        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
-
-        kms.create_key_pair(create_req, &user)
-            .await
-            .map_err(SpireApiError::from)?;
-
-        debug!("vault transit: created ML-DSA-65 key '{name}'");
-        return Ok(Json(TransitKeyInfoWrapper {
-            data: TransitKeyInfo {
-                name,
-                key_type: body.key_type,
-                exportable: false,
-                allow_deletion: true,
-                latest_version: 1,
-                keys: HashMap::new(),
-            },
-        }));
+    // ML-DSA (non-FIPS only) — handled by a #[cfg]-gated free function so no
+    // feature gate sits inside this function body.
+    if let Some(resp) = create_nonfips_transit_key(&kms, &user, &name, &body, tags).await? {
+        return Ok(resp);
     }
 
     // RSA key types
