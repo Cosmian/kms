@@ -163,7 +163,7 @@ jobs:
         run: |
           curl -fsSL https://pkgs.netbird.io/install.sh | sh
           [[ -n "${NETBIRD_SETUP_KEY}" ]] || { echo "ERROR: NETBIRD_SETUP_KEY secret is not set"; exit 1; }
-          netbird up \
+          sudo netbird up \
             --setup-key "${NETBIRD_SETUP_KEY}" \
             --management-url https://netbird.cosmian.com \
             --log-level warning \
