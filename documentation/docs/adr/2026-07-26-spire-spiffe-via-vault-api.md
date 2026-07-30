@@ -34,7 +34,7 @@ The Cosmian stack splits this across two servers:
 - **auth-verifier**: Actix-web HTTPS, handles authentication, sessions, realm management —
   owns the `/v1/auth/` scope (AppRole/Kubernetes login, token lookup/renew/revoke). See the
   auth-verifier repository's own ADR for that implementation:
-  `authentication/server/documentation/adr/2026-07-26-app-auth-api-for-spire.md`.
+  `authentication/server/documentation/docs/adr/2026-07-26-app-auth-api-for-spire.md`.
 - **KMS**: Actix-web HTTPS, FIPS 140-3, KMIP 2.1, HSM/PKCS#11, existing signing and CA
   certificate issuance primitives — owns the crypto-facing `/v1/transit/` and
   `/v1/<pki_mount>/` scopes described by this ADR.
@@ -153,7 +153,7 @@ recorded here so they are tracked before longer-lived production rollouts.
 The `/v1/auth/` scope, its database schema (`vault_tokens`, `vault_approle_roles`,
 `vault_secret_ids`, `vault_k8s_roles`), and the `hvs.<base64url(...)>` token format are
 implemented and documented entirely in the auth-verifier repository — see
-`authentication/server/documentation/adr/2026-07-26-app-auth-api-for-spire.md`.
+`authentication/server/documentation/docs/adr/2026-07-26-app-auth-api-for-spire.md`.
 This ADR only depends on that contract through the `X-Vault-Token` header and the
 `GET /v1/auth/token/lookup-self` validation call described below.
 
@@ -259,4 +259,4 @@ transit/PKI calls never call auth-verifier at all, whether nginx was present or 
 
 The amendment also ships the AppRole and token endpoints in auth-verifier that the KMS
 now proxies to (`/v1/auth/approle/*`, `/v1/auth/token/*`). See
-`authentication/server/documentation/adr/2026-07-26-app-auth-api-for-spire.md`.
+`authentication/server/documentation/docs/adr/2026-07-26-app-auth-api-for-spire.md`.
