@@ -194,7 +194,7 @@ stack. Each step links to the detailed reference for that component. In order:
 | # | Step | What you do | Reference |
 |---|------|-------------|-----------|
 | 1 | **Install Cosmian KMS** | Install and start the KMS (Docker, Linux packages, macOS, or Windows). | [KMS installation](../installation/installation_getting_started.md) |
-| 2 | **Install the auth-verifier** | Deploy the Cosmian Authentication Server that the KMS proxies `/v1/auth/*` to. | `authentication/server/documentation/installation.md` |
+| 2 | **Install the auth-verifier** | Deploy the Cosmian Authentication Server that the KMS proxies `/v1/auth/*` to. | `authentication/server/documentation/docs/installation.md` |
 | 3 | **Enable the Vault API on the KMS** | Turn on the SPIRE-compatible API and point it at the auth-verifier. | [Configuration reference](#configuration-reference) |
 | 4 | **Create the PKI CA key** | Create the KMS key the PKI engine signs intermediate CAs with. | [PKI CA key provisioning](#0-pki-ca-key-provisioning-prerequisite) |
 | 5 | **Provision AppRoles** | Create one AppRole per SPIRE server (and per workload group) and hand out `role_id`/`secret_id`. | [Provisioning AppRoles](#provisioning-approles-operator-management-plane) |
@@ -742,7 +742,7 @@ numbered scenario; all are asserted **live** against a running KMS + auth-verifi
 ## See also
 
 - [Cosmian KMS installation](../installation/installation_getting_started.md) — install and run the KMS (Docker, Linux packages, macOS, Windows).
-- **auth-verifier installation** — `authentication/server/documentation/installation.md` — deploy the Cosmian Authentication Server that backs the KMS `/v1/auth/*` proxy.
+- **auth-verifier installation** — `authentication/server/documentation/docs/installation.md` — deploy the Cosmian Authentication Server that backs the KMS `/v1/auth/*` proxy.
 - [Architecture Decision Record: SPIRE/SPIFFE via Vault-Compatible API](../adr/2026-07-26-spire-spiffe-via-vault-api.md) — full design rationale, alternatives considered, and database schema.
 - `crate/server/documentation/openapi.yaml` — OpenAPI schema for the `/v1/transit/*` and `/v1/<pki_mount>/*` paths.
 - `ckms vault approle --help` — full CLI reference for AppRole provisioning.
