@@ -67,3 +67,8 @@ vcpkg_installed/
 perf.data
 perf.data.old
 target/flamegraphs/
+
+# PoC getting-started artifacts (not for repository)
+kms.md
+kms.toml
+kms_setup.sh
