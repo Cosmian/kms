@@ -10,6 +10,31 @@
   `/auth/approle/...` endpoints, consistent with the admin login. AppRole provisioning is a
   management-plane operation done directly against the auth-verifier (a separate endpoint);
   the KMS never proxies the admin API.
+- **auth-verifier Vault routes mounted at `/auth/` (not `/v1/auth/`)**: the Vault-compatible
+  AppRole and token endpoints in the Cosmian Authentication Server (`auth-verifier`) were
+  incorrectly registered under `/v1/auth/...`. Because the KMS reverse-proxy strips the `/v1`
+  prefix before forwarding (`/v1/auth/approle/login` → `/auth/approle/login`), and
+  `ckms vault approle` admin commands also call the auth-verifier directly at `/auth/...`,
+  all calls returned HTTP 404. The scopes are now mounted at `/auth/` without the `/v1`
+  prefix. ([#1075](https://github.com/Cosmian/kms/pull/1075))
+- **SPIRE server HCL config syntax corrected for SPIRE 1.15.x**:
+    - `NodeAttestor "join_token"` block had a bare `plugin_data` keyword with no value or
+    block — SPIRE's HCL parser requires `plugin_data {}` (empty block) for plugins that
+    need no configuration data.
+    - `DataStore "sql"` was placed outside the `plugins {}` block with a spurious extra
+    closing brace; SPIRE 1.x requires `DataStore` to be nested inside `plugins {}`.
+  Both mistakes caused `unable to decode configuration` errors at SPIRE server startup,
+  preventing both tenant-a and tenant-b servers from ever becoming healthy.
+  ([#1075](https://github.com/Cosmian/kms/pull/1075))
+  the admin AppRole CRUD commands (`create-role`, `list-roles`, `get-role-id`,
+  `generate-secret-id`, `destroy-secret-id`, `delete-role`) built their request URLs with a
+  `/v1/auth/approle/...` prefix — a path that exists only on the KMS `/v1/auth/*` proxy, not
+  on the auth-verifier where these commands authenticate (`/login?realm=_`). Because the KMS
+  proxy neither exposes `/login` nor forwards the admin session cookie, the commands always
+  hit a non-existent route and failed. They now call the auth-verifier's own
+  `/auth/approle/...` endpoints, consistent with the admin login. AppRole provisioning is a
+  management-plane operation done directly against the auth-verifier (a separate endpoint);
+  the KMS never proxies the admin API.
 - **Removed the `ckms vault approle login` sub-command**: it was the only sub-command that
   targeted the KMS data plane (while the six admin commands target the auth-verifier), reusing
   the same `--auth-verifier-url`, which was confusing. SPIRE performs the data-plane AppRole
