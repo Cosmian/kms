@@ -247,10 +247,64 @@ VAULT_ADDR="https://localhost:9998" \
   bash "${TEST_DATA}/setup/test_vault_api.sh"
 print_success "Vault API conformance tests passed."
 
-# ── Step 7: Start every SPIRE server with its tenant AppRole credentials ───────
-# Each server sees ONLY its own tenant role under the fixed env names the SPIRE
-# vault plugin expects (VAULT_APPROLE_ID / VAULT_APPROLE_SECRET_ID). The compose
-# file maps VAULT_APPROLE_ID_<T>/… to those names per service.
+# ── Step 6c: Host-side AppRole login pre-flight ──────────────────────────────
+# Validate the exact endpoint SPIRE will call before we start any containers.
+print_status "Verifying host-side AppRole login before starting SPIRE..."
+host_approle_ok=false
+for attempt in 1 2 3; do
+  if curl -sS --cacert "${TEST_DATA}/certs/ca.crt" \
+    --connect-timeout 5 \
+    -H "Content-Type: application/json" \
+    -d "{\"role_id\":\"${APPROLE_ROLE_ID}\",\"secret_id\":\"${APPROLE_SECRET_ID}\"}" \
+    "https://localhost:9998/v1/auth/approle/login" >/dev/null 2>&1; then
+    print_info "Host-side AppRole login check passed (attempt ${attempt})."
+    host_approle_ok=true
+    break
+  fi
+  if [[ "${attempt}" -lt 3 ]]; then
+    print_info "Host-side AppRole login check missed (attempt ${attempt}/3), retrying in 2s..."
+    sleep 2
+  fi
+done
+if [[ "${host_approle_ok}" != "true" ]]; then
+  print_error "Host-side AppRole login pre-flight failed before SPIRE startup. Check ${KMS_LOG_FILE} and ${AUTH_LOG}"
+fi
+
+# ── Step 6d: Pre-flight Docker connectivity check ─────────────────────────────
+# Test the exact connectivity mode used by SPIRE containers (host network mode).
+print_status "Testing Docker container network connectivity to KMS..."
+
+# Validate from host network mode (same as spire-server/spire-agent).
+print_info "Pre-flight check from host network mode: AppRole login..."
+preflight_ok=false
+for attempt in 1 2 3 4 5; do
+  if docker run --rm \
+    --network=host \
+    curlimages/curl:8.10.1 \
+    -k -sS --connect-timeout 5 \
+    -H "Content-Type: application/json" \
+    -d "{\"role_id\":\"${APPROLE_ROLE_ID}\",\"secret_id\":\"${APPROLE_SECRET_ID}\"}" \
+    https://localhost:9998/v1/auth/approle/login >/dev/null 2>&1; then
+    preflight_ok=true
+    print_info "  Pre-flight attempt ${attempt}/5: OK"
+    break
+  fi
+  print_info "  Pre-flight attempt ${attempt}/5: retry"
+  sleep 1
+done
+
+if [[ "${preflight_ok}" != "true" ]]; then
+  print_error "SPIRE pre-flight failed: container in host network mode cannot reach KMS AppRole login endpoint."
+fi
+
+# ── Step 6e: Give SPIRE vault plugin time to connect on first startup ────────
+# SPIRE's vault UpstreamAuthority plugin has a 60-second connection timeout.
+# Extended delay after warmup to ensure container network stack, DNS cache, and TLS session
+# state are fully ready before SPIRE tries its first AppRole login (which is blocking during startup).
+print_info "Waiting before SPIRE startup to ensure Docker network stack and DNS cache are fully warm..."
+sleep 10
+
+# ── Step 7: Start SPIRE server with injected AppRole credentials ──────────────
 print_status "Starting ${#TENANTS[@]} SPIRE servers (one per tenant)..."
 # shellcheck disable=SC1090
 source "${SPIRE_SECRETS_ENV}"
