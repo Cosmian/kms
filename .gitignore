@@ -49,9 +49,7 @@ ui/test-results
 .claude
 .agent/
 .agents/
-.qwen/
-QWEN.md
-.qwen/
+.qwen/tmp/
 
 # Misc
 TODO.md
