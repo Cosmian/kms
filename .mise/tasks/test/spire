@@ -31,24 +31,69 @@ SPIRE_SECRETS_ENV="/tmp/spire-secrets.env"
 # leak across runs and can cause SPIRE login 403s ("invalid role_id or secret_id").
 AUTH_DB_FILE="/tmp/auth-verifier-spire-test.db"
 
+# `mise run test:spire` owns host ports 8443 (auth-verifier) and 9998 (KMS).
+# A previously crashed or unrelated SPIRE test run can leave stale listeners on
+# those ports, causing this task to talk to the wrong processes and produce
+# false positives/negatives. Detect and stop any existing listeners up front.
+#
+# All four helpers use lsof (available on both macOS and Linux) instead of the
+# Linux-only ss + GNU awk combination.
+listener_pids_for_port() {
+  local port="$1"
+  lsof -ti tcp:"${port}" 2>/dev/null | sort -u || true
+}
+
+port_is_listening() {
+  local port="$1"
+  lsof -i tcp:"${port}" -sTCP:LISTEN 2>/dev/null | grep -q . 2>/dev/null
+}
+
+wait_for_port_closed() {
+  local port="$1" timeout_secs="$2" elapsed=0
+  while port_is_listening "${port}"; do
+    if [[ "${elapsed}" -ge "${timeout_secs}" ]]; then
+      return 1
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+}
+
+stop_listener_on_port() {
+  local port="$1" label="$2" pids pid
+  pids="$(listener_pids_for_port "${port}")"
+  [[ -z "${pids}" ]] && return 0
+
+  print_info "Stopping stale ${label} listener(s) on port ${port}: $(paste -sd, <<<"${pids}")"
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
+  done <<<"${pids}"
+
+  if wait_for_port_closed "${port}" 10; then
+    return 0
+  fi
+
+  print_info "Port ${port} still busy after SIGTERM; forcing remaining ${label} listener(s) down."
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && kill -9 "${pid}" 2>/dev/null || true
+  done <<<"${pids}"
+
+  wait_for_port_closed "${port}" 5 ||
+    print_error "Port ${port} is still in use after stopping stale ${label} listener(s)."
+}
+
 # Remove all leftover SPIRE test state (stale containers/volumes, persistent auth DB,
 # and temp files) so each run starts from a clean, deterministic environment. Used both
 # for the up-front reset and by the exit-time cleanup.
 reset_spire_state() {
+  # Free the host ports owned by this task before bringing fresh processes up.
+  stop_listener_on_port 8443 "auth-verifier"
+  stop_listener_on_port 9998 "KMS"
+
   # Stop all SPIRE profile containers (including spire-agent) and remove named
   # volumes (incl. spire-agent-socket) so `up -d` never reuses a stale container
   # carrying outdated AppRole credentials.
   docker compose --profile spire down --volumes --remove-orphans 2>/dev/null || true
-  # Kill any stale auth-verifier or KMS processes from a previous interrupted run
-  # that might still hold ports 8443/9998 open. Uses fuser (available on Linux)
-  # to find the owning PIDs without resorting to pkill/killall.
-  for _port in 8443 9998; do
-    _pid=$(ss -tlnp "sport = :${_port}" 2>/dev/null | awk 'NR>1{match($0,/pid=([0-9]+)/,m); if(m[1]) print m[1]}')
-    if [[ -n "${_pid}" ]]; then
-      kill "${_pid}" 2>/dev/null || true
-      sleep 1
-    fi
-  done
   # Remove the persistent auth-verifier DB (WAL/SHM sidecars included).
   rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm" 2>/dev/null || true
   # Remove temp files/dirs carrying credentials/tokens from a previous run,
@@ -286,20 +331,25 @@ if [[ "${host_approle_ok}" != "true" ]]; then
 fi
 
 # ── Step 6d: Pre-flight Docker connectivity check ─────────────────────────────
-# Test the exact connectivity mode used by SPIRE containers (host network mode).
+# Test the exact connectivity mode used by SPIRE containers (host network mode +
+# host.docker.internal). On macOS Docker Desktop --network=host attaches to the
+# Linux VM's loopback, not the macOS host's, so localhost is unreachable from
+# inside the container. The SPIRE server configs already use
+# "https://host.docker.internal:9998" for this reason; the pre-flight mirrors
+# that exact setup with --add-host so it validates the same code path.
 print_status "Testing Docker container network connectivity to KMS..."
 
-# Validate from host network mode (same as spire-server/spire-agent).
 print_info "Pre-flight check from host network mode: AppRole login..."
 preflight_ok=false
 for attempt in 1 2 3 4 5; do
   if docker run --rm \
     --network=host \
+    --add-host=host.docker.internal:host-gateway \
     curlimages/curl:8.10.1 \
     -k -sS --connect-timeout 5 \
     -H "Content-Type: application/json" \
     -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
-    https://localhost:9998/v1/auth/approle/login >/dev/null 2>&1; then
+    https://host.docker.internal:9998/v1/auth/approle/login >/dev/null 2>&1; then
     preflight_ok=true
     print_info "  Pre-flight attempt ${attempt}/5: OK"
     break
@@ -544,8 +594,9 @@ if [[ -n "${AUTH_PID:-}" ]]; then
   wait "${AUTH_PID}" 2>/dev/null || true
   AUTH_PID=""
 fi
-# Give the socket a moment to close.
-sleep 2
+if ! wait_for_port_closed 8443 15; then
+  print_error "Scenario 2: auth-verifier port 8443 stayed open after shutdown; stale listener likely present."
+fi
 S2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
   -X GET -H "X-Vault-Token: s.some-token" \
   "https://localhost:9998/v1/auth/token/lookup-self")

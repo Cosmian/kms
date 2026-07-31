@@ -1021,6 +1021,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let spire_cache = SpireTokenCache::new(
                     kms_server_for_http.params.vault_token_cache_ttl_secs,
                 );
+                let spire_default_username: Arc<str> =
+                    kms_server_for_http.params.default_username.as_str().into();
 
                 let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
                 let transit_scope_path = format!("/v1/{transit_mount}");
@@ -1033,6 +1035,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                         spire_cache.clone(),
                         auth_verifier_url.clone(),
                         vault_http_client.clone(),
+                        spire_default_username.clone(),
                     ))
                     .wrap(Cors::default())
                     .service(create_transit_key)
@@ -1048,7 +1051,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let pki_mount = kms_server_for_http.params.vault_pki_mount.clone();
                 let pki_scope_path = format!("/v1/{pki_mount}");
                 let pki_scope = web::scope(&pki_scope_path)
-                    .wrap(spire_token_middleware(spire_cache, auth_verifier_url.clone(), vault_http_client.clone()))
+                    .wrap(spire_token_middleware(
+                        spire_cache,
+                        auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                        spire_default_username,
+                    ))
                     .wrap(Cors::default())
                     .service(sign_intermediate);
                 app = app.service(pki_scope);
