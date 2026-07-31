@@ -1168,12 +1168,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
 
         // Public endpoints (no authentication) — health/version for connectivity checks.
-        // API documentation (Swagger UI, OpenAPI schema) is served from the authenticated
-        // default scope to prevent information disclosure.
+        // Swagger UI and OpenAPI schema are also public so they remain reachable when
+        // the server requires TLS client certificates or other auth methods that a
+        // browser cannot satisfy for static assets.
         app = app
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
-            .service(get_version);
+            .service(get_version)
+            .service(swagger::get_openapi_yaml)
+            .service(swagger::get_swagger_ui)
+            .service(swagger::get_swagger_ui_js)
+            .service(swagger::get_swagger_ui_css);
 
         // JWKS endpoint: public, unauthenticated, CORS-open (partially).
         // The scope prefix `/.well-known` is explicit so this scope does not conflict
@@ -1281,11 +1286,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
-            )
-            .service(swagger::get_openapi_yaml)
-            .service(swagger::get_swagger_ui)
-            .service(swagger::get_swagger_ui_js)
-            .service(swagger::get_swagger_ui_css);
+            );
 
         app.service(default_scope)
     })

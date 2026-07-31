@@ -15,8 +15,7 @@ info:
     - **API Token** — pass an API token in `Authorization: Bearer <token>` (server-issued opaque token)
     - **Mutual TLS (mTLS)** — present a client certificate during the TLS handshake
 
-    Public endpoints (`/health`, `/version`) require no authentication.
-    API documentation (`/openapi.yaml`, `/swagger`) requires authentication.
+    Public endpoints (`/health`, `/version`, `/swagger`, `/openapi.yaml`) require no authentication.
 
 servers:
   - url: /
@@ -1705,13 +1704,11 @@ paths:
 
   /openapi.yaml:
     get:
-      tags: [Server]
+      tags: [Public]
       summary: OpenAPI schema
       description: Returns this OpenAPI 3.1 schema in YAML format.
       operationId: getOpenapiYaml
-      security:
-        - bearerAuth: []
-        - mtls: []
+      security: []
       responses:
         '200':
           description: OpenAPI YAML schema
@@ -1722,13 +1719,11 @@ paths:
 
   /swagger:
     get:
-      tags: [Server]
+      tags: [Public]
       summary: Swagger UI
       description: Browser-accessible Swagger UI for this API.
       operationId: getSwaggerUi
-      security:
-        - bearerAuth: []
-        - mtls: []
+      security: []
       responses:
         '200':
           description: Swagger UI HTML page
