@@ -38,7 +38,17 @@ reset_spire_state() {
   # Stop all SPIRE profile containers (including spire-agent) and remove named
   # volumes (incl. spire-agent-socket) so `up -d` never reuses a stale container
   # carrying outdated AppRole credentials.
-  docker compose --profile spire down --volumes 2>/dev/null || true
+  docker compose --profile spire down --volumes --remove-orphans 2>/dev/null || true
+  # Kill any stale auth-verifier or KMS processes from a previous interrupted run
+  # that might still hold ports 8443/9998 open. Uses fuser (available on Linux)
+  # to find the owning PIDs without resorting to pkill/killall.
+  for _port in 8443 9998; do
+    _pid=$(ss -tlnp "sport = :${_port}" 2>/dev/null | awk 'NR>1{match($0,/pid=([0-9]+)/,m); if(m[1]) print m[1]}')
+    if [[ -n "${_pid}" ]]; then
+      kill "${_pid}" 2>/dev/null || true
+      sleep 1
+    fi
+  done
   # Remove the persistent auth-verifier DB (WAL/SHM sidecars included).
   rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm" 2>/dev/null || true
   # Remove temp files/dirs carrying credentials/tokens from a previous run,
@@ -52,12 +62,17 @@ reset_spire_state() {
 cleanup() {
   print_info "Cleaning up SPIRE integration test resources..."
 
-  # Capture SPIRE server logs before stopping (helps debug failures)
+  # Capture SPIRE server and agent logs before stopping (helps debug failures)
   for _t in a b; do
     if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^spire-server-${_t}$"; then
       echo "--- SPIRE SERVER '${_t}' LOGS (last 40 lines) ---"
       docker logs "spire-server-${_t}" 2>&1 | tail -40 || true
       echo "--- END SPIRE SERVER '${_t}' LOGS ---"
+    fi
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^spire-agent-${_t}$"; then
+      echo "--- SPIRE AGENT '${_t}' LOGS (last 40 lines) ---"
+      docker logs "spire-agent-${_t}" 2>&1 | tail -40 || true
+      echo "--- END SPIRE AGENT '${_t}' LOGS ---"
     fi
   done
 
