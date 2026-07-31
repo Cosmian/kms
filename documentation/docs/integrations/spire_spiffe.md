@@ -937,6 +937,11 @@ This is enforced at the database layer and cannot be circumvented by manipulatin
 - The KMS's `/v1/transit/*` and `/v1/pki/*` scopes depend on auth-verifier being
   reachable: a cache-miss during an auth-verifier outage will cause new requests to those
   scopes to fail until connectivity is restored.
+- Transit `creation_time` has whole-second precision (KMIP `InitialDate` is POSIX
+  seconds), unlike Vault's nanosecond timestamps. In a fast rotation-retry loop where two
+  keys for the same logical SPIRE key id are created within the same wall-clock second,
+  SPIRE's newest-key tiebreak may be non-deterministic. Operators should avoid sub-second
+  rotation cycles until this is resolved.
 
 ## Adversarial test coverage
 
