@@ -110,6 +110,13 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
     // For the prehashed path we therefore use `EcdsaSig::sign`, which maps
     // directly to `ECDSA_sign(0, dgst, dgstlen, ...)` — it takes a raw digest
     // and produces a DER-encoded (r,s) signature without any extra hashing.
+    //
+    // NOTE: `correlation_value` is only applied in the unhashed branch (below).
+    // This is intentional — when `digested_data` is present the data has already
+    // been hashed by the caller, so there is nothing to prepend or correlate.
+    // Per the KMIP spec, `CorrelationValue` is the "data to be correlated" and
+    // is only meaningful when the server performs the hashing.
+
     let signature = if let Some(digested_data) = &request.digested_data {
         let ec_key = private_key.ec_key().map_err(|e| {
             CryptoError::Kmip(format!(

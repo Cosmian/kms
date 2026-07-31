@@ -128,6 +128,8 @@ pub(crate) struct SignIntermediateResponse {
 /// - `"3600"` — bare number treated as seconds
 ///
 /// Returns `None` when the input is empty or unparsable.
+// option_if_let_else: multi-arm if-let chain covers 3 suffix variants; the
+// suggested map_or form would be less readable here.
 #[allow(clippy::option_if_let_else)]
 fn parse_ttl_days(ttl: &str) -> Option<i32> {
     let ttl = ttl.trim();
@@ -204,6 +206,8 @@ async fn find_ca_private_key_uid(
 /// Returns the signed certificate PEM in a Vault-compatible response.
 ///
 /// Rejects requests with an empty `uri_sans` list (SPIFFE ID is required).
+// large_futures: chains ~5 sequential DB/KMS awaits on an infrequent CA-signing
+// path; boxing would add per-request allocation overhead for negligible benefit.
 #[allow(clippy::large_futures)]
 #[route("/root/sign-intermediate", method = "POST", method = "PUT")]
 pub(crate) async fn sign_intermediate(
@@ -326,24 +330,8 @@ async fn get_issuing_ca_pem(
     ca_label: &str,
     user: &str,
 ) -> Result<String, SpireApiError> {
-    // First find the CA private key
-    let mut filter = Attributes {
-        object_type: Some(ObjectType::PrivateKey),
-        ..Default::default()
-    };
-    filter
-        .set_tags(kms.vendor_id(), [ca_label])
-        .map_err(|e| SpireApiError::InternalError(format!("tag filter error: {e}")))?;
-
-    let results = kms
-        .database
-        .find(Some(&filter), None, user, false, kms.vendor_id())
-        .await
-        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
-
-    let (ca_sk_uid, _, _) = results.into_iter().next().ok_or_else(|| {
-        SpireApiError::InternalError(format!("CA private key with tag '{ca_label}' not found"))
-    })?;
+    // Find the CA private key using the shared helper
+    let ca_sk_uid = find_ca_private_key_uid(kms, ca_label, user).await?;
 
     // Retrieve the CA private key to get the public key link
     let ca_sk_owm = kms
@@ -353,47 +341,60 @@ async fn get_issuing_ca_pem(
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;
 
-    // Follow PublicKeyLink → CertificateLink
-    let ca_cert_pem =
-        if let Some(pk_link) = ca_sk_owm.attributes().get_link(LinkType::PublicKeyLink) {
-            let pk_uid = pk_link.to_string();
-            if let Some(pk_owm) = kms
-                .database
-                .retrieve_object(&pk_uid)
-                .await
-                .map_err(|e| SpireApiError::InternalError(e.to_string()))?
-            {
-                if let Some(cert_link) = pk_owm.attributes().get_link(LinkType::CertificateLink) {
-                    let cert_uid = cert_link.to_string();
-                    if let Some(cert_owm) = kms
-                        .database
-                        .retrieve_object(&cert_uid)
-                        .await
-                        .map_err(|e| SpireApiError::InternalError(e.to_string()))?
-                    {
-                        let x509 = kmip_certificate_to_openssl(cert_owm.object())
-                            .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
-                        Some(cert_to_pem(&x509)?)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+    // Follow PublicKeyLink → CertificateLink → Certificate
+    let pk_link = ca_sk_owm
+        .attributes()
+        .get_link(LinkType::PublicKeyLink)
+        .ok_or_else(|| {
+            SpireApiError::InternalError(
+                "No CA certificate found linked to vault_pki_ca_key_label. \
+                 Import or certify the CA certificate and link it to the CA key pair."
+                    .to_owned(),
+            )
+        })?;
+    let pk_uid = pk_link.to_string();
 
-    ca_cert_pem.ok_or_else(|| {
-        SpireApiError::InternalError(
-            "No CA certificate found linked to vault_pki_ca_key_label. \
-             Import or certify the CA certificate and link it to the CA key pair."
-                .to_owned(),
-        )
-    })
+    let pk_owm = kms
+        .database
+        .retrieve_object(&pk_uid)
+        .await
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?
+        .ok_or_else(|| {
+            SpireApiError::InternalError(
+                "No CA certificate found linked to vault_pki_ca_key_label. \
+                 Import or certify the CA certificate and link it to the CA key pair."
+                    .to_owned(),
+            )
+        })?;
+
+    let cert_link = pk_owm
+        .attributes()
+        .get_link(LinkType::CertificateLink)
+        .ok_or_else(|| {
+            SpireApiError::InternalError(
+                "No CA certificate found linked to vault_pki_ca_key_label. \
+                 Import or certify the CA certificate and link it to the CA key pair."
+                    .to_owned(),
+            )
+        })?;
+    let cert_uid = cert_link.to_string();
+
+    let cert_owm = kms
+        .database
+        .retrieve_object(&cert_uid)
+        .await
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?
+        .ok_or_else(|| {
+            SpireApiError::InternalError(
+                "No CA certificate found linked to vault_pki_ca_key_label. \
+                 Import or certify the CA certificate and link it to the CA key pair."
+                    .to_owned(),
+            )
+        })?;
+
+    let x509 = kmip_certificate_to_openssl(cert_owm.object())
+        .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
+    cert_to_pem(&x509)
 }
 
 #[cfg(test)]
