@@ -386,16 +386,10 @@ async fn create_nonfips_transit_key(
         .map_err(SpireApiError::from)?;
 
     debug!("vault transit: created ML-DSA-65 key '{name}'");
-    Ok(Some(Json(TransitKeyInfoWrapper {
-        data: TransitKeyInfo {
-            name: name.to_owned(),
-            key_type: body.key_type.clone(),
-            exportable: false,
-            allow_deletion: true,
-            latest_version: 1,
-            keys: HashMap::new(),
-        },
-    })))
+    Ok(Some(key_created_response(
+        name.to_owned(),
+        body.key_type.clone(),
+    )))
 }
 
 /// FIPS-build stub: no non-FIPS transit key types exist.
@@ -438,6 +432,20 @@ pub(crate) async fn create_transit_key_put(
     body: Json<CreateTransitKeyRequest>,
 ) -> SpireResult<Json<TransitKeyInfoWrapper>> {
     create_transit_key_impl(req, kms, name, body).await
+}
+
+/// Build a transit key creation response with default values.
+fn key_created_response(name: String, key_type: String) -> Json<TransitKeyInfoWrapper> {
+    Json(TransitKeyInfoWrapper {
+        data: TransitKeyInfo {
+            name,
+            key_type,
+            exportable: false,
+            allow_deletion: true,
+            latest_version: 1,
+            keys: HashMap::new(),
+        },
+    })
 }
 
 async fn create_transit_key_impl(
@@ -489,16 +497,7 @@ async fn create_transit_key_impl(
             "vault transit: created EC key '{name}' type={}",
             body.key_type
         );
-        return Ok(Json(TransitKeyInfoWrapper {
-            data: TransitKeyInfo {
-                name,
-                key_type: body.key_type,
-                exportable: false,
-                allow_deletion: true,
-                latest_version: 1,
-                keys: HashMap::new(),
-            },
-        }));
+        return Ok(key_created_response(name, body.key_type));
     }
 
     // ML-DSA (non-FIPS only) — handled by a #[cfg]-gated free function so no
@@ -518,16 +517,7 @@ async fn create_transit_key_impl(
             .map_err(SpireApiError::from)?;
 
         debug!("vault transit: created RSA key '{name}' bits={bits}");
-        return Ok(Json(TransitKeyInfoWrapper {
-            data: TransitKeyInfo {
-                name,
-                key_type: body.key_type,
-                exportable: false,
-                allow_deletion: true,
-                latest_version: 1,
-                keys: HashMap::new(),
-            },
-        }));
+        return Ok(key_created_response(name, body.key_type));
     }
 
     Err(SpireApiError::BadRequest(format!(
