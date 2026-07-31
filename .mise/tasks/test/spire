@@ -270,7 +270,7 @@ for attempt in 1 2 3; do
   if curl -sS --cacert "${TEST_DATA}/certs/ca.crt" \
     --connect-timeout 5 \
     -H "Content-Type: application/json" \
-    -d "{\"role_id\":\"${APPROLE_ROLE_ID}\",\"secret_id\":\"${APPROLE_SECRET_ID}\"}" \
+    -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
     "https://localhost:9998/v1/auth/approle/login" >/dev/null 2>&1; then
     print_info "Host-side AppRole login check passed (attempt ${attempt})."
     host_approle_ok=true
@@ -298,7 +298,7 @@ for attempt in 1 2 3 4 5; do
     curlimages/curl:8.10.1 \
     -k -sS --connect-timeout 5 \
     -H "Content-Type: application/json" \
-    -d "{\"role_id\":\"${APPROLE_ROLE_ID}\",\"secret_id\":\"${APPROLE_SECRET_ID}\"}" \
+    -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
     https://localhost:9998/v1/auth/approle/login >/dev/null 2>&1; then
     preflight_ok=true
     print_info "  Pre-flight attempt ${attempt}/5: OK"
