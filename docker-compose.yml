@@ -255,13 +255,11 @@ services:
     image: ghcr.io/spiffe/spire-server:1.15.2
     profiles: [spire]
     container_name: spire-server-a
-    # SPIRE 1.15+ images run as non-root (uid 1000); the root-owned named
-    # data volume and the SQLite datastore/keys.json under /data would fail
-    # with "unable to open database file". Run as root to allow writes
-    # (matches the pre-1.15 image behaviour; test-only compose).
+    # SPIRE 1.15+ images run as non-root (uid 1000); run as root for writes.
     user: 0:0
-    ports:
-      - 8081:8081     # SPIRE server gRPC (tenant a)
+    network_mode: host
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ${SPIRE_SERVER_CONFIG_FILE_A:-./test_data/spire/config/spire-server-a.conf}:/etc/spire/server/server.conf:ro
       - ./test_data/spire/certs/ca.crt:/etc/spire/server/ca.crt:ro
@@ -273,8 +271,6 @@ services:
       - VAULT_APPROLE_ID=${VAULT_APPROLE_ID_A:-}
       - VAULT_APPROLE_SECRET_ID=${VAULT_APPROLE_SECRET_ID_A:-}
     command: [-config, /etc/spire/server/server.conf]
-    extra_hosts:
-      - host.docker.internal:host-gateway
     healthcheck:
       test:
         - CMD
@@ -288,12 +284,14 @@ services:
     image: ghcr.io/spiffe/spire-agent:1.15.2
     profiles: [spire]
     container_name: spire-agent-a
-    # See spire-server-a: run as root so the agent can write its data_dir
-    # (/data/spire-agent) under the non-root 1.15+ image.
+    # See spire-server-a: run as root for 1.15+ non-root image.
     user: 0:0
+    network_mode: host
     depends_on:
       spire-server-a:
         condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       # SPIRE_AGENT_CONFIG_FILE_A is overridden by the mise task to inject a
       # real join token (generated at runtime). Defaults to the template
@@ -308,8 +306,6 @@ services:
       - spire-agent-socket-a:/tmp/spire-agent
     command: [-config, /etc/spire/agent/agent.conf]
     pid: host
-    extra_hosts:
-      - host.docker.internal:host-gateway
     healthcheck:
       # Use the SPIRE agent binary itself: the image is distroless and has no
       # shell or 'test' utility. Reports healthy once the workload API socket
@@ -366,11 +362,11 @@ services:
     image: ghcr.io/spiffe/spire-server:1.15.2
     profiles: [spire]
     container_name: spire-server-b
-    # See spire-server-a: run as root so the 1.15+ non-root image can write
-    # its SQLite datastore and keys.json under /data/spire-server.
+    # See spire-server-a: run as root for 1.15+ non-root image.
     user: 0:0
-    ports:
-      - 8091:8081     # SPIRE server gRPC (tenant b)
+    network_mode: host
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ${SPIRE_SERVER_CONFIG_FILE_B:-./test_data/spire/config/spire-server-b.conf}:/etc/spire/server/server.conf:ro
       - ./test_data/spire/certs/ca.crt:/etc/spire/server/ca.crt:ro
@@ -379,8 +375,6 @@ services:
       - VAULT_APPROLE_ID=${VAULT_APPROLE_ID_B:-}
       - VAULT_APPROLE_SECRET_ID=${VAULT_APPROLE_SECRET_ID_B:-}
     command: [-config, /etc/spire/server/server.conf]
-    extra_hosts:
-      - host.docker.internal:host-gateway
     healthcheck:
       test:
         - CMD
@@ -394,20 +388,20 @@ services:
     image: ghcr.io/spiffe/spire-agent:1.15.2
     profiles: [spire]
     container_name: spire-agent-b
-    # See spire-server-a: run as root so the agent can write its data_dir
-    # (/data/spire-agent) under the non-root 1.15+ image.
+    # See spire-server-a: run as root for 1.15+ non-root image.
     user: 0:0
+    network_mode: host
     depends_on:
       spire-server-b:
         condition: service_healthy
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ${SPIRE_AGENT_CONFIG_FILE_B:-./test_data/spire/config/spire-agent-b.conf}:/etc/spire/agent/agent.conf:ro
       - ./test_data/spire/certs/ca.crt:/etc/spire/agent/ca.crt:ro
       - spire-agent-socket-b:/tmp/spire-agent
     command: [-config, /etc/spire/agent/agent.conf]
     pid: host
-    extra_hosts:
-      - host.docker.internal:host-gateway
     healthcheck:
       test:
         - CMD
