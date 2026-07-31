@@ -851,7 +851,7 @@ async fn sign_with_transit_key_impl(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic_in_result_fn)]
 mod tests {
     use cosmian_kms_server_database::reexport::cosmian_kmip::{
         kmip_0::kmip_types::HashingAlgorithm,
@@ -1040,5 +1040,141 @@ mod tests {
             result,
             Err(crate::routes::spire::error::SpireApiError::BadRequest(_))
         ));
+    }
+
+    // ── Cross-AppRole isolation tests ─────────────────────────────────────────
+    // These tests verify that transit keys created by one AppRole (owner) are
+    // invisible and inaccessible to a different AppRole.  They operate at the
+    // KMS layer (owner: &str) rather than the HTTP layer so they do not require
+    // a live auth-verifier; the spire_token_middleware tests already cover the
+    // identity-extraction path.
+
+    use std::sync::Arc;
+
+    use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
+        extra::tagging::VENDOR_ID_COSMIAN,
+        kmip_objects::ObjectType,
+        kmip_operations::Locate,
+        requests::{create_ec_key_pair_request, get_ec_private_key_request},
+    };
+
+    use crate::{
+        config::ServerParams, core::KMS, result::KResult, tests::test_utils::https_clap_config,
+    };
+
+    /// Create a KMS instance backed by a fresh in-memory `SQLite` database.
+    async fn isolation_test_kms() -> KResult<Arc<KMS>> {
+        let clap_config = https_clap_config();
+        Ok(Arc::new(
+            KMS::instantiate(Arc::new(ServerParams::try_from(clap_config)?)).await?,
+        ))
+    }
+
+    /// Build a P-256 key-pair creation request tagged as a transit key for `name`.
+    fn transit_create_req_for(name: &str) -> KResult<cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::kmip_operations::CreateKeyPair>{
+        let tag = transit_tag_name(name);
+        Ok(create_ec_key_pair_request(
+            VENDOR_ID_COSMIAN,
+            None,
+            vec![tag.as_str()],
+            RecommendedCurve::P256,
+            true,
+            None,
+        )?)
+    }
+
+    /// Tenant B cannot `Get` a private key that was created by tenant A.
+    #[tokio::test]
+    async fn test_transit_cross_approle_get_isolation() -> KResult<()> {
+        let kms = isolation_test_kms().await?;
+
+        // Tenant A creates a transit key and we record the private key UID.
+        let resp = kms
+            .create_key_pair(transit_create_req_for("my-key")?, "tenant-a")
+            .await?;
+        let priv_uid = resp
+            .private_key_unique_identifier
+            .as_str()
+            .expect("private key uid")
+            .to_owned();
+
+        // Tenant B tries to Get the same UID — must fail.
+        let result = kms
+            .get(get_ec_private_key_request(&priv_uid), "tenant-b")
+            .await;
+        assert!(
+            result.is_err(),
+            "tenant-b must not be able to Get tenant-a's private key"
+        );
+        Ok(())
+    }
+
+    /// Tenant B's `Locate` (list) must not include keys created by tenant A.
+    #[tokio::test]
+    async fn test_transit_cross_approle_list_isolation() -> KResult<()> {
+        let kms = isolation_test_kms().await?;
+
+        // Tenant A creates a transit key.
+        kms.create_key_pair(transit_create_req_for("secret-key")?, "tenant-a")
+            .await?;
+
+        // Tenant B lists all private keys — result must be empty.
+        let locate = Locate {
+            attributes: Attributes {
+                object_type: Some(ObjectType::PrivateKey),
+                ..Default::default()
+            },
+            ..Locate::default()
+        };
+        let resp = kms.locate(locate, "tenant-b").await?;
+        let count = resp.located_items.unwrap_or(0);
+        assert_eq!(
+            count, 0,
+            "tenant-b's Locate returned {count} objects owned by tenant-a (expected 0)"
+        );
+        Ok(())
+    }
+
+    /// Each tenant's `Locate` only sees its own keys even when both have keys.
+    #[tokio::test]
+    async fn test_transit_two_tenants_see_only_own_keys() -> KResult<()> {
+        let kms = isolation_test_kms().await?;
+
+        // Tenant A creates two transit keys; tenant B creates one.
+        kms.create_key_pair(transit_create_req_for("key-a1")?, "tenant-a")
+            .await?;
+        kms.create_key_pair(transit_create_req_for("key-a2")?, "tenant-a")
+            .await?;
+        kms.create_key_pair(transit_create_req_for("key-b1")?, "tenant-b")
+            .await?;
+
+        // Locate private keys for each tenant.
+        let private_key_locate = || Locate {
+            attributes: Attributes {
+                object_type: Some(ObjectType::PrivateKey),
+                ..Default::default()
+            },
+            ..Locate::default()
+        };
+        let a_count = kms
+            .locate(private_key_locate(), "tenant-a")
+            .await?
+            .located_items
+            .unwrap_or(0);
+        let b_count = kms
+            .locate(private_key_locate(), "tenant-b")
+            .await?
+            .located_items
+            .unwrap_or(0);
+
+        assert_eq!(
+            a_count, 2,
+            "tenant-a should locate exactly 2 private keys, got {a_count}"
+        );
+        assert_eq!(
+            b_count, 1,
+            "tenant-b should locate exactly 1 private key, got {b_count}"
+        );
+        Ok(())
     }
 }
