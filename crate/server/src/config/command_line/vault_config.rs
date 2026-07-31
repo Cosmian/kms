@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Configuration for the Vault-compatible REST API.
 ///
 /// When `vault_api_enabled = true`, the KMS exposes `/v1/transit/` and
-/// `/v1/<vault_pki_mount>/` scopes that are compatible with the `HashiCorp` Vault
+/// `/v1/<vault_pki_mount>/` scopes that are compatible with the Vault
 /// API. This is used by SPIRE and other Vault-aware tools.
 #[derive(Args, ConfigArgs, Clone, Debug, Deserialize, Serialize, Default)]
 #[serde(default)]

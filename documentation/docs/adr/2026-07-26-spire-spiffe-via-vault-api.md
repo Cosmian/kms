@@ -20,10 +20,10 @@ Accepted — amended 2026-07-28 (see Amendment below)
 Production SPIRE deployments require an enterprise KMS as both UpstreamAuthority (PKI engine: sign intermediate CA certificates) and
 KeyManager (Transit engine: key-as-a-service, signing only — private keys never leave the backend).
 
-SPIRE's two relevant plugins call the HashiCorp Vault HTTP API:
+SPIRE's two relevant plugins call the Vault HTTP API:
 
 - `upstreamauthority "vault"`: POST `/<pki_mount>/root/sign-intermediate` with a PKCS#10 CSR
-- `keymanager "hashicorp_vault"`: POST `/<transit>/keys/<name>`, GET, LIST, POST sign, DELETE
+- `keymanager "vault"`: POST `/<transit>/keys/<name>`, GET, LIST, POST sign, DELETE
 
 Both plugins first authenticate with one of four Vault auth methods (Token, Cert, AppRole,
 Kubernetes) against a Vault-compatible auth endpoint, obtain an opaque `client_token`, then
