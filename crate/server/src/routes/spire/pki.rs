@@ -307,9 +307,28 @@ pub(crate) async fn sign_intermediate(
     let certificate_pem = cert_to_pem(&signed_cert_x509)?;
 
     // Retrieve the issuing CA certificate (linked to the CA private key's public key)
-    // For the beta, we return the signed cert + minimal chain.
-    // The issuing_ca is the CA cert linked to the CA private key.
     let issuing_ca_pem = get_issuing_ca_pem(&kms, ca_label, &ca_user).await?;
+
+    // Detect multi-tier CA: if the issuing CA cert is not self-signed, it chains up
+    // to a higher root. The beta only supports single-tier CAs; returning a truncated
+    // chain would cause SPIRE to silently adopt the intermediate as its trust root.
+    let issuing_ca_x509 = X509::from_pem(issuing_ca_pem.as_bytes())
+        .map_err(|e| SpireApiError::InternalError(format!("issuing CA PEM parse failed: {e}")))?;
+    let issuer_der = issuing_ca_x509
+        .issuer_name()
+        .to_der()
+        .map_err(|e| SpireApiError::InternalError(format!("issuer name DER encode failed: {e}")))?;
+    let subject_der = issuing_ca_x509.subject_name().to_der().map_err(|e| {
+        SpireApiError::InternalError(format!("subject name DER encode failed: {e}"))
+    })?;
+    if issuer_der != subject_der {
+        return Err(SpireApiError::BadRequest(
+            "multi-tier CA hierarchy detected (issuing CA is not self-signed); \
+             only single-tier CAs are supported in the beta. \
+             See ADR 2026-07-26-spire-spiffe-via-vault-api.md LIM-001."
+                .to_owned(),
+        ));
+    }
 
     // Build ca_chain: [issuing_ca_pem] — root excluded, no duplication of signed cert
     let ca_chain = vec![issuing_ca_pem.clone()];

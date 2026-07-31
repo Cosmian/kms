@@ -93,16 +93,21 @@ recorded here so they are tracked before longer-lived production rollouts.
   as a single element (`[issuing_ca]`) by following `CA private key → PublicKeyLink →
   CertificateLink` exactly one hop. This is correct for a single-tier CA but returns an
   incomplete chain for a root→intermediate→leaf hierarchy, where SPIRE expects the *last*
-  `ca_chain` element to be the true root. Multi-tier CA traversal is deferred; production
-  multi-tier rollouts must account for this until full chain-walking is implemented.
+  `ca_chain` element to be the true root. The endpoint now detects the multi-tier case
+  (issuing CA is not self-signed) and fails with HTTP 400 rather than returning a silently
+  truncated chain. Full multi-tier CA chain-walking is deferred; production multi-tier
+  rollouts must wait until that is implemented.
 - **LIM-002** Whole-second `creation_time` precision — transit key `creation_time` is
   formatted from KMIP's `InitialDate`, a POSIX-seconds timestamp with no sub-second
   component, so the RFC 3339 string never carries a fractional part (unlike real Vault,
-  which returns nanosecond timestamps). If two keys for the same logical SPIRE key id are
-  created within the same wall-clock second (e.g. a fast rotation-retry loop), SPIRE's
-  string-based newest-key tiebreak is non-deterministic. Acceptable for the beta given
-  SPIRE key ids are effectively unique per rotation; sub-second precision would require
-  threading a higher-resolution creation timestamp through the KMIP object metadata.
+  which returns nanosecond timestamps). Vault PKI spec §5.3 defines `creation_time`
+  precisely to pick the newest key when duplicates share a SPIRE key id after a
+  mid-rotation restart — the exact scenario whole-second precision fails to
+  disambiguate. If two keys for the same logical SPIRE key id are created within the
+  same wall-clock second (e.g. a fast rotation-retry loop), SPIRE's string-based
+  newest-key tiebreak is non-deterministic. Accepted for the beta: sub-second precision
+  would require threading a higher-resolution creation timestamp through the KMIP object
+  metadata, which is deferred until after the beta.
 - **LIM-003** FIPS transit/PKI paths untested in CI — the `spire` CI job runs only with the
   `non-fips` feature set, because the transit key-creation path exercises algorithms and
   Vault-API compatibility behaviour that are non-FIPS-only. The FIPS-mode SPIRE code paths
