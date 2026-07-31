@@ -133,8 +133,14 @@ fn reqwest_method(method: &str) -> reqwest::Method {
 /// every encoding of a dot segment. This is used to block path-traversal attempts
 /// in the unauthenticated auth proxy before the path is handed to the outgoing
 /// HTTP client (whose URL parser would otherwise silently collapse `..`).
+///
+/// Segments are split on **both** `/` and `\`: actix does not normalize `\` in
+/// the request path, but the outgoing `reqwest`/`url` crate's WHATWG-compliant
+/// parser treats `\` as a path separator and resolves `..` across it (e.g.
+/// `/auth/..\admin` → `/admin`). Splitting on `/` alone let that raw-backslash
+/// form through unnoticed.
 fn path_has_dot_segment(path: &str) -> bool {
-    path.split('/').any(|segment| {
+    path.split(['/', '\\']).any(|segment| {
         let normalized = segment.to_ascii_lowercase().replace("%2e", ".");
         normalized == "." || normalized == ".."
     })
@@ -172,6 +178,18 @@ mod tests {
         assert!(path_has_dot_segment("/auth/%2e/admin"));
         assert!(path_has_dot_segment("/auth/.%2e/admin"));
         assert!(path_has_dot_segment("/auth/%2e./admin"));
+    }
+
+    #[test]
+    fn rejects_backslash_dot_segments() {
+        // `reqwest`'s WHATWG URL parser treats `\` as a path separator and
+        // resolves `..` across it, even though `req.path()` never normalizes it.
+        assert!(path_has_dot_segment("/auth/..\\admin"));
+        assert!(path_has_dot_segment("/auth\\../admin"));
+        assert!(path_has_dot_segment("\\auth\\..\\admin"));
+        assert!(path_has_dot_segment("/auth/.\\admin"));
+        assert!(path_has_dot_segment("\\.."));
+        assert!(path_has_dot_segment("\\."));
     }
 
     #[test]
