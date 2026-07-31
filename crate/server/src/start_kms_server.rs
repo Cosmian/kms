@@ -1025,7 +1025,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
                 let transit_scope_path = format!("/v1/{transit_mount}");
                 let transit_scope = web::scope(&transit_scope_path)
-                    // SPIRE's `hashicorp_vault` KeyManager plugin (SPIRE >= 1.15.0) does
+                    // SPIRE's `vault` KeyManager plugin (SPIRE >= 1.15.0) does
                     // not always set a `Content-Type: application/json` header on its
                     // `PUT` key-creation request; accept the JSON body regardless.
                     .app_data(JsonConfig::default().content_type_required(false))

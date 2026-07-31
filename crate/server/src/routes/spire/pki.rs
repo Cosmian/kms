@@ -197,7 +197,7 @@ async fn find_ca_private_key_uid(
 
 /// `POST/PUT /root/sign-intermediate` — sign a CSR with the configured CA key.
 ///
-/// Both methods accepted: `HashiCorp` Vault Go SDK uses PUT (via `Logical().Write()`);
+/// Both methods accepted: the Vault Go SDK uses PUT (via `Logical().Write()`);
 /// direct clients may use POST. Body parsing is Content-Type-agnostic.
 ///
 /// The CA key is identified by `vault_pki_ca_key_label` in server config.

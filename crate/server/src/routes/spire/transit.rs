@@ -2,7 +2,7 @@
 //!
 //! Routes:
 //!   `POST/PUT /keys/{name}`           — create transit key (PUT: SPIRE 1.15+
-//!                                       `hashicorp_vault` `KeyManager` plugin)
+//!                                       `vault` `KeyManager` plugin)
 //!   `POST   /keys/{name}/config`      — update key config (`deletion_allowed`; no-op)
 //!   `GET    /keys/{name}`             — read transit key info (public key + version map)
 //!   `GET    /keys`                    — list transit keys
@@ -132,7 +132,7 @@ pub(crate) struct SignTransitRequest {
     ///
     /// This field applies to RSA keys only and is ignored for other key types,
     /// matching Vault (which documents it as RSA-only). When absent the default is
-    /// `"pss"`, mirroring Vault's own documented default. SPIRE's `hashicorp_vault`
+    /// `"pss"`, mirroring Vault's own documented default. SPIRE's `vault`
     /// key manager always sends this field explicitly for RSA keys.
     #[serde(default)]
     pub signature_algorithm: Option<String>,
@@ -426,7 +426,7 @@ pub(crate) async fn create_transit_key(
 
 /// `PUT /keys/{name}` — same as `POST /keys/{name}` (see below).
 ///
-/// SPIRE's `hashicorp_vault` `KeyManager` plugin (landed in SPIRE 1.15.0) issues
+/// SPIRE's `vault` `KeyManager` plugin (landed in SPIRE 1.15.0) issues
 /// `PUT /v1/transit/keys/{name}` to create its signing keys, while the Vault
 /// HTTP API itself (and this KMS's own negative-scenario tests) use `POST` —
 /// both must create the same key.
@@ -655,7 +655,7 @@ pub(crate) async fn configure_transit_key(
 
 /// `GET /keys` — list all transit key names.
 ///
-/// Note: unlike `HashiCorp` Vault — whose `LIST` on an empty/absent path returns
+/// Note: unlike Vault — whose `LIST` on an empty/absent path returns
 /// `404` — this endpoint always returns `200` with a (possibly empty) `keys`
 /// array. This is an intentional, SPIRE-compatible superset: SPIRE's Go SDK
 /// treats an empty list and a 404 identically, and a plain `200` avoids the
@@ -762,7 +762,7 @@ pub(crate) async fn sign_with_transit_key(
 
 /// `PUT /sign/{name}/{hash_alg}` — same as `POST /sign/{name}/{hash_alg}` (see below).
 ///
-/// SPIRE's `hashicorp_vault` `KeyManager` plugin issues `PUT` for its transit
+/// SPIRE's `vault` `KeyManager` plugin issues `PUT` for its transit
 /// sign calls, while the Vault HTTP API itself uses `POST`.
 #[put("/sign/{name}/{hash_alg}")]
 pub(crate) async fn sign_with_transit_key_put(
