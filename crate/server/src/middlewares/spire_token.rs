@@ -132,6 +132,7 @@ async fn validate_against_auth_verifier(
     token: &str,
     auth_verifier_url: &Url,
     client: &reqwest::Client,
+    default_username: &str,
 ) -> Result<SpireAuthenticatedUser, String> {
     let url = auth_verifier_url
         .join("/auth/token/lookup-self")
@@ -157,12 +158,12 @@ async fn validate_against_auth_verifier(
         .map_err(|e| format!("auth-verifier lookup-self parse error: {e}"))?;
 
     Ok(SpireAuthenticatedUser {
-        entity: validated_entity(body.data.entity_id)?,
+        entity: validated_entity(body.data.entity_id, default_username)?,
         policies: body.data.policies,
     })
 }
 
-/// Reject an empty or blank `entity_id`.
+/// Reject an empty/blank `entity_id`, or one colliding with the KMS `default_username`.
 ///
 /// The `entity_id` becomes the KMS owner identity for every transit/PKI object
 /// created or accessed through a SPIRE token (via `get_user`). An empty owner
@@ -170,13 +171,24 @@ async fn validate_against_auth_verifier(
 /// defeating per-tenant isolation: any token could then read, sign with, or
 /// delete another tenant's transit keys. We therefore fail closed rather than
 /// map a token to an ambiguous, shared identity.
-fn validated_entity(entity_id: String) -> Result<String, String> {
+///
+/// `entity_id` is an operator-chosen AppRole/role name on the auth-verifier
+/// side, not a generated identifier — an `AppRole` named after the KMS
+/// `default_username` (e.g. `"admin"`) would otherwise inherit that shared
+/// identity's ownership of every object it created outside SPIRE.
+fn validated_entity(entity_id: String, default_username: &str) -> Result<String, String> {
     if entity_id.trim().is_empty() {
         return Err(
             "auth-verifier lookup-self returned an empty entity_id; refusing to map the token \
              to a shared owner identity"
                 .to_owned(),
         );
+    }
+    if entity_id == default_username {
+        return Err(format!(
+            "auth-verifier lookup-self returned entity_id '{entity_id}' which collides with the \
+             KMS default_username; refusing to map the token to a shared owner identity"
+        ));
     }
     Ok(entity_id)
 }
@@ -192,6 +204,7 @@ pub(crate) fn spire_token_middleware<S, B>(
     cache: Arc<SpireTokenCache>,
     auth_verifier_url: Url,
     client: Arc<reqwest::Client>,
+    default_username: Arc<str>,
 ) -> impl Transform<S, ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error, InitError = ()>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
@@ -201,6 +214,7 @@ where
         let cache = cache.clone();
         let auth_verifier_url = auth_verifier_url.clone();
         let client = client.clone();
+        let default_username = default_username.clone();
 
         async move {
             // Extract raw token from header
@@ -241,7 +255,14 @@ where
             }
 
             // Cache miss — call auth-verifier
-            match validate_against_auth_verifier(&raw_token, &auth_verifier_url, &client).await {
+            match validate_against_auth_verifier(
+                &raw_token,
+                &auth_verifier_url,
+                &client,
+                &default_username,
+            )
+            .await
+            {
                 Ok(user) => {
                     debug!("spire_token_middleware: validated entity={}", user.entity);
                     cache.insert(hash_bytes, user.clone());
@@ -303,7 +324,7 @@ mod tests {
     #[test]
     fn validated_entity_accepts_non_empty() {
         assert_eq!(
-            validated_entity("entity-abc".to_owned()).unwrap(),
+            validated_entity("entity-abc".to_owned(), "admin").unwrap(),
             "entity-abc"
         );
     }
@@ -313,9 +334,23 @@ mod tests {
     /// KMS owner and cross tenant boundaries.
     #[test]
     fn validated_entity_rejects_empty_or_blank() {
-        validated_entity(String::new()).unwrap_err();
-        validated_entity("   ".to_owned()).unwrap_err();
-        validated_entity("\t\n".to_owned()).unwrap_err();
+        validated_entity(String::new(), "admin").unwrap_err();
+        validated_entity("   ".to_owned(), "admin").unwrap_err();
+        validated_entity("\t\n".to_owned(), "admin").unwrap_err();
+    }
+
+    /// An `entity_id` colliding with the KMS `default_username` is rejected: an
+    /// operator-chosen `AppRole` name (e.g. `"admin"`) must not inherit the
+    /// default local account's ownership of pre-existing objects.
+    #[test]
+    fn validated_entity_rejects_default_username_collision() {
+        validated_entity("admin".to_owned(), "admin").unwrap_err();
+        validated_entity("operator".to_owned(), "operator").unwrap_err();
+        // Distinct from default_username: accepted.
+        assert_eq!(
+            validated_entity("spire-role".to_owned(), "admin").unwrap(),
+            "spire-role"
+        );
     }
 
     /// Insert → lookup returns the user.
@@ -413,6 +448,7 @@ mod tests {
                     cache.clone(),
                     dummy_url,
                     client.clone(),
+                    Arc::from("admin"),
                 ))
                 .route(
                     "/test",
@@ -453,6 +489,7 @@ mod tests {
                     cache.clone(),
                     dummy_url,
                     client.clone(),
+                    Arc::from("admin"),
                 ))
                 .route("/test", web::get().to(|| async { "should not reach" })),
         )
@@ -485,6 +522,7 @@ mod tests {
                     cache.clone(),
                     bad_url,
                     client.clone(),
+                    Arc::from("admin"),
                 ))
                 .route("/test", web::get().to(|| async { "should not reach" })),
         )
@@ -523,6 +561,7 @@ mod tests {
                     cache.clone(),
                     dummy_url,
                     client.clone(),
+                    Arc::from("admin"),
                 ))
                 .route(
                     "/whoami",
