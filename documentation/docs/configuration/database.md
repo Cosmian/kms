@@ -110,7 +110,14 @@ Use the `target_session_attrs` query parameter to control which node the driver 
 | `any`        | Connect to any available node (suitable for read replicas) |
 | `read-only`  | Connect only to a standby                                  |
 
-**Example — two-node HA cluster:**
+!!! note "Host order"
+    The driver tries hosts **left to right** in the URL. With `target_session_attrs=read-write`,
+    standbys are automatically skipped (they return `transaction_read_write=off`), so the primary
+    is always found regardless of its position. However, **put the expected primary first** to
+    avoid an unnecessary round-trip to the standby on every new connection under normal
+    conditions.
+
+**Example — two-node HA cluster (primary listed first):**
 
 === "kms.toml"
 
@@ -129,6 +136,50 @@ Use the `target_session_attrs` query parameter to control which node the driver 
 
 The URL must start with `postgresql://` or `postgres://`; any other scheme is rejected at
 startup.
+
+##### Replication and standby writability
+
+!!! warning "A standby is read-only"
+    In standard PostgreSQL streaming replication, the standby node operates in **hot standby
+    mode**: it accepts read queries but **rejects all writes**. The KMS requires a read-write
+    connection for every operation, so `target_session_attrs=read-write` will skip a standby
+    automatically — but this also means **the KMS cannot use the standby as a fallback by
+    itself**. The standby only becomes usable by the KMS after it has been **promoted** to
+    primary.
+
+    Replication is entirely managed by the PostgreSQL infrastructure — the KMS does not
+    configure, trigger, or monitor it.
+
+###### Recommended setup: use an HA manager
+
+For automatic failover, deploy an HA manager such as [Patroni](https://patroni.readthedocs.io/),
+[pg_auto_failover](https://pg-auto-failover.readthedocs.io/), or
+[repmgr](https://www.repmgr.org/). These tools:
+
+1. Monitor the primary continuously.
+2. **Promote the standby** when the primary is unreachable.
+3. **Demote the old primary** back to standby automatically when it recovers (Patroni uses
+   `pg_rewind` to resync it with the new primary's WAL timeline).
+
+The KMS URL requires no change: with `target_session_attrs=read-write` the driver
+always connects to whichever node is currently the primary.
+
+**What happens when the primary goes down then comes back up?**
+
+| Phase | State | KMS behaviour |
+| ----- | ----- | ------------- |
+| Primary down, standby still read-only | No writable node exists | KMS retries exhaust (≤ ~3.2 s), requests fail with a database error |
+| HA manager promotes the standby | Standby becomes new primary | KMS reconnects on next retry/request, normal operation resumes |
+| Old primary recovers | HA manager demotes it to new standby | Transparent; KMS skips it (read-only) and connects to the new primary |
+| Old primary recovers **without** an HA manager | Old primary restarts as a standalone node — **data divergence risk** | Manual intervention required before reconnecting the KMS |
+
+!!! tip "Eliminate URL maintenance with a virtual IP or DNS endpoint"
+    After a permanent failover without an HA manager, the roles of `primary:5432` and
+    `standby:5432` are reversed. The KMS still works (it finds the read-write node), but it
+    tries the old-primary address first on every connection, adding latency. To avoid this,
+    front the cluster with a **virtual IP** (Keepalived, AWS RDS Multi-AZ endpoint, Azure
+    Flexible Server read-write endpoint, GCP Cloud SQL HA endpoint) and use a single-host
+    URL — failover then becomes completely transparent to the KMS.
 
 ##### PostgreSQL failover retry
 
