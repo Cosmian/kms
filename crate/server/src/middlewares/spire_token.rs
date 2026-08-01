@@ -244,6 +244,83 @@ async fn check_vault_token(
     }
 }
 
+/// Whether an absent `X-Vault-Token` header should reject the request or pass through.
+enum AbsentMode {
+    /// Return `403 Forbidden` — used by strict middleware on SPIRE-only scopes.
+    Reject,
+    /// Pass through to the next middleware — used by optional middleware on native-auth scopes.
+    PassThrough,
+}
+
+/// Shared vault-token processing extracted from [`spire_token_middleware`] and
+/// [`vault_token_optional_middleware`].  The two wrappers differ only in how they
+/// handle the *absent* header case; `Valid`, `InvalidEncoding`, and `Invalid` are
+/// identical.
+// All 8 parameters are required by the token-validation logic; grouping into a
+// struct would add more boilerplate than benefit for a private helper.
+#[allow(clippy::too_many_arguments)]
+async fn process_vault_token<B>(
+    req: ServiceRequest,
+    next: Next<B>,
+    cache: &SpireTokenCache,
+    auth_verifier_url: &Url,
+    client: &reqwest::Client,
+    default_username: &str,
+    absent_mode: AbsentMode,
+    log_prefix: &str,
+) -> Result<ServiceResponse<BoxBody>, Error>
+where
+    B: MessageBody + 'static,
+{
+    match check_vault_token(&req, cache, auth_verifier_url, client, default_username).await {
+        VaultTokenResult::Valid(user) => {
+            debug!("{log_prefix}: validated entity={}", user.entity);
+            req.extensions_mut().insert(AuthenticatedUser {
+                username: user.entity.clone(),
+            });
+            req.extensions_mut().insert(user);
+            next.call(req)
+                .await
+                .map(ServiceResponse::map_into_boxed_body)
+        }
+        VaultTokenResult::Absent => match absent_mode {
+            AbsentMode::Reject => {
+                trace!("{log_prefix}: missing X-Vault-Token header");
+                Ok(req
+                    .into_response(
+                        actix_web::HttpResponse::Forbidden()
+                            .json(serde_json::json!({"errors": ["missing X-Vault-Token"]})),
+                    )
+                    .map_into_boxed_body())
+            }
+            AbsentMode::PassThrough => {
+                trace!("{log_prefix}: no X-Vault-Token; deferring to native auth");
+                next.call(req)
+                    .await
+                    .map(ServiceResponse::map_into_boxed_body)
+            }
+        },
+        VaultTokenResult::InvalidEncoding => {
+            debug!("{log_prefix}: non-ASCII X-Vault-Token header; rejecting");
+            Ok(req
+                .into_response(
+                    actix_web::HttpResponse::Forbidden()
+                        .json(serde_json::json!({"errors": ["invalid token"]})),
+                )
+                .map_into_boxed_body())
+        }
+        VaultTokenResult::Invalid(e) => {
+            warn!("{log_prefix}: validation failed: {e}; rejecting request");
+            Ok(req
+                .into_response(
+                    actix_web::HttpResponse::Forbidden()
+                        .json(serde_json::json!({"errors": ["permission denied"]})),
+                )
+                .map_into_boxed_body())
+        }
+    }
+}
+
 /// Creates the SPIRE app-token authentication middleware for KMS SPIRE-compatible scopes.
 ///
 /// Middleware order (last `.wrap()` runs first):
@@ -272,47 +349,17 @@ where
         let default_username = default_username.clone();
 
         async move {
-            match check_vault_token(&req, &cache, &auth_verifier_url, &client, &default_username)
-                .await
-            {
-                VaultTokenResult::Valid(user) => {
-                    debug!("spire_token_middleware: validated entity={}", user.entity);
-                    req.extensions_mut().insert(AuthenticatedUser {
-                        username: user.entity.clone(),
-                    });
-                    req.extensions_mut().insert(user);
-                    next.call(req)
-                        .await
-                        .map(ServiceResponse::map_into_boxed_body)
-                }
-                VaultTokenResult::Absent => {
-                    trace!("spire_token_middleware: missing X-Vault-Token header");
-                    Ok(req
-                        .into_response(
-                            actix_web::HttpResponse::Forbidden()
-                                .json(serde_json::json!({"errors": ["missing X-Vault-Token"]})),
-                        )
-                        .map_into_boxed_body())
-                }
-                VaultTokenResult::InvalidEncoding => {
-                    debug!("spire_token_middleware: non-ASCII X-Vault-Token header");
-                    Ok(req
-                        .into_response(
-                            actix_web::HttpResponse::Forbidden()
-                                .json(serde_json::json!({"errors": ["invalid token"]})),
-                        )
-                        .map_into_boxed_body())
-                }
-                VaultTokenResult::Invalid(e) => {
-                    warn!("spire_token_middleware: validation failed: {e}");
-                    Ok(req
-                        .into_response(
-                            actix_web::HttpResponse::Forbidden()
-                                .json(serde_json::json!({"errors": ["permission denied"]})),
-                        )
-                        .map_into_boxed_body())
-                }
-            }
+            process_vault_token(
+                req,
+                next,
+                &cache,
+                &auth_verifier_url,
+                &client,
+                &default_username,
+                AbsentMode::Reject,
+                "spire_token_middleware",
+            )
+            .await
         }
     })
 }
@@ -352,57 +399,17 @@ where
         let default_username = default_username.clone();
 
         async move {
-            match check_vault_token(&req, &cache, &auth_verifier_url, &client, &default_username)
-                .await
-            {
-                VaultTokenResult::Valid(user) => {
-                    debug!(
-                        "vault_token_optional_middleware: authenticated entity={}",
-                        user.entity
-                    );
-                    req.extensions_mut().insert(AuthenticatedUser {
-                        username: user.entity.clone(),
-                    });
-                    req.extensions_mut().insert(user);
-                    next.call(req)
-                        .await
-                        .map(ServiceResponse::map_into_boxed_body)
-                }
-                VaultTokenResult::Absent => {
-                    // Header not present — let native auth middlewares handle the request.
-                    trace!(
-                        "vault_token_optional_middleware: no X-Vault-Token; deferring to native auth"
-                    );
-                    next.call(req)
-                        .await
-                        .map(ServiceResponse::map_into_boxed_body)
-                }
-                VaultTokenResult::InvalidEncoding => {
-                    debug!(
-                        "vault_token_optional_middleware: non-ASCII X-Vault-Token header; rejecting"
-                    );
-                    Ok(req
-                        .into_response(
-                            actix_web::HttpResponse::Forbidden()
-                                .json(serde_json::json!({"errors": ["invalid token"]})),
-                        )
-                        .map_into_boxed_body())
-                }
-                VaultTokenResult::Invalid(e) => {
-                    // Token was presented but rejected — fail closed rather than falling
-                    // through to native auth, to prevent a compromised token from being
-                    // "retried" with a different identity.
-                    warn!(
-                        "vault_token_optional_middleware: validation failed: {e}; rejecting request"
-                    );
-                    Ok(req
-                        .into_response(
-                            actix_web::HttpResponse::Forbidden()
-                                .json(serde_json::json!({"errors": ["permission denied"]})),
-                        )
-                        .map_into_boxed_body())
-                }
-            }
+            process_vault_token(
+                req,
+                next,
+                &cache,
+                &auth_verifier_url,
+                &client,
+                &default_username,
+                AbsentMode::PassThrough,
+                "vault_token_optional_middleware",
+            )
+            .await
         }
     })
 }

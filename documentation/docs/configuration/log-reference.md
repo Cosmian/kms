@@ -635,20 +635,17 @@ Crate path: `crate/server`
 | `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
 | `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e`: reqwest error detail | Raised when KMS cannot reach auth-verifier to forward a `/v1/auth/*` request; SPIRE will fail to authenticate |
 | `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
-| `warn` | `spire_token_middleware: validation failed: {e}` | `src/middlewares/spire_token.rs` | `e` | - |
 | `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
-| `debug` | `spire_token_middleware: non-ASCII X-Vault-Token header` | `src/middlewares/spire_token.rs` | - | - |
-| `debug` | `spire_token_middleware: validated entity={}` | `src/middlewares/spire_token.rs` | - | - |
-| `trace` | `spire_token_middleware: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | - | - |
 | `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` — the offending request path (with `/v1` stripped) that contained a `.`/`..` segment | Security: emitted when the unauthenticated `/v1/auth/*` proxy blocks a path-traversal attempt (HTTP 400). Repeated occurrences may indicate probing of internal auth-verifier endpoints. |
 | `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
 | `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
 | `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
-| `warn` | `vault_token_optional_middleware: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `e` | - |
 | `info` | `Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_scope_path`, `pki_scope_path` | - |
-| `debug` | `vault_token_optional_middleware: authenticated entity={}` | `src/middlewares/spire_token.rs` | - | - |
-| `debug` | `vault_token_optional_middleware: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | - | - |
-| `trace` | `vault_token_optional_middleware: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | - | - |
+| `warn` | `{log_prefix}: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `log_prefix`, `e` | - |
+| `debug` | `{log_prefix}: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `{log_prefix}: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `{log_prefix}: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 
 ### `cosmian_kms_server_database`
 

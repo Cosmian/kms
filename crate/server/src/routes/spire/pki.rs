@@ -342,6 +342,15 @@ pub(crate) async fn sign_intermediate(
     }))
 }
 
+/// Error for a missing CA certificate in the PKI key chain.
+fn no_ca_cert_error() -> SpireApiError {
+    SpireApiError::InternalError(
+        "No CA certificate found linked to vault_pki_ca_key_label. \
+         Import or certify the CA certificate and link it to the CA key pair."
+            .to_owned(),
+    )
+}
+
 /// Retrieve the issuing CA certificate PEM by finding the certificate linked to
 /// the CA private key (via its public key's `CertificateLink`).
 async fn get_issuing_ca_pem(
@@ -364,13 +373,7 @@ async fn get_issuing_ca_pem(
     let pk_link = ca_sk_owm
         .attributes()
         .get_link(LinkType::PublicKeyLink)
-        .ok_or_else(|| {
-            SpireApiError::InternalError(
-                "No CA certificate found linked to vault_pki_ca_key_label. \
-                 Import or certify the CA certificate and link it to the CA key pair."
-                    .to_owned(),
-            )
-        })?;
+        .ok_or_else(no_ca_cert_error)?;
     let pk_uid = pk_link.to_string();
 
     let pk_owm = kms
@@ -378,24 +381,12 @@ async fn get_issuing_ca_pem(
         .retrieve_object(&pk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
-        .ok_or_else(|| {
-            SpireApiError::InternalError(
-                "No CA certificate found linked to vault_pki_ca_key_label. \
-                 Import or certify the CA certificate and link it to the CA key pair."
-                    .to_owned(),
-            )
-        })?;
+        .ok_or_else(no_ca_cert_error)?;
 
     let cert_link = pk_owm
         .attributes()
         .get_link(LinkType::CertificateLink)
-        .ok_or_else(|| {
-            SpireApiError::InternalError(
-                "No CA certificate found linked to vault_pki_ca_key_label. \
-                 Import or certify the CA certificate and link it to the CA key pair."
-                    .to_owned(),
-            )
-        })?;
+        .ok_or_else(no_ca_cert_error)?;
     let cert_uid = cert_link.to_string();
 
     let cert_owm = kms
@@ -403,13 +394,7 @@ async fn get_issuing_ca_pem(
         .retrieve_object(&cert_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
-        .ok_or_else(|| {
-            SpireApiError::InternalError(
-                "No CA certificate found linked to vault_pki_ca_key_label. \
-                 Import or certify the CA certificate and link it to the CA key pair."
-                    .to_owned(),
-            )
-        })?;
+        .ok_or_else(no_ca_cert_error)?;
 
     let x509 = kmip_certificate_to_openssl(cert_owm.object())
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?;
