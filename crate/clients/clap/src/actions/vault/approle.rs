@@ -144,6 +144,22 @@ fn approle_admin_url(auth_verifier_url: &str, suffix: &str) -> String {
     )
 }
 
+/// Check a `reqwest::Response` for success, returning it as-is on success
+/// or a [`KmsCliError`] with the operation name and response body on failure.
+async fn check_approle_response(
+    resp: reqwest::Response,
+    operation: &str,
+) -> KmsCliResult<reqwest::Response> {
+    if resp.status().is_success() {
+        return Ok(resp);
+    }
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    Err(crate::error::KmsCliError::Default(format!(
+        "{operation} failed (HTTP {status}): {body}"
+    )))
+}
+
 // ── Shared admin flags ────────────────────────────────────────────────────────
 
 /// Shared flags for admin `AppRole` operations.
@@ -280,13 +296,7 @@ impl AppRoleCreateRoleCmd {
             .await
             .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(crate::error::KmsCliError::Default(format!(
-                "Create role failed (HTTP {status}): {body}"
-            )));
-        }
+        check_approle_response(resp, "Create role").await?;
         Stdout::new(&format!("Role '{}' created/updated.", self.role_name)).write()
     }
 }
@@ -312,13 +322,7 @@ impl AppRoleListRolesCmd {
             .await
             .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(crate::error::KmsCliError::Default(format!(
-                "List roles failed (HTTP {status}): {body}"
-            )));
-        }
+        let resp = check_approle_response(resp, "List roles").await?;
 
         let list: AppRoleListRolesResponse = resp
             .json()
@@ -363,13 +367,7 @@ impl AppRoleGetRoleIdCmd {
             .await
             .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(crate::error::KmsCliError::Default(format!(
-                "Get role-id failed (HTTP {status}): {body}"
-            )));
-        }
+        let resp = check_approle_response(resp, "Get role-id").await?;
 
         let result: AppRoleRoleIdResponse = resp
             .json()
@@ -419,13 +417,7 @@ impl AppRoleGenerateSecretIdCmd {
             .await
             .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(crate::error::KmsCliError::Default(format!(
-                "Generate secret-id failed (HTTP {status}): {body}"
-            )));
-        }
+        let resp = check_approle_response(resp, "Generate secret-id").await?;
 
         let result: AppRoleSecretIdResponse = resp
             .json()
@@ -475,13 +467,7 @@ impl AppRoleDestroySecretIdCmd {
             .await
             .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(crate::error::KmsCliError::Default(format!(
-                "Destroy secret-id failed (HTTP {status}): {body}"
-            )));
-        }
+        check_approle_response(resp, "Destroy secret-id").await?;
         Stdout::new("Secret ID destroyed.").write()
     }
 }
@@ -513,13 +499,7 @@ impl AppRoleDeleteRoleCmd {
             .await
             .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(crate::error::KmsCliError::Default(format!(
-                "Delete role failed (HTTP {status}): {body}"
-            )));
-        }
+        check_approle_response(resp, "Delete role").await?;
         Stdout::new(&format!("Role '{}' deleted.", self.role_name)).write()
     }
 }
