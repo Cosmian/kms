@@ -96,9 +96,17 @@ cp -f -v "$BIN_OUT" "target/release/cosmian_kms"
 # and fail when crates are not pre-downloaded.
 REAL_CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 
+# Preserve the real RUSTUP_HOME (installed toolchains) before overriding HOME.
+# rustup defaults RUSTUP_HOME to $HOME/.rustup; once HOME is redirected to a temp
+# dir, rustup can no longer find the pinned toolchain and reports errors such as
+# "'cargo' is not installed for the toolchain '1.97.0-...'" when the temp
+# .rustup is empty or only holds a minimal profile without cargo.
+REAL_RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+
 # A writable HOME is still required for cargo's lock files and temp artifacts.
 export HOME="${TMPDIR:-/tmp}"
 export CARGO_HOME="$REAL_CARGO_HOME"
+export RUSTUP_HOME="$REAL_RUSTUP_HOME"
 mkdir -p "$CARGO_HOME"
 
 # Ensure macOS system tools are available

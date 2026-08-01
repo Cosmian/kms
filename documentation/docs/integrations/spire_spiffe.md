@@ -936,7 +936,21 @@ This is enforced at the database layer and cannot be circumvented by manipulatin
   entirely for calls to auth-verifier.
 - The KMS's `/v1/transit/*` and `/v1/pki/*` scopes depend on auth-verifier being
   reachable: a cache-miss during an auth-verifier outage will cause new requests to those
-  scopes to fail until connectivity is restored.
+  scopes to fail until connectivity is restored. When `vault_api_enabled = true`, this
+  dependency extends to **all** scopes that accept `X-Vault-Token` (KMIP, `/v1/crypto`,
+  MS-DKE, tokenize): any request carrying an `X-Vault-Token` header that is not in the
+  cache will also fail during an auth-verifier outage. Clients that present an `X-Vault-Token`
+  but fall back to native auth on failure should not — the optional middleware rejects
+  invalid/unresolvable tokens with `403` rather than falling through, to prevent a
+  compromised token from being retried with a different identity.
+- **Single authentication — `X-Vault-Token` accepted on all scopes**: when
+  `vault_api_enabled = true`, a client that authenticates via AppRole does not need
+  a separate native KMS credential (TLS client cert, JWT/OIDC, API token) to access
+  KMIP or other endpoints. A valid `X-Vault-Token` is sufficient for any KMS scope.
+  Native auth methods continue to work unchanged for clients that do not send
+  `X-Vault-Token`. If a request carries an `X-Vault-Token` that cannot be validated
+  (cache miss and auth-verifier unreachable or rejects the token), the request is
+  rejected with `403` — it does **not** fall through to native auth.
 - Transit `creation_time` has whole-second precision (KMIP `InitialDate` is POSIX
   seconds), unlike Vault's nanosecond timestamps. In a fast rotation-retry loop where two
   keys for the same logical SPIRE key id are created within the same wall-clock second,
