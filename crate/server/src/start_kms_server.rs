@@ -43,6 +43,7 @@ use openssl::{
     ssl::SslAcceptorBuilder,
 };
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
+use url::Url;
 
 #[cfg(feature = "non-fips")]
 use crate::routes::tokenize;
@@ -54,7 +55,7 @@ use crate::{
     middlewares::{
         JwksManager, JwtConfig, SpireTokenCache, api_token_middleware, ensure_auth_middleware,
         extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
-        spire_token_middleware, tls_auth_fn,
+        spire_token_middleware, tls_auth_fn, vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -583,6 +584,12 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
 /// # Errors
 /// This function can return the following errors:
 /// - `KmsError::ServerError` - If there is an error in the server configuration or preparation.
+///
+/// # Panics
+/// Panics if the static fallback URL `"http://localhost"` fails to parse, which
+/// cannot occur in practice since the URL is syntactically valid. This URL is only
+/// constructed when `vault_api_enabled = false` or `vault_auth_verifier_url` is
+/// absent, and is never invoked (guarded by `Condition::new(false, …)`).
 pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
     let tls_config = if let Some(tls_params) = &kms_server.params.tls_params {
         Some(create_openssl_acceptor(tls_params)?)
@@ -804,6 +811,29 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             })?)
         };
 
+    // Pre-compute the vault token authentication context so it can be shared across all
+    // route scopes (KMIP, transit/PKI, crypto, MS-DKE, tokenize) without re-creating the
+    // cache per scope.  The `SpireTokenCache` is wrapped in `Arc` and shared across all
+    // Actix workers for this server instance (`DashMap` provides safe concurrent access).
+    //
+    // When `vault_api_enabled = false` or `vault_auth_verifier_url` is absent, a dummy
+    // context is created but never invoked: `Condition::new(false, …)` is a no-op.
+    let use_vault_token_auth =
+        kms_server.params.vault_api_enabled && kms_server.params.vault_auth_verifier_url.is_some();
+    let spire_cache = SpireTokenCache::new(kms_server.params.vault_token_cache_ttl_secs);
+    // When vault_api_enabled = false, this URL is never used; the literal is always valid.
+    let spire_auth_verifier_url: Url = kms_server
+        .params
+        .vault_auth_verifier_url
+        .clone()
+        .unwrap_or_else(|| {
+            // SAFETY: this fallback URL is only constructed when use_vault_token_auth = false,
+            // where Condition::new(false, …) never invokes the middleware.
+            #[allow(clippy::unwrap_used)]
+            Url::parse("http://localhost").unwrap()
+        });
+    let spire_default_username: Arc<str> = kms_server.params.default_username.as_str().into();
+
     // Extract http_workers before the closure moves kms_server
     let http_workers = kms_server.params.http_workers;
 
@@ -899,7 +929,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
-                    use_jwt_auth || use_cert_auth || use_api_token_auth,
+                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -910,6 +940,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     jwt_auth_middleware(jwt_configurations.clone()),
                 ))
                 .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
+                // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+                // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+                .wrap(Condition::new(
+                    use_vault_token_auth,
+                    vault_token_optional_middleware(
+                        spire_cache.clone(),
+                        spire_auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                        spire_default_username.clone(),
+                    ),
+                ))
                 .wrap(Cors::permissive())
                 .service(ms_dke::version)
                 .service(ms_dke::get_key)
@@ -980,14 +1021,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // Cors must run first to handle OPTIONS preflights before auth checks.
             // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
             // AuthenticatedUser before EnsureAuth verifies it.
+            let use_any_auth =
+                use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth;
             let tokenize_scope = web::scope("/tokenize")
                 .app_data(web::JsonConfig::default().limit(65_536))
                 .wrap(Condition::new(
-                    use_jwt_auth || use_cert_auth || use_api_token_auth,
-                    ensure_auth_middleware(
-                        kms_server_for_http.clone(),
-                        use_jwt_auth || use_cert_auth || use_api_token_auth,
-                    ),
+                    use_any_auth,
+                    ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -998,6 +1038,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     jwt_auth_middleware(jwt_configurations.clone()),
                 ))
                 .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
+                // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+                // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+                .wrap(Condition::new(
+                    use_vault_token_auth,
+                    vault_token_optional_middleware(
+                        spire_cache.clone(),
+                        spire_auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                        spire_default_username.clone(),
+                    ),
+                ))
                 .wrap(Cors::permissive())
                 .service(tokenize::hash)
                 .service(tokenize::noise)
@@ -1015,15 +1066,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         // Authentication: `X-Vault-Token` header validated by `spire_token_middleware`
         // which calls `GET <vault_auth_verifier_url>/v1/auth/token/lookup-self`.
         if kms_server_for_http.params.vault_api_enabled {
-            if let Some(auth_verifier_url) =
-                kms_server_for_http.params.vault_auth_verifier_url.clone()
-            {
-                let spire_cache = SpireTokenCache::new(
-                    kms_server_for_http.params.vault_token_cache_ttl_secs,
-                );
-                let spire_default_username: Arc<str> =
-                    kms_server_for_http.params.default_username.as_str().into();
-
+            if use_vault_token_auth {
                 let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
                 let transit_scope_path = format!("/v1/{transit_mount}");
                 let transit_scope = web::scope(&transit_scope_path)
@@ -1033,7 +1076,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .app_data(JsonConfig::default().content_type_required(false))
                     .wrap(spire_token_middleware(
                         spire_cache.clone(),
-                        auth_verifier_url.clone(),
+                        spire_auth_verifier_url.clone(),
                         vault_http_client.clone(),
                         spire_default_username.clone(),
                     ))
@@ -1052,10 +1095,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 let pki_scope_path = format!("/v1/{pki_mount}");
                 let pki_scope = web::scope(&pki_scope_path)
                     .wrap(spire_token_middleware(
-                        spire_cache,
-                        auth_verifier_url.clone(),
+                        spire_cache.clone(),
+                        spire_auth_verifier_url.clone(),
                         vault_http_client.clone(),
-                        spire_default_username,
+                        spire_default_username.clone(),
                     ))
                     .wrap(Cors::default())
                     .service(sign_intermediate);
@@ -1073,7 +1116,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 // all sub-paths for all HTTP methods, which is exactly what the proxy needs.
                 let auth_scope = web::scope("/v1/auth")
                     .app_data(web::Data::new(vault_http_client.clone()))
-                    .app_data(web::Data::new(auth_verifier_url))
+                    .app_data(web::Data::new(spire_auth_verifier_url.clone()))
                     .wrap(Cors::default())
                     .service(
                         web::resource("/{tail:.*}")
@@ -1082,7 +1125,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 app = app.service(auth_scope);
 
                 info!(
-                    "Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}, auth proxy at /v1/auth"
+                    "Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth"
                 );
             } else {
                 warn!(
@@ -1211,7 +1254,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             )
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth,
+                use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
@@ -1222,6 +1265,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 jwt_auth_middleware(jwt_configurations.clone()),
             ))
             .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
+            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+            .wrap(Condition::new(
+                use_vault_token_auth,
+                vault_token_optional_middleware(
+                    spire_cache.clone(),
+                    spire_auth_verifier_url.clone(),
+                    vault_http_client.clone(),
+                    spire_default_username.clone(),
+                ),
+            ))
             .wrap(Cors::permissive())
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
@@ -1240,7 +1294,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth,
+                use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
@@ -1251,6 +1305,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 jwt_auth_middleware(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn))) // Use certificates for authentication if necessary.
+            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+            .wrap(Condition::new(
+                use_vault_token_auth,
+                vault_token_optional_middleware(
+                    spire_cache.clone(),
+                    spire_auth_verifier_url.clone(),
+                    vault_http_client.clone(),
+                    spire_default_username.clone(),
+                ),
+            ))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
             // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes

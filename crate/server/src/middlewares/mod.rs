@@ -17,7 +17,9 @@ mod otel_http_middleware;
 pub(crate) use otel_http_middleware::otel_http_metrics_middleware;
 
 mod spire_token;
-pub(crate) use spire_token::{SpireTokenCache, spire_token_middleware};
+pub(crate) use spire_token::{
+    SpireTokenCache, spire_token_middleware, vault_token_optional_middleware,
+};
 
 /// Represents an authenticated user
 ///

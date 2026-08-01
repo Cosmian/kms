@@ -193,6 +193,57 @@ fn validated_entity(entity_id: String, default_username: &str) -> Result<String,
     Ok(entity_id)
 }
 
+/// Outcome of reading and validating the `X-Vault-Token` header.
+enum VaultTokenResult {
+    /// Header was present and the token validated successfully.
+    Valid(SpireAuthenticatedUser),
+    /// Header was absent.
+    Absent,
+    /// Header was present but non-ASCII — reject immediately.
+    InvalidEncoding,
+    /// Header was present but the auth-verifier rejected the token.
+    Invalid(String),
+}
+
+/// Extract and validate the `X-Vault-Token` header from an incoming request.
+///
+/// Returns:
+/// - [`VaultTokenResult::Valid`] — header present, token accepted by auth-verifier
+/// - [`VaultTokenResult::Absent`] — header not present
+/// - [`VaultTokenResult::InvalidEncoding`] — header present but non-ASCII
+/// - [`VaultTokenResult::Invalid`] — header present but rejected by auth-verifier
+async fn check_vault_token(
+    req: &ServiceRequest,
+    cache: &SpireTokenCache,
+    auth_verifier_url: &Url,
+    client: &reqwest::Client,
+    default_username: &str,
+) -> VaultTokenResult {
+    let raw_token = match req.headers().get(VAULT_TOKEN_HEADER) {
+        None => return VaultTokenResult::Absent,
+        Some(v) => match v.to_str() {
+            Ok(s) => s.to_owned(),
+            Err(_) => return VaultTokenResult::InvalidEncoding,
+        },
+    };
+
+    let hash_bytes: [u8; 32] = Sha256::digest(raw_token.as_bytes()).into();
+
+    if let Some(user) = cache.lookup(&hash_bytes) {
+        return VaultTokenResult::Valid(user);
+    }
+
+    match validate_against_auth_verifier(&raw_token, auth_verifier_url, client, default_username)
+        .await
+    {
+        Ok(user) => {
+            cache.insert(hash_bytes, user.clone());
+            VaultTokenResult::Valid(user)
+        }
+        Err(e) => VaultTokenResult::Invalid(e),
+    }
+}
+
 /// Creates the SPIRE app-token authentication middleware for KMS SPIRE-compatible scopes.
 ///
 /// Middleware order (last `.wrap()` runs first):
@@ -200,6 +251,10 @@ fn validated_entity(entity_id: String, default_username: &str) -> Result<String,
 /// - Checks/updates the 30-second in-memory cache
 /// - On miss: calls auth-verifier `GET /auth/token/lookup-self`
 /// - Injects both [`SpireAuthenticatedUser`] and [`AuthenticatedUser`] into extensions
+///
+/// Returns `403 Forbidden` when the header is absent or the token is invalid.
+/// Use [`vault_token_optional_middleware`] when the header is optional (e.g. for scopes
+/// that also accept native KMS auth).
 pub(crate) fn spire_token_middleware<S, B>(
     cache: Arc<SpireTokenCache>,
     auth_verifier_url: Url,
@@ -217,55 +272,11 @@ where
         let default_username = default_username.clone();
 
         async move {
-            // Extract raw token from header
-            let raw_token = if let Some(v) = req.headers().get(VAULT_TOKEN_HEADER) {
-                if let Ok(s) = v.to_str() {
-                    s.to_owned()
-                } else {
-                    debug!("spire_token_middleware: non-ASCII X-Vault-Token header");
-                    return Ok(req
-                        .into_response(
-                            actix_web::HttpResponse::Forbidden()
-                                .json(serde_json::json!({"errors": ["invalid token"]})),
-                        )
-                        .map_into_boxed_body());
-                }
-            } else {
-                trace!("spire_token_middleware: missing X-Vault-Token header");
-                return Ok(req
-                    .into_response(
-                        actix_web::HttpResponse::Forbidden()
-                            .json(serde_json::json!({"errors": ["missing X-Vault-Token"]})),
-                    )
-                    .map_into_boxed_body());
-            };
-
-            let hash_bytes: [u8; 32] = Sha256::digest(raw_token.as_bytes()).into();
-
-            // Cache hit path
-            if let Some(ref user) = cache.lookup(&hash_bytes) {
-                req.extensions_mut().insert(AuthenticatedUser {
-                    username: user.entity.clone(),
-                });
-                req.extensions_mut().insert(user.clone());
-                return next
-                    .call(req)
-                    .await
-                    .map(ServiceResponse::map_into_boxed_body);
-            }
-
-            // Cache miss — call auth-verifier
-            match validate_against_auth_verifier(
-                &raw_token,
-                &auth_verifier_url,
-                &client,
-                &default_username,
-            )
-            .await
+            match check_vault_token(&req, &cache, &auth_verifier_url, &client, &default_username)
+                .await
             {
-                Ok(user) => {
+                VaultTokenResult::Valid(user) => {
                     debug!("spire_token_middleware: validated entity={}", user.entity);
-                    cache.insert(hash_bytes, user.clone());
                     req.extensions_mut().insert(AuthenticatedUser {
                         username: user.entity.clone(),
                     });
@@ -274,8 +285,116 @@ where
                         .await
                         .map(ServiceResponse::map_into_boxed_body)
                 }
-                Err(e) => {
+                VaultTokenResult::Absent => {
+                    trace!("spire_token_middleware: missing X-Vault-Token header");
+                    Ok(req
+                        .into_response(
+                            actix_web::HttpResponse::Forbidden()
+                                .json(serde_json::json!({"errors": ["missing X-Vault-Token"]})),
+                        )
+                        .map_into_boxed_body())
+                }
+                VaultTokenResult::InvalidEncoding => {
+                    debug!("spire_token_middleware: non-ASCII X-Vault-Token header");
+                    Ok(req
+                        .into_response(
+                            actix_web::HttpResponse::Forbidden()
+                                .json(serde_json::json!({"errors": ["invalid token"]})),
+                        )
+                        .map_into_boxed_body())
+                }
+                VaultTokenResult::Invalid(e) => {
                     warn!("spire_token_middleware: validation failed: {e}");
+                    Ok(req
+                        .into_response(
+                            actix_web::HttpResponse::Forbidden()
+                                .json(serde_json::json!({"errors": ["permission denied"]})),
+                        )
+                        .map_into_boxed_body())
+                }
+            }
+        }
+    })
+}
+
+/// Optional vault-token middleware for scopes that also accept native KMS authentication.
+///
+/// This middleware allows AppRole/SPIRE clients that hold a valid `X-Vault-Token` to access
+/// **any** KMS endpoint without also needing native KMS credentials (TLS client cert, JWT,
+/// or API token). It is intended to be added to the KMIP default scope, `/v1/crypto`, MS-DKE,
+/// and tokenize scopes when `vault_api_enabled = true`, so that `AppRole` clients authenticate
+/// exactly once rather than twice.
+///
+/// Behaviour:
+/// - **Header absent** → pass through to the next middleware (native auth takes over).
+/// - **Header present, token valid** → inject [`AuthenticatedUser`]; subsequent native-auth
+///   middlewares detect the already-present extension and skip their own checks.
+/// - **Header present, token invalid** → `403 Forbidden` (fail closed — do not fall through
+///   to native auth with a tampered/expired token).
+/// - **Header present, non-ASCII value** → `403 Forbidden`.
+///
+/// Apply as the **outermost** `.wrap()` on each scope so it runs before native-auth
+/// middlewares (actix-web evaluates `.wrap()` calls in LIFO order).
+pub(crate) fn vault_token_optional_middleware<S, B>(
+    cache: Arc<SpireTokenCache>,
+    auth_verifier_url: Url,
+    client: Arc<reqwest::Client>,
+    default_username: Arc<str>,
+) -> impl Transform<S, ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error, InitError = ()>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    B: MessageBody + 'static,
+{
+    from_fn(move |req: ServiceRequest, next: Next<B>| {
+        let cache = cache.clone();
+        let auth_verifier_url = auth_verifier_url.clone();
+        let client = client.clone();
+        let default_username = default_username.clone();
+
+        async move {
+            match check_vault_token(&req, &cache, &auth_verifier_url, &client, &default_username)
+                .await
+            {
+                VaultTokenResult::Valid(user) => {
+                    debug!(
+                        "vault_token_optional_middleware: authenticated entity={}",
+                        user.entity
+                    );
+                    req.extensions_mut().insert(AuthenticatedUser {
+                        username: user.entity.clone(),
+                    });
+                    req.extensions_mut().insert(user);
+                    next.call(req)
+                        .await
+                        .map(ServiceResponse::map_into_boxed_body)
+                }
+                VaultTokenResult::Absent => {
+                    // Header not present — let native auth middlewares handle the request.
+                    trace!(
+                        "vault_token_optional_middleware: no X-Vault-Token; deferring to native auth"
+                    );
+                    next.call(req)
+                        .await
+                        .map(ServiceResponse::map_into_boxed_body)
+                }
+                VaultTokenResult::InvalidEncoding => {
+                    debug!(
+                        "vault_token_optional_middleware: non-ASCII X-Vault-Token header; rejecting"
+                    );
+                    Ok(req
+                        .into_response(
+                            actix_web::HttpResponse::Forbidden()
+                                .json(serde_json::json!({"errors": ["invalid token"]})),
+                        )
+                        .map_into_boxed_body())
+                }
+                VaultTokenResult::Invalid(e) => {
+                    // Token was presented but rejected — fail closed rather than falling
+                    // through to native auth, to prevent a compromised token from being
+                    // "retried" with a different identity.
+                    warn!(
+                        "vault_token_optional_middleware: validation failed: {e}; rejecting request"
+                    );
                     Ok(req
                         .into_response(
                             actix_web::HttpResponse::Forbidden()
@@ -589,5 +708,129 @@ mod tests {
             .to_request();
         let body = actix_web::test::call_and_read_body(&app, req).await;
         assert_eq!(body, &b"bob"[..]);
+    }
+
+    // ── vault_token_optional_middleware tests ────────────────────────────
+
+    /// When `X-Vault-Token` is absent the optional middleware passes through
+    /// without injecting `AuthenticatedUser`, allowing a downstream middleware
+    /// (or the handler itself) to handle auth.
+    #[actix_web::test]
+    async fn optional_middleware_absent_header_passes_through() {
+        let cache = SpireTokenCache::new(30);
+        let dummy_url = url::Url::parse("http://127.0.0.1:1").unwrap();
+        let client = Arc::new(reqwest::Client::new());
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(vault_token_optional_middleware(
+                    cache.clone(),
+                    dummy_url,
+                    client.clone(),
+                    Arc::from("admin"),
+                ))
+                .route(
+                    "/test",
+                    web::get().to(|req: actix_web::HttpRequest| async move {
+                        // Optional middleware must NOT inject AuthenticatedUser when header is absent.
+                        let has_user = req.extensions().get::<AuthenticatedUser>().is_some();
+                        if has_user {
+                            HttpResponse::InternalServerError().body("unexpected user injection")
+                        } else {
+                            HttpResponse::Ok().body("no-user")
+                        }
+                    }),
+                ),
+        )
+        .await;
+
+        let req = actix_web::test::TestRequest::get()
+            .uri("/test")
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        // Handler reached (not blocked) and no user was injected.
+        assert_eq!(resp.status().as_u16(), 200);
+        let body = actix_web::test::read_body(resp).await;
+        assert_eq!(body, &b"no-user"[..]);
+    }
+
+    /// When `X-Vault-Token` is present and valid (cache hit), the optional
+    /// middleware injects `AuthenticatedUser` and passes through to the handler.
+    #[actix_web::test]
+    async fn optional_middleware_valid_token_injects_user() {
+        let (cache, _hash, token) = make_cache_with_user("spire-opt-42");
+
+        let dummy_url = url::Url::parse("http://127.0.0.1:1").unwrap();
+        let client = Arc::new(reqwest::Client::new());
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(vault_token_optional_middleware(
+                    cache.clone(),
+                    dummy_url,
+                    client.clone(),
+                    Arc::from("admin"),
+                ))
+                .route(
+                    "/whoami",
+                    web::get().to(|req: actix_web::HttpRequest| async move {
+                        let username = req
+                            .extensions()
+                            .get::<AuthenticatedUser>()
+                            .map_or_else(|| "none".to_owned(), |u| u.username.clone());
+                        HttpResponse::Ok().body(username)
+                    }),
+                ),
+        )
+        .await;
+
+        let req = actix_web::test::TestRequest::get()
+            .uri("/whoami")
+            .insert_header((VAULT_TOKEN_HEADER, token.as_str()))
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        assert_eq!(resp.status().as_u16(), 200);
+        let body = actix_web::test::read_body(resp).await;
+        assert_eq!(body, &b"spire-opt-42"[..]);
+    }
+
+    /// When `X-Vault-Token` is present but invalid (cache miss + auth-verifier
+    /// unreachable), the optional middleware rejects with 403 rather than falling
+    /// through to a downstream auth handler.  This prevents a tampered or expired
+    /// token from being "retried" with a different identity.
+    #[actix_web::test]
+    async fn optional_middleware_invalid_token_returns_403_not_passthrough() {
+        let cache = SpireTokenCache::new(30);
+        // Non-routable address: the auth-verifier call will fail fast.
+        let bad_url = url::Url::parse("http://127.0.0.1:1").unwrap();
+        let client = Arc::new(
+            reqwest::Client::builder()
+                .timeout(Duration::from_millis(100))
+                .build()
+                .unwrap(),
+        );
+
+        let app = actix_web::test::init_service(
+            App::new()
+                .wrap(vault_token_optional_middleware(
+                    cache.clone(),
+                    bad_url,
+                    client.clone(),
+                    Arc::from("admin"),
+                ))
+                .route(
+                    "/secret",
+                    web::get().to(|| async { HttpResponse::Ok().body("leaked") }),
+                ),
+        )
+        .await;
+
+        let req = actix_web::test::TestRequest::get()
+            .uri("/secret")
+            .insert_header((VAULT_TOKEN_HEADER, "bad-or-expired-token"))
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        // Must be forbidden, not 200 — the invalid token must not fall through.
+        assert_eq!(resp.status().as_u16(), 403);
     }
 }

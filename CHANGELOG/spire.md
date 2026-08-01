@@ -90,30 +90,49 @@
 
 ## Features
 
-- **Vault-compatible API for SPIRE/SPIFFE support** (KMS side):
-    - Added `vault_api_enabled`, `vault_auth_verifier_url`, `vault_transit_mount`,
+- **`X-Vault-Token` accepted on all KMS endpoints when `vault_api_enabled = true`**:
+  previously, `AppRole`/SPIRE clients holding a valid `X-Vault-Token` could only
+  authenticate to the Vault-compatible transit and PKI scopes. Any other endpoint
+  (KMIP, `/v1/crypto`, MS-DKE, tokenize) required a separate native KMS credential
+  (TLS client certificate, JWT/OIDC token, or API token), forcing clients to maintain
+  two independent auth identities — one for vault and one for native KMS access.
+  Added `vault_token_optional_middleware` (in `crate/server/src/middlewares/spire_token.rs`)
+  which is wired as the outermost auth layer on the KMIP default scope, `/v1/crypto`,
+  MS-DKE, and tokenize scopes when `vault_api_enabled = true`. The optional middleware:
+    - **Token absent**: passes through transparently so native auth (TLS/JWT/API token) still
+    works as before; no behavioural change for existing native-auth clients.
+    - **Token present and valid**: injects `AuthenticatedUser` with the auth-verifier
+    `entity_id`; subsequent native-auth middlewares detect the already-present extension
+    and skip their own checks (consistent with existing short-circuit logic).
+    - **Token present but invalid**: returns `403 Forbidden` immediately (fail closed —
+    a tampered or expired token is not retried with a different auth mechanism).
+  The `SpireTokenCache` is now constructed once per server instance and shared across all
+  route scopes (transit, PKI, KMIP, crypto, etc.), reducing redundant auth-verifier
+  round-trips.
+
+        - Added `vault_api_enabled`, `vault_auth_verifier_url`, `vault_transit_mount`,
     `vault_pki_mount`, `vault_pki_ca_key_label`, and `vault_token_cache_ttl_secs`
     configuration fields to `ServerParams`.
-    - Added `SpireTokenCache` middleware (`crate/server/src/middlewares/spire_token.rs`)
+        - Added `SpireTokenCache` middleware (`crate/server/src/middlewares/spire_token.rs`)
     for validating Vault-compatible tokens via the Cosmian Authentication Server
     (`auth-verifier`); uses a DashMap cache (TTL from `vault_token_cache_ttl_secs`,
     default 30 seconds) with a bounded entry cap to reduce round-trips.
-    - Added a transparent reverse proxy (`crate/server/src/routes/spire/auth_proxy.rs`)
+        - Added a transparent reverse proxy (`crate/server/src/routes/spire/auth_proxy.rs`)
     that forwards `/v1/auth/*` requests (`AppRole` login, token lookup/renewal) to the
     configured `vault_auth_verifier_url`, stripping the `/v1` prefix. This lets SPIRE
     point a single `vault_addr` at the KMS for auth, transit, and PKI — no external
     reverse proxy is required.
-    - Added Vault Transit engine routes under `/v1/{transit_mount}/keys`:
-        - `POST /keys/{name}` — create a transit key (EC P-256/P-384, RSA-2048/4096,
+        - Added Vault Transit engine routes under `/v1/{transit_mount}/keys`:
+            - `POST /keys/{name}` — create a transit key (EC P-256/P-384, RSA-2048/4096,
       and `ed25519`/`ml-dsa-65` under `non-fips`);
-        - `GET /keys/{name}` — retrieve key metadata;
-        - `GET /keys` — list all transit keys;
-        - `DELETE /keys/{name}` — delete (destroy) a transit key;
-        - `POST /sign/{name}/{hash_alg}` — sign with a transit key.
-    - Added Vault PKI engine route under `/v1/{pki_mount}`:
-        - `POST /root/sign-intermediate` — sign an intermediate CA CSR with the
+            - `GET /keys/{name}` — retrieve key metadata;
+            - `GET /keys` — list all transit keys;
+            - `DELETE /keys/{name}` — delete (destroy) a transit key;
+            - `POST /sign/{name}/{hash_alg}` — sign with a transit key.
+        - Added Vault PKI engine route under `/v1/{pki_mount}`:
+            - `POST /root/sign-intermediate` — sign an intermediate CA CSR with the
       configured CA key, returning the certificate chain in Vault-compatible JSON.
-    - Both scopes are protected by the `vault_token_middleware` and registered only
+        - Both scopes are protected by the `vault_token_middleware` and registered only
     when `vault_api_enabled = true`.
 - **`ckms vault` CLI subcommands** (`crate/clients/clap/src/actions/vault/`):
     - `ckms vault approle login` — exchange a `role_id` + `secret_id` for a Vault
