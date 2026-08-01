@@ -634,7 +634,6 @@ Crate path: `crate/server`
 | `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
 | `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
 | `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e`: reqwest error detail | Raised when KMS cannot reach auth-verifier to forward a `/v1/auth/*` request; SPIRE will fail to authenticate |
-| `info` | `Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_mount`: configured transit mount name, `pki_mount`: configured PKI mount name | [REMOVED] Emitted once on startup when `vault_api_enabled = true` and `vault_auth_verifier_url` is set |
 | `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
 | `warn` | `spire_token_middleware: validation failed: {e}` | `src/middlewares/spire_token.rs` | `e` | - |
 | `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
