@@ -1021,8 +1021,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // Cors must run first to handle OPTIONS preflights before auth checks.
             // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
             // AuthenticatedUser before EnsureAuth verifies it.
-            let use_any_auth =
-                use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth;
+            //
+            // vault_token_optional_middleware is intentionally *optional*: it enriches the
+            // request identity when `X-Vault-Token` is present but does NOT mandate that a
+            // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
+            // the endpoint actually require authentication.
+            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth;
             let tokenize_scope = web::scope("/tokenize")
                 .app_data(web::JsonConfig::default().limit(65_536))
                 .wrap(Condition::new(
@@ -1254,7 +1258,10 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             )
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth,
+                // vault_token_optional_middleware is intentionally *optional*: it enriches the
+                // request identity when `X-Vault-Token` is present but does NOT mandate auth.
+                // Only "hard" auth methods (JWT, cert, API token) require authentication here.
+                use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
@@ -1294,7 +1301,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth,
+                // vault_token_optional_middleware is intentionally *optional*: it enriches the
+                // request identity when `X-Vault-Token` is present but does NOT mandate that a
+                // token be supplied. Including `use_vault_token_auth` here would block requests
+                // that arrive without a vault token even when `default_username` is configured
+                // (the typical dev/test setup). The DKE, JOSE, and AWS XKS scopes each handle
+                // their own auth requirements separately.
+                use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
                 use_api_token_auth,
