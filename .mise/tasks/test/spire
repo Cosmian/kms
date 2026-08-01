@@ -251,6 +251,12 @@ print_success "KMS server ready on port 9998."
 # so that Go's x509 path validation accepts them as signers.
 print_status "Creating self-signed PKI CA key and certificate in KMS (tag: vault_pki_ca)..."
 CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+# vault_api_enabled=true activates ensure_auth_middleware on all scopes (including the
+# default/KMIP scope). Admin calls from the test harness must supply the API token set in
+# the test kms.toml (api_token_id = "spire-test-admin-token") so they are authenticated.
+# The access_token field is under [http_config] — kms_write_ckms_conf ends the file on
+# that section, so the appended line is parsed as part of it.
+echo 'access_token = "spire-test-admin-token"' >>"${CKMS_CONF}"
 
 # Write a temp extensions file for the root CA
 _VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
