@@ -634,7 +634,7 @@ Crate path: `crate/server`
 | `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
 | `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
 | `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e`: reqwest error detail | Raised when KMS cannot reach auth-verifier to forward a `/v1/auth/*` request; SPIRE will fail to authenticate |
-| `info` | `Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_mount`: configured transit mount name, `pki_mount`: configured PKI mount name | Emitted once on startup when `vault_api_enabled = true` and `vault_auth_verifier_url` is set |
+| `info` | `Vault-compatible API enabled: transit at /v1/{transit_mount}, PKI at /v1/{pki_mount}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_mount`: configured transit mount name, `pki_mount`: configured PKI mount name | [REMOVED] Emitted once on startup when `vault_api_enabled = true` and `vault_auth_verifier_url` is set |
 | `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
 | `warn` | `spire_token_middleware: validation failed: {e}` | `src/middlewares/spire_token.rs` | `e` | - |
 | `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
@@ -645,6 +645,11 @@ Crate path: `crate/server`
 | `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
 | `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
 | `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
+| `warn` | `vault_token_optional_middleware: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `e` | - |
+| `info` | `Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_scope_path`, `pki_scope_path` | - |
+| `debug` | `vault_token_optional_middleware: authenticated entity={}` | `src/middlewares/spire_token.rs` | - | - |
+| `debug` | `vault_token_optional_middleware: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | - | - |
+| `trace` | `vault_token_optional_middleware: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
