@@ -10,7 +10,7 @@
 use std::{path::PathBuf, ptr::addr_of_mut, str::FromStr};
 
 use ckms::reexport::cosmian_kms_cli_actions::reexport::cosmian_kms_client::KmsClient;
-use cosmian_logger::{error, reexport::tracing::Level};
+use cosmian_logger::reexport::tracing::Level;
 use cosmian_pkcs11_module::{
     ModuleError,
     pkcs11::FUNC_LIST,
@@ -123,7 +123,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     let config = match get_kms_config(explicit_conf) {
         Ok(c) => c,
         Err(e) => {
-            error!(
+            cosmian_logger::error!(
                 "C_GetFunctionList: failed to load ckms.toml: {}. \
                  Check that ckms.toml exists alongside the DLL \
                  (C:\\opt\\oracle\\extapi\\64\\pkcs11\\ckms.toml), \
@@ -142,7 +142,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         let base_client = match KmsClient::new_with_config(config.clone()) {
             Ok(c) => c,
             Err(e) => {
-                error!(
+                cosmian_logger::error!(
                     "C_GetFunctionList: failed to instantiate base KMS client: {}",
                     e
                 );
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
         let kms_client = match KmsClient::new_with_config(config) {
             Ok(client) => client,
             Err(e) => {
-                error!(
+                cosmian_logger::error!(
                     "C_GetFunctionList: failed to instantiate KMS client: {}. \
                      Check that ckms.toml exists alongside the DLL \
                      (C:\\opt\\oracle\\extapi\\64\\pkcs11\\ckms.toml), \

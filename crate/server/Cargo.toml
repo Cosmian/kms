@@ -73,7 +73,7 @@ clap-config-fallback = { workspace = true }
 cosmian_kms_access = { path = "../access", version = "5.25.0" }
 cosmian_kms_base_hsm = { path = "../hsm/base_hsm", version = "5.25.0" }
 cosmian_kms_server_database = { path = "../server_database", version = "5.25.0" }
-cosmian_logger = { workspace = true, features = ["full"] }
+cosmian_logger = { workspace = true }
 crypt2pay_pkcs11_loader = { path = "../hsm/crypt2pay", version = "5.25.0" }
 dashmap = { workspace = true }
 dialoguer = { workspace = true }
