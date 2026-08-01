@@ -27,7 +27,7 @@
         "moment": "^2.30.1",
         "react": "^19.2.4",
         "react-dom": "^19.2.4",
-        "react-router-dom": "^7.15.0",
+        "react-router-dom": "^7.18.0",
         "tailwindcss": "^4.2.0"
     },
     "devDependencies": {
@@ -75,7 +75,8 @@
             "rollup": ">=4.59.0",
             "ajv": "^6.14.0",
             "flatted": ">=3.4.2",
-            "js-yaml": ">=4.3.0"
+            "js-yaml": ">=5.2.2",
+            "postcss": ">=8.5.18"
         },
         "onlyBuiltDependencies": [
             "@playwright/test",
