@@ -65,9 +65,15 @@ _get_free_port() {
 echo "==> Building WASM (${VARIANT}, web target) …"
 (
   cd "${WASM_CRATE}"
-  # Remove stale pkg/ to avoid wasm-pack 0.15.0 re-parse errors on the
-  # repository field (generated as an object, read back as a string).
-  rm -rf pkg
+  # Pre-populate pkg/package.json with "repository" as a string.  Both
+  # wasm-pack 0.13.x and 0.15.x read the existing pkg/package.json during the
+  # wasm-bindgen install step; if that field is a JSON object they fail with
+  # "invalid type: map, expected a string".  Providing a string-format stub
+  # ensures the read succeeds, and wasm-pack then overwrites the file with the
+  # full generated content.
+  mkdir -p pkg
+  printf '{"name":"cosmian_kms_client_wasm","repository":"https://github.com/Cosmian/kms"}\n' \
+    >pkg/package.json
   unset SDKROOT MACOSX_DEPLOYMENT_TARGET RUSTFLAGS LDFLAGS \
     OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR
   if [ "${VARIANT}" = "non-fips" ]; then
