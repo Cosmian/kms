@@ -147,10 +147,15 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Auth server config: the bundled dev.toml with the port substituted.
-# Paths inside (tls_params, admin_ui_path) are relative to AUTH_SERVER_REPO,
+# Auth server config: the bundled dev.toml with the port substituted,
+# a unique SQLite path (avoid /tmp/path.db collisions on shared CI runners),
+# and admin_ui_path removed (the admin UI isn't built in CI).
+# Paths inside (tls_params) are relative to AUTH_SERVER_REPO,
 # which is why the server is started with that as its cwd.
-sed "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
+AUTH_DB_PATH="${WORK_DIR}/auth.db"
+sed -e "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
+  -e "s|^connection_url = .*|connection_url = \"sqlite://${AUTH_DB_PATH}\"|" \
+  -e '/^admin_ui_path/d' \
   "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
 
 echo "==> Starting Cosmian authentication server (port ${AUTH_PORT}) …"
