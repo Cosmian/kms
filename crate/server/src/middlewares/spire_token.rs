@@ -244,6 +244,11 @@ async fn check_vault_token(
     }
 }
 
+/// Build a `403 Forbidden` JSON response with a single-element error array.
+fn forbidden_json(msg: &str) -> actix_web::HttpResponse {
+    actix_web::HttpResponse::Forbidden().json(serde_json::json!({"errors": [msg]}))
+}
+
 /// Whether an absent `X-Vault-Token` header should reject the request or pass through.
 enum AbsentMode {
     /// Return `403 Forbidden` — used by strict middleware on SPIRE-only scopes.
@@ -287,10 +292,7 @@ where
             AbsentMode::Reject => {
                 trace!("{log_prefix}: missing X-Vault-Token header");
                 Ok(req
-                    .into_response(
-                        actix_web::HttpResponse::Forbidden()
-                            .json(serde_json::json!({"errors": ["missing X-Vault-Token"]})),
-                    )
+                    .into_response(forbidden_json("missing X-Vault-Token"))
                     .map_into_boxed_body())
             }
             AbsentMode::PassThrough => {
@@ -303,19 +305,13 @@ where
         VaultTokenResult::InvalidEncoding => {
             debug!("{log_prefix}: non-ASCII X-Vault-Token header; rejecting");
             Ok(req
-                .into_response(
-                    actix_web::HttpResponse::Forbidden()
-                        .json(serde_json::json!({"errors": ["invalid token"]})),
-                )
+                .into_response(forbidden_json("invalid token"))
                 .map_into_boxed_body())
         }
         VaultTokenResult::Invalid(e) => {
             warn!("{log_prefix}: validation failed: {e}; rejecting request");
             Ok(req
-                .into_response(
-                    actix_web::HttpResponse::Forbidden()
-                        .json(serde_json::json!({"errors": ["permission denied"]})),
-                )
+                .into_response(forbidden_json("permission denied"))
                 .map_into_boxed_body())
         }
     }

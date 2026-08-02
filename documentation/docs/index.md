@@ -61,6 +61,7 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
     - [FortiGate / FortiOS](./integrations/fortigate.md)
     - [S/MIME email encryption](./integrations/smime.md)
     - [OpenSSH](./integrations/openssh.md)
+    - [SPIRE / SPIFFE (Zero-Trust M2M)](./integrations/spire_spiffe.md)
 - **HSM integrations**:
     - [Trustway Proteccio](./hsm_support/proteccio.md) and [Crypt2Pay](./hsm_support/crypt2pay.md)
     - [Utimaco](./hsm_support/utimaco.md)

@@ -1258,9 +1258,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             )
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                // vault_token_optional_middleware is intentionally *optional*: it enriches the
-                // request identity when `X-Vault-Token` is present but does NOT mandate auth.
-                // Only "hard" auth methods (JWT, cert, API token) require authentication here.
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
@@ -1301,12 +1298,6 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                // vault_token_optional_middleware is intentionally *optional*: it enriches the
-                // request identity when `X-Vault-Token` is present but does NOT mandate that a
-                // token be supplied. Including `use_vault_token_auth` here would block requests
-                // that arrive without a vault token even when `default_username` is configured
-                // (the typical dev/test setup). The DKE, JOSE, and AWS XKS scopes each handle
-                // their own auth requirements separately.
                 use_jwt_auth || use_cert_auth || use_api_token_auth,
             ))
             .wrap(Condition::new(
