@@ -1,5 +1,6 @@
 {
     "$schema": "https://unpkg.com/knip@6/schema.json",
     "entry": ["scripts/sync-wasm.mjs"],
-    "ignoreBinaries": ["wasm-pack", "mise"]
+    "ignoreBinaries": ["wasm-pack", "mise"],
+    "ignore": ["playwright.oidc.config.ts", "tests/e2e-oidc/**"]
 }

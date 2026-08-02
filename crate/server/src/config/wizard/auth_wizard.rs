@@ -8,7 +8,7 @@
 use dialoguer::{Confirm, Input, MultiSelect, theme::ColorfulTheme};
 
 use crate::{
-    config::{CosmianAuthConfig, HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
+    config::{CosmianAuthServerConfig, HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
     error::KmsError,
     result::KResult,
 };
@@ -17,7 +17,7 @@ pub struct AuthWizardResult {
     #[allow(dead_code)]
     pub http_api_token: Option<String>,
     pub idp_auth: IdpAuthConfig,
-    pub cosmian_auth: CosmianAuthConfig,
+    pub cosmian_auth: CosmianAuthServerConfig,
     #[allow(dead_code)]
     pub ui_config_oidc: OidcConfig,
     pub default_username: String,
@@ -58,7 +58,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     // JWT / OIDC
     let mut jwt_providers: Vec<String> = Vec::new();
     let mut ui_oidc = OidcConfig::default();
-    let mut cosmian_auth = CosmianAuthConfig::default();
+    let mut cosmian_auth = CosmianAuthServerConfig::default();
 
     if selected.contains(&1) {
         println!("  Configure JWT/OIDC providers.");
@@ -160,7 +160,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         } else {
             None
         };
-        cosmian_auth = CosmianAuthConfig {
+        cosmian_auth = CosmianAuthServerConfig {
             cosmian_auth_server_url: Some(server_url),
             cosmian_auth_jwks_uri: if jwks_uri.trim().is_empty() {
                 None

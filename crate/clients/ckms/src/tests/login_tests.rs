@@ -60,3 +60,38 @@ pub(crate) fn test_ckms_login_help() {
     cmd.arg("login").arg("--help");
     cmd.assert().success();
 }
+
+/// `ckms login cosmian` must fail immediately with a clear error when the
+/// configuration file does not contain a `cosmian_conf` section.
+#[tokio::test]
+pub(crate) async fn test_ckms_login_cosmian_fails_without_cosmian_conf() {
+    let conf_path = env::temp_dir().join("ckms_login_no_cosmian_conf_test.toml");
+    fs::write(
+        &conf_path,
+        r#"
+[http_config]
+server_url = "http://127.0.0.1:9998"
+"#,
+    )
+    .expect("failed to write test config");
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path)
+        .arg("login")
+        .arg("cosmian")
+        .arg("--username")
+        .arg("admin")
+        .arg("--password")
+        .arg("change_me");
+
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(
+        !output.status.success(),
+        "ckms login cosmian should fail when cosmian_conf is absent"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cosmian_conf"),
+        "error message should mention 'cosmian_conf', got: {stderr}"
+    );
+}

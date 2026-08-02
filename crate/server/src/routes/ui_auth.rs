@@ -212,7 +212,7 @@ pub(crate) async fn callback(
     // a refresh and retry once before failing. `JwksManager::refresh()` is
     // internally throttled (60s) so this is safe even under repeated invalid-kid
     // probing. Mirrors the retry pattern used by the Cosmian auth middleware
-    // (`cosmian_auth_token.rs`).
+    // (`cosmian_auth_server/token.rs`).
     let header = match decode_header(id_token_str) {
         Ok(h) => h,
         Err(e) => {
@@ -357,7 +357,7 @@ struct CosmianLoginResponse {
 /// login as HTTP Basic auth against `{cosmian_auth_server_url}/login?realm={realm}` —
 /// mirroring `cosmian_login()` in `kms/crate/clients/client/src/http_client/login.rs` —
 /// then validates the JWT the AS returns via `Set-Cookie: _ea_=<jwt>` using the same
-/// JWKS-backed trust logic as the bearer-token `CosmianAuth` middleware
+/// JWKS-backed trust logic as the bearer-token `CosmianAuthServer` middleware
 /// (`verify_cosmian_jwt_subject`). Only the resulting `sub` (username) is stored in the
 /// session; the JWT itself never reaches the browser, keeping the same BFF guarantee
 /// as the OIDC flow (`callback`, above).
@@ -389,9 +389,8 @@ pub(crate) async fn login_as(
     };
 
     let Ok(mut url) = Url::parse(server_url.trim_end_matches('/')) else {
-        return HttpResponse::InternalServerError().json(
-            serde_json::json!({ "error": "Invalid Cosmian authentication server URL" }),
-        );
+        return HttpResponse::InternalServerError()
+            .json(serde_json::json!({ "error": "Invalid Cosmian authentication server URL" }));
     };
     {
         let Ok(mut segments) = url.path_segments_mut() else {

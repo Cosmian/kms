@@ -8,7 +8,8 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig, ClapConfig, CosmianAuthConfig, GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig,
+        AzureEkmConfig, ClapConfig, CosmianAuthServerConfig, GoogleCseConfig, IdpConfig,
+        JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -234,7 +235,7 @@ pub struct ServerParams {
     /// Configuration for the Cosmian authentication server.
     /// When set, the KMS validates bearer tokens issued by the Cosmian auth server.
     /// The `sub` claim is used as the user identity.
-    pub cosmian_auth_config: Option<CosmianAuthConfig>,
+    pub cosmian_auth_config: Option<CosmianAuthServerConfig>,
 }
 
 /// Represents the server parameters.

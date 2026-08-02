@@ -623,6 +623,23 @@ Crate path: `crate/server`
 | `debug` | `JOSE CEK cache hit for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `JOSE CEK cached for {uid}` | `src/routes/jose/cek_cache.rs` | `uid` | - |
 | `debug` | `TLS: an authenticated user was already present; skipping certificate check` | `src/middlewares/tls_auth.rs` | - | - |
+| `warn` | `OIDC: discovery document at {discovery_url} is missing required fields` | `src/start_kms_server.rs` | `discovery_url` | - |
+| `warn` | `OIDC: failed to build HTTP client for discovery: {e}` | `src/start_kms_server.rs` | `e` | - |
+| `warn` | `OIDC: failed to build JwksManager for UI OIDC: {e}` | `src/start_kms_server.rs` | `e` | - |
+| `warn` | `OIDC: failed to fetch discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
+| `warn` | `OIDC: failed to parse discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
+| `warn` | `Session: failed to read user_id from session: {e:?}` | `src/middlewares/session_auth.rs` | `e` | - |
+| `info` | `OIDC: discovered endpoints from {discovery_url}` | `src/start_kms_server.rs` | `discovery_url` | - |
+| `debug` | `CosmianAuthServer Middleware: an authenticated user was already found; skipping.` | `src/middlewares/cosmian_auth_server/middleware.rs` | - | - |
+| `debug` | `` CosmianAuthServer Middleware: authenticated user `{}` `` | `src/middlewares/cosmian_auth_server/middleware.rs` | - | - |
+| `debug` | `CosmianAuthServer Middleware: authentication failed: {e:?}` | `src/middlewares/cosmian_auth_server/middleware.rs` | `e` | - |
+| `debug` | `OIDC: authorization_endpoint={authorization_endpoint}` | `src/start_kms_server.rs` | `authorization_endpoint` | - |
+| `debug` | `OIDC: jwks_uri={jwks_uri}` | `src/start_kms_server.rs` | `jwks_uri` | - |
+| `debug` | `OIDC: token_endpoint={token_endpoint}` | `src/start_kms_server.rs` | `token_endpoint` | - |
+| `debug` | `Session: authenticated user '{user_id}'` | `src/middlewares/session_auth.rs` | `user_id` | - |
+| `debug` | `Session: request already authenticated, skipping` | `src/middlewares/session_auth.rs` | - | - |
+| `trace` | `Session Authentication...` | `src/middlewares/session_auth.rs` | - | - |
+| `trace` | `Session: no user_id in session, passing through` | `src/middlewares/session_auth.rs` | - | - |
 | `warn` | `vault_api_enabled = true but vault_auth_verifier_url is not set —                      Vault-compatible API will NOT be registered.                      Set vault_auth_verifier_url in the server config.` | `src/start_kms_server.rs` | - | - |
 | `debug` | `vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')` | `src/routes/spire/pki.rs` | `days`, `ttl_str` | - |
 | `debug` | `vault pki: signed intermediate certificate uid={cert_uid}` | `src/routes/spire/pki.rs` | `cert_uid` | - |
@@ -1304,6 +1321,7 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len`                                  | `actions/EC/ECVerify.tsx`                         | —                                                             | —               |
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
-| `error` | `JWT fallback failed:`                                   | `App.tsx`                                         | -                                                             | -               |
+| `error` | `Cosmian authentication server login failed:` | `pages/LoginPage.tsx` | - | - |
+| `error` | `Session fallback failed:` | `App.tsx` | - | - |
 
 ---

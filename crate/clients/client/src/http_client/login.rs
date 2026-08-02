@@ -375,7 +375,7 @@ pub(crate) async fn request_token(
 /// realm      = "kms"
 /// ```
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
-pub struct CosmianLoginConfig {
+pub struct CosmianAuthServerLoginConfig {
     /// Base URL of the Cosmian authentication server (no trailing slash).
     pub server_url: String,
     /// Realm to authenticate against (e.g. `"kms"`).
@@ -432,7 +432,7 @@ pub enum CosmianLoginStep {
 /// with a non-2xx status, the password has expired, or the `_ea_` cookie is
 /// absent from a successful response.
 pub async fn cosmian_login(
-    config: &CosmianLoginConfig,
+    config: &CosmianAuthServerLoginConfig,
     username: &str,
     password: &str,
     // TODO: remove accept_invalid_certs
@@ -445,7 +445,9 @@ pub async fn cosmian_login(
     let mut url = Url::parse(config.server_url.trim_end_matches('/'))
         .map_err(|e| HttpClientError::Default(format!("Invalid Cosmian auth server URL: {e:?}")))?;
     url.path_segments_mut()
-        .map_err(|()| HttpClientError::Default("Invalid Cosmian auth server URL: cannot be a base".to_owned()))?
+        .map_err(|()| {
+            HttpClientError::Default("Invalid Cosmian auth server URL: cannot be a base".to_owned())
+        })?
         .push("login");
     url.query_pairs_mut().append_pair("realm", &config.realm);
 

@@ -1,7 +1,7 @@
 //! Cosmian Authentication Server Middleware
 //!
 //! Actix-web transformer + service that wraps the core token validation logic
-//! in `cosmian_auth_token`.  The pattern mirrors `ApiTokenMiddleware`.
+//! in `token`.  The pattern mirrors `ApiTokenMiddleware`.
 
 use std::{
     pin::Pin,
@@ -21,17 +21,17 @@ use futures::{
     future::{Ready, ok},
 };
 
-use super::cosmian_auth_token::handle_cosmian_auth;
+use super::token::handle_cosmian_auth;
 use crate::middlewares::{AuthenticatedUser, JwksManager};
 
 /// Transformer — registered once during app startup.
 #[derive(Clone)]
-pub(crate) struct CosmianAuth {
+pub(crate) struct CosmianAuthServer {
     jwks_manager: Option<Arc<JwksManager>>,
 }
 
-impl CosmianAuth {
-    /// Create a new `CosmianAuth` transformer.
+impl CosmianAuthServer {
+    /// Create a new `CosmianAuthServer` transformer.
     /// When `jwks_manager` is `None`, the middleware is a no-op (used with `Condition::new(false, …)`).
     #[must_use]
     pub(crate) const fn new(jwks_manager: Option<Arc<JwksManager>>) -> Self {
@@ -39,7 +39,7 @@ impl CosmianAuth {
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for CosmianAuth
+impl<S, B> Transform<S, ServiceRequest> for CosmianAuthServer
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -48,10 +48,10 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
     type InitError = ();
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
-    type Transform = CosmianAuthMiddleware<S>;
+    type Transform = CosmianAuthServerMiddleware<S>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(CosmianAuthMiddleware {
+        ok(CosmianAuthServerMiddleware {
             service: Rc::new(service),
             jwks_manager: self.jwks_manager.clone(),
         })
@@ -59,12 +59,12 @@ where
 }
 
 /// Middleware service — processes each request.
-pub(crate) struct CosmianAuthMiddleware<S> {
+pub(crate) struct CosmianAuthServerMiddleware<S> {
     service: Rc<S>,
     jwks_manager: Option<Arc<JwksManager>>,
 }
 
-impl<S, B> Service<ServiceRequest> for CosmianAuthMiddleware<S>
+impl<S, B> Service<ServiceRequest> for CosmianAuthServerMiddleware<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -85,19 +85,19 @@ where
             // Skip if a previous middleware already authenticated this request.
             if req.extensions().contains::<AuthenticatedUser>() {
                 debug!(
-                    "CosmianAuth Middleware: an authenticated user was already found; skipping."
+                    "CosmianAuthServer Middleware: an authenticated user was already found; skipping."
                 );
             } else if let Some(ref jwks) = jwks_manager {
                 match handle_cosmian_auth(jwks, &req).await {
                     Ok(user) => {
                         debug!(
-                            "CosmianAuth Middleware: authenticated user `{}`",
+                            "CosmianAuthServer Middleware: authenticated user `{}`",
                             user.username
                         );
                         req.extensions_mut().insert(user);
                     }
                     Err(e) => {
-                        debug!("CosmianAuth Middleware: authentication failed: {e:?}");
+                        debug!("CosmianAuthServer Middleware: authentication failed: {e:?}");
                     }
                 }
             }

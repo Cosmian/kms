@@ -1,6 +1,6 @@
 mod azure_ekm_config;
 mod clap_config;
-mod cosmian_auth_config;
+mod cosmian_auth_server_config;
 mod db;
 mod google_cse_config;
 mod hsm_config;
@@ -21,7 +21,7 @@ pub use azure_ekm_config::AzureEkmConfig;
 #[cfg(not(target_os = "windows"))]
 pub use clap_config::DEFAULT_COSMIAN_KMS_CONF;
 pub use clap_config::{ClapConfig, get_default_config_path};
-pub use cosmian_auth_config::CosmianAuthConfig;
+pub use cosmian_auth_server_config::CosmianAuthServerConfig;
 pub use db::{DEFAULT_SQLITE_PATH, DatabaseType, MainDBConfig};
 pub use google_cse_config::GoogleCseConfig;
 pub use hsm_config::{HsmConfig, HsmModel};

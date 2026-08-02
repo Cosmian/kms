@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 /// `cosmian_auth_jwks_uri`.
 #[derive(Args, Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
-pub struct CosmianAuthConfig {
+pub struct CosmianAuthServerConfig {
     /// Base URL of the Cosmian authentication server (e.g. `https://auth.example.com`).
     ///
     /// When set, the KMS validates bearer tokens against the JWKS published by this
@@ -56,7 +56,7 @@ pub struct CosmianAuthConfig {
     pub cosmian_auth_accept_invalid_certs: bool,
 }
 
-impl CosmianAuthConfig {
+impl CosmianAuthServerConfig {
     /// Returns `true` if the Cosmian auth server is configured (i.e. a server URL is set).
     #[must_use]
     pub const fn is_enabled(&self) -> bool {
@@ -88,11 +88,11 @@ impl CosmianAuthConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::CosmianAuthConfig;
+    use super::CosmianAuthServerConfig;
 
     #[test]
     fn test_jwks_uri_default() {
-        let cfg = CosmianAuthConfig {
+        let cfg = CosmianAuthServerConfig {
             cosmian_auth_server_url: Some("https://auth.example.com".to_owned()),
             cosmian_auth_jwks_uri: None,
             cosmian_auth_realm: None,
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn test_jwks_uri_explicit() {
-        let cfg = CosmianAuthConfig {
+        let cfg = CosmianAuthServerConfig {
             cosmian_auth_server_url: Some("https://auth.example.com".to_owned()),
             cosmian_auth_jwks_uri: Some("https://auth.example.com/custom/jwks".to_owned()),
             cosmian_auth_realm: None,
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn test_jwks_uri_trailing_slash_stripped() {
-        let cfg = CosmianAuthConfig {
+        let cfg = CosmianAuthServerConfig {
             cosmian_auth_server_url: Some("https://auth.example.com/".to_owned()),
             cosmian_auth_jwks_uri: None,
             cosmian_auth_realm: None,
@@ -134,14 +134,14 @@ mod tests {
 
     #[test]
     fn test_not_enabled_without_url() {
-        let cfg = CosmianAuthConfig::default();
+        let cfg = CosmianAuthServerConfig::default();
         assert!(!cfg.is_enabled());
         assert_eq!(cfg.jwks_uri(), None);
     }
 
     #[test]
     fn test_ui_login_enabled_requires_both_url_and_realm() {
-        let mut cfg = CosmianAuthConfig::default();
+        let mut cfg = CosmianAuthServerConfig::default();
         assert!(!cfg.ui_login_enabled());
 
         cfg.cosmian_auth_server_url = Some("https://auth.example.com".to_owned());

@@ -22,9 +22,5 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         window.location.href = kmsUrl;
     };
 
-    return (
-        <AuthContext.Provider value={{ serverUrl, setServerUrl, userId, setUserId, login, logout }}>
-            {children}
-        </AuthContext.Provider>
-    );
+    return <AuthContext.Provider value={{ serverUrl, setServerUrl, userId, setUserId, login, logout }}>{children}</AuthContext.Provider>;
 };

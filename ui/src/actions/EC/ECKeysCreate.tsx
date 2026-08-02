@@ -64,16 +64,16 @@ const ECKeyCreateForm: React.FC = () => {
                 if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
                     if (values.rotateInterval !== undefined) {
                         const req = wasm.set_rotate_interval_ttlv_request(skId, BigInt(values.rotateInterval));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.rotateOffset !== undefined) {
                         const req = wasm.set_rotate_offset_ttlv_request(skId, BigInt(values.rotateOffset));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.enrollKeyset) {
                         // rotation name must equal the private key ID
                         const req = wasm.set_rotate_name_ttlv_request(skId, skId);
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                 }
 

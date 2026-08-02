@@ -14,7 +14,7 @@ use super::{
     ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
-    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AzureEkmConfig, CosmianAuthServerConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
     routes::aws_xks::AwsXksConfig,
@@ -52,7 +52,7 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             idp_auth: IdpAuthConfig::default(),
-            cosmian_auth: CosmianAuthConfig::default(),
+            cosmian_auth: CosmianAuthServerConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -181,7 +181,7 @@ pub struct ClapConfig {
     pub idp_auth: IdpAuthConfig,
 
     #[clap(flatten)]
-    pub cosmian_auth: CosmianAuthConfig,
+    pub cosmian_auth: CosmianAuthServerConfig,
 
     #[command(flatten)]
     pub ui_config: UiConfig,

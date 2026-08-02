@@ -22,7 +22,7 @@ const CseInfo: React.FC = () => {
     const [symKeyExist, setSymKeyExist] = useState<boolean | null>(null);
 
     const [error, setError] = useState<string | undefined>(undefined);
-    const { serverUrl, } = useAuth();
+    const { serverUrl } = useAuth();
 
     const fetchCseInfo = useCallback(async () => {
         setIsLoading(true);

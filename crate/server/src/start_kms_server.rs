@@ -49,16 +49,16 @@ use url::Url;
 use crate::routes::tokenize;
 use crate::{
     config::{
-        CosmianAuthConfig, CosmianAuthRuntimeConfig, IdpAuthConfig, OidcRuntimeConfig, ProxyParams,
-        ServerParams, TlsParams,
+        CosmianAuthRuntimeConfig, CosmianAuthServerConfig, IdpAuthConfig, OidcRuntimeConfig,
+        ProxyParams, ServerParams, TlsParams,
     },
     core::KMS,
     cron,
     error::KmsError,
     middlewares::{
-        JwksManager, JwtConfig, SpireTokenCache, api_token_middleware, ensure_auth_middleware,SessionAuth,
-        TlsAuth,
-        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware,
+        CosmianAuthServer, JwksManager, JwtConfig, SpireTokenCache, SessionAuth, api_token_middleware,
+        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
+        otel_http_metrics_middleware,
         spire_token_middleware, tls_auth_fn, vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
@@ -1199,7 +1199,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 ))
                 .wrap(Condition::new(
                     use_cosmian_auth,
-                    CosmianAuth::new(cosmian_auth_jwks_manager.clone()),
+                    CosmianAuthServer::new(cosmian_auth_jwks_manager.clone()),
                 ))
                 .wrap(Condition::new(
                     use_jwt_auth,
@@ -1327,7 +1327,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .params
                     .cosmian_auth_config
                     .as_ref()
-                    .is_some_and(CosmianAuthConfig::ui_login_enabled)
+                    .is_some_and(CosmianAuthServerConfig::ui_login_enabled)
             {
                 Some("COSMIAN".to_owned())
             } else {
@@ -1336,7 +1336,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
 
             // BFF runtime config for the Cosmian authentication server Web UI login
             // (`/ui/login_as`). Reuses the JWKS manager already built above for the
-            // bearer-token `CosmianAuth` middleware — no second JWKS fetch.
+            // bearer-token `CosmianAuthServer` middleware — no second JWKS fetch.
             let cosmian_auth_runtime_config = CosmianAuthRuntimeConfig {
                 config: kms_server_for_http
                     .params
@@ -1461,7 +1461,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ))
             .wrap(Condition::new(
                 use_cosmian_auth,
-                CosmianAuth::new(cosmian_auth_jwks_manager.clone()),
+                CosmianAuthServer::new(cosmian_auth_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
@@ -1506,7 +1506,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ))
             .wrap(Condition::new(
                 use_cosmian_auth,
-                CosmianAuth::new(cosmian_auth_jwks_manager.clone()),
+                CosmianAuthServer::new(cosmian_auth_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,

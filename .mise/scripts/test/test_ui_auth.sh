@@ -40,8 +40,8 @@ WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
 
 init_build_env "$@"
 
-AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/../authentication}"
-if [ ! -f "${AUTH_SERVER_REPO}/server/auth_server.dev.toml" ]; then
+AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/authentication}"
+if [ ! -f "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" ]; then
   echo "ERROR: Cosmian authentication server repo not found at '${AUTH_SERVER_REPO}'." >&2
   echo "       Set AUTH_SERVER_REPO to the path of a checkout of the 'authentication' repo." >&2
   exit 1
@@ -82,11 +82,17 @@ cargo build -p cosmian_kms_server "${FEATURES_FLAG[@]}"
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}"
 kms_bin="${CARGO_TARGET_DIR}/debug/cosmian_kms"
 
-# ── 3. Build Cosmian authentication server ──────────────────────────────────
-echo "==> Building Cosmian authentication server …"
-(cd "${AUTH_SERVER_REPO}" && cargo build -p auth_server)
-AUTH_CARGO_TARGET_DIR="${AUTH_CARGO_TARGET_DIR:-${AUTH_SERVER_REPO}/target}"
-auth_bin="${AUTH_CARGO_TARGET_DIR}/debug/auth_server"
+# ── 3. Cosmian authentication server binary ──────────────────────────────────
+# The binary must be built BEFORE entering the nix shell (the mise task does
+# this), because the authentication submodule requires rustc ≥ 1.94 while the
+# nix shell pins an older version.  We just resolve the path here.
+auth_bin="${AUTH_SERVER_REPO}/target/debug/auth_verifier"
+if [ ! -x "${auth_bin}" ]; then
+  echo "ERROR: auth_verifier binary not found at '${auth_bin}'." >&2
+  echo "       The mise task should have built it before entering the nix shell." >&2
+  exit 1
+fi
+echo "==> Using auth_verifier: ${auth_bin}"
 
 # ── Dynamic ports ────────────────────────────────────────────────────────────
 AUTH_PORT=$(_get_free_port)
@@ -136,7 +142,7 @@ trap cleanup EXIT INT TERM
 # Paths inside (tls_params, admin_ui_path) are relative to AUTH_SERVER_REPO,
 # which is why the server is started with that as its cwd.
 sed "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
-  "${AUTH_SERVER_REPO}/server/auth_server.dev.toml" >"${AUTH_CONF_FILE}"
+  "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
 
 echo "==> Starting Cosmian authentication server (port ${AUTH_PORT}) …"
 (cd "${AUTH_SERVER_REPO}" && "${auth_bin}" "${AUTH_CONF_FILE}") >"${AUTH_LOG}" 2>&1 &
