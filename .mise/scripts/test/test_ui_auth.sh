@@ -158,7 +158,8 @@ echo "==> Starting Cosmian authentication server (port ${AUTH_PORT}) …"
 AUTH_PID=$!
 
 echo "==> Waiting for authentication server to be ready …"
-for i in $(seq 1 60); do
+_auth_timeout=${AUTH_SERVER_TIMEOUT:-120}
+for i in $(seq 1 "${_auth_timeout}"); do
   if ! kill -0 "${AUTH_PID}" 2>/dev/null; then
     echo "ERROR: authentication server process exited early; log:" >&2
     cat "${AUTH_LOG}" >&2
@@ -169,8 +170,8 @@ for i in $(seq 1 60); do
     echo "    Authentication server ready after ${i}s"
     break
   fi
-  if [ "${i}" -eq 60 ]; then
-    echo "ERROR: authentication server did not become ready within 60s; log:" >&2
+  if [ "${i}" -eq "${_auth_timeout}" ]; then
+    echo "ERROR: authentication server did not become ready within ${_auth_timeout}s; log:" >&2
     cat "${AUTH_LOG}" >&2
     exit 1
   fi
@@ -213,7 +214,8 @@ echo "==> Starting KMS server (port ${KMS_PORT}) …"
 KMS_PID=$!
 
 echo "==> Waiting for KMS to be ready with COSMIAN auth …"
-for i in $(seq 1 60); do
+_kms_timeout=${KMS_READY_TIMEOUT:-120}
+for i in $(seq 1 "${_kms_timeout}"); do
   if ! kill -0 "${KMS_PID}" 2>/dev/null; then
     echo "ERROR: KMS server process exited early; log:" >&2
     cat "${KMS_LOG}" >&2
@@ -223,8 +225,8 @@ for i in $(seq 1 60); do
     echo "    KMS ready after ${i}s"
     break
   fi
-  if [ "${i}" -eq 60 ]; then
-    echo "ERROR: KMS server did not report COSMIAN auth within 60s; log:" >&2
+  if [ "${i}" -eq "${_kms_timeout}" ]; then
+    echo "ERROR: KMS server did not report COSMIAN auth within ${_kms_timeout}s; log:" >&2
     cat "${KMS_LOG}" >&2
     exit 1
   fi
