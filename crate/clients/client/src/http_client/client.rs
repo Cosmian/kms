@@ -59,6 +59,12 @@ pub struct HttpClientConfig {
     pub verified_cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_token: Option<String>,
+    /// Vault-compatible token obtained via `ckms login approle`.
+    ///
+    /// When set, it is forwarded as an `X-Vault-Token` header on every request
+    /// so the KMS SPIRE-token middleware can authenticate the caller.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tls_client_pkcs12_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -101,6 +107,7 @@ impl Default for HttpClientConfig {
             server_url: "http://127.0.0.1:9998".to_owned(),
             verified_cert: None,
             access_token: None,
+            vault_token: None,
             database_secret: None,
             tls_client_pkcs12_path: None,
             tls_client_pkcs12_password: None,
@@ -136,6 +143,8 @@ struct HttpClientConfigDeserHelper {
     verified_cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     access_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault_token: Option<String>,
     // Canonical (new) names
     tls_client_pkcs12_path: Option<String>,
     tls_client_pkcs12_password: Option<String>,
@@ -184,6 +193,7 @@ impl<'de> Deserialize<'de> for HttpClientConfig {
             server_url: raw.server_url,
             verified_cert: raw.verified_cert,
             access_token: raw.access_token,
+            vault_token: raw.vault_token,
             tls_client_pkcs12_path: merge_deprecated!(
                 raw.tls_client_pkcs12_path,
                 raw.ssl_client_pkcs12_path,
@@ -334,6 +344,12 @@ impl HttpClient {
             headers.insert(
                 "Authorization",
                 HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
+            );
+        }
+        if let Some(vault_token) = http_conf.vault_token.clone() {
+            headers.insert(
+                "X-Vault-Token",
+                HeaderValue::from_str(vault_token.as_str())?,
             );
         }
         if let Some(database_secret) = http_conf.database_secret.clone() {
@@ -619,5 +635,60 @@ impl HttpClient {
             headers,
             body,
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod default_header_tests {
+    use super::{HttpClient, HttpClientConfig};
+
+    /// A `vault_token` must be injected as a raw `X-Vault-Token` header so the
+    /// KMS SPIRE-token middleware can authenticate the caller.
+    #[test]
+    fn test_vault_token_injects_x_vault_token_header() {
+        let config = HttpClientConfig {
+            vault_token: Some("hvs.deadbeef".to_owned()),
+            ..Default::default()
+        };
+        let client = HttpClient::instantiate(&config).expect("client should instantiate");
+        let value = client
+            .default_headers
+            .get("X-Vault-Token")
+            .expect("X-Vault-Token header must be present when vault_token is set");
+        assert_eq!(value.to_str().unwrap(), "hvs.deadbeef");
+        // A vault-token login must not set an Authorization header.
+        assert!(
+            client.default_headers.get("Authorization").is_none(),
+            "no Authorization header expected when only vault_token is set"
+        );
+    }
+
+    /// An `access_token` must be injected as an `Authorization: Bearer` header.
+    #[test]
+    fn test_access_token_injects_bearer_header() {
+        let config = HttpClientConfig {
+            access_token: Some("jwt-token".to_owned()),
+            ..Default::default()
+        };
+        let client = HttpClient::instantiate(&config).expect("client should instantiate");
+        let value = client
+            .default_headers
+            .get("Authorization")
+            .expect("Authorization header must be present when access_token is set");
+        assert_eq!(value.to_str().unwrap(), "Bearer jwt-token");
+        assert!(
+            client.default_headers.get("X-Vault-Token").is_none(),
+            "no X-Vault-Token header expected when only access_token is set"
+        );
+    }
+
+    /// With neither credential set, neither auth header must be present.
+    #[test]
+    fn test_no_tokens_no_auth_headers() {
+        let client =
+            HttpClient::instantiate(&HttpClientConfig::default()).expect("client instantiates");
+        assert!(client.default_headers.get("Authorization").is_none());
+        assert!(client.default_headers.get("X-Vault-Token").is_none());
     }
 }

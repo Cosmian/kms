@@ -427,6 +427,9 @@ proxy_exclusion_list = ["domain1", "domain2"]
 [idp_auth]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
 
+[cosmian_auth]
+cosmian_auth_accept_invalid_certs = false
+
 [ui_config]
 enable = true
 ui_index_html_folder = "[ui index html folder]"

@@ -257,9 +257,8 @@ pub(crate) async fn callback(
     let decoding_key = match DecodingKey::from_jwk(&jwk) {
         Ok(key) => key,
         Err(e) => {
-            return HttpResponse::Unauthorized().json(
-                serde_json::json!({ "error": format!("Failed to build decoding key: {e}") }),
-            );
+            let msg = format!("Failed to build decoding key: {e}");
+            return HttpResponse::Unauthorized().json(serde_json::json!({ "error": msg }));
         }
     };
 

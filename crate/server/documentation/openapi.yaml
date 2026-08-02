@@ -3122,7 +3122,7 @@ paths:
                   type: string
                 totp_code:
                   type: string
-                  description: Required when a prior call returned `next_step: "TotpRequired"`
+                  description: 'Required when a prior call returned `next_step: "TotpRequired"`'
       responses:
         '200':
           description: Authenticated, or a TOTP code is required to proceed

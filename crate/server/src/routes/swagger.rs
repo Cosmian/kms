@@ -72,7 +72,7 @@ pub(crate) async fn get_swagger_ui() -> KResult<HttpResponse> {
             SwaggerUIBundle({\n\
               url: \"/openapi.yaml\",\n\
               dom_id: \"#swagger-ui\",\n\
-              presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],\n\
+              presets: [SwaggerUIBundle.presets.apis],\n\
               layout: \"BaseLayout\",\n\
               deepLinking: true,\n\
               displayRequestDuration: true,\n\

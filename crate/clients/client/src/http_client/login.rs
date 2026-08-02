@@ -333,9 +333,12 @@ pub(crate) async fn request_token(
         .extend_pairs(params)
         .finish();
 
+    // TLS certificate validation MUST remain enabled for the OAuth2 token
+    // exchange: the authorization code and PKCE verifier are transmitted to the
+    // token endpoint, so a MITM with an invalid certificate could steal them.
     let client = super::HttpClient::instantiate(&super::HttpClientConfig {
         server_url: login_config.token_url.clone(),
-        accept_invalid_certs: true,
+        accept_invalid_certs: false,
         ..Default::default()
     })
     .map_err(|e| HttpClientError::Default(format!("failed to create HTTP client: {e}")))?;
@@ -526,4 +529,93 @@ pub async fn cosmian_login(
     Err(HttpClientError::Default(format!(
         "Cosmian login response did not set the `{COSMIAN_SESSION_COOKIE}` session cookie"
     )))
+}
+
+/// Request body for the Vault-compatible `AppRole` login endpoint.
+///
+/// Serialized as `{"role_id": "...", "secret_id": "..."}`. `secret_id` is
+/// omitted when the role has `bind_secret_id = false`.
+#[derive(Serialize, Debug)]
+struct AppRoleLoginRequest<'a> {
+    role_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secret_id: Option<&'a str>,
+}
+
+/// Response body returned by `POST /v1/auth/approle/login`.
+///
+/// Mirrors the auth-verifier `AppAuthResponse` wire type; only the
+/// `auth.client_token` field is consumed by the client.
+#[derive(Deserialize, Debug)]
+struct AppRoleLoginResponse {
+    auth: AppRoleLoginAuth,
+}
+
+/// The `auth` object nested inside [`AppRoleLoginResponse`].
+#[derive(Deserialize, Debug)]
+struct AppRoleLoginAuth {
+    /// The Vault-compatible token to forward as `X-Vault-Token`.
+    client_token: String,
+}
+
+/// Login to the KMS SPIRE/Vault-compatible API using an `AppRole` identity.
+///
+/// Sends `POST {server_url}/v1/auth/approle/login` with a JSON body of
+/// `{"role_id": ..., "secret_id": ...}`. The KMS transparently proxies this to
+/// the configured auth-verifier (`/auth/approle/login`), which validates the
+/// credentials and returns a Vault-compatible token.
+///
+/// The returned `client_token` is stored in `http_config.vault_token` and
+/// forwarded as an `X-Vault-Token` header on every subsequent KMS request,
+/// where the SPIRE-token middleware validates it against the auth-verifier.
+///
+/// `secret_id` may be `None` for roles configured with `bind_secret_id = false`.
+///
+/// The full [`HttpClientConfig`] is used so that the request reuses the same TLS
+/// trust store, client certificates, and proxy settings as ordinary KMS calls.
+///
+/// # Errors
+///
+/// Returns [`HttpClientError`] if the HTTP client cannot be built, the request
+/// fails, the server responds with a non-2xx status, or the response body does
+/// not contain an `auth.client_token` field.
+pub async fn approle_login(
+    http_config: &super::HttpClientConfig,
+    role_id: &str,
+    secret_id: Option<&str>,
+) -> HttpClientResult<String> {
+    let client = super::HttpClient::instantiate(http_config)
+        .map_err(|e| HttpClientError::Default(format!("failed to create HTTP client: {e}")))?;
+
+    let url = format!(
+        "{}/v1/auth/approle/login",
+        client.server_url.trim_end_matches('/')
+    );
+
+    let response = client
+        .post_json(&url, &AppRoleLoginRequest { role_id, secret_id })
+        .await
+        .map_err(|e| HttpClientError::Default(format!("AppRole login request failed: {e}")))?;
+
+    if response.status != StatusCode::OK {
+        let error_text = response
+            .text()
+            .unwrap_or_else(|_| "<failed to read response>".to_owned());
+        return Err(HttpClientError::Default(format!(
+            "AppRole login failed ({}): {error_text}",
+            response.status
+        )));
+    }
+
+    let parsed: AppRoleLoginResponse = response.json().map_err(|e| {
+        HttpClientError::Default(format!("failed parsing AppRole login response: {e}"))
+    })?;
+
+    if parsed.auth.client_token.is_empty() {
+        return Err(HttpClientError::Default(
+            "AppRole login response contained an empty client_token".to_owned(),
+        ));
+    }
+
+    Ok(parsed.auth.client_token)
 }
