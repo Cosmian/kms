@@ -56,10 +56,10 @@ use crate::{
     cron,
     error::KmsError,
     middlewares::{
-        CosmianAuthServer, JwksManager, JwtConfig, SpireTokenCache, SessionAuth, api_token_middleware,
-        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
-        otel_http_metrics_middleware,
-        spire_token_middleware, tls_auth_fn, vault_token_optional_middleware,
+        CosmianAuthServer, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
+        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
+        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
+        vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -797,8 +797,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // Security guard: the Cosmian auth JWKS URI must use HTTPS to prevent credential
             // exposure and MITM attacks on the public-key material used to verify bearer
             // tokens, same as for the other JWT identity providers above.
+            // When `accept_invalid_certs` is set (dev/test only) the operator explicitly
+            // acknowledges insecure transport, so the scheme check is also skipped.
             #[cfg(not(feature = "insecure"))]
-            validate_jwks_uris_are_https(std::slice::from_ref(&jwks_uri))?;
+            if !cosmian_cfg.cosmian_auth_accept_invalid_certs {
+                validate_jwks_uris_are_https(std::slice::from_ref(&jwks_uri))?;
+            }
 
             let proxy_params = kms_server.params.proxy_params.clone();
             let mgr = Arc::new(

@@ -116,6 +116,9 @@ test.describe("Locate – attribute display correctness (HSM keys)", () => {
         await page.waitForLoadState("networkidle");
         const rows = page.locator(".ant-table-tbody .ant-table-row");
         await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
+        // Background per-row get_attributes calls are triggered after rows render;
+        // wait for all of them to settle before reading cell contents.
+        await page.waitForLoadState("networkidle", { timeout: 30_000 });
 
         const { types } = await collectAttributeColumns(page, "hsm");
         expect(types.length).toBeGreaterThanOrEqual(HSM_KEY_COUNT);
@@ -132,6 +135,9 @@ test.describe("Locate – attribute display correctness (HSM keys)", () => {
         await page.waitForLoadState("networkidle");
         const rows = page.locator(".ant-table-tbody .ant-table-row");
         await rows.first().waitFor({ state: "visible", timeout: UI_READY_TIMEOUT });
+        // Background per-row get_attributes calls are triggered after rows render;
+        // wait for all of them to settle before reading cell contents.
+        await page.waitForLoadState("networkidle", { timeout: 30_000 });
 
         const { keyFormatTypes } = await collectAttributeColumns(page, "hsm");
         expect(keyFormatTypes.length).toBeGreaterThanOrEqual(HSM_KEY_COUNT);

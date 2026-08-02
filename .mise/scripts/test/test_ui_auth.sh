@@ -65,6 +65,9 @@ _get_free_port() {
 echo "==> Building WASM (${VARIANT}, web target) …"
 (
   cd "${WASM_CRATE}"
+  # Remove stale pkg/ to avoid wasm-pack 0.15.0 re-parse errors on the
+  # repository field (generated as an object, read back as a string).
+  rm -rf pkg
   unset SDKROOT MACOSX_DEPLOYMENT_TARGET RUSTFLAGS LDFLAGS \
     OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR
   if [ "${VARIANT}" = "non-fips" ]; then
@@ -155,8 +158,8 @@ for i in $(seq 1 60); do
     cat "${AUTH_LOG}" >&2
     exit 1
   fi
-  if curl -sS --max-time 2 --insecure -o /dev/null -w "%{http_code}" \
-    "https://127.0.0.1:${AUTH_PORT}/.well-known/jwks.json" 2>/dev/null | grep -q '^200$'; then
+  if curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
+    "http://127.0.0.1:${AUTH_PORT}/.well-known/jwks.json" 2>/dev/null | grep -q '^200$'; then
     echo "    Authentication server ready after ${i}s"
     break
   fi
@@ -172,11 +175,11 @@ done
 # itself on the same origin as the API (required for the session cookie).
 cat >"${KMS_CONF_FILE}" <<EOF
 vendor_identification = "test_vendor"
+kms_public_url = "http://localhost:${KMS_PORT}"
 
 [http]
 port = ${KMS_PORT}
 hostname = "localhost"
-kms_public_url = "http://localhost:${KMS_PORT}"
 
 [db]
 database_type = "sqlite"
@@ -184,7 +187,7 @@ sqlite_path = "${KMS_SQLITE_DIR}"
 clear_database = true
 
 [cosmian_auth]
-cosmian_auth_server_url = "https://localhost:${AUTH_PORT}"
+cosmian_auth_server_url = "http://localhost:${AUTH_PORT}"
 cosmian_auth_realm = "_"
 cosmian_auth_accept_invalid_certs = true
 
