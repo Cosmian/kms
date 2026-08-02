@@ -102,7 +102,7 @@ interface ObjectsReKeyProps {
  */
 const ObjectsReKeyForm: React.FC<ObjectsReKeyProps> = ({ keyType }) => {
     const [form] = Form.useForm<ReKeyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const config = REKEY_CONFIG[keyType];
 
@@ -114,14 +114,14 @@ const ObjectsReKeyForm: React.FC<ObjectsReKeyProps> = ({ keyType }) => {
             }
             if (config.isKeyPair) {
                 const request = rekey_keypair_ttlv_request(id);
-                const resultStr = await sendKmipRequest(request, idToken, serverUrl);
+                const resultStr = await sendKmipRequest(request, serverUrl);
                 if (resultStr) {
                     const result = parse_rekey_keypair_ttlv_response(resultStr) as ReKeyKeyPairResponse;
                     return buildSuccessMessage(keyType, result);
                 }
             } else {
                 const request = rekey_ttlv_request(id);
-                const resultStr = await sendKmipRequest(request, idToken, serverUrl);
+                const resultStr = await sendKmipRequest(request, serverUrl);
                 if (resultStr) {
                     const result = parse_rekey_ttlv_response(resultStr) as ReKeySymmetricResponse;
                     return buildSuccessMessage(keyType, result);

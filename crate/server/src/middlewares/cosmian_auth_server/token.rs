@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use actix_web::{dev::ServiceRequest, http::header};
+use actix_web::dev::ServiceRequest;
 #[cfg(all(not(test), not(feature = "insecure")))]
 use jsonwebtoken::Algorithm;
 #[cfg(any(test, feature = "insecure"))]
@@ -28,7 +28,7 @@ use serde::Deserialize;
 
 use crate::{
     error::KmsError,
-    middlewares::{AuthenticatedUser, JwksManager},
+    middlewares::{AuthenticatedUser, JwksManager, extract_bearer_token},
     result::KResult,
 };
 
@@ -65,24 +65,8 @@ pub(super) async fn handle_cosmian_auth(
     jwks_manager: &Arc<JwksManager>,
     req: &ServiceRequest,
 ) -> KResult<AuthenticatedUser> {
-    // Extract the raw Authorization header.
-    let auth_header = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("");
-
-    // Parse "Bearer <token>".
-    let mut parts = auth_header.splitn(2, ' ');
-    let scheme = parts.next().unwrap_or("");
-    let token = parts.next().unwrap_or("").trim();
-
-    if !scheme.eq_ignore_ascii_case("Bearer") || token.is_empty() {
-        return Err(KmsError::Unauthorized(
-            "Cosmian auth: missing or malformed Authorization header (expected Bearer token)"
-                .to_owned(),
-        ));
-    }
+    let token = extract_bearer_token(req)
+        .map_err(|e| KmsError::Unauthorized(format!("Cosmian auth: {e}")))?;
 
     let username = verify_cosmian_jwt_subject(jwks_manager, token).await?;
     Ok(AuthenticatedUser { username })
@@ -91,7 +75,7 @@ pub(super) async fn handle_cosmian_auth(
 /// Validate a Cosmian auth server JWT and return its `sub` claim (the
 /// authenticated username).
 ///
-/// Shared between the bearer-token `CosmianAuth` middleware
+/// Shared between the bearer-token `CosmianAuthServer` middleware
 /// (`handle_cosmian_auth`) and the UI's BFF login proxy
 /// (`crate::routes::ui_auth::login_as`), which validates the JWT the Cosmian
 /// authentication server returns via `Set-Cookie: _ea_=<jwt>` before storing

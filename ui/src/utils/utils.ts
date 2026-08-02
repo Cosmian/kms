@@ -60,7 +60,7 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
 };
 
 /** Outcome of a `POST /ui/login_as` call — mirrors the KMS server's `CosmianLoginResponse`. */
-export type CosmianLoginNextStep = "Authenticated" | "TotpRequired";
+type CosmianLoginNextStep = "Authenticated" | "TotpRequired";
 
 /**
  * Log in against the Cosmian authentication server via the KMS's BFF proxy

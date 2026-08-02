@@ -369,7 +369,7 @@ mod tests {
             non_revocable_key_id: None,
             privileged_users: None,
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
-            cosmian_auth: cosmian_kms_server::config::CosmianAuthConfig::default(),
+            cosmian_auth: cosmian_kms_server::config::CosmianAuthServerConfig::default(),
             print_default_config: false,
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,

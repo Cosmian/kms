@@ -4,8 +4,8 @@ pub(crate) use tls_auth::{extract_peer_certificate, tls_auth_fn};
 mod api_token;
 pub(crate) use api_token::api_token_middleware;
 
-mod cosmian_auth;
-pub(crate) use cosmian_auth::{CosmianAuth, verify_cosmian_jwt_subject};
+mod cosmian_auth_server;
+pub(crate) use cosmian_auth_server::{CosmianAuthServer, verify_cosmian_jwt_subject};
 
 mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;
@@ -25,7 +25,36 @@ pub(crate) use spire_token::{
 };
 
 mod session_auth;
+use actix_web::{dev::ServiceRequest, http::header};
 pub(crate) use session_auth::SessionAuth;
+
+use crate::{error::KmsError, result::KResult};
+
+/// Extract a Bearer token from the `Authorization` header of a request.
+///
+/// Returns the raw token string (trimmed) on success, or an `Unauthorized`
+/// error when the header is missing, malformed, or empty.
+///
+/// Shared by the API-token, Cosmian auth server, and any future Bearer-based
+/// middleware so the parsing logic stays in one place.
+pub(crate) fn extract_bearer_token(req: &ServiceRequest) -> KResult<&str> {
+    let auth_header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+
+    let mut parts = auth_header.splitn(2, ' ');
+    let scheme = parts.next().unwrap_or("");
+    let token = parts.next().unwrap_or("").trim();
+
+    if !scheme.eq_ignore_ascii_case("Bearer") || token.is_empty() {
+        return Err(KmsError::Unauthorized(
+            "missing or malformed Authorization header (expected Bearer token)".to_owned(),
+        ));
+    }
+    Ok(token)
+}
 
 /// Represents an authenticated user
 ///

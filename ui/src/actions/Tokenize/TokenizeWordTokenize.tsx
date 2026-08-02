@@ -28,7 +28,7 @@ const TokenizeWordTokenizeForm: React.FC = () => {
             const response = await postNoTTLVRequest(
                 "/tokenize/word-tokenize",
                 { data: values.data, words: values.words ?? [] },
-                                serverUrl,
+                serverUrl,
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {

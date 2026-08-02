@@ -37,7 +37,7 @@ const TokenizeAggregateDateForm: React.FC = () => {
             const response = await postNoTTLVRequest(
                 "/tokenize/aggregate-date",
                 { data: values.data, time_unit: values.time_unit },
-                                serverUrl,
+                serverUrl,
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {

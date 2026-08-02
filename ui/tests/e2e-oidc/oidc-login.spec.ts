@@ -30,9 +30,7 @@ const OIDC_PASSWORD = process.env.OIDC_TEST_PASSWORD;
 async function completeAuth0Login(page: Page, username: string, password: string): Promise<void> {
     await page.waitForURL(/auth0\.com/, { timeout: 45_000 });
 
-    const userField = page
-        .locator('input[name="username"], input[name="email"], input#username, input[type="email"]')
-        .first();
+    const userField = page.locator('input[name="username"], input[name="email"], input#username, input[type="email"]').first();
     await userField.waitFor({ state: "visible", timeout: 30_000 });
     await userField.fill(username);
 

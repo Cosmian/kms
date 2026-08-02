@@ -2,7 +2,7 @@ use clap::Parser;
 use cosmian_kms_client::{
     KmsClientConfig,
     reexport::cosmian_http_client::{
-        CosmianLoginConfig, CosmianLoginStep, LoginState, cosmian_login,
+        CosmianAuthServerLoginConfig, CosmianLoginStep, LoginState, cosmian_login,
     },
 };
 use dialoguer::Input;
@@ -78,7 +78,7 @@ impl LoginAction {
                 Ok(access_token)
             }
             LoginSubcommand::Cosmian { username, password } => {
-                let cosmian_conf: &CosmianLoginConfig =
+                let cosmian_conf: &CosmianAuthServerLoginConfig =
                     config.http_config.cosmian_conf.as_ref().ok_or_else(|| {
                         KmsCliError::Default(
                             "The `login cosmian` command requires a `cosmian_conf` section in the \

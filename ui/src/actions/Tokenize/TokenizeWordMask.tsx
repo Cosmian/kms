@@ -25,11 +25,7 @@ const TokenizeWordMaskForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         try {
-            const response = await postNoTTLVRequest(
-                "/tokenize/word-mask",
-                { data: values.data, words: values.words ?? [] },
-                                serverUrl,
-            );
+            const response = await postNoTTLVRequest("/tokenize/word-mask", { data: values.data, words: values.words ?? [] }, serverUrl);
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
                 setRes(`Result: ${typed.result}`);

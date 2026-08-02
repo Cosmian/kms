@@ -58,16 +58,16 @@ const SymKeyCreateForm: React.FC = () => {
                 if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
                     if (values.rotateInterval !== undefined) {
                         const req = wasm.set_rotate_interval_ttlv_request(keyId, BigInt(values.rotateInterval));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.rotateOffset !== undefined) {
                         const req = wasm.set_rotate_offset_ttlv_request(keyId, BigInt(values.rotateOffset));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.enrollKeyset) {
                         // rotation name must equal the key ID for SQL-backed keys
                         const req = wasm.set_rotate_name_ttlv_request(keyId, keyId);
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                 }
 

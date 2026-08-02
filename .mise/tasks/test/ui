@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run Playwright E2E tests for the KMS web UI"
+#MISE description="Run all Playwright E2E tests for the KMS web UI (standard + auth + OIDC)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -10,6 +10,22 @@ set -euo pipefail
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
 source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
 kms_init_env "${usage_variant:-non-fips}" "${usage_link:-static}"
+
+REPO_ROOT="$(get_repo_root)"
+
+# ── Build auth_verifier BEFORE entering the nix shell ────────────────────────
+# The authentication submodule requires rustc ≥ 1.94; the nix shell pins an
+# older version.  Build with the host toolchain on the first invocation only
+# (ensure_nix_shell re-execs this script inside the nix shell).
+if [ "${IN_NIX_SHELL:-0}" != "1" ]; then
+  AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/authentication}"
+  if [ -f "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" ]; then
+    echo "==> Building auth_verifier (host toolchain) …"
+    (cd "${AUTH_SERVER_REPO}" && cargo build -p auth_verifier)
+  else
+    print_warning "authentication submodule not found at '${AUTH_SERVER_REPO}'; skipping auth tests"
+  fi
+fi
 
 # WITH_WASM=1 tells shell.nix to include wasm-pack, nodejs_23, and pnpm.
 # WITH_HSM=1 tells shell.nix to include softhsm2 and related tools.
@@ -33,6 +49,19 @@ fi
 
 ensure_nix_shell
 
-# Delegate to the full UI test script (ported from .github/scripts/test/test_ui.sh)
-REPO_ROOT="$(get_repo_root)"
+# ── 1. Standard E2E tests ────────────────────────────────────────────────────
+print_header "Standard UI E2E tests"
 bash "${REPO_ROOT}/.mise/scripts/test/test_ui.sh" --variant "${VARIANT}" --link "${LINK}"
+
+# ── 2. Cosmian Auth E2E tests ───────────────────────────────────────────────
+AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/authentication}"
+if [ -f "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" ]; then
+  print_header "Cosmian Auth E2E tests"
+  bash "${REPO_ROOT}/.mise/scripts/test/test_ui_auth.sh" --variant "${VARIANT}" --link "${LINK}"
+else
+  print_warning "Skipping auth tests: authentication submodule not found"
+fi
+
+# ── 3. OIDC E2E tests (requires Auth0 secrets; skips cleanly if unset) ──────
+print_header "OIDC E2E tests"
+bash "${REPO_ROOT}/.mise/scripts/test/test_ui_oidc.sh" --variant "${VARIANT}" --link "${LINK}"

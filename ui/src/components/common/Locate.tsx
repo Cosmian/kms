@@ -230,7 +230,8 @@ const LocateForm: React.FC = () => {
         setIsLoading(true);
         setRes(undefined);
         setObjects(undefined);
-        try {            // unauthenticated attempt allowed only when auth method is None
+        try {
+            // unauthenticated attempt allowed only when auth method is None
             const norm = (s?: string) => (s && s.trim() !== "" ? s : undefined);
             const keyFormatType = norm(values.keyFormatType);
             const cryptographicAlgorithm = norm(values.cryptographicAlgorithm);
@@ -319,7 +320,7 @@ const LocateForm: React.FC = () => {
                                 cryptographicAlgorithm,
                                 undefined,
                                 objectType,
-                                                                serverUrl,
+                                serverUrl,
                             );
                             intersection = fbIds.filter((id) => ownedIds.has(id) || /^hsm[0-9]*::/.test(id));
                         } catch (e) {
@@ -379,7 +380,7 @@ const LocateForm: React.FC = () => {
                 try {
                     const enriched = await enrichUids(
                         mapped.map((r) => r.object_id),
-                                                serverUrl,
+                        serverUrl,
                     );
 
                     // If no additional criteria and state is 'All', display enriched results directly

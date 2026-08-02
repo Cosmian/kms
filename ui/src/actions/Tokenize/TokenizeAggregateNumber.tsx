@@ -35,7 +35,7 @@ const TokenizeAggregateNumberForm: React.FC = () => {
             const response = await postNoTTLVRequest(
                 "/tokenize/aggregate-number",
                 { data, data_type: values.data_type, power_of_ten: values.power_of_ten },
-                                serverUrl,
+                serverUrl,
             );
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {

@@ -45,7 +45,7 @@ const TokenizeScaleNumberForm: React.FC = () => {
                     scale: values.scale,
                     translate: values.translate,
                 },
-                                serverUrl,
+                serverUrl,
             );
             const typed = response as { result?: unknown; code?: number; message?: string };
             if (typed.result !== undefined) {
