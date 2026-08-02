@@ -252,7 +252,7 @@ pub(crate) async fn sign_intermediate(
     let mut certify_attrs = Attributes::default();
     certify_attrs.set_link(
         LinkType::PrivateKeyLink,
-        LinkedObjectIdentifier::TextString(ca_private_key_uid),
+        LinkedObjectIdentifier::TextString(ca_private_key_uid.clone()),
     );
 
     // Mark the signed certificate as a CA certificate with pathlen:0 so that
@@ -307,7 +307,7 @@ pub(crate) async fn sign_intermediate(
     let certificate_pem = cert_to_pem(&signed_cert_x509)?;
 
     // Retrieve the issuing CA certificate (linked to the CA private key's public key)
-    let issuing_ca_pem = get_issuing_ca_pem(&kms, ca_label, &ca_user).await?;
+    let issuing_ca_pem = get_issuing_ca_pem(&kms, &ca_private_key_uid).await?;
 
     // Detect multi-tier CA: if the issuing CA cert is not self-signed, it chains up
     // to a higher root. The beta only supports single-tier CAs; returning a truncated
@@ -351,20 +351,17 @@ fn no_ca_cert_error() -> SpireApiError {
     )
 }
 
-/// Retrieve the issuing CA certificate PEM by finding the certificate linked to
-/// the CA private key (via its public key's `CertificateLink`).
-async fn get_issuing_ca_pem(
-    kms: &KMS,
-    ca_label: &str,
-    user: &str,
-) -> Result<String, SpireApiError> {
-    // Find the CA private key using the shared helper
-    let ca_sk_uid = find_ca_private_key_uid(kms, ca_label, user).await?;
-
+/// Retrieve the issuing CA certificate PEM by following the public-key link
+/// from the CA private key to its certificate.
+///
+/// `ca_sk_uid` is the already-resolved UID of the CA private key (the caller
+/// typically obtains it from [`find_ca_private_key_uid`] for its own purposes,
+/// so we accept it here to avoid a redundant database lookup).
+async fn get_issuing_ca_pem(kms: &KMS, ca_sk_uid: &str) -> Result<String, SpireApiError> {
     // Retrieve the CA private key to get the public key link
     let ca_sk_owm = kms
         .database
-        .retrieve_object(&ca_sk_uid)
+        .retrieve_object(ca_sk_uid)
         .await
         .map_err(|e| SpireApiError::InternalError(e.to_string()))?
         .ok_or_else(|| SpireApiError::InternalError("CA private key not found".to_owned()))?;

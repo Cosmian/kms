@@ -105,9 +105,7 @@ async fn admin_client(admin: &AdminArgs) -> KmsCliResult<reqwest::Client> {
         })?;
         builder = builder.add_root_certificate(cert);
     }
-    let client = builder
-        .build()
-        .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+    let client = builder.build().map_err(reqwest_err("build HTTP client"))?;
 
     let login_url = format!("{}/login?realm=_", admin.auth_verifier_url);
     let resp = client
@@ -119,7 +117,7 @@ async fn admin_client(admin: &AdminArgs) -> KmsCliResult<reqwest::Client> {
         })
         .send()
         .await
-        .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+        .map_err(reqwest_err("send login request"))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -142,6 +140,11 @@ fn approle_admin_url(auth_verifier_url: &str, suffix: &str) -> String {
         "{}/auth/approle{suffix}",
         auth_verifier_url.trim_end_matches('/')
     )
+}
+
+/// Attach operation context to a `reqwest` error for diagnostics.
+fn reqwest_err(context: &str) -> impl FnOnce(reqwest::Error) -> crate::error::KmsCliError + '_ {
+    move |e| crate::error::KmsCliError::Default(format!("{context}: {e}"))
 }
 
 /// Check a `reqwest::Response` for success, returning it as-is on success
@@ -294,7 +297,7 @@ impl AppRoleCreateRoleCmd {
             })
             .send()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("send request"))?;
 
         check_approle_response(resp, "Create role").await?;
         Stdout::new(&format!("Role '{}' created/updated.", self.role_name)).write()
@@ -320,14 +323,14 @@ impl AppRoleListRolesCmd {
             .get(&url)
             .send()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("send request"))?;
 
         let resp = check_approle_response(resp, "List roles").await?;
 
         let list: AppRoleListRolesResponse = resp
             .json()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("parse list-roles response"))?;
 
         if list.data.keys.is_empty() {
             Stdout::new("No roles found.").write()?;
@@ -365,14 +368,14 @@ impl AppRoleGetRoleIdCmd {
             .get(&url)
             .send()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("send request"))?;
 
         let resp = check_approle_response(resp, "Get role-id").await?;
 
         let result: AppRoleRoleIdResponse = resp
             .json()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("parse get-role-id response"))?;
 
         Stdout::new(&result.data.role_id).write()
     }
@@ -415,14 +418,14 @@ impl AppRoleGenerateSecretIdCmd {
             })
             .send()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("send request"))?;
 
         let resp = check_approle_response(resp, "Generate secret-id").await?;
 
         let result: AppRoleSecretIdResponse = resp
             .json()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("parse generate-secret-id response"))?;
 
         Stdout::new(&format!("secret_id: {}", result.data.secret_id)).write()?;
         Stdout::new(&format!(
@@ -465,7 +468,7 @@ impl AppRoleDestroySecretIdCmd {
             })
             .send()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("send request"))?;
 
         check_approle_response(resp, "Destroy secret-id").await?;
         Stdout::new("Secret ID destroyed.").write()
@@ -497,7 +500,7 @@ impl AppRoleDeleteRoleCmd {
             .delete(&url)
             .send()
             .await
-            .map_err(|e| crate::error::KmsCliError::Default(e.to_string()))?;
+            .map_err(reqwest_err("send request"))?;
 
         check_approle_response(resp, "Delete role").await?;
         Stdout::new(&format!("Role '{}' deleted.", self.role_name)).write()
