@@ -26,7 +26,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use super::AuthenticatedUser;
+use super::{AuthMethod, AuthenticatedUser};
 
 /// The `X-Vault-Token` header name (wire protocol used by the SPIRE vault plugin).
 pub(crate) const VAULT_TOKEN_HEADER: &str = "X-Vault-Token";
@@ -158,10 +158,19 @@ async fn validate_against_auth_verifier(
         .map_err(|e| format!("auth-verifier lookup-self parse error: {e}"))?;
 
     Ok(SpireAuthenticatedUser {
-        entity: validated_entity(body.data.entity_id, default_username)?,
+        entity: validated_entity(&body.data.entity_id, default_username)?,
         policies: body.data.policies,
     })
 }
+
+/// Prefix applied to every SPIRE entity ID to namespace-separate it from native
+/// KMS usernames.
+///
+/// Without this prefix, a SPIRE `entity_id` (e.g. `"alice"`) would collide with
+/// a natively-authenticated KMS user of the same name, inheriting all of that
+/// user's permissions via the KMS access-control system. The prefix ensures
+/// SPIRE identities live in a disjoint namespace (`spire:alice` ≠ `alice`).
+pub(crate) const SPIRE_ENTITY_PREFIX: &str = "spire:";
 
 /// Reject an empty/blank `entity_id`, or one colliding with the KMS `default_username`.
 ///
@@ -176,7 +185,10 @@ async fn validate_against_auth_verifier(
 /// side, not a generated identifier — an `AppRole` named after the KMS
 /// `default_username` (e.g. `"admin"`) would otherwise inherit that shared
 /// identity's ownership of every object it created outside SPIRE.
-fn validated_entity(entity_id: String, default_username: &str) -> Result<String, String> {
+///
+/// On success the entity ID is prefixed with [`SPIRE_ENTITY_PREFIX`] to
+/// namespace-separate SPIRE identities from native KMS usernames.
+fn validated_entity(entity_id: &str, default_username: &str) -> Result<String, String> {
     if entity_id.trim().is_empty() {
         return Err(
             "auth-verifier lookup-self returned an empty entity_id; refusing to map the token \
@@ -190,7 +202,7 @@ fn validated_entity(entity_id: String, default_username: &str) -> Result<String,
              KMS default_username; refusing to map the token to a shared owner identity"
         ));
     }
-    Ok(entity_id)
+    Ok(format!("{SPIRE_ENTITY_PREFIX}{entity_id}"))
 }
 
 /// Outcome of reading and validating the `X-Vault-Token` header.
@@ -282,6 +294,7 @@ where
             debug!("{log_prefix}: validated entity={}", user.entity);
             req.extensions_mut().insert(AuthenticatedUser {
                 username: user.entity.clone(),
+                auth_method: AuthMethod::SpireToken,
             });
             req.extensions_mut().insert(user);
             next.call(req)
@@ -442,12 +455,12 @@ mod tests {
 
     // ── Cache unit tests ─────────────────────────────────────────────────
 
-    /// A non-empty entity id is accepted and returned unchanged.
+    /// A non-empty entity id is accepted and returned with the `spire:` prefix.
     #[test]
     fn validated_entity_accepts_non_empty() {
         assert_eq!(
-            validated_entity("entity-abc".to_owned(), "admin").unwrap(),
-            "entity-abc"
+            validated_entity("entity-abc", "admin").unwrap(),
+            "spire:entity-abc"
         );
     }
 
@@ -456,9 +469,9 @@ mod tests {
     /// KMS owner and cross tenant boundaries.
     #[test]
     fn validated_entity_rejects_empty_or_blank() {
-        validated_entity(String::new(), "admin").unwrap_err();
-        validated_entity("   ".to_owned(), "admin").unwrap_err();
-        validated_entity("\t\n".to_owned(), "admin").unwrap_err();
+        validated_entity("", "admin").unwrap_err();
+        validated_entity("   ", "admin").unwrap_err();
+        validated_entity("\t\n", "admin").unwrap_err();
     }
 
     /// An `entity_id` colliding with the KMS `default_username` is rejected: an
@@ -466,12 +479,12 @@ mod tests {
     /// default local account's ownership of pre-existing objects.
     #[test]
     fn validated_entity_rejects_default_username_collision() {
-        validated_entity("admin".to_owned(), "admin").unwrap_err();
-        validated_entity("operator".to_owned(), "operator").unwrap_err();
-        // Distinct from default_username: accepted.
+        validated_entity("admin", "admin").unwrap_err();
+        validated_entity("operator", "operator").unwrap_err();
+        // Distinct from default_username: accepted (with spire: prefix).
         assert_eq!(
-            validated_entity("spire-role".to_owned(), "admin").unwrap(),
-            "spire-role"
+            validated_entity("spire-role", "admin").unwrap(),
+            "spire:spire-role"
         );
     }
 

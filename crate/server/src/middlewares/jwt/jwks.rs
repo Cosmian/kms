@@ -21,6 +21,8 @@ pub struct JwksManager {
     pub(crate) uris: Vec<String>,
     pub(crate) jwks: RwLock<HashMap<String, JwkSet>>,
     pub(crate) last_update: RwLock<Option<DateTime<Utc>>>,
+    /// Tracks the last time `force_refresh` was actually executed, for cooldown.
+    pub(crate) last_force_refresh: RwLock<Option<DateTime<Utc>>>,
     pub(crate) proxy_params: Option<ProxyParams>,
     /// When `true`, the JWKS fetch client skips TLS certificate verification.
     /// Only set this for development/test environments (e.g. self-signed certs).
@@ -45,6 +47,7 @@ impl JwksManager {
             uris,
             jwks: HashMap::new().into(),
             last_update: None.into(),
+            last_force_refresh: None.into(),
             proxy_params: server_params.cloned(),
             accept_invalid_certs,
         };
@@ -107,9 +110,24 @@ impl JwksManager {
     /// `last_update` may have already been set by a previous (failed) attempt — leaving
     /// callers unable to validate any token in the meantime.
     ///
-    /// Do not call this on every miss: it is not throttled and could be abused to
-    /// hammer the JWKS endpoint if used unconditionally.
+    /// A 5-second cooldown prevents repeated callers from hammering the JWKS endpoint.
     pub async fn force_refresh(&self) -> KResult<()> {
+        // Apply a 5-second cooldown to prevent abuse
+        let can_force = {
+            let mut last_force = self.last_force_refresh.write().map_err(|e| {
+                KmsError::ServerError(format!("cannot lock last_force_refresh: {e:?}"))
+            })?;
+            let now = Utc::now();
+            let can = last_force.is_none_or(|lf| (lf + Duration::seconds(5)) < now);
+            if can {
+                *last_force = Some(now);
+            }
+            can
+        };
+        if !can_force {
+            trace!("force_refresh: cooldown active, skipping");
+            return Ok(());
+        }
         self.refresh_internal(true).await
     }
 

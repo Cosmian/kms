@@ -29,7 +29,7 @@ use futures::{
     future::{Ready, ok},
 };
 
-use crate::middlewares::AuthenticatedUser;
+use crate::middlewares::{AuthMethod, AuthenticatedUser};
 
 /// Middleware factory — registered unconditionally on all UI-facing scopes.
 pub(crate) struct SessionAuth;
@@ -86,8 +86,10 @@ where
         match session.get::<String>("user_id") {
             Ok(Some(user_id)) => {
                 debug!("Session: authenticated user '{user_id}'");
-                req.extensions_mut()
-                    .insert(AuthenticatedUser { username: user_id });
+                req.extensions_mut().insert(AuthenticatedUser {
+                    username: user_id,
+                    auth_method: AuthMethod::Session,
+                });
             }
             Ok(None) => {
                 trace!("Session: no user_id in session, passing through");

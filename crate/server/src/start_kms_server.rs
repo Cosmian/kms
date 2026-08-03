@@ -702,6 +702,77 @@ async fn build_oidc_runtime_config(
 /// constructed when `vault_api_enabled = false` or `vault_auth_verifier_url` is
 /// absent, and is never invoked (guarded by `Condition::new(false, …)`).
 pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
+    // ── Startup security guards ──────────────────────────────────────────────
+
+    // F-001: Warn loudly if the `insecure` feature flag is compiled in.
+    #[cfg(feature = "insecure")]
+    {
+        cosmian_logger::error!(
+            "SECURITY: KMS compiled with 'insecure' feature — ALL JWT and Auth Verifier signature \
+             validation is DISABLED. Any syntactically valid token is accepted without signature \
+             verification. This binary MUST NOT be used in production."
+        );
+    }
+
+    // F-002: Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
+    if kms_server
+        .params
+        .auth_verifier_config
+        .as_ref()
+        .is_some_and(|c| c.auth_verifier_accept_invalid_certs)
+    {
+        cosmian_logger::warn!(
+            "SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification \
+             is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments."
+        );
+    }
+    if kms_server.params.vault_auth_verifier_accept_invalid_certs {
+        cosmian_logger::warn!(
+            "SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate \
+             verification is DISABLED for Vault auth-verifier connections. Only use in dev/test."
+        );
+    }
+
+    // F-003: Warn when Vault API is enabled but rate limiting is disabled.
+    // The auth proxy at /v1/auth/* is unauthenticated and can be used to flood
+    // the auth-verifier. The global rate limiter (if configured) mitigates this.
+    if kms_server.params.vault_api_enabled && kms_server.params.rate_limit_per_second.is_none() {
+        cosmian_logger::warn!(
+            "SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The \
+             unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set \
+             rate_limit_per_second in the server config for production deployments."
+        );
+    }
+
+    // F-008: Validate session salt entropy when UI is enabled.
+    if kms_server.params.ui_enable {
+        if let Some(ref salt) = kms_server.params.ui_session_salt {
+            if salt.len() < 32 {
+                return Err(KmsError::ServerError(format!(
+                    "ui_session_salt is too short ({} bytes). Minimum 32 bytes required for \
+                     adequate entropy. Generate one with: openssl rand -hex 32",
+                    salt.len()
+                )));
+            }
+            // Reject known-weak default values
+            let weak_salts = [
+                "test", "dev", "debug", "changeme", "password", "secret", "0000",
+            ];
+            if weak_salts.contains(&salt.to_ascii_lowercase().as_str()) {
+                return Err(KmsError::ServerError(format!(
+                    "ui_session_salt uses a weak/known-default value '{salt}'. Generate a random \
+                     one with: openssl rand -hex 32"
+                )));
+            }
+        } else {
+            cosmian_logger::warn!(
+                "UI is enabled but ui_session_salt is not set. A random salt will be generated \
+                 per process, which invalidates existing sessions on restart. Set a persistent \
+                 salt for production use."
+            );
+        }
+    }
+
     let tls_config = if let Some(tls_params) = &kms_server.params.tls_params {
         Some(create_openssl_acceptor(tls_params)?)
     } else {

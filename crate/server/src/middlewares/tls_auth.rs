@@ -17,7 +17,12 @@ use actix_web::{
 use cosmian_logger::{debug, trace};
 use openssl::{nid::Nid, x509::X509};
 
-use crate::{error::KmsError, kms_bail, middlewares::AuthenticatedUser, result::KResult};
+use crate::{
+    error::KmsError,
+    kms_bail,
+    middlewares::{AuthMethod, AuthenticatedUser},
+    result::KResult,
+};
 
 /// The extension struct holding the peer certificate during the connection.
 ///
@@ -105,7 +110,10 @@ fn tls_auth(req: &ServiceRequest) -> KResult<AuthenticatedUser> {
                     );
                 }
                 trace!("Client certificate common name: {}", username);
-                Ok(AuthenticatedUser { username })
+                Ok(AuthenticatedUser {
+                    username,
+                    auth_method: AuthMethod::Mtls,
+                })
             }
             Err(e) => kms_bail!("Client certificate common name is not UTF-8: {}", e),
         },
