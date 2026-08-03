@@ -139,19 +139,19 @@ pub struct OidcRuntimeConfig {
     pub discovered: Option<OidcDiscoveredEndpoints>,
 }
 
-/// Runtime configuration for the Web UI's Cosmian authentication server (BFF) login.
+/// Runtime configuration for the Web UI's Auth Verifier server (BFF) login.
 ///
 /// Injected as `app_data` on the `/ui` scope so `crate::routes::ui_auth::login_as` can
 /// proxy the browser's username/password (+ optional TOTP) login to the configured
-/// Cosmian authentication server and validate the JWT it returns.
+/// Auth Verifier server and validate the JWT it returns.
 ///
-/// `jwks_manager` is the *same* manager built for the bearer-token `CosmianAuthServer`
+/// `jwks_manager` is the *same* manager built for the bearer-token `AuthVerifier`
 /// middleware (see `prepare_kms_server`) — no second JWKS fetch is performed.
 #[derive(Clone, Debug)]
-pub struct CosmianAuthRuntimeConfig {
-    /// The static Cosmian auth configuration (server URL, realm, TLS options).
-    pub config: crate::config::CosmianAuthServerConfig,
-    /// `Some` when the Cosmian auth server is configured; `None` otherwise, in which
+pub struct AuthVerifierRuntimeConfig {
+    /// The static Auth Verifier configuration (server URL, realm, TLS options).
+    pub config: crate::config::AuthVerifierConfig,
+    /// `Some` when the Auth Verifier server is configured; `None` otherwise, in which
     /// case `login_as` responds with an error indicating it is not configured.
     pub jwks_manager: Option<Arc<crate::middlewares::JwksManager>>,
 }

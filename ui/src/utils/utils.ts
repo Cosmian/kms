@@ -1,4 +1,4 @@
-export type AuthMethod = "None" | "JWT" | "CERT" | "COSMIAN" | undefined;
+export type AuthMethod = "None" | "JWT" | "CERT" | "AUTH_VERIFIER" | undefined;
 
 /** Strip HTML tags from error responses (server may return HTML error pages). */
 const stripHtml = (text: string): string =>
@@ -59,22 +59,22 @@ export const fetchAuthMethod = async (serverUrl: string): Promise<AuthMethod> =>
     }
 };
 
-/** Outcome of a `POST /ui/login_as` call — mirrors the KMS server's `CosmianLoginResponse`. */
-type CosmianLoginNextStep = "Authenticated" | "TotpRequired";
+/** Outcome of a `POST /ui/login_as` call — mirrors the KMS server's `AuthVerifierLoginResponse`. */
+type AuthVerifierLoginNextStep = "Authenticated" | "TotpRequired";
 
 /**
- * Log in against the Cosmian authentication server via the KMS's BFF proxy
+ * Log in against the Auth Verifier authentication server via the KMS's BFF proxy
  * (`POST /ui/login_as`). On success the KMS stores the authenticated user in the
  * session cookie; the AS's JWT never reaches the browser.
  *
  * Pass `totpCode` once the caller has already received a `"TotpRequired"` response.
  */
-export const loginCosmian = async (
+export const loginAuthVerifier = async (
     serverUrl: string,
     username: string,
     password: string,
     totpCode?: string,
-): Promise<CosmianLoginNextStep> => {
+): Promise<AuthVerifierLoginNextStep> => {
     const kmsUrl = serverUrl + "/ui/login_as";
     const response = await fetch(kmsUrl, {
         method: "POST",
@@ -95,7 +95,7 @@ export const loginCosmian = async (
         throw new Error(message);
     }
 
-    return (data as { next_step: CosmianLoginNextStep }).next_step;
+    return (data as { next_step: AuthVerifierLoginNextStep }).next_step;
 };
 
 export const sendKmipRequest = async (request: object, serverUrl: string) => {

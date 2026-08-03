@@ -228,9 +228,16 @@ impl JwtConfig {
                 validation.validate_aud = false;
             }
 
-            let kid = header.kid.ok_or_else(|| {
-                KmsError::Unauthorized("No 'kid' claim present in token".to_owned())
-            })?;
+            // OIDC/IdP tokens are required to carry a `kid` so we can look up the exact
+            // signing key in the JWKS.  Auth-verifier tokens intentionally omit `kid`
+            // (they are validated by the dedicated `AuthVerifier` middleware which tries
+            // every key in the JWKS).  Return `Unauthorized` here so the middleware chain
+            // falls through to the next authenticator rather than logging a noisy error.
+            let Some(kid) = header.kid else {
+                return Err(KmsError::Unauthorized(
+                    "No 'kid' claim present in token — not an OIDC token".to_owned(),
+                ));
+            };
 
             let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
                 // Only log JWKS on error

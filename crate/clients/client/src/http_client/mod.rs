@@ -1,8 +1,8 @@
 pub use client::{HttpClient, HttpClientConfig, HttpResponse};
 pub use error::HttpClientError;
 pub use login::{
-    CosmianAuthServerLoginConfig, CosmianLoginStep, LoginState, Oauth2LoginConfig, approle_login,
-    cosmian_login,
+    AuthVerifierLoginConfig, AuthVerifierLoginStep, LoginState, Oauth2LoginConfig, approle_login,
+    auth_verifier_login,
 };
 pub use proxy_params::ProxyParams;
 

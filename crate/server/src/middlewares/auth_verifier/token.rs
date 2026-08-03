@@ -1,6 +1,6 @@
-//! Cosmian Authentication Server Token Validation
+//! Auth Verifier Token Validation
 //!
-//! Validates bearer tokens issued by the Cosmian authentication server.
+//! Validates bearer tokens issued by the Auth Verifier server.
 //!
 //! Key differences from the standard OIDC/JWT middleware (`JwtAuth`):
 //!
@@ -32,7 +32,7 @@ use crate::{
     result::KResult,
 };
 
-/// Subset of JWT algorithms the Cosmian auth middleware accepts.
+/// Subset of JWT algorithms the Auth Verifier middleware accepts.
 ///
 /// HS* algorithms are excluded: they use a shared secret and an attacker who
 /// obtains the JWKS public key could forge tokens.
@@ -48,35 +48,35 @@ const ALLOWED_ALGORITHMS: &[Algorithm] = &[
     Algorithm::PS512,
 ];
 
-/// Claims extracted from a Cosmian auth server JWT.
+/// Claims extracted from a Auth Verifier server JWT.
 #[derive(Debug, Deserialize)]
-struct CosmianClaims {
+struct AuthVerifierClaims {
     /// Subject — used as the KMS user identity.
     pub sub: String,
 }
 
-/// Core authentication handler for Cosmian auth server tokens.
+/// Core authentication handler for Auth Verifier server tokens.
 ///
 /// Extracts the bearer token from the `Authorization` header and validates it
 /// against every key in the JWKS (since these tokens carry no `kid`).
 ///
 /// Returns the authenticated username (`sub`) on success, or an error.
-pub(super) async fn handle_cosmian_auth(
+pub(super) async fn handle_auth_verifier(
     jwks_manager: &Arc<JwksManager>,
     req: &ServiceRequest,
 ) -> KResult<AuthenticatedUser> {
     let token = extract_bearer_token(req)
-        .map_err(|e| KmsError::Unauthorized(format!("Cosmian auth: {e}")))?;
+        .map_err(|e| KmsError::Unauthorized(format!("Auth Verifier: {e}")))?;
 
-    let username = verify_cosmian_jwt_subject(jwks_manager, token).await?;
+    let username = verify_auth_verifier_jwt_subject(jwks_manager, token).await?;
     Ok(AuthenticatedUser { username })
 }
 
-/// Validate a Cosmian auth server JWT and return its `sub` claim (the
+/// Validate a Auth Verifier server JWT and return its `sub` claim (the
 /// authenticated username).
 ///
-/// Shared between the bearer-token `CosmianAuthServer` middleware
-/// (`handle_cosmian_auth`) and the UI's BFF login proxy
+/// Shared between the bearer-token `AuthVerifier` middleware
+/// (`handle_auth_verifier`) and the UI's BFF login proxy
 /// (`crate::routes::ui_auth::login_as`), which validates the JWT the Cosmian
 /// authentication server returns via `Set-Cookie: _ea_=<jwt>` before storing
 /// the resulting username in the actix session. Keeping a single
@@ -86,15 +86,15 @@ pub(super) async fn handle_cosmian_auth(
 /// as the existing `JwtAuth` middleware).
 #[cfg_attr(any(test, feature = "insecure"), allow(unused_variables))]
 #[cfg_attr(any(test, feature = "insecure"), allow(clippy::unused_async))]
-pub(crate) async fn verify_cosmian_jwt_subject(
+pub(crate) async fn verify_auth_verifier_jwt_subject(
     jwks_manager: &Arc<JwksManager>,
     token: &str,
 ) -> KResult<String> {
     // In test/insecure builds skip signature validation — decode only.
     #[cfg(any(test, feature = "insecure"))]
     {
-        let token_data = dangerous::insecure_decode::<CosmianClaims>(token).map_err(|e| {
-            KmsError::Unauthorized(format!("Cosmian auth: cannot decode token: {e}"))
+        let token_data = dangerous::insecure_decode::<AuthVerifierClaims>(token).map_err(|e| {
+            KmsError::Unauthorized(format!("Auth Verifier: cannot decode token: {e}"))
         })?;
         Ok(token_data.claims.sub)
     }
@@ -103,12 +103,12 @@ pub(crate) async fn verify_cosmian_jwt_subject(
     #[cfg(all(not(test), not(feature = "insecure")))]
     {
         let header = decode_header(token).map_err(|e| {
-            KmsError::Unauthorized(format!("Cosmian auth: cannot decode token header: {e}"))
+            KmsError::Unauthorized(format!("Auth Verifier: cannot decode token header: {e}"))
         })?;
 
         if !ALLOWED_ALGORITHMS.contains(&header.alg) {
             return Err(KmsError::Unauthorized(format!(
-                "Cosmian auth: algorithm {:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted",
+                "Auth Verifier: algorithm {:?} is not permitted; only asymmetric algorithms (RS*, ES*, PS*) are accepted",
                 header.alg
             )));
         }
@@ -138,14 +138,14 @@ pub(crate) async fn verify_cosmian_jwt_subject(
 
             let mut validation = Validation::new(header.alg);
             validation.algorithms = vec![header.alg];
-            // Do not validate issuer — the Cosmian auth server may not set `iss`.
+            // Do not validate issuer — the Auth Verifier server may not set `iss`.
             validation.set_issuer::<String>(&[]);
             validation.validate_exp = true;
             validation.validate_aud = false;
             validation.required_spec_claims.clear();
             validation.set_required_spec_claims(&["sub", "exp"]);
 
-            match decode::<CosmianClaims>(token, &decoding_key, &validation) {
+            match decode::<AuthVerifierClaims>(token, &decoding_key, &validation) {
                 Ok(data) => {
                     return Ok(data.claims.sub);
                 }
@@ -156,7 +156,7 @@ pub(crate) async fn verify_cosmian_jwt_subject(
         }
 
         Err(KmsError::Unauthorized(format!(
-            "Cosmian auth: token signature validation failed against all {} JWKS key(s): {}",
+            "Auth Verifier: token signature validation failed against all {} JWKS key(s): {}",
             jwks.len(),
             last_error.unwrap_or_else(|| "no keys available".to_owned())
         )))

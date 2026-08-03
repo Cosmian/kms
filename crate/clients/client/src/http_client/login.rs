@@ -367,7 +367,7 @@ pub(crate) async fn request_token(
     })
 }
 
-/// Configuration for the Cosmian authentication server login.
+/// Configuration for the Auth Verifier server login.
 ///
 /// Used by the `ckms login cosmian` subcommand.  Set the corresponding
 /// `cosmian_conf` section in the KMS client configuration file:
@@ -378,8 +378,8 @@ pub(crate) async fn request_token(
 /// realm      = "kms"
 /// ```
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
-pub struct CosmianAuthServerLoginConfig {
-    /// Base URL of the Cosmian authentication server (no trailing slash).
+pub struct AuthVerifierLoginConfig {
+    /// Base URL of the Auth Verifier server (no trailing slash).
     pub server_url: String,
     /// Realm to authenticate against (e.g. `"kms"`).
     pub realm: String,
@@ -405,27 +405,27 @@ struct AuthenticationResult {
     next_step: AuthenticationNextStep,
 }
 
-/// The outcome of a [`cosmian_login`] call.
+/// The outcome of a [`auth_verifier_login`] call.
 #[derive(Debug)]
-pub enum CosmianLoginStep {
+pub enum AuthVerifierLoginStep {
     /// Authentication succeeded. Contains the JWT extracted from the `_ea_` cookie.
     Authenticated(String),
-    /// The server requires a TOTP code. Re-call [`cosmian_login`] with `totp_code: Some(...)`.
+    /// The server requires a TOTP code. Re-call [`auth_verifier_login`] with `totp_code: Some(...)`.
     TotpRequired,
 }
 
-/// Login to a Cosmian authentication server using HTTP Basic credentials.
+/// Login to a Auth Verifier server using HTTP Basic credentials.
 ///
 /// Sends `POST {server_url}/login?realm={realm}` with an
 /// `Authorization: Basic <base64(username:password)>` header.
 ///
 /// If `totp_code` is `Some`, it is included in the JSON body so that TOTP
 /// verification is completed in a single request. Pass `None` on the first
-/// call; if the server responds with [`CosmianLoginStep::TotpRequired`],
+/// call; if the server responds with [`AuthVerifierLoginStep::TotpRequired`],
 /// prompt the user and re-call with the code.
 ///
 /// On success the JWT is extracted from the `Set-Cookie: _ea_=<JWT>` header
-/// and returned inside [`CosmianLoginStep::Authenticated`]. The caller stores
+/// and returned inside [`AuthVerifierLoginStep::Authenticated`]. The caller stores
 /// it in `http_config.access_token` and forwards it as a Bearer token on every
 /// subsequent KMS request.
 ///
@@ -434,22 +434,25 @@ pub enum CosmianLoginStep {
 /// Returns [`HttpClientError`] if the HTTP request fails, the server responds
 /// with a non-2xx status, the password has expired, or the `_ea_` cookie is
 /// absent from a successful response.
-pub async fn cosmian_login(
-    config: &CosmianAuthServerLoginConfig,
+pub async fn auth_verifier_login(
+    config: &AuthVerifierLoginConfig,
     username: &str,
     password: &str,
     // TODO: remove accept_invalid_certs
     accept_invalid_certs: bool,
     totp_code: Option<&str>,
-) -> HttpClientResult<CosmianLoginStep> {
-    /// Name of the session cookie set by the Cosmian authentication server.
-    const COSMIAN_SESSION_COOKIE: &str = "_ea_";
+) -> HttpClientResult<AuthVerifierLoginStep> {
+    /// Name of the session cookie set by the Auth Verifier server.
+    const AUTH_VERIFIER_SESSION_COOKIE: &str = "_ea_";
 
-    let mut url = Url::parse(config.server_url.trim_end_matches('/'))
-        .map_err(|e| HttpClientError::Default(format!("Invalid Cosmian auth server URL: {e:?}")))?;
+    let mut url = Url::parse(config.server_url.trim_end_matches('/')).map_err(|e| {
+        HttpClientError::Default(format!("Invalid Auth Verifier server URL: {e:?}"))
+    })?;
     url.path_segments_mut()
         .map_err(|()| {
-            HttpClientError::Default("Invalid Cosmian auth server URL: cannot be a base".to_owned())
+            HttpClientError::Default(
+                "Invalid Auth Verifier server URL: cannot be a base".to_owned(),
+            )
         })?
         .push("login");
     url.query_pairs_mut().append_pair("realm", &config.realm);
@@ -495,10 +498,10 @@ pub async fn cosmian_login(
         .map_err(|e| HttpClientError::Default(format!("Failed to parse login response: {e}")))?;
 
     match result.next_step {
-        AuthenticationNextStep::TotpRequired => return Ok(CosmianLoginStep::TotpRequired),
+        AuthenticationNextStep::TotpRequired => return Ok(AuthVerifierLoginStep::TotpRequired),
         AuthenticationNextStep::ChangePassword => {
             return Err(HttpClientError::Default(
-                "Your password has expired. Please change it via the Cosmian authentication \
+                "Your password has expired. Please change it via the Auth Verifier \
                  server before logging in."
                     .to_owned(),
             ));
@@ -520,14 +523,16 @@ pub async fn cosmian_login(
         // at the first '=' to separate name from value.
         let name_value = raw.split(';').next().unwrap_or(raw);
         if let Some((name, value)) = name_value.split_once('=') {
-            if name.trim() == COSMIAN_SESSION_COOKIE {
-                return Ok(CosmianLoginStep::Authenticated(value.trim().to_owned()));
+            if name.trim() == AUTH_VERIFIER_SESSION_COOKIE {
+                return Ok(AuthVerifierLoginStep::Authenticated(
+                    value.trim().to_owned(),
+                ));
             }
         }
     }
 
     Err(HttpClientError::Default(format!(
-        "Cosmian login response did not set the `{COSMIAN_SESSION_COOKIE}` session cookie"
+        "Cosmian login response did not set the `{AUTH_VERIFIER_SESSION_COOKIE}` session cookie"
     )))
 }
 

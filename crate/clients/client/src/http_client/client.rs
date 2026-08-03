@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use tracing::{info, warn};
 
 use super::{
-    CosmianAuthServerLoginConfig, Oauth2LoginConfig, ProxyParams,
+    AuthVerifierLoginConfig, Oauth2LoginConfig, ProxyParams,
     error::{HttpClientError, result::HttpClientResult},
     proxy::SmartConnector,
     tls::build_ssl_connector,
@@ -83,7 +83,7 @@ pub struct HttpClientConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth2_conf: Option<Oauth2LoginConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cosmian_conf: Option<CosmianAuthServerLoginConfig>,
+    pub cosmian_conf: Option<AuthVerifierLoginConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_params: Option<ProxyParams>,
     /// Colon-separated list of cipher suites to use for TLS connections.
@@ -160,7 +160,7 @@ struct HttpClientConfigDeserHelper {
     #[serde(skip_serializing_if = "Option::is_none")]
     oauth2_conf: Option<Oauth2LoginConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    cosmian_conf: Option<CosmianAuthServerLoginConfig>,
+    cosmian_conf: Option<AuthVerifierLoginConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_params: Option<ProxyParams>,
     #[serde(skip_serializing_if = "Option::is_none")]

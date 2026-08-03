@@ -1,6 +1,6 @@
 //! `ckms vault approle` sub-commands.
 //!
-//! Manage Vault-compatible `AppRole` identities in the Cosmian Authentication
+//! Manage Vault-compatible `AppRole` identities in the Auth Verifier
 //! Server (`auth-verifier`).
 //!
 //! All sub-commands are **admin (management-plane)** operations: they require an
@@ -168,7 +168,7 @@ async fn check_approle_response(
 /// Shared flags for admin `AppRole` operations.
 #[derive(Parser, Debug)]
 pub(crate) struct AdminArgs {
-    /// URL of the Cosmian Authentication Server (auth-verifier), reached
+    /// URL of the Auth Verifier (auth-verifier), reached
     /// **directly** — NOT via the KMS proxy.
     ///
     /// Admin `AppRole` management needs an admin session cookie from the
@@ -179,7 +179,7 @@ pub(crate) struct AdminArgs {
     #[clap(
         long,
         env = "CKMS_VAULT_AUTH_URL",
-        help = "Base URL of the Cosmian Authentication Server (auth-verifier, reached directly)"
+        help = "Base URL of the Auth Verifier (auth-verifier, reached directly)"
     )]
     auth_verifier_url: String,
 

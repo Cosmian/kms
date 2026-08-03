@@ -1,7 +1,7 @@
 //! Session Authentication Middleware
 //!
 //! Authenticates UI browser requests using the server-side session cookie set
-//! after a successful OIDC or Cosmian auth login. The session stores the
+//! after a successful OIDC or Auth Verifier login. The session stores the
 //! authenticated `user_id` (email / subject) and this middleware injects it as
 //! `AuthenticatedUser` into the request extensions.
 //!

@@ -1,7 +1,7 @@
 //! `ckms vault` sub-commands.
 //!
 //! Provides a Vault-compatible CLI for managing SPIRE/SPIFFE identities
-//! via the Cosmian Authentication Server (`auth-verifier`) and the KMS
+//! via the Auth Verifier (`auth-verifier`) and the KMS
 //! Transit / PKI engines.
 
 pub mod approle;
@@ -13,7 +13,7 @@ use crate::{actions::vault::approle::AppRoleCommands, error::result::KmsCliResul
 
 /// Vault-compatible identity and secrets management.
 ///
-/// Interact with the Cosmian Authentication Server's Vault-compatible API
+/// Interact with the Auth Verifier's Vault-compatible API
 /// for managing `AppRole` identities used by SPIRE/SPIFFE agents.
 #[derive(Subcommand, Debug)]
 pub enum VaultCommands {

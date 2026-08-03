@@ -4,8 +4,8 @@ pub(crate) use tls_auth::{extract_peer_certificate, tls_auth_fn};
 mod api_token;
 pub(crate) use api_token::api_token_middleware;
 
-mod cosmian_auth_server;
-pub(crate) use cosmian_auth_server::{CosmianAuthServer, verify_cosmian_jwt_subject};
+mod auth_verifier;
+pub(crate) use auth_verifier::{AuthVerifier, verify_auth_verifier_jwt_subject};
 
 mod ensure_auth;
 pub(crate) use ensure_auth::ensure_auth_middleware;
@@ -35,7 +35,7 @@ use crate::{error::KmsError, result::KResult};
 /// Returns the raw token string (trimmed) on success, or an `Unauthorized`
 /// error when the header is missing, malformed, or empty.
 ///
-/// Shared by the API-token, Cosmian auth server, and any future Bearer-based
+/// Shared by the API-token, Auth Verifier server, and any future Bearer-based
 /// middleware so the parsing logic stays in one place.
 pub(crate) fn extract_bearer_token(req: &ServiceRequest) -> KResult<&str> {
     let auth_header = req

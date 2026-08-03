@@ -8,7 +8,7 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig, ClapConfig, CosmianAuthServerConfig, GoogleCseConfig, IdpConfig,
+        AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig,
         JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
@@ -232,10 +232,10 @@ pub struct ServerParams {
     /// Defaults to `30`.
     pub vault_token_cache_ttl_secs: u64,
 
-    /// Configuration for the Cosmian authentication server.
-    /// When set, the KMS validates bearer tokens issued by the Cosmian auth server.
+    /// Configuration for the Auth Verifier server.
+    /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
-    pub cosmian_auth_config: Option<CosmianAuthServerConfig>,
+    pub auth_verifier_config: Option<AuthVerifierConfig>,
 }
 
 /// Represents the server parameters.
@@ -459,8 +459,8 @@ impl ServerParams {
             vault_pki_mount: conf.vault.vault_pki_mount,
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
-            cosmian_auth_config: if conf.cosmian_auth.is_enabled() {
-                Some(conf.cosmian_auth)
+            auth_verifier_config: if conf.auth_verifier.is_enabled() {
+                Some(conf.auth_verifier)
             } else {
                 None
             },
@@ -847,12 +847,9 @@ impl fmt::Debug for ServerParams {
                 );
         }
 
-        if let Some(ref cosmian_auth) = self.cosmian_auth_config {
-            if cosmian_auth.is_enabled() {
-                debug_struct.field(
-                    "cosmian_auth_server_url",
-                    &cosmian_auth.cosmian_auth_server_url,
-                );
+        if let Some(ref auth_verifier) = self.auth_verifier_config {
+            if auth_verifier.is_enabled() {
+                debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
             }
         }
 
