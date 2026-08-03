@@ -206,7 +206,7 @@ repos:
 
       - id: cargo-deny-licenses
         name: Release - generate SBOM licenses list
-        entry: bash -c 'cargo deny list -l crate > sbom/licenses.txt'
+        entry: bash -c "cargo deny list -l crate | sed 's/\\x1b\[[0-9;]*m//g' > sbom/licenses.txt"
         language: system
         pass_filenames: false
         always_run: true
