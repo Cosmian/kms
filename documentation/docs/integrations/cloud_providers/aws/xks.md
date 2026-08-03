@@ -32,7 +32,7 @@ The HSM is responsible for storing the Master keys and securing the Eviden KMS k
 
 ## Deployment
 
-1. Deploy a Eviden KMS in your AWS tenant. You can find the product on the [AWS Marketplace](https://aws.amazon.com/marketplace/search/results?searchTerms=COSMIAN+KMS) and follow the deployment instructions in the product documentation.
+1. Deploy an Eviden KMS in your AWS tenant. You can find the product on the [AWS Marketplace](https://aws.amazon.com/marketplace/search/results?searchTerms=COSMIAN+KMS) and follow the deployment instructions in the product documentation.
 
 2. Configure the KMS for use with AWS XKS by filling up the `aws_xks_config` section of the configuration file with the following values:
 

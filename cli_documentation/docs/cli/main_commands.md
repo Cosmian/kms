@@ -1,7 +1,7 @@
 
 ##  ckms
 
-Command Line Interface used to manage the Cosmian KMS server.
+Command Line Interface used to manage the Eviden KMS server.
 
 If any assistance is needed, please either visit the Cosmian technical documentation at https://docs.cosmian.com
 or contact the Cosmian support team on Discord https://discord.com/invite/7kPMNtHpnz
@@ -2343,13 +2343,13 @@ Manage the Windows CNG Key Storage Provider (KSP)
 
 ### Subcommands
 
-**`register`** [[11.1]](#111-ckms-cng-register)  Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
+**`register`** [[11.1]](#111-ckms-cng-register)  Register the Eviden KMS CNG Key Storage Provider DLL in the Windows Registry
 
-**`unregister`** [[11.2]](#112-ckms-cng-unregister)  Unregister the Cosmian KMS CNG Key Storage Provider from the Windows Registry
+**`unregister`** [[11.2]](#112-ckms-cng-unregister)  Unregister the Eviden KMS CNG Key Storage Provider from the Windows Registry
 
 **`status`** [[11.3]](#113-ckms-cng-status)  Show the CNG KSP registration status (is the provider registered?)
 
-**`list-keys`** [[11.4]](#114-ckms-cng-list-keys)  List all private keys stored in Cosmian KMS that belong to this CNG KSP
+**`list-keys`** [[11.4]](#114-ckms-cng-list-keys)  List all private keys stored in Eviden KMS that belong to this CNG KSP
 
 **`verify`** [[11.5]](#115-ckms-cng-verify)  Load the CNG KSP DLL and exercise all `NCrypt` function-table entry points
 
@@ -2357,7 +2357,7 @@ Manage the Windows CNG Key Storage Provider (KSP)
 
 ## 11.1 ckms cng register
 
-Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
+Register the Eviden KMS CNG Key Storage Provider DLL in the Windows Registry
 
 ### Usage
 `ckms cng register [options]`
@@ -2370,7 +2370,7 @@ Register the Cosmian KMS CNG Key Storage Provider DLL in the Windows Registry
 
 ## 11.2 ckms cng unregister
 
-Unregister the Cosmian KMS CNG Key Storage Provider from the Windows Registry
+Unregister the Eviden KMS CNG Key Storage Provider from the Windows Registry
 
 ### Usage
 `ckms cng unregister`
@@ -2390,7 +2390,7 @@ Show the CNG KSP registration status (is the provider registered?)
 
 ## 11.4 ckms cng list-keys
 
-List all private keys stored in Cosmian KMS that belong to this CNG KSP
+List all private keys stored in Eviden KMS that belong to this CNG KSP
 
 ### Usage
 `ckms cng list-keys`

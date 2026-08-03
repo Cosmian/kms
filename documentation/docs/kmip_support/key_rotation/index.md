@@ -1,6 +1,6 @@
 # Key Rotation
 
-Cosmian KMS supports **manual key rotation** for all key types through the
+Eviden KMS supports **manual key rotation** for all key types through the
 standard KMIP operations:
 
 | KMIP operation   | Applies to                              | CLI command                      |

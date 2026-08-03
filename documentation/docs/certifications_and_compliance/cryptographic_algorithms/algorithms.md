@@ -71,7 +71,7 @@ with and key sizes of 128, 192 or 256 bits.
 
 ### FPE FF1
 
-Cosmian KMS supports [NIST SP 800-38G](https://csrc.nist.gov/pubs/sp/800/38/g/final) FF1
+Eviden KMS supports [NIST SP 800-38G](https://csrc.nist.gov/pubs/sp/800/38/g/final) FF1
 format-preserving encryption in non-FIPS mode through the KMIP `Encrypt` and `Decrypt`
 operations when the `Cryptographic Algorithm` is set to `FPE_FF1`.
 

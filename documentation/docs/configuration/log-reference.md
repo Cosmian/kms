@@ -1,6 +1,6 @@
 # Log Call-Site Directory
 
-This page lists every production log call-site across all Cosmian KMS components,
+This page lists every production log call-site across all Eviden KMS components,
 grouped by domain and crate.
 
 It is not listed in the navigation menu but is accessible via
@@ -123,7 +123,7 @@ Crate path: `crate/server`
 | `info` | `Socket server listening on {}` | `src/socket_server.rs` | - | - |
 | `info` | `Socket server shutting down due to stop request` | `src/socket_server.rs` | - | - |
 | `info` | `Socket server stop signal sent` | `src/socket_server.rs` | - | - |
-| `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
+| `info` | `Starting Eviden KMS server version {}` | `src/main.rs` | - | - |
 | `info` | `Starting the HTTPS KMS server...` | `src/start_kms_server.rs` | - | - |
 | `info` | `Windows service received Stop signal, shutting down...` | `src/windows_service.rs` | - | - |
 | `info` | `Windows service reporting Running to SCM` | `src/windows_service.rs` | - | - |

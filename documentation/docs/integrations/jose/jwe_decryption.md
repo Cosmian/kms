@@ -1,7 +1,7 @@
 # JWE Decryption — Unwrap without Key Exposure
 
 This use case describes how to decrypt JWE (JSON Web Encryption) tokens using the
-Cosmian KMS without ever exposing the symmetric content encryption key (CEK) to the
+Eviden KMS without ever exposing the symmetric content encryption key (CEK) to the
 calling application.
 
 ## Problem Statement

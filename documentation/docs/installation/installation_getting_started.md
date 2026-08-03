@@ -205,7 +205,7 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
 
     Run the installer to install Eviden KMS Server. The installer will:
     - Install the KMS server with integrated web UI
-    - Set up the configuration file at `C:\Users\<username>\AppData\Local\Cosmian KMS Server\kms.toml`
+    - Set up the configuration file at `C:\Users\<username>\AppData\Local\Eviden KMS Server\kms.toml`
 
     After installation, you can run the server:
 
@@ -214,5 +214,5 @@ shared libraries here: `/usr/local/cosmian/lib/ossl-modules`.
     ```
 
     - The KMS UI is available at `http://localhost:9998/ui`
-    - The server uses the configuration file located at `C:\Users\<username>\AppData\Local\Cosmian KMS Server\kms.toml`
+    - The server uses the configuration file located at `C:\Users\<username>\AppData\Local\Eviden KMS Server\kms.toml`
     - See the [server configuration](../configuration/server_configuration_file.md) for more information
