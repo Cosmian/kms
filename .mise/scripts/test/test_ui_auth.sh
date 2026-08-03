@@ -91,18 +91,6 @@ cargo build -p cosmian_kms_server "${FEATURES_FLAG[@]}"
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}"
 kms_bin="${CARGO_TARGET_DIR}/debug/cosmian_kms"
 
-# ── 3. Authentication Verifier binary ─────────────────────────────────────────
-# The binary must be built BEFORE entering the nix shell (the mise task does
-# this), because the authentication submodule requires rustc ≥ 1.94 while the
-# nix shell pins an older version.  We just resolve the path here.
-auth_bin="${AUTH_VERIFIER_REPO}/target/debug/auth_verifier"
-if [ ! -x "${auth_bin}" ]; then
-  echo "ERROR: auth_verifier binary not found at '${auth_bin}'." >&2
-  echo "       The mise task should have built it before entering the nix shell." >&2
-  exit 1
-fi
-echo "==> Using auth_verifier: ${auth_bin}"
-
 # ── Dynamic ports ────────────────────────────────────────────────────────────
 AUTH_PORT=$(_get_free_port)
 KMS_PORT=$(_get_free_port)
@@ -158,8 +146,18 @@ sed -e "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
   -e '/^admin_ui_path/d' \
   "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
 
+# ── 3. Authentication Verifier — start with pre-built binary ─────────────────
+# The binary is pre-built with the host toolchain by the `test:ui-auth` mise
+# task BEFORE entering the nix shell (the nix rustc may be too old for this
+# crate).  Run with the repo as cwd so relative paths in the config work.
+AUTH_BIN="${AUTH_VERIFIER_REPO}/target/debug/auth_verifier"
+if [ ! -x "${AUTH_BIN}" ]; then
+  echo "ERROR: auth_verifier binary not found at '${AUTH_BIN}'." >&2
+  echo "       The mise task should have built it with the host toolchain." >&2
+  exit 1
+fi
 echo "==> Starting Authentication Verifier (port ${AUTH_PORT}) …"
-(cd "${AUTH_VERIFIER_REPO}" && "${auth_bin}" "${AUTH_CONF_FILE}") >"${AUTH_LOG}" 2>&1 &
+(cd "${AUTH_VERIFIER_REPO}" && "${AUTH_BIN}" "${AUTH_CONF_FILE}") >"${AUTH_LOG}" 2>&1 &
 AUTH_PID=$!
 
 echo "==> Waiting for Authentication Verifier to be ready …"
@@ -256,3 +254,23 @@ if [ "${TEST_EXIT}" -ne 0 ]; then
 fi
 
 echo "==> Playwright auth tests PASSED"
+
+# ── 6. Rust integration test ─────────────────────────────────────────────────
+# Run the ignored Rust test that validates the same BFF login flow against the
+# already-running KMS + auth-verifier.  PLAYWRIGHT_BASE_URL is reused so the
+# test knows the KMS address without any extra configuration.
+echo "==> Running Rust auth-verifier integration test …"
+RUST_EXIT=0
+PLAYWRIGHT_BASE_URL="http://localhost:${KMS_PORT}" \
+  cargo test -p test_kms_server -- --ignored test_webui_login_via_auth_verifier || RUST_EXIT=$?
+
+if [ "${RUST_EXIT}" -ne 0 ]; then
+  echo "==> Rust auth-verifier integration test FAILED (exit code ${RUST_EXIT})"
+  echo "--- KMS server log (last 40 lines) ---"
+  tail -40 "${KMS_LOG}" || true
+  echo "--- Authentication Verifier log (last 40 lines) ---"
+  tail -40 "${AUTH_LOG}" || true
+  exit "${RUST_EXIT}"
+fi
+
+echo "==> Rust auth-verifier integration test PASSED"

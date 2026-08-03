@@ -154,24 +154,21 @@ mod tests {
     /// Verify that the `auth_verifier.toml` test config parses correctly and
     /// enables both bearer-token validation and the Web UI login form.
     #[test]
-    fn test_auth_verifier_toml_config_parses() {
+    #[allow(clippy::panic_in_result_fn)]
+    fn test_auth_verifier_toml_config_parses() -> Result<(), Box<dyn std::error::Error>> {
         let config_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../test_data/configs/server/auth_verifier.toml");
         let toml_content = std::fs::read_to_string(&config_path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {e}", config_path.display()));
+            .map_err(|e| format!("failed to read {}: {e}", config_path.display()))?;
 
         // Extract just the [auth_verifier] section and parse it.
-        let parsed: toml::Value =
-            toml::from_str(&toml_content).expect("failed to parse auth_verifier.toml");
+        let parsed: toml::Value = toml::from_str(&toml_content)?;
 
         let auth_section = parsed
             .get("auth_verifier")
-            .expect("missing [auth_verifier] section");
+            .ok_or("missing [auth_verifier] section")?;
 
-        let cfg: AuthVerifierConfig = auth_section
-            .clone()
-            .try_into()
-            .expect("failed to deserialize [auth_verifier]");
+        let cfg: AuthVerifierConfig = auth_section.clone().try_into()?;
 
         assert!(cfg.is_enabled(), "auth_verifier_url must be set");
         assert!(
@@ -180,13 +177,14 @@ mod tests {
         );
         assert_eq!(
             cfg.auth_verifier_url.as_deref(),
-            Some("http://localhost:8443")
+            Some("https://localhost:8443")
         );
         assert_eq!(cfg.auth_verifier_realm.as_deref(), Some("_"));
         assert!(cfg.auth_verifier_accept_invalid_certs);
         assert_eq!(
             cfg.jwks_uri().as_deref(),
-            Some("http://localhost:8443/.well-known/jwks.json")
+            Some("https://localhost:8443/.well-known/jwks.json")
         );
+        Ok(())
     }
 }

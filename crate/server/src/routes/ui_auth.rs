@@ -597,7 +597,10 @@ mod tests {
         assert!(resp.status().is_success());
 
         let body: serde_json::Value = test::read_body_json(resp).await;
-        assert_eq!(body["auth_method"], "AUTH_VERIFIER");
+        assert_eq!(
+            body.get("auth_method").and_then(|v| v.as_str()),
+            Some("AUTH_VERIFIER")
+        );
     }
 
     #[actix_web::test]
@@ -615,6 +618,9 @@ mod tests {
         assert!(resp.status().is_success());
 
         let body: serde_json::Value = test::read_body_json(resp).await;
-        assert_eq!(body["auth_method"], "None");
+        assert_eq!(
+            body.get("auth_method").and_then(|v| v.as_str()),
+            Some("None")
+        );
     }
 }

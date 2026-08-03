@@ -630,9 +630,6 @@ Crate path: `crate/server`
 | `warn` | `OIDC: failed to parse discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
 | `warn` | `Session: failed to read user_id from session: {e:?}` | `src/middlewares/session_auth.rs` | `e` | - |
 | `info` | `OIDC: discovered endpoints from {discovery_url}` | `src/start_kms_server.rs` | `discovery_url` | - |
-| `debug` | `CosmianAuthServer Middleware: an authenticated user was already found; skipping.` | `src/middlewares/cosmian_auth_server/middleware.rs` | - | - |
-| `debug` | `` CosmianAuthServer Middleware: authenticated user `{}` `` | `src/middlewares/cosmian_auth_server/middleware.rs` | - | - |
-| `debug` | `CosmianAuthServer Middleware: authentication failed: {e:?}` | `src/middlewares/cosmian_auth_server/middleware.rs` | `e` | - |
 | `debug` | `OIDC: authorization_endpoint={authorization_endpoint}` | `src/start_kms_server.rs` | `authorization_endpoint` | - |
 | `debug` | `OIDC: jwks_uri={jwks_uri}` | `src/start_kms_server.rs` | `jwks_uri` | - |
 | `debug` | `OIDC: token_endpoint={token_endpoint}` | `src/start_kms_server.rs` | `token_endpoint` | - |
@@ -663,6 +660,9 @@ Crate path: `crate/server`
 | `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `{log_prefix}: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `{log_prefix}: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `debug` | `AuthVerifier Middleware: an authenticated user was already found; skipping.` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `` AuthVerifier Middleware: authenticated user `{}` `` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `AuthVerifier Middleware: authentication failed: {e:?}` | `src/middlewares/auth_verifier/middleware.rs` | `e` | - |
 
 ### `cosmian_kms_server_database`
 
@@ -1321,7 +1321,7 @@ Crate path: `ui/src/`
 | `debug` | `ECVerify: dataBuf len`                                  | `actions/EC/ECVerify.tsx`                         | —                                                             | —               |
 | `debug` | `RsaSign: signature length`                              | `actions/RSA/RsaSign.tsx`                         | —                                                             | —               |
 | `debug` | `RsaVerify: dataBuf len`                                 | `actions/RSA/RsaVerify.tsx`                       | —                                                             | —               |
-| `error` | `Cosmian authentication server login failed:` | `pages/LoginPage.tsx` | - | - |
 | `error` | `Session fallback failed:` | `App.tsx` | - | - |
+| `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
 
 ---
