@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::config::{CosmianAuthRuntimeConfig, OidcRuntimeConfig};
+use crate::config::{AuthVerifierRuntimeConfig, OidcRuntimeConfig};
 
 fn random_b64url(len_bytes: usize) -> Result<String, ()> {
     let mut buf = vec![0_u8; len_bytes];
@@ -211,8 +211,8 @@ pub(crate) async fn callback(
     // the cached JWKS (e.g. the IdP rotated its signing keys since startup), force
     // a refresh and retry once before failing. `JwksManager::refresh()` is
     // internally throttled (60s) so this is safe even under repeated invalid-kid
-    // probing. Mirrors the retry pattern used by the Cosmian auth middleware
-    // (`cosmian_auth_server/token.rs`).
+    // probing. Mirrors the retry pattern used by the Auth Verifier middleware
+    // (`auth_verifier/token.rs`).
     let header = match decode_header(id_token_str) {
         Ok(h) => h,
         Err(e) => {
@@ -313,31 +313,31 @@ pub(crate) async fn callback(
         .finish()
 }
 
-/// Session cookie name set by the Cosmian authentication server on a successful
+/// Session cookie name set by the Auth Verifier server on a successful
 /// `/login` call. Carries a JWT (`sub` = username); mirrors the constant of the same
 /// name in `ckms login cosmian` (`kms/crate/clients/client/src/http_client/login.rs`).
-const COSMIAN_SESSION_COOKIE: &str = "_ea_";
+const AUTH_VERIFIER_SESSION_COOKIE: &str = "_ea_";
 
 /// Request body for `POST /ui/login_as`.
 #[derive(Debug, Deserialize)]
-pub(crate) struct CosmianLoginRequest {
+pub(crate) struct AuthVerifierLoginRequest {
     username: String,
     password: String,
     #[serde(default)]
     totp_code: Option<String>,
 }
 
-/// Mirrors the Cosmian authentication server's `AuthenticationResult` shape
+/// Mirrors the Auth Verifier server's `AuthenticationResult` shape
 /// (see `authentication/client/src/models/login.rs`). Duplicated here — rather than
 /// depending on the `authentication` crate — the same way `ckms login cosmian`
 /// (`kms/crate/clients/client/src/http_client/login.rs`) already does.
 #[derive(Debug, Deserialize)]
-struct CosmianAuthenticationResult {
-    next_step: CosmianAuthenticationNextStep,
+struct AuthVerifierAuthenticationResult {
+    next_step: AuthVerifierAuthenticationNextStep,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
-enum CosmianAuthenticationNextStep {
+enum AuthVerifierAuthenticationNextStep {
     Authenticated,
     TotpRequired,
     ChangePassword,
@@ -346,55 +346,55 @@ enum CosmianAuthenticationNextStep {
 /// Response body for `POST /ui/login_as`. Mirrors the AS's `next_step` values so the
 /// frontend can reuse the same state machine as `ckms login cosmian`'s TOTP handling.
 #[derive(Debug, Serialize)]
-struct CosmianLoginResponse {
+struct AuthVerifierLoginResponse {
     next_step: &'static str,
 }
 
-/// BFF proxy login for the Cosmian authentication server ("AS" / "SA").
+/// BFF proxy login for the Auth Verifier server ("AS" / "SA").
 ///
 /// The browser posts `{ username, password, totp_code? }`; this handler replays the
-/// login as HTTP Basic auth against `{cosmian_auth_server_url}/login?realm={realm}` —
-/// mirroring `cosmian_login()` in `kms/crate/clients/client/src/http_client/login.rs` —
+/// login as HTTP Basic auth against `{auth_verifier_url}/login?realm={realm}` —
+/// mirroring `auth_verifier_login()` in `kms/crate/clients/client/src/http_client/login.rs` —
 /// then validates the JWT the AS returns via `Set-Cookie: _ea_=<jwt>` using the same
-/// JWKS-backed trust logic as the bearer-token `CosmianAuthServer` middleware
-/// (`verify_cosmian_jwt_subject`). Only the resulting `sub` (username) is stored in the
+/// JWKS-backed trust logic as the bearer-token `AuthVerifier` middleware
+/// (`verify_auth_verifier_jwt_subject`). Only the resulting `sub` (username) is stored in the
 /// session; the JWT itself never reaches the browser, keeping the same BFF guarantee
 /// as the OIDC flow (`callback`, above).
 #[post("/login_as")]
 pub(crate) async fn login_as(
     session: Session,
-    body: web::Json<CosmianLoginRequest>,
-    cosmian_runtime: web::Data<CosmianAuthRuntimeConfig>,
+    body: web::Json<AuthVerifierLoginRequest>,
+    auth_verifier_runtime: web::Data<AuthVerifierRuntimeConfig>,
 ) -> HttpResponse {
-    let config = &cosmian_runtime.config;
+    let config = &auth_verifier_runtime.config;
     if !config.ui_login_enabled() {
         return HttpResponse::InternalServerError().json(
-            serde_json::json!({ "error": "The Cosmian authentication server is not configured for the Web UI" }),
+            serde_json::json!({ "error": "The Auth Verifier server is not configured for the Web UI" }),
         );
     }
-    let Some(ref jwks_manager) = cosmian_runtime.jwks_manager else {
+    let Some(ref jwks_manager) = auth_verifier_runtime.jwks_manager else {
         return HttpResponse::InternalServerError().json(
-            serde_json::json!({ "error": "The Cosmian authentication server JWKS manager is not available" }),
+            serde_json::json!({ "error": "The Auth Verifier server JWKS manager is not available" }),
         );
     };
     // Guaranteed non-empty by `ui_login_enabled()`.
     let (Some(server_url), Some(realm)) = (
-        config.cosmian_auth_server_url.as_deref(),
-        config.cosmian_auth_realm.as_deref(),
+        config.auth_verifier_url.as_deref(),
+        config.auth_verifier_realm.as_deref(),
     ) else {
         return HttpResponse::InternalServerError().json(
-            serde_json::json!({ "error": "The Cosmian authentication server is not configured for the Web UI" }),
+            serde_json::json!({ "error": "The Auth Verifier server is not configured for the Web UI" }),
         );
     };
 
     let Ok(mut url) = Url::parse(server_url.trim_end_matches('/')) else {
         return HttpResponse::InternalServerError()
-            .json(serde_json::json!({ "error": "Invalid Cosmian authentication server URL" }));
+            .json(serde_json::json!({ "error": "Invalid Auth Verifier server URL" }));
     };
     {
         let Ok(mut segments) = url.path_segments_mut() else {
             return HttpResponse::InternalServerError().json(
-                serde_json::json!({ "error": "Invalid Cosmian authentication server URL: cannot be a base" }),
+                serde_json::json!({ "error": "Invalid Auth Verifier server URL: cannot be a base" }),
             );
         };
         segments.push("login");
@@ -402,7 +402,7 @@ pub(crate) async fn login_as(
     url.query_pairs_mut().append_pair("realm", realm);
 
     let client = match Client::builder()
-        .danger_accept_invalid_certs(config.cosmian_auth_accept_invalid_certs)
+        .danger_accept_invalid_certs(config.auth_verifier_accept_invalid_certs)
         .build()
     {
         Ok(c) => c,
@@ -428,7 +428,7 @@ pub(crate) async fn login_as(
         Ok(r) => r,
         Err(e) => {
             return HttpResponse::BadGateway().json(
-                serde_json::json!({ "error": format!("Failed to reach the Cosmian authentication server: {e}") }),
+                serde_json::json!({ "error": format!("Failed to reach the Auth Verifier server: {e}") }),
             );
         }
     };
@@ -436,7 +436,7 @@ pub(crate) async fn login_as(
     if !response.status().is_success() {
         let status = response.status();
         return HttpResponse::Unauthorized().json(
-            serde_json::json!({ "error": format!("Cosmian authentication server rejected the login ({status})") }),
+            serde_json::json!({ "error": format!("Auth Verifier server rejected the login ({status})") }),
         );
     }
 
@@ -448,7 +448,7 @@ pub(crate) async fn login_as(
         .find_map(|value| {
             let raw = value.to_str().ok()?;
             let (name, cookie_value) = raw.split(';').next()?.split_once('=')?;
-            (name.trim() == COSMIAN_SESSION_COOKIE).then(|| cookie_value.trim().to_owned())
+            (name.trim() == AUTH_VERIFIER_SESSION_COOKIE).then(|| cookie_value.trim().to_owned())
         });
 
     let body_bytes = match response.bytes().await {
@@ -459,7 +459,7 @@ pub(crate) async fn login_as(
             );
         }
     };
-    let result: CosmianAuthenticationResult = match serde_json::from_slice(&body_bytes) {
+    let result: AuthVerifierAuthenticationResult = match serde_json::from_slice(&body_bytes) {
         Ok(r) => r,
         Err(e) => {
             return HttpResponse::InternalServerError().json(
@@ -469,25 +469,25 @@ pub(crate) async fn login_as(
     };
 
     match result.next_step {
-        CosmianAuthenticationNextStep::TotpRequired => HttpResponse::Ok().json(CosmianLoginResponse {
+        AuthVerifierAuthenticationNextStep::TotpRequired => HttpResponse::Ok().json(AuthVerifierLoginResponse {
             next_step: "TotpRequired",
         }),
-        CosmianAuthenticationNextStep::ChangePassword => HttpResponse::Forbidden().json(
-            serde_json::json!({ "error": "Your password has expired. Please change it via the Cosmian authentication server before logging in." }),
+        AuthVerifierAuthenticationNextStep::ChangePassword => HttpResponse::Forbidden().json(
+            serde_json::json!({ "error": "Your password has expired. Please change it via the Auth Verifier server before logging in." }),
         ),
-        CosmianAuthenticationNextStep::Authenticated => {
+        AuthVerifierAuthenticationNextStep::Authenticated => {
             let Some(token) = session_token else {
                 return HttpResponse::InternalServerError().json(
-                    serde_json::json!({ "error": format!("Cosmian authentication server did not set the `{COSMIAN_SESSION_COOKIE}` session cookie") }),
+                    serde_json::json!({ "error": format!("Auth Verifier server did not set the `{AUTH_VERIFIER_SESSION_COOKIE}` session cookie") }),
                 );
             };
 
-            let user_id = match crate::middlewares::verify_cosmian_jwt_subject(jwks_manager, &token).await
+            let user_id = match crate::middlewares::verify_auth_verifier_jwt_subject(jwks_manager, &token).await
             {
                 Ok(sub) => sub,
                 Err(e) => {
                     return HttpResponse::Unauthorized().json(
-                        serde_json::json!({ "error": format!("Failed to validate the Cosmian authentication server token: {e}") }),
+                        serde_json::json!({ "error": format!("Failed to validate the Auth Verifier server token: {e}") }),
                     );
                 }
             };
@@ -497,7 +497,7 @@ pub(crate) async fn login_as(
                     .json(serde_json::json!({ "error": "Failed to store user_id in session" }));
             }
 
-            HttpResponse::Ok().json(CosmianLoginResponse {
+            HttpResponse::Ok().json(AuthVerifierLoginResponse {
                 next_step: "Authenticated",
             })
         }
@@ -525,7 +525,7 @@ pub(crate) async fn logout(
     session.purge();
 
     // When no OIDC logout URL is configured (e.g. the session was established via the
-    // Cosmian authentication server, or OIDC simply isn't set up), there is no external
+    // Auth Verifier server, or OIDC simply isn't set up), there is no external
     // IdP session to terminate: just drop the local session (done above) and send the
     // browser back to the login page.
     let Some(url) = &oidc_runtime.config.ui_oidc_logout_url else {
@@ -574,4 +574,47 @@ pub fn configure_auth_routes(cfg: &mut web::ServiceConfig) {
         .service(whoami)
         .service(logout)
         .service(get_auth_method);
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::{App, test, web};
+
+    use super::get_auth_method;
+
+    #[actix_web::test]
+    async fn test_auth_method_returns_cosmian_when_configured() {
+        let auth_type: Option<String> = Some("AUTH_VERIFIER".to_owned());
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(auth_type))
+                .service(get_auth_method),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/auth_method").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(body["auth_method"], "AUTH_VERIFIER");
+    }
+
+    #[actix_web::test]
+    async fn test_auth_method_returns_none_when_not_configured() {
+        let auth_type: Option<String> = None;
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(auth_type))
+                .service(get_auth_method),
+        )
+        .await;
+
+        let req = test::TestRequest::get().uri("/auth_method").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(body["auth_method"], "None");
+    }
 }

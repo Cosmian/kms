@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 # ============================================================================
 # test_ui_auth.sh – Run TRUE end-to-end Playwright tests for the KMS Web UI
-# login flow against a real Cosmian authentication server.
+# login flow against a real Authentication Verifier.
 #
 # Unlike test_ui.sh (which builds the UI with VITE_DEV_MODE=true, so the
 # login form never renders), this harness:
 #   1. Builds the UI WITHOUT VITE_DEV_MODE/VITE_KMS_URL, so `authMethod` is
-#      fetched from the real `GET /ui/auth_method` and the Cosmian
-#      username/password login form actually renders.
-#   2. Builds and starts a real Cosmian authentication server (from the
+#      fetched from the real `GET /ui/auth_method` and the
+#      Authentication Verifier username/password login form actually renders.
+#   2. Builds and starts a real Authentication Verifier (from the
 #      sibling `authentication` repo) using its bundled dev config
 #      (in-memory SQLite, bundled test certs, seeded `admin`/`change_me`).
-#   3. Builds and starts the KMS server configured with [cosmian_auth],
+#   3. Builds and starts the KMS server configured with [auth_verifier],
 #      serving the UI itself on the SAME origin (required for the session
 #      cookie set by POST /ui/login_as to work without cross-origin
 #      complications).
 #   4. Runs `pnpm run test:e2e:auth` (tests/e2e-auth/, playwright.auth.config.ts).
 #
 # The `authentication` repo is expected as a sibling checkout of this repo
-# (../authentication) — override with AUTH_SERVER_REPO if yours lives
+# (../authentication) — override with AUTH_VERIFIER_REPO if yours lives
 # elsewhere.
 #
 # Usage:
 #   bash .github/scripts/test/test_ui_auth.sh
-#   AUTH_SERVER_REPO=/path/to/authentication bash .github/scripts/test/test_ui_auth.sh
+#   AUTH_VERIFIER_REPO=/path/to/authentication bash .github/scripts/test/test_ui_auth.sh
 # ============================================================================
 set -euo pipefail
 
@@ -40,10 +40,10 @@ WASM_CRATE="${REPO_ROOT}/crate/clients/wasm"
 
 init_build_env "$@"
 
-AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/authentication}"
-if [ ! -f "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" ]; then
-  echo "ERROR: Cosmian authentication server repo not found at '${AUTH_SERVER_REPO}'." >&2
-  echo "       Set AUTH_SERVER_REPO to the path of a checkout of the 'authentication' repo." >&2
+AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
+if [ ! -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+  echo "ERROR: Authentication Verifier repo not found at '${AUTH_VERIFIER_REPO}'." >&2
+  echo "       Set AUTH_VERIFIER_REPO to the path of a checkout of the 'authentication' repo." >&2
   exit 1
 fi
 
@@ -91,11 +91,11 @@ cargo build -p cosmian_kms_server "${FEATURES_FLAG[@]}"
 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}"
 kms_bin="${CARGO_TARGET_DIR}/debug/cosmian_kms"
 
-# ── 3. Cosmian authentication server binary ──────────────────────────────────
+# ── 3. Authentication Verifier binary ─────────────────────────────────────────
 # The binary must be built BEFORE entering the nix shell (the mise task does
 # this), because the authentication submodule requires rustc ≥ 1.94 while the
 # nix shell pins an older version.  We just resolve the path here.
-auth_bin="${AUTH_SERVER_REPO}/target/debug/auth_verifier"
+auth_bin="${AUTH_VERIFIER_REPO}/target/debug/auth_verifier"
 if [ ! -x "${auth_bin}" ]; then
   echo "ERROR: auth_verifier binary not found at '${auth_bin}'." >&2
   echo "       The mise task should have built it before entering the nix shell." >&2
@@ -130,9 +130,9 @@ fi
 
 # ── Temp dirs / config files ─────────────────────────────────────────────────
 WORK_DIR="$(mktemp -d)"
-AUTH_CONF_FILE="${WORK_DIR}/auth_server.toml"
+AUTH_CONF_FILE="${WORK_DIR}/auth_verifier.toml"
 KMS_CONF_FILE="${WORK_DIR}/kms.toml"
-AUTH_LOG="${WORK_DIR}/auth-server.log"
+AUTH_LOG="${WORK_DIR}/auth-verifier.log"
 KMS_LOG="${WORK_DIR}/kms-server.log"
 KMS_SQLITE_DIR="${WORK_DIR}/kms-sqlite"
 mkdir -p "${KMS_SQLITE_DIR}"
@@ -147,43 +147,43 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Auth server config: the bundled dev.toml with the port substituted,
+# Auth Verifier config: the bundled dev.toml with the port substituted,
 # a unique SQLite path (avoid /tmp/path.db collisions on shared CI runners),
 # and admin_ui_path removed (the admin UI isn't built in CI).
-# Paths inside (tls_params) are relative to AUTH_SERVER_REPO,
+# Paths inside (tls_params) are relative to AUTH_VERIFIER_REPO,
 # which is why the server is started with that as its cwd.
 AUTH_DB_PATH="${WORK_DIR}/auth.db"
 sed -e "s/^host_port = .*/host_port = ${AUTH_PORT}/" \
   -e "s|^connection_url = .*|connection_url = \"sqlite://${AUTH_DB_PATH}\"|" \
   -e '/^admin_ui_path/d' \
-  "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
+  "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" >"${AUTH_CONF_FILE}"
 
-echo "==> Starting Cosmian authentication server (port ${AUTH_PORT}) …"
-(cd "${AUTH_SERVER_REPO}" && "${auth_bin}" "${AUTH_CONF_FILE}") >"${AUTH_LOG}" 2>&1 &
+echo "==> Starting Authentication Verifier (port ${AUTH_PORT}) …"
+(cd "${AUTH_VERIFIER_REPO}" && "${auth_bin}" "${AUTH_CONF_FILE}") >"${AUTH_LOG}" 2>&1 &
 AUTH_PID=$!
 
-echo "==> Waiting for authentication server to be ready …"
-_auth_timeout=${AUTH_SERVER_TIMEOUT:-120}
+echo "==> Waiting for Authentication Verifier to be ready …"
+_auth_timeout=${AUTH_VERIFIER_TIMEOUT:-120}
 for i in $(seq 1 "${_auth_timeout}"); do
   if ! kill -0 "${AUTH_PID}" 2>/dev/null; then
-    echo "ERROR: authentication server process exited early; log:" >&2
+    echo "ERROR: Authentication Verifier process exited early; log:" >&2
     cat "${AUTH_LOG}" >&2
     exit 1
   fi
   if curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
     "http://127.0.0.1:${AUTH_PORT}/.well-known/jwks.json" 2>/dev/null | grep -q '^200$'; then
-    echo "    Authentication server ready after ${i}s"
+    echo "    Authentication Verifier ready after ${i}s"
     break
   fi
   if [ "${i}" -eq "${_auth_timeout}" ]; then
-    echo "ERROR: authentication server did not become ready within ${_auth_timeout}s; log:" >&2
+    echo "ERROR: Authentication Verifier did not become ready within ${_auth_timeout}s; log:" >&2
     cat "${AUTH_LOG}" >&2
     exit 1
   fi
   sleep 1
 done
 
-# KMS config: cosmian_auth pointed at the auth server above, serving the UI
+# KMS config: auth_verifier pointed at the Authentication Verifier above, serving the UI
 # itself on the same origin as the API (required for the session cookie).
 cat >"${KMS_CONF_FILE}" <<EOF
 vendor_identification = "test_vendor"
@@ -198,10 +198,10 @@ database_type = "sqlite"
 sqlite_path = "${KMS_SQLITE_DIR}"
 clear_database = true
 
-[cosmian_auth]
-cosmian_auth_server_url = "http://localhost:${AUTH_PORT}"
-cosmian_auth_realm = "_"
-cosmian_auth_accept_invalid_certs = true
+[auth_verifier]
+auth_verifier_url = "http://localhost:${AUTH_PORT}"
+auth_verifier_realm = "_"
+auth_verifier_accept_invalid_certs = true
 
 [ui_config]
 ui_index_html_folder = "${UI_DIR}/dist"
@@ -218,7 +218,7 @@ echo "==> Starting KMS server (port ${KMS_PORT}) …"
 "${kms_bin}" --config "${KMS_CONF_FILE}" >"${KMS_LOG}" 2>&1 &
 KMS_PID=$!
 
-echo "==> Waiting for KMS to be ready with COSMIAN auth …"
+echo "==> Waiting for KMS to be ready with Auth Verifier …"
 _kms_timeout=${KMS_READY_TIMEOUT:-120}
 for i in $(seq 1 "${_kms_timeout}"); do
   if ! kill -0 "${KMS_PID}" 2>/dev/null; then
@@ -226,12 +226,12 @@ for i in $(seq 1 "${_kms_timeout}"); do
     cat "${KMS_LOG}" >&2
     exit 1
   fi
-  if curl -sS --max-time 2 "http://127.0.0.1:${KMS_PORT}/ui/auth_method" 2>/dev/null | grep -q '"COSMIAN"'; then
+  if curl -sS --max-time 2 "http://127.0.0.1:${KMS_PORT}/ui/auth_method" 2>/dev/null | grep -q '"AUTH_VERIFIER"'; then
     echo "    KMS ready after ${i}s"
     break
   fi
   if [ "${i}" -eq "${_kms_timeout}" ]; then
-    echo "ERROR: KMS server did not report COSMIAN auth within ${_kms_timeout}s; log:" >&2
+    echo "ERROR: KMS server did not report AUTH_VERIFIER auth within ${_kms_timeout}s; log:" >&2
     cat "${KMS_LOG}" >&2
     exit 1
   fi
@@ -250,7 +250,7 @@ if [ "${TEST_EXIT}" -ne 0 ]; then
   echo "==> Playwright auth tests FAILED (exit code ${TEST_EXIT})"
   echo "--- KMS server log (last 80 lines) ---"
   tail -80 "${KMS_LOG}" || true
-  echo "--- Authentication server log (last 80 lines) ---"
+  echo "--- Authentication Verifier log (last 80 lines) ---"
   tail -80 "${AUTH_LOG}" || true
   exit "${TEST_EXIT}"
 fi

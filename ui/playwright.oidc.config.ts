@@ -13,7 +13,7 @@ const env = (globalThis as GlobalWithProcess).process?.env ?? {};
  * Separate config (like `playwright.auth.config.ts`) because the suite needs
  * a UI built WITHOUT `VITE_DEV_MODE` (so the login form renders) and a KMS
  * configured for the OIDC/JWT auth method — incompatible with both the
- * default dev-mode functional suite and the Cosmian-auth suite.
+ * default dev-mode functional suite and the Auth-Verifier suite.
  *
  * This is a TRUE end-to-end suite: it drives a real browser through the real
  * Auth0 hosted login page configured in

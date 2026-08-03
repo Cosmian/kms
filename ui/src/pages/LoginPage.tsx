@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { useBranding } from "../contexts/useBranding";
-import { AuthMethod, getNoTTLVRequest, loginCosmian } from "../utils/utils";
+import { AuthMethod, getNoTTLVRequest, loginAuthVerifier } from "../utils/utils";
 
 interface LoginProps {
     auth: boolean;
@@ -14,11 +14,11 @@ interface LoginProps {
 const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [certError, setCertError] = useState<string | null>(null);
-    const [cosmianUsername, setCosmianUsername] = useState("");
-    const [cosmianPassword, setCosmianPassword] = useState("");
-    const [cosmianTotpCode, setCosmianTotpCode] = useState("");
-    const [cosmianTotpRequired, setCosmianTotpRequired] = useState(false);
-    const [cosmianError, setCosmianError] = useState<string | null>(null);
+    const [authVerifierUsername, setAuthVerifierUsername] = useState("");
+    const [authVerifierPassword, setAuthVerifierPassword] = useState("");
+    const [authVerifierTotpCode, setAuthVerifierTotpCode] = useState("");
+    const [authVerifierTotpRequired, setAuthVerifierTotpRequired] = useState(false);
+    const [authVerifierError, setAuthVerifierError] = useState<string | null>(null);
     const { login, serverUrl } = useAuth();
     const navigate = useNavigate();
     const branding = useBranding();
@@ -55,26 +55,26 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
         }
     };
 
-    const handleCosmianLogin = async () => {
+    const handleAuthVerifierLogin = async () => {
         try {
             setIsLoading(true);
-            setCosmianError(null);
-            const nextStep = await loginCosmian(
+            setAuthVerifierError(null);
+            const nextStep = await loginAuthVerifier(
                 serverUrl,
-                cosmianUsername,
-                cosmianPassword,
-                cosmianTotpRequired ? cosmianTotpCode : undefined,
+                authVerifierUsername,
+                authVerifierPassword,
+                authVerifierTotpRequired ? authVerifierTotpCode : undefined,
             );
             if (nextStep === "TotpRequired") {
-                setCosmianTotpRequired(true);
+                setAuthVerifierTotpRequired(true);
             } else {
                 // Full page navigation (not react-router) so the app's auth bootstrap
                 // re-runs and picks up the session cookie the server just set.
                 window.location.assign("/ui/locate");
             }
         } catch (err) {
-            console.error("Cosmian authentication server login failed:", err);
-            setCosmianError(err instanceof Error ? err.message : String(err));
+            console.error("Auth Verifier login failed:", err);
+            setAuthVerifierError(err instanceof Error ? err.message : String(err));
         } finally {
             setIsLoading(false);
         }
@@ -106,26 +106,26 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                             className="text-left mb-8"
                         />
                     )}
-                    {authMethod === "COSMIAN" ? (
-                        <div className="space-y-4 text-left" data-testid="cosmian-login-form">
-                            {cosmianError && (
+                    {authMethod === "AUTH_VERIFIER" ? (
+                        <div className="space-y-4 text-left" data-testid="auth-verifier-login-form">
+                            {authVerifierError && (
                                 <Alert
                                     type="error"
                                     showIcon
                                     message="Authentication failed"
-                                    description={cosmianError}
+                                    description={authVerifierError}
                                     className="text-left mb-4"
-                                    data-testid="cosmian-login-error"
+                                    data-testid="auth-verifier-login-error"
                                 />
                             )}
-                            {cosmianTotpRequired ? (
+                            {authVerifierTotpRequired ? (
                                 <Input
                                     autoFocus
                                     placeholder="One-time code (TOTP)"
-                                    value={cosmianTotpCode}
-                                    onChange={(e) => setCosmianTotpCode(e.target.value)}
-                                    onPressEnter={handleCosmianLogin}
-                                    data-testid="cosmian-totp-input"
+                                    value={authVerifierTotpCode}
+                                    onChange={(e) => setAuthVerifierTotpCode(e.target.value)}
+                                    onPressEnter={handleAuthVerifierLogin}
+                                    data-testid="auth-verifier-totp-input"
                                 />
                             ) : (
                                 <>
@@ -133,29 +133,29 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                                         autoFocus
                                         placeholder="Username"
                                         autoComplete="username"
-                                        value={cosmianUsername}
-                                        onChange={(e) => setCosmianUsername(e.target.value)}
-                                        onPressEnter={handleCosmianLogin}
-                                        data-testid="cosmian-username-input"
+                                        value={authVerifierUsername}
+                                        onChange={(e) => setAuthVerifierUsername(e.target.value)}
+                                        onPressEnter={handleAuthVerifierLogin}
+                                        data-testid="auth-verifier-username-input"
                                     />
                                     <Input.Password
                                         placeholder="Password"
                                         autoComplete="current-password"
-                                        value={cosmianPassword}
-                                        onChange={(e) => setCosmianPassword(e.target.value)}
-                                        onPressEnter={handleCosmianLogin}
-                                        data-testid="cosmian-password-input"
+                                        value={authVerifierPassword}
+                                        onChange={(e) => setAuthVerifierPassword(e.target.value)}
+                                        onPressEnter={handleAuthVerifierLogin}
+                                        data-testid="auth-verifier-password-input"
                                     />
                                 </>
                             )}
                             <Button
                                 type="primary"
                                 block
-                                onClick={handleCosmianLogin}
+                                onClick={handleAuthVerifierLogin}
                                 loading={isLoading}
-                                data-testid="cosmian-login-submit"
+                                data-testid="auth-verifier-login-submit"
                             >
-                                {cosmianTotpRequired ? "VERIFY CODE" : "LOGIN"}
+                                {authVerifierTotpRequired ? "VERIFY CODE" : "LOGIN"}
                             </Button>
                         </div>
                     ) : isLoading ? (

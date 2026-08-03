@@ -79,7 +79,7 @@ impl JwksManager {
 
     /// Return all JWKs from all registered JWKS sets, regardless of `kid`.
     ///
-    /// Used by the Cosmian auth middleware where tokens are issued without a `kid`
+    /// Used by the Auth Verifier middleware where tokens are issued without a `kid`
     /// header field and the verifier must try every available public key until one
     /// validates the signature.
     pub fn find_any(&self) -> KResult<Vec<Jwk>> {
@@ -426,7 +426,7 @@ mod tests {
     }
 
     const ROTATED_KID: &str = "rotated-key";
-    const SAMPLE_JWKS_ROTATED: &str = r#"{"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"test-key-rfc7517","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhmstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB"},{"kty":"RSA","use":"sig","alg":"RS256","kid":"rotated-key","n":"z1w8bgnfcHdRTvvQjMKYaquO0oofsRncnRncgAdVU89zjWyR-dccgBuWU97zwv2SL8bQGGyBIfDadzOAxjRi_5CKGDPfcXLSYijBZBjGW5o4pmlkjnttnu64u___4uKgQ01_FEX3hEr2M7uUpce_CKFCPfcXMSXkCaCiGW5o5pnmlkjntou65v___5vLhR12_GFY4iF3N8vVqde_DLGDQfdXNTYkjCbDjHX6p5qomlljon76w___6wMiS23_HGZ5jG4O9wWrfe_EMHER0geYOUZlkDcEjIY7q6rpnmkkpo87x___7xNjT34_IHa6kH5P0xXsgf_FNIFS1hfZPVaMmlEdFkJZ8r7sqonlmqp98y___8yOkU45_JIb7lI6Q1yYtg_GOJGT2ifaQWbNnmFegkKZ9s8trpomnrq09z___9zPlV56_KJc8mJ7R2zZuh_HPKHU3jgbRXcOnpGfhlLZ-t9uspqnsr10","e":"AQAB"}]}"#;
+    const SAMPLE_JWKS_ROTATED: &str = r#"{"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"test-key-rfc7517","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhmstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB"},{"kty":"RSA","use":"sig","alg":"RS256","kid":"rotated-key","n":"z1w8bgnfcHdRTvvQjMKYaquO0oofsRncnRncgAdVU89zjWyR-dccgBuWU97zwv2SL8bQGGyBIfDadzOAxjRi_5CKGDPfcXLSYijBZBjGW5o4pmlkjnttnu64u___4uKgQ01_FEX3hEr2M7uUpce_CKFCPfcXMSXkCaCiGW5o5pnmlkjntou65v___5vLhR12_GFY4iF3N8vVqde_DLGDQfdXNTYkjCbDjHX6p5qomlljon76w___6wMiS23_HGZ5jG4O9wWrfe_EMHER0geYOUZlkDcEjIT7q6rpnmkkpo87x___7xNjT34_IHa6kH5P0xXsgf_FNIFS1hfZPVaMmlEdFkJZ8r7sqonlmqp98y___8yOkU45_JIb7lI6Q1yYtg_GOJGT2ifaQWbNnmFegkKZ9s8trpomnrq09z___9zPlV56_KJc8mJ7R2zZuh_HPKHU3jgbRXcOnpGfhlLZ-t9uspqnsr10","e":"AQAB"}]}"#;
 
     /// Spawn a persistent (multi-request) HTTP/1.1 server on a random port that serves
     /// `initial_body` for every request until `rotated` is set to `true` (using

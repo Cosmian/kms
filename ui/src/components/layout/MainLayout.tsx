@@ -125,7 +125,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             checkedChildren={<MoonOutlined />}
                             unCheckedChildren={<SunOutlined />}
                         />
-                        {authMethod === "JWT" || authMethod === "COSMIAN" ? (
+                        {authMethod === "JWT" || authMethod === "AUTH_VERIFIER" ? (
                             <div className="flex justify-center items-center h-full overflow-hidden ml-4">
                                 {userId && (
                                     <Tag className="truncate text-sm leading-tight" color="purple" data-testid="session-user-tag">

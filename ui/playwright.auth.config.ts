@@ -9,7 +9,7 @@ type GlobalWithProcess = typeof globalThis & {
 const env = (globalThis as GlobalWithProcess).process?.env ?? {};
 
 /**
- * Playwright configuration for the Cosmian-authentication-server Web UI login
+ * Playwright configuration for the Auth-Verifier-server Web UI login
  * E2E suite (`tests/e2e-auth/`).
  *
  * This is intentionally a SEPARATE config from `playwright.config.ts` because
@@ -21,11 +21,11 @@ const env = (globalThis as GlobalWithProcess).process?.env ?? {};
  *     the login form never renders.
  *   - This suite requires a UI built WITHOUT `VITE_DEV_MODE`/`VITE_KMS_URL` so
  *     `authMethod` is fetched from the real `GET /ui/auth_method` endpoint and
- *     the Cosmian username/password login form actually renders.
+ *     the Auth Verifier username/password login form actually renders.
  *
- * It also targets a different stack: a real Cosmian authentication server
+ * It also targets a different stack: a real Auth Verifier authentication server
  * (`https://localhost:8443` by default, from the sibling `authentication`
- * repo) plus a KMS server configured with `[cosmian_auth]` and serving the UI
+ * repo) plus a KMS server configured with `[auth_verifier]` and serving the UI
  * itself on the SAME origin (so the session cookie set by `/ui/login_as`
  * works without cross-origin cookie complications).
  *

@@ -49,16 +49,16 @@ use url::Url;
 use crate::routes::tokenize;
 use crate::{
     config::{
-        CosmianAuthRuntimeConfig, CosmianAuthServerConfig, IdpAuthConfig, OidcRuntimeConfig,
+        AuthVerifierConfig, AuthVerifierRuntimeConfig, IdpAuthConfig, OidcRuntimeConfig,
         ProxyParams, ServerParams, TlsParams,
     },
     core::KMS,
     cron,
     error::KmsError,
     middlewares::{
-        CosmianAuthServer, JwksManager, JwtConfig, SessionAuth, SpireTokenCache,
-        api_token_middleware, ensure_auth_middleware, extract_peer_certificate,
-        jwt_auth_middleware, otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
+        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, api_token_middleware,
+        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
+        otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
         vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
@@ -786,21 +786,21 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     let use_jwt_auth = !jwt_configurations.is_empty();
     // Determine if API Token Auth should be used for authentication.
     let use_api_token_auth = kms_server.params.api_token_id.is_some();
-    // Determine if Cosmian Auth Server should be used for authentication.
-    let (use_cosmian_auth, cosmian_auth_jwks_manager) =
-        if let Some(ref cosmian_cfg) = kms_server.params.cosmian_auth_config {
-            let jwks_uri = cosmian_cfg.jwks_uri().ok_or_else(|| {
+    // Determine if Auth Verifier should be used for authentication.
+    let (use_auth_verifier, auth_verifier_jwks_manager) =
+        if let Some(ref auth_verifier_cfg) = kms_server.params.auth_verifier_config {
+            let jwks_uri = auth_verifier_cfg.jwks_uri().ok_or_else(|| {
                 KmsError::ServerError(
-                    "Cosmian auth is enabled but no server URL is configured".to_owned(),
+                    "Auth Verifier is enabled but no server URL is configured".to_owned(),
                 )
             })?;
-            // Security guard: the Cosmian auth JWKS URI must use HTTPS to prevent credential
+            // Security guard: the Auth Verifier JWKS URI must use HTTPS to prevent credential
             // exposure and MITM attacks on the public-key material used to verify bearer
             // tokens, same as for the other JWT identity providers above.
             // When `accept_invalid_certs` is set (dev/test only) the operator explicitly
             // acknowledges insecure transport, so the scheme check is also skipped.
             #[cfg(not(feature = "insecure"))]
-            if !cosmian_cfg.cosmian_auth_accept_invalid_certs {
+            if !auth_verifier_cfg.auth_verifier_accept_invalid_certs {
                 validate_jwks_uris_are_https(std::slice::from_ref(&jwks_uri))?;
             }
 
@@ -809,12 +809,12 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 JwksManager::new_with_options(
                     vec![jwks_uri],
                     proxy_params.as_ref(),
-                    cosmian_cfg.cosmian_auth_accept_invalid_certs,
+                    auth_verifier_cfg.auth_verifier_accept_invalid_certs,
                 )
                 .await
                 .map_err(|e| {
                     KmsError::ServerError(format!(
-                        "Failed to initialise Cosmian auth JWKS manager: {e}"
+                        "Failed to initialise Auth Verifier JWKS manager: {e}"
                     ))
                 })?,
             );
@@ -905,6 +905,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             kms_server.params.http_port
         )
     });
+
+    // Set the `Secure` flag on the session cookie only when the server is reachable
+    // via HTTPS.  Over plain HTTP the browser never sends a Secure-flagged cookie
+    // back, which breaks the post-login session for auth-verifier and OIDC flows.
+    // The flag is enabled when the public URL uses `https://` or when TLS is
+    // configured (so the auto-generated URL will also be `https://`).
+    let session_cookie_secure = kms_public_url.starts_with("https://") || tls_config.is_some();
 
     // Derive the session cookie encryption key.
     // - If ui_session_salt is set: derive a stable key tied to the public URL using PBKDF2.
@@ -1036,7 +1043,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
                     .cookie_same_site(actix_web::cookie::SameSite::Lax)
-                    .cookie_secure(true)
+                    .cookie_secure(session_cookie_secure)
                     .session_lifecycle(
                         PersistentSession::default().session_ttl(Duration::hours(24)),
                     )
@@ -1092,7 +1099,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
-                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
+                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -1189,7 +1196,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             // request identity when `X-Vault-Token` is present but does NOT mandate that a
             // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
             // the endpoint actually require authentication.
-            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth;
+            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier;
             let tokenize_scope = web::scope("/tokenize")
                 .app_data(web::JsonConfig::default().limit(65_536))
                 .wrap(Condition::new(
@@ -1202,8 +1209,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     api_token_middleware(kms_server_for_http.clone()),
                 ))
                 .wrap(Condition::new(
-                    use_cosmian_auth,
-                    CosmianAuthServer::new(cosmian_auth_jwks_manager.clone()),
+                    use_auth_verifier,
+                    AuthVerifier::new(auth_verifier_jwks_manager.clone()),
                 ))
                 .wrap(Condition::new(
                     use_jwt_auth,
@@ -1326,28 +1333,28 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 Some("JWT".to_owned())
             } else if use_cert_auth {
                 Some("CERT".to_owned())
-            } else if use_cosmian_auth
+            } else if use_auth_verifier
                 && kms_server_for_http
                     .params
-                    .cosmian_auth_config
+                    .auth_verifier_config
                     .as_ref()
-                    .is_some_and(CosmianAuthServerConfig::ui_login_enabled)
+                    .is_some_and(AuthVerifierConfig::ui_login_enabled)
             {
-                Some("COSMIAN".to_owned())
+                Some("AUTH_VERIFIER".to_owned())
             } else {
                 None
             };
 
-            // BFF runtime config for the Cosmian authentication server Web UI login
+            // BFF runtime config for the Auth Verifier server Web UI login
             // (`/ui/login_as`). Reuses the JWKS manager already built above for the
-            // bearer-token `CosmianAuthServer` middleware — no second JWKS fetch.
-            let cosmian_auth_runtime_config = CosmianAuthRuntimeConfig {
+            // bearer-token `AuthVerifier` middleware — no second JWKS fetch.
+            let auth_verifier_runtime_config = AuthVerifierRuntimeConfig {
                 config: kms_server_for_http
                     .params
-                    .cosmian_auth_config
+                    .auth_verifier_config
                     .clone()
                     .unwrap_or_default(),
-                jwks_manager: cosmian_auth_jwks_manager.clone(),
+                jwks_manager: auth_verifier_jwks_manager.clone(),
             };
 
             // These paths mirror the React application's client-side routes
@@ -1379,7 +1386,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             ];
             let mut auth_routes = web::scope("/ui")
                 .app_data(Data::new(oidc_runtime_config))
-                .app_data(Data::new(cosmian_auth_runtime_config))
+                .app_data(Data::new(auth_verifier_runtime_config))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_type))
@@ -1456,7 +1463,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             )
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
+                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
             ))
             .wrap(SessionAuth)
             .wrap(Condition::new(
@@ -1464,8 +1471,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 api_token_middleware(kms_server_for_http.clone()),
             ))
             .wrap(Condition::new(
-                use_cosmian_auth,
-                CosmianAuthServer::new(cosmian_auth_jwks_manager.clone()),
+                use_auth_verifier,
+                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
@@ -1501,7 +1508,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth || use_cosmian_auth,
+                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
             ))
             .wrap(SessionAuth)
             .wrap(Condition::new(
@@ -1509,8 +1516,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 api_token_middleware(kms_server_for_http.clone()),
             ))
             .wrap(Condition::new(
-                use_cosmian_auth,
-                CosmianAuthServer::new(cosmian_auth_jwks_manager.clone()),
+                use_auth_verifier,
+                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,

@@ -2,7 +2,8 @@ use clap::Parser;
 use cosmian_kms_client::{
     KmsClientConfig,
     reexport::cosmian_http_client::{
-        CosmianAuthServerLoginConfig, CosmianLoginStep, LoginState, approle_login, cosmian_login,
+        AuthVerifierLoginConfig, AuthVerifierLoginStep, LoginState, approle_login,
+        auth_verifier_login,
     },
 };
 use dialoguer::{Input, Password};
@@ -46,9 +47,9 @@ pub enum LoginCredential {
 /// - `client_id`, `client_secret`, `authorize_url`, `token_url`, `scopes`.
 ///   The callback URL must be whitelisted with value `http://localhost:17899/token`.
 ///
-/// **cosmian** — Cosmian authentication server (HTTP Basic credentials).
+/// **cosmian** — Auth Verifier server (HTTP Basic credentials).
 /// Requires a `cosmian_conf` section in the configuration file with fields:
-/// - `server_url`: base URL of the Cosmian authentication server.
+/// - `server_url`: base URL of the Auth Verifier server.
 /// - `realm`: realm to authenticate against (e.g. `"kms"`).
 ///   The endpoint called is `POST {server_url}/login?realm={realm}` with an
 ///   `Authorization: Basic <base64(username:password)>` header.
@@ -69,7 +70,7 @@ pub struct LoginAction {
 pub enum LoginSubcommand {
     /// Login using the `OAuth2` authorization code flow.
     Oauth,
-    /// Login using Cosmian authentication server (HTTP Basic credentials).
+    /// Login using Auth Verifier server (HTTP Basic credentials).
     ///
     /// The configuration file must contain a `cosmian_conf` section with
     /// `server_url` and `realm`.  Credentials are transmitted via an
@@ -130,7 +131,7 @@ impl LoginAction {
                 Ok(LoginCredential::AccessToken(access_token))
             }
             LoginSubcommand::Cosmian { username, password } => {
-                let cosmian_conf: &CosmianAuthServerLoginConfig =
+                let cosmian_conf: &AuthVerifierLoginConfig =
                     config.http_config.cosmian_conf.as_ref().ok_or_else(|| {
                         KmsCliError::Default(
                             "The `login cosmian` command requires a `cosmian_conf` section in the \
@@ -151,7 +152,7 @@ impl LoginAction {
                 let accept_invalid_certs = config.http_config.accept_invalid_certs;
 
                 // First attempt: send without a TOTP code.
-                let access_token = match cosmian_login(
+                let access_token = match auth_verifier_login(
                     cosmian_conf,
                     username,
                     &password,
@@ -160,8 +161,8 @@ impl LoginAction {
                 )
                 .await?
                 {
-                    CosmianLoginStep::Authenticated(token) => token,
-                    CosmianLoginStep::TotpRequired => {
+                    AuthVerifierLoginStep::Authenticated(token) => token,
+                    AuthVerifierLoginStep::TotpRequired => {
                         // Prompt the user for their TOTP code, then re-submit.
                         let code: String = Input::new()
                             .with_prompt("TOTP code")
@@ -173,7 +174,7 @@ impl LoginAction {
                                 ))
                             })?;
 
-                        match cosmian_login(
+                        match auth_verifier_login(
                             cosmian_conf,
                             username,
                             &password,
@@ -182,8 +183,8 @@ impl LoginAction {
                         )
                         .await?
                         {
-                            CosmianLoginStep::Authenticated(token) => token,
-                            CosmianLoginStep::TotpRequired => {
+                            AuthVerifierLoginStep::Authenticated(token) => token,
+                            AuthVerifierLoginStep::TotpRequired => {
                                 return Err(KmsCliError::Default(
                                     "TOTP code rejected by the server. Check that your \
                                      authenticator app is synchronized."

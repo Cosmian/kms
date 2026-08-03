@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Run Playwright E2E auth tests against a real Cosmian authentication server"
+#MISE description="Run Playwright E2E auth tests against a real Authentication Verifier"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
@@ -19,14 +19,14 @@ REPO_ROOT="$(get_repo_root)"
 # Guard with IN_NIX_SHELL: ensure_nix_shell re-execs this entire script inside
 # the nix shell, so this block must only run on the first (host) invocation.
 if [ "${IN_NIX_SHELL:-0}" != "1" ]; then
-  AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/authentication}"
-  if [ ! -f "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" ]; then
-    print_error "authentication submodule not found at '${AUTH_SERVER_REPO}'.
+  AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
+  if [ ! -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+    print_error "authentication submodule not found at '${AUTH_VERIFIER_REPO}'.
          Run: git submodule update --init authentication"
   fi
   echo "==> Building auth_verifier (host toolchain) …"
   (
-    cd "${AUTH_SERVER_REPO}"
+    cd "${AUTH_VERIFIER_REPO}"
     cargo build -p auth_verifier
   )
 fi

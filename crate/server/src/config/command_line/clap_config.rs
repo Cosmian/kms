@@ -14,7 +14,7 @@ use super::{
     ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
-    config::{AzureEkmConfig, CosmianAuthServerConfig, ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AuthVerifierConfig, AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
     routes::aws_xks::AwsXksConfig,
@@ -52,7 +52,7 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             idp_auth: IdpAuthConfig::default(),
-            cosmian_auth: CosmianAuthServerConfig::default(),
+            auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -181,7 +181,7 @@ pub struct ClapConfig {
     pub idp_auth: IdpAuthConfig,
 
     #[clap(flatten)]
-    pub cosmian_auth: CosmianAuthServerConfig,
+    pub auth_verifier: AuthVerifierConfig,
 
     #[command(flatten)]
     pub ui_config: UiConfig,
@@ -733,11 +733,8 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
-        let x = if self.cosmian_auth.is_enabled() {
-            x.field(
-                "cosmian_auth_server_url",
-                &self.cosmian_auth.cosmian_auth_server_url,
-            )
+        let x = if self.auth_verifier.is_enabled() {
+            x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
         } else {
             x
         };

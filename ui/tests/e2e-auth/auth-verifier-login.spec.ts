@@ -1,13 +1,13 @@
 /**
- * Cosmian authentication server — Web UI login E2E tests (TRUE end-to-end).
+ * Auth Verifier server — Web UI login E2E tests (TRUE end-to-end).
  *
  * Covers the happy path and the most likely error scenarios from
- * `CHANGELOG/test_plan_cosmian-auth-ui-login.md` against a REAL, locally
- * running Cosmian authentication server (not mocked) and a REAL KMS server
- * configured with `[cosmian_auth]`.
+ * `CHANGELOG/test_plan_auth-verifier-auth-ui-login.md` against a REAL, locally
+ * running Auth Verifier authentication server (not mocked) and a REAL KMS server
+ * configured with `[auth_verifier]`.
  *
  * Prerequisites (see `.github/scripts/test/test_ui_auth.sh`):
- *   - Cosmian auth server running on https://localhost:8443 with the bundled
+ *   - Auth Verifier server running on https://localhost:8443 with the bundled
  *     dev seed (realm "_", super-admin `admin` / `change_me`).
  *   - KMS server running on http://localhost:9998, serving the UI itself
  *     (same-origin — required for the session cookie to work), built WITHOUT
@@ -23,24 +23,24 @@ import { expect, test } from "@playwright/test";
 const VALID_USERNAME = "admin";
 const VALID_PASSWORD = "change_me";
 
-test.describe("Cosmian auth server — Web UI login", () => {
-    test("GET /ui/auth_method reports COSMIAN", async ({ request, baseURL }) => {
+test.describe("Auth Verifier server — Web UI login", () => {
+    test("GET /ui/auth_method reports AUTH_VERIFIER", async ({ request, baseURL }) => {
         const response = await request.get(`${baseURL}/ui/auth_method`);
         expect(response.ok()).toBeTruthy();
-        await expect(response.json()).resolves.toEqual({ auth_method: "COSMIAN" });
+        await expect(response.json()).resolves.toEqual({ auth_method: "AUTH_VERIFIER" });
     });
 
     test("TC1 — happy path login", async ({ page }) => {
         await page.goto("/ui/");
 
-        // Lands on the login page with the Cosmian username/password form
+        // Lands on the login page with the Auth Verifier username/password form
         // (not the OIDC redirect button or the CERT "ACCESS KMS" button).
-        const form = page.getByTestId("cosmian-login-form");
+        const form = page.getByTestId("auth-verifier-login-form");
         await expect(form).toBeVisible();
 
-        await page.getByTestId("cosmian-username-input").fill(VALID_USERNAME);
-        await page.getByTestId("cosmian-password-input").fill(VALID_PASSWORD);
-        await page.getByTestId("cosmian-login-submit").click();
+        await page.getByTestId("auth-verifier-username-input").fill(VALID_USERNAME);
+        await page.getByTestId("auth-verifier-password-input").fill(VALID_PASSWORD);
+        await page.getByTestId("auth-verifier-login-submit").click();
 
         // Full page navigation to /ui/locate once authenticated.
         await page.waitForURL(/\/ui\/locate/, { timeout: 15_000 });
@@ -54,21 +54,21 @@ test.describe("Cosmian auth server — Web UI login", () => {
     test("TC4 — bad credentials are rejected", async ({ page }) => {
         await page.goto("/ui/");
 
-        await page.getByTestId("cosmian-username-input").fill(VALID_USERNAME);
-        await page.getByTestId("cosmian-password-input").fill("not-the-right-password");
-        await page.getByTestId("cosmian-login-submit").click();
+        await page.getByTestId("auth-verifier-username-input").fill(VALID_USERNAME);
+        await page.getByTestId("auth-verifier-password-input").fill("not-the-right-password");
+        await page.getByTestId("auth-verifier-login-submit").click();
 
         // Inline "Authentication failed" alert, form remains, no navigation.
-        await expect(page.getByTestId("cosmian-login-error")).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId("auth-verifier-login-error")).toBeVisible({ timeout: 15_000 });
         await expect(page).toHaveURL(/\/ui\/login/);
-        await expect(page.getByTestId("cosmian-login-form")).toBeVisible();
+        await expect(page.getByTestId("auth-verifier-login-form")).toBeVisible();
     });
 
     test("TC8 — logout clears the session", async ({ page }) => {
         await page.goto("/ui/");
-        await page.getByTestId("cosmian-username-input").fill(VALID_USERNAME);
-        await page.getByTestId("cosmian-password-input").fill(VALID_PASSWORD);
-        await page.getByTestId("cosmian-login-submit").click();
+        await page.getByTestId("auth-verifier-username-input").fill(VALID_USERNAME);
+        await page.getByTestId("auth-verifier-password-input").fill(VALID_PASSWORD);
+        await page.getByTestId("auth-verifier-login-submit").click();
         await page.waitForURL(/\/ui\/locate/, { timeout: 15_000 });
 
         await page.getByTestId("logout-btn").click();

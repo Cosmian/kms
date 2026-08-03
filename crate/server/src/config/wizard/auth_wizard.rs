@@ -8,7 +8,7 @@
 use dialoguer::{Confirm, Input, MultiSelect, theme::ColorfulTheme};
 
 use crate::{
-    config::{CosmianAuthServerConfig, HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
+    config::{AuthVerifierConfig, HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
     error::KmsError,
     result::KResult,
 };
@@ -17,7 +17,7 @@ pub struct AuthWizardResult {
     #[allow(dead_code)]
     pub http_api_token: Option<String>,
     pub idp_auth: IdpAuthConfig,
-    pub cosmian_auth: CosmianAuthServerConfig,
+    pub auth_verifier: AuthVerifierConfig,
     #[allow(dead_code)]
     pub ui_config_oidc: OidcConfig,
     pub default_username: String,
@@ -30,7 +30,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     let auth_choices = &[
         "API Key (static token)",
         "JWT / OIDC (for programmatic clients)",
-        "Cosmian authentication server",
+        "Auth Verifier server",
         "Client Certificate (mTLS – configure in TLS section)",
     ];
 
@@ -58,7 +58,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     // JWT / OIDC
     let mut jwt_providers: Vec<String> = Vec::new();
     let mut ui_oidc = OidcConfig::default();
-    let mut cosmian_auth = CosmianAuthServerConfig::default();
+    let mut auth_verifier = AuthVerifierConfig::default();
 
     if selected.contains(&1) {
         println!("  Configure JWT/OIDC providers.");
@@ -123,12 +123,12 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     }
 
     if selected.contains(&2) {
-        println!("  Configure the Cosmian authentication server.");
+        println!("  Configure the Auth Verifier server.");
         let server_url: String = Input::with_theme(&theme)
-            .with_prompt("Cosmian auth server URL (e.g. https://auth.example.com)")
+            .with_prompt("Auth Verifier server URL (e.g. https://auth.example.com)")
             .validate_with(|input: &String| -> Result<(), &str> {
                 if input.trim().is_empty() {
-                    Err("The Cosmian auth server URL cannot be blank")
+                    Err("The Auth Verifier server URL cannot be blank")
                 } else {
                     Ok(())
                 }
@@ -147,7 +147,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
             .interact()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
         let enable_ui_login: bool = Confirm::with_theme(&theme)
-            .with_prompt("Enable the Web UI login form for the Cosmian authentication server?")
+            .with_prompt("Enable the Web UI login form for the Auth Verifier server?")
             .default(false)
             .interact()
             .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
@@ -160,15 +160,15 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
         } else {
             None
         };
-        cosmian_auth = CosmianAuthServerConfig {
-            cosmian_auth_server_url: Some(server_url),
-            cosmian_auth_jwks_uri: if jwks_uri.trim().is_empty() {
+        auth_verifier = AuthVerifierConfig {
+            auth_verifier_url: Some(server_url),
+            auth_verifier_jwks_uri: if jwks_uri.trim().is_empty() {
                 None
             } else {
                 Some(jwks_uri)
             },
-            cosmian_auth_realm: realm,
-            cosmian_auth_accept_invalid_certs: accept_invalid_certs,
+            auth_verifier_realm: realm,
+            auth_verifier_accept_invalid_certs: accept_invalid_certs,
         };
     }
 
@@ -203,7 +203,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 Some(jwt_providers)
             },
         },
-        cosmian_auth,
+        auth_verifier,
         ui_config_oidc: ui_oidc,
         default_username,
         force_default_username,

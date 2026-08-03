@@ -18,12 +18,12 @@ REPO_ROOT="$(get_repo_root)"
 # older version.  Build with the host toolchain on the first invocation only
 # (ensure_nix_shell re-execs this script inside the nix shell).
 if [ "${IN_NIX_SHELL:-0}" != "1" ]; then
-  AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/authentication}"
-  if [ -f "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" ]; then
+  AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
+  if [ -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
     echo "==> Building auth_verifier (host toolchain) …"
-    (cd "${AUTH_SERVER_REPO}" && cargo build -p auth_verifier)
+    (cd "${AUTH_VERIFIER_REPO}" && cargo build -p auth_verifier)
   else
-    print_warning "authentication submodule not found at '${AUTH_SERVER_REPO}'; skipping auth tests"
+    print_warning "authentication submodule not found at '${AUTH_VERIFIER_REPO}'; skipping auth tests"
   fi
 fi
 
@@ -53,15 +53,15 @@ ensure_nix_shell
 print_header "Standard UI E2E tests"
 bash "${REPO_ROOT}/.mise/scripts/test/test_ui.sh" --variant "${VARIANT}" --link "${LINK}"
 
-# ── 2. Cosmian Auth E2E tests ───────────────────────────────────────────────
-# Skip in FIPS mode: the auth server binary hangs at bind() in FIPS CI
-# environments (the auth server is not FIPS-aware and the FIPS OpenSSL
+# ── 2. Auth Verifier E2E tests ────────────────────────────────────────────────
+# Skip in FIPS mode: the auth verifier binary hangs at bind() in FIPS CI
+# environments (the verifier is not FIPS-aware and the FIPS OpenSSL
 # provider interferes with its startup). Non-FIPS covers this path fully.
-AUTH_SERVER_REPO="${AUTH_SERVER_REPO:-${REPO_ROOT}/authentication}"
+AUTH_VERIFIER_REPO="${AUTH_VERIFIER_REPO:-${REPO_ROOT}/authentication}"
 if [ "${VARIANT}" = "fips" ]; then
-  print_warning "Skipping Cosmian Auth E2E tests in FIPS mode (auth server is not FIPS-aware)"
-elif [ -f "${AUTH_SERVER_REPO}/server/auth_verifier.dev.toml" ]; then
-  print_header "Cosmian Auth E2E tests"
+  print_warning "Skipping Auth Verifier E2E tests in FIPS mode (verifier is not FIPS-aware)"
+elif [ -f "${AUTH_VERIFIER_REPO}/server/auth_verifier.dev.toml" ]; then
+  print_header "Auth Verifier E2E tests"
   bash "${REPO_ROOT}/.mise/scripts/test/test_ui_auth.sh" --variant "${VARIANT}" --link "${LINK}"
 else
   print_warning "Skipping auth tests: authentication submodule not found"

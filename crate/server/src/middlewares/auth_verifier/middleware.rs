@@ -1,4 +1,4 @@
-//! Cosmian Authentication Server Middleware
+//! Auth Verifier Middleware
 //!
 //! Actix-web transformer + service that wraps the core token validation logic
 //! in `token`.  The pattern mirrors `ApiTokenMiddleware`.
@@ -21,17 +21,17 @@ use futures::{
     future::{Ready, ok},
 };
 
-use super::token::handle_cosmian_auth;
+use super::token::handle_auth_verifier;
 use crate::middlewares::{AuthenticatedUser, JwksManager};
 
 /// Transformer — registered once during app startup.
 #[derive(Clone)]
-pub(crate) struct CosmianAuthServer {
+pub(crate) struct AuthVerifier {
     jwks_manager: Option<Arc<JwksManager>>,
 }
 
-impl CosmianAuthServer {
-    /// Create a new `CosmianAuthServer` transformer.
+impl AuthVerifier {
+    /// Create a new `AuthVerifier` transformer.
     /// When `jwks_manager` is `None`, the middleware is a no-op (used with `Condition::new(false, …)`).
     #[must_use]
     pub(crate) const fn new(jwks_manager: Option<Arc<JwksManager>>) -> Self {
@@ -39,7 +39,7 @@ impl CosmianAuthServer {
     }
 }
 
-impl<S, B> Transform<S, ServiceRequest> for CosmianAuthServer
+impl<S, B> Transform<S, ServiceRequest> for AuthVerifier
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -48,10 +48,10 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
     type InitError = ();
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
-    type Transform = CosmianAuthServerMiddleware<S>;
+    type Transform = AuthVerifierMiddleware<S>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(CosmianAuthServerMiddleware {
+        ok(AuthVerifierMiddleware {
             service: Rc::new(service),
             jwks_manager: self.jwks_manager.clone(),
         })
@@ -59,12 +59,12 @@ where
 }
 
 /// Middleware service — processes each request.
-pub(crate) struct CosmianAuthServerMiddleware<S> {
+pub(crate) struct AuthVerifierMiddleware<S> {
     service: Rc<S>,
     jwks_manager: Option<Arc<JwksManager>>,
 }
 
-impl<S, B> Service<ServiceRequest> for CosmianAuthServerMiddleware<S>
+impl<S, B> Service<ServiceRequest> for AuthVerifierMiddleware<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -85,19 +85,19 @@ where
             // Skip if a previous middleware already authenticated this request.
             if req.extensions().contains::<AuthenticatedUser>() {
                 debug!(
-                    "CosmianAuthServer Middleware: an authenticated user was already found; skipping."
+                    "AuthVerifier Middleware: an authenticated user was already found; skipping."
                 );
             } else if let Some(ref jwks) = jwks_manager {
-                match handle_cosmian_auth(jwks, &req).await {
+                match handle_auth_verifier(jwks, &req).await {
                     Ok(user) => {
                         debug!(
-                            "CosmianAuthServer Middleware: authenticated user `{}`",
+                            "AuthVerifier Middleware: authenticated user `{}`",
                             user.username
                         );
                         req.extensions_mut().insert(user);
                     }
                     Err(e) => {
-                        debug!("CosmianAuthServer Middleware: authentication failed: {e:?}");
+                        debug!("AuthVerifier Middleware: authentication failed: {e:?}");
                     }
                 }
             }
