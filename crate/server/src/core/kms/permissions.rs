@@ -309,4 +309,18 @@ impl KMS {
                 |au| au.username.clone(),
             )
     }
+
+    /// Get the authentication method used for this request, if any.
+    pub(crate) fn get_auth_method(
+        &self,
+        req_http: &HttpRequest,
+    ) -> Option<crate::middlewares::AuthMethod> {
+        if self.params.force_default_username {
+            return None;
+        }
+        req_http
+            .extensions()
+            .get::<AuthenticatedUser>()
+            .map(|au| au.auth_method)
+    }
 }

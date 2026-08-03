@@ -54,13 +54,18 @@ pub(crate) async fn proxy_auth_request(
 
     debug!("SPIRE auth proxy → {target}");
 
-    let method = reqwest_method(req.method().as_str());
+    let method = match reqwest_method(req.method().as_str()) {
+        Ok(m) => m,
+        Err(resp) => return resp,
+    };
 
     let mut rb = client.request(method, &target);
 
-    // Forward Vault token and content-type headers via string to avoid the
-    // `http 0.2` (actix-web) vs `http 1.x` (reqwest) HeaderValue type mismatch.
-    for header_name in &["X-Vault-Token", "Content-Type", "Authorization"] {
+    // Forward only the headers the auth-verifier needs. `Authorization` is
+    // intentionally excluded: SPIRE uses `X-Vault-Token` for authentication,
+    // and forwarding `Authorization` could allow the proxy to reach unintended
+    // auth-verifier endpoints that accept bearer tokens.
+    for header_name in &["X-Vault-Token", "Content-Type"] {
         if let Some(val) = req.headers().get(*header_name) {
             if let Ok(s) = val.to_str() {
                 rb = rb.header(*header_name, s);
@@ -90,7 +95,7 @@ pub(crate) async fn proxy_auth_request(
                 Err(e) => {
                     warn!("vault auth proxy: failed to read auth-verifier response body: {e}");
                     return HttpResponse::BadGateway().json(serde_json::json!({
-                        "errors": [format!("auth-verifier response body read failed: {e}")]
+                        "errors": ["auth-verifier response body read failed"]
                     }));
                 }
             };
@@ -105,24 +110,26 @@ pub(crate) async fn proxy_auth_request(
         Err(e) => {
             warn!("vault auth proxy: auth-verifier unreachable: {e}");
             HttpResponse::BadGateway().json(serde_json::json!({
-                "errors": [format!("auth-verifier unreachable: {e}")]
+                "errors": ["auth-verifier unreachable"]
             }))
         }
     }
 }
 
 /// Translate an incoming actix-web HTTP method string into a `reqwest::Method`,
-/// preserving the verb byte-for-byte instead of collapsing unknown methods to
-/// `POST`.
+/// preserving the verb byte-for-byte.
 ///
 /// The auth proxy must forward the client's method unchanged: mapping every
 /// non-`GET`/`DELETE`/`PUT` verb to `POST` would silently rewrite `PATCH`,
 /// `HEAD`, `OPTIONS`, etc., breaking any auth-verifier route that distinguishes
-/// them. `reqwest::Method::from_bytes` never fails for a syntactically valid
-/// actix method token, but we fall back to the original verb via `POST` only if
-/// parsing somehow fails, which cannot happen for a request actix already parsed.
-fn reqwest_method(method: &str) -> reqwest::Method {
-    reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::POST)
+/// them. Returns an error if the method cannot be parsed rather than silently
+/// substituting `POST`.
+fn reqwest_method(method: &str) -> Result<reqwest::Method, HttpResponse> {
+    reqwest::Method::from_bytes(method.as_bytes()).map_err(|_e| {
+        HttpResponse::BadRequest().json(serde_json::json!({
+            "errors": [format!("unsupported HTTP method: {method}")]
+        }))
+    })
 }
 
 /// Return `true` if any segment of `path` resolves to a `.` or `..` (dot or
@@ -147,18 +154,19 @@ fn path_has_dot_segment(path: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::{path_has_dot_segment, reqwest_method};
 
     #[test]
     fn preserves_http_method() {
-        assert_eq!(reqwest_method("GET"), reqwest::Method::GET);
-        assert_eq!(reqwest_method("POST"), reqwest::Method::POST);
-        assert_eq!(reqwest_method("PUT"), reqwest::Method::PUT);
-        assert_eq!(reqwest_method("DELETE"), reqwest::Method::DELETE);
-        assert_eq!(reqwest_method("PATCH"), reqwest::Method::PATCH);
-        assert_eq!(reqwest_method("HEAD"), reqwest::Method::HEAD);
-        assert_eq!(reqwest_method("OPTIONS"), reqwest::Method::OPTIONS);
+        assert_eq!(reqwest_method("GET").unwrap(), reqwest::Method::GET);
+        assert_eq!(reqwest_method("POST").unwrap(), reqwest::Method::POST);
+        assert_eq!(reqwest_method("PUT").unwrap(), reqwest::Method::PUT);
+        assert_eq!(reqwest_method("DELETE").unwrap(), reqwest::Method::DELETE);
+        assert_eq!(reqwest_method("PATCH").unwrap(), reqwest::Method::PATCH);
+        assert_eq!(reqwest_method("HEAD").unwrap(), reqwest::Method::HEAD);
+        assert_eq!(reqwest_method("OPTIONS").unwrap(), reqwest::Method::OPTIONS);
     }
 
     #[test]

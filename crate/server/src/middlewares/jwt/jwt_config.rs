@@ -240,10 +240,8 @@ impl JwtConfig {
             };
 
             let jwk = self.jwks.find(&kid)?.ok_or_else(|| {
-                // Only log JWKS on error
                 KmsError::Unauthorized(format!(
-                    "Specified key not found in set. Looking for kid `{kid}` in JWKS:\n{:?}",
-                    self.jwks
+                    "Specified key not found in set. Looking for kid `{kid}`"
                 ))
             })?;
 

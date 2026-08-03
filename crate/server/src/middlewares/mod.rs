@@ -56,6 +56,29 @@ pub(crate) fn extract_bearer_token(req: &ServiceRequest) -> KResult<&str> {
     Ok(token)
 }
 
+/// Identifies which authentication method was used for a request.
+///
+/// Stored alongside [`AuthenticatedUser`] so that audit logs and operators
+/// can distinguish SPIRE, OIDC, API-token, mTLS, session, and default-user
+/// authentication after the fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AuthMethod {
+    /// SPIRE / Vault-compatible `X-Vault-Token` validation
+    SpireToken,
+    /// Standard OIDC / `IdP` JWT (with `kid`)
+    OidcJwt,
+    /// Cosmian Auth Verifier JWT (no `kid`)
+    AuthVerifierJwt,
+    /// Static API token (Bearer)
+    ApiToken,
+    /// mTLS client certificate
+    Mtls,
+    /// Server-side session cookie (UI browser)
+    Session,
+    /// No authentication configured; `default_username` injected
+    DefaultUser,
+}
+
 /// Represents an authenticated user
 ///
 /// This struct is stored in the request extensions after successful
@@ -64,4 +87,6 @@ pub(crate) fn extract_bearer_token(req: &ServiceRequest) -> KResult<&str> {
 pub(crate) struct AuthenticatedUser {
     /// The authenticated username
     pub username: String,
+    /// Which authentication method was used
+    pub auth_method: AuthMethod,
 }
