@@ -5468,13 +5468,11 @@ name = "test_kms_server"
 version = "5.25.0"
 dependencies = [
  "actix-server",
- "actix-web",
  "cosmian_kms_client",
  "cosmian_kms_server",
  "cosmian_logger",
  "criterion",
  "futures",
- "jsonwebtoken",
  "openssl",
  "reqwest 0.12.28",
  "serde",

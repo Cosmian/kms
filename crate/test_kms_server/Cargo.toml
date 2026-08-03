@@ -44,9 +44,7 @@ tokio = { workspace = true, features = ["rt-multi-thread"] }
 toml = { workspace = true }
 
 [dev-dependencies]
-actix-web = { workspace = true }
 criterion = { workspace = true }
 futures = { workspace = true }
-jsonwebtoken = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls", "cookies"] }
 zeroize = { workspace = true }
