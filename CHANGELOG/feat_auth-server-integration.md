@@ -60,6 +60,7 @@
 ## Bug Fixes
 
 - Fixed a pre-existing `cfg` mismatch in `cosmian_auth_token.rs`: the `ALLOWED_ALGORITHMS` const (and its `Algorithm` import) were gated on `not(feature = "insecure")` but only ever read under `all(not(test), not(feature = "insecure"))`, making `cargo test -p cosmian_kms_server` fail to compile (`error: constant ALLOWED_ALGORITHMS is never used`) on any normal test build. Aligned both `cfg` attributes.
+- **Auth verifier E2E test fix** — `test_ui_auth.sh` used `http://` URLs for both the curl readiness check and the KMS `auth_verifier_url` config, but the auth verifier starts with **HTTPS** (TLS enabled via `[tls_params]` in its dev.toml). Changed the curl check to `https://` + `--insecure` and the KMS config to `https://`, fixing a 120-second timeout where the auth verifier never appeared ready.
 
 ## Documentation
 
