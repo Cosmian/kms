@@ -168,8 +168,8 @@ for i in $(seq 1 "${_auth_timeout}"); do
     cat "${AUTH_LOG}" >&2
     exit 1
   fi
-  if curl -sS --max-time 2 -o /dev/null -w "%{http_code}" \
-    "http://127.0.0.1:${AUTH_PORT}/.well-known/jwks.json" 2>/dev/null | grep -q '^200$'; then
+  if curl -sS --max-time 2 --insecure -o /dev/null -w "%{http_code}" \
+    "https://127.0.0.1:${AUTH_PORT}/.well-known/jwks.json" 2>/dev/null | grep -q '^200$'; then
     echo "    Authentication Verifier ready after ${i}s"
     break
   fi
@@ -197,7 +197,7 @@ sqlite_path = "${KMS_SQLITE_DIR}"
 clear_database = true
 
 [auth_verifier]
-auth_verifier_url = "http://localhost:${AUTH_PORT}"
+auth_verifier_url = "https://localhost:${AUTH_PORT}"
 auth_verifier_realm = "_"
 auth_verifier_accept_invalid_certs = true
 
