@@ -28,7 +28,7 @@ flowchart LR
 
 | Requirement | Details |
 |---|---|
-| Cosmian KMS ≥ 5.23.0 | Running and reachable from the operator pod |
+| Cosmian KMS ≥ 5.26.0 | Running and reachable from the operator pod |
 | Kubernetes ≥ 1.25 | CRD v1 support |
 | Helm ≥ 3.8 | Used to install the operator |
 | cluster-admin access | Required to install CRDs and ClusterRoleBindings |

@@ -41,7 +41,7 @@ sequenceDiagram
 
 | Requirement | Details |
 |---|---|
-| Cosmian KMS ≥ 5.23.0 | Running and reachable from every control-plane node |
+| Cosmian KMS ≥ 5.26.0 | Running and reachable from every control-plane node |
 | Kubernetes ≥ 1.29 | KMS v2 API is stable from 1.29 |
 | AES-256 KEK | Pre-created in the KMS; record its UID |
 | Linux on control-plane | The plugin uses a Unix socket; Windows and macOS are development-only |

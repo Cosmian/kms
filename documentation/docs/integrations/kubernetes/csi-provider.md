@@ -33,7 +33,7 @@ sequenceDiagram
 
 | Requirement | Details |
 |---|---|
-| Cosmian KMS ≥ 5.23.0 | Running and reachable from every worker node |
+| Cosmian KMS ≥ 5.26.0 | Running and reachable from every worker node |
 | Kubernetes ≥ 1.25 | Secrets Store CSI Driver stable API |
 | Helm ≥ 3.8 | Used to install the CSI driver and the provider |
 | Secrets Store CSI Driver | Installed via Helm (see below) |
