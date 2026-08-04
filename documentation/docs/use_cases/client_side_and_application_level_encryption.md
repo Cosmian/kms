@@ -9,8 +9,6 @@ The KMS offers two mechanisms for encrypting and decrypting data:
   parallelization, concurrency, and optimized batching capabilities.
 - by using the `cosmian` CLI client to encrypt and decrypt data locally, including large files.
 
-[TOC]
-
 ## Calling the KMS API
 
 The KMS provides a high-performance encryption and decryption API for encrypting and decrypting data at scale.

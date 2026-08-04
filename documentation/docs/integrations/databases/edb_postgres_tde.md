@@ -4,8 +4,6 @@ This guide demonstrates how to configure **EDB Postgres Advanced Server 17
 Transparent Data Encryption (TDE)** to use Cosmian KMS as its key management
 server via KMIP over mTLS.
 
-[TOC]
-
 ## Overview
 
 | Item | Details |

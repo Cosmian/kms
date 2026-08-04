@@ -4,8 +4,6 @@ Deploy Eviden KMS on AWS ECS (Fargate) using either a production-ready setup wit
 
 ---
 
-[TOC]
-
 ## Overview
 
 This repository documents two supported ways to run Eviden KMS on AWS ECS.

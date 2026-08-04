@@ -9,8 +9,6 @@ description of Bring Your Own Key (BYOK) in Azure Key Vault,
 The vault must be a `premium` Azure Key Vault, and the user performing the operations
 must have the role of `Crypto Officer`.
 
-[TOC]
-
 ## Create two test keys in the Eviden KMS
 
 These keys will later be exported wrapped by the Azure (KEK) key,

@@ -69,6 +69,7 @@
         - [OpenSSH](integrations/openssh.md)
         - [PyKMIP](integrations/pykmip.md)
         - [S/MIME Email encryption](integrations/smime.md)
+        - [SPIRE / SPIFFE (Zero-Trust M2M)](integrations/spire_spiffe.md)
 - [Installation]()
     - [Getting started](installation/installation_getting_started.md)
     - [Deploying in a Cosmian Confidential VM](installation/marketplace_guide.md)

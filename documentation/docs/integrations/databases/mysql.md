@@ -1,7 +1,5 @@
 # MySQL Enterprise 8.4 + Eviden KMS Integration
 
-[TOC]
-
 ## Executive Summary
 
 This document provides a comprehensive guide for integrating MySQL Enterprise with Eviden Key Management System (KMS) using the `keyring_okv` plugin for Transparent Data Encryption (TDE). This lab demonstrates secure key management and data encryption at rest in a controlled environment.

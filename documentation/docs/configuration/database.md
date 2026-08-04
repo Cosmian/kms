@@ -5,8 +5,6 @@ of databases: SQLite encrypted, [PostgreSQL](https://www.postgresql.org/), [Mari
 [MySQL](https://www.mysql.com/), and [Percona XtraDB Cluster](https://www.percona.com/software/mysql-database/percona-xtradb-cluster),
 as well as [Redis](https://redis.io/), using the [Redis-with-Findex](#redis-with-findex) configuration.
 
-[TOC]
-
 ## Selecting the database
 
 All databases, except SQLite, can be used in a high-availability setup.

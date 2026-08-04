@@ -4,8 +4,6 @@
 
 ---
 
-[TOC]
-
 ## Architecture overview
 
 ```mermaid

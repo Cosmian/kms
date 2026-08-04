@@ -2,8 +2,6 @@
 
 The **KMS User Interface (UI)** is a web-based application served from the **KMS server**, allowing users to perform key management operations easily.
 
-[TOC]
-
 ## Accessing the User Interface
 
 Once the **KMS server** is running, open the following URL in your browser:

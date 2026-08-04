@@ -6,8 +6,6 @@ This integration allows organizations to maintain complete physical control over
 
 The Eviden KMS implementation follows and implements the Microsoft EKM Proxy API Specification for v0.1-preview.
 
-[TOC]
-
 ## High level architecture
 
 ![High level architecture](high_level_arch.png)

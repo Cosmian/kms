@@ -4,8 +4,6 @@ Eviden KMS provides an `aws byok` command in its CLI (also available in the ui) 
 
 The **key material** refers to the actual cryptographic key bytes that form the basis of a KMS key. While AWS KMS keys include additional metadata, policies, and access controls, the BYOK process allows Eviden KMS users to maintain full control over key generation while leveraging AWS KMS's infrastructure for other usages.
 
-[TOC]
-
 ## Overview
 
 Since AWS KMS is a managed service where private key material never leaves AWS HSMs, the key import process requires:

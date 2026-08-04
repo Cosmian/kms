@@ -3,8 +3,6 @@
 The Eviden KMS strives to be compatible with the PyKMIP client library, which is widely used for KMIP protocol interactions.
 This document provides a comprehensive guide to testing and validating PyKMIP compatibility with the Eviden KMS server.
 
-[TOC]
-
 ## Overview
 
 | Item | Details |

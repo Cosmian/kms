@@ -4,8 +4,6 @@ To use [Customer Supplied Encryption Keys](https://cloud.google.com/docs/securit
 follow the general instructions on
 using [RSA wrapping keys](https://cloud.google.com/compute/docs/disks/customer-supplied-encryption?hl=en#rsa-encryption).
 
-[TOC]
-
 ## Generate a symmetric key in Eviden KMS
 
 This is the symmetric key that will be used as the CSEK.

@@ -2,8 +2,6 @@
 
 This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` extension to use Eviden KMS for transparent data encryption (TDE).
 
-[TOC]
-
 ## Overview
 
 | Item | Details |
