@@ -114,7 +114,7 @@
     - [Objects Tagging](kmip_support/tagging.md)
     - [Attributes Extensions](kmip_support/attributes.md)
     - [The JSON TTLV KMIP API](kmip_support/json_ttlv_api.md)
-    - [OpenAPI Specification and Swagger UI](kmip_support/openapi.md)
+    - [OpenAPI Specification and Swagger UI](integrations/openapi.md)
     - [Bulk mode with Messages](kmip_support/messages.md)
     - [Operations](kmip_support/operations.md)
     - [Attributes]()
