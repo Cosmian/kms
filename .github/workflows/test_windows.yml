@@ -63,7 +63,7 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           targets: wasm32-unknown-unknown
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.0.9
         with:
           version: 10.17.1
 
