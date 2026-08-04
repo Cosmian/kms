@@ -293,7 +293,7 @@ where
         VaultTokenResult::Valid(user) => {
             debug!("{log_prefix}: validated entity={}", user.entity);
             req.extensions_mut().insert(AuthenticatedUser {
-                username: user.entity.clone(),
+                username: user.entity.clone().into(),
                 auth_method: AuthMethod::SpireToken,
             });
             req.extensions_mut().insert(user);
@@ -596,7 +596,7 @@ mod tests {
                             .get::<AuthenticatedUser>()
                             .expect("AuthenticatedUser missing");
                         assert_eq!(spire.entity, "spire-entity-42");
-                        assert_eq!(auth.username, "spire-entity-42");
+                        assert_eq!(auth.username.as_str(), "spire-entity-42");
                         HttpResponse::Ok().body("ok")
                     }),
                 ),
@@ -703,7 +703,7 @@ mod tests {
                     web::get().to(|req: actix_web::HttpRequest| async move {
                         let extensions = req.extensions();
                         let auth = extensions.get::<AuthenticatedUser>().unwrap();
-                        HttpResponse::Ok().body(auth.username.clone())
+                        HttpResponse::Ok().body(auth.username.to_string())
                     }),
                 ),
         )
@@ -793,7 +793,7 @@ mod tests {
                         let username = req
                             .extensions()
                             .get::<AuthenticatedUser>()
-                            .map_or_else(|| "none".to_owned(), |u| u.username.clone());
+                            .map_or_else(|| "none".to_owned(), |u| u.username.to_string());
                         HttpResponse::Ok().body(username)
                     }),
                 ),
