@@ -154,6 +154,7 @@ Restart=on-failure
 RestartSec=5s
 RuntimeDirectory=cosmian-kms-plugin
 RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
 
 [Install]
 WantedBy=multi-user.target

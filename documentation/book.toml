@@ -56,6 +56,8 @@ exclude = [
   'dev.mysql.com',
   'techdocs\.broadcom\.com',
   'swagger\.io',
+  # Kubernetes SIG documentation site — resets connections from automated crawlers
+  'secrets-store-csi-driver\.sigs\.k8s\.io',
 ]
 
 [preprocessor.admonish]
