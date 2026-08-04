@@ -20,18 +20,18 @@ workspace = true
 
 [dependencies]
 # Kubernetes
-kube = { version = "0.98", features = ["runtime", "derive", "ws"] }
-k8s-openapi = { version = "0.24", features = ["v1_30"] }
-schemars = "0.8"
+kube = { workspace = true, features = ["runtime", "derive", "ws"] }
+k8s-openapi = { workspace = true, features = ["v1_30"] }
+schemars = { workspace = true }
 
 # Async
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "time"] }
-futures = "0.3"
+futures = { workspace = true }
 
 # Serialization
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-serde_yaml = "0.9"
+serde_yaml = { workspace = true }
 
 # Errors / logging
 thiserror = { workspace = true }
@@ -42,23 +42,23 @@ cosmian_logger = { workspace = true }
 clap = { workspace = true, features = ["help", "env", "std", "usage", "error-context", "derive", "cargo"] }
 
 # HTTP webhook server
-axum = { version = "0.8", features = ["json"] }
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+axum = { workspace = true, features = ["json"] }
+axum-server = { workspace = true, features = ["tls-rustls"] }
 # rustls is a direct dep to force the ring backend (features = ["ring"]); used transitively via axum-server/tls-rustls
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
-rcgen = { version = "0.13", default-features = false, features = ["pem", "ring"] }
+rustls = { workspace = true, features = ["ring"] }
+rcgen = { workspace = true, features = ["pem", "ring"] }
 
 # Hashing (detect secret changes)
-sha2 = "0.10"
+sha2 = { workspace = true }
 chrono = { workspace = true }
 hex = { workspace = true }
 
 # Duration parsing
-humantime = "2"
+humantime = { workspace = true }
 
 # KMS client + KMIP types
-cosmian_kms_client = { path = "../../client", version = "5.24.0" }
-cosmian_kmip = { path = "../../../kmip", version = "5.24.0" }
+cosmian_kms_client = { path = "../../client", version = "5.25.0" }
+cosmian_kmip = { path = "../../../kmip", version = "5.25.0" }
 
 # Encoding
 base64 = { workspace = true }

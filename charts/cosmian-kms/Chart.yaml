@@ -29,6 +29,6 @@ annotations:
       url: https://docs.cosmian.com/installation/kubernetes_helm/
   artifacthub.io/images: |
     - name: kms-fips
-      image: ghcr.io/cosmian/kms-fips:5.24.0
+      image: ghcr.io/cosmian/kms-fips:5.25.0
     - name: kms
-      image: ghcr.io/cosmian/kms:5.24.0
+      image: ghcr.io/cosmian/kms:5.25.0

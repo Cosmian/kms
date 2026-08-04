@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#MISE description="E2E test: Kubernetes KMS operator (init-container inject mode)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/k8s.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+
+NAMESPACE="kms-operator-e2e"
+RELEASE="op-kms"
+
+print_header "KMS operator inject E2E"
+k8s_require_tools
+
+WORK=$(mktemp -d)
+OP_BIN=$(k8s_locate_bin cosmian_kms_k8s_operator cosmian-kms-operator)
+CKMS_BIN=$(k8s_locate_bin ckms ckms)
+
+cleanup() {
+  local rc=$?
+  [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE"
+  if [ -n "${PF_PID:-}" ]; then kill "$PF_PID" 2>/dev/null || true; fi
+  rm -rf "$WORK"
+  return $rc
+}
+trap cleanup EXIT
+
+# ── 1. Deploy KMS and create a known secret ──────────────────────────────────
+k8s_deploy_kms "$NAMESPACE" "$RELEASE"
+kubectl port-forward -n "$NAMESPACE" "svc/${RELEASE}-cosmian-kms" 9998:9998 &
+PF_PID=$!
+k8s_wait_kms_http "http://localhost:9998/version" 30
+CKMS_CONF=$(k8s_ckms_conf "$WORK" "http://localhost:9998")
+
+SECRET_VALUE="operator-injected-$(date +%s)"
+SECRET_UID=$(k8s_create_secret "$CKMS_BIN" "$CKMS_CONF" "$SECRET_VALUE" operator-inject-secret)
+print_status "Created SecretData: $SECRET_UID"
+
+# ── 2. Run the operator in one-shot inject mode ──────────────────────────────
+# inject fetches KMS objects by UID and writes their bytes to <output-dir>/<name>.
+"$OP_BIN" inject \
+  --server-url http://localhost:9998 \
+  --secret-uids "${SECRET_UID}:injected-secret" \
+  --output-dir "$WORK/injected"
+
+OUT_FILE="$WORK/injected/injected-secret"
+[ -s "$OUT_FILE" ] || print_error "inject did not write $OUT_FILE"
+
+# ── 3. TEST: injected file content equals the exact KMS secret value ─────────
+WRITTEN=$(cat "$OUT_FILE")
+[ "$WRITTEN" = "$SECRET_VALUE" ] ||
+  print_error "injected content '$WRITTEN' != expected '$SECRET_VALUE'"
+print_success "operator inject wrote the exact KMS secret value ($(wc -c <"$OUT_FILE") bytes)"
+
+print_success "KMS operator inject E2E completed"

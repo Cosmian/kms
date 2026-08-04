@@ -104,7 +104,11 @@ nav:
           - Snowflake Native App: integrations/big_data/snowflake_native_app/index.md
           - User Defined Function for PySpark, Databricks,... in Python: integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md
       - Container Orchestration:
-          - Kubernetes KMS Provider Plugin: integrations/kubernetes/index.md
+          - Kubernetes: integrations/kubernetes/index.md
+          - Helm Chart Deployment: integrations/kubernetes/helm.md
+          - KMS Provider Plugin: integrations/kubernetes/kms-provider-plugin.md
+          - Secrets Store CSI Driver: integrations/kubernetes/csi-provider.md
+          - Kubernetes Operator: integrations/kubernetes/operator.md
       - Other:
           - FortiGate / FortiOS: integrations/fortigate.md
           - OpenSSH: integrations/openssh.md

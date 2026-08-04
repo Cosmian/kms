@@ -32,11 +32,11 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-cosmian_kms_client = { path = "../../client", version = "5.24.0" }
+cosmian_kms_client = { path = "../../client", version = "5.25.0" }
 cosmian_logger = { workspace = true }
-prost = "0.13"
+prost = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_yaml = "0.9"
+serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
   "rt-multi-thread",
@@ -44,14 +44,14 @@ tokio = { workspace = true, features = [
   "net",
   "signal",
 ] }
-tokio-stream = { version = "0.1", features = ["net"] }
-tonic = { version = "0.12", features = ["transport"] }
+tokio-stream = { workspace = true, features = ["net"] }
+tonic = { workspace = true, features = ["transport"] }
 tracing = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive"] }
 
 [dev-dependencies]
 test_kms_server = { path = "../../../test_kms_server" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
-tower = { version = "0.4" }
+hyper-util = { workspace = true, features = ["tokio"] }
+tower = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

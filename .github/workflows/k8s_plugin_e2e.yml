@@ -1,6 +1,22 @@
 ---
 name: K8s Plugin E2E
 
+# End-to-end tests for the Kubernetes integrations:
+#   - KMS Provider Plugin        (issue #861) — etcd Secret encryption
+#   - Secrets Store CSI Provider (issue #862) — secret file mounts
+#   - KMS operator (inject mode) — bonus
+#
+# Design notes:
+#   * Compilation and unit tests are NOT re-run here — the workspace build,
+#     `cargo test --workspace --lib` and `cargo clippy-all` already run in the
+#     nix `test-nix` jobs (test_all.yml). This workflow only produces runnable
+#     binaries once (build-k8s-bins) and exercises the live-cluster behaviour.
+#   * Helm chart lint/template is covered by `mise run test:helm`; it is not
+#     duplicated here.
+#   * All cluster orchestration lives in the reusable MISE tasks
+#     (.mise/tasks/test/k8s-plugin, csi-provider, k8s-operator) so the workflow
+#     stays thin and the same tests can be run locally.
+
 on:
   workflow_call:
     inputs:
@@ -9,22 +25,16 @@ on:
         type: string
 
 jobs:
-  k8s-plugin-e2e:
-    name: KMS plugin E2E (Minikube)
+  # ── Build the k8s binaries + ckms ONCE, share them with every E2E job ───────
+  build-k8s-bins:
+    name: Build k8s binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
-
+    timeout-minutes: 45
     steps:
-      # ── Checkout ───────────────────────────────────────────────────────
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      # ── Helm lint (fast, no cluster needed) ───────────────────────────
-      - name: Helm lint cosmian-kms chart
-        run: helm lint charts/cosmian-kms/
-
-      # ── Rust toolchain ─────────────────────────────────────────────────
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
@@ -36,11 +46,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-k8s-plugin-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-k8s-bins-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-k8s-plugin-
+            ${{ runner.os }}-cargo-k8s-bins-
 
-      # ── 1. Build all k8s binaries + CLI ───────────────────────────────
       - name: Build k8s binaries and ckms
         run: |
           cargo build --release \
@@ -49,469 +58,68 @@ jobs:
             -p cosmian_kms_csi_provider \
             -p ckms
 
-      # ── 1b. Unit tests for all k8s crates ─────────────────────────────
-      - name: Unit tests (k8s crates)
-        run: |
-          cargo test --lib \
-            -p cosmian_kms_k8s_plugin \
-            -p cosmian_kms_k8s_operator \
-            -p cosmian_kms_csi_provider
+      - name: Upload binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-e2e-bins
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            target/release/cosmian-kms-plugin
+            target/release/cosmian-kms-operator
+            target/release/cosmian-kms-csi-provider
+            target/release/ckms
 
-      # ── 2. Start Minikube ─────────────────────────────────────────────
+  # ── Run each E2E scenario on its own fresh Minikube cluster ─────────────────
+  e2e:
+    name: ${{ matrix.scenario }} (Minikube)
+    needs: build-k8s-bins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: k8s-plugin
+            task: test:k8s-plugin
+          - scenario: k8s-plugin-mtls
+            task: test:k8s-plugin --mtls
+          - scenario: csi-provider
+            task: test:csi-provider
+          - scenario: k8s-operator
+            task: test:k8s-operator
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Download prebuilt binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: k8s-e2e-bins
+          path: target/release
+
+      - name: Make binaries executable
+        run: |
+          chmod +x \
+            target/release/cosmian-kms-plugin \
+            target/release/cosmian-kms-operator \
+            target/release/cosmian-kms-csi-provider \
+            target/release/ckms
+
       - name: Start Minikube
-        uses: medyagh/setup-minikube@latest
+        uses: medyagh/setup-minikube@v0.0.18
         with:
           driver: docker
           kubernetes-version: v1.32.0
 
-      # ── 3. Deploy Cosmian KMS inside the cluster via Helm ─────────────
-      # Deploying KMS inside the cluster removes the need for docker network
-      # bridging and IP inspection: the server is reachable from the plugin
-      # via the stable in-cluster ClusterIP of the Helm-managed Service.
-      - name: Deploy Cosmian KMS via Helm
-        run: |
-          kubectl create namespace kms-plugin-e2e
-          helm install my-kms charts/cosmian-kms \
-            --namespace kms-plugin-e2e \
-            --set kms.database.type=sqlite \
-            --set image.tag=latest \
-            --wait --timeout 120s
-          echo "KMS deployed and ready"
-
-      # ── 4. Create the wrapping key (KEK) in the KMS ───────────────────
-      # kubectl port-forward exposes the in-cluster KMS to the runner so the
-      # ckms CLI can reach it without a NodePort. The ClusterIP is captured
-      # separately for the plugin config (plugin runs on the minikube node,
-      # outside any pod, so cluster DNS is not available but ClusterIP is).
-      - name: Create wrapping key (KEK)
-        run: |
-          kubectl port-forward -n kms-plugin-e2e \
-            svc/my-kms-cosmian-kms 9998:9998 &
-          PF_PID=$!
-          trap "kill $PF_PID 2>/dev/null || true" EXIT
-
-          timeout 30 bash -c \
-            'until curl -sf http://localhost:9998/version > /dev/null; do sleep 1; done'
-
-          OUTPUT=$(KMS_DEFAULT_URL=http://localhost:9998 \
-            ./target/release/ckms sym keys create \
-              --algorithm aes \
-              --number-of-bits 256 \
-              --tag kms-plugin-kek)
-          echo "$OUTPUT"
-
-          KEK_UID=$(echo "$OUTPUT" | grep -ioP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
-          [ -n "$KEK_UID" ] || { echo "ERROR: could not parse KEK UID from output"; exit 1; }
-          echo "KEK_UID=$KEK_UID" >> "$GITHUB_ENV"
-          echo "Created KEK: $KEK_UID"
-
-          KMS_CLUSTER_IP=$(kubectl get svc -n kms-plugin-e2e my-kms-cosmian-kms \
-            -o jsonpath='{.spec.clusterIP}')
-          echo "KMS_CLUSTER_IP=$KMS_CLUSTER_IP" >> "$GITHUB_ENV"
-          echo "KMS ClusterIP: $KMS_CLUSTER_IP"
-
-      # ── 5. Install plugin binary in the Minikube node ─────────────────
-      - name: Install plugin binary in Minikube node
-        run: |
-          minikube cp ./target/release/cosmian-kms-plugin \
-            /usr/local/bin/cosmian-kms-plugin
-          minikube ssh -- sudo chmod +x /usr/local/bin/cosmian-kms-plugin
-          minikube ssh -- sudo mkdir -p /etc/cosmian-kms-plugin
-
-      # ── 6. Write plugin config ─────────────────────────────────────────
-      # The plugin runs as a systemd service on the minikube node (not inside
-      # a pod), so cluster DNS is unavailable. The ClusterIP is always routable
-      # from within the minikube node via the in-cluster iptables rules.
-      - name: Write plugin config
-        run: |
-          cat > /tmp/cosmian-kms-plugin-config.yaml << EOF
-          cosmian_kms:
-            server_url: http://$KMS_CLUSTER_IP:9998
-            wrapping_key_uid: $KEK_UID
-            socket_path: /var/run/cosmian-kms-plugin/kms.sock
-          EOF
-
-          minikube cp /tmp/cosmian-kms-plugin-config.yaml \
-            /etc/cosmian-kms-plugin/config.yaml
-
-      # ── 8. Install and start plugin via systemd ────────────────────────
-      # systemd manages the RuntimeDirectory (/run/cosmian-kms-plugin) with
-      # correct permissions before ExecStart — avoids the nohup/quoting issues
-      # and gives kube-apiserver a fully-ready gRPC server to connect to.
-      - name: Install and start plugin via systemd
-        run: |
-          cat > /tmp/cosmian-kms-plugin.service << 'UNIT'
-          [Unit]
-          Description=Cosmian KMS Kubernetes Plugin
-          Documentation=https://docs.cosmian.com/key_management_system/
-          After=network-online.target
-          Wants=network-online.target
-
-          [Service]
-          Type=simple
-          ExecStart=/usr/local/bin/cosmian-kms-plugin \
-            --config /etc/cosmian-kms-plugin/config.yaml
-          Restart=on-failure
-          RestartSec=5s
-          RuntimeDirectory=cosmian-kms-plugin
-          RuntimeDirectoryMode=0755
-
-          [Install]
-          WantedBy=multi-user.target
-          UNIT
-
-          minikube cp /tmp/cosmian-kms-plugin.service \
-            /tmp/cosmian-kms-plugin.service
-          minikube ssh -- sudo cp /tmp/cosmian-kms-plugin.service \
-            /etc/systemd/system/cosmian-kms-plugin.service
-          minikube ssh -- sudo systemctl daemon-reload
-          minikube ssh -- sudo systemctl enable --now cosmian-kms-plugin
-
-          # Wait for the service to be active and the socket to exist.
-          # Note: minikube ssh returns CRLF line endings, so strip \r before grepping.
-          echo "Waiting for plugin service to be active (max 60s)..."
-          timeout 60 bash -c \
-            'until minikube ssh -- sudo systemctl is-active cosmian-kms-plugin 2>/dev/null \
-               | tr -d "\r" | grep -q "^active$"; do
-               echo "  waiting for service..."
-               sleep 3
-             done'
-
-          echo "Waiting for plugin socket (max 30s)..."
-          timeout 30 bash -c \
-            'until minikube ssh -- sudo test -S /var/run/cosmian-kms-plugin/kms.sock 2>/dev/null; do
-               echo "  waiting for socket..."
-               sleep 2
-             done'
-          echo "Plugin socket ready"
-
-      # ── 9. Configure etcd encryption ──────────────────────────────────
-      - name: Write EncryptionConfiguration
-        run: |
-          minikube ssh -- sudo mkdir -p /etc/kubernetes/enc
-
-          cat > /tmp/encryption-config.yaml << 'EOF'
-          apiVersion: apiserver.config.k8s.io/v1
-          kind: EncryptionConfiguration
-          resources:
-            - resources:
-                - secrets
-              providers:
-                - kms:
-                    apiVersion: v2
-                    name: cosmian-kms
-                    endpoint: unix:///var/run/cosmian-kms-plugin/kms.sock
-                    timeout: 5s
-                - identity: {}
-          EOF
-
-          minikube cp /tmp/encryption-config.yaml /etc/kubernetes/enc/config.yaml
-
-      - name: Patch kube-apiserver static pod to enable encryption
-        run: |
-          minikube ssh -- sudo apt-get update -qq
-          minikube ssh -- sudo apt-get install -y python3-yaml -qq
-
-          minikube cp .github/scripts/patch-kube-apiserver.py \
-            /tmp/patch-apiserver.py
-          minikube ssh -- sudo python3 /tmp/patch-apiserver.py
-
-      - name: Wait for apiserver to restart with encryption enabled
-        run: |
-          sleep 15
-
-          echo "Waiting for kube-apiserver to come back (max 180s)..."
-          timeout 180 bash -c \
-            'until kubectl get nodes --request-timeout=5s 2>/dev/null 1>/dev/null; do
-               echo "  apiserver not ready yet, retrying in 5s..."
-               sleep 5
-             done'
-          echo "kube-apiserver is ready"
-
-          echo "Waiting for KMS provider to be healthy (max 120s)..."
-          # Kubernetes KMS v2 registers a combined "kms-providers" healthz check
-          # (plural, not per-provider). This check calls Status() on all configured
-          # KMS providers and returns ok only if all succeed.
-          timeout 120 bash -c \
-            'until kubectl get --raw "/healthz/kms-providers" 2>/dev/null | grep -q "^ok$"; do
-               echo "  KMS provider not ready yet, retrying in 5s..."
-               sleep 5
-             done'
-          echo "KMS provider is healthy"
-
-          kubectl get nodes
-
-      # ── 10. Tests ─────────────────────────────────────────────────────
-      - name: Test - create a Kubernetes Secret
-        run: |
-          kubectl create secret generic cosmian-test-secret \
-            --from-literal=password=supersecret \
-            --from-literal=token=abc123xyz
-
-      - name: Test - verify secret is encrypted at rest in etcd
-        run: |
-          # minikube stores etcd certs at /var/lib/minikube/certs/etcd/
-          # (different from kubeadm which uses /etc/kubernetes/pki/etcd/)
-          RAW=$(kubectl exec -n kube-system etcd-minikube -- \
-            etcdctl \
-              --endpoints=https://127.0.0.1:2379 \
-              --cacert=/var/lib/minikube/certs/etcd/ca.crt \
-              --cert=/var/lib/minikube/certs/etcd/server.crt \
-              --key=/var/lib/minikube/certs/etcd/server.key \
-              get /registry/secrets/default/cosmian-test-secret 2>&1 | cat)
-
-          echo "$RAW" | grep -q "k8s:enc:kms:v2:cosmian-kms:" || {
-            echo "FAIL: secret is NOT encrypted in etcd"
-            echo "--- etcd raw value ---"
-            echo "$RAW"
-            exit 1
-          }
-          echo "PASS: secret is encrypted in etcd (k8s:enc:kms:v2:cosmian-kms: prefix present)"
-
-      - name: Test - verify secret decrypts correctly via kubectl
-        run: |
-          VALUE=$(kubectl get secret cosmian-test-secret \
-            -o jsonpath='{.data.password}' | base64 -d)
-          [ "$VALUE" = "supersecret" ] || {
-            echo "FAIL: decrypted value '$VALUE' != 'supersecret'"
-            exit 1
-          }
-          echo "PASS: secret decrypts to expected plaintext"
-
-      # ── 11. Operator E2E — inject mode ────────────────────────────────
-      # Tests the operator's init-container injection path: fetch a KMS object
-      # by UID and write its bytes to a local file.  This validates the
-      # KmsClient plumbing without requiring a full in-cluster controller.
-      - name: Test - operator inject mode writes secret file
-        run: |
-          # Port-forward closed after step 4 (trap EXIT). Open a new one.
-          kubectl port-forward -n kms-plugin-e2e \
-            svc/my-kms-cosmian-kms 9998:9998 &
-          PF2_PID=$!
-          trap "kill $PF2_PID 2>/dev/null || true" EXIT
-
-          timeout 30 bash -c \
-            'until curl -sf http://localhost:9998/version > /dev/null; do sleep 1; done'
-
-          INJECT_DIR=$(mktemp -d)
-
-          # inject is a one-shot command: fetch KMS object and write to disk.
-          ./target/release/cosmian-kms-operator inject \
-            --server-url http://localhost:9998 \
-            --secret-uids "${KEK_UID}:kek-bytes" \
-            --output-dir "${INJECT_DIR}"
-
-          [ -s "${INJECT_DIR}/kek-bytes" ] || {
-            echo "FAIL: inject did not write ${INJECT_DIR}/kek-bytes"
-            exit 1
-          }
-          FILE_SIZE=$(wc -c < "${INJECT_DIR}/kek-bytes")
-          echo "PASS: operator inject wrote ${FILE_SIZE} bytes to kek-bytes"
-
-      # ── 12. CSI Provider E2E ───────────────────────────────────────────
-      # Installs the upstream Secrets Store CSI Driver via Helm, then runs
-      # cosmian-kms-csi-provider as a systemd service on the Minikube node.
-      # A SecretProviderClass + Pod verify the end-to-end mount path.
-      - name: Install Secrets Store CSI Driver
-        run: |
-          helm repo add secrets-store-csi-driver \
-            https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
-          helm install csi-secrets-store \
-            secrets-store-csi-driver/secrets-store-csi-driver \
-            --namespace kube-system \
-            --set syncSecret.enabled=false \
-            --wait --timeout 90s
-          echo "CSI Driver installed"
-
-      - name: Install CSI provider binary on Minikube node
-        run: |
-          minikube cp ./target/release/cosmian-kms-csi-provider \
-            /usr/local/bin/cosmian-kms-csi-provider
-          minikube ssh -- sudo chmod +x /usr/local/bin/cosmian-kms-csi-provider
-          minikube ssh -- sudo mkdir -p /etc/cosmian-kms-csi
-
-      - name: Write CSI provider config
-        run: |
-          # The Secrets Store CSI Driver expects the provider socket at:
-          # /etc/kubernetes/secrets-store-csi-providers/<provider-name>.sock
-          # where <provider-name> matches spec.provider in SecretProviderClass.
-          cat > /tmp/cosmian-kms-csi-config.yaml << EOF
-          cosmian_kms:
-            server_url: http://$KMS_CLUSTER_IP:9998
-            socket_path: /etc/kubernetes/secrets-store-csi-providers/cosmian-kms.sock
-          EOF
-
-          minikube cp /tmp/cosmian-kms-csi-config.yaml \
-            /etc/cosmian-kms-csi/config.yaml
-
-      - name: Install and start CSI provider via systemd
-        run: |
-          cat > /tmp/cosmian-kms-csi-provider.service << 'UNIT'
-          [Unit]
-          Description=Cosmian KMS Secrets Store CSI Driver Provider
-          After=network-online.target
-          Wants=network-online.target
-
-          [Service]
-          Type=simple
-          ExecStartPre=/bin/mkdir -p /etc/kubernetes/secrets-store-csi-providers
-          ExecStart=/usr/local/bin/cosmian-kms-csi-provider \
-            --config /etc/cosmian-kms-csi/config.yaml
-          Restart=on-failure
-          RestartSec=5s
-
-          [Install]
-          WantedBy=multi-user.target
-          UNIT
-
-          minikube cp /tmp/cosmian-kms-csi-provider.service \
-            /tmp/cosmian-kms-csi-provider.service
-          minikube ssh -- sudo cp /tmp/cosmian-kms-csi-provider.service \
-            /etc/systemd/system/cosmian-kms-csi-provider.service
-          minikube ssh -- sudo systemctl daemon-reload
-          minikube ssh -- sudo systemctl enable --now cosmian-kms-csi-provider
-
-          echo "Waiting for CSI provider socket (max 30s)..."
-          timeout 30 bash -c \
-            'until minikube ssh -- sudo test -S \
-               /etc/kubernetes/secrets-store-csi-providers/cosmian-kms.sock 2>/dev/null; do
-               sleep 2
-             done'
-          echo "CSI provider socket ready"
-
-      - name: Create SecretProviderClass
-        run: |
-          # The KEK (AES-256 symmetric key) already in KMS is used as the
-          # test secret — its 32 raw bytes will be written as the file.
-          OBJECTS_YAML=$(printf -- '- objectName: kek-file\n  kmsUID: %s\n  objectVersion: ""\n' "$KEK_UID")
-
-          kubectl apply -f - << EOF
-          apiVersion: secrets-store.csi.x-k8s.io/v1
-          kind: SecretProviderClass
-          metadata:
-            name: cosmian-kms-test
-          spec:
-            provider: cosmian-kms
-            parameters:
-              objects: |
-          $(echo "$OBJECTS_YAML" | sed 's/^/        /')
-          EOF
-
-      - name: Deploy test pod with CSI secret volume
-        run: |
-          kubectl apply -f - << 'EOF'
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: csi-test-pod
-          spec:
-            containers:
-              - name: test
-                image: busybox:1.36
-                imagePullPolicy: IfNotPresent
-                command: ["sleep", "300"]
-                volumeMounts:
-                  - name: secrets-vol
-                    mountPath: /mnt/secrets
-                    readOnly: true
-            volumes:
-              - name: secrets-vol
-                csi:
-                  driver: secrets-store.csi.k8s.io
-                  readOnly: true
-                  volumeAttributes:
-                    secretProviderClass: cosmian-kms-test
-          EOF
-
-          kubectl wait pod/csi-test-pod \
-            --for=condition=Ready --timeout=60s
-
-      - name: Test - verify CSI secret file is mounted in pod
-        run: |
-          FILE_SIZE=$(kubectl exec csi-test-pod -- \
-            sh -c 'wc -c < /mnt/secrets/kek-file')
-          [ "${FILE_SIZE:-0}" -gt 0 ] || {
-            echo "FAIL: /mnt/secrets/kek-file is empty or missing"
-            exit 1
-          }
-          echo "PASS: CSI secret file mounted with ${FILE_SIZE} bytes"
-
-      # ── 13. Debug output on failure ───────────────────────────────────
-      - name: Debug info on failure
-        if: failure()
-        run: |
-          echo "=== Plugin service status ==="
-          minikube ssh -- sudo systemctl status cosmian-kms-plugin --no-pager 2>/dev/null || true
-
-          echo ""
-          echo "=== Plugin logs (journald) ==="
-          minikube ssh -- sudo journalctl -u cosmian-kms-plugin -n 50 --no-pager 2>/dev/null || true
-
-          echo ""
-          echo "=== KMS server logs (in-cluster) ==="
-          kubectl logs -n kms-plugin-e2e -l app.kubernetes.io/instance=my-kms \
-            --tail=50 2>/dev/null || true
-
-          echo ""
-          echo "=== Helm release status ==="
-          helm status my-kms -n kms-plugin-e2e 2>/dev/null || true
-
-          echo ""
-          echo "=== kube-apiserver manifest ==="
-          minikube ssh -- sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml 2>/dev/null || true
-
-          echo ""
-          echo "=== kube-apiserver pod logs (last 200 lines) ==="
-          kubectl logs -n kube-system \
-            -l component=kube-apiserver \
-            --tail=200 2>/dev/null || true
-
-          echo ""
-          echo "=== EncryptionConfiguration ==="
-          minikube ssh -- sudo cat /etc/kubernetes/enc/config.yaml 2>/dev/null || true
-
-          echo ""
-          echo "=== Plugin config ==="
-          minikube ssh -- sudo cat /etc/cosmian-kms-plugin/config.yaml 2>/dev/null || true
-
-          echo ""
-          echo "=== Socket and directory permissions ==="
-          minikube ssh -- sudo ls -la /var/run/cosmian-kms-plugin/ 2>/dev/null || true
-          minikube ssh -- sudo ls -la /run/cosmian-kms-plugin/ 2>/dev/null || true
-
-          echo ""
-          echo "=== kube-apiserver process UID ==="
-          minikube ssh -- "sudo ps -eo pid,user,uid,cmd | grep kube-apiserver | grep -v grep" 2>/dev/null || true
-
-          echo ""
-          echo "=== All healthz checks (verbose) ==="
-          kubectl get --raw "/healthz?verbose" 2>&1 || true
-
-          echo ""
-          echo "=== KMS providers healthz ==="
-          kubectl get --raw "/healthz/kms-providers" 2>&1 || true
-
-          echo ""
-          echo "=== KMS connectivity from minikube ==="
-          minikube ssh -- curl -sv --max-time 5 "http://$KMS_CLUSTER_IP:9998/version" 2>&1 || echo "(not reachable)"
-
-          echo ""
-          echo "=== CSI provider service status ==="
-          minikube ssh -- sudo systemctl status cosmian-kms-csi-provider --no-pager 2>/dev/null || true
-
-          echo ""
-          echo "=== CSI provider logs ==="
-          minikube ssh -- sudo journalctl -u cosmian-kms-csi-provider -n 50 --no-pager 2>/dev/null || true
-
-          echo ""
-          echo "=== CSI provider socket ==="
-          minikube ssh -- sudo ls -la /etc/kubernetes/secrets-store-csi-providers/ 2>/dev/null || true
-
-          echo ""
-          echo "=== CSI test pod describe ==="
-          kubectl describe pod/csi-test-pod 2>/dev/null || true
-
-          echo ""
-          echo "=== Secrets Store CSI Driver logs ==="
-          kubectl logs -n kube-system -l app=secrets-store-csi-driver \
-            --tail=50 2>/dev/null || true
+      - name: Run ${{ matrix.scenario }} E2E
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mise run ${{ matrix.task }}

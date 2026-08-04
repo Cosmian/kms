@@ -30,14 +30,14 @@ clap = { workspace = true, features = [
   "derive",
   "cargo",
 ] }
-cosmian_kms_client = { path = "../../client", version = "5.24.0" }
+cosmian_kms_client = { path = "../../client", version = "5.25.0" }
 cosmian_logger = { workspace = true }
-prost = "0.13"
+prost = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = "1"
-serde_yaml = "0.9"
-sha2 = { version = "0.10", default-features = false }
-hex = "0.4"
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
   "rt-multi-thread",
@@ -45,8 +45,8 @@ tokio = { workspace = true, features = [
   "net",
   "signal",
 ] }
-tokio-stream = { version = "0.1", features = ["net"] }
-tonic = { version = "0.12", features = ["transport"] }
+tokio-stream = { workspace = true, features = ["net"] }
+tonic = { workspace = true, features = ["transport"] }
 tracing = { workspace = true }
 zeroize = { workspace = true, features = ["zeroize_derive"] }
 
