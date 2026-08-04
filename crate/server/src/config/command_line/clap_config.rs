@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 use super::{
     GoogleCseConfig, HsmConfig, HttpConfig, IdpAuthConfig, JwksEndpointConfig, KmipPolicyConfig,
     MainDBConfig, WorkspaceConfig, logging::LoggingConfig, secret_backends::SecretBackendConfig,
-    ui_config::UiConfig,
+    ui_config::UiConfig, vault_config::VaultConfig,
 };
 use crate::{
-    config::{AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
+    config::{AuthVerifierConfig, AzureEkmConfig, ProxyConfig, SocketServerConfig, TlsConfig},
     error::KmsError,
     result::KResult,
     routes::aws_xks::AwsXksConfig,
@@ -52,6 +52,7 @@ impl Default for ClapConfig {
             proxy: ProxyConfig::default(),
             kms_public_url: None,
             idp_auth: IdpAuthConfig::default(),
+            auth_verifier: AuthVerifierConfig::default(),
             ui_config: UiConfig::default(),
             google_cse_config: GoogleCseConfig::default(),
             workspace: WorkspaceConfig::default(),
@@ -75,6 +76,7 @@ impl Default for ClapConfig {
             keyset_warn_depth: 5,
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
+            vault: VaultConfig::default(),
         }
     }
 }
@@ -178,6 +180,9 @@ pub struct ClapConfig {
     #[command(flatten)]
     pub idp_auth: IdpAuthConfig,
 
+    #[clap(flatten)]
+    pub auth_verifier: AuthVerifierConfig,
+
     #[command(flatten)]
     pub ui_config: UiConfig,
 
@@ -242,6 +247,11 @@ pub struct ClapConfig {
 
     #[command(flatten)]
     pub jwks_endpoint: JwksEndpointConfig,
+
+    /// Configuration for the Vault-compatible REST API (`/v1/transit/` and `/v1/<pki_mount>/`).
+    #[command(flatten)]
+    #[serde(default)]
+    pub vault: VaultConfig,
 }
 
 impl ClapConfig {
@@ -723,6 +733,11 @@ impl fmt::Debug for ClapConfig {
             &self.auto_rotation_check_interval_secs,
         );
         let x = x.field("keyset_warn_depth", &self.keyset_warn_depth);
+        let x = if self.auth_verifier.is_enabled() {
+            x.field("auth_verifier_url", &self.auth_verifier.auth_verifier_url)
+        } else {
+            x
+        };
 
         x.finish()
     }

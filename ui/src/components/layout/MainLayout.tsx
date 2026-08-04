@@ -21,7 +21,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const [serverHealthLatencyMs, setServerHealthLatencyMs] = useState<number | null>(null);
     const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
-    const { logout, idToken, serverUrl, userId } = useAuth();
+    const { logout, serverUrl, userId } = useAuth();
     const [downloadTarget, setDownloadTarget] = useState<string>();
     const [currentUser, setCurrentUser] = useState<string | null>(null);
 
@@ -33,19 +33,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
     const serverHealthMarker = isServerHealthy ? "🟢" : "🔴";
 
     const fetchServerInfo = useCallback(async () => {
-        if (idToken || authMethod != "JWT") {
+        if (authMethod != "JWT" || userId) {
             try {
-                const version = await getNoTTLVRequest("/version", idToken, serverUrl);
+                const version = await getNoTTLVRequest("/version", serverUrl);
                 setServerVersion(version);
-                const health = await getNoTTLVRequestWithTimeout("/health", idToken, serverUrl, 2_000);
+                const health = await getNoTTLVRequestWithTimeout("/health", serverUrl, 2_000);
                 setServerHealth(health?.status ?? "Unavailable");
                 setServerHealthLatencyMs(typeof health?.latency_ms === "number" ? health.latency_ms : null);
-                const info = await getNoTTLVRequest("/server-info", idToken, serverUrl);
+                const info = await getNoTTLVRequest("/server-info", serverUrl);
                 setServerInfo(info as ServerInfo);
                 // Fetch the authenticated username via /me (runs through auth middleware).
                 // This correctly returns the cert CN for CERT auth.
                 try {
-                    const me = await getNoTTLVRequest("/me", idToken, serverUrl);
+                    const me = await getNoTTLVRequest("/me", serverUrl);
                     if (me && typeof me === "object" && "user" in me) {
                         setCurrentUser((me as { user: string }).user);
                     }
@@ -63,7 +63,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         } else {
             setLoading(false);
         }
-    }, [authMethod, idToken, serverUrl]);
+    }, [authMethod, serverUrl]);
 
     const downloadCliUrl = "/download-cli";
 
@@ -73,9 +73,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
             const response = await fetch(kmsUrl, {
                 method: "HEAD",
                 credentials: "include",
-                headers: {
-                    ...(idToken && { Authorization: `Bearer ${idToken}` }),
-                },
             });
 
             if (response.status == 200) {
@@ -87,7 +84,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
         }
 
         setDownloadTarget("https://package.cosmian.com/kms");
-    }, [downloadCliUrl, idToken, serverUrl]);
+    }, [downloadCliUrl, serverUrl]);
 
     useEffect(() => {
         fetchServerInfo();
@@ -128,14 +125,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ isDarkMode, setIsDarkMode, auth
                             checkedChildren={<MoonOutlined />}
                             unCheckedChildren={<SunOutlined />}
                         />
-                        {authMethod === "JWT" ? (
+                        {authMethod === "JWT" || authMethod === "AUTH_VERIFIER" ? (
                             <div className="flex justify-center items-center h-full overflow-hidden ml-4">
                                 {userId && (
-                                    <Tag className="truncate text-sm leading-tight" color="purple">
+                                    <Tag className="truncate text-sm leading-tight" color="purple" data-testid="session-user-tag">
                                         {userId}
                                     </Tag>
                                 )}
-                                <Button onClick={handleLogout} className="w-18 ml-4">
+                                <Button onClick={handleLogout} className="w-18 ml-4" data-testid="logout-btn">
                                     Logout
                                 </Button>
                             </div>

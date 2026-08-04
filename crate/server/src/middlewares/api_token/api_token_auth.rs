@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use actix_web::{dev::ServiceRequest, http::header};
+use actix_web::dev::ServiceRequest;
 use base64::Engine;
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_types::{ErrorReason, State},
@@ -15,7 +15,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
 use cosmian_logger::{debug, error, trace};
 use subtle::ConstantTimeEq;
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, middlewares::extract_bearer_token, result::KResult};
 
 /// Retrieves the API token from the KMS database
 ///
@@ -90,29 +90,12 @@ pub(super) async fn handle_api_token(kms_server: &Arc<KMS>, req: &ServiceRequest
     let api_token = get_api_token(kms_server, api_token_id.as_str()).await?;
 
     // Extract the token from the Authorization header
-    let auth_header = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .ok_or_else(|| KmsError::InvalidRequest("Missing Authorization header".to_owned()))?
-        .to_str()
-        .map_err(|e| {
-            KmsError::InvalidRequest(format!("Error converting header value to string: {e:?}"))
-        })?;
+    let token_part = extract_bearer_token(req)?;
 
     trace!(
         "[api_token_auth] Authorization header received (length: {} chars)",
-        auth_header.len()
+        token_part.len()
     );
-
-    // Support case-insensitive bearer scheme and robust splitting
-    let mut parts = auth_header.splitn(2, ' ');
-    let scheme = parts.next().unwrap_or("");
-    let token_part = parts.next().unwrap_or("");
-    if !scheme.eq_ignore_ascii_case("Bearer") || token_part.is_empty() {
-        return Err(KmsError::InvalidRequest(format!(
-            "Invalid Authorization header format: expected: \"Bearer <API_TOKEN>\", got: {auth_header}"
-        )));
-    }
 
     // Normalize the client token for comparison
     let client_token = token_part.trim().to_lowercase();

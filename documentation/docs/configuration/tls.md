@@ -1,3 +1,5 @@
+# Enabling TLS
+
 The KMS activates two internal listeners: a socket server and an HTTP server.
 
 The socket server listens to KMIP binary requests on the IANA-registered 5696 port.
@@ -13,7 +15,7 @@ Check the [running in a zero-trust environment](../installation/marketplace_guid
 
 To enable TLS, one can provide certificates on the command line interface.
 
-### Providing certificates
+## Providing certificates
 
 The KMS server supports two certificate formats depending on the build variant:
 
@@ -31,7 +33,7 @@ The KMS server supports two certificate formats depending on the build variant:
 When enabling client certificate authentication, the server's authority X509 certificate in PEM format must also be
 provided (for both modes). Multiple CA certificates can be concatenated in a single PEM file to support different certificate authorities.
 
-### Configuration using the TOML configuration file
+## Configuration using the TOML configuration file
 
 Certificate information must be provided in the `[tls]` section of the TOML configuration file.
 
@@ -83,7 +85,7 @@ clients_ca_cert_file = "[authority cert file]"
 tls_cipher_suites = "[cipher suites]"
 ```
 
-#### Configuring using the command line
+### Configuring using the command line
 
 Certificate information can be provided using the command line interface.
 
@@ -120,7 +122,7 @@ openssl pkcs12 -export \
 
 ## Advanced TLS Configuration
 
-### TLS Protocol Versions
+## TLS Protocol Versions
 
 By default, the KMS server accepts both **TLS 1.2 and TLS 1.3** connections.
 Internally it uses the OpenSSL `mozilla_intermediate_v5` profile, which sets TLS 1.2 as
@@ -155,7 +157,7 @@ at least one TLS 1.2 cipher suite:
 
 ---
 
-### TLS Cipher Suites Selection
+## TLS Cipher Suites Selection
 
 The KMS server supports custom TLS cipher suite configuration to meet specific security requirements.
 You can specify which cipher suites to enable using a colon-separated list.
@@ -180,7 +182,7 @@ If only TLS 1.2 cipher suites are specified, the server will support TLS 1.2 and
 --tls-cipher-suites "TLS_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 ```
 
-### Multiple Certificate Authorities
+## Multiple Certificate Authorities
 
 The KMS server supports multiple certificate authorities for client certificate validation.
 You can concatenate multiple CA certificates in PEM format into a single file.

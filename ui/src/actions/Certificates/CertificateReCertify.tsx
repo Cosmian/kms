@@ -15,7 +15,7 @@ interface CertificateReCertifyFormData {
 
 const CertificateReCertifyForm: React.FC = () => {
     const [form] = Form.useForm<CertificateReCertifyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CertificateReCertifyFormData) => {
         const normalize = (v?: string) => (v?.trim() ? v.trim() : undefined);
@@ -27,7 +27,7 @@ const CertificateReCertifyForm: React.FC = () => {
                 values.numberOfDays,
                 values.tags,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_re_certify_ttlv_response(result_str);
                 return `Certificate successfully re-certified with new ID: ${response.UniqueIdentifier}`;

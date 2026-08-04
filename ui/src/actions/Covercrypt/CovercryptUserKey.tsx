@@ -20,7 +20,7 @@ More examples:
 
 const CovercryptUserKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptUserKeyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: CovercryptUserKeyFormData) => {
         await execute(async () => {
@@ -31,7 +31,7 @@ const CovercryptUserKeyForm: React.FC = () => {
                 values.sensitive,
                 values.wrappingKeyId,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result = await parse_create_ttlv_response(result_str);
                 return `${result.UniqueIdentifier} has been created.`;

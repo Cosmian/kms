@@ -1,6 +1,8 @@
+# Trustway Proteccio
+
 Eviden KMS natively integrates with the [Trustway Proteccio](https://eviden.com/solutions/digital-security/data-encryption/trustway-proteccio-nethsm/) HSM.
 
-### Proteccio library setup
+## Proteccio library setup
 
 This solution works on Linux (x86_64) and has been validated against the Proteccio `nethsm` library version 3.17.
 
@@ -9,7 +11,7 @@ The KMS expects:
 - the Proteccio `nethsm` library to be installed in `/lib/libnethsm.so`
 - and the Proteccio configuration files in `/etc/proteccio`.
 
-#### `/etc/proteccio` configuration files
+### `/etc/proteccio` configuration files
 
 The Proteccio client library reads its configuration from `/etc/proteccio`. The directory must contain the
 following files:
@@ -53,7 +55,7 @@ monitoring daemon and records HSM availability events. It is not read by the KMS
 Please run the `nethsmstatus` tool to check the status of the HSM before proceeding with the
 rest of the installation.
 
-### KMS configuration
+## KMS configuration
 
 At least one slot and its corresponding password must be configured. Any slot and any number of slots may be used.
 

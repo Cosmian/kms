@@ -29,7 +29,7 @@ const SPECIFICATION_EXAMPLE = `{
 
 const CovercryptMasterKeyForm: React.FC = () => {
     const [form] = Form.useForm<CovercryptMasterKeyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [specificationType, setSpecificationType] = React.useState<"json-file" | "json-text">("json-file");
 
     const onFinish = async (values: CovercryptMasterKeyFormData) => {
@@ -40,7 +40,7 @@ const CovercryptMasterKeyForm: React.FC = () => {
                 values.sensitive,
                 values.wrappingKeyId,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result = await parse_create_keypair_ttlv_response(result_str);
                 return `Key pair has been created. Private key Id: ${result.PrivateKeyUniqueIdentifier} - Public key Id: ${result.PublicKeyUniqueIdentifier}`;

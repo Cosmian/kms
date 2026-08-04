@@ -1,24 +1,26 @@
+# Other HSMs
+
 Integration of other HSMs is supported on **Linux (x86_64)**.
 
 Even if your HSM is not explicitly listed in this documentation, there is a great chance that it will work, in
 particular its PKCS#11 driver API is compatible with that of SofHsmV2.
 
-### Library setup
+## Library setup
 
 The KMS expects the HSM linux PKCS#11 library to be installed at `/lib/libkmshsm.so`.
 Rename your HSM library to `libkmshsm.so` if necessary.
 
-### HSM initialization
+## HSM initialization
 
 Before using the HSM with the KMS, follow your documentation to initialize a slot and a user pin/password for that
 slot.
 
-### KMS configuration
+## KMS configuration
 
 At least one slot and its corresponding PIN must be configured.
 Multiple slots can be used at the same time.
 
-#### Configuration via config file
+### Configuration via config file
 
 When using the [TOML configuration file](../configuration/server_configuration_file.md#toml-configuration-file), enable HSM support by
 setting these parameters:
@@ -38,7 +40,7 @@ hsm_password = ["<password>", "<password>", ] # example ["000000", "444444"] for
 >
 > If you do not want to login, use the special password value `<NO_LOGIN>`
 
-#### Configuration via command-line
+### Configuration via command-line
 
 HSM support can also be enabled with command-line arguments:
 

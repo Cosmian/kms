@@ -23,7 +23,7 @@ interface AttributeModifyFormData {
 
 const AttributeModifyForm: React.FC = () => {
     const [form] = Form.useForm<AttributeModifyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [selectedAttributeName, setSelectedAttributeName] = useState<string | undefined>(undefined);
     const [cryptoAlgorithms, setCryptoAlgorithms] = useState<AlgoOption[]>([]);
 
@@ -66,7 +66,7 @@ const AttributeModifyForm: React.FC = () => {
                 attributeValue = Math.floor(date.valueOf() / 1000).toString();
             }
             const request = modify_attribute_ttlv_request(id, values.attribute_name, attributeValue);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
 
             if (result_str) {
                 const response = parse_modify_attribute_ttlv_response(result_str);

@@ -22,7 +22,7 @@ type RevokeResponse = {
 
 const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
     const [form] = Form.useForm<RevokeFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const label = getObjectLabel(objectType);
 
@@ -33,7 +33,7 @@ const RevokeForm: React.FC<RevokeFormProps> = ({ objectType }) => {
                 throw new Error(`Missing ${label} identifier.`);
             }
             const request = revoke_ttlv_request(id, values.revocationReasonMessage, values.revocationReasonCode);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: RevokeResponse = await parse_revoke_ttlv_response(result_str);
                 return `${result.UniqueIdentifier} has been revoked.`;

@@ -30,7 +30,7 @@ type CertificateImportResponse = {
 
 const CertificateImportForm: React.FC = () => {
     const [form] = Form.useForm<ImportCertificateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [selectedFormat, setSelectedFormat] = useState<CertificateInputFormat>("JsonTtlv");
 
     const onFinish = async (values: ImportCertificateFormData) => {
@@ -48,7 +48,7 @@ const CertificateImportForm: React.FC = () => {
                     values.tags,
                     values.keyUsage,
                 );
-                const result_str = await sendKmipRequest(request, idToken, serverUrl);
+                const result_str = await sendKmipRequest(request, serverUrl);
                 if (result_str) {
                     const result: CertificateImportResponse = await parse_import_ttlv_response(result_str);
                     return `Certificate has been imported - imported object id: ${result.UniqueIdentifier}`;

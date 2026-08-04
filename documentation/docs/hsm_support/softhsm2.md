@@ -1,7 +1,8 @@
+# SoftHSMv2
 
 The SoftHSMv2 integration is supported on **Linux (x86_64)**.
 
-### SoftHSMv2 library setup
+## SoftHSMv2 library setup
 
 To use SoftHSMv2 with the KMS, the library must first be installed.
 
@@ -9,7 +10,7 @@ The KMS expects the library to be installed at `/usr/lib/softhsm/libsofthsm2.so`
 
 Install the library using your distributions package manager, or build it by following the instructions in the [SoftHSMv2 GitHub repository](https://github.com/softhsm/SoftHSMv2).
 
-### SoftHSMv2 initialisation
+## SoftHSMv2 initialisation
 
 Before use, SoftHSMv2 requires initialization:
 
@@ -19,12 +20,12 @@ softhsm2-util --init-token --slot 0 --so-pin 000000 --pin 000000 --label "SoftHS
 
 > **_NOTE:_** The slot number will be reassigned randomly. Use the new slot number in your KMS configuration.
 
-### KMS configuration
+## KMS configuration
 
 At least one slot and its corresponding PIN must be configured.
 Multiple slots can be used at the same time.
 
-#### Configuration via config file
+### Configuration via config file
 
 When using the [TOML configuration file](../configuration/server_configuration_file.md#toml-configuration-file), enable HSM support by setting these parameters:
 
@@ -43,7 +44,7 @@ hsm_password = ["<password>", "<password>", ] # example ["000000", "444444"] for
 >
 > If you do not want to login, use the special password value `<NO_LOGIN>`
 
-#### Configuration via command-line
+### Configuration via command-line
 
 HSM support can also be enabled with command-line arguments:
 

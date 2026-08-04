@@ -132,6 +132,14 @@ else
 fi
 (
   cd "${WASM_CRATE}"
+  # Pre-populate pkg/package.json with "repository" as a string.  Both
+  # wasm-pack 0.13.x and 0.15.x read the existing pkg/package.json during the
+  # wasm-bindgen install step; if that field is a JSON object they fail with
+  # "invalid type: map, expected a string".  Providing a string-format stub
+  # ensures the read succeeds.
+  mkdir -p pkg
+  printf '{"name":"cosmian_kms_client_wasm","repository":"https://github.com/Cosmian/kms"}\n' \
+    >pkg/package.json
   # Unset variables that inject macOS-specific flags into the wasm32 linker.
   # RUSTFLAGS/LDFLAGS are set by ensure_macos_frameworks_ldflags in common.sh
   # and contain -F<sdk>/System/Library/Frameworks which breaks wasm32 linking.

@@ -18,7 +18,7 @@ interface ECSignFormData {
 
 const ECSignForm: React.FC = () => {
     const [form] = Form.useForm<ECSignFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     // Signature algorithm is inferred by key type; no explicit options
 
     const onFinish = async (values: ECSignFormData) => {
@@ -29,7 +29,7 @@ const ECSignForm: React.FC = () => {
             }
             // Use algorithm string like "ecdsa-with-sha256"
             const request = await wasmClient.sign_ttlv_request(id, values.inputFile, undefined, values.digested);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasmClient.parse_sign_ttlv_response(result_str);
                 // Support different casings or encodings from wasm response without using `any`

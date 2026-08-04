@@ -99,14 +99,42 @@ pub fn ecdsa_sign(request: &Sign, private_key: &PKey<Private>) -> Result<Vec<u8>
         }
     }
 
-    // Default OpenSSL path
-    let mut signer = Signer::new(digest, private_key)?;
-    if let Some(corr) = request.correlation_value.clone() {
-        signer.update(&corr)?;
-    }
+    // Default OpenSSL path.
+    //
+    // CRITICAL: when `digested_data` is set the caller already hashed the data
+    // (prehashed == true).  Using `Signer::new(digest, key)` followed by
+    // `sign_oneshot_to_vec(digested_data)` would call `EVP_DigestSign`, which
+    // hashes the input AGAIN before signing — producing a signature over
+    // hash(hash(data)) that never verifies.
+    //
+    // For the prehashed path we therefore use `EcdsaSig::sign`, which maps
+    // directly to `ECDSA_sign(0, dgst, dgstlen, ...)` — it takes a raw digest
+    // and produces a DER-encoded (r,s) signature without any extra hashing.
+    //
+    // NOTE: `correlation_value` is only applied in the unhashed branch (below).
+    // This is intentional — when `digested_data` is present the data has already
+    // been hashed by the caller, so there is nothing to prepend or correlate.
+    // Per the KMIP spec, `CorrelationValue` is the "data to be correlated" and
+    // is only meaningful when the server performs the hashing.
+
     let signature = if let Some(digested_data) = &request.digested_data {
-        signer.sign_oneshot_to_vec(digested_data)?
+        let ec_key = private_key.ec_key().map_err(|e| {
+            CryptoError::Kmip(format!(
+                "ecdsa_sign: cannot extract EC key for prehashed sign: {e}"
+            ))
+        })?;
+        let ecdsa_sig = openssl::ecdsa::EcdsaSig::sign(digested_data, &ec_key).map_err(|e| {
+            CryptoError::Kmip(format!("ecdsa_sign: prehashed ECDSA sign failed: {e}"))
+        })?;
+        ecdsa_sig
+            .to_der()
+            .map_err(|e| CryptoError::Kmip(format!("ecdsa_sign: DER serialization failed: {e}")))?
     } else {
+        // Unhashed data: use OpenSSL's full digest-then-sign path.
+        let mut signer = Signer::new(digest, private_key)?;
+        if let Some(corr) = request.correlation_value.clone() {
+            signer.update(&corr)?;
+        }
         let data_to_sign = request.data.clone().unwrap_or_default();
         signer.sign_oneshot_to_vec(&data_to_sign)?
     };

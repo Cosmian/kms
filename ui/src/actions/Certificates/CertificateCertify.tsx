@@ -29,7 +29,7 @@ type AlgoOption = { label: string; value: string };
 
 const CertificateCertifyForm: React.FC = () => {
     const [form] = Form.useForm<CertificateCertifyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [certifyMethod, setCertifyMethod] = useState<string>("csr");
     const [algorithmOptions, setAlgorithmOptions] = useState<AlgoOption[]>([]);
 
@@ -78,21 +78,21 @@ const CertificateCertifyForm: React.FC = () => {
                     values.numberOfDays,
                     values.tags,
                 );
-                const result_str = await sendKmipRequest(request, idToken, serverUrl);
+                const result_str = await sendKmipRequest(request, serverUrl);
                 if (result_str) {
                     const response = await wasm.parse_re_certify_ttlv_response(result_str);
                     const newCertId = response.UniqueIdentifier;
                     if (values.enrollKeyset) {
                         const req = wasm.set_rotate_name_ttlv_request(newCertId, newCertId);
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.enrollKeyset && values.rotateInterval !== undefined) {
                         const req = wasm.set_rotate_interval_ttlv_request(newCertId, BigInt(values.rotateInterval));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.enrollKeyset && values.rotateOffset !== undefined) {
                         const req = wasm.set_rotate_offset_ttlv_request(newCertId, BigInt(values.rotateOffset));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     return `Certificate successfully re-certified with new ID: ${newCertId}`;
                 }
@@ -114,21 +114,21 @@ const CertificateCertifyForm: React.FC = () => {
                 values.certificateExtensions,
                 values.tags,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasm.parse_certify_ttlv_response(result_str);
                 const newCertId = response.UniqueIdentifier;
                 if (values.enrollKeyset) {
                     const req = wasm.set_rotate_name_ttlv_request(newCertId, newCertId);
-                    await sendKmipRequest(req, idToken, serverUrl);
+                    await sendKmipRequest(req, serverUrl);
                 }
                 if (values.enrollKeyset && values.rotateInterval !== undefined) {
                     const req = wasm.set_rotate_interval_ttlv_request(newCertId, BigInt(values.rotateInterval));
-                    await sendKmipRequest(req, idToken, serverUrl);
+                    await sendKmipRequest(req, serverUrl);
                 }
                 if (values.enrollKeyset && values.rotateOffset !== undefined) {
                     const req = wasm.set_rotate_offset_ttlv_request(newCertId, BigInt(values.rotateOffset));
-                    await sendKmipRequest(req, idToken, serverUrl);
+                    await sendKmipRequest(req, serverUrl);
                 }
                 return `Certificate successfully created with ID: ${newCertId}`;
             }

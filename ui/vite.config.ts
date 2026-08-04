@@ -22,7 +22,7 @@ const apiProxy: Record<string, { target: string; secure: boolean }> = {
     "/health": proxyOpts,
     "/tokenize": proxyOpts,
     // Match auth endpoints exactly so `/ui/tokenize/*` remains a client-side route.
-    "^/ui/token$": proxyOpts,
+    "^/ui/whoami$": proxyOpts,
     "^/ui/auth_method$": proxyOpts,
 };
 

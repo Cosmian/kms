@@ -32,7 +32,7 @@ const HASH_ALGORITHMS = [
 
 const RsaDecryptForm: React.FC = () => {
     const [form] = Form.useForm<RsaDecryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: RsaDecryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -41,7 +41,7 @@ const RsaDecryptForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = decrypt_rsa_ttlv_request(id, values.inputFile, values.encryptionAlgorithm, values.hashingAlgorithm);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str);
                 const name = values.fileName.slice(0, -4);

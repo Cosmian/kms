@@ -21,7 +21,7 @@ const TokenizeScaleNumberForm: React.FC = () => {
     const [form] = Form.useForm<ScaleNumberFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -45,7 +45,6 @@ const TokenizeScaleNumberForm: React.FC = () => {
                     scale: values.scale,
                     translate: values.translate,
                 },
-                idToken,
                 serverUrl,
             );
             const typed = response as { result?: unknown; code?: number; message?: string };

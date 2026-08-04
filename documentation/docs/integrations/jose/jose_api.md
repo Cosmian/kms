@@ -2,9 +2,9 @@
 
 The Eviden KMS exposes a lightweight **REST Native Crypto API** under the `/v1/crypto` path.
 This API follows the **JOSE** (JSON Object Signing and Encryption) conventions from
-[RFC 7516 (JWE)](https://www.rfc-editor.org/rfc/rfc7516),
-[RFC 7515 (JWS)](https://www.rfc-editor.org/rfc/rfc7515), and
-[RFC 7518 (JWA)](https://www.rfc-editor.org/rfc/rfc7518).
+[RFC 7516 (JWE)](https://datatracker.ietf.org/doc/html/rfc7516),
+[RFC 7515 (JWS)](https://datatracker.ietf.org/doc/html/rfc7515), and
+[RFC 7518 (JWA)](https://datatracker.ietf.org/doc/html/rfc7518).
 
 Key material **never leaves the KMS**. Only ciphertext, signatures, and MACs travel over the network.
 
@@ -430,7 +430,7 @@ the private key automatically).
 #### Security: implicit rejection
 
 For RSA-OAEP decryption, the server implements **implicit rejection** as recommended
-by [RFC 7516 §11.5](https://www.rfc-editor.org/rfc/rfc7516#section-11.5). If the
+by [RFC 7516 §11.5](https://datatracker.ietf.org/doc/html/rfc7516#section-11.5). If the
 RSA-OAEP unwrap fails (indicating a tampered or invalid `encrypted_key`), the server
 substitutes a random CEK and proceeds with AES-GCM decryption — which will fail
 with the same generic "Decryption failed" error. This prevents padding oracle attacks.
@@ -610,7 +610,7 @@ sequenceDiagram
 #### RFC 7515 §A.1 known-answer vector
 
 The MAC value below is pinned by an integration test (`test_rfc7515_a1_hs256_known_answer`).
-It reproduces the exact HS256 result from [RFC 7515 §Appendix A.1](https://www.rfc-editor.org/rfc/rfc7515#appendix-A.1).
+It reproduces the exact HS256 result from [RFC 7515 §Appendix A.1](https://datatracker.ietf.org/doc/html/rfc7515#appendix-A.1).
 
 | Field | Value |
 |---|---|

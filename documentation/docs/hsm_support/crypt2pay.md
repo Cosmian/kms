@@ -1,3 +1,4 @@
+# Trustway Crypt2pay
 
 The Smartcard HSM integration is supported on **Linux (x86_64)**.
 It has been tested with the following devices: BULL PKCS11 C2P 5.0.7 (Release) Unix64

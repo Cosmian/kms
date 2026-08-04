@@ -40,6 +40,7 @@ jobs:
           - secret_aws
           - secret_azure
           - secret_cosmian_kms
+          - spire
         features: [fips, non-fips]
         exclude:
           # redis is exclusively for non-fips
@@ -76,6 +77,9 @@ jobs:
           - type: secret_aws
             features: fips
           - type: secret_azure
+            features: fips
+          # spire relies on the Vault API which is non-fips only
+          - type: spire
             features: fips
         include:
           # Docker services required per test type (types without an entry need no containers)

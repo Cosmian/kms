@@ -16,7 +16,7 @@ const AccessObtainedList: React.FC = () => {
     const [hasCreatePermission, setHasCreatePermission] = useState<boolean | undefined>(undefined);
 
     const [res, setRes] = useState<string | undefined>(undefined);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -63,7 +63,7 @@ const AccessObtainedList: React.FC = () => {
         setRes(undefined);
         setAccessRights([]);
         try {
-            const response = await getNoTTLVRequest("/access/obtained", idToken, serverUrl);
+            const response = await getNoTTLVRequest("/access/obtained", serverUrl);
             if (response.length) {
                 setAccessRights(response);
             } else {
@@ -75,28 +75,22 @@ const AccessObtainedList: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [idToken, serverUrl]);
+    }, [serverUrl]);
 
     const fetchCreatePermission = useCallback(async () => {
         setHasCreatePermission(undefined);
         try {
-            const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
+            const response = await getNoTTLVRequest("/access/create", serverUrl);
             setHasCreatePermission(response.has_create_permission);
         } catch (e) {
             console.error("Error fetching create permission:", e);
         }
-    }, [idToken, serverUrl]);
+    }, [serverUrl]);
 
     useEffect(() => {
-        // Avoid unauthenticated calls in JWT mode: wait for token
-        if (idToken) {
-            fetchAccessRights();
-            fetchCreatePermission();
-        } else {
-            setAccessRights([]);
-            setHasCreatePermission(undefined);
-        }
-    }, [fetchAccessRights, fetchCreatePermission, idToken]);
+        fetchAccessRights();
+        fetchCreatePermission();
+    }, [fetchAccessRights, fetchCreatePermission]);
 
     return (
         <div className="p-6">

@@ -15,13 +15,29 @@ use super::pqc::PqcCommands;
 use super::tokenize::TokenizeCommands;
 use crate::{
     actions::{
-        access::AccessAction, attributes::AttributesCommands, aws::AwsCommands,
-        azure::AzureCommands, bench::BenchAction, certificates::CertificatesCommands,
-        cng::CngCommands, console::Stdout, derive_key::DeriveKeyAction,
-        elliptic_curves::EllipticCurveCommands, google::GoogleCommands, hash::HashAction,
-        login::LoginAction, mac::MacCommands, opaque_object::OpaqueObjectCommands,
-        pkcs11::Pkcs11Commands, rng::RngAction, rsa::RsaCommands, secret_data::SecretDataCommands,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
+        access::AccessAction,
+        attributes::AttributesCommands,
+        aws::AwsCommands,
+        azure::AzureCommands,
+        bench::BenchAction,
+        certificates::CertificatesCommands,
+        cng::CngCommands,
+        console::Stdout,
+        derive_key::DeriveKeyAction,
+        elliptic_curves::EllipticCurveCommands,
+        google::GoogleCommands,
+        hash::HashAction,
+        login::{LoginAction, LoginCredential},
+        mac::MacCommands,
+        opaque_object::OpaqueObjectCommands,
+        pkcs11::Pkcs11Commands,
+        rng::RngAction,
+        rsa::RsaCommands,
+        secret_data::SecretDataCommands,
+        shared::LocateObjectsAction,
+        symmetric::SymmetricCommands,
+        vault::VaultCommands,
+        version::ServerVersionAction,
     },
     error::result::KmsCliResult,
 };
@@ -131,6 +147,9 @@ pub enum KmsActions {
     SecretData(SecretDataCommands),
     #[command(subcommand)]
     Sym(SymmetricCommands),
+    /// Vault-compatible `AppRole` identity management.
+    #[command(subcommand)]
+    Vault(VaultCommands),
 }
 
 impl KmsActions {
@@ -168,12 +187,19 @@ impl KmsActions {
             Self::Locate(action) => {
                 Box::pin(action.run(kms_rest_client)).await?;
             }
-            Self::Login(action) => {
-                let access_token = Box::pin(action.process(kms_rest_client.config)).await?;
-                new_config.http_config.access_token = Some(access_token);
-            }
+            Self::Login(action) => match Box::pin(action.process(kms_rest_client.config)).await? {
+                LoginCredential::AccessToken(token) => {
+                    new_config.http_config.access_token = Some(token);
+                    new_config.http_config.vault_token = None;
+                }
+                LoginCredential::VaultToken(token) => {
+                    new_config.http_config.vault_token = Some(token);
+                    new_config.http_config.access_token = None;
+                }
+            },
             Self::Logout => {
                 new_config.http_config.access_token = None;
+                new_config.http_config.vault_token = None;
             }
             Self::Hash(action) => Box::pin(action.run(kms_rest_client)).await?,
             Self::Mac(action) => Box::pin(action.process(kms_rest_client)).await?,
@@ -298,6 +324,7 @@ impl KmsActions {
             Self::OpaqueObject(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::Sym(action) => Box::pin(action.process(kms_rest_client)).await?,
             Self::SecretData(action) => Box::pin(action.process(kms_rest_client)).await?,
+            Self::Vault(action) => Box::pin(action.process(kms_rest_client)).await?,
         }
 
         Ok(new_config)

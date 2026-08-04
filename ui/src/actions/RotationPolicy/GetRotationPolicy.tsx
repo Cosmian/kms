@@ -19,14 +19,14 @@ interface RotationPolicy {
 
 const GetRotationPolicyForm: React.FC = () => {
     const [form] = Form.useForm<GetRotationPolicyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [policy, setPolicy] = useState<RotationPolicy | null>(null);
 
     const onFinish = async (values: GetRotationPolicyFormData) => {
         setPolicy(null);
         await execute(async () => {
             const request = wasm.get_attributes_ttlv_request(values.keyId);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: RotationPolicy = await wasm.parse_rotation_policy_response(result_str);
                 setPolicy(result);

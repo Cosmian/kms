@@ -17,10 +17,10 @@ test("useAuth throws outside provider", () => {
 
 test("AuthProvider provides default values", () => {
     const Consumer = () => {
-        const { serverUrl, idToken, userId } = useAuth();
-        return React.createElement("div", {}, `${serverUrl}|${idToken}|${userId}`);
+        const { serverUrl, userId } = useAuth();
+        return React.createElement("div", {}, `${serverUrl}|${userId}`);
     };
 
     render(React.createElement(AuthProvider, { children: React.createElement(Consumer) }));
-    expect(screen.getByText(/^\|null\|null$/)).toBeInTheDocument();
+    expect(screen.getByText(/^\|null$/)).toBeInTheDocument();
 });

@@ -8,7 +8,7 @@
 use dialoguer::{Confirm, Input, MultiSelect, theme::ColorfulTheme};
 
 use crate::{
-    config::{HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
+    config::{AuthVerifierConfig, HttpConfig, IdpAuthConfig, OidcConfig, UiConfig},
     error::KmsError,
     result::KResult,
 };
@@ -17,6 +17,7 @@ pub struct AuthWizardResult {
     #[allow(dead_code)]
     pub http_api_token: Option<String>,
     pub idp_auth: IdpAuthConfig,
+    pub auth_verifier: AuthVerifierConfig,
     #[allow(dead_code)]
     pub ui_config_oidc: OidcConfig,
     pub default_username: String,
@@ -29,6 +30,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     let auth_choices = &[
         "API Key (static token)",
         "JWT / OIDC (for programmatic clients)",
+        "Auth Verifier server",
         "Client Certificate (mTLS – configure in TLS section)",
     ];
 
@@ -56,6 +58,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     // JWT / OIDC
     let mut jwt_providers: Vec<String> = Vec::new();
     let mut ui_oidc = OidcConfig::default();
+    let mut auth_verifier = AuthVerifierConfig::default();
 
     if selected.contains(&1) {
         println!("  Configure JWT/OIDC providers.");
@@ -120,6 +123,56 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
     }
 
     if selected.contains(&2) {
+        println!("  Configure the Auth Verifier server.");
+        let server_url: String = Input::with_theme(&theme)
+            .with_prompt("Auth Verifier server URL (e.g. https://auth.example.com)")
+            .validate_with(|input: &String| -> Result<(), &str> {
+                if input.trim().is_empty() {
+                    Err("The Auth Verifier server URL cannot be blank")
+                } else {
+                    Ok(())
+                }
+            })
+            .interact_text()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let server_url = server_url.trim().to_owned();
+        let jwks_uri: String = Input::with_theme(&theme)
+            .with_prompt("JWKS URI (leave blank to use <server_url>/.well-known/jwks.json)")
+            .allow_empty(true)
+            .interact_text()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let accept_invalid_certs: bool = Confirm::with_theme(&theme)
+            .with_prompt("Accept invalid TLS certificates when fetching the JWKS? (dev/test only)")
+            .default(false)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let enable_ui_login: bool = Confirm::with_theme(&theme)
+            .with_prompt("Enable the Web UI login form for the Auth Verifier server?")
+            .default(false)
+            .interact()
+            .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+        let realm: Option<String> = if enable_ui_login {
+            let realm: String = Input::with_theme(&theme)
+                .with_prompt("Realm to authenticate the Web UI against")
+                .interact_text()
+                .map_err(|e| KmsError::ServerError(format!("Prompt error: {e}")))?;
+            Some(realm)
+        } else {
+            None
+        };
+        auth_verifier = AuthVerifierConfig {
+            auth_verifier_url: Some(server_url),
+            auth_verifier_jwks_uri: if jwks_uri.trim().is_empty() {
+                None
+            } else {
+                Some(jwks_uri)
+            },
+            auth_verifier_realm: realm,
+            auth_verifier_accept_invalid_certs: accept_invalid_certs,
+        };
+    }
+
+    if selected.contains(&3) {
         println!(
             "  Client certificate (mTLS) authentication is controlled by the \
              '--clients-ca-cert-file' option configured in the TLS section."
@@ -150,6 +203,7 @@ pub fn configure_auth(http: &mut HttpConfig, ui: &mut UiConfig) -> KResult<AuthW
                 Some(jwt_providers)
             },
         },
+        auth_verifier,
         ui_config_oidc: ui_oidc,
         default_username,
         force_default_username,

@@ -42,6 +42,7 @@ cosmian_kms_crypto = { path = "../../crypto", version = "5.25.0" }
 cosmian_logger = { workspace = true }
 criterion = { workspace = true }
 der = { workspace = true, features = ["pem"] }
+dialoguer = { workspace = true }
 hex = { workspace = true }
 jsonwebtoken = { workspace = true }
 leb128 = { workspace = true }
@@ -49,7 +50,7 @@ libc = "0.2"
 libloading = { workspace = true }
 pem = { workspace = true }
 pkcs11-sys = { workspace = true }
-reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+reqwest = { workspace = true, features = ["json", "rustls-tls", "cookies"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

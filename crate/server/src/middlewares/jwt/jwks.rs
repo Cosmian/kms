@@ -21,16 +21,35 @@ pub struct JwksManager {
     pub(crate) uris: Vec<String>,
     pub(crate) jwks: RwLock<HashMap<String, JwkSet>>,
     pub(crate) last_update: RwLock<Option<DateTime<Utc>>>,
+    /// Tracks the last time `force_refresh` was actually executed, for cooldown.
+    pub(crate) last_force_refresh: RwLock<Option<DateTime<Utc>>>,
     pub(crate) proxy_params: Option<ProxyParams>,
+    /// When `true`, the JWKS fetch client skips TLS certificate verification.
+    /// Only set this for development/test environments (e.g. self-signed certs).
+    pub(crate) accept_invalid_certs: bool,
 }
 
 impl JwksManager {
     pub async fn new(uris: Vec<String>, server_params: Option<&ProxyParams>) -> KResult<Self> {
+        Self::new_with_options(uris, server_params, false).await
+    }
+
+    /// Create a new `JwksManager` with an explicit `accept_invalid_certs` flag.
+    ///
+    /// Set `accept_invalid_certs = true` only in development/test when the JWKS server
+    /// uses a self-signed certificate.
+    pub async fn new_with_options(
+        uris: Vec<String>,
+        server_params: Option<&ProxyParams>,
+        accept_invalid_certs: bool,
+    ) -> KResult<Self> {
         let jwks_manager = Self {
             uris,
             jwks: HashMap::new().into(),
             last_update: None.into(),
+            last_force_refresh: None.into(),
             proxy_params: server_params.cloned(),
+            accept_invalid_certs,
         };
         jwks_manager.refresh().await?;
 
@@ -61,17 +80,66 @@ impl JwksManager {
             .cloned())
     }
 
+    /// Return all JWKs from all registered JWKS sets, regardless of `kid`.
+    ///
+    /// Used by the Auth Verifier middleware where tokens are issued without a `kid`
+    /// header field and the verifier must try every available public key until one
+    /// validates the signature.
+    pub fn find_any(&self) -> KResult<Vec<Jwk>> {
+        Ok(self
+            .jwks
+            .read()
+            .map_err(|e| KmsError::ServerError(format!("cannot lock JWKS for read. Error: {e:?}")))?
+            .values()
+            .flat_map(|jwks| jwks.keys.iter().cloned())
+            .collect())
+    }
+
     /// Fetch again all JWKS using the `uris`.
     ///
     /// The threshold to refresh JWKS is set to `REFRESH_INTERVAL`.
     pub async fn refresh(&self) -> KResult<()> {
+        self.refresh_internal(false).await
+    }
+
+    /// Force a JWKS refresh, bypassing the `REFRESH_INTERVAL` throttle.
+    ///
+    /// Intended for the narrow case where the cache is known to be empty (e.g. the
+    /// initial fetch at startup failed): a throttled [`refresh`](Self::refresh) call
+    /// could otherwise be a no-op for up to `REFRESH_INTERVAL` seconds — because
+    /// `last_update` may have already been set by a previous (failed) attempt — leaving
+    /// callers unable to validate any token in the meantime.
+    ///
+    /// A 5-second cooldown prevents repeated callers from hammering the JWKS endpoint.
+    pub async fn force_refresh(&self) -> KResult<()> {
+        // Apply a 5-second cooldown to prevent abuse
+        let can_force = {
+            let mut last_force = self.last_force_refresh.write().map_err(|e| {
+                KmsError::ServerError(format!("cannot lock last_force_refresh: {e:?}"))
+            })?;
+            let now = Utc::now();
+            let can = last_force.is_none_or(|lf| (lf + Duration::seconds(5)) < now);
+            if can {
+                *last_force = Some(now);
+            }
+            can
+        };
+        if !can_force {
+            trace!("force_refresh: cooldown active, skipping");
+            return Ok(());
+        }
+        self.refresh_internal(true).await
+    }
+
+    async fn refresh_internal(&self, force: bool) -> KResult<()> {
         let refresh_is_allowed = {
             let mut last_update = self.last_update.write().map_err(|e| {
                 KmsError::ServerError(format!("cannot lock last_update for write. Error: {e:?}"))
             })?;
 
-            let can_be_refreshed = last_update
-                .is_none_or(|lu| (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now());
+            let can_be_refreshed = force
+                || last_update
+                    .is_none_or(|lu| (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now());
 
             if can_be_refreshed {
                 *last_update = Some(Utc::now());
@@ -81,7 +149,8 @@ impl JwksManager {
 
         if refresh_is_allowed {
             tracing::info!("Refreshing JWKS");
-            let refreshed_jwks = Self::fetch_all(&self.uris, &self.proxy_params).await;
+            let refreshed_jwks =
+                Self::fetch_all(&self.uris, &self.proxy_params, self.accept_invalid_certs).await;
             self.set_jwks(refreshed_jwks)?;
         }
 
@@ -95,11 +164,12 @@ impl JwksManager {
     async fn fetch_all(
         uris: &[String],
         proxy_params: &Option<ProxyParams>,
+        accept_invalid_certs: bool,
     ) -> HashMap<String, JwkSet> {
         // Create a vector of futures to fetch JWKS from each URI
         let jwks_downloads: Vec<_> = uris
             .iter()
-            .map(|uri| parse_jwks(uri, proxy_params))
+            .map(|uri| parse_jwks(uri, proxy_params, accept_invalid_certs))
             .collect();
         // Use `join_all` to fetch all JWKS in parallel
         futures::future::join_all(jwks_downloads)
@@ -126,13 +196,15 @@ impl JwksManager {
 async fn parse_jwks(
     jwks_uri: &String,
     proxy_params: &Option<ProxyParams>,
+    accept_invalid_certs: bool,
 ) -> KResult<(String, JwkSet)> {
     tracing::debug!("fetching {jwks_uri}");
     // Fetch the JWKS from the provided URI,
     // Disable redirect following to prevent SSRF via crafted 3xx responses (A10-2).
     let mut client = Client::builder()
         .timeout(std::time::Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::none());
+        .redirect(reqwest::redirect::Policy::none())
+        .danger_accept_invalid_certs(accept_invalid_certs);
 
     // Configure the client with proxy settings if available
     if let Some(proxy_params) = proxy_params {
@@ -250,7 +322,7 @@ mod tests {
         let port = one_shot_http_server(SAMPLE_JWKS).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let (res_url, jwks) = parse_jwks(&url, &None).await.unwrap();
+        let (res_url, jwks) = parse_jwks(&url, &None, false).await.unwrap();
 
         assert_eq!(res_url, url);
         assert_eq!(jwks.keys.len(), 1);
@@ -266,7 +338,7 @@ mod tests {
         let port = one_shot_http_server(r#"{"not_keys": []}"#).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let err = parse_jwks(&url, &None).await.unwrap_err();
+        let err = parse_jwks(&url, &None, false).await.unwrap_err();
 
         assert!(
             err.to_string().contains("JSON key 'keys' not found"),
@@ -280,7 +352,7 @@ mod tests {
         let port = one_shot_http_server(r#"{"keys": []}"#).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let err = parse_jwks(&url, &None).await.unwrap_err();
+        let err = parse_jwks(&url, &None, false).await.unwrap_err();
 
         assert!(
             err.to_string().contains("No valid JWK found"),
@@ -324,7 +396,7 @@ mod tests {
         let redirect_port = one_shot_redirect_server(attacker_url).await;
         let jwks_url = format!("http://127.0.0.1:{redirect_port}/jwks.json");
 
-        let err = parse_jwks(&jwks_url, &None).await.unwrap_err();
+        let err = parse_jwks(&jwks_url, &None, false).await.unwrap_err();
 
         // The JSON parse of the empty 307 body must fail — not a successful JWKS fetch.
         assert!(
@@ -348,7 +420,7 @@ mod tests {
         let port = one_shot_http_server(SAMPLE_JWKS).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let (res_url, jwks) = parse_jwks(&url, &None).await.unwrap();
+        let (res_url, jwks) = parse_jwks(&url, &None, false).await.unwrap();
 
         assert_eq!(res_url, url);
         assert_eq!(jwks.keys.len(), 1);
@@ -362,12 +434,88 @@ mod tests {
         let port = one_shot_http_server(MIXED_JWKS).await;
         let url = format!("http://127.0.0.1:{port}/jwks.json");
 
-        let (_, jwks) = parse_jwks(&url, &None).await.unwrap();
+        let (_, jwks) = parse_jwks(&url, &None, false).await.unwrap();
 
         assert_eq!(jwks.keys.len(), 1);
         assert_eq!(
             jwks.keys.first().and_then(|k| k.common.key_id.as_deref()),
             Some("valid-key")
+        );
+    }
+
+    const ROTATED_KID: &str = "rotated-key";
+    const SAMPLE_JWKS_ROTATED: &str = r#"{"keys":[{"kty":"RSA","use":"sig","alg":"RS256","kid":"test-key-rfc7517","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhmstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB"},{"kty":"RSA","use":"sig","alg":"RS256","kid":"rotated-key","n":"z1w8bgnfcHdRTvvQjMKYaquO0oofsRncnRncgAdVU89zjWyR-dccgBuWU97zwv2SL8bQGGyBIfDadzOAxjRi_5CKGDPfcXLSYijBZBjGW5o4pmlkjnttnu64u___4uKgQ01_FEX3hEr2M7uUpce_CKFCPfcXMSXkCaCiGW5o5pnmlkjntou65v___5vLhR12_GFY4iF3N8vVqde_DLGDQfdXNTYkjCbDjHX6p5qomlljon76w___6wMiS23_HGZ5jG4O9wWrfe_EMHER0geYOUZlkDcEjIT7q6rpnmkkpo87x___7xNjT34_IHa6kH5P0xXsgf_FNIFS1hfZPVaMmlEdFkJZ8r7sqonlmqp98y___8yOkU45_JIb7lI6Q1yYtg_GOJGT2ifaQWbNnmFegkKZ9s8trpomnrq09z___9zPlV56_KJc8mJ7R2zZuh_HPKHU3jgbRXcOnpGfhlLZ-t9uspqnsr10","e":"AQAB"}]}"#;
+
+    /// Spawn a persistent (multi-request) HTTP/1.1 server on a random port that serves
+    /// `initial_body` for every request until `rotated` is set to `true` (using
+    /// `Ordering::SeqCst`), after which it serves `rotated_body`.
+    ///
+    /// Used to simulate an `IdP` rotating its JWKS signing keys between the initial
+    /// `JwksManager::new()` fetch and a later `refresh()` call.
+    async fn rotating_jwks_http_server(
+        initial_body: &'static str,
+        rotated_body: &'static str,
+        rotated: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    break;
+                };
+                let mut buf = vec![0_u8; 4096];
+                let _ = stream.read(&mut buf).await.unwrap();
+                let body = if rotated.load(std::sync::atomic::Ordering::SeqCst) {
+                    rotated_body
+                } else {
+                    initial_body
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        port
+    }
+
+    /// Regression test for the "refresh-on-miss" behavior relied upon by
+    /// `routes::ui_auth::callback`: when the `IdP` rotates its signing keys, a
+    /// `JwksManager::refresh()` call must be able to pick up the new key so that
+    /// login succeeds without restarting the server.
+    #[actix_web::test]
+    async fn test_refresh_on_miss_picks_up_rotated_key() {
+        let rotated = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let port =
+            rotating_jwks_http_server(SAMPLE_JWKS, SAMPLE_JWKS_ROTATED, rotated.clone()).await;
+        let url = format!("http://127.0.0.1:{port}/jwks.json");
+
+        let manager = JwksManager::new(vec![url], None)
+            .await
+            .expect("failed to build JwksManager");
+
+        // Only the original key is served initially: the rotated `kid` is missing.
+        assert!(manager.find(SAMPLE_RSA_JWK_KID).unwrap().is_some());
+        assert!(manager.find(ROTATED_KID).unwrap().is_none());
+
+        // Simulate the IdP rotating its signing keys.
+        rotated.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        // Bypass the manager's internal 60s refresh throttle directly via the
+        // `pub(crate)` `last_update` field (same-crate test), so the test doesn't
+        // have to wait for the throttle to naturally expire. This exercises the
+        // exact `refresh()` codepath used by the refresh-on-miss retry in
+        // `routes::ui_auth::callback`.
+        *manager.last_update.write().unwrap() = None;
+        manager.refresh().await.expect("refresh should succeed");
+
+        // The rotated key must now be discoverable, without any server restart.
+        assert!(
+            manager.find(ROTATED_KID).unwrap().is_some(),
+            "rotated key should be discoverable after refresh-on-miss"
         );
     }
 }

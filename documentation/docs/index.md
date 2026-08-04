@@ -23,7 +23,7 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
 ## Modern technology
 
 - [Source Available](https://github.com/Cosmian/kms) server application written in [Rust](https://www.rust-lang.org/)
-- Full-featured [Web UI](#user-interface) with client [command line and graphical interface](../kms_clients/index.md)
+- Full-featured [Web UI](#user-interface) with client [command line and graphical interface](kms_clients/index.md)
 - Advanced [authentication mechanisms](./configuration/authentication.md)
 - [High-availability mode](installation/high_availability_mode.md) with simple horizontal scaling
 - Multi-language client support: Python, JavaScript, Dart, Rust, C/C++, and Java (see the `cloudproof` libraries on [Cosmian GitHub](https://github.com/Cosmian))
@@ -61,6 +61,7 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
     - [FortiGate / FortiOS](./integrations/fortigate.md)
     - [S/MIME email encryption](./integrations/smime.md)
     - [OpenSSH](./integrations/openssh.md)
+    - [SPIRE / SPIFFE (Zero-Trust M2M)](./integrations/spire_spiffe.md)
 - **HSM integrations**:
     - [Trustway Proteccio](./hsm_support/proteccio.md) and [Crypt2Pay](./hsm_support/crypt2pay.md)
     - [Utimaco](./hsm_support/utimaco.md)
@@ -83,7 +84,7 @@ See the complete [supported algorithms list](./certifications_and_compliance/cry
 
 The **Eviden KMS** is available as:
 
-- Linux packages: [Debian](https://package.cosmian.com/kms/5.25.0/debian/) or [RPM](https://package.cosmian.com/kms/5.25.0/rpm/)
+- Linux packages: [Debian](https://package.cosmian.com/kms/5.25.0/deb/) or [RPM](https://package.cosmian.com/kms/5.25.0/rpm/)
 - Windows installer: [Windows](https://package.cosmian.com/kms/5.25.0/windows/)
 - macOS installer: [macOS](https://package.cosmian.com/kms/5.25.0/dmg/)
 - Docker: [Standard image](https://github.com/Cosmian/kms/pkgs/container/kms) and [FIPS image](https://github.com/Cosmian/kms/pkgs/container/kms)
@@ -99,9 +100,9 @@ The UI can be [fully customized](./configuration/ui_branding.md) to match your o
 
 ## Client CLI
 
-The [KMS CLI](../kms_clients/index.md) provides a powerful command-line interface for managing the server, handling keys, and performing encryption/decryption operations. It features integrated help and is available for multiple operating systems.
+The [KMS CLI](kms_clients/index.md) provides a powerful command-line interface for managing the server, handling keys, and performing encryption/decryption operations. It features integrated help and is available for multiple operating systems.
 
-The **[KMS CLI](../kms_clients/index.md)** is packaged as:
+The **[KMS CLI](kms_clients/index.md)** is packaged as:
 
-- [Debian](https://package.cosmian.com/kms/5.25.0/ubuntu-22.04/) or [RPM](https://package.cosmian.com/kms/5.25.0/rockylinux9/) package
+- [Debian](https://package.cosmian.com/kms/5.25.0/deb/) or [RPM](https://package.cosmian.com/kms/5.25.0/rpm/) package
 - [Pre-built binaries](https://package.cosmian.com/kms/) for Linux, Windows, and macOS

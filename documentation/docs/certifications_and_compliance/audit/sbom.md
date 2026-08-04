@@ -63,7 +63,7 @@ mise run sbom:generate --target server --variant fips --link static
 mise run sbom:generate --target openssl_3_6_0
 ```
 
-See [`sbom/README.md`](../../../sbom/README.md) for the full regeneration guide and usage
+See the [SBOM artifact directory](../../../sbom/server/fips/static/bom.cdx.json) for the full regeneration guide and usage
 examples (Dependency-Track upload, `jq` queries, vulnerability review).
 
 ## Standards & references

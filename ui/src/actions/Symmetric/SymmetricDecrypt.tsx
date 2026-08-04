@@ -26,7 +26,7 @@ const DATA_ENCRYPTION_ALGORITHMS = [
 
 const SymmetricDecryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricDecryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const selectedEncryptionAlgorithm = Form.useWatch("dataEncryptionAlgorithm", form);
 
     const onFinish = async (values: SymmetricDecryptFormData) => {
@@ -36,7 +36,7 @@ const SymmetricDecryptForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = decrypt_sym_ttlv_request(id, values.inputFile, values.authenticationData, values.dataEncryptionAlgorithm);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_decrypt_ttlv_response(result_str);
                 const name = values.fileName.slice(0, -4);

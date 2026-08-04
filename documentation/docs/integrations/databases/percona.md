@@ -12,8 +12,6 @@ This guide demonstrates how to configure PostgreSQL 17 with Percona's `pg_tde` e
 | **PostgreSQL version** | Percona Server for PostgreSQL 17.x and above |
 | **Eviden KMS feature** | Works with both FIPS and non-FIPS builds |
 
-[TOC]
-
 ---
 
 ## Prerequisites
@@ -70,7 +68,7 @@ flowchart TB
 
 Edit your `postgresql.conf` file to activate the TDE extension:[1]
 
-```conf
+```nginx
 shared_preload_libraries = 'pg_tde,percona_pg_telemetry'
 ```
 
@@ -154,7 +152,7 @@ These triggers ensure that DDL operations (table creation, modification) properl
 
 Edit your `postgresql.conf` again and add:[1]
 
-```conf
+```nginx
 pg_tde.wal_encrypt = on
 pg_tde.enforce_encryption = on
 ```
@@ -259,7 +257,7 @@ SHOW pg_tde.inherit_global_providers;
 |-----------|--------|----------|
 | Standard `heap` tables | By design | Only `tde_heap` tables are encrypted |
 | Non-TDE tables | Selective | Create with `USING tde_heap` for encryption |
-| Temporary files (>work_mem) | Limitation | Overflow data unencrypted on disk[5] |
+| Temporary files (>work_mem) | Limitation | Overflow data unencrypted on disk<sup>5</sup> |
 | System log files | Not supported | PostgreSQL logs in plaintext on disk |
 
 ---
@@ -746,9 +744,9 @@ postgresql:
 | **KMS Availability** | Critical | Primary and standby must both access KMS |
 | **Certificates** | Critical | Distribute certificates to all replicas |
 | **Principal Key** | Critical | Key must be accessible during recovery |
-| **Encrypted WAL** | High | Use `pg_tde_rewind` not standard `pg_rewind`[5] |
+| **Encrypted WAL** | High | Use `pg_tde_rewind` not standard `pg_rewind`<sup>5</sup> |
 
-**Important:** If using encrypted WAL, `pg_rewind` is incompatible. Use `pg_tde_rewind` instead.[5]
+**Important:** If using encrypted WAL, `pg_rewind` is incompatible. Use `pg_tde_rewind` instead.<sup>5</sup>
 
 ### Eviden KMS Compatibility
 
@@ -767,10 +765,10 @@ postgresql:
 | pg_tde_basebackup | ✓ Supported[1] | Recommended tool |
 | pgBackRest | ✓ Supported[4] | Production-ready |
 | Patroni | ✓ Supported[4] | Use pg_tde_rewind |
-| pg_rewind | ✗ Incompatible[5] | Use pg_tde_rewind instead |
-| pg_createsubscriber | ✗ Incompatible[5] | Create subscriber manually |
-| pg_receivewal | ✗ Incompatible[5] | Use pgBackRest or Patroni |
-| Barman | ✗ Incompatible[5] | Use pgBackRest instead |
+| pg_rewind | ✗ Incompatible<sup>5</sup> | Use pg_tde_rewind instead |
+| pg_createsubscriber | ✗ Incompatible<sup>5</sup> | Create subscriber manually |
+| pg_receivewal | ✗ Incompatible<sup>5</sup> | Use pgBackRest or Patroni |
+| Barman | ✗ Incompatible<sup>5</sup> | Use pgBackRest instead |
 
 ---
 
@@ -798,13 +796,13 @@ postgresql:
 ### References
 
 - [Percona pg_tde Documentation](https://percona.github.io/pg_tde/main/)
-- [Eviden KMS KMIP Support](https://docs.cosmian.com/key_management_system/kmip/)
+- [Eviden KMS KMIP Support](../../index.md)
 - [Percona pg_tde Architecture](https://docs.percona.com/pg-tde/architecture/architecture.html)
 - [Percona WAL Encryption Blog (2025-09-01)](https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/)
 - [Percona pg_tde Limitations](https://docs.percona.com/pg-tde/index/tde-limitations.html#currently-unsupported-wal-tools)
 
 [1]: https://percona.github.io/pg_tde/main/
-[2]: https://docs.cosmian.com/key_management_system/kmip/
+[2]: ../../index.md
 [3]: https://docs.percona.com/pg-tde/architecture/architecture.html
 [4]: https://percona.community/blog/2025/09/01/pg_tde-can-now-encrypt-your-wal-on-prod/
 
@@ -813,5 +811,5 @@ postgresql:
 ## Official Documentation Links
 
 - [Percona pg_tde Official Docs](https://docs.percona.com/pg-tde/)
-- [Eviden KMS Percona Integration](https://docs.cosmian.com/key_management_system/percona/)
-- [Percona Server for PostgreSQL 17](https://www.percona.com/software/postgresql/percona-server-for-postgresql)
+- [Eviden KMS Percona Integration](./percona.md)
+- [Percona Server for PostgreSQL 17](https://www.percona.com/software/postgresql-database)

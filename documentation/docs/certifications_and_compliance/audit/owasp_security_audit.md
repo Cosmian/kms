@@ -15,7 +15,7 @@
 | `cargo-audit` | 0.22.1 | ✅ Available | Advisory DB scan |
 | `cargo-deny` | 0.19.0 | ✅ Available | Policy check (bans, licenses, advisories, sources) |
 | `cargo-outdated` | 0.17.0 | ✅ Available | Outdated dep detection |
-| `cargo-geiger` | 0.13.0 | ⚠️ Installed — partial | Fails on virtual workspace manifest with bug ([#378](https://github.com/rust-secure-code/cargo-geiger/issues/378)); fallback: manual `grep -r "unsafe "` |
+| `cargo-geiger` | 0.13.0 | ⚠️ Installed — partial | Fails on virtual workspace manifest with bug |
 | `semgrep` | — | ❌ Not installed | Static pattern matching — install per §1 |
 | `gitleaks` / `trufflehog3` | — | ❌ Not installed | Secret scanning — install per §1 |
 
@@ -27,22 +27,72 @@
 
 ## Table of Contents
 
-1. [Tool Installation](#1-tool-installation)
-2. [A01 – Broken Access Control](#2-a01--broken-access-control)
-3. [A02 – Cryptographic Failures](#3-a02--cryptographic-failures)
-4. [A03 – Injection](#4-a03--injection)
-5. [A04 – Insecure Design](#5-a04--insecure-design)
-6. [A05 – Security Misconfiguration](#6-a05--security-misconfiguration)
-7. [A06 – Vulnerable and Outdated Components](#7-a06--vulnerable-and-outdated-components)
-8. [A07 – Identification and Authentication Failures](#8-a07--identification-and-authentication-failures)
-9. [A08 – Software and Data Integrity Failures](#9-a08--software-and-data-integrity-failures)
-10. [A09 – Security Logging and Monitoring Failures](#10-a09--security-logging-and-monitoring-failures)
-11. [A10 – Server-Side Request Forgery (SSRF)](#11-a10--server-side-request-forgery-ssrf)
-12. [EXT-0 – KMS Own Authorization System](#12-ext-0--kms-own-authorization-system)
-13. [EXT-1 – Cryptographic Key Lifecycle & Zeroization](#13-ext-1--cryptographic-key-lifecycle--zeroization)
-14. [EXT-2 – Denial of Service / Resource Exhaustion](#14-ext-2--denial-of-service--resource-exhaustion)
-15. [Remediation Priority Matrix](#15-remediation-priority-matrix)
-16. [Report Sign-off](#16-report-sign-off)
+- [Eviden KMS — OWASP Security Audit Plan \& Report](#eviden-kms--owasp-security-audit-plan--report)
+    - [Tools available during this audit](#tools-available-during-this-audit)
+    - [Table of Contents](#table-of-contents)
+    - [1. Tool Installation](#1-tool-installation)
+        - [1.1 Rust security toolchain](#11-rust-security-toolchain)
+        - [1.2 Secrets scanning](#12-secrets-scanning)
+        - [1.3 SAST — Semgrep](#13-sast--semgrep)
+        - [1.4 Readiness check](#14-readiness-check)
+    - [2. A01 – Broken Access Control](#2-a01--broken-access-control)
+        - [2.1 Scope](#21-scope)
+        - [2.2 Investigation Steps](#22-investigation-steps)
+        - [2.3 Findings](#23-findings)
+    - [3. A02 – Cryptographic Failures](#3-a02--cryptographic-failures)
+        - [3.1 Scope](#31-scope)
+        - [3.2 Investigation Steps](#32-investigation-steps)
+        - [3.3 Findings](#33-findings)
+    - [4. A03 – Injection](#4-a03--injection)
+        - [4.1 Scope](#41-scope)
+        - [4.2 Investigation Steps](#42-investigation-steps)
+        - [4.3 Findings](#43-findings)
+    - [5. A04 – Insecure Design](#5-a04--insecure-design)
+        - [5.1 Scope](#51-scope)
+        - [5.2 Investigation Steps](#52-investigation-steps)
+        - [5.3 Findings](#53-findings)
+    - [6. A05 – Security Misconfiguration](#6-a05--security-misconfiguration)
+        - [6.1 Scope](#61-scope)
+        - [6.2 Investigation Steps](#62-investigation-steps)
+        - [6.3 Findings](#63-findings)
+    - [7. A06 – Vulnerable and Outdated Components](#7-a06--vulnerable-and-outdated-components)
+        - [7.1 Scope](#71-scope)
+        - [7.2 Investigation Steps](#72-investigation-steps)
+        - [7.3 Findings](#73-findings)
+    - [8. A07 – Identification and Authentication Failures](#8-a07--identification-and-authentication-failures)
+        - [8.1 Scope](#81-scope)
+        - [8.2 Investigation Steps](#82-investigation-steps)
+        - [8.3 Findings](#83-findings)
+    - [9. A08 – Software and Data Integrity Failures](#9-a08--software-and-data-integrity-failures)
+        - [9.1 Scope](#91-scope)
+        - [9.2 Investigation Steps](#92-investigation-steps)
+        - [9.3 Findings](#93-findings)
+    - [10. A09 – Security Logging and Monitoring Failures](#10-a09--security-logging-and-monitoring-failures)
+        - [10.1 Scope](#101-scope)
+        - [10.2 Investigation Steps](#102-investigation-steps)
+        - [10.3 Findings](#103-findings)
+    - [11. A10 – Server-Side Request Forgery (SSRF)](#11-a10--server-side-request-forgery-ssrf)
+        - [11.1 Scope](#111-scope)
+        - [11.2 Investigation Steps](#112-investigation-steps)
+        - [11.3 Findings](#113-findings)
+    - [12. EXT-0 – KMS Own Authorization System](#12-ext-0--kms-own-authorization-system)
+        - [12.1 Architecture](#121-architecture)
+        - [12.2 Scope](#122-scope)
+        - [12.3 Investigation Steps](#123-investigation-steps)
+        - [12.4 Checklist](#124-checklist)
+        - [12.5 Findings](#125-findings)
+    - [13. EXT-1 – Cryptographic Key Lifecycle \& Zeroization](#13-ext-1--cryptographic-key-lifecycle--zeroization)
+        - [13.1 Scope](#131-scope)
+        - [13.2 Investigation Steps](#132-investigation-steps)
+        - [13.3 Findings](#133-findings)
+    - [14. EXT-2 – Denial of Service / Resource Exhaustion](#14-ext-2--denial-of-service--resource-exhaustion)
+        - [14.1 Scope](#141-scope)
+        - [14.2 Investigation Steps](#142-investigation-steps)
+        - [14.3 Findings](#143-findings)
+    - [15. Remediation Priority Matrix](#15-remediation-priority-matrix)
+        - [Severity definitions (CVSS 3.1 base score ranges)](#severity-definitions-cvss-31-base-score-ranges)
+    - [16. Report Sign-off](#16-report-sign-off)
+        - [Summary statistics](#summary-statistics)
 
 ---
 
@@ -577,7 +627,7 @@ crate:   rand  version: 0.9.2  advisory: RUSTSEC-2026-0097 (allow-listed)
 - A06-2: Dedup by aligning version requirements across crates using `[patch]` or resolving transitive dependency mismatches. Track with `cargo deny check duplicates`.
 - A06-5: Add `cd ui && pnpm audit --audit-level moderate` to CI pipeline.
 - A06-6: Align `getrandom` version in `crate/clients/wasm/Cargo.toml` to a version that still exposes the `js` feature gate, or remove the feature if no longer applicable.
-- A06-7 (geiger): Upgrade `cargo-geiger` when a version supporting Rust 2024 virtual workspaces is available. Track [cargo-geiger#378](https://github.com/rust-secure-code/cargo-geiger/issues/378).
+- A06-7 (geiger): Upgrade `cargo-geiger` when a version supporting Rust 2024 virtual workspaces is available.
 
 ---
 

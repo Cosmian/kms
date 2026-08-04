@@ -40,13 +40,13 @@ interface AwsExportKeyMaterialFormData {
 
 const AwsExportKeyMaterialForm: React.FC = () => {
     const [form] = Form.useForm<AwsExportKeyMaterialFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: AwsExportKeyMaterialFormData) => {
         await execute(async () => {
             // Step 1: Get KEK attributes to retrieve AWS tags
             const getAttrsRequest = wasm.get_attributes_ttlv_request_with_options(values.kekId, true);
-            const attrsResultStr = await sendKmipRequest(getAttrsRequest, idToken, serverUrl);
+            const attrsResultStr = await sendKmipRequest(getAttrsRequest, serverUrl);
 
             if (!attrsResultStr) {
                 return "Failed to retrieve KEK attributes";
@@ -92,7 +92,7 @@ const AwsExportKeyMaterialForm: React.FC = () => {
                 wrappingAlgorithm, // Wrapping algorithm
             );
 
-            const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
+            const exportResultStr = await sendKmipRequest(exportRequest, serverUrl);
 
             if (!exportResultStr) {
                 return "Failed to export wrapped key";

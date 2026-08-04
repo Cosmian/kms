@@ -24,7 +24,7 @@ type CreateKeyPairResponse = {
 
 const RsaKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<RsaKeyCreateFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: RsaKeyCreateFormData) => {
         await execute(async () => {
@@ -35,7 +35,7 @@ const RsaKeyCreateForm: React.FC = () => {
                 values.sensitive,
                 values.wrappingKeyId,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: CreateKeyPairResponse = await parse_create_keypair_ttlv_response(result_str);
                 const skId = result.PrivateKeyUniqueIdentifier;
@@ -44,16 +44,16 @@ const RsaKeyCreateForm: React.FC = () => {
                 if (values.enrollKeyset || values.rotateInterval !== undefined || values.rotateOffset !== undefined) {
                     if (values.rotateInterval !== undefined) {
                         const req = wasm.set_rotate_interval_ttlv_request(skId, BigInt(values.rotateInterval));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.rotateOffset !== undefined) {
                         const req = wasm.set_rotate_offset_ttlv_request(skId, BigInt(values.rotateOffset));
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                     if (values.enrollKeyset) {
                         // rotation name must equal the private key ID
                         const req = wasm.set_rotate_name_ttlv_request(skId, skId);
-                        await sendKmipRequest(req, idToken, serverUrl);
+                        await sendKmipRequest(req, serverUrl);
                     }
                 }
 

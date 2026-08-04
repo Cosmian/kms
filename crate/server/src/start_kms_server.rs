@@ -43,17 +43,23 @@ use openssl::{
     ssl::SslAcceptorBuilder,
 };
 use tokio::{runtime::Handle, task::JoinHandle, try_join};
+use url::Url;
 
 #[cfg(feature = "non-fips")]
 use crate::routes::tokenize;
 use crate::{
-    config::{IdpAuthConfig, ServerParams, TlsParams},
+    config::{
+        AuthVerifierConfig, AuthVerifierRuntimeConfig, IdpAuthConfig, OidcRuntimeConfig,
+        ProxyParams, ServerParams, TlsParams,
+    },
     core::KMS,
     cron,
     error::KmsError,
     middlewares::{
-        JwksManager, JwtConfig, api_token_middleware, ensure_auth_middleware,
-        extract_peer_certificate, jwt_auth_middleware, otel_http_metrics_middleware, tls_auth_fn,
+        AuthVerifier, JwksManager, JwtConfig, SessionAuth, SpireTokenCache, api_token_middleware,
+        ensure_auth_middleware, extract_peer_certificate, jwt_auth_middleware,
+        otel_http_metrics_middleware, spire_token_middleware, tls_auth_fn,
+        vault_token_optional_middleware,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -64,7 +70,17 @@ use crate::{
         google_cse::{self, GoogleCseConfig},
         health, jose, jwks,
         kmip::{self, handle_ttlv_bytes},
-        ms_dke, root_redirect, swagger,
+        ms_dke, root_redirect,
+        spire::{
+            auth_proxy::proxy_auth_request,
+            pki::sign_intermediate,
+            transit::{
+                configure_transit_key, create_transit_key, create_transit_key_put,
+                delete_transit_key, get_transit_key, list_transit_keys, sign_with_transit_key,
+                sign_with_transit_key_put,
+            },
+        },
+        swagger,
         ui_auth::configure_auth_routes,
     },
     socket_server::{SocketServer, SocketServerParams},
@@ -556,6 +572,113 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
     Ok(Key::from(derived_key.as_ref()))
 }
 
+/// Fetch the OIDC discovery document and build an `OidcRuntimeConfig`.
+///
+/// Called once at server startup. The discovered `authorization_endpoint` and
+/// `token_endpoint` are **cached for the lifetime of the server process**. The
+/// `jwks_uri` is fetched once here to seed the `JwksManager`, but signing keys
+/// are refreshed on demand afterward (refresh-on-miss on an unknown `kid` in
+/// `crate::routes::ui_auth::callback`) — key rotation at the `IdP` does not
+/// require a restart.
+///
+/// WARNING: `authorization_endpoint`/`token_endpoint` are cached at startup.
+/// Changes to the `IdP` configuration (issuer URL, endpoint URLs) require a
+/// **server restart** to take effect.
+async fn build_oidc_runtime_config(
+    oidc_config: crate::config::OidcConfig,
+    proxy_params: Option<&ProxyParams>,
+) -> OidcRuntimeConfig {
+    use crate::config::OidcDiscoveredEndpoints;
+
+    let Some(ref issuer) = oidc_config.ui_oidc_issuer_url else {
+        return OidcRuntimeConfig {
+            config: oidc_config,
+            discovered: None,
+        };
+    };
+
+    let base = issuer.trim_end_matches('/');
+    let discovery_url = format!("{base}/.well-known/openid-configuration");
+
+    let client = match reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("OIDC: failed to build HTTP client for discovery: {e}");
+            return OidcRuntimeConfig {
+                config: oidc_config,
+                discovered: None,
+            };
+        }
+    };
+
+    let discovery: serde_json::Value = match client.get(&discovery_url).send().await {
+        Ok(r) => match r.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("OIDC: failed to parse discovery document from {discovery_url}: {e}");
+                return OidcRuntimeConfig {
+                    config: oidc_config,
+                    discovered: None,
+                };
+            }
+        },
+        Err(e) => {
+            warn!("OIDC: failed to fetch discovery document from {discovery_url}: {e}");
+            return OidcRuntimeConfig {
+                config: oidc_config,
+                discovered: None,
+            };
+        }
+    };
+
+    let get_str = |key: &str| {
+        discovery
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+    };
+
+    let (Some(authorization_endpoint), Some(token_endpoint), Some(jwks_uri)) = (
+        get_str("authorization_endpoint"),
+        get_str("token_endpoint"),
+        get_str("jwks_uri"),
+    ) else {
+        warn!("OIDC: discovery document at {discovery_url} is missing required fields");
+        return OidcRuntimeConfig {
+            config: oidc_config,
+            discovered: None,
+        };
+    };
+
+    info!("OIDC: discovered endpoints from {discovery_url}");
+    debug!("OIDC: authorization_endpoint={authorization_endpoint}");
+    debug!("OIDC: token_endpoint={token_endpoint}");
+    debug!("OIDC: jwks_uri={jwks_uri}");
+
+    let jwks_manager = match JwksManager::new(vec![jwks_uri], proxy_params).await {
+        Ok(mgr) => Arc::new(mgr),
+        Err(e) => {
+            warn!("OIDC: failed to build JwksManager for UI OIDC: {e}");
+            return OidcRuntimeConfig {
+                config: oidc_config,
+                discovered: None,
+            };
+        }
+    };
+
+    OidcRuntimeConfig {
+        config: oidc_config,
+        discovered: Some(OidcDiscoveredEndpoints {
+            authorization_endpoint,
+            token_endpoint,
+            jwks_manager,
+        }),
+    }
+}
+
 /// Prepare the server for the application.
 ///
 /// Creates an `HttpServer` instance,
@@ -572,7 +695,84 @@ fn derive_session_key_from_url(public_url: &str, user_salt: &str) -> KResult<Key
 /// # Errors
 /// This function can return the following errors:
 /// - `KmsError::ServerError` - If there is an error in the server configuration or preparation.
+///
+/// # Panics
+/// Panics if the static fallback URL `"http://localhost"` fails to parse, which
+/// cannot occur in practice since the URL is syntactically valid. This URL is only
+/// constructed when `vault_api_enabled = false` or `vault_auth_verifier_url` is
+/// absent, and is never invoked (guarded by `Condition::new(false, …)`).
 pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev::Server> {
+    // ── Startup security guards ──────────────────────────────────────────────
+
+    // F-001: Warn loudly if the `insecure` feature flag is compiled in.
+    #[cfg(feature = "insecure")]
+    {
+        cosmian_logger::error!(
+            "SECURITY: KMS compiled with 'insecure' feature — ALL JWT and Auth Verifier signature \
+             validation is DISABLED. Any syntactically valid token is accepted without signature \
+             verification. This binary MUST NOT be used in production."
+        );
+    }
+
+    // F-002: Warn if accept_invalid_certs is enabled for auth-verifier or vault connections.
+    if kms_server
+        .params
+        .auth_verifier_config
+        .as_ref()
+        .is_some_and(|c| c.auth_verifier_accept_invalid_certs)
+    {
+        cosmian_logger::warn!(
+            "SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification \
+             is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments."
+        );
+    }
+    if kms_server.params.vault_auth_verifier_accept_invalid_certs {
+        cosmian_logger::warn!(
+            "SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate \
+             verification is DISABLED for Vault auth-verifier connections. Only use in dev/test."
+        );
+    }
+
+    // F-003: Warn when Vault API is enabled but rate limiting is disabled.
+    // The auth proxy at /v1/auth/* is unauthenticated and can be used to flood
+    // the auth-verifier. The global rate limiter (if configured) mitigates this.
+    if kms_server.params.vault_api_enabled && kms_server.params.rate_limit_per_second.is_none() {
+        cosmian_logger::warn!(
+            "SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The \
+             unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set \
+             rate_limit_per_second in the server config for production deployments."
+        );
+    }
+
+    // F-008: Validate session salt entropy when UI is enabled.
+    if kms_server.params.ui_enable {
+        if let Some(ref salt) = kms_server.params.ui_session_salt {
+            if salt.len() < 32 {
+                return Err(KmsError::ServerError(format!(
+                    "ui_session_salt is too short ({} bytes). Minimum 32 bytes required for \
+                     adequate entropy. Generate one with: openssl rand -hex 32",
+                    salt.len()
+                )));
+            }
+            // Reject known-weak default values
+            let weak_salts = [
+                "test", "dev", "debug", "changeme", "password", "secret", "0000",
+            ];
+            if weak_salts.contains(&salt.to_ascii_lowercase().as_str()) {
+                return Err(KmsError::ServerError(format!(
+                    "ui_session_salt uses a weak/known-default value '{salt}'. Generate a random \
+                     one with: openssl rand -hex 32"
+                )));
+            }
+        } else {
+            cosmian_logger::warn!(
+                "UI is enabled but ui_session_salt is not set. A random salt will be generated \
+                 per process, which invalidates existing sessions on restart. Set a persistent \
+                 salt for production use."
+            );
+        }
+    }
+
     let tls_config = if let Some(tls_params) = &kms_server.params.tls_params {
         Some(create_openssl_acceptor(tls_params)?)
     } else {
@@ -653,10 +853,46 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         .tls_params
         .as_ref()
         .is_some_and(|tls_params| tls_params.clients_ca_cert_pem.is_some());
-    // Determine if API Token Auth should be used for authentication.
+    // Determine if JWT Auth should be used for authentication.
     let use_jwt_auth = !jwt_configurations.is_empty();
     // Determine if API Token Auth should be used for authentication.
     let use_api_token_auth = kms_server.params.api_token_id.is_some();
+    // Determine if Auth Verifier should be used for authentication.
+    let (use_auth_verifier, auth_verifier_jwks_manager) =
+        if let Some(ref auth_verifier_cfg) = kms_server.params.auth_verifier_config {
+            let jwks_uri = auth_verifier_cfg.jwks_uri().ok_or_else(|| {
+                KmsError::ServerError(
+                    "Auth Verifier is enabled but no server URL is configured".to_owned(),
+                )
+            })?;
+            // Security guard: the Auth Verifier JWKS URI must use HTTPS to prevent credential
+            // exposure and MITM attacks on the public-key material used to verify bearer
+            // tokens, same as for the other JWT identity providers above.
+            // When `accept_invalid_certs` is set (dev/test only) the operator explicitly
+            // acknowledges insecure transport, so the scheme check is also skipped.
+            #[cfg(not(feature = "insecure"))]
+            if !auth_verifier_cfg.auth_verifier_accept_invalid_certs {
+                validate_jwks_uris_are_https(std::slice::from_ref(&jwks_uri))?;
+            }
+
+            let proxy_params = kms_server.params.proxy_params.clone();
+            let mgr = Arc::new(
+                JwksManager::new_with_options(
+                    vec![jwks_uri],
+                    proxy_params.as_ref(),
+                    auth_verifier_cfg.auth_verifier_accept_invalid_certs,
+                )
+                .await
+                .map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "Failed to initialise Auth Verifier JWKS manager: {e}"
+                    ))
+                })?,
+            );
+            (true, Some(mgr))
+        } else {
+            (false, None)
+        };
 
     // Determine the address to bind the server to.
     let address = format!(
@@ -741,6 +977,13 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         )
     });
 
+    // Set the `Secure` flag on the session cookie only when the server is reachable
+    // via HTTPS.  Over plain HTTP the browser never sends a Secure-flagged cookie
+    // back, which breaks the post-login session for auth-verifier and OIDC flows.
+    // The flag is enabled when the public URL uses `https://` or when TLS is
+    // configured (so the auto-generated URL will also be `https://`).
+    let session_cookie_secure = kms_public_url.starts_with("https://") || tls_config.is_some();
+
     // Derive the session cookie encryption key.
     // - If ui_session_salt is set: derive a stable key tied to the public URL using PBKDF2.
     //   This is deterministic across restarts and identical across load-balanced instances.
@@ -766,8 +1009,74 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
     // Clone kms_server for HttpServer closure
     let kms_server_for_http = kms_server.clone();
 
+    // Pre-build the reqwest client for auth-verifier token validation.
+    // Must be done here (outside the HttpServer closure) so that `?` propagates properly.
+    let vault_http_client: Arc<reqwest::Client> =
+        {
+            let mut builder = reqwest::Client::builder();
+            if kms_server.params.vault_auth_verifier_accept_invalid_certs {
+                builder = builder.danger_accept_invalid_certs(true);
+            } else if let Some(ca_cert_path) = &kms_server.params.vault_auth_verifier_ca_cert {
+                let cert_pem = std::fs::read(ca_cert_path).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "cannot read vault_auth_verifier_ca_cert '{}': {e}",
+                        ca_cert_path.display()
+                    ))
+                })?;
+                let cert = reqwest::Certificate::from_pem(&cert_pem).map_err(|e| {
+                    KmsError::ServerError(format!(
+                        "invalid vault_auth_verifier_ca_cert '{}': {e}",
+                        ca_cert_path.display()
+                    ))
+                })?;
+                builder = builder.add_root_certificate(cert);
+            }
+            Arc::new(builder.build().map_err(|e| {
+                KmsError::ServerError(format!("cannot build vault HTTP client: {e}"))
+            })?)
+        };
+
+    // Pre-compute the vault token authentication context so it can be shared across all
+    // route scopes (KMIP, transit/PKI, crypto, MS-DKE, tokenize) without re-creating the
+    // cache per scope.  The `SpireTokenCache` is wrapped in `Arc` and shared across all
+    // Actix workers for this server instance (`DashMap` provides safe concurrent access).
+    //
+    // When `vault_api_enabled = false` or `vault_auth_verifier_url` is absent, a dummy
+    // context is created but never invoked: `Condition::new(false, …)` is a no-op.
+    let use_vault_token_auth =
+        kms_server.params.vault_api_enabled && kms_server.params.vault_auth_verifier_url.is_some();
+    let spire_cache = SpireTokenCache::new(kms_server.params.vault_token_cache_ttl_secs);
+    // When vault_api_enabled = false, this URL is never used; the literal is always valid.
+    let spire_auth_verifier_url: Url = kms_server
+        .params
+        .vault_auth_verifier_url
+        .clone()
+        .unwrap_or_else(|| {
+            // SAFETY: this fallback URL is only constructed when use_vault_token_auth = false,
+            // where Condition::new(false, …) never invokes the middleware.
+            #[allow(clippy::unwrap_used)]
+            Url::parse("http://localhost").unwrap()
+        });
+    let spire_default_username: Arc<str> = kms_server.params.default_username.as_str().into();
+
     // Extract http_workers before the closure moves kms_server
     let http_workers = kms_server.params.http_workers;
+
+    // Pre-compute OIDC runtime config (async, with discovery fetch) before the
+    // synchronous HttpServer closure. Only built when the UI is enabled.
+    let ui_oidc_runtime_config = {
+        let ui_enable = kms_server.params.ui_enable;
+        let ui_index_folder = kms_server.params.ui_index_html_folder.clone();
+        if ui_enable && ui_index_folder.join("index.html").exists() {
+            let oidc_config = kms_server.params.ui_oidc_auth.clone();
+            let proxy_params = kms_server.params.proxy_params.clone();
+            Some(Arc::new(
+                build_oidc_runtime_config(oidc_config, proxy_params.as_ref()).await,
+            ))
+        } else {
+            None
+        }
+    };
 
     // Rate limiting: keyed by peer IP.  Controlled by `ServerParams::rate_limit_per_second`.
     // The test-server helper leaves that field at `None` so parallel unit tests are never
@@ -805,7 +1114,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     .cookie_http_only(true)
                     .cookie_name("auth_session".to_owned())
                     .cookie_same_site(actix_web::cookie::SameSite::Lax)
-                    .cookie_secure(true)
+                    .cookie_secure(session_cookie_secure)
                     .session_lifecycle(
                         PersistentSession::default().session_ttl(Duration::hours(24)),
                     )
@@ -861,7 +1170,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(ensure_auth_middleware(
                     kms_server_for_http.clone(),
-                    use_jwt_auth || use_cert_auth || use_api_token_auth,
+                    use_vault_token_auth || use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
                 ))
                 .wrap(Condition::new(
                     use_api_token_auth,
@@ -872,6 +1181,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                     jwt_auth_middleware(jwt_configurations.clone()),
                 ))
                 .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
+                // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+                // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+                .wrap(Condition::new(
+                    use_vault_token_auth,
+                    vault_token_optional_middleware(
+                        spire_cache.clone(),
+                        spire_auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                        spire_default_username.clone(),
+                    ),
+                ))
                 .wrap(Cors::permissive())
                 .service(ms_dke::version)
                 .service(ms_dke::get_key)
@@ -939,27 +1259,46 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         #[cfg(feature = "non-fips")]
         {
             // Middleware registration order: LAST registered = runs FIRST.
-            // Cors must run first to handle OPTIONS preflights before auth checks.
+            // Cors must run first to handle OPTIONS preflight before auth checks.
             // Auth extractors (TlsAuth, JwtAuth, ApiTokenAuth) must inject
             // AuthenticatedUser before EnsureAuth verifies it.
+            //
+            // vault_token_optional_middleware is intentionally *optional*: it enriches the
+            // request identity when `X-Vault-Token` is present but does NOT mandate that a
+            // vault token be supplied. Only "hard" auth methods (JWT, cert, API token) make
+            // the endpoint actually require authentication.
+            let use_any_auth = use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier;
             let tokenize_scope = web::scope("/tokenize")
                 .app_data(web::JsonConfig::default().limit(65_536))
                 .wrap(Condition::new(
-                    use_jwt_auth || use_cert_auth || use_api_token_auth,
-                    ensure_auth_middleware(
-                        kms_server_for_http.clone(),
-                        use_jwt_auth || use_cert_auth || use_api_token_auth,
-                    ),
+                    use_any_auth,
+                    ensure_auth_middleware(kms_server_for_http.clone(), use_any_auth),
                 ))
+                .wrap(SessionAuth)
                 .wrap(Condition::new(
                     use_api_token_auth,
                     api_token_middleware(kms_server_for_http.clone()),
+                ))
+                .wrap(Condition::new(
+                    use_auth_verifier,
+                    AuthVerifier::new(auth_verifier_jwks_manager.clone()),
                 ))
                 .wrap(Condition::new(
                     use_jwt_auth,
                     jwt_auth_middleware(jwt_configurations.clone()),
                 ))
                 .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
+                // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+                // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+                .wrap(Condition::new(
+                    use_vault_token_auth,
+                    vault_token_optional_middleware(
+                        spire_cache.clone(),
+                        spire_auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                        spire_default_username.clone(),
+                    ),
+                ))
                 .wrap(Cors::permissive())
                 .service(tokenize::hash)
                 .service(tokenize::noise)
@@ -972,17 +1311,121 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             app = app.service(tokenize_scope);
         }
 
+        // ── Vault-compatible API (Transit + PKI) ──────────────────────────────
+        // Enabled only when `vault_api_enabled = true` in server config.
+        // Authentication: `X-Vault-Token` header validated by `spire_token_middleware`
+        // which calls `GET <vault_auth_verifier_url>/v1/auth/token/lookup-self`.
+        if kms_server_for_http.params.vault_api_enabled {
+            if use_vault_token_auth {
+                let transit_mount = kms_server_for_http.params.vault_transit_mount.clone();
+                let transit_scope_path = format!("/v1/{transit_mount}");
+                let transit_scope = web::scope(&transit_scope_path)
+                    // SPIRE's `vault` KeyManager plugin (SPIRE >= 1.15.0) does
+                    // not always set a `Content-Type: application/json` header on its
+                    // `PUT` key-creation request; accept the JSON body regardless.
+                    .app_data(JsonConfig::default().content_type_required(false))
+                    .wrap(spire_token_middleware(
+                        spire_cache.clone(),
+                        spire_auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                        spire_default_username.clone(),
+                    ))
+                    .wrap(Cors::default())
+                    .service(create_transit_key)
+                    .service(create_transit_key_put)
+                    .service(configure_transit_key)
+                    .service(get_transit_key)
+                    .service(list_transit_keys)
+                    .service(delete_transit_key)
+                    .service(sign_with_transit_key)
+                    .service(sign_with_transit_key_put);
+                app = app.service(transit_scope);
+
+                let pki_mount = kms_server_for_http.params.vault_pki_mount.clone();
+                let pki_scope_path = format!("/v1/{pki_mount}");
+                let pki_scope = web::scope(&pki_scope_path)
+                    .wrap(spire_token_middleware(
+                        spire_cache.clone(),
+                        spire_auth_verifier_url.clone(),
+                        vault_http_client.clone(),
+                        spire_default_username.clone(),
+                    ))
+                    .wrap(Cors::default())
+                    .service(sign_intermediate);
+                app = app.service(pki_scope);
+
+                // Auth proxy scope: forward /v1/auth/* to the auth-verifier.
+                // SPIRE authenticates via AppRole login at vault_addr/v1/auth/approle/login,
+                // which is forwarded here to the auth-verifier unchanged.
+                // The KMS token-validation middleware still calls auth-verifier directly
+                // (server-to-server) — transit/PKI hot-path requests are never proxied.
+                //
+                // NOTE: In Actix-web 4, a Scope with *only* default_service and no
+                // explicit .service() registrations is silently dropped from the router.
+                // We must register at least one resource; the wildcard `/{tail:.*}` catches
+                // all sub-paths for all HTTP methods, which is exactly what the proxy needs.
+                let auth_scope = web::scope("/v1/auth")
+                    .app_data(web::Data::new(vault_http_client.clone()))
+                    .app_data(web::Data::new(spire_auth_verifier_url.clone()))
+                    .wrap(Cors::default())
+                    .service(
+                        web::resource("/{tail:.*}")
+                            .route(web::route().to(proxy_auth_request)),
+                    );
+                app = app.service(auth_scope);
+
+                info!(
+                    "Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth"
+                );
+            } else {
+                warn!(
+                    "vault_api_enabled = true but vault_auth_verifier_url is not set — \
+                     Vault-compatible API will NOT be registered. \
+                     Set vault_auth_verifier_url in the server config."
+                );
+            }
+        }
+
         let ui_index_folder = kms_server_for_http.params.ui_index_html_folder.clone();
         if kms_server_for_http.params.ui_enable && ui_index_folder.join("index.html").exists() {
             info!("Serving UI from {}", ui_index_folder.display());
-            let oidc_config = kms_server_for_http.params.ui_oidc_auth.clone();
+            // OIDC runtime config was pre-computed before HttpServer::new (async discovery).
+            let oidc_runtime_config: OidcRuntimeConfig = ui_oidc_runtime_config
+                .as_ref()
+                .map_or_else(
+                    || OidcRuntimeConfig {
+                        config: kms_server_for_http.params.ui_oidc_auth.clone(),
+                        discovered: None,
+                    },
+                    |arc| arc.as_ref().clone(),
+                );
 
             let auth_type: Option<String> = if use_jwt_auth {
                 Some("JWT".to_owned())
             } else if use_cert_auth {
                 Some("CERT".to_owned())
+            } else if use_auth_verifier
+                && kms_server_for_http
+                    .params
+                    .auth_verifier_config
+                    .as_ref()
+                    .is_some_and(AuthVerifierConfig::ui_login_enabled)
+            {
+                Some("AUTH_VERIFIER".to_owned())
             } else {
                 None
+            };
+
+            // BFF runtime config for the Auth Verifier server Web UI login
+            // (`/ui/login_as`). Reuses the JWKS manager already built above for the
+            // bearer-token `AuthVerifier` middleware — no second JWKS fetch.
+            let auth_verifier_runtime_config = AuthVerifierRuntimeConfig {
+                config: kms_server_for_http
+                    .params
+                    .auth_verifier_config
+                    .clone()
+                    .unwrap_or_default(),
+                jwks_manager: auth_verifier_jwks_manager.clone(),
             };
 
             // These paths mirror the React application's client-side routes
@@ -1013,7 +1456,8 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 "/rotation-policy{_:.*}",
             ];
             let mut auth_routes = web::scope("/ui")
-                .app_data(Data::new(oidc_config))
+                .app_data(Data::new(oidc_runtime_config))
+                .app_data(Data::new(auth_verifier_runtime_config))
                 .app_data(Data::new(kms_public_url.clone()))
                 .app_data(Data::new(ui_index_folder.clone()))
                 .app_data(Data::new(auth_type))
@@ -1047,12 +1491,17 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         }
 
         // Public endpoints (no authentication) — health/version for connectivity checks.
-        // API documentation (Swagger UI, OpenAPI schema) is served from the authenticated
-        // default scope to prevent information disclosure.
+        // Swagger UI and OpenAPI schema are also public so they remain reachable when
+        // the server requires TLS client certificates or other auth methods that a
+        // browser cannot satisfy for static assets.
         app = app
             .service(root_redirect::root_redirect_to_ui)
             .service(health::get_health)
-            .service(get_version);
+            .service(get_version)
+            .service(swagger::get_openapi_yaml)
+            .service(swagger::get_swagger_ui)
+            .service(swagger::get_swagger_ui_js)
+            .service(swagger::get_swagger_ui_css);
 
         // JWKS endpoint: public, unauthenticated, CORS-open (partially).
         // The scope prefix `/.well-known` is explicit so this scope does not conflict
@@ -1085,17 +1534,33 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
             )
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth,
+                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
             ))
+            .wrap(SessionAuth)
             .wrap(Condition::new(
                 use_api_token_auth,
                 api_token_middleware(kms_server_for_http.clone()),
+            ))
+            .wrap(Condition::new(
+                use_auth_verifier,
+                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
                 jwt_auth_middleware(jwt_configurations.clone()),
             ))
             .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn)))
+            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+            .wrap(Condition::new(
+                use_vault_token_auth,
+                vault_token_optional_middleware(
+                    spire_cache.clone(),
+                    spire_auth_verifier_url.clone(),
+                    vault_http_client.clone(),
+                    spire_default_username.clone(),
+                ),
+            ))
             .wrap(Cors::permissive())
             .service(jose::encrypt_handler)
             .service(jose::decrypt_handler)
@@ -1114,17 +1579,33 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
         let default_scope = web::scope("")
             .wrap(ensure_auth_middleware(
                 kms_server_for_http.clone(),
-                use_jwt_auth || use_cert_auth || use_api_token_auth,
+                use_jwt_auth || use_cert_auth || use_api_token_auth || use_auth_verifier,
             ))
+            .wrap(SessionAuth)
             .wrap(Condition::new(
                 use_api_token_auth,
                 api_token_middleware(kms_server_for_http.clone()),
+            ))
+            .wrap(Condition::new(
+                use_auth_verifier,
+                AuthVerifier::new(auth_verifier_jwks_manager.clone()),
             ))
             .wrap(Condition::new(
                 use_jwt_auth,
                 jwt_auth_middleware(jwt_configurations.clone()),
             )) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, from_fn(tls_auth_fn))) // Use certificates for authentication if necessary.
+            // Optional vault-token auth: accepts `X-Vault-Token` in lieu of native auth
+            // when vault_api_enabled = true. Runs before native auth (LIFO wrap order).
+            .wrap(Condition::new(
+                use_vault_token_auth,
+                vault_token_optional_middleware(
+                    spire_cache.clone(),
+                    spire_auth_verifier_url.clone(),
+                    vault_http_client.clone(),
+                    spire_default_username.clone(),
+                ),
+            ))
             // CORS: KMIP is a server-to-server protocol; restrict to same-origin by default.
             // Additional origins (e.g. a Vite dev server in E2E tests) can be allowed via
             // `cors_allowed_origins` / `KMS_CORS_ALLOWED_ORIGINS`. Enterprise-integration scopes
@@ -1160,11 +1641,7 @@ pub async fn prepare_kms_server(kms_server: Arc<KMS>) -> KResult<actix_web::dev:
                 web::resource("/download-cli")
                     .route(web::get().to(cli_archive_download))
                     .route(web::head().to(cli_archive_exists)),
-            )
-            .service(swagger::get_openapi_yaml)
-            .service(swagger::get_swagger_ui)
-            .service(swagger::get_swagger_ui_js)
-            .service(swagger::get_swagger_ui_css);
+            );
 
         app.service(default_scope)
     })

@@ -1,4 +1,6 @@
-#### Specification
+# Locate
+
+## Specification
 
 This operation requests that the server search for one or more Managed Objects, depending on the attributes specified in
 the request. All attributes are allowed to be used. The request MAY contain a Maximum Items field, which specifies the
@@ -61,7 +63,7 @@ objects that are destroyed unless the Storage Status Mask field includes the Des
 SHALL NOT return unique identifiers for objects that are archived unless the Storage Status Mask field includes the
 Archived Storage indicator.
 
-#### Implementation
+## Implementation
 
 Locate allows finding objects:
 
@@ -80,7 +82,7 @@ Locate allows finding objects:
     - by subject common name
     - by certificate spki
 
-### Example - Symmetric Keys using the `_kk` tag
+## Example - Symmetric Keys using the `_kk` tag
 
 All symmetric keys are tagged with the system tag `_kk`.
 Multiple tags can be used locate objects; a JSON array of tags is used to specify multiple tags which is then

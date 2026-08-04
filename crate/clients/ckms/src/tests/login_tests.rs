@@ -38,7 +38,7 @@ server_url = "http://127.0.0.1:9998"
     .expect("failed to write test config");
 
     let mut cmd = ckms_bin();
-    cmd.env(CKMS_CONF_ENV, &conf_path).arg("login");
+    cmd.env(CKMS_CONF_ENV, &conf_path).arg("login").arg("oauth");
 
     let output = recover_cmd_logs(&mut cmd);
     assert!(
@@ -59,4 +59,84 @@ pub(crate) fn test_ckms_login_help() {
     let mut cmd = ckms_bin();
     cmd.arg("login").arg("--help");
     cmd.assert().success();
+}
+
+/// `ckms login cosmian` must fail immediately with a clear error when the
+/// configuration file does not contain a `cosmian_conf` section.
+#[tokio::test]
+pub(crate) async fn test_ckms_login_cosmian_fails_without_cosmian_conf() {
+    let conf_path = env::temp_dir().join("ckms_login_no_cosmian_conf_test.toml");
+    fs::write(
+        &conf_path,
+        r#"
+[http_config]
+server_url = "http://127.0.0.1:9998"
+"#,
+    )
+    .expect("failed to write test config");
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path)
+        .arg("login")
+        .arg("cosmian")
+        .arg("--username")
+        .arg("admin")
+        .arg("--password")
+        .arg("change_me");
+
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(
+        !output.status.success(),
+        "ckms login cosmian should fail when cosmian_conf is absent"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cosmian_conf"),
+        "error message should mention 'cosmian_conf', got: {stderr}"
+    );
+}
+
+/// `ckms login approle --help` must succeed and print help text without
+/// contacting any server.
+#[test]
+pub(crate) fn test_ckms_login_approle_help() {
+    let mut cmd = ckms_bin();
+    cmd.arg("login").arg("approle").arg("--help");
+    cmd.assert().success();
+}
+
+/// `ckms login approle` with an explicit `--secret-id` must fail cleanly (not
+/// panic) when the configured KMS server is unreachable, and must surface an
+/// AppRole-login error.  Providing `--secret-id` avoids the interactive prompt.
+#[tokio::test]
+pub(crate) async fn test_ckms_login_approle_fails_when_server_unreachable() {
+    let conf_path = env::temp_dir().join("ckms_login_approle_unreachable_test.toml");
+    fs::write(
+        &conf_path,
+        r#"
+[http_config]
+server_url = "http://127.0.0.1:1"
+"#,
+    )
+    .expect("failed to write test config");
+
+    let mut cmd = ckms_bin();
+    cmd.env(CKMS_CONF_ENV, &conf_path)
+        .arg("login")
+        .arg("approle")
+        .arg("--role-id")
+        .arg("some-role")
+        .arg("--secret-id")
+        .arg("some-secret");
+
+    let output = recover_cmd_logs(&mut cmd);
+    assert!(
+        !output.status.success(),
+        "ckms login approle should fail when the server is unreachable"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("AppRole login"),
+        "error message should mention 'AppRole login', got: {stderr}"
+    );
 }

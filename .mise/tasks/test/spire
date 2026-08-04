@@ -1,0 +1,630 @@
+#!/usr/bin/env bash
+#MISE description="SPIRE + Mistral client full integration tests (non-FIPS only)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="non-fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+source "${MISE_CONFIG_ROOT}/.mise/lib/kms_server.sh"
+
+if [ "${usage_variant:-non-fips}" != "non-fips" ]; then
+  print_error "SPIRE tests require non-fips variant (got: ${usage_variant})"
+fi
+
+# SPIRE tests require the Vault API which is non-FIPS only
+kms_init_env "non-fips" "${usage_link:-static}"
+setup_test_logging
+
+REPO_ROOT="$(get_repo_root)"
+TEST_DATA="${REPO_ROOT}/test_data/spire"
+AUTH_PID=""
+AUTH_LOG="/tmp/auth-verifier-spire.log"
+SPIRE_SECRETS_ENV="/tmp/spire-secrets.env"
+# Persistent auth-verifier SQLite DB (see connection_url in
+# test_data/spire/config/auth_verifier.toml). Unlike the KMS DB (clear_database=true),
+# this file is NOT wiped by the process on start, so the harness must remove it to
+# guarantee a clean state between runs — otherwise stale AppRole role_ids/secret_ids
+# leak across runs and can cause SPIRE login 403s ("invalid role_id or secret_id").
+AUTH_DB_FILE="/tmp/auth-verifier-spire-test.db"
+
+# `mise run test:spire` owns host ports 8443 (auth-verifier) and 9998 (KMS).
+# A previously crashed or unrelated SPIRE test run can leave stale listeners on
+# those ports, causing this task to talk to the wrong processes and produce
+# false positives/negatives. Detect and stop any existing listeners up front.
+#
+# All four helpers use lsof (available on both macOS and Linux) instead of the
+# Linux-only ss + GNU awk combination.
+listener_pids_for_port() {
+  local port="$1"
+  lsof -ti tcp:"${port}" 2>/dev/null | sort -u || true
+}
+
+port_is_listening() {
+  local port="$1"
+  lsof -i tcp:"${port}" -sTCP:LISTEN 2>/dev/null | grep -q . 2>/dev/null
+}
+
+wait_for_port_closed() {
+  local port="$1" timeout_secs="$2" elapsed=0
+  while port_is_listening "${port}"; do
+    if [[ "${elapsed}" -ge "${timeout_secs}" ]]; then
+      return 1
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+}
+
+stop_listener_on_port() {
+  local port="$1" label="$2" pids pid
+  pids="$(listener_pids_for_port "${port}")"
+  [[ -z "${pids}" ]] && return 0
+
+  print_info "Stopping stale ${label} listener(s) on port ${port}: $(paste -sd, <<<"${pids}")"
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
+  done <<<"${pids}"
+
+  if wait_for_port_closed "${port}" 10; then
+    return 0
+  fi
+
+  print_info "Port ${port} still busy after SIGTERM; forcing remaining ${label} listener(s) down."
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && kill -9 "${pid}" 2>/dev/null || true
+  done <<<"${pids}"
+
+  wait_for_port_closed "${port}" 5 ||
+    print_error "Port ${port} is still in use after stopping stale ${label} listener(s)."
+}
+
+# Remove all leftover SPIRE test state (stale containers/volumes, persistent auth DB,
+# and temp files) so each run starts from a clean, deterministic environment. Used both
+# for the up-front reset and by the exit-time cleanup.
+reset_spire_state() {
+  # Free the host ports owned by this task before bringing fresh processes up.
+  stop_listener_on_port 8443 "auth-verifier"
+  stop_listener_on_port 9998 "KMS"
+
+  # Stop all SPIRE profile containers (including spire-agent) and remove named
+  # volumes (incl. spire-agent-socket) so `up -d` never reuses a stale container
+  # carrying outdated AppRole credentials.
+  docker compose --profile spire down --volumes --remove-orphans 2>/dev/null || true
+  # Remove the persistent auth-verifier DB (WAL/SHM sidecars included).
+  rm -f "${AUTH_DB_FILE}" "${AUTH_DB_FILE}-wal" "${AUTH_DB_FILE}-shm" 2>/dev/null || true
+  # Remove temp files/dirs carrying credentials/tokens from a previous run,
+  # including the per-tenant patched agent configs and captured server logs.
+  rm -f "${SPIRE_SECRETS_ENV}" /tmp/spire-join-token.txt 2>/dev/null || true
+  rm -rf /tmp/spire-agent-config-* 2>/dev/null || true
+  rm -f /tmp/spire-server-*.log 2>/dev/null || true
+}
+
+# ── Cleanup on exit ───────────────────────────────────────────────────────────
+cleanup() {
+  print_info "Cleaning up SPIRE integration test resources..."
+
+  # Capture SPIRE server and agent logs before stopping (helps debug failures)
+  for _t in a b; do
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^spire-server-${_t}$"; then
+      echo "--- SPIRE SERVER '${_t}' LOGS (last 40 lines) ---"
+      docker logs "spire-server-${_t}" 2>&1 | tail -40 || true
+      echo "--- END SPIRE SERVER '${_t}' LOGS ---"
+    fi
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^spire-agent-${_t}$"; then
+      echo "--- SPIRE AGENT '${_t}' LOGS (last 40 lines) ---"
+      docker logs "spire-agent-${_t}" 2>&1 | tail -40 || true
+      echo "--- END SPIRE AGENT '${_t}' LOGS ---"
+    fi
+  done
+
+  # Stop auth-verifier
+  if [[ -n "${AUTH_PID:-}" ]]; then
+    kill "${AUTH_PID}" 2>/dev/null || true
+    wait "${AUTH_PID}" 2>/dev/null || true
+    AUTH_PID=""
+  fi
+
+  # Stop KMS
+  kms_stop
+
+  # Stop all SPIRE profile containers (including spire-agent, which is now
+  # managed by compose), remove named volumes (incl. spire-agent-socket), the
+  # persistent auth-verifier DB, and temp credential/token files.
+  reset_spire_state
+}
+trap cleanup EXIT
+
+# ── Multi-tenant topology ─────────────────────────────────────────────────────
+# Two INDEPENDENT SPIRE deployments (tenants "a" and "b") run against the SAME
+# KMS, each with its own trust domain, AppRole, agent, and 2 Mistral workloads.
+# Adding a 3rd tenant means: one compose stanza, one server+agent config pair,
+# one AppRole in provision.sh, and one entry in TENANTS below.
+TENANTS=("a" "b")
+
+# Trust domain for a tenant, e.g. tenant "a" → cosmian-test-a.local
+tenant_trust_domain() { echo "cosmian-test-$1.local"; }
+
+# Block until spire-server-<tenant> reports healthy, or fail the task.
+wait_server_healthy() {
+  local t="$1" tries=0
+  until docker inspect --format='{{.State.Health.Status}}' "spire-server-${t}" 2>/dev/null | grep -q healthy; do
+    tries=$((tries + 1))
+    if [[ "${tries}" -ge 24 ]]; then
+      print_error "SPIRE server '${t}' did not become healthy in time. Check: docker logs spire-server-${t}"
+    fi
+    sleep 5
+  done
+}
+
+# Block until spire-agent-<tenant>'s workload API socket is ready, or fail.
+wait_agent_ready() {
+  local t="$1" tries=0
+  until docker exec "spire-agent-${t}" /opt/spire/bin/spire-agent healthcheck \
+    -socketPath /tmp/spire-agent/public/api.sock 2>/dev/null; do
+    tries=$((tries + 1))
+    if [[ "${tries}" -ge 24 ]]; then
+      docker logs "spire-agent-${t}" 2>&1 | tail -20 || true
+      print_error "SPIRE agent '${t}' socket did not appear in time."
+    fi
+    sleep 5
+  done
+}
+
+# ── Prerequisites ─────────────────────────────────────────────────────────────
+require_cmd docker
+require_cmd cargo
+require_cmd openssl
+
+if [[ ! -d "${TEST_DATA}" ]]; then
+  print_error "test_data/spire not found. Make sure the test_data submodule is on branch 'spire-integration-tests'."
+fi
+
+# ── Clean state ───────────────────────────────────────────────────────────────
+# Remove any leftover state from a previous (possibly crashed) run BEFORE starting.
+# cleanup() only runs on EXIT, so an interrupted run can leave stale spire containers
+# or a stale auth-verifier DB whose AppRole credentials no longer match the freshly
+# provisioned ones, yielding a SPIRE login 403. Resetting up front makes the task
+# idempotent regardless of prior residue.
+print_status "Resetting SPIRE test state (removing any leftover containers/DB)..."
+reset_spire_state
+
+print_header "SPIRE + Mistral Client Integration Tests"
+
+# ── Step 1: Generate TLS certificates if missing ─────────────────────────────
+print_status "Checking TLS certificates..."
+if [[ ! -f "${TEST_DATA}/certs/ca.crt" || ! -f "${TEST_DATA}/certs/jwt.key.pem" ]]; then
+  print_info "Generating test TLS certificates..."
+  bash "${TEST_DATA}/certs/generate-test-certs.sh"
+else
+  print_info "TLS certificates already present."
+fi
+
+# ── Step 2: Build binaries ────────────────────────────────────────────────────
+print_status "Building KMS server (non-fips)..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+print_status "Building auth-verifier..."
+# Note: grep -E changes the exit code; check build exit separately via set -o pipefail.
+cargo build --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" \
+  --bin auth_verifier
+
+AUTH_BIN="$(cd "${REPO_ROOT}/authentication" && cargo metadata --no-deps --format-version 1 |
+  python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])")/debug/auth_verifier"
+
+print_status "Building ckms CLI..."
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+# ── Step 3: Start auth-verifier ──────────────────────────────────────────────
+print_status "Starting auth-verifier on port 8443..."
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" \
+  >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+
+print_info "Waiting for auth-verifier (PID=${AUTH_PID})..."
+if ! wait_for_port 127.0.0.1 8443 60; then
+  print_error "auth-verifier failed to start. Check ${AUTH_LOG}"
+fi
+print_success "auth-verifier ready on port 8443."
+
+# ── Step 4: Start KMS ─────────────────────────────────────────────────────────
+print_status "Starting KMS server on port 9998..."
+KMS_LOG_FILE="/tmp/kms-spire.log"
+KMS_CONFIG_FILE="${TEST_DATA}/config/kms.toml"
+
+"$(get_kms_bin)" --config "${KMS_CONFIG_FILE}" \
+  >"${KMS_LOG_FILE}" 2>&1 &
+KMS_PID=$!
+
+print_info "Waiting for KMS (PID=${KMS_PID})..."
+if ! wait_for_port 127.0.0.1 9998 120; then
+  print_error "KMS failed to start. Check ${KMS_LOG_FILE}"
+fi
+print_success "KMS server ready on port 9998."
+
+# ── Step 5: Create PKI CA key in KMS ─────────────────────────────────────────
+# Generate a P-384 key pair AND a self-signed root CA certificate in one shot.
+# Both the root CA and any signed intermediate must have basicConstraints=CA:TRUE
+# so that Go's x509 path validation accepts them as signers.
+print_status "Creating self-signed PKI CA key and certificate in KMS (tag: vault_pki_ca)..."
+CKMS_CONF="$(kms_write_ckms_conf "https://localhost:9998")"
+
+# Write a temp extensions file for the root CA
+_VAULT_EXT_FILE=$(mktemp /tmp/vault_pki_ca_ext.XXXXXX)
+cat >"${_VAULT_EXT_FILE}" <<'EXTEOF'
+[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign,digitalSignature
+EXTEOF
+
+"$(get_ckms_bin)" --conf-path "${CKMS_CONF}" \
+  --accept-invalid-certs \
+  certificates certify \
+  --generate-key-pair \
+  --algorithm nist-p384 \
+  --certificate-id vault_pki_ca_cert \
+  --subject-name "CN=Cosmian KMS Root CA,O=Cosmian,C=FR" \
+  --tag vault_pki_ca \
+  --days 3650 \
+  --certificate-extensions "${_VAULT_EXT_FILE}" \
+  2>&1 | grep -v "^$"
+
+rm -f "${_VAULT_EXT_FILE}"
+print_success "PKI CA key created."
+
+# ── Step 6: Provision AppRoles ────────────────────────────────────────────────
+# Admin AppRole CRUD uses `ckms vault approle` directly against the auth-verifier
+# (the KMS does not proxy the admin API). The transit smoke test inside
+# provision.sh still goes through the KMS (VAULT_ADDR).
+print_status "Running provision.sh to create AppRoles (via ckms)..."
+AUTH_VERIFIER_URL="https://localhost:8443" \
+  VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  SECRETS_ENV_FILE="${SPIRE_SECRETS_ENV}" \
+  bash "${TEST_DATA}/setup/provision.sh"
+
+if [[ ! -f "${SPIRE_SECRETS_ENV}" ]]; then
+  print_error "provision.sh did not write ${SPIRE_SECRETS_ENV}"
+fi
+print_success "AppRoles provisioned."
+
+# ── Step 6b: Vault API conformance tests ──────────────────────────────────────
+# Prove that every HTTP contract SPIRE relies on (§3 auth, §4 PKI, §5 transit)
+# is correctly implemented before starting the real SPIRE runtime. Tenant-a's
+# AppRole is used as a representative caller (both tenants share the same KMS API).
+print_status "Running Vault API conformance tests (vault-technical-integration.txt)..."
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  APPROLE_ROLE_ID="${SPIRE_ROLE_ID_A}" \
+  APPROLE_SECRET_ID="${SPIRE_SECRET_ID_A}" \
+  bash "${TEST_DATA}/setup/test_vault_api.sh"
+print_success "Vault API conformance tests passed."
+
+# ── Step 6c: Host-side AppRole login pre-flight ──────────────────────────────
+# Validate the exact endpoint SPIRE will call before we start any containers.
+print_status "Verifying host-side AppRole login before starting SPIRE..."
+host_approle_ok=false
+for attempt in 1 2 3; do
+  if curl -sS --cacert "${TEST_DATA}/certs/ca.crt" \
+    --connect-timeout 5 \
+    -H "Content-Type: application/json" \
+    -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+    "https://localhost:9998/v1/auth/approle/login" >/dev/null 2>&1; then
+    print_info "Host-side AppRole login check passed (attempt ${attempt})."
+    host_approle_ok=true
+    break
+  fi
+  if [[ "${attempt}" -lt 3 ]]; then
+    print_info "Host-side AppRole login check missed (attempt ${attempt}/3), retrying in 2s..."
+    sleep 2
+  fi
+done
+if [[ "${host_approle_ok}" != "true" ]]; then
+  print_error "Host-side AppRole login pre-flight failed before SPIRE startup. Check ${KMS_LOG_FILE} and ${AUTH_LOG}"
+fi
+
+# ── Step 6d: Pre-flight Docker connectivity check ─────────────────────────────
+# Test the exact connectivity mode used by SPIRE containers (host network mode +
+# host.docker.internal). On macOS Docker Desktop --network=host attaches to the
+# Linux VM's loopback, not the macOS host's, so localhost is unreachable from
+# inside the container. The SPIRE server configs already use
+# "https://host.docker.internal:9998" for this reason; the pre-flight mirrors
+# that exact setup with --add-host so it validates the same code path.
+print_status "Testing Docker container network connectivity to KMS..."
+
+print_info "Pre-flight check from host network mode: AppRole login..."
+preflight_ok=false
+for attempt in 1 2 3 4 5; do
+  if docker run --rm \
+    --network=host \
+    --add-host=host.docker.internal:host-gateway \
+    curlimages/curl:8.10.1 \
+    -k -sS --connect-timeout 5 \
+    -H "Content-Type: application/json" \
+    -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+    https://host.docker.internal:9998/v1/auth/approle/login >/dev/null 2>&1; then
+    preflight_ok=true
+    print_info "  Pre-flight attempt ${attempt}/5: OK"
+    break
+  fi
+  print_info "  Pre-flight attempt ${attempt}/5: retry"
+  sleep 1
+done
+
+if [[ "${preflight_ok}" != "true" ]]; then
+  print_error "SPIRE pre-flight failed: container in host network mode cannot reach KMS AppRole login endpoint."
+fi
+
+# ── Step 6e: Give SPIRE vault plugin time to connect on first startup ────────
+# SPIRE's vault UpstreamAuthority plugin has a 60-second connection timeout.
+# Extended delay after warmup to ensure container network stack, DNS cache, and TLS session
+# state are fully ready before SPIRE tries its first AppRole login (which is blocking during startup).
+print_info "Waiting before SPIRE startup to ensure Docker network stack and DNS cache are fully warm..."
+sleep 10
+
+# ── Step 7: Start SPIRE server with injected AppRole credentials ──────────────
+print_status "Starting ${#TENANTS[@]} SPIRE servers (one per tenant)..."
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+
+for t in "${TENANTS[@]}"; do
+  tu=$(echo "${t}" | tr '[:lower:]' '[:upper:]')
+  role_var="SPIRE_ROLE_ID_${tu}"
+  secret_var="SPIRE_SECRET_ID_${tu}"
+  export "VAULT_APPROLE_ID_${tu}=${!role_var}"
+  export "VAULT_APPROLE_SECRET_ID_${tu}=${!secret_var}"
+  print_info "Starting spire-server-${t} (trust domain $(tenant_trust_domain "${t}"))..."
+  docker compose --profile spire up -d "spire-server-${t}"
+done
+
+for t in "${TENANTS[@]}"; do
+  print_info "Waiting for spire-server-${t} to become healthy..."
+  wait_server_healthy "${t}"
+  print_success "SPIRE server '${t}' healthy."
+done
+
+# ── Step 8: Generate join tokens and start each SPIRE agent ───────────────────
+for t in "${TENANTS[@]}"; do
+  td=$(tenant_trust_domain "${t}")
+  print_status "Generating join token for tenant '${t}'..."
+  JOIN_TOKEN=$(docker exec "spire-server-${t}" \
+    /opt/spire/bin/spire-server token generate \
+    -spiffeID "spiffe://${td}/spire-agent" \
+    -socketPath /tmp/spire-server/private/api.sock |
+    awk '/^Token:/{print $2}')
+
+  if [[ -z "${JOIN_TOKEN}" ]]; then
+    print_error "Failed to generate SPIRE join token for tenant '${t}'."
+  fi
+  print_info "Tenant '${t}' join token: ${JOIN_TOKEN:0:8}..."
+
+  # Patch the tenant's agent config with the generated one-time token.
+  mkdir -p "/tmp/spire-agent-config-${t}"
+  sed "s/join_token = \"cosmian-test-join-token-12345\"/join_token = \"${JOIN_TOKEN}\"/" \
+    "${TEST_DATA}/config/spire-agent-${t}.conf" >"/tmp/spire-agent-config-${t}/agent.conf"
+
+  # Start the SPIRE agent via docker compose, injecting the patched config file
+  # (with the real join token) via the per-tenant SPIRE_AGENT_CONFIG_FILE_<T> env
+  # var. Using compose (with a named Docker volume for the socket directory)
+  # ensures the unix socket is correctly shared with the mistral-agent containers
+  # on all platforms, including macOS Docker Desktop where host bind-mount unix
+  # sockets are not accessible between containers.
+  tu=$(echo "${t}" | tr '[:lower:]' '[:upper:]')
+  export "SPIRE_AGENT_CONFIG_FILE_${tu}=/tmp/spire-agent-config-${t}/agent.conf"
+  docker compose --profile spire up -d "spire-agent-${t}"
+done
+
+for t in "${TENANTS[@]}"; do
+  print_info "Waiting for spire-agent-${t} workload API socket..."
+  wait_agent_ready "${t}"
+  print_success "SPIRE agent '${t}' started."
+done
+
+# ── Step 9: Register workload entries for each tenant ─────────────────────────
+# The mistral-client image runs as the non-root "mistral" user (uid 1000, see
+# test_data/spire/mistral-client/Dockerfile), so the workload entry's unix
+# selector must match uid 1000, not root. Both Mistral agents of a tenant share
+# the same SPIFFE ID and unix:uid:1000 selector under that tenant's agent.
+for t in "${TENANTS[@]}"; do
+  td=$(tenant_trust_domain "${t}")
+  print_status "Registering Mistral workload entry for tenant '${t}'..."
+  docker exec "spire-server-${t}" \
+    /opt/spire/bin/spire-server entry create \
+    -socketPath /tmp/spire-server/private/api.sock \
+    -spiffeID "spiffe://${td}/mistral-agent" \
+    -parentID "spiffe://${td}/spire-agent" \
+    -selector "unix:uid:1000"
+  print_success "Tenant '${t}' workload entry registered."
+done
+
+# ── Step 10: Run Mistral agent identity tests (2 per tenant) ──────────────────
+# docker compose run exits with the container's exit code; any non-zero exit
+# propagates immediately via set -euo pipefail — no || true needed here.
+for t in "${TENANTS[@]}"; do
+  for n in 1 2; do
+    agent="mistral-agent-${t}${n}"
+    print_status "Running ${agent} identity test..."
+    docker compose --profile spire run --rm "${agent}"
+    print_success "${agent} passed."
+  done
+done
+
+# ── Step 11: SPIRE server log gate ────────────────────────────────────────────
+# Capture each SPIRE server's full logs and fail if any error/fatal line is
+# present. SPIRE uses logrus: long form "level=error"/"level=fatal" and the
+# short codes "ERROR"/"FATA". Warnings are printed but do not fail the gate.
+print_status "Extracting SPIRE server logs and checking for errors..."
+LOG_GATE_FAILED=0
+for t in "${TENANTS[@]}"; do
+  server_log="/tmp/spire-server-${t}.log"
+  docker logs "spire-server-${t}" >"${server_log}" 2>&1 || true
+  total_lines=$(wc -l <"${server_log}" | tr -d ' ')
+  print_info "spire-server-${t}: ${total_lines} log lines saved to ${server_log}"
+
+  # Report (non-fatal) warnings for visibility.
+  warn_count=$(grep -c -E 'level=warn|level=warning|[[:space:]]WARN' "${server_log}" || true)
+  if [[ "${warn_count}" -gt 0 ]]; then
+    print_info "spire-server-${t}: ${warn_count} warning line(s) (non-fatal)."
+  fi
+
+  # Fail the gate on error/fatal.
+  if error_lines=$(grep -n -E 'level=error|level=fatal|[[:space:]]ERROR|[[:space:]]FATA' "${server_log}"); then
+    print_info "spire-server-${t}: ERROR/FATAL log lines detected:"
+    echo "${error_lines}"
+    LOG_GATE_FAILED=1
+  else
+    print_success "spire-server-${t}: no error/fatal log lines."
+  fi
+done
+
+if [[ "${LOG_GATE_FAILED}" -ne 0 ]]; then
+  print_error "SPIRE server log gate failed: one or more servers logged errors (see above)."
+fi
+print_success "SPIRE server log gate passed — no errors on any server."
+
+# ── Step 12: Adversarial / negative-scenario tests ────────────────────────────
+# Attack the live stack: cross-tenant isolation, proxy path traversal,
+# secret_id num_uses race, exportable bypass + sensitive-key export refusal,
+# and malformed-input fuzzing of the auth/PKI/transit surfaces. Maps to the
+# scenario matrix in reviews_spire_live.md (scenarios 11, 9, 1, 5, 4, 8, 7, 12).
+print_status "Running adversarial negative-scenario tests..."
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  AUTH_VERIFIER_URL="https://localhost:8443" \
+  ADMIN_USER="admin" \
+  ADMIN_PASS="change_me" \
+  SPIRE_ROLE_ID_A="${SPIRE_ROLE_ID_A}" \
+  SPIRE_SECRET_ID_A="${SPIRE_SECRET_ID_A}" \
+  SPIRE_ROLE_ID_B="${SPIRE_ROLE_ID_B}" \
+  SPIRE_SECRET_ID_B="${SPIRE_SECRET_ID_B}" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  bash "${TEST_DATA}/setup/test_negative_scenarios.sh"
+print_success "Adversarial negative-scenario tests passed."
+
+# ── Step 13: Scenario 6 — algorithm allow-list (transit) ──────────────────────
+# NOTE: True FIPS-mode algorithm *rejection* cannot be exercised here because
+# the SPIRE stack is non-FIPS only (the Vault API requires the non-fips build).
+# We instead assert the adjacent invariant that always holds: the transit engine
+# refuses an unknown/unsupported key type with a clean 4xx (no 5xx, no panic).
+print_status "Scenario 6: transit algorithm allow-list (unsupported type → 4xx)..."
+# Obtain a tenant-a token via the KMS proxy.
+S6_TOKEN=$(curl -s --cacert "${TEST_DATA}/certs/ca.crt" -X POST \
+  -H "Content-Type: application/json" \
+  -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+  "https://localhost:9998/v1/auth/approle/login" |
+  python3 -c "import sys,json; print(json.load(sys.stdin)['auth']['client_token'])")
+S6_CODE=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X POST -H "X-Vault-Token: ${S6_TOKEN}" -H "Content-Type: application/json" \
+  -d '{"type":"totally-bogus-algo","exportable":false}' \
+  "https://localhost:9998/v1/transit/keys/bogus-algo-key")
+if [[ "${S6_CODE}" =~ ^4[0-9][0-9]$ ]]; then
+  print_success "Scenario 6: unsupported transit key type rejected with HTTP ${S6_CODE}."
+else
+  print_error "Scenario 6: expected 4xx for unsupported key type, got ${S6_CODE}."
+fi
+
+# ── Step 14: Scenario 10 — KMS with a bad PKI CA key label fails fast ──────────
+# Start a SECOND, throwaway KMS on port 9997 whose PKI CA label points at a key
+# that does not exist. A sign-intermediate call must fail cleanly (5xx) with a
+# message naming the missing label — never hang or panic.
+print_status "Scenario 10: second KMS with an invalid PKI CA key label..."
+BAD_KMS_LOG="/tmp/kms-spire-badca.log"
+BAD_KMS_CONF="/tmp/kms-spire-badca.toml"
+BAD_CA_LABEL="nonexistent-ca-label-${RANDOM}"
+# Derive a config: port 9997, isolated empty DB, deliberately bad CA label.
+sed -e 's/^port     = 9998/port     = 9997/' \
+  -e 's#^sqlite_path   = "/tmp/kms-spire-test"#sqlite_path   = "/tmp/kms-spire-test-badca"#' \
+  -e "s/^vault_pki_ca_key_label     = \"vault_pki_ca\"/vault_pki_ca_key_label     = \"${BAD_CA_LABEL}\"/" \
+  "${KMS_CONFIG_FILE}" >"${BAD_KMS_CONF}"
+
+"$(get_kms_bin)" --config "${BAD_KMS_CONF}" >"${BAD_KMS_LOG}" 2>&1 &
+BAD_KMS_PID=$!
+if ! wait_for_port 127.0.0.1 9997 120; then
+  cat "${BAD_KMS_LOG}" || true
+  kill "${BAD_KMS_PID}" 2>/dev/null || true
+  print_error "Second (bad-CA) KMS failed to start. Check ${BAD_KMS_LOG}"
+fi
+
+S10_TOKEN=$(curl -s --cacert "${TEST_DATA}/certs/ca.crt" -X POST \
+  -H "Content-Type: application/json" \
+  -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+  "https://localhost:9997/v1/auth/approle/login" |
+  python3 -c "import sys,json; print(json.load(sys.stdin)['auth']['client_token'])")
+
+# Build a valid CSR so the request reaches the CA-key-lookup stage.
+S10_CSR_KEY=$(mktemp /tmp/s10-csr.key.XXXXXX)
+S10_CSR_PEM=$(mktemp /tmp/s10-csr.pem.XXXXXX)
+openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+  -keyout "${S10_CSR_KEY}" -out "${S10_CSR_PEM}" -subj "/CN=s10/O=Test/C=FR" 2>/dev/null
+S10_CSR_JSON=$(python3 -c "import json; print(json.dumps(open('${S10_CSR_PEM}').read()))")
+S10_BODY_FILE=$(mktemp /tmp/s10-body.XXXXXX)
+S10_STATUS=$(curl -s -o "${S10_BODY_FILE}" -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X POST -H "X-Vault-Token: ${S10_TOKEN}" -H "Content-Type: application/json" \
+  -d "{\"csr\": ${S10_CSR_JSON}, \"uri_sans\": \"spiffe://cosmian-test-a.local/x\"}" \
+  "https://localhost:9997/v1/pki/root/sign-intermediate")
+S10_BODY=$(cat "${S10_BODY_FILE}")
+kill "${BAD_KMS_PID}" 2>/dev/null || true
+wait "${BAD_KMS_PID}" 2>/dev/null || true
+rm -f "${BAD_KMS_CONF}" "${BAD_KMS_LOG}" "${S10_CSR_KEY}" "${S10_CSR_PEM}" "${S10_BODY_FILE}"
+rm -f /tmp/kms-spire-test-badca* 2>/dev/null || true
+
+if [[ "${S10_STATUS}" =~ ^5[0-9][0-9]$ ]] && echo "${S10_BODY}" | grep -q "${BAD_CA_LABEL}"; then
+  print_success "Scenario 10: bad CA label rejected cleanly (HTTP ${S10_STATUS}, names missing label)."
+else
+  print_error "Scenario 10: expected 5xx naming '${BAD_CA_LABEL}', got HTTP ${S10_STATUS}. Body: ${S10_BODY:0:300}"
+fi
+
+# ── Step 15: Scenario 2 — auth-verifier outage → clean 502 (run LAST) ──────────
+# With the auth-verifier down, the KMS /v1/auth proxy must return 502 Bad Gateway
+# (not 500/hang). Restart it afterwards and confirm the auth path recovers.
+# Runs last because it deliberately kills the auth-verifier.
+print_status "Scenario 2: auth-verifier outage → 502 via KMS proxy..."
+if [[ -n "${AUTH_PID:-}" ]]; then
+  kill "${AUTH_PID}" 2>/dev/null || true
+  wait "${AUTH_PID}" 2>/dev/null || true
+  AUTH_PID=""
+fi
+if ! wait_for_port_closed 8443 15; then
+  print_error "Scenario 2: auth-verifier port 8443 stayed open after shutdown; stale listener likely present."
+fi
+S2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X GET -H "X-Vault-Token: s.some-token" \
+  "https://localhost:9998/v1/auth/token/lookup-self")
+if [[ "${S2_STATUS}" == "502" ]]; then
+  print_success "Scenario 2: auth-verifier down yields HTTP 502 (Bad Gateway)."
+else
+  print_error "Scenario 2: expected HTTP 502 with auth-verifier down, got ${S2_STATUS}."
+fi
+
+# Restart the auth-verifier and confirm recovery.
+print_status "Scenario 2: restarting auth-verifier and confirming recovery..."
+"${AUTH_BIN}" "${TEST_DATA}/config/auth_verifier.toml" >"${AUTH_LOG}" 2>&1 &
+AUTH_PID=$!
+if ! wait_for_port 127.0.0.1 8443 60; then
+  print_error "auth-verifier failed to restart. Check ${AUTH_LOG}"
+fi
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+S2_RECOVER=$(curl -s -o /dev/null -w "%{http_code}" --cacert "${TEST_DATA}/certs/ca.crt" \
+  -X POST -H "Content-Type: application/json" \
+  -d "{\"role_id\":\"${SPIRE_ROLE_ID_A}\",\"secret_id\":\"${SPIRE_SECRET_ID_A}\"}" \
+  "https://localhost:9998/v1/auth/approle/login")
+if [[ "${S2_RECOVER}" == "200" ]]; then
+  print_success "Scenario 2: auth path recovered after restart (HTTP 200)."
+else
+  print_error "Scenario 2: auth path did not recover after restart, got ${S2_RECOVER}."
+fi
+
+print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid multi-tenant drop-in replacement for HashiCorp Vault"
+
+print_success "SPIRE integration tests completed successfully!"

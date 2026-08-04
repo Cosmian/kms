@@ -1,0 +1,337 @@
+# CLI Authentication
+
+This guide explains how to configure authentication for the KMS CLI when connecting to the KMS.
+
+## Configuration File
+
+The CLI reads its configuration from a TOML file:
+
+- **Default location**: `~/.cosmian/ckms.toml`
+- **Alternative location**: Set the `CKMS_CONF` environment variable
+
+A basic configuration file is created automatically on first use:
+
+```toml
+[http_config]
+server_url = "http://0.0.0.0:9998"
+```
+
+## Authentication Methods
+
+The CLI supports multiple authentication methods for the KMS:
+
+| Method | Configuration Elements | Use Case |
+|--------|------------------------|----------|
+| None (Default) | Only `server_url` | Development environments |
+| Access Token | `access_token` | Simple API token authentication |
+| TLS Client Certificate (PEM) | `tls_client_pem_cert_path`, `tls_client_pem_key_path` | Certificate-based auth — FIPS-compatible |
+| TLS Client Certificate (PKCS#12) | `tls_client_pkcs12_path`, `tls_client_pkcs12_password` | Certificate-based auth — non-FIPS only |
+| OAuth2/OIDC | `oauth2_conf` section | SSO with identity providers |
+| Database Secret | `database_secret` | Encrypted database access |
+
+## Authenticating Using a Bearer / Access Token
+
+When the KMS server is configured with JWT/OIDC authentication, the CLI can authenticate
+using a static bearer token (e.g., a short-lived JWT obtained from your identity provider)
+set directly in the configuration file.
+
+```toml
+[http_config]
+server_url = "https://kms.example.com:9998"
+
+# JWT bearer token sent in the Authorization: Bearer <token> header.
+# Obtain from your identity provider (Google, Azure AD, Keycloak, …) or
+# from ckms login after configuring the oauth2_conf section.
+access_token = "<JWT_BEARER_TOKEN>"
+```
+
+> See [`test_data/configs/ckms_jwt.toml`](https://github.com/Cosmian/test_data/blob/main/configs/ckms_jwt.toml)
+> for a full example combining `access_token`, `oauth2_conf`, and `database_secret`.
+
+When the server enforces an API token (a symmetric key registered server-side via
+`api_token_id`), set the same value as `access_token` in the CLI config — the CLI
+sends it as a bearer token and the server validates it against the registered key ID.
+
+## Authenticating Using TLS Client Certificates
+
+When the KMS server is configured with mutual TLS (mTLS), `ckms` must present a client
+certificate. Two formats are supported.
+
+### PEM format (FIPS-compatible, recommended)
+
+Provide the certificate and private key as separate PEM files (`.crt`/`.pem` and `.key`/`.pem`).
+This format works in both FIPS and non-FIPS builds.
+
+```toml
+[http_config]
+server_url = "https://kms.example.com:9998"
+accept_invalid_certs = false
+
+# Path to the client certificate in PEM format (.crt or .pem).
+# The file may contain a single leaf certificate or a full chain (leaf + intermediates).
+tls_client_pem_cert_path = "/path/to/client.crt"
+
+# Path to the client private key in PEM format (.key or .pem).
+# Supported formats: PKCS#8 (-----BEGIN PRIVATE KEY-----) and traditional RSA/EC.
+tls_client_pem_key_path = "/path/to/client.key"
+```
+
+> Full example: [`test_data/configs/client/pem_cert_auth.toml`](https://github.com/Cosmian/test_data/blob/main/configs/client/pem_cert_auth.toml)
+
+Combined with a bearer token (multi-factor authentication):
+
+```toml
+[http_config]
+server_url = "https://kms.example.com:9998"
+accept_invalid_certs = false
+tls_client_pem_cert_path = "/path/to/client.crt"
+tls_client_pem_key_path = "/path/to/client.key"
+
+# JWT bearer token sent in the Authorization: Bearer <token> header.
+# Obtain from your identity provider (Google, Azure AD, Keycloak, …).
+access_token = "<JWT_BEARER_TOKEN>"
+```
+
+> Full example: `test_data/configs/client/pem_cert_and_token_auth.toml`
+
+### PKCS#12 format (non-FIPS only)
+
+Provide the certificate and private key bundled in a single PKCS#12 file (`.p12`).
+
+```toml
+[http_config]
+server_url = "https://kms.example.com:9998"
+accept_invalid_certs = false
+
+# Path to the PKCS#12 bundle containing the client certificate and private key.
+tls_client_pkcs12_path = "/path/to/client.p12"
+
+# Password to decrypt the PKCS#12 bundle.
+# Leave absent or set to "" if the bundle has no password.
+tls_client_pkcs12_password = "changeit"
+```
+
+> Full example: `test_data/configs/client/pkcs12_cert_auth.toml`
+
+### Using the `ckms configure` wizard
+
+Run `ckms configure` and choose the certificate format from the interactive menu:
+
+```text
+Authentication method
+  None
+  Bearer token
+> Client certificate (PEM)             ← FIPS-compatible, recommended
+  Client certificate (PKCS#12)         ← non-FIPS only
+  Both (PEM cert + token)
+  Both (PKCS#12 cert + token)
+```
+
+The wizard prompts for the certificate and key paths (PEM) or the bundle path and password
+(PKCS#12) and writes the result to the active configuration profile.
+
+The KMS server authenticates the user using the Common Name (CN) field of the client
+certificate's subject (e.g. `CN=john.doe@example.com` becomes the username).
+
+### Converting a PKCS#12 bundle to PEM
+
+```bash
+# Extract the certificate
+openssl pkcs12 -in client.p12 -clcerts -nokeys -out client.crt
+# Extract the private key (enter the PKCS#12 password when prompted)
+openssl pkcs12 -in client.p12 -nocerts -nodes -out client.key
+```
+
+## Common Configuration Options
+
+Each product has its own `http_config` section with these options:
+
+| Option | Description | Required |
+|--------|-------------|----------|
+| `server_url` | URL of the server | Yes |
+| `accept_invalid_certs` | Accept self-signed certificates (set to "true") | No |
+| `verified_cert` | PEM certificate for pinning | No |
+
+For KMS, you can also configure Gmail API access for S/MIME operations - see the [S/MIME Gmail service account configuration](./smime_gmail.md).
+
+## Quick Configuration Examples
+
+### KMS with No Authentication
+
+```toml
+[http_config]
+server_url = "http://127.0.0.1:9998"
+```
+
+## OAuth2/OIDC Authentication
+
+### Basic Configuration
+
+To authenticate using OAuth2/OIDC:
+
+1. Configure the `oauth2_conf` section in your TOML file
+2. Run `ckms login` to initiate authentication
+3. Use `ckms logout` to clear the token
+
+The `oauth2_conf` section requires:
+
+```toml
+[http_config.oauth2_conf]
+client_id = "your-client-id"          # Required
+authorize_url = "https://idp.example.com/authorize"  # Required
+token_url = "https://idp.example.com/token"          # Required
+scopes = ["openid", "email"]          # Recommended
+client_secret = "your-client-secret"  # Optional with PKCE
+```
+
+### PKCE Authentication (Recommended)
+
+PKCE (Proof Key for Code Exchange) enhances security by eliminating the need for client secrets. To use PKCE:
+
+1. Configure OAuth2 in your TOML file but **omit** the `client_secret` field
+2. Ensure your identity provider supports PKCE
+
+```toml
+[http_config.oauth2_conf]
+client_id = "your-client-id"
+authorize_url = "https://idp.example.com/authorize"
+token_url = "https://idp.example.com/token"
+scopes = ["openid", "email"]
+# No client_secret needed with PKCE
+```
+
+PKCE is recommended for:
+
+- CLI tools
+- Desktop applications
+- Mobile applications
+- Any client that cannot securely store secrets
+
+### Provider-Specific Examples
+
+#### Microsoft Entra ID (Azure AD) with PKCE
+
+```toml
+[http_config.oauth2_conf]
+client_id = "f052524e-7518-40e7-2579-219c0b48b125"
+authorize_url = "https://login.microsoftonline.com/612da4de-35c0-42de-ba56-174c4e562c96/oauth2/authorize"
+token_url = "https://login.microsoftonline.com/612da4de-35c0-42de-f3c6-174b69062c96/oauth2/token"
+scopes = ["email", "openid"]
+# No client_secret needed with PKCE
+```
+
+> **Important**: In Entra ID, configure the redirect URL (<http://localhost:17899/authorization>) as Native/Desktop application type.
+
+#### Auth0 with PKCE
+
+```toml
+[http_config.oauth2_conf]
+client_id = "OUfH4FuzDAW99Ck3R4Rb7ROziOZEalIH"
+authorize_url = "https://acme.eu.auth0.com/authorize"
+token_url = "https://acme.eu.auth0.com/oauth/token"
+scopes = ["email", "openid"]
+# No client_secret needed with PKCE
+```
+
+> **Important**: In Auth0, configure the application as Native and ensure the redirect URL is allowed.
+
+#### Google with Traditional OAuth2
+
+```toml
+[http_config.oauth2_conf]
+client_id = "99999999-abababababababababab.apps.googleusercontent.com"
+client_secret = "your-client-secret"  # Optional with PKCE
+authorize_url = "https://accounts.google.com/o/oauth2/v2/auth"
+token_url = "https://oauth2.googleapis.com/token"
+scopes = ["openid", "email"]
+```
+
+### Authentication Flow
+
+When running `ckms login`:
+
+1. The CLI generates a URL to open in your browser
+2. You authenticate with your identity provider
+3. The browser redirects to a local endpoint (<http://localhost:17899/authorization>)
+4. The CLI captures the token and saves it in your configuration file
+
+## Corporate Network / Forward Proxy
+
+When the KMS CLI is used inside a corporate network, the system HTTP proxy may intercept
+outbound connections and block non-standard ports (e.g., `9998`) or internal hostnames.
+This typically manifests as a `TunnelUnsuccessful` connection error.
+
+> **Note on `--proxy-exclusion-list`**: this CLI flag is silently ignored unless
+> `--proxy-url` is **also** provided. Without `--proxy-url`, `proxy_exclusion_list` is
+> dropped and the Windows system proxy operates unconstrained. Use the `ckms.toml`
+> configuration or environment variables for a persistent solution.
+
+### Option 1 — Environment variable (no config change needed)
+
+Set `NO_PROXY` before running the CLI:
+
+```bash
+# Linux / macOS
+export NO_PROXY="kms-host"
+ckms kms locate
+
+# Windows (PowerShell)
+$env:NO_PROXY = "kms-host"
+cosmian.exe kms locate
+```
+
+### Option 2 — CLI flags (one-off, requires `--proxy-url`)
+
+`--proxy-exclusion-list` only takes effect when `--proxy-url` is also supplied:
+
+```bash
+cosmian.exe \
+  --proxy-url="http://corp-proxy.example.com:8080" \
+  --proxy-exclusion-list="kms-host" \
+  kms locate
+```
+
+Equivalent environment variables (persist for the shell session):
+
+```bash
+export CLI_PROXY_URL="http://corp-proxy.example.com:8080"
+export CLI_PROXY_NO_PROXY="kms-host,127.0.0.1,localhost"
+```
+
+### Option 3 — `ckms.toml` (persistent, recommended)
+
+Edit `~/.cosmian/ckms.toml` (Windows: `%USERPROFILE%\.cosmian\ckms.toml`):
+
+```toml
+[http_config]
+server_url = "https://kms-host:9998"
+
+[http_config.proxy_params]
+# URL of the corporate proxy (on Windows: netsh winhttp show proxy)
+url = "http://corp-proxy.example.com:8080"
+
+# Optional: Basic auth credentials for the proxy
+# basic_auth_username = "DOMAIN\\username"
+# basic_auth_password = "password"
+
+# Hosts to bypass — add your KMS hostname here
+exclusion_list = ["kms-host", "kms-host:9998", "127.0.0.1", "localhost"]
+```
+
+For a proxy requiring a custom `Proxy-Authorization` header:
+
+```toml
+[http_config.proxy_params]
+url = "http://corp-proxy.example.com:8080"
+custom_auth_header = "Bearer <proxy-token>"
+exclusion_list = ["kms-host"]
+```
+
+## Troubleshooting
+
+- **Authentication Failures**: Verify client ID and URLs are correct
+- **PKCE Issues**: Ensure your identity provider supports PKCE and has it enabled
+- **Redirect Errors**: Check that your identity provider allows the redirect URL
+- **Missing Email Claim**: Verify your identity provider includes the email claim in tokens
+
+For more details about PKCE authentication, see the [PKCE Authentication Guide](../configuration/pkce_authentication.md).

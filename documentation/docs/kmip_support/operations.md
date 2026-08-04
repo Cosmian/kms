@@ -1,19 +1,21 @@
+# Operations
+
 In [chapter 6](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115631), the KMIP 2.1
 specifications describe 57 potential operations that can be performed on a KMS.
 
-### Supported Operations
+## Supported Operations
 
 Out of this list, the Eviden KMS server only requires 12 operations to provide all required functionalities to support
 the cryptographic schemes available on the server.
 
 The list of supported Operations is that of the menu entries below this one.
 
-### Messages and Bulk Operations
+## Messages and Bulk Operations
 
 A KMIP request may be made by POSTing a single Operation serialized as JSON TTLV, or by combining multiple operations
 in a `Message` request. See the [bulk mode](./messages.md) page for more details.
 
-### No support for "ID Placeholders"
+## No support for "ID Placeholders"
 
 KMIP states that a number of the operations are affected by a mechanism referred to as the ID Placeholder. It is a
 variable stored inside the server that is preserved during the execution of a batch of operations.
