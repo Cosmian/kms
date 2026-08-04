@@ -40,6 +40,8 @@ exclude = [
   'nvlpubs\.nist\.gov',
   # rfc-editor.org — IETF RFC publication server, returns 502 to automated requests
   'rfc-editor\.org',
+  # readthedocs.io — returns 429 to automated requests
+  'readthedocs\.io',
   # Sites that block automated crawlers (valid in browser but return 4xx/5xx to bots)
   'cosmian\.com',
   'www\.mysql\.com',
