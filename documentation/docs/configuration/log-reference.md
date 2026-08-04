@@ -668,6 +668,52 @@ Crate path: `crate/server`
 | `trace` | `{log_prefix}: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
 | `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
+| `error` | `SECURITY: KMS compiled with 'insecure' feature — ALL JWT and Auth Verifier signature              validation is DISABLED. Any syntactically valid token is accepted without signature              verification. This binary MUST NOT be used in production.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `OIDC: discovery document at {discovery_url} is missing required fields` | `src/start_kms_server.rs` | `discovery_url` | - |
+| `warn` | `OIDC: failed to build HTTP client for discovery: {e}` | `src/start_kms_server.rs` | `e` | - |
+| `warn` | `OIDC: failed to build JwksManager for UI OIDC: {e}` | `src/start_kms_server.rs` | `e` | - |
+| `warn` | `OIDC: failed to fetch discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
+| `warn` | `OIDC: failed to parse discovery document from {discovery_url}: {e}` | `src/start_kms_server.rs` | `discovery_url`, `e` | - |
+| `warn` | `SECURITY: auth_verifier_accept_invalid_certs is TRUE — TLS certificate verification              is DISABLED for Auth Verifier JWKS fetches. Only use in dev/test environments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: vault_api_enabled is true but rate_limit_per_second is not set. The              unauthenticated auth proxy at /v1/auth/* can be used as a DoS amplifier. Set              rate_limit_per_second in the server config for production deployments.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `Session: failed to read user_id from session: {e:?}` | `src/middlewares/session_auth.rs` | `e` | - |
+| `warn` | `SPIRE API internal error: {m}` | `src/routes/spire/error.rs` | `m` | - |
+| `warn` | `SPIRE auth proxy: rejected path traversal attempt: {path}` | `src/routes/spire/auth_proxy.rs` | `path` | - |
+| `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `vault auth proxy: auth-verifier unreachable: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
+| `warn` | `vault auth proxy: failed to read auth-verifier response body: {e}` | `src/routes/spire/auth_proxy.rs` | `e` | - |
+| `warn` | `vault_api_enabled = true but vault_auth_verifier_url is not set —                      Vault-compatible API will NOT be registered.                      Set vault_auth_verifier_url in the server config.` | `src/start_kms_server.rs` | - | - |
+| `warn` | `{log_prefix}: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `log_prefix`, `e` | - |
+| `info` | `OIDC: discovered endpoints from {discovery_url}` | `src/start_kms_server.rs` | `discovery_url` | - |
+| `info` | `Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_scope_path`, `pki_scope_path` | - |
+| `debug` | `AuthVerifier Middleware: an authenticated user was already found; skipping.` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `` AuthVerifier Middleware: authenticated user `{}` `` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
+| `debug` | `AuthVerifier Middleware: authentication failed: {e:?}` | `src/middlewares/auth_verifier/middleware.rs` | `e` | - |
+| `debug` | `OIDC: authorization_endpoint={authorization_endpoint}` | `src/start_kms_server.rs` | `authorization_endpoint` | - |
+| `debug` | `OIDC: jwks_uri={jwks_uri}` | `src/start_kms_server.rs` | `jwks_uri` | - |
+| `debug` | `OIDC: token_endpoint={token_endpoint}` | `src/start_kms_server.rs` | `token_endpoint` | - |
+| `debug` | `Session: authenticated user '{user_id}'` | `src/middlewares/session_auth.rs` | `user_id` | - |
+| `debug` | `Session: request already authenticated, skipping` | `src/middlewares/session_auth.rs` | - | - |
+| `debug` | `SPIRE auth proxy → {target}` | `src/routes/spire/auth_proxy.rs` | `target` | - |
+| `debug` | `vault pki sign-intermediate: requested_validity_days={days} (from ttl='{ttl_str}')` | `src/routes/spire/pki.rs` | `days`, `ttl_str` | - |
+| `debug` | `vault pki: signed intermediate certificate uid={cert_uid}` | `src/routes/spire/pki.rs` | `cert_uid` | - |
+| `debug` | `vault pki: using CA private key uid={ca_private_key_uid}` | `src/routes/spire/pki.rs` | `ca_private_key_uid` | - |
+| `debug` | `vault transit: created EC key '{name}' type={}` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `vault transit: created ML-DSA-65 key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `vault transit: created RSA key '{name}' bits={bits}` | `src/routes/spire/transit.rs` | `name`, `bits` | - |
+| `debug` | `vault transit: deleted key '{name}'` | `src/routes/spire/transit.rs` | `name` | - |
+| `debug` | `{log_prefix}: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | - |
+| `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
+| `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
+| `trace` | `Session Authentication...` | `src/middlewares/session_auth.rs` | - | - |
+| `trace` | `Session: no user_id in session, passing through` | `src/middlewares/session_auth.rs` | - | - |
+| `trace` | `{log_prefix}: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `{log_prefix}: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
+| `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
+| `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
 | `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
 | `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
