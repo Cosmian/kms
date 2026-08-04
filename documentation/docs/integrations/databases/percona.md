@@ -259,7 +259,7 @@ SHOW pg_tde.inherit_global_providers;
 |-----------|--------|----------|
 | Standard `heap` tables | By design | Only `tde_heap` tables are encrypted |
 | Non-TDE tables | Selective | Create with `USING tde_heap` for encryption |
-| Temporary files (>work_mem) | Limitation | Overflow data unencrypted on disk[5] |
+| Temporary files (>work_mem) | Limitation | Overflow data unencrypted on disk\[5] |
 | System log files | Not supported | PostgreSQL logs in plaintext on disk |
 
 ---
@@ -746,9 +746,9 @@ postgresql:
 | **KMS Availability** | Critical | Primary and standby must both access KMS |
 | **Certificates** | Critical | Distribute certificates to all replicas |
 | **Principal Key** | Critical | Key must be accessible during recovery |
-| **Encrypted WAL** | High | Use `pg_tde_rewind` not standard `pg_rewind`[5] |
+| **Encrypted WAL** | High | Use `pg_tde_rewind` not standard `pg_rewind`\[5] |
 
-**Important:** If using encrypted WAL, `pg_rewind` is incompatible. Use `pg_tde_rewind` instead.[5]
+**Important:** If using encrypted WAL, `pg_rewind` is incompatible. Use `pg_tde_rewind` instead.\[5]
 
 ### Eviden KMS Compatibility
 
@@ -767,10 +767,10 @@ postgresql:
 | pg_tde_basebackup | ✓ Supported[1] | Recommended tool |
 | pgBackRest | ✓ Supported[4] | Production-ready |
 | Patroni | ✓ Supported[4] | Use pg_tde_rewind |
-| pg_rewind | ✗ Incompatible[5] | Use pg_tde_rewind instead |
-| pg_createsubscriber | ✗ Incompatible[5] | Create subscriber manually |
-| pg_receivewal | ✗ Incompatible[5] | Use pgBackRest or Patroni |
-| Barman | ✗ Incompatible[5] | Use pgBackRest instead |
+| pg_rewind | ✗ Incompatible\[5] | Use pg_tde_rewind instead |
+| pg_createsubscriber | ✗ Incompatible\[5] | Create subscriber manually |
+| pg_receivewal | ✗ Incompatible\[5] | Use pgBackRest or Patroni |
+| Barman | ✗ Incompatible\[5] | Use pgBackRest instead |
 
 ---
 

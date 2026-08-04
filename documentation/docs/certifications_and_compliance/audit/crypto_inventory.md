@@ -292,5 +292,5 @@ Output files are written to `cbom/sensor/` (stable path — overwritten on each 
 - [FIPS 140-3](../fips.md) — FIPS compliance details
 - [Cryptographic algorithms](../cryptographic_algorithms/algorithms.md) — algorithm reference
 - [Zeroization](../zeroization.md) — memory-safety approach for key material
-- [Security Audit (OWASP)](audit/owasp_security_audit.md) — OWASP Top 10 audit
-- [Multi-Framework Audit](audit/multi_framework_security_audit.md) — NIST/CIS/ISO/OSSTMM audit
+- [Security Audit (OWASP)](owasp_security_audit.md) — OWASP Top 10 audit
+- [Multi-Framework Audit](multi_framework_security_audit.md) — NIST/CIS/ISO/OSSTMM audit

@@ -75,7 +75,7 @@ All requests and responses for Azure EKM APIs are sent as JSON objects over HTTP
 The URI format for EKM Proxy API calls is:
 
 ```text
-https://{public-KMS-URI}/azureekm/[path-prefix]/{api-specific-paths}?api-version={client-api-version}
+https://{public-KMS-URI}/azureekm/\[path-prefix]/{api-specific-paths}?api-version={client-api-version}
 ```
 
 The parameters between brackets {} can be edited on the KMS configuration and must follow the following constraints :
@@ -95,10 +95,10 @@ The parameters between brackets {} can be edited on the KMS configuration and mu
 
 | Endpoint         | Method | Path                                             | Description                                       |
 | ---------------- | ------ | ------------------------------------------------ | ------------------------------------------------- |
-| Get Proxy Info   | POST   | /azureekm/[path-prefix]/info                     | Health check and proxy details                    |
-| Get Key Metadata | POST   | /azureekm/[path-prefix]/{key-name}/metadata      | Retrieve key type, size, and supported operations |
-| Wrap Key         | POST   | /azureekm/[path-prefix]/{key-name}/wrapkey       | Wrap (encrypt) a DEK with a KEK                   |
-| Unwrap Key       | POST   | /azureekm/[path-prefix]/{key-name}/unwrapkey     | Unwrap (decrypt) a previously wrapped DEK         |
+| Get Proxy Info   | POST   | /azureekm/\[path-prefix]/info                     | Health check and proxy details                    |
+| Get Key Metadata | POST   | /azureekm/\[path-prefix]/{key-name}/metadata      | Retrieve key type, size, and supported operations |
+| Wrap Key         | POST   | /azureekm/\[path-prefix]/{key-name}/wrapkey       | Wrap (encrypt) a DEK with a KEK                   |
+| Unwrap Key       | POST   | /azureekm/\[path-prefix]/{key-name}/unwrapkey     | Unwrap (decrypt) a previously wrapped DEK         |
 
 ### Supported algorithms
 

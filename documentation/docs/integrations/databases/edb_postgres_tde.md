@@ -95,7 +95,7 @@ server_port = 15696
 ```
 
 Generate or reuse mTLS certificates for the KMS and the EDB client.
-See [Certificates](../pki/certificates.md) for details.
+See [Public Key Infrastructure (PKI)](../../use_cases/pki.md) for details.
 
 ### 2. Create the Master Key
 

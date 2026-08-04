@@ -60,8 +60,6 @@ plugins:
   - search
   - kroki
   - meta-descriptions
-not_in_nav: |
-  configuration/log-reference.md
 nav:
   - Why use the Eviden KMS: index.md
   - Quick start: quick_start.md
@@ -148,6 +146,7 @@ nav:
       - Authorizing users with access rights: configuration/authorization.md
       - Enabling TLS: configuration/tls.md
       - Logging and telemetry: configuration/logging.md
+      - Log reference: configuration/log-reference.md
       - Monitoring:
           - Setup: configuration/monitoring-setup.md
           - Metrics reference: configuration/otlp-metrics.md

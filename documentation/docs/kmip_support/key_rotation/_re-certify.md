@@ -8,7 +8,7 @@ The server creates a new certificate with a **fresh Unique Identifier**, copies
 the subject public key and the requested validity period from the existing
 certificate, and re-signs it using the specified (or inherited) issuer key.
 
-> **[KMIP 2.1], §6.1.6, "Certify"** — "This request supports the certification
+> **\[KMIP 2.1], §6.1.6, "Certify"** — "This request supports the certification
 > of a new public key, as well as the certification of a public key that has
 > already been certified (i.e., certificate update)."
 >

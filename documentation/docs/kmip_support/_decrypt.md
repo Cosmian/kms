@@ -20,8 +20,7 @@ To see the list of supported cryptographic algorithms, please refer to [Supporte
 
 #### Example - AES GCM decryption
 
-Decrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](.
-/_create.md) to see how to create the symmetric key).
+Decrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md) to see how to create the symmetric key).
 
 Instead of using the UID of the key, we can use the unique tag of the key `MySymmetricKey`. The key must be uniquely
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
