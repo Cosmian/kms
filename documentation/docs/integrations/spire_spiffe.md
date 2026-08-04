@@ -1000,7 +1000,6 @@ numbered scenario; all are asserted **live** against a running KMS + auth-verifi
 
 - [Cosmian KMS installation](../installation/installation_getting_started.md) — install and run the KMS (Docker, Linux packages, macOS, Windows).
 - **auth-verifier installation** — `authentication/server/documentation/docs/installation.md` — deploy the Cosmian Authentication Server that backs the KMS `/v1/auth/*` proxy.
-- [Architecture Decision Record: SPIRE/SPIFFE via Vault-Compatible API](../adr/2026-07-26-spire-spiffe-via-vault-api.md) — full design rationale, alternatives considered, and database schema.
 - `test_data/spire/setup/kms_setup.sh` — Bash script that runs all provisioning steps in one shot (`ROLE_NAME=my-spire bash test_data/spire/setup/kms_setup.sh`).
 - `crate/server/documentation/openapi.yaml` — OpenAPI schema for the `/v1/transit/*` and `/v1/<pki_mount>/*` paths.
 - `ckms vault approle --help` — full CLI reference for AppRole provisioning.
