@@ -1,0 +1,53 @@
+---
+name: Publish Helm Chart
+
+# Packages the cosmian-kms Helm chart and publishes it to GitHub Pages as a
+# classic Helm repository (index.yaml + tgz artifacts).
+#
+# After the first successful run, users can add the repository with:
+#   helm repo add cosmian https://cosmian.github.io/kms
+#   helm install cosmian-kms cosmian/cosmian-kms
+#
+# GitHub Pages must be enabled for this repository with source set to the
+# "gh-pages" branch (Settings → Pages → Source). The chart-releaser action
+# creates and maintains that branch automatically on the first run.
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+
+permissions:
+  contents: write  # push to gh-pages branch + create GitHub Release assets
+  pages: write     # update GitHub Pages
+  id-token: write  # needed for pages deployment
+
+jobs:
+  release:
+    name: Package and publish Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # chart-releaser needs the full tag history to detect new chart versions.
+          fetch-depth: 0
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # All charts live under charts/<name>/Chart.yaml.
+          charts_dir: charts
+          # Store packaged .tgz files in a temporary directory; they are
+          # uploaded as GitHub Release assets by the action.
+          packages_with_index: false

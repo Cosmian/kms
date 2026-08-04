@@ -16,6 +16,9 @@ crate/cli/*.sqlite
 http_cache.sqlite
 **/*cosmian-kms*
 **/*cosmian-kms/sqlite-data*
+# Helm chart source is tracked despite the broad runtime-artifact rule above
+!charts/cosmian-kms/
+!charts/cosmian-kms/**
 **/data/private
 **/data/public
 **/data/shared

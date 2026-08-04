@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+#MISE description="Run Helm chart lint, template validation, and optional E2E deployment on a live Kubernetes cluster"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant (unused, helm tests are variant-agnostic)" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type (unused)" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--e2e" env="HELM_E2E" help="Run full E2E deployment test on a live Kubernetes cluster (requires kubectl + a reachable context)"
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+CHART_DIR="${MISE_CONFIG_ROOT}/charts/cosmian-kms"
+
+require_cmd helm
+
+# ── Phase 1: static validation (always runs) ─────────────────────────────────
+print_header "Helm chart static validation"
+
+# 1. Lint: validate chart structure, required fields, and YAML syntax
+echo "Running helm lint..."
+helm lint "${CHART_DIR}" --strict
+
+# 2. Template: render with default values and check output is valid YAML
+echo "Running helm template (defaults)..."
+helm template cosmian-kms "${CHART_DIR}" | grep -c "^---" >/dev/null
+
+# 3. Template with TLS enabled
+echo "Running helm template (TLS enabled)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set kms.tls.enabled=true \
+  --set kms.tls.existingSecret=cosmian-kms-tls |
+  grep -c "^---" >/dev/null
+
+# 4. Template with Ingress enabled
+echo "Running helm template (Ingress + TLS)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set ingress.enabled=true \
+  --set "ingress.hosts[0].host=kms.example.com" \
+  --set "ingress.hosts[0].paths[0].path=/" \
+  --set "ingress.hosts[0].paths[0].pathType=Prefix" |
+  grep -c "^---" >/dev/null
+
+# 5. Template with HPA and PDB disabled (minimal footprint)
+echo "Running helm template (minimal: no HPA, no PDB)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set autoscaling.enabled=false \
+  --set podDisruptionBudget.enabled=false |
+  grep -c "^---" >/dev/null
+
+# 6. Template with network policy enabled
+echo "Running helm template (NetworkPolicy enabled)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set networkPolicy.enabled=true |
+  grep -c "^---" >/dev/null
+
+print_success "Helm chart static validation completed"
+
+# ── Phase 2: E2E deployment on a live cluster (only when --e2e is passed) ────
+if [[ "${HELM_E2E:-false}" == "true" ]]; then
+  print_header "Helm chart E2E deployment test (live cluster)"
+
+  require_cmd kubectl
+
+  RELEASE_NAME="cosmian-kms-e2e"
+  NAMESPACE="cosmian-kms-e2e"
+
+  APP_VERSION=$(grep '^appVersion:' "${CHART_DIR}/Chart.yaml" | awk '{print $2}' | tr -d '"')
+  echo "Chart appVersion: ${APP_VERSION}"
+
+  # Ensure the cluster is reachable before spending time on the deployment.
+  kubectl cluster-info >/dev/null
+
+  cleanup() {
+    echo "Cleaning up release ${RELEASE_NAME}..."
+    helm uninstall "${RELEASE_NAME}" --namespace "${NAMESPACE}" --wait 2>/dev/null || true
+    kubectl delete namespace "${NAMESPACE}" --ignore-not-found=true 2>/dev/null || true
+  }
+  trap cleanup EXIT
+
+  kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+  echo "Installing chart (will pull ghcr.io/cosmian/kms-fips:${APP_VERSION})..."
+  helm install "${RELEASE_NAME}" "${CHART_DIR}" \
+    --namespace "${NAMESPACE}" \
+    --set image.repository=ghcr.io/cosmian/kms-fips \
+    --set image.tag="${APP_VERSION}" \
+    --set image.pullPolicy=IfNotPresent \
+    --wait \
+    --timeout 10m
+
+  echo "Running helm test (wget health probe)..."
+  helm test "${RELEASE_NAME}" \
+    --namespace "${NAMESPACE}" \
+    --timeout 5m
+
+  print_success "Helm chart E2E deployment test completed"
+fi

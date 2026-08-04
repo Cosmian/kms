@@ -1,0 +1,251 @@
+---
+## Default values for the cosmian-kms Helm chart.
+## This is a YAML-formatted file.
+## Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  # FIPS image by default. Use ghcr.io/cosmian/kms for non-FIPS (extra algorithms).
+  repository: ghcr.io/cosmian/kms-fips
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ''
+
+imagePullSecrets: []
+nameOverride: ''
+fullnameOverride: ''
+
+serviceAccount:
+  # Specifies whether a service account should be created.
+  create: true
+  # Automatically mount a ServiceAccount's API credentials.
+  automount: true
+  # Annotations to add to the service account.
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template.
+  name: ''
+
+podAnnotations: {}
+podLabels: {}
+
+# The cosmian-kms image does not set a USER directive (defaults to root) but
+# does bake in a "kms" user/group at uid/gid 1000 (/etc/passwd, /etc/group).
+# Pin runAsUser/runAsGroup explicitly so runAsNonRoot can be enforced --
+# without it, kubelet rejects the pod with CreateContainerConfigError since
+# it detects the image would otherwise run as root.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  # The workspace emptyDir and sqlite PVC are mounted as writable volumes;
+  # the root filesystem can safely be read-only.
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+service:
+  type: ClusterIP
+  port: 9998
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ''
+  annotations: {}
+  #   kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: kms.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: cosmian-kms-tls
+  #    hosts:
+  #      - kms.example.com
+
+resources:
+  # Recommended production baseline; tune to your workload.
+  limits:
+    cpu: '2'
+    memory: 1Gi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# -- Optional PriorityClass name. The KMS is critical infrastructure;
+# set this to ensure it is scheduled ahead of lower-priority workloads.
+priorityClassName: ''
+
+# -- Seconds the pod is allowed to terminate gracefully. The KMS may need
+# time to flush database writes on shutdown.
+terminationGracePeriodSeconds: 30
+
+# Startup probe: gives the KMS time to initialise OpenSSL providers / HSM
+# before liveness kicks in. Without this, a slow start could cause the
+# liveness probe to kill the pod prematurely.
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+    scheme: HTTP
+  failureThreshold: 30
+  periodSeconds: 5
+
+# Liveness/readiness probes hit the KMS /health endpoint.
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+    scheme: HTTP
+  initialDelaySeconds: 0
+  periodSeconds: 10
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+    scheme: HTTP
+  initialDelaySeconds: 0
+  periodSeconds: 10
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 75
+  # targetMemoryUtilizationPercentage: 80
+  # -- Scale-down stabilisation window prevents aggressive scale-down
+  # from interrupting in-flight cryptographic operations.
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+
+podDisruptionBudget:
+  enabled: false
+  # Exactly one of minAvailable / maxUnavailable must be set.
+  minAvailable: 1
+  # maxUnavailable: 1
+
+networkPolicy:
+  # When enabled, only traffic on the KMS port is allowed in, from the
+  # namespaces/pods matched by ingressFrom (defaults to same-namespace only).
+  enabled: false
+  ingressFrom: []
+  #  - namespaceSelector: {}
+  #  - podSelector:
+  #      matchLabels:
+  #        role: frontend
+  egress: []
+
+# -- Topology spread constraints for distributing replicas across zones/nodes.
+# Important for HA deployments.
+topologySpreadConstraints: []
+#  - maxSkew: 1
+#    topologyKey: topology.kubernetes.io/zone
+#    whenUnsatisfiable: DoNotSchedule
+#    labelSelector:
+#      matchLabels:
+#        app.kubernetes.io/name: cosmian-kms
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Extra environment variables appended to the container. Takes precedence
+# over chart-managed variables with the same name.
+extraEnv: []
+# -- Extra envFrom sources (ConfigMap/Secret) merged into the container env.
+extraEnvFrom: []
+# -- Extra CLI arguments appended to the `cosmian_kms` entrypoint.
+extraArgs: []
+# -- Extra volumes mounted on the pod.
+extraVolumes: []
+# -- Extra volumeMounts mounted on the container.
+extraVolumeMounts: []
+# -- Extra sidecar containers added to the pod.
+extraContainers: []
+# -- Init containers run before the main KMS container starts.
+initContainers: []
+
+## Cosmian KMS server configuration.
+## Every field here is translated to a `KMS_*` environment variable consumed
+## directly by the server binary (see crate/server/src/config/command_line/).
+kms:
+  # -- The default username used when no authentication method is configured.
+  defaultUsername: admin
+  # -- HTTP server hostname to bind to inside the container.
+  hostname: 0.0.0.0
+  # -- HTTP server port. Must match `service.port` / probe port unless overridden.
+  port: 9998
+  # -- Comma-separated list of origins allowed for CORS. Required for Web UI deployments.
+  corsAllowedOrigins: ''
+  # -- Number of actix-web worker threads. Leave empty to let actix-web decide.
+  serverWorkers: ''
+  # -- Maximum requests per second per IP; leave empty to disable rate limiting.
+  rateLimitPerSecond: ''
+  # -- Enable the /.well-known/jwks.json endpoint.
+  jwksEnabled: false
+  # -- Serve the bundled web UI (React app baked into the image at
+  # /usr/local/cosmian/ui/dist/) on the same port as the KMIP/REST API.
+  # Set to false to disable it and return 404 on all /ui/ and SPA routes.
+  uiEnabled: true
+
+  database:
+    # -- One of: sqlite, postgresql, mysql, redis-findex (non-FIPS only).
+    type: sqlite
+    # -- Database connection URL for postgresql/mysql/redis-findex.
+    # Prefer `existingSecret` to avoid storing credentials in values.
+    url: ''
+    # -- Directory path used by the sqlite backend inside the container.
+    sqlitePath: /var/lib/cosmian-kms/sqlite-data
+    # -- Name of an existing Secret containing the DB URL / passwords.
+    # Expected keys: database-url, redis-master-password (as needed).
+    existingSecret: ''
+    # -- Clear the database on every start. NEVER enable in production.
+    clearDatabase: false
+
+  tls:
+    # -- Enable TLS on the KMS HTTP listener itself (in addition to, or instead
+    # of, TLS termination at the Ingress).
+    enabled: false
+    # -- Name of an existing Secret of type kubernetes.io/tls (tls.crt/tls.key)
+    # mounted into the container for KMS_TLS_CERT_FILE / KMS_TLS_KEY_FILE.
+    existingSecret: ''
+
+  auth:
+    # -- Name of an existing Secret holding OIDC/JWT auth material referenced
+    # via extraEnv/extraEnvFrom. Left generic since auth providers vary widely.
+    existingSecret: ''
+
+# Persistence for the sqlite database backend. Ignored for postgresql/mysql/
+# redis-findex, which are external. Prefer postgresql for HA deployments.
+persistence:
+  enabled: true
+  # -- Use an existing PVC instead of creating one.
+  existingClaim: ''
+  storageClassName: ''
+  accessModes:
+    - ReadWriteOnce
+  size: 4Gi
+  annotations: {}
+
+# -- Test connection pod settings.
+test:
+  # -- Image used by the helm test connection pod. Override for air-gapped
+  # environments or to use a private registry.
+  image:
+    repository: busybox
+    tag: '1.36'

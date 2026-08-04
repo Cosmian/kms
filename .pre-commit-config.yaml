@@ -38,7 +38,9 @@ repos:
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
-        exclude: ansible|ui/pnpm-lock.yaml
+        # Helm templates use Go template syntax ({{- ... }}) which is not
+        # valid standalone YAML and cannot be parsed/reformatted by yamlfmt.
+        exclude: ansible|ui/pnpm-lock.yaml|charts/.*/templates/
 
   - repo: https://github.com/crate-ci/typos
     rev: v1.31.1
@@ -100,7 +102,8 @@ repos:
       - id: check-xml
         exclude: crate/server/resources/production.drawio.svg
       - id: check-yaml
-        exclude: monitoring
+        # Helm templates use Go template syntax and are not valid standalone YAML.
+        exclude: monitoring|charts/.*/templates/
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
