@@ -1220,7 +1220,8 @@ Crate path: `crate/clients/pkcs11/module`
 | `debug` | `C_GenerateKey: session: {hSession:?}, pMechanism: {pMechanism:?}, pTemplate:              {pTemplate:?}, ulCount: {ulCount:?}, phKey: {phKey:?}` | `src/pkcs11.rs` | `hSession`, `pMechanism`, `pTemplate`, `ulCount`, `phKey` | — |
 | `debug` | `load_find_context_by_class: loading for class: {search_class:?} and options:              {search_options:?}, attributes: {attributes:?}` | `src/sessions.rs` | `search_class`, `search_options`, `attributes` | — |
 | `debug` | `load_find_context_by_class: search by id: {} -> handle:                                          {} -> certificate: {}:{}` | `src/sessions.rs` | — | — |
-| `debug` | `load_find_context_by_class: search by id: {} -> handle: {} -> object:                          {}:{}` | `src/sessions.rs` | — | — |
+| `warn` | `load_find_context_by_class: no {search_class:?} object found for id                              {id}` | `src/sessions.rs` | `search_class`, `id` | - |
+| `debug` | `load_find_context_by_class: search by id: {} -> handle: {} ->                              object: {}:{}` | `src/sessions.rs` | - | - |
 
 ---
 
