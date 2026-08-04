@@ -1,6 +1,8 @@
 # Eviden KMS
 
-> **Note**: Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
+!!! warning "Warning"
+
+    Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
 
 The **Eviden KMS** is a high-performance, [**source available**](https://github.com/Cosmian/kms), [**FIPS 140-3 compliant**](./certifications_and_compliance/fips.md) server application written in [**Rust**](https://www.rust-lang.org/) with unique capabilities.
 

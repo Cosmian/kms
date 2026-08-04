@@ -44,8 +44,10 @@ SecChlClntPrivKey=secchl_clt_privkey.pem  ; Client secure-channel private key
 SecChlClntPubKey=secchl_clt_pubkey.pem    ; Client secure-channel public key
 ```
 
-> **_NOTE:_** All filenames in the configuration file are relative to `/etc/proteccio` unless an
-> absolute path is given.
+!!! note "Note"
+
+    All filenames in the configuration file are relative to `/etc/proteccio` unless an
+    absolute path is given.
 
 A secondary status log (`HSM_Status.log`) is written to `/etc/proteccio` by the `nethsmstatus`
 monitoring daemon and records HSM availability events. It is not read by the KMS.
@@ -67,9 +69,11 @@ hsm_slot = [0, 0, ] # example [1,4] for slots 1 and 4
 hsm_password = ["<password>", "<password>", ] # example ["pass1", "pass4"] for slots 1 and 4
 ```
 
-> **_NOTE:_**  `hsm_slot` and `hsm_password` must always be arrays, even if only one slot is used.
->
-> The order of the passwords must match the order of the slots in the `hsm_slot` array.
+!!! warning "Warning"
+
+    `hsm_slot` and `hsm_password` must always be arrays, even if only one slot is used.
+
+    The order of the passwords must match the order of the slots in the `hsm_slot` array.
 >
 > If you want to login with an empty (null) password, use an empty string.
 >
