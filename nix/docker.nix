@@ -233,6 +233,10 @@ pkgs.dockerTools.buildLayeredImage {
   created = "1970-01-01T00:00:01Z";
 
   # Contents to include in the image
+  # Note: pkgs.busybox is intentionally omitted — it includes a /dev/pts/ptmx
+  # character device node that causes `failed to register layer` errors on older
+  # containerd versions (< 1.6.8). coreutils and bash (already in runtimeEnv)
+  # cover all basic utilities needed at runtime.
   contents = [
     runtimeEnv
     etcPasswd
@@ -240,8 +244,6 @@ pkgs.dockerTools.buildLayeredImage {
     etcNsswitch
     kmsDirectories
     startupScript
-    # Add busybox for basic utilities
-    pkgs.busybox
   ];
 
   # For this nixpkgs version, use fakeRootCommands to create root files
@@ -369,7 +371,7 @@ pkgs.dockerTools.buildLayeredImage {
     # Both FIPS and non-FIPS variants need OPENSSL_CONF and OPENSSL_MODULES
     # to locate the correct openssl.cnf and provider modules (fips.so, legacy.so, etc.).
     Env = [
-      "PATH=/usr/local/bin:/bin:${runtimeEnv}/bin:${pkgs.busybox}/bin"
+      "PATH=/usr/local/bin:/bin:${runtimeEnv}/bin"
       "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
       "TZDIR=${pkgs.tzdata}/share/zoneinfo"
       "OPENSSL_CONF=/usr/local/cosmian/lib/ssl/openssl.cnf"
