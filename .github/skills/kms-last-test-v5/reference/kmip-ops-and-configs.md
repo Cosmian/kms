@@ -1,6 +1,7 @@
 # KMIP Operations & Test Configurations Reference
 
 ## Contents
+
 - [KMIP operations dispatch table](#kmip-operations-dispatch-table)
 - [Test server configurations](#test-server-configurations)
 

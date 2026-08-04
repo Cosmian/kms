@@ -329,7 +329,8 @@ function injectVersionBanner(content) {
   banner.appendChild(text);
 
   // Insert before the <h1> (first heading in the article)
-  const article = content.querySelector(".md-content__inner, article, .md-typeset");
+  // Material MkDocs uses .md-content__inner / .md-typeset; mdBook uses <main>
+  const article = content.querySelector(".md-content__inner, article, .md-typeset, main") || content;
   const h1 = article ? article.querySelector("h1") : null;
   if (h1) {
     h1.insertAdjacentElement("afterend", banner);
@@ -343,7 +344,8 @@ function injectVersionBanner(content) {
 function initPage() {
   if (!window.location.pathname.includes(LOG_REFERENCE_PATH)) return;
 
-  const content = document.querySelector(".md-content");
+  // Support both Material MkDocs (.md-content) and mdBook (#content)
+  const content = document.querySelector(".md-content, #content");
   if (!content) return;
 
   // 1. Version banner

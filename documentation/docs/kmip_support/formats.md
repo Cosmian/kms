@@ -1,6 +1,8 @@
+# Supported Formats
+
 KMIP Objects may be manipulated in various standardized formats.
 
-### Import - Export
+## Import - Export
 
 The KMIP 2.1 specification states that keys have a default Key Format Type that SHALL be produced by KMIP servers.
 When requesting the export of an Object without specifying the Key Format Type, a default Key Format Type by object
@@ -33,7 +35,7 @@ When requesting the export of an Object without specifying the Key Format Type, 
     - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
     - the raw bytes of the public key for Curve 25519 and Curve 448
 
-### Internal storage
+## Internal storage
 
 The IETF now recommends using PKCS#8 and Subject Public Key Info (SPKI) as default formats for inter-operability.
 This server enforces the KMIP 2.1 default export formats above but the storage formats used in the database are:

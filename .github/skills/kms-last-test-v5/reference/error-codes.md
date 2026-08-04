@@ -1,6 +1,7 @@
 # Error Codes Reference
 
 ## Contents
+
 - [HTTP status code mapping](#http-status-code-mapping)
 - [KMIP ResultReason codes](#kmip-resultreason-codes)
 - [Enterprise endpoint error formats](#enterprise-endpoint-error-formats)

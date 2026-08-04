@@ -1,3 +1,5 @@
+# Command line arguments
+
 ```text
 
 Usage: cosmian_kms [OPTIONS] [KEY_ENCRYPTION_KEY]

@@ -1,4 +1,6 @@
-#### Specification
+# Encrypt
+
+## Specification
 
 This operation requests the server to perform an encryption operation on the provided data using a Managed Cryptographic
 Object as the key for the encryption operation.
@@ -20,16 +22,16 @@ encryption operation.
 The success or failure of the operation is indicated by the Result Status (and, if failure, the Result Reason) in the
 response header.
 
-#### Implementation
+## Implementation
 
 To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
-#### Example - AES GCM encryption
+## Example - AES GCM encryption
 
 Encrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md)
 to see how to create the symmetric key).
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
 ckms sym encrypt -t "MySymmetricKey" /tmp/hello_world.txt
@@ -112,12 +114,12 @@ Please note that the response contains:
     }
     ```
 
-#### Example - Covercrypt
+## Example - Covercrypt
 
 Encrypting the text `Hello, world!` with the Covercrypt master public key `0fd1f684-156c-4ca6-adc2-0a6f4b620463`
 (go to  [Create Key Pair](./_create_key_pair.md) to see how to create the mater key pair) and attributes `Security Level::Confidential && Department::FIN`.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
 ckms cc encrypt -k 0fd1f684-156c-4ca6-adc2-0a6f4b620463 \

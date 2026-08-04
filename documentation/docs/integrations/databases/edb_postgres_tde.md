@@ -15,8 +15,6 @@ server via KMIP over mTLS.
 | **Client** | `edb_tde_kmip_client.py` (shipped inside the EDB image) |
 | **Cosmian KMS feature** | Works in **non-FIPS** mode (PyKMIP uses `ssl.wrap_socket`) |
 
-[TOC]
-
 ---
 
 ## Architecture
@@ -95,7 +93,7 @@ server_port = 15696
 ```
 
 Generate or reuse mTLS certificates for the KMS and the EDB client.
-See [Certificates](../pki/certificates.md) for details.
+See [Certificates](../../configuration/tls.md) for details.
 
 ### 2. Create the Master Key
 

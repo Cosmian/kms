@@ -1,3 +1,5 @@
+# Installation
+
 === "Debian/Ubuntu (amd64)"
 
     Download package and install it:

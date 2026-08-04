@@ -52,7 +52,7 @@ added or removed; library versions and source-scan results are refreshed automat
 
 ## Importing into SBOM platforms
 
-The CBOM uses the same CycloneDX format as the [SBOM](../../../sbom/README.md), so it can be
+The CBOM uses the same CycloneDX format as the [SBOM](sbom.html), so it can be
 imported into any CycloneDX-compatible platform such as
 [Dependency-Track](https://dependencytrack.org/):
 

@@ -1,23 +1,25 @@
+# Attributes Extensions
+
 In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115559), the KMIP 2.1 specification specifies a list of 63 Attributes, mostly made of enumerations and data structures, often nested in each other. Despite this impressive list, and as expected in such a large specification, KMIP allows for extensions to support new cryptographic schemes such as the ones enabled by Eviden.
 
 Extensions in KMIP consist mostly in augmenting enumerations with new values and attributing a specific prefix values, usually `0x8880` to the new variants.
 
 To support [Covercrypt](https://github.com/Cosmian/cover_crypt), Cosmian is using a few extensions listed below.
 
-#### Key Format Type
+## Key Format Type
 
 The Key Format Type attribute is a required attribute of a Cryptographic Object.
 
 It is set by the server, but a particular Key Format Type MAY be requested by the client if the cryptographic material is produced by the server (i.e., Create, Create Key Pair, Create Split Key, Re-key, Re-key Key Pair, Derive Key) on the client's behalf. The server SHALL comply with the client's requested format or SHALL fail the request. When the server calculates a Digest for the object, it SHALL compute the digest on the data in the assigned Key Format Type, as well as a digest in the default KMIP Key Format Type for that type of key and the algorithm requested (if a non-default value is specified).
 
-##### Extensions
+### Extensions
 
 ```c
 CoverCryptSecretKey = 0x8880_000C,
 CoverCryptPublicKey = 0x8880_000D,
 ```
 
-#### Cryptographic Algorithm
+## Cryptographic Algorithm
 
 The Cryptographic Parameters attribute is a structure that contains a set of OPTIONAL fields that describe certain cryptographic parameters to be used when performing cryptographic operations using the object. Specific fields MAY pertain only to certain types of Managed Objects. The Cryptographic Parameters attribute of a Certificate object identifies the cryptographic parameters of the public key contained within the Certificate.
 
@@ -33,13 +35,13 @@ The IV used with counter modes of operation (e.g., CTR and GCM) cannot repeat fo
 
 Initial Counter Value is the starting counter value for CTR mode (for [RFC3686] it is 1).
 
-##### Extensions
+### Extensions
 
 ```c
 CoverCrypt = 0x8880_0004,
 ```
 
-#### Vendor Attributes
+## Vendor Attributes
 
 All keys managed by the Eviden KMS server are primarily a `KeyMaterial` made of bytes. Some keys, typically those of ABE, also carry information regarding the underlying access policies. This information is carried together with the keys using [VendorAttributes](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115619)
 
@@ -54,3 +56,7 @@ The attributes names and corresponding values used for a given `KeyFormatType` a
 - `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: the JSONified boolean Access Policy found in a user key
 
 In addition, the `VENDOR_ATTR_COVER_CRYPT_ATTR = "cover_crypt_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.
+
+[SP800-38A]: https://csrc.nist.gov/publications/detail/sp/800-38a/final
+[SP800-38D]: https://csrc.nist.gov/publications/detail/sp/800-38d/final
+[RFC3686]: https://datatracker.ietf.org/doc/html/rfc3686

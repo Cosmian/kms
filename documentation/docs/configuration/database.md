@@ -1,9 +1,9 @@
+# Databases
+
 By default, the server runs using a [SQLite](https://www.sqlite.org/) database, but it can be configured to use a choice
 of databases: SQLite encrypted, [PostgreSQL](https://www.postgresql.org/), [MariaDB](https://mariadb.org/),
 [MySQL](https://www.mysql.com/), and [Percona XtraDB Cluster](https://www.percona.com/software/mysql-database/percona-xtradb-cluster),
 as well as [Redis](https://redis.io/), using the [Redis-with-Findex](#redis-with-findex) configuration.
-
-[TOC]
 
 ## Selecting the database
 

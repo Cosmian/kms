@@ -18,7 +18,7 @@ A live KMS server must also be reachable before any test scenario can execute. T
 pnpm -C ui build && cargo run -p cosmian_kms_server --features non-fips -- -c test_data/configs/server/no_auth.toml
 ```
 
-### External systems:
+### External systems
 
 If the KMS has to interact with other systems: a HSM, another server, another KMS, it is almost mandatory to instanciate them in advance and prompt him with maximum info. Otherwise, hallucinations _can_ happen because a skill can't figure out how to use external systems (red the AWS prompt)
 

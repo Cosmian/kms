@@ -1,4 +1,6 @@
-The easiest way to call the KMIP API is to use the `cosmian` [Command Line Interface](../../kms_clients/index.md)
+# The JSON TTLV KMIP API
+
+The easiest way to call the KMIP API is to use the `cosmian` [Command Line Interface](../kms_clients/index.md)
 or one of the Eviden [cloudproof libraries](https://github.com/Cosmian) which provide wrapper calls
 in the corresponding language.
 
@@ -12,18 +14,18 @@ Multiple operations can be sent in a single call using the [`Messages` API](./me
 !!!info  "Easily building JSON TTLV messages"
 
     Building JSON TTLV messages is a complex task and the easiest way to get started is to use
-    the [KMS CLI](../../kms_clients/index.md) in `JSON mode` mode to print the corresponding request and response messages.
+    the [KMS CLI](../kms_clients/index.md) in `JSON mode` mode to print the corresponding request and response messages.
 
     The `JSON mode` is activated by passing the `--kms-print-json` flag to the `cosmian` command.
     See the [JSON mode example](#json-mode-example) below.
 
 To send multiple requests in a single call, se the [`Messages` API](./messages.md) .
 
-#### Sample JSON TTLV messages
+## Sample JSON TTLV messages
 
 Please refer to the various [operations pages](./operations.md) for sample JSON TTLV messages.
 
-#### JSON mode example
+## JSON mode example
 
 This creates a (default AES 256) symmetric key which will be tagged with the string `myKey`.
 

@@ -1331,3 +1331,5 @@ Crate path: `ui/src/`
 | `error` | `Auth Verifier login failed:` | `pages/LoginPage.tsx` | - | - |
 
 ---
+
+<script src="../javascripts/log_filter.js"></script>

@@ -1,3 +1,5 @@
+# Bulk mode with Messages
+
 [Chapter 8](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115738) of the KMIP 2.1
 specification defines the Messages functionality, which enables sending/receiving multiple requests/responses at
 once (also known as bulk mode).
@@ -16,11 +18,11 @@ For every request message sent, the server returns a response message containing
 operation,
 along with any relevant result data or error messages.
 
-### Request and response example
+## Request and response example
 
 Below are canonical KMIP 2.1 message examples, following the mandatory XML schema AKLC-M-1-21.xml. Each request and response is shown in JSON TTLV format.
 
-#### 1. CreateKeyPair
+### 1. CreateKeyPair
 
 === "Message Request"
 
@@ -107,7 +109,7 @@ Below are canonical KMIP 2.1 message examples, following the mandatory XML schem
     }
     ```
 
-#### 2. GetAttributes (Private Key)
+### 2. GetAttributes (Private Key)
 
 === "Message Request"
 
@@ -211,7 +213,7 @@ Below are canonical KMIP 2.1 message examples, following the mandatory XML schem
     }
     ```
 
-#### 3. Destroy (Private Key)
+### 3. Destroy (Private Key)
 
 === "Message Request"
 

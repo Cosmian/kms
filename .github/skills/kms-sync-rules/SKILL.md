@@ -201,7 +201,7 @@ Output **only** the sub-rules that were triggered. For each, print the full chec
 
 *(triggered by: `crate/clients/ckms/src/**`, `crate/clients/clap/src/**`)*
 
-- [ ] Run: `cargo run --bin ckms -- markdown cli_documentation/docs/cli/main_commands.md`
+- [ ] Run: `cargo run --bin ckms -- markdown documentation/docs/kms_clients/cli/main_commands.md`
 - [ ] Commit the regenerated file (manual edits will be overwritten next time)
 
 ### Rule 4.16 — E2E test documentation

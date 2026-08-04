@@ -6,8 +6,6 @@ All endpoints accept a JSON body and return a JSON object with a single `result`
 
 The `ckms tokenize` CLI command wraps each of these endpoints if you prefer working from the command line.
 
-[TOC]
-
 ## Endpoints
 
 ### Hash

@@ -3,6 +3,7 @@
 These are the semantic invariants the agent must treat as always-true unless the PR explicitly changes them. Any scenario that contradicts one of these is a **critical finding**.
 
 ## Contents
+
 - [Key lifecycle](#key-lifecycle)
 - [Security](#security)
 - [Access control](#access-control)
