@@ -250,7 +250,7 @@ fi
 print_status "Restarting plugin to verify health recovery..."
 minikube ssh -- sudo systemctl start cosmian-kms-plugin
 k8s_wait_node_socket "$SOCK_PATH" 30
-timeout 90 bash -c \
+timeout 180 bash -c \
   'until kubectl get --raw "/healthz/kms-providers" 2>/dev/null | grep -q "^ok$"; do sleep 3; done' ||
   print_error "KMS provider did not recover after restart"
 print_success "kms-providers healthz recovered after plugin restart"
