@@ -91,11 +91,10 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
         }
     }
 
+    let object_type = object.object_type();
     trace!(
         "Creating object of type {:?} with UID {} and attributes {}",
-        &object.object_type(),
-        &unique_identifier,
-        &attributes,
+        &object_type, &unique_identifier, &attributes,
     );
     // Wrap the object if requested by the user or on the server params
     Box::pin(wrap_and_cache(kms, owner, &unique_identifier, &mut object)).await?;
@@ -118,7 +117,7 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
         uid = uid,
         user = owner,
         "Created Object of type {:?}",
-        &object.object_type(),
+        &object_type,
     );
 
     Ok(CreateResponse {
