@@ -640,7 +640,6 @@ Crate path: `crate/server`
 | `warn` | `vault_api_enabled = true but vault_auth_verifier_url is not set —                      Vault-compatible API will NOT be registered.                      Set vault_auth_verifier_url in the server config.` | `src/start_kms_server.rs` | - | - |
 | `warn` | `{log_prefix}: validation failed: {e}; rejecting request` | `src/middlewares/spire_token.rs` | `log_prefix`, `e` | - |
 | `info` | `OIDC: discovered endpoints from {discovery_url}` | `src/start_kms_server.rs` | `discovery_url` | - |
-| `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
 | `info` | `Vault-compatible API enabled: transit at {transit_scope_path}, PKI at {pki_scope_path}, auth proxy at /v1/auth` | `src/start_kms_server.rs` | `transit_scope_path`, `pki_scope_path` | - |
 | `debug` | `AuthVerifier Middleware: an authenticated user was already found; skipping.` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
 | `debug` | `` AuthVerifier Middleware: authenticated user `{}` `` | `src/middlewares/auth_verifier/middleware.rs` | - | - |
@@ -661,17 +660,18 @@ Crate path: `crate/server`
 | `debug` | `{log_prefix}: non-ASCII X-Vault-Token header; rejecting` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `debug` | `{log_prefix}: validated entity={}` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | - |
-| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
-| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `POST vault transit keys/{}/config (no-op)` | `src/routes/spire/transit.rs` | - | - |
 | `trace` | `POST/PUT vault pki root/sign-intermediate` | `src/routes/spire/pki.rs` | - | - |
 | `trace` | `Session Authentication...` | `src/middlewares/session_auth.rs` | - | - |
 | `trace` | `Session: no user_id in session, passing through` | `src/middlewares/session_auth.rs` | - | - |
-| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
 | `trace` | `{log_prefix}: missing X-Vault-Token header` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `{log_prefix}: no X-Vault-Token; deferring to native auth` | `src/middlewares/spire_token.rs` | `log_prefix` | - |
 | `trace` | `{} vault transit keys/{name} type={}` | `src/routes/spire/transit.rs` | `name` | - |
 | `trace` | `{} vault transit sign/{name}/{hash_alg_path}` | `src/routes/spire/transit.rs` | `name`, `hash_alg_path` | - |
+| `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
+| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
