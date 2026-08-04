@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#MISE description="Run Helm chart lint and template validation"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant (unused, helm tests are variant-agnostic)" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type (unused)" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Running Helm chart tests"
+
+CHART_DIR="${MISE_CONFIG_ROOT}/charts/cosmian-kms"
+
+require_cmd helm
+
+# 1. Lint: validate chart structure, required fields, and YAML syntax
+echo "Running helm lint..."
+helm lint "${CHART_DIR}" --strict
+
+# 2. Template: render with default values and check output is valid YAML
+echo "Running helm template (defaults)..."
+helm template cosmian-kms "${CHART_DIR}" | grep -c "^---" >/dev/null
+
+# 3. Template with TLS enabled
+echo "Running helm template (TLS enabled)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set kms.tls.enabled=true \
+  --set kms.tls.existingSecret=cosmian-kms-tls |
+  grep -c "^---" >/dev/null
+
+# 4. Template with Ingress enabled
+echo "Running helm template (Ingress + TLS)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set ingress.enabled=true \
+  --set "ingress.hosts[0].host=kms.example.com" \
+  --set "ingress.hosts[0].paths[0].path=/" \
+  --set "ingress.hosts[0].paths[0].pathType=Prefix" |
+  grep -c "^---" >/dev/null
+
+# 5. Template with HPA and PDB disabled (minimal footprint)
+echo "Running helm template (minimal: no HPA, no PDB)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set autoscaling.enabled=false \
+  --set podDisruptionBudget.enabled=false |
+  grep -c "^---" >/dev/null
+
+# 6. Template with network policy enabled
+echo "Running helm template (NetworkPolicy enabled)..."
+helm template cosmian-kms "${CHART_DIR}" \
+  --set networkPolicy.enabled=true |
+  grep -c "^---" >/dev/null
+
+print_success "Helm chart tests completed"

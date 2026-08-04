@@ -233,6 +233,25 @@ jobs:
         run: |
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
+  helm:
+    name: Helm chart lint and template validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Test
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mise run test:helm
+
   windows-2022:
     # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).
     if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/')
@@ -246,6 +265,7 @@ jobs:
     needs:
       - test-nix
       - hsm
+      - helm
     uses: ./.github/workflows/cargo-publish.yml
     with:
       toolchain: 1.97.0
