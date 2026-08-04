@@ -18,15 +18,10 @@ use cosmian_logger::{debug, trace};
 use openssl::{nid::Nid, x509::X509};
 
 use crate::{
-    
     error::KmsError,
-   
     kms_bail,
-   
-    middlewares::{{AuthMethod, AuthenticatedUser},
-    UserId},
+    middlewares::{AuthMethod, AuthenticatedUser, UserId},
     result::KResult,
-,
 };
 
 /// Holds the peer certificate for the current connection.
