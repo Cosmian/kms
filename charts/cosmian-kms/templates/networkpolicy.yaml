@@ -19,7 +19,9 @@ spec:
         {{- if .Values.networkPolicy.ingressFrom }}
         {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
         {{- else }}
-        - namespaceSelector: {}
+        # Default: allow ingress only from within the same namespace.
+        # Override with networkPolicy.ingressFrom for cross-namespace access.
+        - podSelector: {}
         {{- end }}
       ports:
         - protocol: TCP

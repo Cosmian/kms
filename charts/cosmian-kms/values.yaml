@@ -6,7 +6,8 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/cosmian/kms
+  # FIPS image by default. Use ghcr.io/cosmian/kms for non-FIPS (extra algorithms).
+  repository: ghcr.io/cosmian/kms-fips
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ''
@@ -39,13 +40,17 @@ podSecurityContext:
   runAsUser: 1000
   runAsGroup: 1000
   fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
-  readOnlyRootFilesystem: false
+  # The workspace emptyDir and sqlite PVC are mounted as writable volumes;
+  # the root filesystem can safely be read-only.
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
 
 service:
@@ -77,20 +82,39 @@ resources:
     cpu: 250m
     memory: 256Mi
 
+# -- Optional PriorityClass name. The KMS is critical infrastructure;
+# set this to ensure it is scheduled ahead of lower-priority workloads.
+priorityClassName: ''
+
+# -- Seconds the pod is allowed to terminate gracefully. The KMS may need
+# time to flush database writes on shutdown.
+terminationGracePeriodSeconds: 30
+
+# Startup probe: gives the KMS time to initialise OpenSSL providers / HSM
+# before liveness kicks in. Without this, a slow start could cause the
+# liveness probe to kill the pod prematurely.
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+    scheme: HTTP
+  failureThreshold: 30
+  periodSeconds: 5
+
 # Liveness/readiness probes hit the KMS /health endpoint.
 livenessProbe:
   httpGet:
     path: /health
     port: http
     scheme: HTTP
-  initialDelaySeconds: 5
+  initialDelaySeconds: 0
   periodSeconds: 10
 readinessProbe:
   httpGet:
     path: /health
     port: http
     scheme: HTTP
-  initialDelaySeconds: 5
+  initialDelaySeconds: 0
   periodSeconds: 10
 
 autoscaling:
@@ -99,19 +123,42 @@ autoscaling:
   maxReplicas: 6
   targetCPUUtilizationPercentage: 75
   # targetMemoryUtilizationPercentage: 80
+  # -- Scale-down stabilisation window prevents aggressive scale-down
+  # from interrupting in-flight cryptographic operations.
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
 
 podDisruptionBudget:
   enabled: false
+  # Exactly one of minAvailable / maxUnavailable must be set.
   minAvailable: 1
   # maxUnavailable: 1
 
 networkPolicy:
   # When enabled, only traffic on the KMS port is allowed in, from the
-  # namespaces/pods matched by ingressFrom (defaults to allow-all-in-namespace).
+  # namespaces/pods matched by ingressFrom (defaults to same-namespace only).
   enabled: false
   ingressFrom: []
   #  - namespaceSelector: {}
+  #  - podSelector:
+  #      matchLabels:
+  #        role: frontend
   egress: []
+
+# -- Topology spread constraints for distributing replicas across zones/nodes.
+# Important for HA deployments.
+topologySpreadConstraints: []
+#  - maxSkew: 1
+#    topologyKey: topology.kubernetes.io/zone
+#    whenUnsatisfiable: DoNotSchedule
+#    labelSelector:
+#      matchLabels:
+#        app.kubernetes.io/name: cosmian-kms
 
 nodeSelector: {}
 tolerations: []
@@ -128,6 +175,10 @@ extraArgs: []
 extraVolumes: []
 # -- Extra volumeMounts mounted on the container.
 extraVolumeMounts: []
+# -- Extra sidecar containers added to the pod.
+extraContainers: []
+# -- Init containers run before the main KMS container starts.
+initContainers: []
 
 ## Cosmian KMS server configuration.
 ## Every field here is translated to a `KMS_*` environment variable consumed
@@ -190,3 +241,11 @@ persistence:
     - ReadWriteOnce
   size: 4Gi
   annotations: {}
+
+# -- Test connection pod settings.
+test:
+  # -- Image used by the helm test connection pod. Override for air-gapped
+  # environments or to use a private registry.
+  image:
+    repository: busybox
+    tag: '1.36'

@@ -234,7 +234,7 @@ jobs:
           mise run test:hsm-${{ matrix.hsm-type }} --variant ${{ matrix.features }}
 
   helm:
-    name: Helm chart lint and template validation
+    name: Helm chart E2E (minikube)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -246,11 +246,19 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Test
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.18
+        with:
+          driver: docker
+          kubernetes-version: v1.30.0
+          cpus: 2
+          memory: 4096m
+
+      - name: Test (lint + template + E2E deployment)
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          mise run test:helm
+          mise run test:helm --e2e
 
   windows-2022:
     # Windows is slow: only run on PRs (catches regressions before merge) and tags (release gate).

@@ -1,18 +1,29 @@
 Cosmian KMS has been deployed as {{ include "cosmian-kms.fullname" . }} in namespace {{ .Release.Namespace }}.
 
+{{- if .Values.kms.database.clearDatabase }}
+
+*** WARNING: clearDatabase is enabled — the database will be wiped on every pod restart! ***
+
+{{- end }}
+
+{{- $scheme := "http" }}
+{{- if .Values.kms.tls.enabled }}
+{{- $scheme = "https" }}
+{{- end }}
+
 {{- if .Values.ingress.enabled }}
 {{- range .Values.ingress.hosts }}
-KMS is reachable at: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+KMS is reachable at: {{ $scheme }}://{{ .host }}
 {{- end }}
 {{- else if contains "NodePort" .Values.service.type }}
 Get the application URL by running:
   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "cosmian-kms.fullname" . }})
   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
-  echo http://$NODE_IP:$NODE_PORT
+  echo {{ $scheme }}://$NODE_IP:$NODE_PORT
 {{- else if contains "ClusterIP" .Values.service.type }}
 Get the application URL by running these commands:
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "cosmian-kms.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
-  echo "Visit http://127.0.0.1:{{ .Values.service.port }} to use the KMS"
+  echo "Visit {{ $scheme }}://127.0.0.1:{{ .Values.service.port }} to use the KMS"
 {{- end }}
 
 Database backend: {{ .Values.kms.database.type }}
