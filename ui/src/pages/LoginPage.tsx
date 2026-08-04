@@ -1,9 +1,9 @@
-import { Alert, Button, Spin } from "antd";
+import { Alert, Button, Input, Spin } from "antd";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
 import { useBranding } from "../contexts/useBranding";
-import { AuthMethod, getNoTTLVRequest } from "../utils/utils";
+import { AuthMethod, getNoTTLVRequest, loginAuthVerifier } from "../utils/utils";
 
 interface LoginProps {
     auth: boolean;
@@ -14,6 +14,11 @@ interface LoginProps {
 const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [certError, setCertError] = useState<string | null>(null);
+    const [authVerifierUsername, setAuthVerifierUsername] = useState("");
+    const [authVerifierPassword, setAuthVerifierPassword] = useState("");
+    const [authVerifierTotpCode, setAuthVerifierTotpCode] = useState("");
+    const [authVerifierTotpRequired, setAuthVerifierTotpRequired] = useState(false);
+    const [authVerifierError, setAuthVerifierError] = useState<string | null>(null);
     const { login, serverUrl } = useAuth();
     const navigate = useNavigate();
     const branding = useBranding();
@@ -35,7 +40,7 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                 setIsLoading(true);
                 setCertError(null);
                 // /version works without a cert; /access/create returns 401 without one
-                await getNoTTLVRequest("/access/create", null, serverUrl);
+                await getNoTTLVRequest("/access/create", serverUrl);
                 navigate("/locate");
             } catch (err) {
                 console.error("Certificate validation failed:", err);
@@ -47,6 +52,31 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
             }
         } else {
             navigate("/locate");
+        }
+    };
+
+    const handleAuthVerifierLogin = async () => {
+        try {
+            setIsLoading(true);
+            setAuthVerifierError(null);
+            const nextStep = await loginAuthVerifier(
+                serverUrl,
+                authVerifierUsername,
+                authVerifierPassword,
+                authVerifierTotpRequired ? authVerifierTotpCode : undefined,
+            );
+            if (nextStep === "TotpRequired") {
+                setAuthVerifierTotpRequired(true);
+            } else {
+                // Full page navigation (not react-router) so the app's auth bootstrap
+                // re-runs and picks up the session cookie the server just set.
+                window.location.assign("/ui/locate");
+            }
+        } catch (err) {
+            console.error("Auth Verifier login failed:", err);
+            setAuthVerifierError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -76,10 +106,62 @@ const LoginPage: React.FC<LoginProps> = ({ auth, error, authMethod }) => {
                             className="text-left mb-8"
                         />
                     )}
-                    {isLoading ? (
+                    {authMethod === "AUTH_VERIFIER" ? (
+                        <div className="space-y-4 text-left" data-testid="auth-verifier-login-form">
+                            {authVerifierError && (
+                                <Alert
+                                    type="error"
+                                    showIcon
+                                    message="Authentication failed"
+                                    description={authVerifierError}
+                                    className="text-left mb-4"
+                                    data-testid="auth-verifier-login-error"
+                                />
+                            )}
+                            {authVerifierTotpRequired ? (
+                                <Input
+                                    autoFocus
+                                    placeholder="One-time code (TOTP)"
+                                    value={authVerifierTotpCode}
+                                    onChange={(e) => setAuthVerifierTotpCode(e.target.value)}
+                                    onPressEnter={handleAuthVerifierLogin}
+                                    data-testid="auth-verifier-totp-input"
+                                />
+                            ) : (
+                                <>
+                                    <Input
+                                        autoFocus
+                                        placeholder="Username"
+                                        autoComplete="username"
+                                        value={authVerifierUsername}
+                                        onChange={(e) => setAuthVerifierUsername(e.target.value)}
+                                        onPressEnter={handleAuthVerifierLogin}
+                                        data-testid="auth-verifier-username-input"
+                                    />
+                                    <Input.Password
+                                        placeholder="Password"
+                                        autoComplete="current-password"
+                                        value={authVerifierPassword}
+                                        onChange={(e) => setAuthVerifierPassword(e.target.value)}
+                                        onPressEnter={handleAuthVerifierLogin}
+                                        data-testid="auth-verifier-password-input"
+                                    />
+                                </>
+                            )}
+                            <Button
+                                type="primary"
+                                block
+                                onClick={handleAuthVerifierLogin}
+                                loading={isLoading}
+                                data-testid="auth-verifier-login-submit"
+                            >
+                                {authVerifierTotpRequired ? "VERIFY CODE" : "LOGIN"}
+                            </Button>
+                        </div>
+                    ) : isLoading ? (
                         <Spin size="large" />
                     ) : auth ? (
-                        <Button type="primary" block onClick={handleLogin} loading={isLoading}>
+                        <Button type="primary" block onClick={handleLogin} loading={isLoading} data-testid="oidc-login-btn">
                             LOGIN
                         </Button>
                     ) : (

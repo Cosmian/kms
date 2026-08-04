@@ -369,6 +369,7 @@ mod tests {
             non_revocable_key_id: None,
             privileged_users: None,
             secret_backends: cosmian_kms_server::config::SecretBackendConfig::default(),
+            auth_verifier: cosmian_kms_server::config::AuthVerifierConfig::default(),
             print_default_config: false,
             auto_rotation_check_interval_secs: 0,
             keyset_warn_depth: 5,
@@ -425,6 +426,9 @@ proxy_exclusion_list = ["domain1", "domain2"]
 
 [idp_auth]
 jwt_auth_provider = ["jwt issuer uri 1,jwks uri 1,jwt audience 1", "jwt issuer uri 2,jwks uri 2,jwt audience 2"]
+
+[auth_verifier]
+auth_verifier_accept_invalid_certs = false
 
 [ui_config]
 enable = true

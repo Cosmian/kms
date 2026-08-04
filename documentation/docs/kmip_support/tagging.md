@@ -1,3 +1,5 @@
+# Objects Tagging
+
 The Eviden KMS server supports the tagging of objects. Tags are arbitrary strings that can be attached to objects.
 Tags can be used to group objects together, and to find objects for most operations, such as export, import, encrypt, decrypt, etc.
 

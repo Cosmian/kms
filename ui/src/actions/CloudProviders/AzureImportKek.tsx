@@ -21,7 +21,7 @@ type KeyImportResponse = {
 
 const ImportAzureKekForm: React.FC = () => {
     const [form] = Form.useForm<ImportAzureKekFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ImportAzureKekFormData) => {
         await execute(async () => {
@@ -43,7 +43,7 @@ const ImportAzureKekForm: React.FC = () => {
                 undefined, // wrappingKeyId
             );
 
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: KeyImportResponse = await parse_import_ttlv_response(result_str);
                 return `Azure KEK has been successfully imported - Key ID: ${result.UniqueIdentifier}`;

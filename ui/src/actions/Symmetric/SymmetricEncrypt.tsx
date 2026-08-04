@@ -19,7 +19,7 @@ interface SymmetricEncryptFormData {
 
 const SymmetricEncryptForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricEncryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const selectedEncryptionAlgorithm = Form.useWatch("dataEncryptionAlgorithm", form);
 
     const onFinish = async (values: SymmetricEncryptFormData) => {
@@ -36,7 +36,7 @@ const SymmetricEncryptForm: React.FC = () => {
                 values.authenticationData,
                 values.dataEncryptionAlgorithm,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const { IVCounterNonce, Data, AuthenticatedEncryptionTag } = await parse_encrypt_ttlv_response(result_str);
                 const combinedData = new Uint8Array(IVCounterNonce.length + Data.length + AuthenticatedEncryptionTag.length);

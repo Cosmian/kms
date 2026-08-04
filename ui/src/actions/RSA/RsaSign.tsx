@@ -16,7 +16,7 @@ interface RsaSignFormData {
 
 const RsaSignForm: React.FC = () => {
     const [form] = Form.useForm<RsaSignFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: RsaSignFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -25,7 +25,7 @@ const RsaSignForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = await sign_ttlv_request(id, values.inputFile, undefined, values.digested);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_sign_ttlv_response(result_str);
                 const respObj = response as unknown as Record<string, unknown>;

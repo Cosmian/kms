@@ -695,3 +695,167 @@ mod custom_headers_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod approle_login_tests {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+    };
+
+    use crate::http_client::{HttpClientConfig, login::approle_login};
+
+    /// Spawn a one-shot raw-TCP HTTP/1.1 server on `port` that reads a single
+    /// request and replies with the supplied `status_line` and JSON `body`.
+    ///
+    /// Returns the raw request bytes over a channel so the test can assert on the
+    /// request line, headers, and body actually sent by the client.
+    fn spawn_mock_http_once(
+        port: u16,
+        status_line: &'static str,
+        body: &'static str,
+    ) -> std::sync::mpsc::Receiver<String> {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            let listener = TcpListener::bind(("127.0.0.1", port)).expect("bind mock server");
+            if let Ok((mut stream, _)) = listener.accept() {
+                // Read the request headers (until the blank line) plus whatever
+                // body bytes arrive in the same read window.
+                let mut buf = [0_u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(buf.get(..n).unwrap_or(&[])).to_string();
+
+                let response = format!(
+                    "{status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                drop(stream.write_all(response.as_bytes()));
+                drop(stream.flush());
+                drop(tx.send(request));
+            }
+        });
+        rx
+    }
+
+    /// A successful `AppRole` login returns the `auth.client_token`, and the client
+    /// POSTs to `/v1/auth/approle/login` with the `role_id` and `secret_id` in the body.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_approle_login_success_returns_client_token() {
+        const PORT: u16 = 18_051;
+        let request_rx = spawn_mock_http_once(
+            PORT,
+            "HTTP/1.1 200 OK",
+            r#"{"auth":{"client_token":"hvs.abc123","renewable":true,"lease_duration":3600,"policies":["default"],"metadata":{}}}"#,
+        );
+        // Give the listener a moment to bind.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let config = HttpClientConfig {
+            server_url: format!("http://127.0.0.1:{PORT}"),
+            ..Default::default()
+        };
+
+        let token = approle_login(&config, "role-uuid", Some("secret-xyz"))
+            .await
+            .expect("AppRole login should succeed");
+        assert_eq!(token, "hvs.abc123");
+
+        // Verify what the client actually sent.
+        let request = request_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("mock server should have captured the request");
+        assert!(
+            request.starts_with("POST /v1/auth/approle/login "),
+            "unexpected request line: {request}"
+        );
+        assert!(
+            request.contains(r#""role_id":"role-uuid""#),
+            "request body must contain role_id: {request}"
+        );
+        assert!(
+            request.contains(r#""secret_id":"secret-xyz""#),
+            "request body must contain secret_id: {request}"
+        );
+    }
+
+    /// When `secret_id` is `None`, it must be omitted from the JSON body.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_approle_login_omits_absent_secret_id() {
+        const PORT: u16 = 18_052;
+        let request_rx = spawn_mock_http_once(
+            PORT,
+            "HTTP/1.1 200 OK",
+            r#"{"auth":{"client_token":"hvs.nosec","renewable":true,"lease_duration":0,"policies":[],"metadata":{}}}"#,
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let config = HttpClientConfig {
+            server_url: format!("http://127.0.0.1:{PORT}"),
+            ..Default::default()
+        };
+
+        let token = approle_login(&config, "role-only", None)
+            .await
+            .expect("AppRole login without secret_id should succeed");
+        assert_eq!(token, "hvs.nosec");
+
+        let request = request_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("mock server should have captured the request");
+        assert!(
+            !request.contains("secret_id"),
+            "secret_id must be omitted when None: {request}"
+        );
+    }
+
+    /// A non-2xx response from the server must surface as an error containing the
+    /// status and the server body.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_approle_login_forbidden_is_error() {
+        const PORT: u16 = 18_053;
+        let _rx = spawn_mock_http_once(
+            PORT,
+            "HTTP/1.1 403 Forbidden",
+            r#"{"errors":["invalid role_id or secret_id"]}"#,
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let config = HttpClientConfig {
+            server_url: format!("http://127.0.0.1:{PORT}"),
+            ..Default::default()
+        };
+
+        let result = approle_login(&config, "bad-role", Some("bad-secret")).await;
+        let err = result.expect_err("invalid credentials must fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("403") && msg.contains("invalid role_id or secret_id"),
+            "error must include status and server message: {msg}"
+        );
+    }
+
+    /// An empty `client_token` in an otherwise-200 response must be rejected.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_approle_login_empty_token_is_error() {
+        const PORT: u16 = 18_054;
+        let _rx = spawn_mock_http_once(
+            PORT,
+            "HTTP/1.1 200 OK",
+            r#"{"auth":{"client_token":"","renewable":false,"lease_duration":0,"policies":[],"metadata":{}}}"#,
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let config = HttpClientConfig {
+            server_url: format!("http://127.0.0.1:{PORT}"),
+            ..Default::default()
+        };
+
+        let result = approle_login(&config, "role", None).await;
+        let err = result.expect_err("empty client_token must fail");
+        assert!(
+            err.to_string().contains("empty client_token"),
+            "error must mention empty client_token: {err}"
+        );
+    }
+}

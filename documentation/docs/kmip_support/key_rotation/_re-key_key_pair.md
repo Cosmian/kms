@@ -1,4 +1,6 @@
-#### Specification
+# Re-Key Key Pair
+
+## Specification
 
 This request is used to generate a replacement key pair for an existing public/private key pair. It is analogous to the
 Create Key Pair operation, except that attributes of the replacement key pair are copied from the existing key pair,
@@ -20,7 +22,7 @@ pair. If no Offset is specified, the Activation Date and Deactivation Date value
 If Offset is set and dates exist for the existing key pair, then the dates of the replacement key pair SHALL be set
 based on the dates of the existing key pair as follows
 
-#### Implementation
+## Implementation
 
 The `Re-Key Key Pair` Operation is the main mechanism to rotate Covercrypt attributes on the Eviden KMS Server. By
 updating, through this operation, the Policy held by a master secret key in it Vendor Attributes, the Eviden KMS Server
@@ -32,9 +34,9 @@ will automatically
 
 The operation has currently no other usages on the Eviden server.
 
-### Example - Rotate the `Security Level::Confidential` attribute
+## Example - Rotate the `Security Level::Confidential` attribute
 
-Corresponding [KMS CLI](../../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
 ckms cc keys rekey -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"

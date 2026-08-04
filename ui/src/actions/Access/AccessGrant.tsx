@@ -14,7 +14,7 @@ interface AccessGrantFormData {
 
 const AccessGrantForm: React.FC = () => {
     const [form] = Form.useForm<AccessGrantFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [isPrivilegedUser, setIsPrivilegedUser] = useState<boolean | undefined>(undefined);
 
     const kmipOperations = useMemo(() => {
@@ -30,12 +30,12 @@ const AccessGrantForm: React.FC = () => {
     const fetchPrivilegedAccess = useCallback(async () => {
         setIsPrivilegedUser(undefined);
         try {
-            const response = await getNoTTLVRequest("/access/privileged", idToken, serverUrl);
+            const response = await getNoTTLVRequest("/access/privileged", serverUrl);
             setIsPrivilegedUser(response.has_privileged_access);
         } catch (e) {
             console.error("Error fetching privileged access:", e);
         }
-    }, [idToken, serverUrl]);
+    }, [serverUrl]);
 
     useEffect(() => {
         fetchPrivilegedAccess();
@@ -46,7 +46,7 @@ const AccessGrantForm: React.FC = () => {
             if (values.grant_create_access_right) {
                 values.operation_types.push("create");
             }
-            const response = await postNoTTLVRequest("/access/grant", values, idToken, serverUrl);
+            const response = await postNoTTLVRequest("/access/grant", values, serverUrl);
             return response.success;
         });
     };

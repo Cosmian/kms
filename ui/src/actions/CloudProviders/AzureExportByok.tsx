@@ -19,13 +19,13 @@ interface ExportAzureBYOKFormData {
 
 const ExportAzureBYOKForm: React.FC = () => {
     const [form] = Form.useForm<ExportAzureBYOKFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ExportAzureBYOKFormData) => {
         await execute(async () => {
             // Step 1: Get the KEK attributes to retrieve the Azure kid
             const getAttrsRequest = get_attributes_ttlv_request_with_options(values.kekId, true);
-            const attrsResultStr = await sendKmipRequest(getAttrsRequest, idToken, serverUrl);
+            const attrsResultStr = await sendKmipRequest(getAttrsRequest, serverUrl);
 
             if (!attrsResultStr) {
                 return "Failed to retrieve KEK attributes";
@@ -74,7 +74,7 @@ const ExportAzureBYOKForm: React.FC = () => {
                 "rsa-aes-key-wrap-sha1", // wrapping_algorithm
             );
 
-            const exportResultStr = await sendKmipRequest(exportRequest, idToken, serverUrl);
+            const exportResultStr = await sendKmipRequest(exportRequest, serverUrl);
 
             if (!exportResultStr) {
                 return "Failed to export wrapped key";

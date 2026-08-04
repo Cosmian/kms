@@ -14,8 +14,8 @@ Once created the Client ID should look like this
 ![Create Client ID](./images/oauth-client-id-created-in-the-console.png)
 
 !!! warning
-    Do not forget to add <http://localhost:17899/authorization> in the Authorized redirect URIs list.
-    It will allow the [KMS CLI](../../../../kms_clients/index.md) to authenticate with Google.
+    Do not forget to add `http://localhost:17899/authorization` in the Authorized redirect URIs list.
+    It will allow the [KMS CLI](../../../kms_clients/index.md) to authenticate with Google.
 
 The list of URLs for _Authorized origins_ and _Authorized redirect_ are available in the Google documentation above, in paragraph _Create a client ID for Google identity_.
 
@@ -130,7 +130,7 @@ sudo snap install --classic certbot
 sudo ln -s /snap/bin/certbot /usr/bin/certbot
 ```
 
-General instructions on installing `certbot` are available at [this URL](https://certbot.eff.org/lets-encrypt/ubuntufocal-nginx).
+General instructions on installing `certbot` are available at [this URL](https://certbot.eff.org/).
 
 Get a certificate and configure `nginx`
 

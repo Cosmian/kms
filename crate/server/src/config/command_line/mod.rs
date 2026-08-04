@@ -1,3 +1,4 @@
+mod auth_verifier_config;
 mod azure_ekm_config;
 mod clap_config;
 mod db;
@@ -16,6 +17,7 @@ mod ui_config;
 mod vault_config;
 mod workspace;
 
+pub use auth_verifier_config::AuthVerifierConfig;
 pub use azure_ekm_config::AzureEkmConfig;
 #[cfg(not(target_os = "windows"))]
 pub use clap_config::DEFAULT_COSMIAN_KMS_CONF;
@@ -37,6 +39,9 @@ pub use secret_backends::{
 };
 pub use socket_server_config::SocketServerConfig;
 pub use tls_config::TlsConfig;
-pub use ui_config::{OidcConfig, UiConfig, get_default_ui_dist_path};
+pub use ui_config::{
+    AuthVerifierRuntimeConfig, OidcConfig, OidcDiscoveredEndpoints, OidcRuntimeConfig, UiConfig,
+    get_default_ui_dist_path,
+};
 pub use vault_config::VaultConfig;
 pub use workspace::WorkspaceConfig;

@@ -20,7 +20,7 @@ const TokenizeHashForm: React.FC = () => {
     const [form] = Form.useForm<HashFormData>();
     const [res, setRes] = useState<string | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -40,7 +40,7 @@ const TokenizeHashForm: React.FC = () => {
             if (values.salt) {
                 body.salt = values.salt;
             }
-            const response = await postNoTTLVRequest("/tokenize/hash", body, idToken, serverUrl);
+            const response = await postNoTTLVRequest("/tokenize/hash", body, serverUrl);
             const typed = response as { result?: string; code?: number; message?: string };
             if (typed.result !== undefined) {
                 setRes(`Result: ${typed.result}`);

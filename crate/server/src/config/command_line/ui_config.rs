@@ -5,7 +5,7 @@
 // flattened into the CLI namespace and serde keys.
 #![allow(clippy::collection_is_never_read, clippy::struct_field_names)]
 
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use clap::Args;
 use clap_config_fallback::ConfigArgs;
@@ -106,6 +106,54 @@ pub struct OidcConfig {
     /// The logout URI of the configured OIDC tenant for UI Auth
     #[clap(long, env = "UI_OIDC_LOGOUT_URL")]
     pub ui_oidc_logout_url: Option<String>,
+}
+
+/// OIDC endpoints discovered at server startup from the `IdP`'s
+/// `.well-known/openid-configuration` document.
+///
+/// WARNING: `authorization_endpoint` and `token_endpoint` are cached at startup.
+/// Changes to the `IdP` configuration (issuer URL, endpoint URLs) require a
+/// **server restart** to take effect. The signing keys held by `jwks_manager`
+/// are *not* frozen at startup: the UI OIDC callback refreshes them on demand
+/// (refresh-on-miss) whenever an unknown `kid` is encountered, so `IdP` signing
+/// key rotation does **not** require a restart.
+#[derive(Clone, Debug)]
+pub struct OidcDiscoveredEndpoints {
+    /// The `IdP`'s authorization endpoint URL.
+    pub authorization_endpoint: String,
+    /// The `IdP`'s token exchange endpoint URL.
+    pub token_endpoint: String,
+    /// The `JwksManager` pre-loaded with the `IdP`'s signing keys. Refreshed
+    /// on demand (refresh-on-miss) when the UI OIDC callback encounters an
+    /// unknown `kid`; see `crate::routes::ui_auth::callback`.
+    pub jwks_manager: Arc<crate::middlewares::JwksManager>,
+}
+
+/// Runtime OIDC configuration combining the static `OidcConfig` with endpoints
+/// discovered from the `IdP` at startup.
+#[derive(Clone, Debug)]
+pub struct OidcRuntimeConfig {
+    /// The static OIDC configuration (client ID, secret, issuer URL, logout URL).
+    pub config: OidcConfig,
+    /// Populated when `ui_oidc_issuer_url` is configured; `None` otherwise.
+    pub discovered: Option<OidcDiscoveredEndpoints>,
+}
+
+/// Runtime configuration for the Web UI's Auth Verifier server (BFF) login.
+///
+/// Injected as `app_data` on the `/ui` scope so `crate::routes::ui_auth::login_as` can
+/// proxy the browser's username/password (+ optional TOTP) login to the configured
+/// Auth Verifier server and validate the JWT it returns.
+///
+/// `jwks_manager` is the *same* manager built for the bearer-token `AuthVerifier`
+/// middleware (see `prepare_kms_server`) — no second JWKS fetch is performed.
+#[derive(Clone, Debug)]
+pub struct AuthVerifierRuntimeConfig {
+    /// The static Auth Verifier configuration (server URL, realm, TLS options).
+    pub config: crate::config::AuthVerifierConfig,
+    /// `Some` when the Auth Verifier server is configured; `None` otherwise, in which
+    /// case `login_as` responds with an error indicating it is not configured.
+    pub jwks_manager: Option<Arc<crate::middlewares::JwksManager>>,
 }
 
 impl fmt::Debug for OidcConfig {

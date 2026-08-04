@@ -15,7 +15,7 @@ interface PqcSignFormData {
 
 const PqcSignForm: React.FC = () => {
     const [form] = Form.useForm<PqcSignFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: PqcSignFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -25,7 +25,7 @@ const PqcSignForm: React.FC = () => {
             }
             // ML-DSA sign: no crypto parameters needed, not digested
             const request = await wasmClient.sign_ttlv_request(id, values.inputFile, undefined, false);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await wasmClient.parse_sign_ttlv_response(result_str);
                 const respObj = response as unknown as Record<string, unknown>;

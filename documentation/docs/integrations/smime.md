@@ -186,10 +186,10 @@ in your email client.
 To be used for S/MIME, the user certificate needs to have certain extensions which are set in a
 file containing a `[ v3_ca ]` section.
 
-Say we want to create an S/MIME certificate for user <john.doe@acme.com>, signed by the intermediate
+Say we want to create an S/MIME certificate for user `john.doe@acme.com`<, signed by the intermediate
 certificate, with the following details:
 
-- Common Name: <john.doe@acme.com>
+- Common Name: `john.doe@acme.com`
 - Organization: ACME
 - Organizational Unit: IT
 - Locality: San Francisco

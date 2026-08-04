@@ -1,12 +1,14 @@
-### Specification
+# Delete
+
+## Specification
 
 This operation requests the server to delete an attribute associated with a Managed Object. The request contains the Unique Identifier of the Managed Object whose attribute is to be deleted, the Current Attribute of the attribute. Attributes that are always REQUIRED to have a value SHALL never be deleted by this operation. Attempting to delete a non-existent attribute or specifying an Current Attribute for which there exists no attribute value SHALL result in an error. If no Current Attribute is specified in the request, and an Attribute Reference is specified, then all instances of the specified attribute SHALL be deleted.
 
-### Implementation
+## Implementation
 
 This operation can be applied to all [supported objects](../objects.md). One or more attributes can be set at once.
 
-### Example - Delete links on Certificate
+## Example - Delete links on Certificate
 
 First, for the demo purpose create a certificate:
 
@@ -16,7 +18,7 @@ First, for the demo purpose create a certificate:
 
 Delete the links on a certificate object.
 
-Corresponding [KMS CLI](../../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../../kms_clients/index.md) command:
 
 ```bash
   ckms attributes delete -i my_certificate --public-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --private-key-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz --certificate-id xxxxxxxx-yyyy-yyyy-yyyy-zzzzzzzzzzzz

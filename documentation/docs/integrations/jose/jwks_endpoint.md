@@ -1,6 +1,6 @@
 # JWKS endpoint
 
-The KMS exposes a standard [RFC 7517](https://www.rfc-editor.org/rfc/rfc7517)
+The KMS exposes a standard [RFC 7517](https://datatracker.ietf.org/doc/html/rfc7517)
 JWKS endpoint at:
 
 ```text

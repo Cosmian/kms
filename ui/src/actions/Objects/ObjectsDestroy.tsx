@@ -21,7 +21,7 @@ type DestroyResponse = {
 
 const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
     const [form] = Form.useForm<DestroyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const label = getObjectLabel(objectType);
     const isKeyLike = objectType === "rsa" || objectType === "ec" || objectType === "covercrypt" || objectType === "symmetric";
@@ -33,7 +33,7 @@ const DestroyForm: React.FC<DestroyFormProps> = ({ objectType }) => {
                 throw new Error(`Missing ${label} identifier.`);
             }
             const request = destroy_ttlv_request(id, values.remove);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: DestroyResponse = await parse_destroy_ttlv_response(result_str);
                 return `${result.UniqueIdentifier} has been destroyed.`;

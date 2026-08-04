@@ -23,7 +23,7 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
         [branding.enableCovercrypt, branding.pqcLabel, isFips],
     );
     const [processedMenuItems, setProcessedMenuItems] = useState<MenuItem[]>(menuItems);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
 
     // Process menu items to disable "Create" and "Import" options based on access rights
     const processMenuItems = useCallback(
@@ -60,12 +60,12 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
 
     const fetchCreatePermission = useCallback(async () => {
         try {
-            const response = await getNoTTLVRequest("/access/create", idToken, serverUrl);
+            const response = await getNoTTLVRequest("/access/create", serverUrl);
             processMenuItems(response.has_create_permission);
         } catch {
             processMenuItems(false);
         }
-    }, [idToken, serverUrl, processMenuItems]);
+    }, [serverUrl, processMenuItems]);
 
     useEffect(() => {
         (async () => {
@@ -84,7 +84,7 @@ const Sidebar: React.FC<{ isFips?: boolean }> = ({ isFips = false }) => {
                 fetchCreatePermission();
             }
         })();
-    }, [fetchCreatePermission, idToken, serverUrl, processMenuItems]);
+    }, [fetchCreatePermission, serverUrl, processMenuItems]);
 
     const getLevelKeys = (items1: LevelKeysProps[]) => {
         const key: Record<string, number> = {};

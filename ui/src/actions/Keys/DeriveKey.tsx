@@ -58,7 +58,7 @@ type DeriveKeyResponse = { UniqueIdentifier: string };
 
 const DeriveKeyForm: React.FC = () => {
     const [form] = Form.useForm<DeriveKeyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const sourceType = Form.useWatch("sourceType", form);
     const derivationMethod = Form.useWatch("derivationMethod", form);
 
@@ -72,7 +72,7 @@ const DeriveKeyForm: React.FC = () => {
                 }
                 // Import password as a SecretData object, then derive from it
                 const importRequest = create_secret_data_ttlv_request("Password", values.password, undefined, [], true);
-                const importStr = await sendKmipRequest(importRequest, idToken, serverUrl);
+                const importStr = await sendKmipRequest(importRequest, serverUrl);
                 if (!importStr) throw new Error("Failed to import password as secret data");
                 const importResp: ImportResponse = await parse_import_ttlv_response(importStr);
                 baseKeyId = importResp.UniqueIdentifier;
@@ -97,7 +97,7 @@ const DeriveKeyForm: React.FC = () => {
                 values.derivedKeyId || null,
             );
 
-            const resultStr = await sendKmipRequest(request, idToken, serverUrl);
+            const resultStr = await sendKmipRequest(request, serverUrl);
             if (resultStr) {
                 const result: DeriveKeyResponse = await parse_derive_key_ttlv_response(resultStr);
                 return `Derived key created with ID: ${result.UniqueIdentifier}`;

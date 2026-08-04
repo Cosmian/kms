@@ -100,8 +100,8 @@ vi.stubGlobal(
             });
         }
 
-        if (url.endsWith("/ui/token")) {
-            return new Response(JSON.stringify({ id_token: "dummy", user_id: "dummy" }), {
+        if (url.endsWith("/ui/whoami")) {
+            return new Response(JSON.stringify({ user_id: "dummy" }), {
                 status: 200,
                 headers: { "Content-Type": "application/json" },
             });

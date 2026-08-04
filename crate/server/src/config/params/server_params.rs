@@ -8,7 +8,8 @@ use cosmian_logger::{debug, warn};
 use super::{KmipPolicyParams, TlsParams};
 use crate::{
     config::{
-        AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig, JwksEndpointConfig, OidcConfig,
+        AuthVerifierConfig, AzureEkmConfig, ClapConfig, GoogleCseConfig, IdpConfig,
+        JwksEndpointConfig, OidcConfig,
         params::{
             OpenTelemetryConfig, kmip_policy_params::KmipAllowlistsParams,
             proxy_params::ProxyParams,
@@ -230,6 +231,11 @@ pub struct ServerParams {
     /// to avoid a round-trip to auth-verifier on every transit/PKI request.
     /// Defaults to `30`.
     pub vault_token_cache_ttl_secs: u64,
+
+    /// Configuration for the Auth Verifier server.
+    /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
+    /// The `sub` claim is used as the user identity.
+    pub auth_verifier_config: Option<AuthVerifierConfig>,
 }
 
 /// Represents the server parameters.
@@ -453,6 +459,11 @@ impl ServerParams {
             vault_pki_mount: conf.vault.vault_pki_mount,
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
+            auth_verifier_config: if conf.auth_verifier.is_enabled() {
+                Some(conf.auth_verifier)
+            } else {
+                None
+            },
         };
 
         debug!("{res:#?}");
@@ -834,6 +845,12 @@ impl fmt::Debug for ServerParams {
                     "vault_token_cache_ttl_secs",
                     &self.vault_token_cache_ttl_secs,
                 );
+        }
+
+        if let Some(ref auth_verifier) = self.auth_verifier_config {
+            if auth_verifier.is_enabled() {
+                debug_struct.field("auth_verifier_url", &auth_verifier.auth_verifier_url);
+            }
         }
 
         debug_struct.finish()

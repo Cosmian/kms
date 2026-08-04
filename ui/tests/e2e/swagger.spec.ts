@@ -123,7 +123,7 @@ test.describe("GET /openapi.yaml — spec structure", () => {
             "/download-cli",
             "/ui/login_flow",
             "/ui/callback",
-            "/ui/token",
+            "/ui/whoami",
             "/ui/logout",
             "/ui/auth_method",
         ];

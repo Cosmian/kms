@@ -38,7 +38,7 @@ const buildMacRequest = (keyId: string, algorithm: string, dataHex: string) => (
 
 const MacComputeForm: React.FC = () => {
     const [form] = Form.useForm<MacComputeFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: MacComputeFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -47,7 +47,7 @@ const MacComputeForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = buildMacRequest(id, values.algorithm, values.data);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = JSON.parse(result_str) as { tag?: string; value?: Array<{ tag: string; type: string; value: string }> };
                 const dataItem = response.value?.find((item) => item.tag === "MACData");

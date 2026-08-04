@@ -16,7 +16,7 @@ interface ECEncryptFormData {
 
 const ECEncryptForm: React.FC = () => {
     const [form] = Form.useForm<ECEncryptFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
 
     const onFinish = async (values: ECEncryptFormData) => {
         const id = values.keyId ? values.keyId : values.tags ? JSON.stringify(values.tags) : undefined;
@@ -25,7 +25,7 @@ const ECEncryptForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = encrypt_ec_ttlv_request(id, values.inputFile);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = await parse_encrypt_ttlv_response(result_str);
                 const data = new Uint8Array(response.Data);

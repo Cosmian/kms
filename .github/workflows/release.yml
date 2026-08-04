@@ -182,7 +182,7 @@ jobs:
         run: |
           # generate_docs.sh is the single entry point for all auto-generated docs:
           #   1. server_cli.md + server_configuration_file.md (--help / --print-default-config)
-          #   2. cli_documentation/docs/cli/main_commands.md + usage.md (ckms markdown)
+          #   2. documentation/docs/kms_clients/cli/main_commands.md + usage.md (ckms markdown)
           #   3. KMIP support tables (README.md + kmip_support/support.md)
           #   4. crypto_inventory.md (cryptographic asset sensor, no network)
           #   5. cbom/cbom.cdx.json (CycloneDX 1.6, requires cdxgen)
@@ -193,7 +193,7 @@ jobs:
         run: cargo install --version 0.19.0 cargo-deny --locked
 
       - name: Generate SBOM licenses list
-        run: cargo deny list -l crate > sbom/licenses.txt
+        run: cargo deny list -l crate | sed 's/\x1b\[[0-9;]*m//g' > sbom/licenses.txt
 
       - name: Commit version bump and push release branch
         run: |

@@ -19,7 +19,7 @@ const FpeKeyCreateForm: React.FC = () => {
     const [form] = Form.useForm<FpeKeyCreateFormData>();
     const [res, setRes] = useState<undefined | string>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const { idToken, serverUrl } = useAuth();
+    const { serverUrl } = useAuth();
     const responseRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -40,7 +40,7 @@ const FpeKeyCreateForm: React.FC = () => {
                 return;
             }
             const request = w.create_fpe_key_ttlv_request(values.keyId, values.tags, values.sensitive);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: CreateResponse = await wasm.parse_create_ttlv_response(result_str);
                 setRes(`${result.UniqueIdentifier} has been created.`);

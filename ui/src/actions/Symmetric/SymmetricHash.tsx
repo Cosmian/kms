@@ -15,7 +15,7 @@ interface SymmetricHashFormData {
 
 const SymmetricHashForm: React.FC = () => {
     const [form] = Form.useForm<SymmetricHashFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const inputMode = Form.useWatch("inputMode", form);
     const [algorithmOptions, setAlgorithmOptions] = useState<{ value: string; label: string }[]>([]);
 
@@ -45,7 +45,7 @@ const SymmetricHashForm: React.FC = () => {
             }
 
             const request = wasm.hash_ttlv_request(data, values.hashAlgorithm);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = wasm.parse_hash_ttlv_response(result_str);
                 const respObj = response as unknown as Record<string, unknown>;

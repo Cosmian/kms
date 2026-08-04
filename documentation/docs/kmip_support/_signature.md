@@ -1,4 +1,6 @@
-#### Specification
+# Sign
+
+## Specification
 
 The Sign operation requests the server to generate a digital signature for the provided data using a specified Managed Object.
 
@@ -6,7 +8,7 @@ The request contains the unique identifier of the signing key, data to be signed
 
 The SignatureVerify operation validates a digital signature against provided data using a specified verification key.
 
-#### Implementation
+## Implementation
 
 The Eviden KMS server supports signing with RSA and EC private keys. The signature algorithms supported include:
 
@@ -15,7 +17,7 @@ The Eviden KMS server supports signing with RSA and EC private keys. The signatu
 - ECDSA with SHA-256, SHA-384, SHA-512
 - Ed25519 (signature verification only for imported keys)
 
-#### Example - Sign with RSA Private Key
+## Example - Sign with RSA Private Key
 
 Sign data using an RSA private key with SHA-256.
 
@@ -84,7 +86,7 @@ Sign data using an RSA private key with SHA-256.
     }
     ```
 
-#### Example - Signature Verification
+## Example - Signature Verification
 
 Verify a signature using the corresponding public key.
 
@@ -156,7 +158,7 @@ Verify a signature using the corresponding public key.
     }
     ```
 
-#### Usage via HTTP API
+## Usage via HTTP API
 
 To use Sign and SignatureVerify operations, send HTTP POST requests to the `/kmip/2_1` endpoint:
 
@@ -197,7 +199,7 @@ curl -X POST -H "Content-Type: application/json" \
       http://localhost:9998/kmip/2_1
 ```
 
-#### Streaming Support
+## Streaming Support
 
 Both Sign and SignatureVerify operations support streaming for large data:
 

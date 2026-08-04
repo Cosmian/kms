@@ -20,7 +20,7 @@ type ImportResponse = {
 
 const OpaqueObjectForm: React.FC = () => {
     const [form] = Form.useForm<OpaqueObjectFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const objectValue = Form.useWatch("objectValue", form);
 
     useEffect(() => {
@@ -38,7 +38,7 @@ const OpaqueObjectForm: React.FC = () => {
                 values.sensitive,
                 values.wrappingKeyId,
             );
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const result: ImportResponse = await parse_import_ttlv_response(result_str);
                 return `${result.UniqueIdentifier} has been created.`;

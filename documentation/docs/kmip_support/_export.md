@@ -1,4 +1,6 @@
-#### Specification
+# Export
+
+## Specification
 
 This operation requests that the server returns a Managed Object specified by its Unique Identifier, together with its
 attributes.
@@ -9,7 +11,7 @@ SHALL not be returned in the response.
 
 The server SHALL copy the Unique Identifier returned by this operations into the ID Placeholder variable.
 
-#### Implementation
+## Implementation
 
 The Export operation - contrarily to the `Get`operation - allows exporting objects which have been revoked or
 destroyed.
@@ -25,15 +27,15 @@ using `CryptographicAlgorithm::RSA` + `PaddingMethod::None`.
 
 For the list of supported key formats, please check the [formats page](./formats.md).
 
-#### Examples -  Check `Get`
+## Examples -  Check `Get`
 
 An export example is provided below but it is in every point similar to the `Get` operation save for the
-name of the operation. To run `Export` instead of `Get` with he [KMS CLI](../../kms_clients/index.md), pass the `--allow-revoked` flag on the
+name of the operation. To run `Export` instead of `Get` with he [KMS CLI](../kms_clients/index.md), pass the `--allow-revoked` flag on the
 command line.
 
 Please check the [Get](./_get.md) page for more examples.
 
-#### Example - Symmetric Key
+## Example - Symmetric Key
 
 Exporting a symmetric key `027cced1-ff2b-4bd3-a200-db1041583bdc` (go to [Create](./_create.md) to see how to create the
 symmetric key).
@@ -42,10 +44,9 @@ Instead of using the UID of the key, we can use the unique tag of the key `MySym
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
-The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](.
-/formats.md) for details.
+The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](./formats.md) for details.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```bash
 ckms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked

@@ -1,4 +1,6 @@
-#### Specification
+# Create
+
+## Specification
 
 This operation requests the server to generate a new symmetric key or generate Secret Data as a Managed Cryptographic
 Object.
@@ -9,11 +11,11 @@ the object (e.g., Cryptographic Algorithm, Cryptographic Length, etc.).
 The response contains the Unique Identifier of the created object. The server SHALL copy the Unique Identifier returned
 in this operation into the ID Placeholder variable.
 
-#### Implementation
+## Implementation
 
 This operation can be used to create a new symmetric key or a new Covercrypt user decryption key.
 
-#### Example - Symmetric Key
+## Example - Symmetric Key
 
 Creating a 256 bit AES Symmetric Key with the tag `MySymmetricKey`.
 
@@ -21,7 +23,7 @@ The tags are assembled in a JSON array and encoded in hex.
 
 The `CryptographicUsageMask` is optional.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
 ckms sym keys create --tag MySymmetricKey
@@ -116,12 +118,12 @@ ckms sym keys create --tag MySymmetricKey
     }
     ```
 
-#### Example - Covercrypt User Decryption Key
+## Example - Covercrypt User Decryption Key
 
 Creating a Covercrypt User Decryption Key with the tag `MyUserKey` and the access policy `Security Level::Confidential && (Department::FIN || Department::HR)`
 (see [Create Key Pair](./_create_key_pair.md) for the corresponding master key access structure).
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
 ckms cc keys create-user-key -t "MyUserKey"\

@@ -155,7 +155,8 @@ pub(crate) async fn kmip_2_1_json(
     let ttlv = serde_json::from_str::<TTLV>(&body)?;
 
     let user = kms.get_user(&req_http);
-    debug!(target: "kmip", user=user, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
+    let auth_method = kms.get_auth_method(&req_http);
+    debug!(target: "kmip", user=user, ?auth_method, tag=ttlv.tag.as_str(), "POST /kmip/2_1. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv = Box::pin(handle_ttlv(&kms, ttlv, &user, 2, 1)).await?;
 

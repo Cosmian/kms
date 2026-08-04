@@ -55,10 +55,14 @@ unset RUSTFLAGS LDFLAGS OPENSSL_DIR OPENSSL_LIB_DIR OPENSSL_INCLUDE_DIR OPENSSL_
 echo "Running wasm-bindgen tests (--node)..."
 (cd "$WASM_CRATE" && wasm-pack test --node ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"})
 
-# 2. Build web-target WASM package; remove stale pkg/ first to avoid wasm-pack
-#    re-parse errors (sequence vs string in package.json "authors" field).
+# 2. Build web-target WASM package; pre-populate pkg/package.json with
+#    "repository" as a string to avoid wasm-pack generating an object-format
+#    value and then reading it back expecting a string (internal bug in some
+#    wasm-pack versions).
 echo "Building WASM web package..."
-rm -rf "${WASM_CRATE}/pkg"
+mkdir -p "${WASM_CRATE}/pkg"
+printf '{"name":"cosmian_kms_client_wasm","repository":"https://github.com/Cosmian/kms"}\n' \
+  >"${WASM_CRATE}/pkg/package.json"
 (cd "$WASM_CRATE" && wasm-pack build --target web ${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"})
 
 # 3. Copy to UI source tree

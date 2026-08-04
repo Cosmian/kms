@@ -16,3 +16,5 @@ MD024:
 MD025:
   # ADR files use frontmatter title: + an H1 body heading — do not double-count
   front_matter_title: ''
+
+MD001: true

@@ -3097,6 +3097,53 @@ paths:
         '200':
           description: Login page HTML (when no OIDC provider configured)
 
+  /ui/login_as:
+    post:
+      tags: [UI Auth]
+      summary: Login against the Cosmian authentication server
+      description: |
+        Authenticates the browser against the configured Cosmian authentication server
+        ('AS') using username/password (and optionally a TOTP code), mirroring `ckms
+        login cosmian`. On success, only the validated username is stored in the
+        session cookie — the AS's JWT never reaches the browser. Only available when
+        `cosmian_auth_server_url` and `cosmian_auth_realm` are both configured.
+      operationId: uiLoginAs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                totp_code:
+                  type: string
+                  description: 'Required when a prior call returned `next_step: "TotpRequired"`'
+      responses:
+        '200':
+          description: Authenticated, or a TOTP code is required to proceed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [next_step]
+                properties:
+                  next_step:
+                    type: string
+                    enum: [Authenticated, TotpRequired]
+        '401':
+          description: Invalid credentials or TOTP code
+        '403':
+          description: Account requires a password change on the Cosmian authentication server
+        '500':
+          description: Cosmian authentication server not configured for Web UI login
+        '502':
+          description: Cosmian authentication server unreachable or returned an unexpected response
+
   /ui/callback:
     get:
       tags: [UI Auth]
@@ -3121,25 +3168,27 @@ paths:
         '400':
           description: Invalid callback parameters
 
-  /ui/token:
+  /ui/whoami:
     get:
       tags: [UI Auth]
-      summary: Get current JWT token
-      description: Returns the JWT access token for the currently authenticated UI session.
-      operationId: uiGetToken
+      summary: Current session user
+      description: Returns the user ID of the currently authenticated UI session. Returns 401 if no valid session exists.
+      operationId: uiWhoAmI
       responses:
         '200':
-          description: JWT token
+          description: Authenticated user identity
           content:
             application/json:
               schema:
                 type: object
+                required: [user_id]
                 properties:
-                  token:
+                  user_id:
                     type: string
-                    description: JWT access token
+                    description: The authenticated user's identifier (email or subject claim)
+                    example: alice@example.com
         '401':
-          description: Not authenticated
+          description: No active session
 
   /ui/logout:
     get:
@@ -3155,7 +3204,7 @@ paths:
     get:
       tags: [UI Auth]
       summary: Auth method configuration
-      description: Returns the authentication method configured on the server (JWT, cert, API token, or none).
+      description: Returns the authentication method configured for the web UI (OIDC/JWT, client certificate, Cosmian authentication server, or none).
       operationId: uiAuthMethod
       responses:
         '200':
@@ -3167,10 +3216,10 @@ paths:
                 properties:
                   auth_method:
                     type: string
-                    enum: [jwt, cert, api_token, none]
+                    enum: [JWT, CERT, COSMIAN, None]
                   oidc_issuer:
                     type: string
-                    description: OIDC issuer URL (only when auth_method is jwt)
+                    description: OIDC issuer URL (only when auth_method is JWT)
 
   # ── Tokenize (non-FIPS only) ─────────────────────────────────────────────
 

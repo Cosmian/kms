@@ -1,4 +1,6 @@
-#### Specification
+# Decrypt
+
+## Specification
 
 This operation requests the server to perform a decryption operation on the provided data using a Managed Cryptographic
 Object as the key for the decryption operation.
@@ -14,20 +16,19 @@ decryption operation.
 The success or failure of the operation is indicated by the Result Status (and if failure, the Result Reason) in the
 response header.
 
-#### Implementation
+## Implementation
 
 To see the list of supported cryptographic algorithms, please refer to [Supported Algorithms](../certifications_and_compliance/cryptographic_algorithms/algorithms.md).
 
-#### Example - AES GCM decryption
+## Example - AES GCM decryption
 
-Decrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](.
-/_create.md) to see how to create the symmetric key).
+Decrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md) to see how to create the symmetric key).
 
 Instead of using the UID of the key, we can use the unique tag of the key `MySymmetricKey`. The key must be uniquely
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
 ckms sym decrypt /tmp/encrypted.bin -t "MySymmetricKey"
@@ -95,7 +96,7 @@ The JSON TTLV request the same information as in the [`Encrypt` Response](./_enc
     }
     ```
 
-#### Example - Covercrypt
+## Example - Covercrypt
 
 Decrypting the text `Hello, world!` with Covercrypt user decryption key `df871e79-0923-47cd-9078-bbec83287c85` (go
 to [Create](./_create.md) to see how to create the Covercrypt user decryption key).
@@ -104,7 +105,7 @@ Instead of using the UID of the key, we can use the unique tag of the key `MyUse
 identified. It is possible to use multiple tags to identify a key; for instance Covercrypt user decryption keys
 automatically get a *system* tag `_uk`. See [tagging](./tagging.md) for more information on tags.
 
-Corresponding [KMS CLI](../../kms_clients/index.md) command:
+Corresponding [KMS CLI](../kms_clients/index.md) command:
 
 ```shell
 ckms cc decrypt /tmp/encrypted.bin  -t "MyUserKey"

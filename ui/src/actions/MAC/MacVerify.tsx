@@ -40,7 +40,7 @@ const buildMacVerifyRequest = (keyId: string, algorithm: string, dataHex: string
 
 const MacVerifyForm: React.FC = () => {
     const [form] = Form.useForm<MacVerifyFormData>();
-    const { res, isLoading, responseRef, idToken, serverUrl, execute } = useActionState();
+    const { res, isLoading, responseRef, serverUrl, execute } = useActionState();
     const [isValid, setIsValid] = useState<boolean | undefined>(undefined);
 
     const onFinish = async (values: MacVerifyFormData) => {
@@ -51,7 +51,7 @@ const MacVerifyForm: React.FC = () => {
                 throw new Error("Missing key identifier.");
             }
             const request = buildMacVerifyRequest(id, values.algorithm, values.data, values.macData);
-            const result_str = await sendKmipRequest(request, idToken, serverUrl);
+            const result_str = await sendKmipRequest(request, serverUrl);
             if (result_str) {
                 const response = JSON.parse(result_str) as { tag?: string; value?: Array<{ tag: string; type: string; value: unknown }> };
                 const validityItem = response.value?.find((item) => item.tag === "ValidityIndicator");

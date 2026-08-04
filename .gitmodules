@@ -10,3 +10,6 @@
 [submodule "authentication"]
     path = authentication
     url = https://github.com/Cosmian/authentication.git
+[submodule "documentation/theme"]
+	path = documentation/theme
+	url = git@github.com:Cosmian/doc-theme.git
