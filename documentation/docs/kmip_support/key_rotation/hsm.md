@@ -1,6 +1,6 @@
 # HSM Key Rotation
 
-Cosmian KMS supports manual `Re-Key` for keys that reside on a
+Eviden KMS supports manual `Re-Key` for keys that reside on a
 PKCS#11-capable Hardware Security Module (SoftHSM2, Utimaco, Proteccio, …).
 The flow mirrors SQL-backed rotation but all keyset metadata lives in PKCS#11
 attributes rather than the KMS database.

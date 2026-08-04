@@ -1,6 +1,6 @@
 # CPU Scaling & Flamegraph Analysis
 
-This page documents the multi-CPU scaling characteristics of the Cosmian KMS and explains how to
+This page documents the multi-CPU scaling characteristics of the Eviden KMS and explains how to
 reproduce the results and generate flamegraphs yourself.
 
 ## Why this matters

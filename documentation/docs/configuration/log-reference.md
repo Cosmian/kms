@@ -1,6 +1,6 @@
 # Log Call-Site Directory
 
-This page lists every production log call-site across all Cosmian KMS components,
+This page lists every production log call-site across all Eviden KMS components,
 grouped by domain and crate.
 
 It is not listed in the navigation menu but is accessible via
@@ -123,7 +123,6 @@ Crate path: `crate/server`
 | `info` | `Socket server listening on {}` | `src/socket_server.rs` | - | - |
 | `info` | `Socket server shutting down due to stop request` | `src/socket_server.rs` | - | - |
 | `info` | `Socket server stop signal sent` | `src/socket_server.rs` | - | - |
-| `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
 | `info` | `Starting the HTTPS KMS server...` | `src/start_kms_server.rs` | - | - |
 | `info` | `Windows service received Stop signal, shutting down...` | `src/windows_service.rs` | - | - |
 | `info` | `Windows service reporting Running to SCM` | `src/windows_service.rs` | - | - |
@@ -669,6 +668,7 @@ Crate path: `crate/server`
 | `warn` | `SECURITY: vault_auth_verifier_accept_invalid_certs is TRUE — TLS certificate              verification is DISABLED for Vault auth-verifier connections. Only use in dev/test.` | `src/start_kms_server.rs` | - | Emitted when `vault_auth_verifier_accept_invalid_certs = true`. Disables TLS cert verification for Vault auth-verifier connections. Dev/test only; set to `false` (default) in production. |
 | `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | Emitted when the web UI is enabled but `ui_session_salt` (or `KMS_UI_SESSION_SALT`) is not configured. Sessions will not survive server restarts. Set a stable secret value for production. |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | JWKS cache force-refresh was requested but the cooldown window has not elapsed; the refresh is skipped to prevent DoS via repeated JWKS fetches. |
+| `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

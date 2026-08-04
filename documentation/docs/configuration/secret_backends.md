@@ -34,7 +34,7 @@ The config file never contains actual secrets — only references.
 | HashiCorp Vault | `vault` | `secret://<mount>/<path>[#<field>]` | `VAULT_ADDR`, `VAULT_TOKEN` |
 | AWS SSM Parameter Store | `aws-ssm` | `secret://<region>/<parameter-name>` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
 | Azure Key Vault | `azure-kv` | `secret://<vault>/secrets/<name>[/<version>]` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` |
-| Cosmian KMS | `cosmian-kms` | `secret://<host>[:<port>]/<object-id>` | _(optional)_ `COSMIAN_KMS_SECRET_TOKEN` |
+| Eviden KMS | `cosmian-kms` | `secret://<host>[:<port>]/<object-id>` | _(optional)_ `COSMIAN_KMS_SECRET_TOKEN` |
 
 ---
 
@@ -145,9 +145,9 @@ cosmian_kms --backend azure-kv -c /etc/cosmian/kms.toml
 
 ---
 
-## Cosmian KMS (self-referencing)
+## Eviden KMS (self-referencing)
 
-Use another Cosmian KMS instance as the secret store. The secret must be stored
+Use another Eviden KMS instance as the secret store. The secret must be stored
 as a **SecretData** or **OpaqueObject** whose raw bytes are the UTF-8 value.
 
 This is useful for hierarchical deployments where a "vault KMS" holds
@@ -192,7 +192,7 @@ cosmian_kms --backend cosmian-kms -c /etc/cosmian/kms.toml
 | Secret exposure in config files | Only `secret://` references are stored on disk — never plaintext values. |
 | Secret lifetime | URIs are resolved **once at startup**. Resolved values live only in process memory. |
 | Backend credentials | Always inject via environment variables, never in the TOML file. |
-| Network security | Use TLS for all backend communication. For Vault and Cosmian KMS, ensure `VAULT_ADDR` uses `https://` in production. |
+| Network security | Use TLS for all backend communication. For Vault and Eviden KMS, ensure `VAULT_ADDR` uses `https://` in production. |
 | Rotation | Restart the KMS to pick up rotated secrets. There is no hot-reload. |
 
 !!! warning "Do not mix backends"

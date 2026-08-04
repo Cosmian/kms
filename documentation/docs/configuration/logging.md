@@ -78,7 +78,7 @@ configuration wizard), the recommended platform-specific defaults are:
 | Platform | Default directory                                        |
 | -------- | ------------------------------------------------------- |
 | Linux    | `/var/log/`                                             |
-| Windows  | `C:\Users\<username>\AppData\Local\Cosmian KMS Server` |
+| Windows  | `C:\Users\<username>\AppData\Local\Eviden KMS Server` |
 | macOS    | `~/Library/Logs/`                                       |
 
 > **Warning (Windows):** The server does **not** expand Windows environment variables
@@ -86,14 +86,14 @@ configuration wizard), the recommended platform-specific defaults are:
 > in `kms.toml`, you must use the fully-expanded path, for example:
 >
 > ```toml
-> rolling_log_dir = "C:\\Users\\<username>\\AppData\\Local\\Cosmian KMS Server"
+> rolling_log_dir = "C:\\Users\\<username>\\AppData\\Local\\Eviden KMS Server"
 > ```
 >
 > When `rolling_log_dir` is not set, the server resolves the `LOCALAPPDATA`
 > environment variable at runtime and defaults to
-> `C:\Users\<username>\AppData\Local\Cosmian KMS Server`.
+> `C:\Users\<username>\AppData\Local\Eviden KMS Server`.
 > When running as a Windows service under LocalSystem, the variable may not be set;
-> the server then falls back to `C:\ProgramData\Cosmian KMS Server`.
+> the server then falls back to `C:\ProgramData\Eviden KMS Server`.
 >
 > **Note (macOS):** The server defaults to `~/Library/Logs/` which is the standard
 > per-user log directory on macOS and is writable without root. If you run the server

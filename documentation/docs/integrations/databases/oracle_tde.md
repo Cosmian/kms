@@ -408,7 +408,7 @@ This approach lets Oracle authenticate to the KMS without storing any credential
 `ckms.toml` or on the filesystem.
 
 For all other KMS authentication methods (mTLS, static bearer token, OAuth2/OIDC), configure
-`ckms.toml` using the [CLI Authentication guide](../../kms_clients/authentication.md).
+`ckms.toml` using the [CLI Authentication guide](../../../kms_clients/authentication.md).
 
 ## Wallet Migration
 

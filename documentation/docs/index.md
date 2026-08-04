@@ -1,6 +1,8 @@
 # Eviden KMS
 
-> **Note**: Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
+!!! warning "Warning"
+
+    Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
 
 The **Eviden KMS** is a high-performance, [**source available**](https://github.com/Cosmian/kms), [**FIPS 140-3 compliant**](./certifications_and_compliance/fips.md) server application written in [**Rust**](https://www.rust-lang.org/) with unique capabilities.
 
@@ -10,7 +12,7 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
   with master keys held in a secure HSM-backed environment.
 - **Flexible pricing**: Per-CPU pricing with no hidden costs, all connectors are included; deploying any number of
   servers.
-- **Runs securely in public clouds**:  or zero-trust environments using Eviden VMs available on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/). See our [deployment guide](installation/marketplace_guide.md).
+- **Runs securely in public clouds**: or zero-trust environments using Eviden VMs available on [Azure, GCP, and AWS marketplaces](https://cosmian.com/marketplaces/). See our [deployment guide](installation/marketplace_guide.md).
 
 ## Standards' compliance
 
@@ -32,40 +34,40 @@ The **Eviden KMS** is a high-performance, [**source available**](https://github.
 ## Integrations
 
 - **Cloud integrations**:
-    - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
-    - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
-    - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
-    - ...
+  - [Azure BYOK](./integrations/cloud_providers/azure/byok.md)
+  - [GCP CSEK](./integrations/cloud_providers/google_gcp/csek.md) and [Google CMEK](./integrations/cloud_providers/google_gcp/cmek.md)
+  - [AWS BYOK](./integrations/cloud_providers/aws/byok.md) and [AWS Fargate](./integrations/cloud_providers/aws/fargate.md)
+  - ...
 - **Workplace security**:
-    - [Google Workspace Client Side Encryption (CSE)](./integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md)
-    - [Microsoft 365 Double Key Encryption (DKE)](./integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)
+  - [Google Workspace Client Side Encryption (CSE)](./integrations/cloud_providers/google_workspace_client_side_encryption_cse/getting_started/index.md)
+  - [Microsoft 365 Double Key Encryption (DKE)](./integrations/cloud_providers/microsoft_365_double_key_encryption_dke/index.md)
 - **Transparent data encryption**:
-    - [Oracle Database TDE](./integrations/databases/oracle_tde.md)
-    - [MongoDB](./integrations/databases/mongodb.md)
-    - [Mysql Enterprise](./integrations/databases/mysql.md)
-    - [Microsoft SQL Server External (EKM)](./integrations/databases/ms_sql_server.md)
-    - [PostgreSQL](./integrations/databases/percona.md)
-        - and more
+  - [Oracle Database TDE](./integrations/databases/oracle_tde.md)
+  - [MongoDB](./integrations/databases/mongodb.md)
+  - [Mysql Enterprise](./integrations/databases/mysql.md)
+  - [Microsoft SQL Server External (EKM)](./integrations/databases/ms_sql_server.md)
+  - [PostgreSQL](./integrations/databases/percona.md)
+    - and more
 - **Disk encryption**:
-    - [Veracrypt](./integrations/disk_encryption/veracrypt.md)
-    - [LUKS](./integrations/disk_encryption/luks.md)
-    - [Cryhod](./integrations/disk_encryption/cryhod.md)
+  - [Veracrypt](./integrations/disk_encryption/veracrypt.md)
+  - [LUKS](./integrations/disk_encryption/luks.md)
+  - [Cryhod](./integrations/disk_encryption/cryhod.md)
 - **Storage encryption**:
-    - [VMware](./integrations/storage/vcenter.md)
-    - [Veeam Backup & Replication](./integrations/storage/veeam.md)
-    - [Synology DSM](./integrations/storage/synology_dsm.md)
+  - [VMware](./integrations/storage/vcenter.md)
+  - [Veeam Backup & Replication](./integrations/storage/veeam.md)
+  - [Synology DSM](./integrations/storage/synology_dsm.md)
 - **Big Data**:
-    - [Snowflake](./integrations/big_data/snowflake_native_app/index.md)
-    - [Databricks, Spark,..  UDFs](./integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md)
+  - [Snowflake](./integrations/big_data/snowflake_native_app/index.md)
+  - [Databricks, Spark,.. UDFs](./integrations/big_data/user_defined_function_for_pyspark_databricks_in_python/index.md)
 - **Other integrations**:
-    - [FortiGate / FortiOS](./integrations/fortigate.md)
-    - [S/MIME email encryption](./integrations/smime.md)
-    - [OpenSSH](./integrations/openssh.md)
-    - [SPIRE / SPIFFE (Zero-Trust M2M)](./integrations/spire_spiffe.md)
+  - [FortiGate / FortiOS](./integrations/fortigate.md)
+  - [S/MIME email encryption](./integrations/smime.md)
+  - [OpenSSH](./integrations/openssh.md)
+  - [SPIRE / SPIFFE (Zero-Trust M2M)](./integrations/spire_spiffe.md)
 - **HSM integrations**:
-    - [Trustway Proteccio](./hsm_support/proteccio.md) and [Crypt2Pay](./hsm_support/crypt2pay.md)
-    - [Utimaco](./hsm_support/utimaco.md)
-    - [Nitrokey HSM 2 / SmartCard HSMs](./hsm_support/sc_hsm.md)
+  - [Trustway Proteccio](./hsm_support/proteccio.md) and [Crypt2Pay](./hsm_support/crypt2pay.md)
+  - [Utimaco](./hsm_support/utimaco.md)
+  - [Nitrokey HSM 2 / SmartCard HSMs](./hsm_support/sc_hsm.md)
 
 ## Three-in-one: Key lifecycle management + Encryption oracle + Public key infrastructure
 
