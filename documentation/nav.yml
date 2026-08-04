@@ -124,9 +124,8 @@ nav:
       - PKCE Authentication: configuration/pkce_authentication.md
       - Authorizing users with access rights: configuration/authorization.md
       - Enabling TLS: configuration/tls.md
-      - Logging and telemetry:
-          - Logging: configuration/logging.md
-          - Log reference: configuration/log-reference.md
+      - Logging and telemetry: configuration/logging.md
+      - Log reference: configuration/log-reference.md
       - Monitoring:
           - Setup: configuration/monitoring-setup.md
           - Metrics reference: configuration/otlp-metrics.md

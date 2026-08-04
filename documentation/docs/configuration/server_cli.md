@@ -469,7 +469,7 @@ Options:
           Product Name and Version of the EKMS to report in the /info endpoint
 
           [env: KMS_AZURE_EKM_PRODUCT=]
-          [default: "Cosmian KMS v5.25.0"]
+          [default: "Eviden KMS v5.25.0"]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user's HOME directory
@@ -518,7 +518,7 @@ Options:
           File logging is disabled unless this option is explicitly set.
           Suggested paths:
             Linux: /var/log/
-            Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
+            Windows: C:\Users\<username>\AppData\Local\Eviden KMS Server
             macOS: ~/Library/Logs/
 
           WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
@@ -605,7 +605,7 @@ Options:
           - vault:       `HashiCorp` Vault KV-v2. Path format: `secret://<mount>/<path>[#<field>]`
           - aws-ssm:     AWS Systems Manager Parameter Store. Path format: `secret://<region>/<parameter-name>`
           - azure-kv:    Azure Key Vault. Path format: `secret://<vault-name>/secrets/<name>[/<version>]`
-          - cosmian-kms: Another Cosmian KMS server (KMIP Get). Path format: `secret://<host>[:<port>]/<object-id>`
+          - cosmian-kms: Another Eviden KMS server (KMIP Get). Path format: `secret://<host>[:<port>]/<object-id>`
 
           [env: KMS_SECRET_BACKEND=]
 

@@ -31,9 +31,9 @@ IV Length is the length of the Initialization Vector in bits. This parameter SHA
 
 Tag Length is the length of the authenticator tag in bytes. This parameter SHALL be provided when the Block Cipher Mode is GCM.
 
-The IV used with counter modes of operation (e.g., CTR and GCM) cannot repeat for a given cryptographic key. To prevent an IV/key reuse, the IV is often constructed of three parts: a fixed field, an invocation field, and a counter as described in [SP800-38A] and [SP800-38D]. The Fixed Field Length is the length of the fixed field portion of the IV in bits. The Invocation Field Length is the length of the invocation field portion of the IV in bits. The Counter Length is the length of the counter portion of the IV in bits.
+The IV used with counter modes of operation (e.g., CTR and GCM) cannot repeat for a given cryptographic key. To prevent an IV/key reuse, the IV is often constructed of three parts: a fixed field, an invocation field, and a counter as described in \[SP800-38A] and \[SP800-38D]. The Fixed Field Length is the length of the fixed field portion of the IV in bits. The Invocation Field Length is the length of the invocation field portion of the IV in bits. The Counter Length is the length of the counter portion of the IV in bits.
 
-Initial Counter Value is the starting counter value for CTR mode (for [RFC3686] it is 1).
+Initial Counter Value is the starting counter value for CTR mode (for \[RFC3686] it is 1).
 
 ### Extensions
 

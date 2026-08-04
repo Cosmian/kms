@@ -16,7 +16,7 @@ format:
 - Any other format conversion MAY be supported by the server.
 
 If Key Format Type is specified to be PKCS#12 then the response payload shall be a PKCS#12 container as specified
-by [RFC7292](https://datatracker.ietf.org/doc/html/rfc7292).
+by \[RFC7292].
 
 The Unique Identifier shall be either that of a private key or certificate to be included in the response.
 

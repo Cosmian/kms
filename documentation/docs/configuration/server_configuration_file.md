@@ -357,7 +357,7 @@ log_to_syslog = false
 # File logging is disabled unless this option is explicitly set.
 # Suggested paths:
 #   Linux: /var/log/
-#   Windows: C:\Users\<username>\AppData\Local\Cosmian KMS Server
+#   Windows: C:\Users\<username>\AppData\Local\Eviden KMS Server
 #   macOS: ~/Library/Logs/
 #
 # WARNING: Windows environment variables (e.g. %LOCALAPPDATA%) are NOT
