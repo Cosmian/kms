@@ -122,7 +122,7 @@ helm install my-kms ./charts/cosmian-kms \
 
 ## Configuration
 
-See [`values.yaml`](https://github.com/Cosmian/kms/tree/feat/helm-chart-k8s-deployment/charts/cosmian-kms/values.yaml)
+See [`values.yaml`](https://github.com/Cosmian/kms/blob/develop/charts/cosmian-kms/values.yaml)
 for the full list of configurable parameters. Key settings:
 
 | Key | Description |
@@ -143,7 +143,7 @@ for the full list of configurable parameters. Key settings:
 
 Every `kms.*` value maps to a `KMS_*` environment variable or CLI flag consumed
 directly by the `cosmian_kms` binary. See
-[`crate/server/src/config/command_line/`](https://github.com/Cosmian/kms/tree/feat/helm-chart-k8s-deployment/crate/server/src/config/command_line)
+[`crate/server/src/config/command_line/`](https://github.com/Cosmian/kms/tree/develop/crate/server/src/config/command_line)
 in the main repository for the authoritative list.
 
 ## Upgrading
