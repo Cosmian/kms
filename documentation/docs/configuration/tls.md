@@ -13,7 +13,53 @@ The HTTP server is always started, even if the TLS configuration is not provided
 The KMS server should be started using HTTPS when running in a zero-trust environment.
 Check the [running in a zero-trust environment](../installation/marketplace_guide.md) section for more information.
 
-To enable TLS, one can provide certificates on the command line interface.
+## Quick start: the configuration wizard
+
+The fastest way to enable TLS is the built-in interactive wizard:
+
+```bash
+cosmian_kms configure
+```
+
+At step 3/9 the wizard asks whether to enable TLS and then offers two paths:
+
+=== "Generate a self-signed PKI (recommended for quick start)"
+
+    The wizard creates a complete PKI under a directory you choose (default `/etc/cosmian/`):
+
+    | File | Description |
+    |------|-------------|
+    | `ca.crt` | Self-signed CA certificate (RSA-4096, valid 10 years) |
+    | `server.crt` | Server leaf certificate signed by the CA (RSA-2048) |
+    | `server.key` | Server private key (PKCS#8 PEM) |
+    | `client.crt` | Client certificate — distribute to mTLS clients |
+    | `client.key` | Client private key (PKCS#8 PEM) |
+
+    It then asks whether to enable mutual TLS (mTLS) and optionally restricts the
+    cipher suites. The resulting paths are written automatically to the TOML file.
+
+=== "Provide your own certificate paths"
+
+    For **FIPS mode** (default build) the wizard prompts for:
+
+    - Server certificate PEM file (`--tls-cert-file`)
+    - Server private key PEM file (`--tls-key-file`)
+    - Optional chain PEM file (`--tls-chain-file`)
+    - Optional CA certificate for mTLS (`--clients-ca-cert-file`)
+
+    For **non-FIPS mode** you can alternatively supply a PKCS#12 bundle and its password.
+
+At the end the wizard writes the resulting `kms.toml` and prints the start command. See the
+[full wizard reference](server_configuration_file.md#interactive-configuration-wizard) for all
+steps and the self-signed PKI file table.
+
+!!! tip "Obtaining a CA-signed certificate"
+    For production deployments, use certbot or your organisation's PKI to obtain
+    a valid certificate, then point the TOML fields to those files. See the
+    [certificate procedures guide](certificates.md)
+    for step-by-step instructions (certbot, BYO certs, PEM → PKCS#12 conversion).
+
+---
 
 ## Providing certificates
 
@@ -33,7 +79,14 @@ The KMS server supports two certificate formats depending on the build variant:
 When enabling client certificate authentication, the server's authority X509 certificate in PEM format must also be
 provided (for both modes). Multiple CA certificates can be concatenated in a single PEM file to support different certificate authorities.
 
-## Configuration using the TOML configuration file
+## Reference: manual configuration
+
+!!! note
+    The sections below document the raw TOML and CLI options.
+    The `cosmian_kms configure` wizard writes exactly these fields for you — use it
+    to avoid manual editing. See [Quick start: the configuration wizard](#quick-start-the-configuration-wizard) above.
+
+### TOML configuration file
 
 Certificate information must be provided in the `[tls]` section of the TOML configuration file.
 
@@ -85,7 +138,7 @@ clients_ca_cert_file = "[authority cert file]"
 tls_cipher_suites = "[cipher suites]"
 ```
 
-### Configuring using the command line
+### Command-line flags
 
 Certificate information can be provided using the command line interface.
 

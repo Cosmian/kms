@@ -25,7 +25,21 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
 
 ## Configuration
 
-To communicate with the KMS, the clients `ckms` expect the same configuration file. Please read the [configuration](./configuration.md) section.
+To communicate with the KMS, the client `ckms` reads a TOML configuration file at
+`~/.cosmian/ckms.toml` (or the path set by `CKMS_CONF`).
+
+The fastest way to create or update this file is the built-in interactive wizard:
+
+```bash
+ckms configure
+```
+
+The wizard prompts for the KMS server URL, the authentication method (access token,
+client certificate in PEM or PKCS#12 format, or both), and optional proxy settings,
+then writes the result to `~/.cosmian/ckms.toml`.
+
+For a full description of all authentication methods and the manual configuration format,
+see the [CLI authentication guide](./authentication.md).
 
 <!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
 {!kms_clients/usage.md!}
