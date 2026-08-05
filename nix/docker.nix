@@ -68,6 +68,11 @@ let
       pkgs.tzdata # Timezone data
       pkgs.coreutils # Basic utilities
       pkgs.bash # Shell for scripts
+      # wget and netcat are required for Docker health checks (wget for HTTP, nc for TLS port checks).
+      # These replace the previous busybox dependency which caused
+      # "failed to register layer: openat dev/pts/ptmx" errors on older containerd versions.
+      pkgs.wget
+      pkgs.netcat-gnu
     ]
     ++ pkcs11Contents;
   };
