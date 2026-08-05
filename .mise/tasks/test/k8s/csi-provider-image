@@ -41,9 +41,9 @@ kubectl run "$POD_NAME" \
   -- --help
 
 print_status "Waiting for pod $POD_NAME to complete..."
-kubectl wait "pod/$POD_NAME" \
-  --for=condition=Completed \
-  --timeout=60s
+timeout 60 bash -c \
+  "until kubectl get pod \"$POD_NAME\" -o jsonpath='{.status.phase}' 2>/dev/null | grep -qE 'Succeeded|Failed'; do sleep 2; done" ||
+  print_error "Pod $POD_NAME did not complete within 60s"
 
 EXIT_CODE=$(kubectl get pod "$POD_NAME" \
   -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')

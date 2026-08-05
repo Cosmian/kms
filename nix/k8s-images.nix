@@ -1,10 +1,8 @@
 # Docker image derivations for the Cosmian KMS Kubernetes in-cluster components.
 #
-# These produce minimal, distroless-like images containing only:
-#   - the binary
-#   - CA certificates (for TLS connections to the KMS server)
-#   - timezone data
-#   - minimal /etc/passwd and /etc/group
+# These produce minimal images. The k8s binaries are dynamically linked with the
+# system glibc (--dynamic-linker /lib64/ld-linux-x86-64.so.2). The image must
+# include glibc so the dynamic linker is available at that path.
 #
 # Unlike the KMS server image, no FIPS variant is needed: neither the operator
 # nor the CSI provider performs cryptographic operations; they are thin HTTP/gRPC
@@ -36,6 +34,17 @@ let
     destination = "/etc/group";
   };
 
+  # Common contents shared by both images.
+  # glibc is required because the binaries use /lib64/ld-linux-x86-64.so.2 as their
+  # dynamic linker (set by mkRelinkSnippet in common.nix).
+  commonContents = [
+    pkgs.glibc
+    pkgs.cacert
+    pkgs.tzdata
+    etcPasswd
+    etcGroup
+  ];
+
   # ── Operator image ─────────────────────────────────────────────────────────
 
   operatorImage = pkgs.dockerTools.buildLayeredImage {
@@ -43,19 +52,14 @@ let
     tag = version;
     created = "1970-01-01T00:00:01Z";
 
-    contents = [
-      operatorDrv
-      pkgs.cacert
-      pkgs.tzdata
-      etcPasswd
-      etcGroup
-    ];
+    contents = commonContents ++ [ operatorDrv ];
 
     config = {
+      # buildLayeredImage creates /bin/<name> symlinks automatically.
       Entrypoint = [ "/bin/cosmian-kms-operator" ];
       User = "65534:65534"; # nobody
       Env = [
-        "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+        "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
         "RUST_LOG=info"
       ];
       Labels = {
@@ -76,19 +80,13 @@ let
     tag = version;
     created = "1970-01-01T00:00:01Z";
 
-    contents = [
-      csiProviderDrv
-      pkgs.cacert
-      pkgs.tzdata
-      etcPasswd
-      etcGroup
-    ];
+    contents = commonContents ++ [ csiProviderDrv ];
 
     config = {
       Entrypoint = [ "/bin/cosmian-kms-csi-provider" ];
       User = "65534:65534"; # nobody
       Env = [
-        "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+        "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
         "RUST_LOG=info"
       ];
       Labels = {

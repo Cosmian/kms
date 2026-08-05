@@ -13,7 +13,8 @@
 #   KMS deploy:     k8s_deploy_kms, k8s_wait_kms_http, k8s_kms_cluster_ip
 #   ckms helpers:   k8s_ckms_conf, k8s_create_kek, k8s_create_secret,
 #                   k8s_revoke_object
-#   systemd node:   k8s_write_systemd_unit, k8s_wait_node_socket,
+#   systemd node:   k8s_write_systemd_unit, k8s_install_service_file,
+#                   k8s_wait_node_socket,
 #                   k8s_restart_node_service, k8s_stop_node_service
 #   Diagnostics:    k8s_dump_debug
 
@@ -217,13 +218,15 @@ k8s_revoke_object() {
 
 # ── systemd on the Minikube node ──────────────────────────────────────────────
 
-# Install a systemd unit on the Minikube node and start it.
-# Usage: k8s_write_systemd_unit <service-name> <unit-file-content>
-k8s_write_systemd_unit() {
-  local name="$1" content="$2"
+# Install the bundled production service file on the Minikube node and start it.
+# This validates the same unit file shipped inside the deb/rpm package.
+# The service file must have ExecStart pointing to /usr/local/bin/<name> and
+# read its config from /etc/cosmian-<name>/config.yaml (the production layout).
+# Usage: k8s_install_service_file <local-service-file-path> <service-name>
+k8s_install_service_file() {
+  local src="$1" name="$2"
   local tmp="/tmp/${name}.service"
-  printf '%s\n' "$content" >"$tmp"
-  minikube cp "$tmp" "$tmp"
+  minikube cp "$src" "$tmp"
   minikube ssh -- sudo cp "$tmp" "/etc/systemd/system/${name}.service"
   minikube ssh -- sudo systemctl daemon-reload
   minikube ssh -- sudo systemctl enable --now "$name"

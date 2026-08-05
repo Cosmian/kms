@@ -140,26 +140,9 @@ minikube cp "$WORK/config.yaml" /tmp/plugin-config.yaml
 minikube ssh -- sudo cp /tmp/plugin-config.yaml "$CFG_DIR/config.yaml"
 
 # ── 4. Start the plugin as a systemd service ──────────────────────────────────
-k8s_write_systemd_unit cosmian-kms-plugin "$(
-  cat <<UNIT
-[Unit]
-Description=Cosmian KMS Kubernetes Plugin
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/cosmian-kms-plugin --config ${CFG_DIR}/config.yaml
-Restart=on-failure
-RestartSec=5s
-RuntimeDirectory=cosmian-kms-plugin
-RuntimeDirectoryMode=0755
-RuntimeDirectoryPreserve=yes
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-)"
+# Use the production service file shipped in the deb/rpm package — this
+# validates the same unit that end-users get from the package manager.
+k8s_install_service_file "${MISE_CONFIG_ROOT}/pkg/cosmian_kms_plugin.service" cosmian-kms-plugin
 k8s_wait_node_socket "$SOCK_PATH" 60
 
 # ── 5. Enable etcd encryption on kube-apiserver ───────────────────────────────
