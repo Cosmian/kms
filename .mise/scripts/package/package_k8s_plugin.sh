@@ -99,8 +99,13 @@ if [ -L "$OUT_LINK" ] && [ -x "$(readlink -f "$OUT_LINK")/bin/cosmian-kms-plugin
   echo "Reusing cached plugin binary from $OUT_LINK"
 else
   echo "Building k8s-plugin-bin via Nix..."
+  # Do NOT pass --option substituters "" here: the k8s-plugin derivation uses
+  # pkgs228 (glibc 2.28) which requires bootstrapping bash-4.4-p23 from source
+  # when the binary cache is disabled. Without the cache, Nix downloads
+  # bash-4.4 patches from ftpmirror.gnu.org which returns 502 errors. Using
+  # the binary cache avoids this by substituting pre-built packages.
   env -u LD_LIBRARY_PATH -u LD_PRELOAD \
-    nix-build -I "nixpkgs=${PIN_URL}" --option substituters "" \
+    nix-build -I "nixpkgs=${PIN_URL}" \
     "$REPO_ROOT/default.nix" -A k8s-plugin-bin -o "$OUT_LINK"
 fi
 PLUGIN_BIN="$(readlink -f "$OUT_LINK")/bin/cosmian-kms-plugin"
