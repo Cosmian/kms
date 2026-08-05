@@ -349,11 +349,12 @@ let
   # Kubernetes in-cluster binary derivations (operator + CSI provider).
   # These are thin HTTP/gRPC clients with no own crypto → single (non-FIPS) variant.
   k8s-binaries = pkgs.callPackage ./nix/k8s-binaries.nix {
-    inherit rustPlatform;
+    rustPlatform = rustPlatform190_228;
     version = kmsVersion;
     features = [ ];
     static = true;
-    inherit openssl36 openssl312;
+    openssl36 = openssl36-static-228;
+    openssl312 = openssl312-static-228;
   };
 
   k8s-operator-bin = k8s-binaries.operator;
@@ -361,11 +362,12 @@ let
 
   # Plugin binary derivation (deb/rpm target; runs on Kubernetes control-plane node).
   k8s-plugin-bin = pkgs.callPackage ./nix/k8s-plugin.nix {
-    inherit rustPlatform;
+    rustPlatform = rustPlatform190_228;
     version = kmsVersion;
     features = [ ];
     static = true;
-    inherit openssl36 openssl312;
+    openssl36 = openssl36-static-228;
+    openssl312 = openssl312-static-228;
   };
 
   # Docker images for in-cluster Kubernetes components.

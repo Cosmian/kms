@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # .mise/lib/k8s.sh — Shared helpers for the Kubernetes E2E MISE tasks
-# (test:k8s-plugin, test:csi-provider, test:k8s-operator).
+# (test:k8s:plugin, test:k8s:csi-provider, test:k8s:operator, test:k8s:*-image).
 #
 # Source this AFTER common.sh:
 #   source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"

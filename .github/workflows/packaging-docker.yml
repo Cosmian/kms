@@ -340,8 +340,17 @@ jobs:
       - name: Build and load Operator image
         run: mise run build:k8s-operator-image --load
 
-      - name: Smoke test Operator image
-        run: mise run test:k8s-operator-image
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.18
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Test Operator image via Minikube
+        run: mise run test:k8s:operator-image
 
       - name: Tag and push Operator image
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
@@ -419,8 +428,17 @@ jobs:
       - name: Build and load CSI Provider image
         run: mise run build:k8s-csi-provider-image --load
 
-      - name: Smoke test CSI Provider image
-        run: mise run test:k8s-csi-provider-image
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.18
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Test CSI Provider image via Minikube
+        run: mise run test:k8s:csi-provider-image
 
       - name: Tag and push CSI Provider image
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'

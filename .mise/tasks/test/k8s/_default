@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#MISE description="Run all Kubernetes integration E2E tests (plugin, operator, CSI provider, Docker images)"
+#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
+#USAGE   choices "fips" "non-fips"
+#USAGE }
+#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
+#USAGE   choices "static" "dynamic"
+#USAGE }
+#USAGE flag "--skip-images" help="Skip Docker image tests (operator-image, csi-provider-image)"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/k8s.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
+
+k8s_require_tools
+
+TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test/k8s"
+VARIANT="${usage_variant:-fips}"
+LINK="${usage_link:-static}"
+SKIP_IMAGES="${usage_skip_images:-false}"
+
+print_header "Running all Kubernetes E2E tests (variant=${VARIANT})"
+
+FAILED=()
+
+run_step() {
+  local name="$1"
+  shift
+  print_status "▶ $name"
+  if bash "$@"; then
+    print_success "✓ $name"
+  else
+    print_status "✗ $name FAILED"
+    FAILED+=("$name")
+  fi
+}
+
+# ── Binary-based E2E tests ────────────────────────────────────────────────────
+run_step "k8s:plugin" "${TASK_DIR}/plugin" --variant "$VARIANT" --link "$LINK"
+run_step "k8s:plugin (mtls)" "${TASK_DIR}/plugin" --variant "$VARIANT" --link "$LINK" --mtls
+run_step "k8s:operator" "${TASK_DIR}/operator" --variant "$VARIANT" --link "$LINK"
+run_step "k8s:csi-provider" "${TASK_DIR}/csi-provider" --variant "$VARIANT" --link "$LINK"
+
+# ── Docker image tests (require Nix + minikube) ───────────────────────────────
+if [ "$SKIP_IMAGES" != "true" ]; then
+  run_step "k8s:operator-image" "${TASK_DIR}/operator-image"
+  run_step "k8s:csi-provider-image" "${TASK_DIR}/csi-provider-image"
+fi
+
+# ── Report ────────────────────────────────────────────────────────────────────
+if [ "${#FAILED[@]}" -gt 0 ]; then
+  echo ""
+  echo "FAILED tests:"
+  for f in "${FAILED[@]}"; do echo "  ✗ $f"; done
+  exit 1
+fi
+
+print_success "All Kubernetes E2E tests passed"
