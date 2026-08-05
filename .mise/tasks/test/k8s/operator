@@ -69,7 +69,7 @@ elif command -v nix-build >/dev/null 2>&1; then
   IMAGE_NAME="cosmian-kms-operator"
   POD_NAME="kms-operator-image-test"
 
-  if [ ! -L "$OUT_LINK" ] || [ ! -f "$(readlink -f "$OUT_LINK" 2>/dev/null || echo "")" ]; then
+  if [ ! -e "$OUT_LINK" ]; then
     print_status "Building Docker image via Nix..."
     bash "${REPO_ROOT}/.mise/tasks/build/k8s-operator-image"
   fi

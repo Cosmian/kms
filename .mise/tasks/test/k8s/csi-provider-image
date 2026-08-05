@@ -16,7 +16,7 @@ POD_NAME="kms-csi-provider-image-test"
 print_header "Testing KMS CSI Provider Docker image via Minikube"
 
 # ── 1. Build image via Nix if not already cached ─────────────────────────────
-if [ ! -L "$OUT_LINK" ] || [ ! -f "$(readlink -f "$OUT_LINK" 2>/dev/null || echo "")" ]; then
+if [ ! -e "$OUT_LINK" ]; then
   print_status "Image tarball not found — building via Nix..."
   bash "${REPO_ROOT}/.mise/tasks/build/k8s-csi-provider-image"
 fi
