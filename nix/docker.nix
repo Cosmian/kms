@@ -72,7 +72,7 @@ let
       # These replace the previous busybox dependency which caused
       # "failed to register layer: openat dev/pts/ptmx" errors on older containerd versions.
       pkgs.wget
-      pkgs.netcat-gnu
+      pkgs.netcat-openbsd
     ]
     ++ pkcs11Contents;
   };
