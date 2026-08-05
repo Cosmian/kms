@@ -120,11 +120,19 @@ DEB_ARCH=$(dpkg --print-architecture 2>/dev/null || echo "amd64")
 RPM_ARCH=$(uname -m)
 
 # ── 4. Place binary where cargo-deb/cargo-generate-rpm expects it ─────────────
+# cargo-deb resolves asset paths via `cargo metadata` which returns the
+# WORKSPACE target directory (not the crate-specific one). Copy to all
+# locations to cover both cargo-deb and cargo-generate-rpm resolution.
 TARGET_DIR="$PLUGIN_CRATE/target/release"
-mkdir -p "$TARGET_DIR"
-cp -f "$PLUGIN_BIN" "$TARGET_DIR/cosmian-kms-plugin"
-chmod 755 "$TARGET_DIR/cosmian-kms-plugin"
-echo "Copied plugin binary to $TARGET_DIR/cosmian-kms-plugin"
+WORKSPACE_TARGET="$REPO_ROOT/target/release"
+HOST_TRIPLE=$(rustc -vV 2>/dev/null | awk '/host:/ {print $2}')
+for dir in "$TARGET_DIR" "$PLUGIN_CRATE/target/$HOST_TRIPLE/release" \
+  "$WORKSPACE_TARGET" "$REPO_ROOT/target/$HOST_TRIPLE/release"; do
+  mkdir -p "$dir"
+  cp -f "$PLUGIN_BIN" "$dir/cosmian-kms-plugin"
+  chmod 755 "$dir/cosmian-kms-plugin"
+done
+echo "Copied plugin binary to target/release/ (crate + workspace)"
 
 # ── 5. Build the package ──────────────────────────────────────────────────────
 ensure_modern_rust
