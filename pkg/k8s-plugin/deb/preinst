@@ -1,0 +1,11 @@
+#!/bin/sh -ex
+
+# Ensure config directory exists before the binary is installed.
+mkdir -p /etc/cosmian-kms-plugin
+
+# Ensure socket directory exists with the correct permissions so the
+# kube-apiserver container's hostPath bind-mount is in place before first start.
+mkdir -p /run/cosmian-kms-plugin
+chmod 0755 /run/cosmian-kms-plugin
+
+#DEBHELPER#

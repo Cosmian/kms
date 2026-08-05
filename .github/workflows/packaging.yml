@@ -104,6 +104,51 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  k8s-plugin-package:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
+    name: k8s-plugin-${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Set up GPG
+        uses: crazy-max/ghaction-import-gpg@v7
+        with:
+          gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
+          passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Build k8s plugin deb + rpm
+        run: |
+          mise run package:k8s-plugin-deb
+          mise run package:k8s-plugin-rpm
+        env:
+          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
+          GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Upload k8s plugin packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-plugin-packages-${{ matrix.runner }}
+          path: result-k8s-plugin-*/
+          retention-days: 1
+          if-no-files-found: error
+
   publish-release:
     if: |
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')

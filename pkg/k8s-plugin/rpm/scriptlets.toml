@@ -1,0 +1,68 @@
+pre_install_script = '''
+#!/bin/bash -ex
+
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+# Ensure config directory and socket directory exist before the binary is
+# installed, so the kube-apiserver hostPath bind-mount is in place.
+mkdir -p /etc/cosmian-kms-plugin
+mkdir -p /run/cosmian-kms-plugin
+chmod 0755 /run/cosmian-kms-plugin
+
+'''
+
+post_install_script = '''
+#!/bin/bash -ex
+
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+if has_systemd; then
+  systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+'''
+
+pre_uninstall_script = '''
+#!/bin/bash
+set -e
+
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+case "$1" in
+0)
+  # erase: stop and disable before rpm removes the files
+  if has_systemd; then
+    systemctl stop    cosmian-kms-plugin.service >/dev/null 2>&1 || true
+    systemctl disable cosmian-kms-plugin.service >/dev/null 2>&1 || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+  ;;
+esac
+
+'''
+
+post_uninstall_script = '''
+#!/bin/bash
+set -e
+
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+case "$1" in
+0)
+  # erase: remove config directory
+  rm -rf /etc/cosmian-kms-plugin
+  if has_systemd; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+  ;;
+esac
+
+'''

@@ -55,3 +55,54 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 hyper-util = { workspace = true, features = ["tokio"] }
 tower = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+
+# ------------------------------------------------------------------------------
+# DEB PACKAGING (cargo-deb)
+# cargo-deb --no-build --no-strip -p cosmian_kms_k8s_plugin
+# ------------------------------------------------------------------------------
+[package.metadata.deb]
+maintainer = "Cosmian support team <tech@cosmian.com>"
+copyright = "2026, Cosmian Tech SAS <tech@cosmian.com>"
+license-file = ["../../../../LICENSE", "0"]
+changelog = "../../../../CHANGELOG.md"
+section = "security"
+priority = "optional"
+depends = ""
+maintainer-scripts = "../../../../pkg/k8s-plugin/deb/"
+systemd-units = [
+  { unit-name = "cosmian-kms-plugin", unit-scripts = "../../../../pkg/k8s-plugin/deb", enable = false, start = false },
+]
+assets = [
+  [
+    "target/release/cosmian-kms-plugin",
+    "usr/local/bin/cosmian-kms-plugin",
+    "755",
+  ],
+  [
+    "../../../../pkg/cosmian_kms_plugin.service",
+    "lib/systemd/system/cosmian-kms-plugin.service",
+    "644",
+  ],
+  [
+    "../../../../README.md",
+    "usr/share/doc/cosmian/cosmian-kms-plugin/README.md",
+    "644",
+  ],
+]
+
+# ------------------------------------------------------------------------------
+# RPM PACKAGING (cargo-generate-rpm)
+# cargo-generate-rpm --no-build -p crate/clients/k8s/plugin
+# ------------------------------------------------------------------------------
+[package.metadata.generate-rpm]
+license = "BUSL-1.1"
+auto-req = "no"
+require-sh = true
+assets = [
+  { source = "target/release/cosmian-kms-plugin", dest = "/usr/local/bin/cosmian-kms-plugin", mode = "755" },
+  { source = "../../../../pkg/cosmian_kms_plugin.service", dest = "/lib/systemd/system/cosmian-kms-plugin.service", mode = "644" },
+  { source = "../../../../README.md", dest = "/usr/share/doc/cosmian/cosmian-kms-plugin/README.md", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.scriptlets]
+file = "../../../../pkg/k8s-plugin/rpm/scriptlets.toml"

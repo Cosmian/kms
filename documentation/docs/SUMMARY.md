@@ -79,7 +79,6 @@
 - [Installation]()
     - [Getting started](installation/installation_getting_started.md)
     - [Deploying in a Cosmian Confidential VM](installation/marketplace_guide.md)
-    - [Kubernetes (Helm)](installation/kubernetes_helm.md)
     - [High-availability](installation/high_availability_mode.md)
 - [Configuration]()
     - [Configuration file](configuration/server_configuration_file.md)

@@ -1,6 +1,6 @@
 # Kubernetes Operator
 
-The Cosmian KMS Kubernetes Operator (`cosmian-kms-operator`) manages `KMSSecret` custom
+The Eviden KMS Kubernetes Operator (`cosmian-kms-operator`) manages `KMSSecret` custom
 resources. Each `KMSSecret` object tells the operator to fetch a secret from the Cosmian
 KMS and materialise it as a native Kubernetes `Secret`, keeping it in sync as the KMS
 value changes.
@@ -16,7 +16,7 @@ The operator runs two components concurrently:
 ```mermaid
 flowchart LR
     CRD["KMSSecret CRD"] -->|reconcile| CTL["Controller\n(cosmian-kms-operator)"]
-    CTL -->|KMIP Get| KMS["Cosmian KMS"]
+    CTL -->|KMIP Get| KMS["Eviden KMS"]
     KMS -->|secret value| CTL
     CTL -->|create/update| SEC["k8s Secret"]
     SEC -->|volume mount / env var| APP["Application Pod"]
@@ -28,7 +28,7 @@ flowchart LR
 
 | Requirement | Details |
 |---|---|
-| Cosmian KMS ≥ 5.26.0 | Running and reachable from the operator pod |
+| Eviden KMS ≥ 5.26.0 | Running and reachable from the operator pod |
 | Kubernetes ≥ 1.25 | CRD v1 support |
 | Helm ≥ 3.8 | Used to install the operator |
 | cluster-admin access | Required to install CRDs and ClusterRoleBindings |
@@ -49,6 +49,25 @@ flowchart LR
       --set operator.enabled=true \
       --set operator.kmsUrl=https://kms.example.com:9998 \
       --set operator.kmsApiKey=YOUR_API_KEY
+    ```
+
+=== "Docker image"
+
+    Pre-built images are published to the GitHub Container Registry on every release:
+
+    ```bash
+    docker pull ghcr.io/cosmian/kms-operator:<VERSION>
+    ```
+
+    Run inside a Kubernetes cluster by referencing the image in your Deployment manifest:
+
+    ```yaml
+    containers:
+      - name: cosmian-kms-operator
+        image: ghcr.io/cosmian/kms-operator:<VERSION>
+        args:
+          - --kms-url=https://kms.example.com:9998
+          - --kms-api-key=$(KMS_API_KEY)
     ```
 
 === "Build from source"

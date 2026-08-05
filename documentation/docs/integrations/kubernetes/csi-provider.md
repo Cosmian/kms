@@ -1,6 +1,6 @@
 # Secrets Store CSI Driver Provider
 
-The Cosmian KMS CSI provider (`cosmian-kms-csi-provider`) implements the
+The Eviden KMS CSI provider (`cosmian-kms-csi-provider`) implements the
 [Kubernetes Secrets Store CSI Driver](https://secrets-store-csi-driver.sigs.k8s.io/) provider
 interface. It allows pods to **mount KMS-managed secrets as files** in their filesystem
 without ever storing those secrets in a Kubernetes `Secret` object.
@@ -15,7 +15,7 @@ sequenceDiagram
     participant K as kubelet
     participant D as secrets-store-csi-driver<br/>(DaemonSet)
     participant P as cosmian-kms-csi-provider<br/>(DaemonSet, Unix socket)
-    participant M as Cosmian KMS
+    participant M as Eviden KMS
 
     Note over K,M: Pod scheduled with CSI volume
     K->>D: MountRequest (SecretProviderClass)
@@ -33,7 +33,7 @@ sequenceDiagram
 
 | Requirement | Details |
 |---|---|
-| Cosmian KMS ≥ 5.26.0 | Running and reachable from every worker node |
+| Eviden KMS ≥ 5.26.0 | Running and reachable from every worker node |
 | Kubernetes ≥ 1.25 | Secrets Store CSI Driver stable API |
 | Helm ≥ 3.8 | Used to install the CSI driver and the provider |
 | Secrets Store CSI Driver | Installed via Helm (see below) |
@@ -61,7 +61,7 @@ in the KMS.
 
 === "Helm (recommended)"
 
-    The CSI provider is packaged together with the Cosmian KMS Helm chart.
+    The CSI provider is packaged together with the Eviden KMS Helm chart.
     Install the provider DaemonSet alongside the KMS server:
 
     ```bash
@@ -83,19 +83,23 @@ in the KMS.
       --set csiProvider.kmsUrl=https://kms.example.com:9998
     ```
 
-=== "Manual (binary)"
+=== "Docker image"
+
+    Pre-built images are published to the GitHub Container Registry on every release:
 
     ```bash
-    ARCH=$(uname -m)   # x86_64 or aarch64
-    VERSION=<VERSION>
-    curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/cosmian-kms-csi-provider-linux-${ARCH}.tar.gz" \
-      | sudo tar -xz -C /usr/local/bin/
-    sudo chmod +x /usr/local/bin/cosmian-kms-csi-provider
+    docker pull ghcr.io/cosmian/kms-csi-provider:<VERSION>
     ```
 
-    Then deploy the `DaemonSet` YAML from
-    `crate/clients/k8s/csi_provider/deploy/daemonset.yaml` in the KMS repository.
+    Reference the image in your DaemonSet manifest or override it in the Helm chart:
+
+    ```yaml
+    # Helm override
+    csiProvider:
+      image:
+        repository: ghcr.io/cosmian/kms-csi-provider
+        tag: <VERSION>
+    ```
 
 === "Build from source"
 
@@ -103,6 +107,9 @@ in the KMS.
     cargo build --release -p cosmian_kms_csi_provider
     sudo install -m 755 target/release/cosmian-kms-csi-provider /usr/local/bin/
     ```
+
+    Then deploy the `DaemonSet` YAML from
+    `crate/clients/k8s/csi_provider/deploy/daemonset.yaml` in the KMS repository.
 
 ---
 
@@ -113,7 +120,7 @@ Create the configuration file at `/etc/cosmian-kms-csi/config.yaml` on every wor
 
 ```yaml
 cosmian_kms:
-  # URL of the Cosmian KMS server
+  # URL of the Eviden KMS server
   server_url: "https://kms.example.com:9998"
 
   # Optional: API key authentication

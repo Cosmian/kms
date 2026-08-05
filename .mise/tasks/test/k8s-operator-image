@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#MISE description="Smoke test the Cosmian KMS Operator Docker image"
+#USAGE arg "<image>" help="Docker image name:tag to test (e.g. cosmian-kms-operator:5.25.0)" default=""
+set -euo pipefail
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+IMAGE="${usage_image:-${DOCKER_K8S_OPERATOR_IMAGE:-}}"
+if [ -z "$IMAGE" ]; then
+  # Auto-detect from loaded images
+  IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "cosmian-kms-operator" | head -1)
+fi
+[ -n "$IMAGE" ] || { echo "ERROR: no operator image found. Build and load it first with: mise run build:k8s-operator-image --load"; exit 1; }
+
+print_header "Smoke testing Cosmian KMS Operator image: $IMAGE"
+
+echo "--- --version ---"
+docker run --rm "$IMAGE" --version 2>&1 || \
+  docker run --rm --entrypoint /bin/cosmian-kms-operator "$IMAGE" --version 2>&1 || true
+
+echo "--- --help ---"
+docker run --rm "$IMAGE" --help 2>&1
+RC=$?
+[ $RC -eq 0 ] || [ $RC -eq 1 ] || { echo "ERROR: --help exited with unexpected code $RC"; exit 1; }
+
+echo "--- binary check ---"
+docker run --rm --entrypoint sh "$IMAGE" -c \
+  '[ -x /bin/cosmian-kms-operator ] || [ -x /usr/local/bin/cosmian-kms-operator ] || { echo "ERROR: binary not found"; exit 1; }; echo "Binary present and executable."'
+
+print_success "Cosmian KMS Operator image smoke test passed"
