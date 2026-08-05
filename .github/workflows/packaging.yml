@@ -149,6 +149,84 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  publish-k8s-plugin:
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+
+    name: Publish k8s-plugin-${{ matrix.cpu-arch }}
+    needs: k8s-plugin-package
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            cpu-arch: amd64
+            rpm-arch: x86_64
+          - runner: ubuntu-24.04-arm
+            cpu-arch: arm64
+            rpm-arch: aarch64
+
+    steps:
+      - name: Checkout repository (for public key file)
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Download k8s plugin packages
+        uses: actions/download-artifact@v8
+        with:
+          name: k8s-plugin-packages-${{ matrix.runner }}
+
+      - name: List downloaded assets
+        run: find . -type f -print
+
+      - name: Push to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          BASE="/mnt/package/kms/${BRANCH}"
+
+          # deb — directory and filename both use cpu-arch (amd64/arm64)
+          DEB_DIR="${BASE}/deb/${{ matrix.cpu-arch }}"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            cosmian@package.cosmian.com mkdir -p "${DEB_DIR}"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            ./nix/signing-keys/cosmian-kms-public.asc \
+            result-k8s-plugin-deb/*.deb \
+            cosmian@package.cosmian.com:"${DEB_DIR}/"
+
+          # rpm — directory uses cpu-arch (amd64/arm64); filename uses rpm-arch (x86_64/aarch64)
+          RPM_DIR="${BASE}/rpm/${{ matrix.cpu-arch }}"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            cosmian@package.cosmian.com mkdir -p "${RPM_DIR}"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            ./nix/signing-keys/cosmian-kms-public.asc \
+            result-k8s-plugin-rpm/*.rpm \
+            cosmian@package.cosmian.com:"${RPM_DIR}/"
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            result-k8s-plugin-deb/cosmian-kms-plugin_*
+            result-k8s-plugin-rpm/cosmian-kms-plugin_*
+            ./nix/signing-keys/cosmian-kms-public.asc
+
   publish-release:
     if: |
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')

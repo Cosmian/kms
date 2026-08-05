@@ -68,7 +68,7 @@ ckms sym keys create \
     ARCH=$(dpkg --print-architecture)   # amd64 or arm64
     VERSION=<VERSION>
     curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/ubuntu/cosmian-kms-plugin_${VERSION}_${ARCH}.deb" \
+      "https://package.cosmian.com/kms/${VERSION}/deb/${ARCH}/cosmian-kms-plugin_${VERSION}_${ARCH}.deb" \
       -o cosmian-kms-plugin.deb
     sudo dpkg -i cosmian-kms-plugin.deb
     # Binary:        /usr/local/bin/cosmian-kms-plugin
@@ -79,10 +79,11 @@ ckms sym keys create \
 === "RHEL / CentOS / Rocky / AlmaLinux"
 
     ```bash
-    ARCH=$(uname -m)   # x86_64 or aarch64
+    RPM_ARCH=$(uname -m)   # x86_64 or aarch64
+    CPU_ARCH=$([ "$RPM_ARCH" = "x86_64" ] && echo "amd64" || echo "arm64")
     VERSION=<VERSION>
     curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/rhel/cosmian-kms-plugin-${VERSION}.${ARCH}.rpm" \
+      "https://package.cosmian.com/kms/${VERSION}/rpm/${CPU_ARCH}/cosmian-kms-plugin_${VERSION}_${RPM_ARCH}.rpm" \
       -o cosmian-kms-plugin.rpm
     sudo rpm -i cosmian-kms-plugin.rpm
     # Binary:        /usr/local/bin/cosmian-kms-plugin
