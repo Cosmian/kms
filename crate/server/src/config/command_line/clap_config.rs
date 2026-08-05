@@ -76,8 +76,8 @@ impl Default for ClapConfig {
             keyset_warn_depth: 5,
             jwks_endpoint: JwksEndpointConfig::default(),
             secret_backends: SecretBackendConfig::default(),
-            audit: AuditConfig::default(),
             vault: VaultConfig::default(),
+            audit: AuditConfig::default(),
         }
     }
 }
@@ -249,14 +249,14 @@ pub struct ClapConfig {
     #[command(flatten)]
     pub jwks_endpoint: JwksEndpointConfig,
 
-    #[clap(flatten)]
-    #[serde(rename = "audit")]
-    pub audit: AuditConfig,
-
     /// Configuration for the Vault-compatible REST API (`/v1/transit/` and `/v1/<pki_mount>/`).
     #[command(flatten)]
     #[serde(default)]
     pub vault: VaultConfig,
+
+    #[clap(flatten)]
+    #[serde(rename = "audit")]
+    pub audit: AuditConfig,
 }
 
 impl ClapConfig {
