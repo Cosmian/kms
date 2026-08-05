@@ -182,7 +182,9 @@ case "$FORMAT" in
   rpm)
     ensure_cargo_generate_rpm
     cd "$PLUGIN_CRATE"
-    cargo generate-rpm --no-build 2>&1
+    # cargo-generate-rpm does not have --no-build; it generates RPM from
+    # already-built artifacts. Pass --target so it finds the binary.
+    cargo generate-rpm --target "$HOST_TRIPLE" 2>&1
     cd "$REPO_ROOT"
 
     # Collect and rename output
@@ -190,7 +192,8 @@ case "$FORMAT" in
     for search_dir in \
       "$PLUGIN_CRATE/target/generate-rpm" \
       "$PLUGIN_CRATE/target/$HOST_TRIPLE/generate-rpm" \
-      "$REPO_ROOT/target/generate-rpm"; do
+      "$REPO_ROOT/target/generate-rpm" \
+      "$REPO_ROOT/target/$HOST_TRIPLE/generate-rpm"; do
       if [ -d "$search_dir" ]; then
         find "$search_dir" -maxdepth 1 -name "*.rpm" -print -exec cp -f {} "$RESULT_DIR/" \;
         FOUND=1
