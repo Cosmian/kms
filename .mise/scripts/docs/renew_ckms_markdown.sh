@@ -15,7 +15,7 @@ cargo build -p ckms --features non-fips
   "${REPO_ROOT}/documentation/docs/kms_clients/cli/main_commands.md"
 
 # Regenerate the top-level usage overview from `ckms --help`.
-USAGE_MD="${REPO_ROOT}/cli_documentation/docs/usage.md"
+USAGE_MD="${REPO_ROOT}/documentation/docs/kms_clients/usage.md"
 {
   echo "# Usage"
   echo ""

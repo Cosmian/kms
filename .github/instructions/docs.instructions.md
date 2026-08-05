@@ -1,7 +1,7 @@
 ---
 name: 'Documentation'
 description: 'MkDocs documentation conventions (Diátaxis framework)'
-applyTo: '{documentation,cli_documentation}/**/*.md'
+applyTo: 'documentation/**/*.md'
 ---
 
 # Documentation rules
