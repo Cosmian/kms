@@ -90,6 +90,7 @@
     - [PKCE Authentication](configuration/pkce_authentication.md)
     - [Authorizing users with access rights](configuration/authorization.md)
     - [Enabling TLS](configuration/tls.md)
+    - [Obtaining TLS Certificates](configuration/certificates.md)
     - [Logging and telemetry]()
         - [Logging](configuration/logging.md)
         - [Log reference](configuration/log-reference.md)
