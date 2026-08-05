@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="E2E test: Kubernetes KMS operator (init-container inject mode)"
+#MISE description="E2E test: KMS Operator — binary inject mode + Docker image (Minikube)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#USAGE flag "--skip-image" help="Skip the Docker image test (binary E2E only; used by CI image-only jobs)"
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
@@ -14,8 +15,9 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 NAMESPACE="kms-operator-e2e"
 RELEASE="op-kms"
+SKIP_IMAGE="${usage_skip_image:-false}"
 
-print_header "KMS operator inject E2E"
+print_header "KMS Operator E2E"
 k8s_require_tools
 
 WORK=$(mktemp -d)
@@ -43,7 +45,6 @@ SECRET_UID=$(k8s_create_secret "$CKMS_BIN" "$CKMS_CONF" "$SECRET_VALUE" operator
 print_status "Created SecretData: $SECRET_UID"
 
 # ── 2. Run the operator in one-shot inject mode ──────────────────────────────
-# inject fetches KMS objects by UID and writes their bytes to <output-dir>/<name>.
 "$OP_BIN" inject \
   --server-url http://localhost:9998 \
   --secret-uids "${SECRET_UID}:injected-secret" \
@@ -52,10 +53,54 @@ print_status "Created SecretData: $SECRET_UID"
 OUT_FILE="$WORK/injected/injected-secret"
 [ -s "$OUT_FILE" ] || print_error "inject did not write $OUT_FILE"
 
-# ── 3. TEST: injected file content equals the exact KMS secret value ─────────
 WRITTEN=$(cat "$OUT_FILE")
 [ "$WRITTEN" = "$SECRET_VALUE" ] ||
   print_error "injected content '$WRITTEN' != expected '$SECRET_VALUE'"
-print_success "operator inject wrote the exact KMS secret value ($(wc -c <"$OUT_FILE") bytes)"
+print_success "operator inject: secret round-trips correctly ($(wc -c <"$OUT_FILE") bytes)"
 
-print_success "KMS operator inject E2E completed"
+# ── 3. Docker image test via Minikube ────────────────────────────────────────
+if [ "$SKIP_IMAGE" = "true" ]; then
+  print_status "Skipping Docker image test (--skip-image)"
+elif command -v nix-build >/dev/null 2>&1; then
+  print_header "KMS Operator Docker image test"
+  REPO_ROOT="${MISE_CONFIG_ROOT}"
+  OUT_LINK="${REPO_ROOT}/result-k8s-operator-image"
+  IMAGE_NAME="cosmian-kms-operator"
+  POD_NAME="kms-operator-image-test"
+
+  if [ ! -L "$OUT_LINK" ] || [ ! -f "$(readlink -f "$OUT_LINK" 2>/dev/null || echo "")" ]; then
+    print_status "Building Docker image via Nix..."
+    bash "${REPO_ROOT}/.mise/tasks/build/k8s-operator-image"
+  fi
+  IMAGE_TAR=$(readlink -f "$OUT_LINK")
+
+  print_status "Loading image into Minikube: $IMAGE_TAR"
+  minikube image load "$IMAGE_TAR"
+
+  LOADED=$(docker load <"$IMAGE_TAR" 2>&1 | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
+  IMAGE_REF="${LOADED:-${IMAGE_NAME}:latest}"
+  print_status "Image loaded as: $IMAGE_REF"
+
+  kubectl delete pod "$POD_NAME" --ignore-not-found=true
+  kubectl run "$POD_NAME" \
+    --image="$IMAGE_REF" \
+    --image-pull-policy=Never \
+    --restart=Never \
+    -- --help
+
+  print_status "Waiting for pod $POD_NAME to complete..."
+  timeout 60 bash -c \
+    "until kubectl get pod \"$POD_NAME\" -o jsonpath='{.status.phase}' 2>/dev/null | grep -qE 'Succeeded|Failed'; do sleep 2; done" ||
+    print_error "Pod $POD_NAME did not complete within 60s"
+
+  EXIT_CODE=$(kubectl get pod "$POD_NAME" \
+    -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')
+  kubectl delete pod "$POD_NAME" --ignore-not-found=true
+  [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "1" ] ||
+    print_error "Pod exited with unexpected code $EXIT_CODE"
+  print_success "Operator Docker image test passed (pod exit code: $EXIT_CODE)"
+else
+  print_status "Skipping Docker image test (nix-build not available)"
+fi
+
+print_success "KMS Operator E2E completed"

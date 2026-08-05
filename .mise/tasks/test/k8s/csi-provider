@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="E2E test: Kubernetes Secrets Store CSI Driver Provider (issue #862)"
+#MISE description="E2E test: KMS CSI Provider — secrets store mount + Docker image (Minikube)"
 #USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
 #USAGE   choices "fips" "non-fips"
 #USAGE }
 #USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
 #USAGE   choices "static" "dynamic"
 #USAGE }
+#USAGE flag "--skip-image" help="Skip the Docker image test (binary E2E only; used by CI image-only jobs)"
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
@@ -14,6 +15,7 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 NAMESPACE="kms-csi-e2e"
 RELEASE="csi-kms"
+SKIP_IMAGE="${usage_skip_image:-false}"
 PROVIDER_SOCK_DIR="/etc/kubernetes/secrets-store-csi-providers"
 PROVIDER_SOCK="${PROVIDER_SOCK_DIR}/cosmian-kms.sock"
 CFG_DIR="/etc/cosmian-kms-csi"
@@ -213,4 +215,51 @@ echo "$EVENTS" | grep -qiE "failed|error|mount" ||
   print_warning "no explicit mount-failure event found (pod correctly stayed not-Ready)"
 print_success "CSI mount fails gracefully for a revoked KMS object (pod stayed not-Ready)"
 
-print_success "CSI provider E2E completed"
+print_success "CSI provider binary E2E completed"
+
+# ── Docker image test via Minikube ───────────────────────────────────────────
+if [ "$SKIP_IMAGE" = "true" ]; then
+  print_status "Skipping Docker image test (--skip-image)"
+elif command -v nix-build >/dev/null 2>&1; then
+  print_header "KMS CSI Provider Docker image test"
+  REPO_ROOT="${MISE_CONFIG_ROOT}"
+  OUT_LINK="${REPO_ROOT}/result-k8s-csi-provider-image"
+  IMAGE_NAME="cosmian-kms-csi-provider"
+  POD_NAME="kms-csi-provider-image-test"
+
+  if [ ! -L "$OUT_LINK" ] || [ ! -f "$(readlink -f "$OUT_LINK" 2>/dev/null || echo "")" ]; then
+    print_status "Building Docker image via Nix..."
+    bash "${REPO_ROOT}/.mise/tasks/build/k8s-csi-provider-image"
+  fi
+  IMAGE_TAR=$(readlink -f "$OUT_LINK")
+
+  print_status "Loading image into Minikube: $IMAGE_TAR"
+  minikube image load "$IMAGE_TAR"
+
+  LOADED=$(docker load <"$IMAGE_TAR" 2>&1 | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
+  IMAGE_REF="${LOADED:-${IMAGE_NAME}:latest}"
+  print_status "Image loaded as: $IMAGE_REF"
+
+  kubectl delete pod "$POD_NAME" --ignore-not-found=true
+  kubectl run "$POD_NAME" \
+    --image="$IMAGE_REF" \
+    --image-pull-policy=Never \
+    --restart=Never \
+    -- --help
+
+  print_status "Waiting for pod $POD_NAME to complete..."
+  timeout 60 bash -c \
+    "until kubectl get pod \"$POD_NAME\" -o jsonpath='{.status.phase}' 2>/dev/null | grep -qE 'Succeeded|Failed'; do sleep 2; done" ||
+    print_error "Pod $POD_NAME did not complete within 60s"
+
+  EXIT_CODE=$(kubectl get pod "$POD_NAME" \
+    -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')
+  kubectl delete pod "$POD_NAME" --ignore-not-found=true
+  [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "1" ] ||
+    print_error "Pod exited with unexpected code $EXIT_CODE"
+  print_success "CSI Provider Docker image test passed (pod exit code: $EXIT_CODE)"
+else
+  print_status "Skipping Docker image test (nix-build not available)"
+fi
+
+print_success "KMS CSI Provider E2E completed"

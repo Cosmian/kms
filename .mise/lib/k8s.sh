@@ -232,6 +232,18 @@ k8s_install_service_file() {
   minikube ssh -- sudo systemctl enable --now "$name"
 }
 
+# Write a systemd unit file to the Minikube node and enable it.
+# Usage: k8s_write_systemd_unit <service-name> <unit-file-content>
+k8s_write_systemd_unit() {
+  local name="$1" content="$2"
+  local tmp="/tmp/${name}.service"
+  printf '%s\n' "$content" >"$tmp"
+  minikube cp "$tmp" "$tmp"
+  minikube ssh -- sudo cp "$tmp" "/etc/systemd/system/${name}.service"
+  minikube ssh -- sudo systemctl daemon-reload
+  minikube ssh -- sudo systemctl enable --now "$name"
+}
+
 # Wait until a Unix socket exists on the Minikube node.
 # Usage: k8s_wait_node_socket <socket-path> [timeout]
 k8s_wait_node_socket() {

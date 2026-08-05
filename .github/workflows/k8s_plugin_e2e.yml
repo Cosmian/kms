@@ -124,9 +124,9 @@ jobs:
           - scenario: k8s-plugin-mtls
             task: test:k8s:plugin --mtls
           - scenario: k8s-csi-provider
-            task: test:k8s:csi-provider
+            task: test:k8s:csi-provider --skip-image
           - scenario: k8s-operator
-            task: test:k8s:operator
+            task: test:k8s:operator --skip-image
 
     steps:
       - uses: actions/checkout@v7
