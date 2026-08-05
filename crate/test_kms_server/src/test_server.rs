@@ -167,14 +167,14 @@ fn path_to_string(p: &Path) -> Result<String, KmsClientError> {
 /// - if the server fails to start
 pub async fn start_test_kms_server_with_config(mut config: ClapConfig) -> &'static TestsContext {
     trace!("Starting test server with config : {:#?}", config);
-    ONCE.get_or_try_init(|| async move {
+    Box::pin(ONCE.get_or_try_init(|| async move {
         // Allocate a dynamic port to avoid conflicts with other test servers
         allocate_dynamic_port(&mut config)?;
         let server_params = ServerParams::try_from(config).context(
             "Failed to create ServerParams from ClapConfig in start_default_test_kms_server",
         )?;
         start_from_server_params(server_params).await
-    })
+    }))
     .await
     .unwrap_or_else(|e| {
         error!("failed to start default test server: {e}");
