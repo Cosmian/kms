@@ -86,7 +86,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ui/public|cli_documentation/docs/pkcs11/images|documentation/docs/benchmarks/
+        exclude: ui/public|documentation/docs/integrations/disk_encryption/images|documentation/docs/benchmarks/
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-builtin-literals

@@ -114,7 +114,7 @@ crate/
 .github/            CI workflows (.github/workflows/) and helper scripts
 .mise/              MISE tasks and scripts (single source of truth for all automation)
 cbom/               Cryptographic Bill of Materials (CBOM)
-cli_documentation/  CLI-specific MkDocs documentation (separate MkDocs site)
+documentation/docs/kms_clients/  CLI documentation (integrated into main docs)
 documentation/      MkDocs documentation source
 monitoring/         Grafana / Prometheus / OTLP monitoring stack
 nix/                Nix build expressions and expected vendor hashes
@@ -273,7 +273,7 @@ Run **`/kms-sync-rules`** — it auto-detects changed files via `git diff` and e
 ### 5. Update SECURITY.md on security-related changes (when applicable)
 
 Update SECURITY.md **only when the security change fixes a vulnerability that was already
-shipped in a tagged KMS release (vX.Y.Z)**. The key question is: *were real users exposed?*
+shipped in a tagged KMS release (vX.Y.Z)**. The key question is: _were real users exposed?_
 
 - **Released code → update SECURITY.md**: the `Affected` range references real version tags
   (e.g., `from 5.0.0 before 5.23.0`). Add a `COSMIAN-<year>-NNN` entry with severity,

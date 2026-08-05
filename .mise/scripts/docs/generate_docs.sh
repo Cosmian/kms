@@ -10,7 +10,7 @@
 #                        server --print-default-config → server_configuration_file.md
 #                        kms_template.toml, pkg/kms.toml
 #   2. ckms-docs       — ckms markdown → documentation/docs/kms_clients/cli/main_commands.md
-#                        ckms --help   → cli_documentation/docs/usage.md
+#                        ckms --help   → documentation/docs/kms_clients/usage.md
 #   3. kmip-tables     — scan KMIP operations, update README.md KMIP table
 #   4. crypto-inventory— scan Rust source → crypto_inventory.md (CBOM sensor)
 #   5. cbom            — generate cbom/cbom.cdx.json (CycloneDX 1.6)
