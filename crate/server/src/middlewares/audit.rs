@@ -57,6 +57,7 @@ pub(crate) struct BatchItemAuditContext {
 pub(crate) struct KmipBatchOperations(pub Vec<BatchItemAuditContext>);
 
 use std::{
+    net::IpAddr,
     pin::Pin,
     rc::Rc,
     task::{Context, Poll},
@@ -162,11 +163,6 @@ where
         let operation = extract_operation(req.path());
         let client_ip = extract_client_ip(&req, &self.trusted_proxies);
 
-        let user = req
-            .extensions()
-            .get::<AuthenticatedUser>()
-            .map_or_else(|| UNAUTHENTICATED.to_owned(), |u| u.username.clone());
-
         let start = Instant::now();
         let timestamp = OffsetDateTime::now_utc();
         let svc = self.service.clone();
@@ -178,11 +174,13 @@ where
             let status = res.status();
             let request_id = Uuid::new_v4();
 
+            // AuditMiddleware runs outside the auth middlewares, so the user is only
+            // available in the request extensions after `svc.call` returns.
             let final_user = res
                 .request()
                 .extensions()
                 .get::<AuthenticatedUser>()
-                .map_or(user, |u| u.username.clone());
+                .map_or_else(|| UNAUTHENTICATED.to_owned(), |u| u.username.clone());
 
             // Batch path: fan out one draft per BatchItem
             let batch_drafts: Option<Vec<AuditEventDraft>> = res
@@ -311,9 +309,10 @@ fn extract_client_ip(req: &ServiceRequest, trusted_proxies: &[IpNet]) -> Option<
         if let Some(xff) = req.headers().get("x-forwarded-for") {
             if let Ok(val) = xff.to_str() {
                 if let Some(ip) = val.split(',').next() {
-                    let ip = ip.trim();
-                    if !ip.is_empty() {
-                        return Some(ip.to_owned());
+                    // Only trust a syntactically valid IP; otherwise fall back to the
+                    // peer address so garbage headers never reach the audit log.
+                    if let Ok(parsed) = ip.trim().parse::<IpAddr>() {
+                        return Some(parsed.to_string());
                     }
                 }
             }
