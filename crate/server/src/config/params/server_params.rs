@@ -208,20 +208,6 @@ pub struct ServerParams {
     /// Configuration for the `GET /.well-known/jwks.json` public-key-discovery endpoint.
     pub jwks_endpoint: JwksEndpointConfig,
 
-    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
-    /// are appended to the file at this path.  `None` means audit logging is
-    /// disabled (the default).
-    pub audit_file_path: Option<std::path::PathBuf>,
-
-    /// Capacity of the bounded in-memory channel between request threads and the
-    /// audit writer task.  Propagated from `--audit-channel-capacity` /
-    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
-    pub audit_channel_capacity: usize,
-
-    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
-    /// the direct TCP peer address falls within one of these ranges.
-    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
-
     // ── Vault-compatible API ──────────────────────────────────────────────────
     /// When `true`, the Vault-compatible `/v1/transit/` and `/v1/<pki_mount>/` scopes
     /// are registered at startup.  Defaults to `false`.
@@ -265,6 +251,20 @@ pub struct ServerParams {
     /// When set, the KMS validates bearer tokens issued by the Auth Verifier server.
     /// The `sub` claim is used as the user identity.
     pub auth_verifier_config: Option<AuthVerifierConfig>,
+
+    /// When `Some`, tamper-evident JSONL audit logging is enabled and events
+    /// are appended to the file at this path.  `None` means audit logging is
+    /// disabled (the default).
+    pub audit_file_path: Option<std::path::PathBuf>,
+
+    /// Capacity of the bounded in-memory channel between request threads and the
+    /// audit writer task.  Propagated from `--audit-channel-capacity` /
+    /// `KMS_AUDIT_CHANNEL_CAPACITY`.  Must be ≥ 1.
+    pub audit_channel_capacity: usize,
+
+    /// Trusted reverse-proxy CIDR blocks.  `X-Forwarded-For` is only used when
+    /// the direct TCP peer address falls within one of these ranges.
+    pub audit_trusted_proxy_cidrs: Vec<IpNet>,
 }
 
 /// Represents the server parameters.
@@ -559,18 +559,6 @@ impl ServerParams {
             },
             keyset_warn_depth: conf.keyset_warn_depth,
             jwks_endpoint: conf.jwks_endpoint,
-            audit_file_path: if conf.audit.audit_enable {
-                let path = conf
-                    .audit
-                    .file
-                    .audit_file_path
-                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
-                Some(path)
-            } else {
-                None
-            },
-            audit_channel_capacity: conf.audit.audit_channel_capacity,
-            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
             // Vault-compatible API — opt-in via config file or CLI flags.
             vault_api_enabled: conf.vault.vault_api_enabled,
             vault_auth_verifier_url: conf
@@ -594,6 +582,18 @@ impl ServerParams {
             vault_pki_ca_key_label: conf.vault.vault_pki_ca_key_label,
             vault_token_cache_ttl_secs: conf.vault.vault_token_cache_ttl_secs,
             auth_verifier_config: Some(conf.auth_verifier).filter(AuthVerifierConfig::is_enabled),
+            audit_file_path: if conf.audit.audit_enable {
+                let path = conf
+                    .audit
+                    .file
+                    .audit_file_path
+                    .unwrap_or_else(|| conf.workspace.root_data_path.join("audit.jsonl"));
+                Some(path)
+            } else {
+                None
+            },
+            audit_channel_capacity: conf.audit.audit_channel_capacity,
+            audit_trusted_proxy_cidrs: conf.audit.audit_trusted_proxy_cidrs,
         };
 
         // Cross-field validation: force_default_username=true collapses all identities to a
