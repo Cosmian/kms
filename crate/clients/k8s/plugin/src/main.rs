@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _logging_guards = cosmian_logger::tracing_init(&cosmian_logger::TracingConfig {
         rust_log: Some(args.log_level.clone()),
-        service_name: "cosmian-kms-plugin".to_owned(),
+        service_name: "kubernetes-kms-plugin".to_owned(),
         otlp: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
             .ok()
             .map(|url| cosmian_logger::TelemetryConfig {

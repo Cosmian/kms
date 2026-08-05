@@ -236,7 +236,7 @@ replays the steps sequentially.
 | Serialization | `import_destroy_reimport` | Imports a key with explicit UID, destroys it, then re-imports with the same UID — verifies lifecycle state transitions work correctly with the new serialization format | 6 |
 | Serialization | `rsa_sign_verify_roundtrip` | Creates an RSA-2048 key pair, signs data with private key, verifies with public key — verifies asymmetric key material and attributes survive DB serialization | 3 |
 | **K8s Plugin** | | | |
-| K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by cosmian-kms-plugin when kube-apiserver | 5 |
+| K8s Plugin | `dek_wrap_unwrap` | Simulates the exact sequence performed by kubernetes-kms-plugin when kube-apiserver | 5 |
 | **Access Control** | | | |
 | Access Control | `grant_access_aes` | Owner creates AES key, grants user access, user can Get/Encrypt/Decrypt, owner destroys key | 7 |
 | Access Control | `grant_partial_permissions` | Owner grants only Get; user Get succeeds and Encrypt is denied | 6 |

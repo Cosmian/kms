@@ -1,6 +1,6 @@
 # Kubernetes KMS Provider Plugin
 
-The Eviden KMS Kubernetes plugin (`cosmian-kms-plugin`) is a standalone binary that
+The Eviden KMS Kubernetes plugin (`kubernetes-kms-plugin`) is a standalone binary that
 implements the [Kubernetes KMS v2 provider API](https://kubernetes.io/docs/tasks/administer-cluster/kms-provider/).
 It allows Kubernetes to encrypt **etcd Secrets at rest** using AES-256-GCM keys stored and
 managed by the Eviden KMS.
@@ -14,7 +14,7 @@ managed by the Eviden KMS.
 sequenceDiagram
     participant U as kubectl / API client
     participant A as kube-apiserver
-    participant P as cosmian-kms-plugin<br/>(gRPC · Unix socket)
+    participant P as kubernetes-kms-plugin<br/>(gRPC · Unix socket)
     participant K as Eviden KMS
     participant E as etcd
 
@@ -68,12 +68,12 @@ ckms sym keys create \
     ARCH=$(dpkg --print-architecture)   # amd64 or arm64
     VERSION=<VERSION>
     curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/deb/${ARCH}/cosmian-kms-plugin_${VERSION}_${ARCH}.deb" \
-      -o cosmian-kms-plugin.deb
-    sudo dpkg -i cosmian-kms-plugin.deb
-    # Binary:        /usr/local/bin/cosmian-kms-plugin
-    # Systemd unit:  /lib/systemd/system/cosmian-kms-plugin.service
-    # Config dir:    /etc/cosmian-kms-plugin/  (write config.yaml before starting)
+      "https://package.cosmian.com/kms/${VERSION}/deb/${ARCH}/kubernetes-kms-plugin_${VERSION}_${ARCH}.deb" \
+      -o kubernetes-kms-plugin.deb
+    sudo dpkg -i kubernetes-kms-plugin.deb
+    # Binary:        /usr/local/bin/kubernetes-kms-plugin
+    # Systemd unit:  /lib/systemd/system/kubernetes-kms-plugin.service
+    # Config dir:    /etc/kubernetes-kms-plugin/  (write config.yaml before starting)
     ```
 
 === "RHEL / CentOS / Rocky / AlmaLinux"
@@ -83,12 +83,12 @@ ckms sym keys create \
     CPU_ARCH=$([ "$RPM_ARCH" = "x86_64" ] && echo "amd64" || echo "arm64")
     VERSION=<VERSION>
     curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/rpm/${CPU_ARCH}/cosmian-kms-plugin_${VERSION}_${RPM_ARCH}.rpm" \
-      -o cosmian-kms-plugin.rpm
-    sudo rpm -i cosmian-kms-plugin.rpm
-    # Binary:        /usr/local/bin/cosmian-kms-plugin
-    # Systemd unit:  /lib/systemd/system/cosmian-kms-plugin.service
-    # Config dir:    /etc/cosmian-kms-plugin/  (write config.yaml before starting)
+      "https://package.cosmian.com/kms/${VERSION}/rpm/${CPU_ARCH}/kubernetes-kms-plugin_${VERSION}_${RPM_ARCH}.rpm" \
+      -o kubernetes-kms-plugin.rpm
+    sudo rpm -i kubernetes-kms-plugin.rpm
+    # Binary:        /usr/local/bin/kubernetes-kms-plugin
+    # Systemd unit:  /lib/systemd/system/kubernetes-kms-plugin.service
+    # Config dir:    /etc/kubernetes-kms-plugin/  (write config.yaml before starting)
     ```
 
 === "Generic Linux (tarball)"
@@ -99,16 +99,16 @@ ckms sym keys create \
     ARCH=$(uname -m)   # x86_64 or aarch64
     VERSION=<VERSION>
     curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/cosmian-kms-plugin-linux-${ARCH}.tar.gz" \
+      "https://package.cosmian.com/kms/${VERSION}/kubernetes-kms-plugin-linux-${ARCH}.tar.gz" \
       | sudo tar -xz -C /usr/local/bin/
-    sudo chmod +x /usr/local/bin/cosmian-kms-plugin
+    sudo chmod +x /usr/local/bin/kubernetes-kms-plugin
     ```
 
     For **Alpine** (musl libc), use the `-musl` variant:
 
     ```bash
     curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/cosmian-kms-plugin-linux-${ARCH}-musl.tar.gz" \
+      "https://package.cosmian.com/kms/${VERSION}/kubernetes-kms-plugin-linux-${ARCH}-musl.tar.gz" \
       | sudo tar -xz -C /usr/local/bin/
     ```
 
@@ -123,25 +123,25 @@ ckms sym keys create \
     ARCH=x86_64
     VERSION=<VERSION>
     curl -fsSL \
-      "https://package.cosmian.com/kms/${VERSION}/cosmian-kms-plugin-linux-${ARCH}.tar.gz" \
+      "https://package.cosmian.com/kms/${VERSION}/kubernetes-kms-plugin-linux-${ARCH}.tar.gz" \
       | tar -xz
-    # Extracts: cosmian-kms-plugin (ELF x86-64 or aarch64)
+    # Extracts: kubernetes-kms-plugin (ELF x86-64 or aarch64)
     ```
 
     #### Copy into minikube
 
     ```bash
-    minikube cp cosmian-kms-plugin \
-      <profile>:/usr/local/bin/cosmian-kms-plugin -p <profile>
-    minikube ssh -p <profile> "sudo chmod +x /usr/local/bin/cosmian-kms-plugin"
+    minikube cp kubernetes-kms-plugin \
+      <profile>:/usr/local/bin/kubernetes-kms-plugin -p <profile>
+    minikube ssh -p <profile> "sudo chmod +x /usr/local/bin/kubernetes-kms-plugin"
     ```
 
     #### Copy into kind
 
     ```bash
     NODE=$(kind get nodes --name <cluster>)
-    docker cp cosmian-kms-plugin "${NODE}:/usr/local/bin/"
-    docker exec "${NODE}" chmod +x /usr/local/bin/cosmian-kms-plugin
+    docker cp kubernetes-kms-plugin "${NODE}:/usr/local/bin/"
+    docker exec "${NODE}" chmod +x /usr/local/bin/kubernetes-kms-plugin
     ```
 
 === "Windows (local dev — WSL2 + minikube)"
@@ -158,8 +158,8 @@ ckms sym keys create \
 Create the configuration directory and file on **each control-plane node**:
 
 ```bash
-sudo mkdir -p /etc/cosmian-kms-plugin
-sudo tee /etc/cosmian-kms-plugin/config.yaml > /dev/null << 'EOF'
+sudo mkdir -p /etc/kubernetes-kms-plugin
+sudo tee /etc/kubernetes-kms-plugin/config.yaml > /dev/null << 'EOF'
 cosmian_kms:
   # URL of the Eviden KMS server
   server_url: "https://kms.example.com:9998"
@@ -168,21 +168,21 @@ cosmian_kms:
   # api_key: "YOUR_API_KEY"
 
   # Optional: mutual TLS
-  # tls_cert: "/etc/cosmian-kms-plugin/client.crt"
-  # tls_key:  "/etc/cosmian-kms-plugin/client.key"
-  # ca_cert:  "/etc/cosmian-kms-plugin/ca.crt"
+  # tls_cert: "/etc/kubernetes-kms-plugin/client.crt"
+  # tls_key:  "/etc/kubernetes-kms-plugin/client.key"
+  # ca_cert:  "/etc/kubernetes-kms-plugin/ca.crt"
 
   # UID of the AES-256-GCM wrapping key (KEK) stored in the KMS
   wrapping_key_uid: "YOUR_KEK_UID"
 
   # Unix socket path exposed to the kube-apiserver
-  socket_path: "/var/run/cosmian-kms-plugin/kms.sock"
+  socket_path: "/var/run/kubernetes-kms-plugin/kms.sock"
 EOF
-sudo chmod 600 /etc/cosmian-kms-plugin/config.yaml
+sudo chmod 600 /etc/kubernetes-kms-plugin/config.yaml
 ```
 
 Only `server_url` and `wrapping_key_uid` are required. `socket_path` defaults to
-`/var/run/cosmian-kms-plugin/kms.sock`.
+`/var/run/kubernetes-kms-plugin/kms.sock`.
 
 ### KMS reachability
 
@@ -203,12 +203,12 @@ The control-plane nodes must be able to reach the KMS server over the network:
 ### Systemd (Ubuntu / Debian / RHEL)
 
 The `deb` and `rpm` packages install a production-hardened systemd unit to
-`/lib/systemd/system/cosmian-kms-plugin.service`. Once you have written the
+`/lib/systemd/system/kubernetes-kms-plugin.service`. Once you have written the
 [configuration file](#configuration), enable and start the service:
 
 ```bash
-sudo systemctl enable --now cosmian-kms-plugin
-sudo systemctl status cosmian-kms-plugin
+sudo systemctl enable --now kubernetes-kms-plugin
+sudo systemctl status kubernetes-kms-plugin
 ```
 
 Expected output:
@@ -216,7 +216,7 @@ Expected output:
 ```text
 Active: active (running)
 ...cosmian_kms_k8s_plugin: gRPC server listening on Unix socket \
-  socket=/var/run/cosmian-kms-plugin/kms.sock
+  socket=/var/run/kubernetes-kms-plugin/kms.sock
 ```
 
 ### Alpine (OpenRC)
@@ -224,19 +224,19 @@ Active: active (running)
 For tarball installations on Alpine Linux, register an OpenRC service:
 
 ```bash
-cat > /etc/init.d/cosmian-kms-plugin << 'EOF'
+cat > /etc/init.d/kubernetes-kms-plugin << 'EOF'
 #!/sbin/openrc-run
 description="Eviden KMS Kubernetes Plugin"
-command=/usr/local/bin/cosmian-kms-plugin
-command_args="--config /etc/cosmian-kms-plugin/config.yaml"
+command=/usr/local/bin/kubernetes-kms-plugin
+command_args="--config /etc/kubernetes-kms-plugin/config.yaml"
 command_background=true
-pidfile=/run/cosmian-kms-plugin.pid
+pidfile=/run/kubernetes-kms-plugin.pid
 EOF
 
-chmod +x /etc/init.d/cosmian-kms-plugin
-mkdir -p /run/cosmian-kms-plugin
-rc-update add cosmian-kms-plugin default
-rc-service cosmian-kms-plugin start
+chmod +x /etc/init.d/kubernetes-kms-plugin
+mkdir -p /run/kubernetes-kms-plugin
+rc-update add kubernetes-kms-plugin default
+rc-service kubernetes-kms-plugin start
 ```
 
 ---
@@ -258,7 +258,7 @@ rc-service cosmian-kms-plugin start
           - kms:
               apiVersion: v2
               name: cosmian-kms
-              endpoint: unix:///var/run/cosmian-kms-plugin/kms.sock
+              endpoint: unix:///var/run/kubernetes-kms-plugin/kms.sock
               timeout: 5s
           - identity: {}   # fallback: decrypts pre-existing unencrypted secrets
     EOF
@@ -279,7 +279,7 @@ rc-service cosmian-kms-plugin start
         - mountPath: /etc/kubernetes/encryption-config.yaml
           name: enc-config
           readOnly: true
-        - mountPath: /var/run/cosmian-kms-plugin
+        - mountPath: /var/run/kubernetes-kms-plugin
           name: kms-sock
       volumes:
       # --- add these volumes ---
@@ -288,7 +288,7 @@ rc-service cosmian-kms-plugin start
           type: File
         name: enc-config
       - hostPath:
-          path: /var/run/cosmian-kms-plugin
+          path: /var/run/kubernetes-kms-plugin
           type: DirectoryOrCreate
         name: kms-sock
     ```
@@ -316,7 +316,7 @@ resources:
       - kms:
           apiVersion: v2
           name: cosmian-kms
-          endpoint: unix:///var/run/cosmian-kms-plugin/kms.sock
+          endpoint: unix:///var/run/kubernetes-kms-plugin/kms.sock
           timeout: 5s
       - identity: {}
 EOF
@@ -366,13 +366,13 @@ nodes:
               mountPath: /etc/kubernetes/encryption-config.yaml
               readOnly: true
             - name: kms-sock
-              hostPath: /var/run/cosmian-kms-plugin
-              mountPath: /var/run/cosmian-kms-plugin
+              hostPath: /var/run/kubernetes-kms-plugin
+              mountPath: /var/run/kubernetes-kms-plugin
     extraMounts:
       - hostPath: /path/to/encryption-config.yaml
         containerPath: /etc/kubernetes/encryption-config.yaml
-      - hostPath: /var/run/cosmian-kms-plugin
-        containerPath: /var/run/cosmian-kms-plugin
+      - hostPath: /var/run/kubernetes-kms-plugin
+        containerPath: /var/run/kubernetes-kms-plugin
 EOF
 
 kind create cluster --config kind-config.yaml
@@ -406,28 +406,28 @@ For each **Decrypt** call:
 === "systemd (Linux)"
 
     ```bash
-    sudo systemctl status cosmian-kms-plugin
+    sudo systemctl status kubernetes-kms-plugin
     # Expected: Active: active (running)
-    sudo journalctl -u cosmian-kms-plugin -n 20 --no-pager
+    sudo journalctl -u kubernetes-kms-plugin -n 20 --no-pager
     # Expected log line:
     # cosmian_kms_k8s_plugin: gRPC server listening on Unix socket
-    #   socket=/var/run/cosmian-kms-plugin/kms.sock
+    #   socket=/var/run/kubernetes-kms-plugin/kms.sock
     ```
 
 === "minikube"
 
     ```bash
     minikube ssh -p <profile> \
-      "sudo systemctl status cosmian-kms-plugin"
+      "sudo systemctl status kubernetes-kms-plugin"
     minikube ssh -p <profile> \
-      "sudo journalctl -u cosmian-kms-plugin -n 20 --no-pager"
+      "sudo journalctl -u kubernetes-kms-plugin -n 20 --no-pager"
     ```
 
 === "kind / kubeadm"
 
     ```bash
     docker exec <node-container> \
-      journalctl -u cosmian-kms-plugin -n 20 --no-pager
+      journalctl -u kubernetes-kms-plugin -n 20 --no-pager
     ```
 
 ### 2. Create a test Secret
@@ -495,16 +495,16 @@ that data at rest is truly protected by the KMS.
 |---|---|---|
 | `connection refused` to KMS | Wrong `server_url` or KMS not running | Check `server_url` and KMS status |
 | `permission denied` on socket | Socket directory not writable | Check `RuntimeDirectory` permissions |
-| `config file not found` | Wrong path | Use `--config /etc/cosmian-kms-plugin/config.yaml` |
+| `config file not found` | Wrong path | Use `--config /etc/kubernetes-kms-plugin/config.yaml` |
 | `wrapping_key_uid not found` | KEK does not exist in KMS | Re-create the KEK with `ckms sym keys create` |
 
 ### Apiserver crashloops after enabling encryption
 
 The apiserver starts before the plugin socket exists. Ensure:
 
-1. The `cosmian-kms-plugin` service is **enabled** (`systemctl enable`) and already
+1. The `kubernetes-kms-plugin` service is **enabled** (`systemctl enable`) and already
    running before the apiserver reads the manifest.
-2. The socket directory exists: `sudo mkdir -p /var/run/cosmian-kms-plugin`.
+2. The socket directory exists: `sudo mkdir -p /var/run/kubernetes-kms-plugin`.
 3. The `identity: {}` fallback provider is present in `EncryptionConfiguration` — this
    allows the apiserver to decrypt pre-existing unencrypted Secrets on startup.
 

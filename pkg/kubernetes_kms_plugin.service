@@ -7,7 +7,7 @@ After=network-online.target
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/local/bin/cosmian-kms-plugin --config /etc/cosmian-kms-plugin/config.yaml
+ExecStart=/usr/local/bin/kubernetes-kms-plugin --config /etc/kubernetes-kms-plugin/config.yaml
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal+console
@@ -19,7 +19,7 @@ StandardOutput=journal+console
 # bind-mount points to the old inode and becomes stale, preventing the apiserver
 # from ever reaching the new socket. With Preserve=yes the same directory
 # (same inode) is reused across stop/start cycles.
-RuntimeDirectory=cosmian-kms-plugin
+RuntimeDirectory=kubernetes-kms-plugin
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
 
@@ -27,7 +27,7 @@ RuntimeDirectoryPreserve=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=/etc/cosmian-kms-plugin /run/cosmian-kms-plugin
+ReadWritePaths=/etc/kubernetes-kms-plugin /run/kubernetes-kms-plugin
 
 # Hardening: Kernel protections
 ProtectKernelTunables=yes

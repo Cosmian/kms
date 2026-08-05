@@ -31,7 +31,10 @@ async fn start_plugin_on_tmp_socket(
     String,
     tokio::task::JoinHandle<()>,
 ) {
-    let socket_path = format!("/tmp/cosmian-kms-plugin-test-{}.sock", uuid::Uuid::new_v4());
+    let socket_path = format!(
+        "/tmp/kubernetes-kms-plugin-test-{}.sock",
+        uuid::Uuid::new_v4()
+    );
 
     let http_config = HttpClientConfig {
         server_url: kms_url.to_owned(),

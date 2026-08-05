@@ -95,7 +95,7 @@ sign_package() {
 
 # ── 2. Build plugin binary via Nix ────────────────────────────────────────────
 OUT_LINK="$REPO_ROOT/result-k8s-plugin-bin"
-if [ -L "$OUT_LINK" ] && [ -x "$(readlink -f "$OUT_LINK")/bin/cosmian-kms-plugin" ]; then
+if [ -L "$OUT_LINK" ] && [ -x "$(readlink -f "$OUT_LINK")/bin/kubernetes-kms-plugin" ]; then
   echo "Reusing cached plugin binary from $OUT_LINK"
 else
   echo "Building k8s-plugin-bin via Nix..."
@@ -108,7 +108,7 @@ else
     nix-build -I "nixpkgs=${PIN_URL}" \
     "$REPO_ROOT/default.nix" -A k8s-plugin-bin -o "$OUT_LINK"
 fi
-PLUGIN_BIN="$(readlink -f "$OUT_LINK")/bin/cosmian-kms-plugin"
+PLUGIN_BIN="$(readlink -f "$OUT_LINK")/bin/kubernetes-kms-plugin"
 [ -x "$PLUGIN_BIN" ] || {
   echo "ERROR: plugin binary not found at $PLUGIN_BIN" >&2
   exit 1
@@ -129,8 +129,8 @@ HOST_TRIPLE=$(rustc -vV 2>/dev/null | awk '/host:/ {print $2}')
 for dir in "$TARGET_DIR" "$PLUGIN_CRATE/target/$HOST_TRIPLE/release" \
   "$WORKSPACE_TARGET" "$REPO_ROOT/target/$HOST_TRIPLE/release"; do
   mkdir -p "$dir"
-  cp -f "$PLUGIN_BIN" "$dir/cosmian-kms-plugin"
-  chmod 755 "$dir/cosmian-kms-plugin"
+  cp -f "$PLUGIN_BIN" "$dir/kubernetes-kms-plugin"
+  chmod 755 "$dir/kubernetes-kms-plugin"
 done
 echo "Copied plugin binary to target/release/ (crate + workspace)"
 
@@ -164,10 +164,10 @@ case "$FORMAT" in
       exit 1
     }
 
-    # Rename to convention: cosmian-kms-plugin_<version>_<arch>.deb
+    # Rename to convention: kubernetes-kms-plugin_<version>_<arch>.deb
     for f in "$RESULT_DIR"/*.deb; do
       [ -e "$f" ] || continue
-      NEW="$RESULT_DIR/cosmian-kms-plugin_${VERSION}_${DEB_ARCH}.deb"
+      NEW="$RESULT_DIR/kubernetes-kms-plugin_${VERSION}_${DEB_ARCH}.deb"
       [ "$f" = "$NEW" ] || mv -v "$f" "$NEW"
       sign_package "$NEW"
     done
@@ -213,7 +213,7 @@ case "$FORMAT" in
         b="${b%.rpm}.${RPM_ARCH}.rpm"
         f="$RESULT_DIR/$b"
       fi
-      NEW="$RESULT_DIR/cosmian-kms-plugin_${VERSION}_${RPM_ARCH}.rpm"
+      NEW="$RESULT_DIR/kubernetes-kms-plugin_${VERSION}_${RPM_ARCH}.rpm"
       [ "$f" = "$NEW" ] || mv -v "$f" "$NEW"
       sign_package "$NEW"
     done

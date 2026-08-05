@@ -1,0 +1,385 @@
+---
+name: Kubernetes Packaging & E2E
+
+# Covers all Kubernetes-related CI for Cosmian KMS:
+#   - K8s E2E tests (KMS Provider Plugin, CSI Driver Provider, Operator) on every
+#     PR/branch push and manual dispatch
+#   - K8s plugin deb/rpm packaging on tags and manual dispatch
+#   - Helm chart publish to GitHub Pages on tags and manual dispatch
+#
+# GitHub Pages must be enabled for this repository with source set to the
+# "gh-pages" branch (Settings → Pages → Source). The chart-releaser action
+# creates and maintains that branch automatically on the first run.
+# After the first successful Helm chart publish, users can add the repository:
+#   helm repo add cosmian https://cosmian.github.io/kms
+#   helm install cosmian-kms cosmian/cosmian-kms
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+
+  push:
+    tags:
+      - v*
+
+  workflow_dispatch:
+    inputs:
+      toolchain:
+        description: Rust toolchain version
+        required: false
+        type: string
+        default: 1.97.0
+
+permissions:
+  contents: write  # push to gh-pages branch + create GitHub Release assets
+  pages: write     # update GitHub Pages
+  id-token: write  # needed for pages deployment
+
+jobs:
+  # ── Build the k8s binaries + ckms ONCE, share them with every binary E2E job ─
+  build-k8s-bins:
+    name: Build k8s binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.toolchain || '1.97.0' }}
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-k8s-bins-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-k8s-bins-
+
+      - name: Build k8s binaries and ckms
+        run: |
+          cargo build --release \
+            -p cosmian_kms_k8s_plugin \
+            -p cosmian_kms_k8s_operator \
+            -p cosmian_kms_csi_provider \
+            -p ckms
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-e2e-bins
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            target/release/kubernetes-kms-plugin
+            target/release/cosmian-kms-operator
+            target/release/cosmian-kms-csi-provider
+            target/release/ckms
+
+  # ── Build Operator + CSI provider Docker images via Nix (shared) ─────────────
+  build-k8s-images:
+    name: Build k8s Docker images (Nix)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
+
+      - name: Build Operator image
+        run: mise run build:k8s-operator-image
+
+      - name: Build CSI Provider image
+        run: mise run build:k8s-csi-provider-image
+
+      - name: Upload image tarballs
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-docker-images
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            result-k8s-operator-image
+            result-k8s-csi-provider-image
+
+  # ── Run each binary E2E scenario on its own fresh Minikube cluster ───────────
+  e2e:
+    name: ${{ matrix.scenario }} (Minikube)
+    needs: build-k8s-bins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: k8s-plugin
+            task: test:k8s:plugin
+          - scenario: k8s-plugin-mtls
+            task: test:k8s:plugin --mtls
+          - scenario: k8s-csi-provider
+            task: test:k8s:csi-provider --skip-image
+          - scenario: k8s-operator
+            task: test:k8s:operator --skip-image
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Download prebuilt binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: k8s-e2e-bins
+          path: target/release
+
+      - name: Make binaries executable
+        run: |
+          chmod +x \
+            target/release/kubernetes-kms-plugin \
+            target/release/cosmian-kms-operator \
+            target/release/cosmian-kms-csi-provider \
+            target/release/ckms
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.18
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Run ${{ matrix.scenario }} E2E
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mise run ${{ matrix.task }}
+
+  # ── Test Docker images inside Minikube ───────────────────────────────────────
+  e2e-images:
+    name: ${{ matrix.scenario }} Docker image (Minikube)
+    needs: build-k8s-images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: k8s-operator-image
+            task: test:k8s:operator-image
+            image_link: result-k8s-operator-image
+          - scenario: k8s-csi-provider-image
+            task: test:k8s:csi-provider-image
+            image_link: result-k8s-csi-provider-image
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Download prebuilt image tarballs
+        uses: actions/download-artifact@v8
+        with:
+          name: k8s-docker-images
+          path: .
+
+      - name: Restore image symlinks
+        run: |
+          # actions/download-artifact resolves symlinks to the actual file.
+          # Re-create the expected result-* symlinks pointing to the downloaded files.
+          for name in result-k8s-operator-image result-k8s-csi-provider-image; do
+            # The artifact download creates the file under the symlink name directly
+            if [ -f "$name" ] && [ ! -L "$name" ]; then
+              # Already a plain file — nothing to do
+              echo "$name is a plain file (symlink resolved by artifact upload)"
+            fi
+          done
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@v0.0.18
+        with:
+          driver: docker
+          kubernetes-version: v1.32.0
+
+      - name: Run ${{ matrix.scenario }} image test
+        run: mise run ${{ matrix.task }}
+
+  # ── Build K8s plugin packages (deb + rpm via Nix) ────────────────────────────
+  k8s-plugin-package:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call'
+    name: k8s-plugin-${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/cleanup-runner
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          extra-nix-config: http-connections = 8
+
+      - uses: ./.github/actions/install-mise
+
+      - name: Set up GPG
+        uses: crazy-max/ghaction-import-gpg@v7
+        with:
+          gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
+          passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Build k8s plugin deb + rpm
+        run: |
+          mise run package:k8s-plugin-deb
+          mise run package:k8s-plugin-rpm
+        env:
+          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
+          GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
+
+      - name: Upload k8s plugin packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-plugin-packages-${{ matrix.runner }}
+          path: result-k8s-plugin-*/
+          retention-days: 1
+          if-no-files-found: error
+
+  # ── Publish K8s plugin packages to package.cosmian.com ───────────────────────
+  publish-k8s-plugin:
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+      || startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+
+    name: Publish k8s-plugin-${{ matrix.cpu-arch }}
+    needs: k8s-plugin-package
+    runs-on: [self-hosted, not-sgx]
+    container:
+      image: cosmian/docker_doc_ci
+      volumes:
+        - /home/cosmian/.ssh/id_rsa:/root/.ssh/id_rsa
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            cpu-arch: amd64
+            rpm-arch: x86_64
+          - runner: ubuntu-24.04-arm
+            cpu-arch: arm64
+            rpm-arch: aarch64
+
+    steps:
+      - name: Checkout repository (for public key file)
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Download k8s plugin packages
+        uses: actions/download-artifact@v8
+        with:
+          name: k8s-plugin-packages-${{ matrix.runner }}
+
+      - name: List downloaded assets
+        run: find . -type f -print
+
+      - name: Push to package.cosmian.com
+        shell: bash
+        run: |
+          set -ex
+          if [[ "${GITHUB_REF}" =~ 'refs/tags/' ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+          else
+            BRANCH="last_build/${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          fi
+          BASE="/mnt/package/kms/${BRANCH}"
+
+          # deb — directory and filename both use cpu-arch (amd64/arm64)
+          DEB_DIR="${BASE}/deb/${{ matrix.cpu-arch }}"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            cosmian@package.cosmian.com mkdir -p "${DEB_DIR}"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            ./nix/signing-keys/cosmian-kms-public.asc \
+            result-k8s-plugin-deb/*.deb \
+            cosmian@package.cosmian.com:"${DEB_DIR}/"
+
+          # rpm — directory uses cpu-arch (amd64/arm64); filename uses rpm-arch (x86_64/aarch64)
+          RPM_DIR="${BASE}/rpm/${{ matrix.cpu-arch }}"
+          ssh -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            cosmian@package.cosmian.com mkdir -p "${RPM_DIR}"
+          scp -o 'StrictHostKeyChecking no' -i /root/.ssh/id_rsa \
+            ./nix/signing-keys/cosmian-kms-public.asc \
+            result-k8s-plugin-rpm/*.rpm \
+            cosmian@package.cosmian.com:"${RPM_DIR}/"
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            result-k8s-plugin-deb/kubernetes-kms-plugin_*
+            result-k8s-plugin-rpm/kubernetes-kms-plugin_*
+            ./nix/signing-keys/cosmian-kms-public.asc
+
+  # ── Publish Helm chart to GitHub Pages ───────────────────────────────────────
+  helm-chart-publish:
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    name: Package and publish Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # chart-releaser needs the full tag history to detect new chart versions.
+          fetch-depth: 0
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # All charts live under charts/<name>/Chart.yaml.
+          charts_dir: charts
+          # Store packaged .tgz files in a temporary directory; they are
+          # uploaded as GitHub Release assets by the action.
+          packages_with_index: false

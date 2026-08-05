@@ -7,11 +7,11 @@ use serde::Deserialize;
 /// cosmian_kms:
 ///   server_url: https://kms.example.com:9998
 ///   api_key: ""
-///   tls_cert: /etc/cosmian-kms-plugin/client.crt
-///   tls_key: /etc/cosmian-kms-plugin/client.key
-///   ca_cert: /etc/cosmian-kms-plugin/ca.crt
+///   tls_cert: /etc/kubernetes-kms-plugin/client.crt
+///   tls_key: /etc/kubernetes-kms-plugin/client.key
+///   ca_cert: /etc/kubernetes-kms-plugin/ca.crt
 ///   wrapping_key_uid: "550e8400-e29b-41d4-a716-446655440000"
-///   socket_path: /var/run/cosmian-kms-plugin/kms.sock
+///   socket_path: /var/run/kubernetes-kms-plugin/kms.sock
 /// ```
 #[derive(Deserialize, Debug, Clone)]
 pub struct PluginConfig {
@@ -50,7 +50,7 @@ pub struct KmsPluginSettings {
 }
 
 fn default_socket_path() -> String {
-    "/var/run/cosmian-kms-plugin/kms.sock".to_owned()
+    "/var/run/kubernetes-kms-plugin/kms.sock".to_owned()
 }
 
 impl PluginConfig {
@@ -78,7 +78,7 @@ cosmian_kms:
   tls_key: /etc/client.key
   ca_cert: /etc/ca.crt
   wrapping_key_uid: 550e8400-e29b-41d4-a716-446655440000
-  socket_path: /var/run/cosmian-kms-plugin.sock
+  socket_path: /var/run/kubernetes-kms-plugin.sock
 ";
         let cfg: PluginConfig = serde_yaml::from_str(yaml).expect("should parse");
         assert_eq!(cfg.cosmian_kms.server_url, "https://kms.example.com:9998");
@@ -89,7 +89,7 @@ cosmian_kms:
         );
         assert_eq!(
             cfg.cosmian_kms.socket_path,
-            "/var/run/cosmian-kms-plugin.sock"
+            "/var/run/kubernetes-kms-plugin.sock"
         );
     }
 

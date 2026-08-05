@@ -7,9 +7,9 @@ has_systemd() {
 
 # Ensure config directory and socket directory exist before the binary is
 # installed, so the kube-apiserver hostPath bind-mount is in place.
-mkdir -p /etc/cosmian-kms-plugin
-mkdir -p /run/cosmian-kms-plugin
-chmod 0755 /run/cosmian-kms-plugin
+mkdir -p /etc/kubernetes-kms-plugin
+mkdir -p /run/kubernetes-kms-plugin
+chmod 0755 /run/kubernetes-kms-plugin
 
 '''
 
@@ -38,8 +38,8 @@ case "$1" in
 0)
   # erase: stop and disable before rpm removes the files
   if has_systemd; then
-    systemctl stop    cosmian-kms-plugin.service >/dev/null 2>&1 || true
-    systemctl disable cosmian-kms-plugin.service >/dev/null 2>&1 || true
+    systemctl stop    kubernetes-kms-plugin.service >/dev/null 2>&1 || true
+    systemctl disable kubernetes-kms-plugin.service >/dev/null 2>&1 || true
     systemctl daemon-reload >/dev/null 2>&1 || true
   fi
   ;;
@@ -58,7 +58,7 @@ has_systemd() {
 case "$1" in
 0)
   # erase: remove config directory
-  rm -rf /etc/cosmian-kms-plugin
+  rm -rf /etc/kubernetes-kms-plugin
   if has_systemd; then
     systemctl daemon-reload >/dev/null 2>&1 || true
   fi

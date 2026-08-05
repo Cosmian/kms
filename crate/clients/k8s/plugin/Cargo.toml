@@ -12,7 +12,7 @@ description = "Kubernetes KMS Provider Plugin v2 for Cosmian KMS (etcd Secret en
 readme = "../../../../README.md"
 
 [[bin]]
-name = "cosmian-kms-plugin"
+name = "kubernetes-kms-plugin"
 path = "src/main.rs"
 
 [lints]
@@ -70,22 +70,22 @@ priority = "optional"
 depends = ""
 maintainer-scripts = "../../../../pkg/k8s-plugin/deb/"
 systemd-units = [
-  { unit-name = "cosmian-kms-plugin", unit-scripts = "../../../../pkg/k8s-plugin/deb", enable = false, start = false },
+  { unit-name = "kubernetes-kms-plugin", unit-scripts = "../../../../pkg/k8s-plugin/deb", enable = false, start = false },
 ]
 assets = [
   [
-    "target/release/cosmian-kms-plugin",
-    "usr/local/bin/cosmian-kms-plugin",
+    "target/release/kubernetes-kms-plugin",
+    "usr/local/bin/kubernetes-kms-plugin",
     "755",
   ],
   [
-    "../../../../pkg/cosmian_kms_plugin.service",
-    "lib/systemd/system/cosmian-kms-plugin.service",
+    "../../../../pkg/kubernetes_kms_plugin.service",
+    "lib/systemd/system/kubernetes-kms-plugin.service",
     "644",
   ],
   [
     "../../../../README.md",
-    "usr/share/doc/cosmian/cosmian-kms-plugin/README.md",
+    "usr/share/doc/cosmian/kubernetes-kms-plugin/README.md",
     "644",
   ],
 ]
@@ -99,9 +99,9 @@ license = "BUSL-1.1"
 auto-req = "no"
 require-sh = true
 assets = [
-  { source = "target/release/cosmian-kms-plugin", dest = "/usr/local/bin/cosmian-kms-plugin", mode = "755" },
-  { source = "../../../../pkg/cosmian_kms_plugin.service", dest = "/lib/systemd/system/cosmian-kms-plugin.service", mode = "644" },
-  { source = "../../../../README.md", dest = "/usr/share/doc/cosmian/cosmian-kms-plugin/README.md", mode = "644", doc = true },
+  { source = "target/release/kubernetes-kms-plugin", dest = "/usr/local/bin/kubernetes-kms-plugin", mode = "755" },
+  { source = "../../../../pkg/kubernetes_kms_plugin.service", dest = "/lib/systemd/system/kubernetes-kms-plugin.service", mode = "644" },
+  { source = "../../../../README.md", dest = "/usr/share/doc/cosmian/kubernetes-kms-plugin/README.md", mode = "644", doc = true },
 ]
 
 [package.metadata.generate-rpm.scriptlets]

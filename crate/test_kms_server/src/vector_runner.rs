@@ -4471,7 +4471,7 @@ ObjectType = "SymmetricKey"
 
     // ── K8s KMS Plugin vectors ────────────────────────────────────────────
 
-    /// Verifies the AES-256-GCM wrap/unwrap flow used by `cosmian-kms-plugin`
+    /// Verifies the AES-256-GCM wrap/unwrap flow used by `kubernetes-kms-plugin`
     /// when `kube-apiserver` calls Encrypt (wrap DEK) and Decrypt (unwrap DEK).
     #[tokio::test]
     async fn test_vec_k8s_plugin_dek_wrap_unwrap() -> Result<(), KmsClientError> {
