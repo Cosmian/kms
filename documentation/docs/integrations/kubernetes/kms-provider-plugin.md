@@ -1,9 +1,9 @@
 # Kubernetes KMS Provider Plugin
 
-The Cosmian KMS Kubernetes plugin (`cosmian-kms-plugin`) is a standalone binary that
+The Eviden KMS Kubernetes plugin (`cosmian-kms-plugin`) is a standalone binary that
 implements the [Kubernetes KMS v2 provider API](https://kubernetes.io/docs/tasks/administer-cluster/kms-provider/).
 It allows Kubernetes to encrypt **etcd Secrets at rest** using AES-256-GCM keys stored and
-managed by the Cosmian KMS.
+managed by the Eviden KMS.
 
 !!! note "Control-plane only"
     The plugin runs **on every Kubernetes control-plane node**. It communicates with the
@@ -15,7 +15,7 @@ sequenceDiagram
     participant U as kubectl / API client
     participant A as kube-apiserver
     participant P as cosmian-kms-plugin<br/>(gRPC · Unix socket)
-    participant K as Cosmian KMS
+    participant K as Eviden KMS
     participant E as etcd
 
     Note over U,E: Secret creation (Encrypt)
@@ -41,7 +41,7 @@ sequenceDiagram
 
 | Requirement | Details |
 |---|---|
-| Cosmian KMS ≥ 5.26.0 | Running and reachable from every control-plane node |
+| Eviden KMS ≥ 5.26.0 | Running and reachable from every control-plane node |
 | Kubernetes ≥ 1.29 | KMS v2 API is stable from 1.29 |
 | AES-256 KEK | Pre-created in the KMS; record its UID |
 | Linux on control-plane | The plugin uses a Unix socket; Windows and macOS are development-only |
@@ -64,8 +64,6 @@ ckms sym keys create \
 
 === "Ubuntu / Debian"
 
-    ### Download the pre-built binary
-
     ```bash
     ARCH=$(dpkg --print-architecture)   # amd64 or arm64
     VERSION=<VERSION>
@@ -73,28 +71,12 @@ ckms sym keys create \
       "https://package.cosmian.com/kms/${VERSION}/ubuntu/cosmian-kms-plugin_${VERSION}_${ARCH}.deb" \
       -o cosmian-kms-plugin.deb
     sudo dpkg -i cosmian-kms-plugin.deb
-    # Binary installed at /usr/local/bin/cosmian-kms-plugin
-    ```
-
-    ### Or build from source
-
-    ```bash
-    # Install Rust
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    source "$HOME/.cargo/env"
-
-    # Build
-    cargo install --git https://github.com/Cosmian/kms \
-      --package cosmian_kms_k8s_plugin
-
-    # Or from a local clone
-    cargo build --release -p cosmian_kms_k8s_plugin
-    sudo install -m 755 target/release/cosmian-kms-plugin /usr/local/bin/
+    # Binary:        /usr/local/bin/cosmian-kms-plugin
+    # Systemd unit:  /lib/systemd/system/cosmian-kms-plugin.service
+    # Config dir:    /etc/cosmian-kms-plugin/  (write config.yaml before starting)
     ```
 
 === "RHEL / CentOS / Rocky / AlmaLinux"
-
-    ### Download the pre-built binary
 
     ```bash
     ARCH=$(uname -m)   # x86_64 or aarch64
@@ -103,17 +85,9 @@ ckms sym keys create \
       "https://package.cosmian.com/kms/${VERSION}/rhel/cosmian-kms-plugin-${VERSION}.${ARCH}.rpm" \
       -o cosmian-kms-plugin.rpm
     sudo rpm -i cosmian-kms-plugin.rpm
-    ```
-
-    ### Or build from source
-
-    ```bash
-    sudo dnf install -y gcc openssl-devel pkgconfig protobuf-compiler
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    source "$HOME/.cargo/env"
-
-    cargo build --release -p cosmian_kms_k8s_plugin
-    sudo install -m 755 target/release/cosmian-kms-plugin /usr/local/bin/
+    # Binary:        /usr/local/bin/cosmian-kms-plugin
+    # Systemd unit:  /lib/systemd/system/cosmian-kms-plugin.service
+    # Config dir:    /etc/cosmian-kms-plugin/  (write config.yaml before starting)
     ```
 
 === "Generic Linux (tarball)"
@@ -139,45 +113,24 @@ ckms sym keys create \
 
 === "macOS (local dev — minikube / kind)"
 
-    On macOS, the plugin **cannot** run natively on your Mac as a KMS provider for Kubernetes
-    because the control-plane node runs inside a Linux VM (Docker or QEMU). You must build a
-    Linux binary and install it inside the VM.
-
-    #### Option A — Docker build (recommended)
+    On macOS, the plugin runs **inside the minikube or kind Linux VM** — not on your Mac.
+    Download the pre-built Linux binary from the release server and copy it into the VM:
 
     ```bash
-    cd /path/to/kms   # local clone of the KMS repo
-
-    docker run --rm \
-      -v "$(pwd)":/workspace -w /workspace \
-      rust:1.85-slim \
-      bash -c "
-        apt-get update -qq
-        apt-get install -y -qq protobuf-compiler pkg-config libssl-dev
-        cargo build --release -p cosmian_kms_k8s_plugin
-      "
-    # Binary: target/release/cosmian-kms-plugin (ELF x86-64)
-    ```
-
-    #### Option B — Cross-compilation with musl-cross
-
-    ```bash
-    brew install musl-cross
-    rustup target add x86_64-unknown-linux-musl
-
-    CC=x86_64-linux-musl-gcc \
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc \
-    cargo build --release \
-      --target x86_64-unknown-linux-musl \
-      -p cosmian_kms_k8s_plugin
-    # Binary: target/x86_64-unknown-linux-musl/release/cosmian-kms-plugin
-    # Statically linked — no libc dependency in the VM.
+    # minikube with the Docker driver uses x86_64;
+    # use aarch64 if your minikube runs under QEMU on Apple Silicon.
+    ARCH=x86_64
+    VERSION=<VERSION>
+    curl -fsSL \
+      "https://package.cosmian.com/kms/${VERSION}/cosmian-kms-plugin-linux-${ARCH}.tar.gz" \
+      | tar -xz
+    # Extracts: cosmian-kms-plugin (ELF x86-64 or aarch64)
     ```
 
     #### Copy into minikube
 
     ```bash
-    minikube cp target/release/cosmian-kms-plugin \
+    minikube cp cosmian-kms-plugin \
       <profile>:/usr/local/bin/cosmian-kms-plugin -p <profile>
     minikube ssh -p <profile> "sudo chmod +x /usr/local/bin/cosmian-kms-plugin"
     ```
@@ -186,34 +139,16 @@ ckms sym keys create \
 
     ```bash
     NODE=$(kind get nodes --name <cluster>)
-    docker cp target/release/cosmian-kms-plugin "${NODE}:/usr/local/bin/"
+    docker cp cosmian-kms-plugin "${NODE}:/usr/local/bin/"
     docker exec "${NODE}" chmod +x /usr/local/bin/cosmian-kms-plugin
     ```
 
 === "Windows (local dev — WSL2 + minikube)"
 
-    Kubernetes control-plane nodes always run Linux. On Windows, use WSL2 and minikube with
-    the Docker driver.
-
-    1. Enable WSL2 and install Ubuntu from the Microsoft Store.
-    2. In WSL2:
-
-        ```bash
-        # Install Docker (or use Docker Desktop for Windows)
-        curl -fsSL https://get.docker.com | sh
-
-        # Install minikube
-        curl -fsSL \
-          https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 \
-          -o minikube
-        sudo install minikube /usr/local/bin/
-
-        minikube start --driver=docker
-        ```
-
-    3. Build the plugin inside WSL2 (same as the **Ubuntu** tab above).
-    4. The plugin will be installed inside the minikube VM, not in Windows itself — the rest
-       of the setup is identical to the Ubuntu instructions.
+    Kubernetes control-plane nodes always run Linux. On Windows, enable WSL2, install Ubuntu
+    from the Microsoft Store, and follow the **Ubuntu / Debian** tab inside WSL2. The plugin
+    is installed inside the minikube VM, not in Windows itself — the rest of the setup is
+    identical to the Ubuntu instructions.
 
 ---
 
@@ -225,7 +160,7 @@ Create the configuration directory and file on **each control-plane node**:
 sudo mkdir -p /etc/cosmian-kms-plugin
 sudo tee /etc/cosmian-kms-plugin/config.yaml > /dev/null << 'EOF'
 cosmian_kms:
-  # URL of the Cosmian KMS server
+  # URL of the Eviden KMS server
   server_url: "https://kms.example.com:9998"
 
   # Optional: API key authentication
@@ -264,66 +199,44 @@ The control-plane nodes must be able to reach the KMS server over the network:
 
 ## Running the plugin
 
-### Systemd (Linux — recommended for production)
+### Systemd (Ubuntu / Debian / RHEL)
 
-=== "Ubuntu / Debian / RHEL / Generic"
+The `deb` and `rpm` packages install a production-hardened systemd unit to
+`/lib/systemd/system/cosmian-kms-plugin.service`. Once you have written the
+[configuration file](#configuration), enable and start the service:
 
-    ```bash
-    sudo tee /etc/systemd/system/cosmian-kms-plugin.service > /dev/null << 'EOF'
-    [Unit]
-    Description=Cosmian KMS Kubernetes Plugin
-    Documentation=https://docs.cosmian.com/key_management_system/
-    After=network-online.target
-    Wants=network-online.target
+```bash
+sudo systemctl enable --now cosmian-kms-plugin
+sudo systemctl status cosmian-kms-plugin
+```
 
-    [Service]
-    Type=simple
-    ExecStart=/usr/local/bin/cosmian-kms-plugin \
-      --config /etc/cosmian-kms-plugin/config.yaml
-    Restart=on-failure
-    RestartSec=5s
-    # Socket directory is created by RuntimeDirectory before ExecStart
-    RuntimeDirectory=cosmian-kms-plugin
-    RuntimeDirectoryMode=0750
-    # Harden the service
-    NoNewPrivileges=true
-    ProtectSystem=strict
-    ProtectHome=true
-    ReadWritePaths=/run/cosmian-kms-plugin
+Expected output:
 
-    [Install]
-    WantedBy=multi-user.target
-    EOF
+```text
+Active: active (running)
+...cosmian_kms_k8s_plugin: gRPC server listening on Unix socket \
+  socket=/var/run/cosmian-kms-plugin/kms.sock
+```
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now cosmian-kms-plugin
-    sudo systemctl status cosmian-kms-plugin
-    ```
+### Alpine (OpenRC)
 
-    Expected output:
-    ```
-    Active: active (running)
-    ...cosmian_kms_k8s_plugin: gRPC server listening on Unix socket \
-      socket=/var/run/cosmian-kms-plugin/kms.sock
-    ```
+For tarball installations on Alpine Linux, register an OpenRC service:
 
-=== "Alpine (OpenRC)"
+```bash
+cat > /etc/init.d/cosmian-kms-plugin << 'EOF'
+#!/sbin/openrc-run
+description="Eviden KMS Kubernetes Plugin"
+command=/usr/local/bin/cosmian-kms-plugin
+command_args="--config /etc/cosmian-kms-plugin/config.yaml"
+command_background=true
+pidfile=/run/cosmian-kms-plugin.pid
+EOF
 
-    ```bash
-    cat > /etc/init.d/cosmian-kms-plugin << 'EOF'
-    #!/sbin/openrc-run
-    description="Cosmian KMS Kubernetes Plugin"
-    command=/usr/local/bin/cosmian-kms-plugin
-    command_args="--config /etc/cosmian-kms-plugin/config.yaml"
-    command_background=true
-    pidfile=/run/cosmian-kms-plugin.pid
-    EOF
-
-    chmod +x /etc/init.d/cosmian-kms-plugin
-    mkdir -p /run/cosmian-kms-plugin
-    rc-update add cosmian-kms-plugin default
-    rc-service cosmian-kms-plugin start
-    ```
+chmod +x /etc/init.d/cosmian-kms-plugin
+mkdir -p /run/cosmian-kms-plugin
+rc-update add cosmian-kms-plugin default
+rc-service cosmian-kms-plugin start
+```
 
 ---
 

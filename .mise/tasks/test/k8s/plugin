@@ -32,6 +32,9 @@ cleanup() {
   local rc=$?
   [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE" cosmian-kms-plugin
   if [ -n "${PF_PID:-}" ]; then kill "$PF_PID" 2>/dev/null || true; fi
+  # cosmian-test-secret is created in the default namespace (no -n flag)
+  kubectl delete secret cosmian-test-secret --ignore-not-found=true 2>/dev/null || true
+  k8s_teardown "$NAMESPACE" "$RELEASE"
   rm -rf "$WORK"
   return $rc
 }

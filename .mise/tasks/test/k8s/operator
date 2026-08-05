@@ -28,6 +28,7 @@ cleanup() {
   local rc=$?
   [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE"
   if [ -n "${PF_PID:-}" ]; then kill "$PF_PID" 2>/dev/null || true; fi
+  k8s_teardown "$NAMESPACE" "$RELEASE"
   rm -rf "$WORK"
   return $rc
 }

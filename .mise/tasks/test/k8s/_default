@@ -15,7 +15,6 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 k8s_require_tools
 
-TASK_DIR="${MISE_CONFIG_ROOT}/.mise/tasks/test/k8s"
 VARIANT="${usage_variant:-fips}"
 LINK="${usage_link:-static}"
 SKIP_IMAGES="${usage_skip_images:-false}"
@@ -24,11 +23,13 @@ print_header "Running all Kubernetes E2E tests (variant=${VARIANT})"
 
 FAILED=()
 
+# Use 'mise run' so that #USAGE flag annotations are parsed correctly
+# (plain 'bash script --flag' bypasses mise's USAGE parsing).
 run_step() {
   local name="$1"
   shift
   print_status "▶ $name"
-  if bash "$@"; then
+  if mise run "$@"; then
     print_success "✓ $name"
   else
     print_status "✗ $name FAILED"
@@ -36,14 +37,13 @@ run_step() {
   fi
 }
 
-# Each task runs its binary E2E test and (unless --skip-images) its Docker image test.
 IMAGE_FLAG=()
 [ "$SKIP_IMAGES" = "true" ] && IMAGE_FLAG=(--skip-image)
 
-run_step "k8s:plugin" "${TASK_DIR}/plugin" --variant "$VARIANT" --link "$LINK"
-run_step "k8s:plugin (mtls)" "${TASK_DIR}/plugin" --variant "$VARIANT" --link "$LINK" --mtls
-run_step "k8s:operator" "${TASK_DIR}/operator" --variant "$VARIANT" --link "$LINK" "${IMAGE_FLAG[@]+"${IMAGE_FLAG[@]}"}"
-run_step "k8s:csi-provider" "${TASK_DIR}/csi-provider" --variant "$VARIANT" --link "$LINK" "${IMAGE_FLAG[@]+"${IMAGE_FLAG[@]}"}"
+run_step "k8s:plugin" test:k8s:plugin --variant "$VARIANT" --link "$LINK"
+run_step "k8s:plugin (mtls)" test:k8s:plugin --variant "$VARIANT" --link "$LINK" --mtls
+run_step "k8s:operator" test:k8s:operator --variant "$VARIANT" --link "$LINK" "${IMAGE_FLAG[@]+"${IMAGE_FLAG[@]}"}"
+run_step "k8s:csi-provider" test:k8s:csi-provider --variant "$VARIANT" --link "$LINK" "${IMAGE_FLAG[@]+"${IMAGE_FLAG[@]}"}"
 
 if [ "${#FAILED[@]}" -gt 0 ]; then
   echo ""

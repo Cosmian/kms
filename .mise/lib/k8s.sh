@@ -123,17 +123,59 @@ EOF
 # Deploy the Cosmian KMS into the cluster via the Helm chart.
 # Extra `helm --set`/`--set-file` arguments may be appended.
 #
+# Uninstall a KMS Helm release and delete its namespace.
+# Called from each task's cleanup() trap so consecutive runs start clean.
+# Usage: k8s_teardown <namespace> <release>
+k8s_teardown() {
+  local namespace="$1" release="$2"
+  helm uninstall "$release" -n "$namespace" 2>/dev/null || true
+  # Wait for full deletion. With emptyDir storage (no PVC), there are no
+  # pvc-protection finalizers, so the namespace should terminate quickly (~5s).
+  kubectl delete namespace "$namespace" --ignore-not-found=true 2>/dev/null || true
+}
+
 # Usage: k8s_deploy_kms <namespace> <release> [extra helm args...]
 k8s_deploy_kms() {
   local namespace="$1" release="$2"
   shift 2
+
+  # Wait for any leftover terminating namespace to be fully gone before
+  # creating a fresh one. This prevents "cannot create content in namespace
+  # because it is being terminated" errors on back-to-back test runs.
+  if kubectl get namespace "$namespace" 2>/dev/null | grep -q Terminating; then
+    print_status "Waiting for terminating namespace $namespace to be fully deleted..."
+    timeout 120 bash -c \
+      "until ! kubectl get namespace '$namespace' >/dev/null 2>&1; do sleep 3; done" ||
+      print_error "Namespace $namespace did not finish terminating within 120s"
+  fi
+
   kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
-  helm install "$release" "${MISE_CONFIG_ROOT}/charts/cosmian-kms" \
+
+  # Provide an emptyDir for the SQLite data directory so the chart works with
+  # readOnlyRootFilesystem=true and without creating a PVC (which would add a
+  # pvc-protection finalizer that blocks fast namespace deletion between tests).
+  local tmp_values
+  tmp_values=$(mktemp /tmp/kms-test-values-XXXXXX.yaml)
+  cat >"$tmp_values" <<'YAML'
+persistence:
+  enabled: false
+extraVolumes:
+  - name: sqlite-emptydir
+    emptyDir: {}
+extraVolumeMounts:
+  - name: sqlite-emptydir
+    mountPath: /var/lib/cosmian-kms/sqlite-data
+YAML
+
+  # upgrade --install is idempotent: installs on first run, upgrades on re-run.
+  helm upgrade --install "$release" "${MISE_CONFIG_ROOT}/charts/cosmian-kms" \
     --namespace "$namespace" \
     --set kms.database.type=sqlite \
     --set image.tag="${KMS_IMAGE_TAG:-latest}" \
+    -f "$tmp_values" \
     "$@" \
     --wait --timeout 180s
+  rm -f "$tmp_values"
   print_success "KMS deployed (release=$release, ns=$namespace)"
 }
 
@@ -241,7 +283,10 @@ k8s_write_systemd_unit() {
   minikube cp "$tmp" "$tmp"
   minikube ssh -- sudo cp "$tmp" "/etc/systemd/system/${name}.service"
   minikube ssh -- sudo systemctl daemon-reload
-  minikube ssh -- sudo systemctl enable --now "$name"
+  minikube ssh -- sudo systemctl enable "$name"
+  # Always restart so the new unit file and config take effect even when
+  # the service is already running from a previous test run.
+  minikube ssh -- sudo systemctl restart "$name"
 }
 
 # Wait until a Unix socket exists on the Minikube node.

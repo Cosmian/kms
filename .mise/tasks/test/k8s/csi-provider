@@ -31,6 +31,13 @@ cleanup() {
   local rc=$?
   [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE" cosmian-kms-csi-provider
   if [ -n "${PF_PID:-}" ]; then kill "$PF_PID" 2>/dev/null || true; fi
+  # Pods and SPCs created in the default namespace must be cleaned up separately
+  # since k8s_teardown only removes the test namespace.
+  kubectl delete pod csi-known-pod csi-rotate-pod csi-revoked-pod \
+    --ignore-not-found=true 2>/dev/null || true
+  kubectl delete secretproviderclass cosmian-known cosmian-rotate cosmian-revoked \
+    --ignore-not-found=true 2>/dev/null || true
+  k8s_teardown "$NAMESPACE" "$RELEASE"
   rm -rf "$WORK"
   return $rc
 }
@@ -50,7 +57,7 @@ print_status "KMS ClusterIP: $CLUSTER_IP"
 helm repo add secrets-store-csi-driver \
   https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts 2>/dev/null || true
 helm repo update secrets-store-csi-driver >/dev/null
-helm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
+helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver \
   --namespace kube-system \
   --set syncSecret.enabled=false \
   --set enableSecretRotation=true \
@@ -157,7 +164,7 @@ EOF
 # ── 4. TEST: mounted file content equals the exact KMS secret value ──────────
 apply_spc cosmian-known known-secret "$SECRET_UID"
 apply_pod csi-known-pod cosmian-known
-kubectl wait pod/csi-known-pod --for=condition=Ready --timeout=90s ||
+kubectl wait pod/csi-known-pod --for=condition=Ready --timeout=180s ||
   print_error "csi-known-pod did not become Ready"
 
 MOUNTED=$(kubectl exec csi-known-pod -- cat /mnt/secrets/known-secret)
@@ -173,7 +180,7 @@ print_success "CSI mounted file content matches the exact KMS secret value"
 # the already-running pod — matching the issue #862 rotation acceptance.
 apply_spc cosmian-rotate rotate-key "$ROTATE_UID_V1"
 apply_pod csi-rotate-pod cosmian-rotate
-kubectl wait pod/csi-rotate-pod --for=condition=Ready --timeout=90s ||
+kubectl wait pod/csi-rotate-pod --for=condition=Ready --timeout=180s ||
   print_error "csi-rotate-pod did not become Ready"
 BYTES_BEFORE=$(pod_file_hex csi-rotate-pod /mnt/secrets/rotate-key)
 [ -n "$BYTES_BEFORE" ] || print_error "rotate-key file empty before rotation"

@@ -1,5 +1,5 @@
 ---
-name: K8s Plugin E2E
+name: K8s E2E
 
 # End-to-end tests for the Kubernetes integrations:
 #   - KMS Provider Plugin        (issue #861) — etcd Secret encryption
