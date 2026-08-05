@@ -247,7 +247,7 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.18
+        uses: medyagh/setup-minikube@v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.30.0
