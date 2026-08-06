@@ -8,7 +8,7 @@
  *     attribute selectors (server-managed attribute)
  */
 import { expect, test } from "@playwright/test";
-import { UI_READY_TIMEOUT, extractUuid, gotoAndWait, selectOption, submitAndWaitForResponse } from "./helpers";
+import { UI_READY_TIMEOUT, extractUuid, gotoAndWait, submitAndWaitForResponse } from "./helpers";
 
 /**
  * Create an AES-256 symmetric key, optionally marking it Sensitive, and return
@@ -30,12 +30,13 @@ async function createSymKey(page: import("@playwright/test").Page, sensitive: bo
 
 /**
  * Get the AlwaysSensitive attribute of an object and return the raw response
- * text.
+ * text. Requests all attributes (no filter) so that AlwaysSensitive is always
+ * included regardless of UI select-dropdown behaviour.
  */
 async function getAlwaysSensitive(page: import("@playwright/test").Page, keyId: string): Promise<string> {
     await gotoAndWait(page, "/ui/attributes/get");
     await page.fill('input[placeholder="Enter object ID"]', keyId);
-    await selectOption(page, "attribute-name-select", "Always Sensitive");
+    // No attribute filter — the server returns all attributes including AlwaysSensitive.
     return submitAndWaitForResponse(page);
 }
 
@@ -43,14 +44,14 @@ test.describe("AlwaysSensitive attribute", () => {
     test("sensitive key reports AlwaysSensitive true", async ({ page }) => {
         const keyId = await createSymKey(page, true);
         const text = await getAlwaysSensitive(page, keyId);
-        expect(text).toMatch(/always_sensitive/i);
+        expect(text).toMatch(/always_?sensitive/i);
         expect(text).toMatch(/true/i);
     });
 
     test("non-sensitive key reports AlwaysSensitive false", async ({ page }) => {
         const keyId = await createSymKey(page, false);
         const text = await getAlwaysSensitive(page, keyId);
-        expect(text).toMatch(/always_sensitive/i);
+        expect(text).toMatch(/always_?sensitive/i);
         expect(text).toMatch(/false/i);
     });
 

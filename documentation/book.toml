@@ -22,7 +22,6 @@ enable = true
 enable = true
 level = 1
 
-
 [preprocessor.admonish]
 command = "mdbook-admonish"
 assets_version = "3.1.0"
