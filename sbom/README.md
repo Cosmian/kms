@@ -35,24 +35,16 @@ The SBOM generator produces several "base" reports.
 Important: folders are kept clean on purpose. Each SBOM output directory contains only **two CSV files**:
 
 - `sbom.csv` — component inventory
-- `vulns.csv` — vulnerability rows (CVE-like duplicates removed in-place)
+- `vulns.csv` — vulnerability rows
 
 | Report | Where | Purpose |
 |------|------|---------|
 | `bom.cdx.json` | `sbom/**/` | CycloneDX 1.5 SBOM — enriched with supplier, Rust crates and npm packages |
 | `bom.spdx.json` | `sbom/**/` | SPDX 2.3 SBOM — enriched with originator/supplier, Rust crates and npm packages |
 | `sbom.csv` | `sbom/**/` | Tabular component inventory (package name/version/system metadata) |
-| `vulns.csv` | `sbom/**/` | Vulnerability rows from `vulnxscan`, then deduplicated by CVE YEAR-ID (see below) |
+| `vulns.csv` | `sbom/**/` | Vulnerability rows from `vulnxscan` |
 | `graph.png` | `sbom/**/` | Visual dependency graph |
 | `meta.json` | `sbom/**/` | Build metadata (target/variant/link, counts, timestamps) |
-
-### CVE deduplication
-
-`vulnxscan` may report the same underlying CVE under multiple advisory IDs (e.g.
-`CVE-2026-0915`, `UBUNTU-CVE-2026-0915`, `DEBIAN-CVE-2026-0915`). `generate_sbom.sh`
-removes these duplicates in-place so `vulns.csv` contains one row per normalized
-**YEAR-ID** key. Advisory IDs without a CVE component (e.g. `RHSA-2026:0794`) are
-preserved as-is.
 
 ## 🔧 Tools Used
 
@@ -86,25 +78,9 @@ preserved as-is.
 from ~4 Nix components to ~900 components (4 system + ~580 Rust + ~320 npm),
 each with a `supplier` / `originator` field identifying the author or organization.
 
-**Standalone usage:**
-
-```bash
-# Enrich in-place (overwrites bom.*.json) — offline, uses local cache only
-python3 .mise/scripts/sbom/enrich_sbom_authors.py \
-  --sbom-dir sbom/server/non-fips/dynamic --in-place
-
-# Also query crates.io for up to 50 crates with missing author data
-python3 .mise/scripts/sbom/enrich_sbom_authors.py \
-  --sbom-dir sbom/server/non-fips/dynamic --in-place --api-limit 50
-
-# Write enriched copies alongside originals (bom.cdx.enriched.json, bom.spdx.enriched.json)
-python3 .mise/scripts/sbom/enrich_sbom_authors.py \
-  --sbom-dir sbom/server/non-fips/dynamic
-
-# Skip npm (if ui/ not built yet)
-python3 .mise/scripts/sbom/enrich_sbom_authors.py \
-  --sbom-dir sbom/server/non-fips/dynamic --no-npm
-```
+**Invocation:** enrichment runs automatically at the end of `mise run sbom:generate`
+(for the `server` target it adds Rust + npm components; for OpenSSL-only targets it
+enriches the system-level components). It is not a separate command.
 
 **crates.io rate limit:** 100 req/s. The script uses a 100 ms delay between
 calls and a disk cache (`/tmp/cosmian-kms-sbom-authors.json`) to avoid redundant
@@ -234,8 +210,6 @@ tail -n +2 vulns.csv | cut -d',' -f3 | sort | uniq -c | sort -rn
 
 ## 🔍 Vulnerability analysis notes
 
-Note: `vulnxscan` aggregates multiple sources, so the raw scan may contain multiple rows for the same underlying CVE. The generator deduplicates CVE-like rows into a single `vulns.csv` to keep the output directory tidy.
-
 The vulnerability scan combines results from multiple sources:
 
 - **Grype**: Scans against NVD, GitHub Security Advisories, and other databases
@@ -289,11 +263,8 @@ mise run sbom:generate --target server --variant fips --link static
 
 # Notes:
 # - --variant/--link are only valid with: --target server (otherwise the command errors)
-# - `vulns.csv` is deduplicated in-place (no extra CSV/TXT reports are generated)
+# - No extra CSV/TXT reports are generated (folders are kept clean)
 # - Generation is run from an isolated temporary work directory to avoid accidental `sbom.*` files being written to the repository root
-
-# Run the generator script directly (supports --target/--variant/--link/--output)
-.mise/scripts/sbom/generate_sbom.sh --target server --variant non-fips --link dynamic --output /custom/path
 ```
 
 ## 📚 Standards & Specifications
