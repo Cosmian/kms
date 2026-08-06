@@ -14,12 +14,14 @@ use serde::Deserialize;
 ///   socket_path: /var/run/kubernetes-kms-plugin/kms.sock
 /// ```
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct PluginConfig {
     pub cosmian_kms: KmsPluginSettings,
 }
 
 /// Connection and operation settings for the plugin.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct KmsPluginSettings {
     /// Full URL of the Cosmian KMS server (e.g. `https://kms.example.com:9998`).
     pub server_url: String,

@@ -95,6 +95,20 @@ pub async fn inject(args: InjectArgs) -> Result<(), OperatorError> {
         std::fs::write(&path, &bytes).map_err(|e| {
             OperatorError::Config(format!("cannot write secret to {}: {e}", path.display()))
         })?;
+        // Restrict to owner-read-only (0o400) so secret material is not
+        // accessible to other containers sharing the tmpfs volume.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400)).map_err(
+                |e| {
+                    OperatorError::Config(format!(
+                        "cannot set permissions on {}: {e}",
+                        path.display()
+                    ))
+                },
+            )?;
+        }
 
         info!(path = %path.display(), "secret written");
     }

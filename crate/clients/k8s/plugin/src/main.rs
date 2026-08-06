@@ -94,13 +94,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let listener = UnixListener::bind(&socket_path)?;
-    // Allow any user to connect to the socket.
+    // Allow owner+group to connect to the socket.
     // kube-apiserver runs as UID 65532 (distroless nonroot) in Kubernetes
     // 1.29+, so a root-owned 0o600 socket would silently block all gRPC
-    // connections.  In production you can tighten this by chowning the socket
-    // to the kube-apiserver UID/GID (65532) with mode 0o600, or by setting up
-    // a dedicated group shared between the plugin and the apiserver.
-    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o666))?;
+    // connections.  The DaemonSet should chown the socket to the apiserver
+    // UID/GID (65532) for maximum security; 0o660 is the secure fallback.
+    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o660))?;
     let incoming = UnixListenerStream::new(listener);
 
     info!(socket = %socket_path, "gRPC server listening on Unix socket");

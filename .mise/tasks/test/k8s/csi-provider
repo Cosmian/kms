@@ -148,6 +148,8 @@ spec:
             - /etc/cosmian-kms-csi/config.yaml
           securityContext:
             privileged: true
+            runAsUser: 0
+            runAsGroup: 0
           volumeMounts:
             - name: config
               mountPath: /etc/cosmian-kms-csi

@@ -13,6 +13,7 @@ use serde::Deserialize;
 ///   socket_path: /var/run/cosmian-kms-provider.sock
 /// ```
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct CsiProviderConfig {
     pub cosmian_kms: KmsCsiSettings,
 }
@@ -35,6 +36,7 @@ impl CsiProviderConfig {
 
 /// Connection settings for the CSI provider.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct KmsCsiSettings {
     /// Full URL of the Cosmian KMS server (e.g. `https://kms.example.com:9998`).
     pub server_url: String,
