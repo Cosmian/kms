@@ -1060,7 +1060,7 @@ in this repository under `crate/clients/ckms/`:
 - Nix builds now target GLIBC ≤ 2.34 (Rocky Linux 9 compatibility) by updating pins and building Linux OpenSSL/server outputs against a glibc 2.34 stdenv; server vendor hash expectations are split by static/dynamic on Linux.
 - SBOM generation improvements:
     - `.github/scripts/nix.sh sbom` strictly validates `--target/--variant/--link`, defaults to generating all combinations, and supports generating a specific server subset.
-    - SBOM tooling runs in an isolated workdir to avoid stray repo-root artifacts, keeps only final `sbom.csv` + `vulns.csv` reports per output directory, and deduplicates CVE rows in-place (via `nix/scripts/dedup_cves.py`, with optional filtering helper `nix/scripts/filter_vulns.py`).
+    - SBOM tooling runs in an isolated workdir to avoid stray repo-root artifacts, keeps only final `sbom.csv` + `vulns.csv` reports per output directory, and deduplicates CVE rows in-place.
 - *(deps)* Bump jsonwebtoken in the cargo group across 1 directory (#702)
 - *(deps)* Bump bytes in the cargo group across 1 directory (#703)
 - *(deps)* Bump time in the cargo group across 1 directory (#706)

@@ -520,9 +520,8 @@ The following diagrams illustrate how commands flow through the script ecosystem
 
 | Script             | Purpose                       | Invocation Context |
 | ------------------ | ----------------------------- | ------------------ |
-| `generate_sbom.sh` | SBOM generation orchestrator  | Via `nix.sh sbom`  |
-| `dedup_cves.py`    | Deduplicate CVE reports        | Post-processing    |
-| `filter_vulns.py`  | Filter vulnerability reports   | Post-processing    |
+| `generate_sbom.sh`     | SBOM generation orchestrator  | Via `mise sbom:generate`  |
+| `enrich_sbom_authors.py` | Enrich SBOMs with author/supplier data and add Rust + npm components | Called by `generate_sbom.sh` |
 
 #### `benchmarks/` — Performance benchmarks
 

@@ -428,6 +428,43 @@ echo ""
 # Note: README.md is maintained manually in sbom/ directory
 # It contains comprehensive documentation about all SBOM tools and usage
 
+# ---------------------------------------------------------------------------
+# Author/supplier enrichment
+# ---------------------------------------------------------------------------
+# sbomnix only captures Nix-level runtime dependencies (glibc, openssl…).
+# The enrichment step adds:
+#   • all Rust crates from Cargo.lock (author data from local registry cache)
+#   • all npm/pnpm packages from ui/pnpm-lock.yaml (author from node_modules)
+#   • supplier/originator fields on every component, including the system libs
+# The script reads author data from the local cargo registry cache populated
+# during build — no network calls required in the default mode.
+# Pass --api-limit N to also query crates.io for N crates missing author data.
+ENRICH_SCRIPT="$SCRIPT_DIR/enrich_sbom_authors.py"
+
+# Only run enrichment for the 'server' target (has Cargo.lock + UI).
+# For openssl-only targets the system-lib enrichment still applies.
+ENRICH_OPTS="--sbom-dir $OUTPUT_DIR --repo-root $REPO_ROOT"
+
+if [ "$TARGET" != "server" ] && [ "$TARGET" != "ckms" ]; then
+  # openssl-only: skip Rust + npm, just enrich existing components
+  ENRICH_OPTS="$ENRICH_OPTS --no-rust --no-npm"
+fi
+
+if [ -f "$ENRICH_SCRIPT" ] && command -v python3 >/dev/null 2>&1; then
+  echo "Running author/supplier enrichment..."
+  # In CI / release builds, set SBOM_API_LIMIT=500 in the environment to also
+  # query crates.io + npm registry for the ~100 crates/packages whose Cargo.toml
+  # or package.json does not carry an authors field.
+  # Default (offline): local cargo registry cache only (~83% Rust coverage).
+  SBOM_API_LIMIT="${SBOM_API_LIMIT:-0}"
+  # Use --in-place to overwrite bom.*.json directly so downstream consumers
+  # always get enriched files at the canonical paths.
+  python3 "$ENRICH_SCRIPT" $ENRICH_OPTS --in-place --api-limit "$SBOM_API_LIMIT"
+  echo ""
+else
+  echo "⚠  Skipping enrichment: python3 or $ENRICH_SCRIPT not available" >&2
+fi
+
 # Summary
 echo "========================================="
 echo "SBOM Generation Complete"
