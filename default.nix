@@ -346,6 +346,40 @@ let
     opensslDrv = openssl36-static;
   };
 
+  # Kubernetes in-cluster binary derivations (operator + CSI provider).
+  # These are thin HTTP/gRPC clients with no own crypto → single (non-FIPS) variant.
+  k8s-binaries = pkgs.callPackage ./nix/k8s-binaries.nix {
+    rustPlatform = rustPlatform190_228;
+    version = kmsVersion;
+    features = [ ];
+    static = true;
+    openssl36 = openssl36-static-228;
+    openssl312 = openssl312-static-228;
+  };
+
+  k8s-operator-bin = k8s-binaries.operator;
+  k8s-csi-provider-bin = k8s-binaries.csiProvider;
+
+  # Plugin binary derivation (deb/rpm target; runs on Kubernetes control-plane node).
+  k8s-plugin-bin = pkgs.callPackage ./nix/k8s-plugin.nix {
+    rustPlatform = rustPlatform190_228;
+    version = kmsVersion;
+    features = [ ];
+    static = true;
+    openssl36 = openssl36-static-228;
+    openssl312 = openssl312-static-228;
+  };
+
+  # Docker images for in-cluster Kubernetes components.
+  k8s-images = pkgs.callPackage ./nix/k8s-images.nix {
+    operatorDrv = k8s-operator-bin;
+    csiProviderDrv = k8s-csi-provider-bin;
+    version = kmsVersion;
+  };
+
+  k8s-operator-image = k8s-images.operatorImage;
+  k8s-csi-provider-image = k8s-images.csiProviderImage;
+
 in
 rec {
   # Binary packages (can be installed with nix-env)
@@ -368,6 +402,15 @@ rec {
     docker-image-fips
     docker-image-non-fips
     ;
+
+  # Kubernetes in-cluster Docker images
+  inherit
+    k8s-operator-image
+    k8s-csi-provider-image
+    ;
+
+  # Kubernetes plugin binary (for deb/rpm packaging)
+  inherit k8s-plugin-bin k8s-operator-bin k8s-csi-provider-bin;
 
   # Export OpenSSL 3.1.2 FIPS derivations for tooling (packaging script)
   inherit openssl312 openssl312-static openssl312-dynamic;

@@ -6,8 +6,7 @@
 replicaCount: 1
 
 image:
-  # FIPS image by default. Use ghcr.io/cosmian/kms for non-FIPS (extra algorithms).
-  repository: ghcr.io/cosmian/kms-fips
+  repository: ghcr.io/cosmian/kms
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ''

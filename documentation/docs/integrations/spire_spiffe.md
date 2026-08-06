@@ -1,6 +1,6 @@
 # SPIRE / SPIFFE — Workload Identity and FIPS-Backed PKI
 
-> Cosmian KMS serves as the single `vault_addr` for SPIRE: it implements the
+> Eviden KMS serves as the single `vault_addr` for SPIRE: it implements the
 > transit and PKI engines (`/v1/transit/*`, `/v1/{pki_mount}/*`) directly, and
 > transparently proxies all auth requests (`/v1/auth/*`) to the Cosmian Authentication
 > Server (auth-verifier), which handles AppRole login, token lifecycle, and
@@ -15,7 +15,7 @@
 sequenceDiagram
     participant Admin as Platform Admin
     participant AuthV as auth-verifier<br/>(/login + /auth/* — admin API)
-    participant KMS as Cosmian KMS<br/>(vault_addr — /v1/auth/* proxy<br/>+ /v1/transit/*, /v1/pki/*)
+    participant KMS as Eviden KMS<br/>(vault_addr — /v1/auth/* proxy<br/>+ /v1/transit/*, /v1/pki/*)
     participant Server as SPIRE Server
     participant Agent as SPIRE Agent
     participant Mistral as AI Agent Workload<br/>(e.g. Mistral agent)
@@ -69,7 +69,7 @@ SPIRE needs two things from an external secrets/PKI backend:
 - A **`KeyManager`** to store the private keys it uses internally.
 
 Both of SPIRE's built-in `vault` plugins use a specific HTTP API for crypto operations and
-authentication. Cosmian KMS implements the subset of that API SPIRE needs: it handles the
+authentication. Eviden KMS implements the subset of that API SPIRE needs: it handles the
 **Transit engine** (`/v1/transit/*`) and the **PKI engine**
 (`/v1/{pki_mount}/root/sign-intermediate`) natively, and transparently proxies all
 **AppRole auth** calls (`/v1/auth/*`) to the Cosmian Authentication Server. Point SPIRE's
@@ -80,9 +80,9 @@ generated, stored, and used exclusively inside the FIPS 140-3-validated KMS.
 
 | Need                                 | How this integration addresses it                                                                                                                                                  |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Private-key custody**              | SPIRE's CA and transit keys are generated and stored exclusively inside Cosmian KMS — never on the SPIRE server's local disk.                                                      |
+| **Private-key custody**              | SPIRE's CA and transit keys are generated and stored exclusively inside Eviden KMS — never on the SPIRE server's local disk.                                                      |
 | **FIPS 140-3 compliance**            | All signing operations (CA rotation, transit `sign`) are executed by the FIPS-validated KMS, not by SPIRE's built-in `disk`/`memory` key manager.                                  |
-| **No additional cluster to operate** | Reuses infrastructure you already run (Cosmian KMS + auth-verifier) instead of standing up and hardening a separate secrets management cluster just for SPIRE.                     |
+| **No additional cluster to operate** | Reuses infrastructure you already run (Eviden KMS + auth-verifier) instead of standing up and hardening a separate secrets management cluster just for SPIRE.                     |
 | **Centralized audit trail**          | Every CA signature and transit `sign` call is a KMIP operation logged by the KMS with identity, timestamp, and key identifier.                                                     |
 | **Post-quantum-ready transit keys**  | Transit keys support `ml-dsa-65` (non-FIPS builds) alongside classical `ecdsa-p256/p384` and `rsa-2048/4096`.                                                                      |
 | **Drop-in `vault_addr`**             | SPIRE's `UpstreamAuthority "vault"` and `KeyManager "vault"` plugins need no code changes — only configuration pointing `vault_addr` at the KMS. No nginx or extra proxy required. |
@@ -90,7 +90,7 @@ generated, stored, and used exclusively inside the FIPS 140-3-validated KMS.
 ## Who should use it?
 
 - **Platform/security teams** implementing machine-to-machine (M2M) workload authentication
-  between services or AI agents, who already run (or plan to run) Cosmian KMS.
+  between services or AI agents, who already run (or plan to run) Eviden KMS.
 - **SPIRE operators** who want FIPS 140-3/HSM-backed key custody for SPIRE's CA and
   transit keys without deploying and operating a separate secrets management cluster.
 - **Teams issuing identities to AI agent workloads** (e.g. LLM-backed autonomous agents)
@@ -108,7 +108,7 @@ split — it connects to one endpoint.
 flowchart LR
     subgraph Cosmian ["Cosmian Backend"]
         direction TB
-        KMS["Cosmian KMS :9998\nvault_addr\n/v1/auth/* → proxy\n/v1/transit/*, /v1/pki/* → native"]
+        KMS["Eviden KMS :9998\nvault_addr\n/v1/auth/* → proxy\n/v1/transit/*, /v1/pki/* → native"]
         AuthV["auth-verifier :8443\n/v1/auth/* (AppRole, token)"]
         KMS -- "/v1/auth/* proxy\n(AppRole login,\ntoken lookup)" --> AuthV
         KMS -. "token lookup-self\n(30 s cache)" .-> AuthV
@@ -193,7 +193,7 @@ stack. Each step links to the detailed reference for that component. In order:
 
 | # | Step | What you do | Reference |
 |---|------|-------------|-----------|
-| 1 | **Install Cosmian KMS** | Install and start the KMS (Docker, Linux packages, macOS, or Windows). | [KMS installation](../installation/installation_getting_started.md) |
+| 1 | **Install Eviden KMS** | Install and start the KMS (Docker, Linux packages, macOS, or Windows). | [KMS installation](../installation/installation_getting_started.md) |
 | 2 | **Install the auth-verifier** | Deploy the Cosmian Authentication Server that the KMS proxies `/v1/auth/*` to. | `authentication/server/documentation/docs/installation.md` |
 | 3 | **Enable the Vault API on the KMS** | Turn on the SPIRE-compatible API and point it at the auth-verifier. | [Configuration reference](#configuration-reference) |
 | 4 | **Create the PKI CA key** | Create the KMS key the PKI engine signs intermediate CAs with. | [PKI CA key provisioning](#0-pki-ca-key-provisioning-prerequisite) |
@@ -244,7 +244,7 @@ server {
 }
 
 plugins {
-    # ── Upstream Authority: Cosmian KMS PKI engine (Vault-compatible) ─────────
+    # ── Upstream Authority: Eviden KMS PKI engine (Vault-compatible) ─────────
     # Signs SPIRE's intermediate CA CSR via the KMS. Built-in to SPIRE — no
     # plugin_cmd required. vault_addr points at the KMS; the KMS proxies
     # /v1/auth/* to the auth-verifier and handles /v1/pki/* natively.
@@ -421,7 +421,7 @@ to be signed as its intermediate CA.
 ```mermaid
 sequenceDiagram
     participant Server as SPIRE Server
-    participant KMS as Cosmian KMS
+    participant KMS as Eviden KMS
     participant AuthV as auth-verifier
 
     Server->>KMS: POST /v1/auth/approle/login<br/>{role_id, secret_id}
@@ -444,7 +444,7 @@ Transit API directly, the lifecycle is the same:
 ```mermaid
 sequenceDiagram
     participant Client
-    participant KMS as Cosmian KMS
+    participant KMS as Eviden KMS
 
     Client->>KMS: POST /v1/transit/keys/{name}<br/>{"type":"ecdsa-p256"}
     Note over KMS: KMIP CreateKeyPair<br/>tag vault_transit:{name}<br/>exportable forced false
@@ -465,7 +465,7 @@ for 30 seconds (configurable) to avoid a round-trip on every request:
 ```mermaid
 sequenceDiagram
     participant Client
-    participant KMS as Cosmian KMS<br/>(vault_token_middleware)
+    participant KMS as Eviden KMS<br/>(vault_token_middleware)
     participant AuthV as auth-verifier
 
     Client->>KMS: request with X-Vault-Token: hvs.xxxx
@@ -502,7 +502,7 @@ sequenceDiagram
 ## Quick start (local demo stack)
 
 The KMS repository ships a working end-to-end demo under `test_data/spire/` (used by the
-project's own integration tests). It runs Cosmian KMS and auth-verifier as regular host
+project's own integration tests). It runs Eviden KMS and auth-verifier as regular host
 processes and the SPIRE server, SPIRE agent, and AI agent workload containers via Docker
 Compose.
 
@@ -527,7 +527,7 @@ cosmian_kms --config test_data/spire/config/kms.toml &
 ckms --accept-invalid-certs \
   certificates certify --generate-key-pair --algorithm nist-p384 \
   --certificate-id vault_pki_ca_cert \
-  --subject-name "CN=Cosmian KMS Root CA,O=Cosmian,C=FR" \
+  --subject-name "CN=Eviden KMS Root CA,O=Cosmian,C=FR" \
   --tag vault_pki_ca --days 3650
 
 # 1. Provision AppRoles (spire-server + mistral-agents)
@@ -548,7 +548,7 @@ A successful run shows the SPIRE server signing its intermediate CA through the 
 engine, then each workload container printing its issued SPIFFE ID and a passing identity
 check.
 
-> In a production deployment, Cosmian KMS and auth-verifier run as long-lived services
+> In a production deployment, Eviden KMS and auth-verifier run as long-lived services
 > (not `cargo run`/dev processes), and SPIRE Agent should use a stronger node attestor
 > (e.g. `x509pop` or TPM-based attestation) instead of the `join_token` attestor used in
 > this local demo.
@@ -857,7 +857,7 @@ when the auth-verifier uses a self-signed/private CA. SPIRE performs the data-pl
 > service-account JWT), for workloads running inside a Kubernetes cluster instead of
 > using AppRole credentials.
 
-**Cosmian KMS — Transit engine** (mount: `{vault_transit_mount}`, default `transit`):
+**Eviden KMS — Transit engine** (mount: `{vault_transit_mount}`, default `transit`):
 
 Each transit key is stored as an asymmetric **key pair** (`PrivateKey` + `PublicKey`) in
 the KMS.
@@ -875,7 +875,7 @@ Signing is always performed server-side.
 | `DELETE` | `/v1/{mount}/keys/{name}`        | `Revoke` (cascade) + `Destroy` (cascade, `remove=true`) | `PrivateKey` + linked `PublicKey` **permanently deleted**                                 | `vault_transit:{name}`                 | —                                                                                                            |
 | `POST`   | `/v1/{mount}/sign/{name}/{alg}`  | `Sign`                                                  | `PrivateKey` **used** (never exported); signature prefixed `vault:v1:`                    | `vault_transit:{name}`                 | —                                                                                                            |
 
-**Cosmian KMS — PKI engine** (mount: `{vault_pki_mount}`, default `pki`):
+**Eviden KMS — PKI engine** (mount: `{vault_pki_mount}`, default `pki`):
 
 The PKI CA key is a server-level resource owned by the server admin (`default_username`).
 All three steps of the sign-intermediate flow execute as the server admin, regardless of
@@ -998,7 +998,7 @@ numbered scenario; all are asserted **live** against a running KMS + auth-verifi
 
 ## See also
 
-- [Cosmian KMS installation](../installation/installation_getting_started.md) — install and run the KMS (Docker, Linux packages, macOS, Windows).
+- [Eviden KMS installation](../installation/installation_getting_started.md) — install and run the KMS (Docker, Linux packages, macOS, Windows).
 - **auth-verifier installation** — `authentication/server/documentation/docs/installation.md` — deploy the Cosmian Authentication Server that backs the KMS `/v1/auth/*` proxy.
 - `test_data/spire/setup/kms_setup.sh` — Bash script that runs all provisioning steps in one shot (`ROLE_NAME=my-spire bash test_data/spire/setup/kms_setup.sh`).
 - `crate/server/documentation/openapi.yaml` — OpenAPI schema for the `/v1/transit/*` and `/v1/<pki_mount>/*` paths.

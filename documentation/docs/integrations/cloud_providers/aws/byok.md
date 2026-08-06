@@ -222,7 +222,7 @@ First, Sign in to the AWS Management Console and open the AWS Key Management Ser
 
 The next step is to [download the wrapping public key and import token](https://docs.aws.amazon.com/kms/latest/developerguide/importing-keys-get-public-key-and-token.html#importing-keys-get-public-key-and-token-console). **Be mindful that an RSA_AES_KEY_WRAP_SHA wrapping algorithm is required for wrapping RSA private key material (except in China Regions).** Choosing `RSAES_OAEP_SHA_256` will work for this example.
 
-Once this is done, create your key on the cosmian KMS like follow, we call it `rsa_key_material` :
+Once this is done, create your key on the Eviden KMS like follow, we call it `rsa_key_material` :
 
 ![Create an RSA key in Eviden KMS](create_rsa.png)
 

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#MISE description="Build all Kubernetes binaries (plugin, operator, CSI provider, ckms) via Nix"
+#USAGE flag "--force" help="Force rebuild even if cached results exist"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+# shellcheck source=.mise/lib/nix_helpers.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/nix_helpers.sh"
+
+REPO_ROOT="$(get_repo_root)"
+ensure_nix_shell
+
+print_header "Building Kubernetes binaries via Nix"
+
+FORCE="${usage_force:-false}"
+
+TARGET_DIR="$REPO_ROOT/target/release"
+mkdir -p "$TARGET_DIR"
+
+nix_build_cached() {
+  local attr="$1" out_link="$2" bin_path="$3"
+  if [ "$FORCE" != "true" ] && [ -L "$out_link" ] && [ -x "$(readlink -f "$out_link")/$bin_path" ]; then
+    print_status "Reusing cached $attr"
+  else
+    nix_build "$attr" "$out_link"
+  fi
+  local real
+  real="$(readlink -f "$out_link")/$bin_path"
+  [ -x "$real" ] || {
+    echo "ERROR: binary not found at $real" >&2
+    exit 1
+  }
+  cp -f "$real" "$TARGET_DIR/$(basename "$bin_path")"
+  chmod 755 "$TARGET_DIR/$(basename "$bin_path")"
+  print_status "  → target/release/$(basename "$bin_path")"
+}
+
+nix_build_cached k8s-plugin-bin "$REPO_ROOT/result-k8s-plugin-bin" "bin/kubernetes-kms-plugin"
+nix_build_cached k8s-operator-bin "$REPO_ROOT/result-k8s-operator-bin" "bin/cosmian-kms-operator"
+nix_build_cached k8s-csi-provider-bin "$REPO_ROOT/result-k8s-csi-provider-bin" "bin/cosmian-kms-csi-provider"
+nix_build_cached kms-cli "$REPO_ROOT/result-kms-cli" "bin/ckms"
+
+print_success "All k8s binaries ready in target/release/"

@@ -1,0 +1,20 @@
+#!/bin/sh -ex
+
+has_systemd() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+  # Stop and disable the service if it is running.
+  if has_systemd; then
+    systemctl stop kubernetes-kms-plugin 2>/dev/null || true
+    systemctl disable kubernetes-kms-plugin 2>/dev/null || true
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+fi
+
+if [ "$1" = "purge" ]; then
+  rm -rf /etc/kubernetes-kms-plugin
+fi
+
+#DEBHELPER#

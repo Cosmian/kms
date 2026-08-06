@@ -8,6 +8,7 @@ Usage:
 Outputs: crate/test_kms_server/README.md (overwritten in place)
 """
 import os
+import re
 import sys
 import tomllib
 from collections import OrderedDict
@@ -32,6 +33,12 @@ for root, _dirs, files in os.walk(BASE):
             manifest = tomllib.load(f)
         name = manifest.get('name', os.path.basename(rel))
         desc = manifest.get('description', '').strip().split('\n')[0]  # First line only
+        # Wrap bare email addresses in <> so markdownlint MD034 is satisfied
+        desc = re.sub(
+            r'(?<![<\`])([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?![>\`])',
+            r'<\1>',
+            desc,
+        )
         steps = len(manifest.get('steps', []))
         vectors.append(
             {
