@@ -301,18 +301,29 @@ pub(crate) async fn kmip_binary(
 ) -> HttpResponse {
     let user = kms.get_user(&req_http);
 
+    // Best-effort: peek at the request TTLV to record the operation name, and
+    // remember the flavor so the response can be re-parsed for `inject_response_uid`
+    // below (`handle_ttlv_bytes` only returns bytes, not the response TTLV).
+    let mut flavor = KmipFlavor::Kmip2;
+    let mut op_name = None;
     if let Ok((major, _minor)) = TTLV::find_version(body.as_ref()) {
-        let flavor = if major == 1 {
+        flavor = if major == 1 {
             KmipFlavor::Kmip1
         } else {
             KmipFlavor::Kmip2
         };
         if let Ok(ttlv) = TTLV::from_bytes(body.as_ref(), flavor) {
-            inject_audit_request(&req_http, &ttlv);
+            op_name = Some(inject_audit_request(&req_http, &ttlv));
         }
     }
 
     let response_bytes = handle_ttlv_bytes(&user, body.as_ref(), &kms).await;
+
+    if let Some(op_name) = op_name {
+        if let Ok(response_ttlv) = TTLV::from_bytes(&response_bytes, flavor) {
+            inject_response_uid(&req_http, &response_ttlv, &op_name);
+        }
+    }
 
     HttpResponse::Ok()
         .content_type("application/octet-stream")

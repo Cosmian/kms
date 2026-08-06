@@ -13,11 +13,43 @@
 
 use actix_web::{HttpMessage, HttpRequest};
 use cosmian_kms_access::audit::AuditResult;
-use cosmian_kms_server_database::reexport::cosmian_kmip::ttlv::{TTLV, TTLValue};
+use cosmian_kms_server_database::reexport::cosmian_kmip::{
+    kmip_0::kmip_types::{ErrorReason, ResultStatusEnumeration},
+    kmip_2_1::kmip_types::{CryptographicAlgorithm, OperationEnumeration},
+    ttlv::{TTLV, TTLValue},
+};
 
 use crate::middlewares::{
     BatchItemAuditContext, KmipAlgorithm, KmipBatchOperations, KmipObjectUid, KmipOperationName,
 };
+
+/// Reads the variant name of an enumeration field, tolerant of both TTLV wire encodings.
+///
+/// JSON-decoded TTLVs carry the variant name in `KmipEnumerationVariant::name`, but
+/// binary-decoded TTLVs carry only the numeric `value` (the name is empty — the wire
+/// format never transmits it). In the binary case the code is resolved through the
+/// field's *typed* enum via `resolve` (e.g. `OperationEnumeration::from_repr`). This is
+/// unambiguous because the caller statically knows which enum the field holds, so there
+/// is no cross-enum code collision (unlike a global reverse table where, e.g., `Create`
+/// and `Certificate` share code `0x01`).
+fn enum_field_name(
+    fields: &[TTLV],
+    tag: &str,
+    resolve: impl Fn(u32) -> Option<&'static str>,
+) -> Option<String> {
+    let variant = fields.iter().find(|f| f.tag == tag).and_then(|f| {
+        if let TTLValue::Enumeration(ev) = &f.value {
+            Some(ev)
+        } else {
+            None
+        }
+    })?;
+    if variant.name.is_empty() {
+        resolve(variant.value).map(str::to_owned)
+    } else {
+        Some(variant.name.clone())
+    }
+}
 
 /// Extracts the specific KMIP operation name from a TTLV for audit purposes.
 ///
@@ -48,15 +80,15 @@ pub(super) fn extract_batch_audit_contexts(ttlv: &TTLV) -> Vec<BatchItemAuditCon
             let TTLValue::Structure(fields) = &item.value else {
                 return None;
             };
-            let op_name = fields.iter().find(|f| f.tag == "Operation").and_then(|f| {
-                if let TTLValue::Enumeration(ev) = &f.value {
-                    Some(ev.name.clone())
-                } else {
-                    None
-                }
+            let op_name = enum_field_name(fields, "Operation", |code| {
+                OperationEnumeration::from_repr(code).map(Into::into)
             })?;
-            let object_uid = extract_object_uid(item, &op_name, false);
-            let algorithm = extract_algorithm(item, &op_name);
+            // In a batch item the operation fields live under `RequestPayload`, so
+            // UID/algorithm extraction must descend into it rather than search the
+            // `BatchItem` directly (a single-op TTLV has them as direct children).
+            let payload = fields.iter().find(|f| f.tag == "RequestPayload");
+            let object_uid = payload.and_then(|p| extract_object_uid(p, &op_name, false));
+            let algorithm = payload.and_then(|p| extract_algorithm(p, &op_name));
             Some(BatchItemAuditContext {
                 operation: op_name,
                 object_uid,
@@ -128,7 +160,13 @@ fn extract_object_uid(ttlv: &TTLV, op_name: &str, is_response: bool) -> Option<S
 fn extract_algorithm(ttlv: &TTLV, op_name: &str) -> Option<String> {
     let enum_name = |t: &TTLV| {
         if let TTLValue::Enumeration(ev) = &t.value {
-            Some(ev.name.clone())
+            if ev.name.is_empty() {
+                // Binary TTLV carries only the numeric code; resolve via the typed enum.
+                CryptographicAlgorithm::from_repr(ev.value)
+                    .map(|a| <&'static str>::from(a).to_owned())
+            } else {
+                Some(ev.name.clone())
+            }
         } else {
             None
         }
@@ -237,44 +275,30 @@ pub(super) fn inject_response_uid(req: &HttpRequest, response_ttlv: &TTLV, op_na
                 });
             }
             // Backfill per-item result from ResultStatus/ResultReason
-            let result_status = fields
-                .iter()
-                .find(|f| f.tag == "ResultStatus")
-                .and_then(|f| {
-                    if let TTLValue::Enumeration(ev) = &f.value {
-                        Some(ev.name.as_str())
-                    } else {
-                        None
-                    }
-                });
-            ctx.result = match result_status {
+            let result_status = enum_field_name(fields, "ResultStatus", |code| {
+                ResultStatusEnumeration::from_repr(code).map(Into::into)
+            });
+            ctx.result = match result_status.as_deref() {
                 Some("Success" | "OperationPending" | "OperationUndone") => {
                     Some(AuditResult::Success)
                 }
                 Some(status) => {
-                    let reason = fields
-                        .iter()
-                        .find(|f| f.tag == "ResultReason")
-                        .and_then(|f| {
-                            if let TTLValue::Enumeration(ev) = &f.value {
-                                Some(ev.name.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .or_else(|| {
-                            fields
-                                .iter()
-                                .find(|f| f.tag == "ResultMessage")
-                                .and_then(|f| {
-                                    if let TTLValue::TextString(s) = &f.value {
-                                        Some(s.clone())
-                                    } else {
-                                        None
-                                    }
-                                })
-                        })
-                        .unwrap_or_else(|| status.to_owned());
+                    let reason = enum_field_name(fields, "ResultReason", |code| {
+                        ErrorReason::from_repr(code).map(Into::into)
+                    })
+                    .or_else(|| {
+                        fields
+                            .iter()
+                            .find(|f| f.tag == "ResultMessage")
+                            .and_then(|f| {
+                                if let TTLValue::TextString(s) = &f.value {
+                                    Some(s.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                    })
+                    .unwrap_or_else(|| status.to_owned());
                     Some(AuditResult::Failure(reason))
                 }
                 None => None,
