@@ -43,7 +43,7 @@ let
 in
 rustPlatform.buildRustPackage (
   {
-    pname = "cosmian-kms-plugin";
+    pname = "kubernetes-kms-plugin";
     inherit version;
     auditable = false;
     doCheck = false;
@@ -64,12 +64,12 @@ rustPlatform.buildRustPackage (
     inherit buildInputs;
 
     buildPhase = ''
-      echo "== cargo build cosmian-kms-plugin (release) =="
+      echo "== cargo build kubernetes-kms-plugin (release) =="
       cargo build --release -p cosmian_kms_k8s_plugin --no-default-features ${featuresFlag}
 
       ${mkRelinkSnippet ''
-        echo "== Re-linking cosmian-kms-plugin with system dynamic linker: $DL =="
-        cargo rustc --release -p cosmian_kms_k8s_plugin --bin cosmian-kms-plugin \
+        echo "== Re-linking kubernetes-kms-plugin with system dynamic linker: $DL =="
+        cargo rustc --release -p cosmian_kms_k8s_plugin --bin kubernetes-kms-plugin \
           --no-default-features ${featuresFlag} \
           -- -C link-arg=-Wl,--dynamic-linker,$DL
       ''}
@@ -77,19 +77,19 @@ rustPlatform.buildRustPackage (
 
     installPhase = ''
       mkdir -p "$out/bin"
-      cp "target/release/cosmian-kms-plugin" "$out/bin/"
+      cp "target/release/kubernetes-kms-plugin" "$out/bin/"
     '';
 
     installCheckPhase = ''
       runHook preInstallCheck
-      [ -x "$out/bin/cosmian-kms-plugin" ] || { echo "ERROR: cosmian-kms-plugin not found"; exit 1; }
-      "$out/bin/cosmian-kms-plugin" --help >/dev/null 2>&1 || true
+      [ -x "$out/bin/kubernetes-kms-plugin" ] || { echo "ERROR: kubernetes-kms-plugin not found"; exit 1; }
+      "$out/bin/kubernetes-kms-plugin" --help >/dev/null 2>&1 || true
 
       # Check GLIBC version <= 2.28 (RHEL 8 / Debian 10 / Ubuntu 18.04 compatibility)
-      MAX_VER=$(readelf -sW "$out/bin/cosmian-kms-plugin" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
+      MAX_VER=$(readelf -sW "$out/bin/kubernetes-kms-plugin" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -V | tail -n1)
       if [ -n "$MAX_VER" ]; then
         [ "$(printf '%s\n' "$MAX_VER" "2.28" | sort -V | tail -n1)" = "2.28" ] || {
-          echo "ERROR: cosmian-kms-plugin requires GLIBC $MAX_VER > 2.28"; exit 1;
+          echo "ERROR: kubernetes-kms-plugin requires GLIBC $MAX_VER > 2.28"; exit 1;
         }
       fi
       runHook postInstallCheck

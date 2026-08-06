@@ -106,8 +106,6 @@ jobs:
 
   kubernetes:
     uses: ./.github/workflows/packaging-kubernetes.yml
-    with:
-      toolchain: ${{ inputs.toolchain || '1.97.0' }}
     secrets: inherit
 
   publish-release:

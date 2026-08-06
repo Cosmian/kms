@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#MISE description="Build all Linux packages (deb + rpm) for the Cosmian KMS Kubernetes Plugin"
+set -euo pipefail
+# shellcheck source=.mise/lib/common.sh
+source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
+
+print_header "Building Kubernetes Plugin Linux packages"
+
+mise run package:k8s:deb
+mise run package:k8s:rpm
+
+print_success "All Kubernetes Plugin packages built"
+print_status "  deb → result-k8s-plugin-deb/"
+print_status "  rpm → result-k8s-plugin-rpm/"

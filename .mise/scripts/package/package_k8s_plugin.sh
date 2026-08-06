@@ -84,13 +84,71 @@ sign_package() {
   local pkg="$1"
   local keys_dir="$REPO_ROOT/nix/signing-keys"
   local key_id_file="$keys_dir/key-id.txt"
-  if [ -f "$key_id_file" ] && [ -n "${CI:-}" ]; then
-    KEY_ID=$(cat "$key_id_file")
-    gpg --batch --yes --armor --detach-sign --default-key "$KEY_ID" "$pkg"
-    echo "Signed: $pkg"
-  else
-    echo "Skipping package signing (no key-id.txt or not in CI)."
+
+  # Signing is mandatory in CI; can be forced locally with REQUIRE_SIGNING=1
+  local require_signing="0"
+  if [ "${REQUIRE_SIGNING:-}" = "1" ] || [ -n "${CI:-}" ]; then
+    require_signing="1"
   fi
+
+  if [ ! -f "$key_id_file" ]; then
+    if [ "$require_signing" = "1" ]; then
+      echo "ERROR: No signing key found at $key_id_file" >&2
+      echo "Generate one with: bash nix/scripts/generate_signing_key.sh" >&2
+      exit 1
+    fi
+    echo "Signing skipped: no key-id.txt present (set REQUIRE_SIGNING=1 to enforce)"
+    return 0
+  fi
+
+  local key_id
+  key_id=$(tr -d ' \t\r\n' <"$key_id_file")
+
+  if [ -z "$key_id" ]; then
+    if [ "$require_signing" = "1" ]; then
+      echo "ERROR: Empty key ID in $key_id_file" >&2
+      exit 1
+    fi
+    echo "Signing skipped: empty key ID"
+    return 0
+  fi
+
+  if [ -z "${GPG_SIGNING_KEY_PASSPHRASE:-}" ]; then
+    if [ "$require_signing" = "1" ]; then
+      echo "ERROR: GPG_SIGNING_KEY_PASSPHRASE is not set" >&2
+      exit 1
+    fi
+    echo "Signing skipped: GPG_SIGNING_KEY_PASSPHRASE not set (set REQUIRE_SIGNING=1 to enforce)"
+    return 0
+  fi
+
+  local private_key="$keys_dir/cosmian-kms-private.asc"
+  if [ -n "${GPG_SIGNING_KEY:-}" ]; then
+    printf '%s\n' "$GPG_SIGNING_KEY" >"$private_key"
+    gpg --batch --import "$private_key" 2>/dev/null || {
+      echo "ERROR: Failed to import GPG key from GPG_SIGNING_KEY" >&2
+      exit 1
+    }
+  elif ! gpg --list-secret-keys "$key_id" >/dev/null 2>&1; then
+    if [ -f "$private_key" ]; then
+      gpg --batch --import "$private_key" 2>/dev/null || {
+        echo "ERROR: Failed to import GPG key from $private_key" >&2
+        exit 1
+      }
+    else
+      if [ "$require_signing" = "1" ]; then
+        echo "ERROR: Key $key_id not in keyring and no private key file found" >&2
+        exit 1
+      fi
+      echo "Signing skipped: no private key available"
+      return 0
+    fi
+  fi
+
+  echo "Signing $pkg with key $key_id..."
+  echo "$GPG_SIGNING_KEY_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+    --passphrase-fd 0 --armor --detach-sign --local-user "$key_id" "$pkg"
+  echo "Signed: $pkg"
 }
 
 # ── 2. Build plugin binary via Nix ────────────────────────────────────────────

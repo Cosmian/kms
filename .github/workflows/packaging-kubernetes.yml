@@ -16,22 +16,12 @@ name: Kubernetes Packaging & E2E
 
 on:
   workflow_call:
-    inputs:
-      toolchain:
-        required: true
-        type: string
 
   push:
     tags:
       - v*
 
   workflow_dispatch:
-    inputs:
-      toolchain:
-        description: Rust toolchain version
-        required: false
-        type: string
-        default: 1.97.0
 
 permissions:
   contents: write  # push to gh-pages branch + create GitHub Release assets
@@ -39,38 +29,31 @@ permissions:
   id-token: write  # needed for pages deployment
 
 jobs:
-  # ── Build the k8s binaries + ckms ONCE, share them with every binary E2E job ─
+  # ── Build the k8s binaries + ckms via Nix ONCE, share with every E2E job ─────
   build-k8s-bins:
-    name: Build k8s binaries
+    name: Build k8s binaries (Nix)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ inputs.toolchain || '1.97.0' }}
+      - uses: ./.github/actions/cleanup-runner
 
-      - name: Cache cargo registry + build
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-nix
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-k8s-bins-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-k8s-bins-
+          extra-nix-config: http-connections = 8
 
-      - name: Build k8s binaries and ckms
+      - uses: ./.github/actions/install-mise
+
+      - name: Free disk space
         run: |
-          cargo build --release \
-            -p cosmian_kms_k8s_plugin \
-            -p cosmian_kms_k8s_operator \
-            -p cosmian_kms_csi_provider \
-            -p ckms
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h
+
+      - name: Build k8s binaries and ckms via Nix
+        run: mise run build:k8s-bins
 
       - name: Upload binaries
         uses: actions/upload-artifact@v7
@@ -259,10 +242,11 @@ jobs:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}
 
-      - name: Build k8s plugin deb + rpm
-        run: |
-          mise run package:k8s-plugin-deb
-          mise run package:k8s-plugin-rpm
+      - name: List keys
+        run: gpg -K
+
+      - name: Build and sign k8s plugin packages (deb + rpm)
+        run: mise run package:k8s
         env:
           GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
           GPG_SIGNING_KEY_PASSPHRASE: ${{ secrets.GPG_SIGNING_KEY_PASSPHRASE }}

@@ -42,7 +42,7 @@ for c in m['spec']['containers']:
         mounts.append(
             {
                 'name': 'kms-socket',
-                'mountPath': '/var/run/cosmian-kms-plugin',
+                'mountPath': '/var/run/kubernetes-kms-plugin',
                 'readOnly': False,
             }
         )
@@ -60,7 +60,7 @@ if not any(v['name'] == 'kms-socket' for v in vols):
         {
             'name': 'kms-socket',
             'hostPath': {
-                'path': '/var/run/cosmian-kms-plugin',
+                'path': '/var/run/kubernetes-kms-plugin',
                 'type': 'DirectoryOrCreate',
             },
         }
