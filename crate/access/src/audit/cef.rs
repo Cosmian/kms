@@ -121,9 +121,14 @@ fn cef_severity(result: &AuditResult) -> u8 {
 }
 
 /// Escapes a value for use in the CEF pipe-delimited header.
-/// Escapes `\` → `\\` then `|` → `\|`.
+/// Escapes `\` → `\\`, `|` → `\|`, then newlines — a raw `\n`/`\r` in the
+/// operation name would otherwise let an attacker inject a second, forged
+/// CEF record into the SIEM stream.
 fn escape_header(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('|', "\\|")
+    s.replace('\\', "\\\\")
+        .replace('|', "\\|")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }
 
 /// Escapes a value for use in a CEF extension field value.
@@ -266,6 +271,84 @@ mod tests {
         assert!(
             !line.contains("cs5"),
             "cs5 must be absent when request_id is None: {line}"
+        );
+    }
+
+    // ── Injection hardening ─────────────────────────────────────────────
+
+    #[test]
+    fn escape_ext_value_newline_and_cr() {
+        assert_eq!(escape_ext_value("a\nb\rc"), "a\\nb\\rc");
+    }
+
+    #[test]
+    fn escape_ext_value_pipe_is_not_escaped() {
+        // `|` only delimits the CEF header, not extension key=value pairs.
+        assert_eq!(escape_ext_value("a|b"), "a|b");
+    }
+
+    #[test]
+    fn escape_header_newline_and_cr() {
+        assert_eq!(escape_header("a\nb\rc"), "a\\nb\\rc");
+    }
+
+    #[test]
+    fn cef_line_user_with_forged_record_stays_single_line() {
+        // A malicious `user` embedding a newline + fake CEF header must not be
+        // able to inject a second record into the SIEM stream.
+        let mut ev = make_event(AuditResult::Success);
+        ev.user = "evil\nCEF:0|Attacker|Forged|1.0|Fake|Fake|10|".to_owned();
+        ev.row_hash = compute_row_hash(&ev);
+        let line = to_cef_line(&ev, "5.0.0");
+
+        assert!(
+            !line.contains('\n'),
+            "CEF line must not contain a raw newline: {line}"
+        );
+        assert!(
+            !line.contains('\r'),
+            "CEF line must not contain a raw CR: {line}"
+        );
+        // The forged header text must stay embedded inside the escaped `suser`
+        // value, not break out into what a line-oriented parser would treat
+        // as a second record.
+        assert!(
+            line.contains("suser=evil\\nCEF:0|Attacker"),
+            "expected escaped user: {line}"
+        );
+    }
+
+    #[test]
+    fn cef_line_object_uid_with_equals_and_pipe_stays_single_field() {
+        let mut ev = make_event(AuditResult::Success);
+        ev.object_uid = Some("uid=1|extra=field".to_owned());
+        ev.row_hash = compute_row_hash(&ev);
+        let line = to_cef_line(&ev, "5.0.0");
+
+        assert!(
+            line.contains("cs1=uid\\=1|extra\\=field cs1Label=objectUID"),
+            "expected escaped '=' in cs1 value: {line}"
+        );
+    }
+
+    #[test]
+    fn cef_line_operation_with_pipe_does_not_break_header_fields() {
+        let mut ev = make_event(AuditResult::Success);
+        ev.operation = "Fake|Injected|99".to_owned();
+        ev.row_hash = compute_row_hash(&ev);
+        let line = to_cef_line(&ev, "5.0.0");
+
+        // The embedded `|` must be escaped (`\|`), not left as a raw field
+        // separator — otherwise it would shift the severity/extension fields.
+        let expected_header =
+            "CEF:0|Cosmian|KMS|5.0.0|Fake\\|Injected\\|99|Fake\\|Injected\\|99|5|";
+        assert!(
+            line.starts_with(expected_header),
+            "expected escaped pipes in header, got: {line}"
+        );
+        assert!(
+            line[expected_header.len()..].starts_with("rt="),
+            "severity/extension fields must not shift: {line}"
         );
     }
 }

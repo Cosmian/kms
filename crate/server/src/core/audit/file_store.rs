@@ -33,7 +33,7 @@ use cosmian_kms_access::audit::{
 };
 use cosmian_logger::{debug, error};
 use time::OffsetDateTime;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{error::KmsError, result::KResult};
 
@@ -42,6 +42,19 @@ use crate::{error::KmsError, result::KResult};
 /// `AuditEventFull` is typically <2 KiB.
 const TAIL_WINDOW: u64 = 65_536;
 
+/// Message sent to the writer task over the channel.
+enum WriterMsg {
+    /// A draft event to persist.
+    Event(AuditEventDraft),
+    /// A synchronization barrier: the writer acknowledges once every message
+    /// enqueued before this one has been written (and, for `File`, `fsync`'d).
+    /// Used by tests to await the writer's progress deterministically instead
+    /// of sleeping. Only the test-only `flush()` constructs it, but the field
+    /// type and writer-loop handler compile unconditionally.
+    #[cfg_attr(not(test), allow(dead_code))]
+    Flush(oneshot::Sender<()>),
+}
+
 /// A cheaply cloneable handle to the audit writer task.
 ///
 /// Cloning this value is O(1) — `tokio::sync::mpsc::Sender` is already backed
@@ -49,7 +62,7 @@ const TAIL_WINDOW: u64 = 65_536;
 /// All clones share the same underlying channel and writer task.
 #[derive(Clone)]
 pub(crate) struct AuditFileStore {
-    sender: mpsc::Sender<AuditEventDraft>,
+    sender: mpsc::Sender<WriterMsg>,
     /// Counts events dropped because the channel was full.
     /// Checked by the writer loop to emit a sentinel event before the next real event.
     dropped_count: Arc<AtomicU64>,
@@ -90,7 +103,7 @@ impl AuditFileStore {
             ))
         })?;
 
-        let (tx, rx) = mpsc::channel::<AuditEventDraft>(channel_capacity);
+        let (tx, rx) = mpsc::channel::<WriterMsg>(channel_capacity);
         let dropped_count = Arc::new(AtomicU64::new(0));
         let dropped_count_for_writer = Arc::clone(&dropped_count);
 
@@ -116,7 +129,7 @@ impl AuditFileStore {
     /// dropped — the sentinel will account for them on the next successful enqueue.
     pub(crate) fn enqueue(&self, drafts: impl IntoIterator<Item = AuditEventDraft>) {
         for draft in drafts {
-            match self.sender.try_send(draft) {
+            match self.sender.try_send(WriterMsg::Event(draft)) {
                 Ok(()) => {}
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     self.dropped_count.fetch_add(1, Ordering::Relaxed);
@@ -126,6 +139,25 @@ impl AuditFileStore {
                     error!("AuditFileStore: writer task has stopped, audit event dropped");
                 }
             }
+        }
+    }
+
+    /// Awaits until every event enqueued before this call has been written by
+    /// the writer task (and, for the real `File` sink, `fsync`'d). Unlike
+    /// `enqueue`, this uses a blocking `send` so the barrier itself is never
+    /// dropped under channel saturation.
+    ///
+    /// Intended for tests and offline tooling that need a deterministic
+    /// drain point instead of a fixed sleep. A no-op if the writer task has
+    /// already stopped.
+    // Only called from test code today; kept as a real (non-cfg-gated) crate API
+    // so `WriterMsg::Flush` stays a normal, always-constructed variant instead of
+    // needing parallel cfg(test)/cfg(not(test)) match arms in the hot writer loop.
+    #[allow(dead_code, reason = "test-only today; a genuine crate API, not dead")]
+    pub(crate) async fn flush(&self) {
+        let (tx, rx) = oneshot::channel();
+        if self.sender.send(WriterMsg::Flush(tx)).await.is_ok() {
+            let _ = rx.await;
         }
     }
 
@@ -200,39 +232,90 @@ impl AuditFileStore {
     }
 }
 
-/// The background writer task.  Sole owner of the open file, the id counter,
-/// and `prev_hash`.  Designed not to panic — errors are logged and the loop
-/// continues.  Calls `sync_data()` before exiting so in-flight events are
-/// durable on graceful shutdown.
-async fn writer_loop(
-    mut file: std::fs::File,
+/// Abstraction over the audit log's underlying writer.
+///
+/// This exists so the fault path (`write_event` failing mid-run) can be
+/// exercised in tests with a mock sink, without touching real files —
+/// production always uses `std::fs::File`.
+trait AuditSink {
+    /// Serialises and durably persists one event.
+    ///
+    /// # Errors
+    /// On failure, the caller must NOT consider the event committed: it does
+    /// not advance the chain's `next_id`/`prev_hash`, so the same slot is
+    /// reused by the next successfully written event.
+    fn write_event(&mut self, event: &AuditEvent) -> std::io::Result<()>;
+
+    /// Called once when the writer loop exits (channel closed). Default is a
+    /// no-op.
+    fn final_sync(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl AuditSink for std::fs::File {
+    /// Serialises `event` as a single JSONL line and syncs to storage.
+    ///
+    /// `sync_data()` is called on every write to guarantee durability: without it
+    /// data sits in the kernel page cache and is lost on a power failure.  The
+    /// tradeoff is one `fsync` per audit event; high-throughput deployments can
+    /// reduce cost by batching syncs (every N events or every T ms).
+    fn write_event(&mut self, event: &AuditEvent) -> std::io::Result<()> {
+        serde_json::to_writer(&mut *self, event)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        self.write_all(b"\n")?;
+        self.sync_data()
+    }
+
+    fn final_sync(&mut self) -> std::io::Result<()> {
+        self.sync_data()
+    }
+}
+
+/// The background writer task.  Sole owner of the sink, the id counter, and
+/// `prev_hash`.  Designed not to panic — errors are logged and the loop
+/// continues.  Calls `final_sync()` before exiting so in-flight events are
+/// durable on graceful shutdown.  Returns the sink so tests can inspect what
+/// was actually persisted.
+async fn writer_loop<S: AuditSink>(
+    mut sink: S,
     mut next_id: i64,
     mut prev_hash: [u8; 32],
-    mut rx: mpsc::Receiver<AuditEventDraft>,
+    mut rx: mpsc::Receiver<WriterMsg>,
     dropped_count: Arc<AtomicU64>,
-) {
-    while let Some(draft) = rx.recv().await {
+) -> S {
+    while let Some(msg) = rx.recv().await {
+        let draft = match msg {
+            WriterMsg::Event(draft) => draft,
+            WriterMsg::Flush(ack) => {
+                // Every prior message has already been written above; simply
+                // acknowledge. Ignore a dropped receiver (caller stopped waiting).
+                let _ = ack.send(());
+                continue;
+            }
+        };
         // Emit a sentinel before the real event if any drops occurred since the last write.
         let n_dropped = dropped_count.swap(0, Ordering::Relaxed);
         if n_dropped > 0 {
             let sentinel = make_eviction_sentinel(n_dropped);
-            next_id = write_draft_to_chain(&mut file, sentinel, next_id, &mut prev_hash);
+            next_id = write_draft_to_chain(&mut sink, sentinel, next_id, &mut prev_hash);
         }
-        next_id = write_draft_to_chain(&mut file, draft, next_id, &mut prev_hash);
+        next_id = write_draft_to_chain(&mut sink, draft, next_id, &mut prev_hash);
     }
 
     // Channel closed (sender dropped on graceful shutdown): ensure all written
     // events are durable before the task exits.
-    if let Err(e) = file.sync_data() {
+    if let Err(e) = sink.final_sync() {
         error!("AuditFileStore: final sync failed: {e}");
     }
     debug!("AuditFileStore: writer loop exited (channel closed)");
+    sink
 }
 
 /// Finalises and writes a single `AuditEventDraft` into the chain, advancing
 /// `next_id` and `prev_hash` on success.  Returns the new `next_id`.
-fn write_draft_to_chain(
-    file: &mut std::fs::File,
+fn write_draft_to_chain<S: AuditSink>(
+    sink: &mut S,
     draft: AuditEventDraft,
     next_id: i64,
     prev_hash: &mut [u8; 32],
@@ -253,7 +336,7 @@ fn write_draft_to_chain(
     };
     ev.row_hash = compute_row_hash(&ev);
 
-    match write_event(file, &ev) {
+    match sink.write_event(&ev) {
         Ok(()) => {
             *prev_hash = ev.row_hash;
             next_id.checked_add(1).unwrap_or_else(|| {
@@ -302,19 +385,6 @@ fn open_append(path: &Path) -> std::io::Result<std::fs::File> {
         .create(true)
         .append(true)
         .open(path)
-}
-
-/// Serialises `event` as a single JSONL line and syncs to storage.
-///
-/// `sync_data()` is called on every write to guarantee durability: without it
-/// data sits in the kernel page cache and is lost on a power failure.  The
-/// tradeoff is one `fsync` per audit event; high-throughput deployments can
-/// reduce cost by batching syncs (every N events or every T ms).
-fn write_event(file: &mut std::fs::File, event: &AuditEvent) -> std::io::Result<()> {
-    serde_json::to_writer(&mut *file, event)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    file.write_all(b"\n")?;
-    file.sync_data()
 }
 
 /// Builds an `AuditEventDraft` for a successful KMIP operation.
@@ -376,13 +446,15 @@ mod tests {
     use std::{
         io::BufRead as _,
         path::{Path, PathBuf},
+        sync::{Arc, atomic::AtomicU64},
     };
 
     use time::OffsetDateTime;
+    use tokio::sync::mpsc;
 
     use cosmian_kms_access::audit::{AuditEvent, AuditEventDraft, verify_event};
 
-    use super::{AuditFileStore, make_success_draft};
+    use super::{AuditFileStore, AuditSink, WriterMsg, make_success_draft, writer_loop};
 
     /// Small channel capacity used in all tests.  Large enough for the ≤5-event
     /// functional tests; small enough to fill quickly in the saturation test.
@@ -449,11 +521,12 @@ mod tests {
         for _ in 0..(TEST_CAPACITY * 2) {
             store.enqueue(std::iter::once(make_draft()));
         }
+        // Deterministic drain barrier instead of a fixed sleep: once flush()
+        // returns, every event enqueued above has been written (and synced).
+        store.flush().await;
         drop(store);
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         let events = read_events(&path);
-        // TEST_CAPACITY real events fit in the channel; the writer also emits at
         // most one sentinel for the dropped half, so the total is at most
         // TEST_CAPACITY + 1.  Crucially, it must be strictly less than
         // TEST_CAPACITY * 2 (confirming that drops occurred).
@@ -486,8 +559,8 @@ mod tests {
         }
         // One more real event — the writer will emit the sentinel first.
         store.enqueue(std::iter::once(make_draft()));
+        store.flush().await;
         drop(store);
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         let events = read_events(&path);
         assert_valid_chain(&events);
@@ -524,9 +597,8 @@ mod tests {
             for _ in 0..3 {
                 store.enqueue(std::iter::once(make_draft()));
             }
+            store.flush().await;
         }
-        // Drop closes the channel; yield so the writer drains and exits.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Phase 2: resume from the same file, write 2 more
         {
@@ -534,8 +606,8 @@ mod tests {
             for _ in 0..2 {
                 store.enqueue(std::iter::once(make_draft()));
             }
+            store.flush().await;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         let events = read_events(&path);
         assert_eq!(events.len(), 5, "expected 5 total events after restart");
@@ -552,10 +624,8 @@ mod tests {
     }
 
     /// Verifies that after a sequence of successful writes the ids are strictly
-    /// sequential and all chain links are valid.  The "do not advance on failure"
-    /// invariant is tested indirectly: any id-gap or hash-mismatch would be
-    /// caught by `assert_valid_chain`.  Fault-injection (making the fd unwritable
-    /// mid-run) requires a mock file and is tracked separately.
+    /// sequential and all chain links are valid.  Mid-run write failures are
+    /// covered directly by `faulty_sink_error_does_not_advance_chain_and_reuses_slot`.
     #[tokio::test]
     async fn write_failure_does_not_advance_chain() {
         let path = temp_path("no_advance");
@@ -565,8 +635,8 @@ mod tests {
         for _ in 0..5 {
             store.enqueue(std::iter::once(make_draft()));
         }
+        store.flush().await;
         drop(store);
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         let events = read_events(&path);
         assert_eq!(events.len(), 5);
@@ -590,8 +660,8 @@ mod tests {
             let store = AuditFileStore::start(&path, TEST_CAPACITY).unwrap();
             store.enqueue(std::iter::once(make_draft()));
             store.enqueue(std::iter::once(make_draft()));
+            store.flush().await;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Overwrite the file with the last event's row_hash zeroed out
         let content = std::fs::read_to_string(&path).unwrap();
@@ -606,5 +676,162 @@ mod tests {
         assert!(result.is_err(), "start() must reject a tampered last event");
 
         std::fs::remove_file(&path).ok();
+    }
+
+    // ── Fail-fast startup ────────────────────────────────────────────────
+
+    /// `start()` must abort immediately (not silently disable audit logging)
+    /// when the log path cannot be opened. Using a path that walks *through*
+    /// an existing plain file (instead of relying on filesystem permissions,
+    /// which root ignores) makes this deterministic on every platform/CI user.
+    #[test]
+    fn start_fails_when_path_is_unopenable() {
+        let blocker = temp_path("unopenable_blocker");
+        std::fs::remove_file(&blocker).ok();
+        std::fs::write(&blocker, b"i am a file, not a directory").unwrap();
+        // `blocker` is a file, so treating it as a parent directory must fail.
+        let bogus_path = blocker.join("audit.jsonl");
+
+        let result = AuditFileStore::start(&bogus_path, TEST_CAPACITY);
+        assert!(
+            result.is_err(),
+            "start() must fail when the log file cannot be opened"
+        );
+        let err = result.err().unwrap().to_string();
+        assert!(
+            err.contains("cannot open"),
+            "unexpected error message: {err}"
+        );
+
+        std::fs::remove_file(&blocker).ok();
+    }
+
+    /// A zero channel capacity is rejected before any file I/O or task spawn.
+    #[test]
+    fn start_fails_with_zero_capacity() {
+        let path = temp_path("zero_capacity");
+        std::fs::remove_file(&path).ok();
+
+        let result = AuditFileStore::start(&path, 0);
+        assert!(result.is_err(), "start() must reject channel_capacity == 0");
+        let err = result.err().unwrap().to_string();
+        assert!(
+            err.contains("channel_capacity must be at least 1"),
+            "unexpected error message: {err}"
+        );
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// A last line that isn't valid JSON (e.g. a crash mid-`serde_json::to_writer`,
+    /// before any `\n` was written) must abort startup rather than silently
+    /// resetting the chain from id 0.
+    #[test]
+    fn start_fails_on_malformed_last_line() {
+        let path = temp_path("malformed_last_line");
+        std::fs::remove_file(&path).ok();
+        std::fs::write(&path, b"{not valid json at all\n").unwrap();
+
+        let result = AuditFileStore::start(&path, TEST_CAPACITY);
+        assert!(
+            result.is_err(),
+            "start() must reject a log whose last line is not valid JSON"
+        );
+        let err = result.err().unwrap().to_string();
+        assert!(
+            err.contains("cannot parse last line"),
+            "unexpected error message: {err}"
+        );
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    // ── Fault injection on the write path ────────────────────────────────
+
+    /// A mock `AuditSink` that fails `write_event` for calls whose 0-based
+    /// index satisfies `should_fail`, allowing precise control over exactly
+    /// which write in a sequence fails.
+    struct FaultySink {
+        events: Vec<AuditEvent>,
+        call_count: usize,
+        should_fail: fn(usize) -> bool,
+    }
+
+    impl FaultySink {
+        fn new(should_fail: fn(usize) -> bool) -> Self {
+            Self {
+                events: Vec::new(),
+                call_count: 0,
+                should_fail,
+            }
+        }
+    }
+
+    impl AuditSink for FaultySink {
+        fn write_event(&mut self, event: &AuditEvent) -> std::io::Result<()> {
+            let idx = self.call_count;
+            self.call_count += 1;
+            if (self.should_fail)(idx) {
+                return Err(std::io::Error::other("simulated write failure"));
+            }
+            self.events.push(event.clone());
+            Ok(())
+        }
+    }
+
+    /// A single failed write mid-run must not advance the chain: the failed
+    /// draft is lost, and the next successful write reuses its `id`/`prev_hash`
+    /// slot — proving the "do not advance on failure" invariant that was
+    /// previously only exercised on the happy path.
+    #[tokio::test]
+    async fn faulty_sink_error_does_not_advance_chain_and_reuses_slot() {
+        let (tx, rx) = mpsc::channel::<WriterMsg>(TEST_CAPACITY);
+        let dropped_count = Arc::new(AtomicU64::new(0));
+        // Fail exactly the 3rd write call (0-based index 2).
+        let sink = FaultySink::new(|idx| idx == 2);
+
+        let handle = tokio::spawn(writer_loop(sink, 0, [0_u8; 32], rx, dropped_count));
+
+        for _ in 0..5 {
+            tx.send(WriterMsg::Event(make_draft())).await.unwrap();
+        }
+        drop(tx);
+
+        let sink = handle.await.unwrap();
+        assert_eq!(
+            sink.events.len(),
+            4,
+            "one of the 5 drafts must be lost to the injected write failure"
+        );
+        for (i, ev) in sink.events.iter().enumerate() {
+            assert_eq!(
+                ev.id,
+                i64::try_from(i).unwrap(),
+                "ids must stay contiguous — the failed write's slot must be reused, not skipped"
+            );
+        }
+        assert_valid_chain(&sink.events);
+    }
+
+    /// When every write fails, nothing is persisted and the writer loop still
+    /// exits cleanly (no panic) once the channel closes.
+    #[tokio::test]
+    async fn faulty_sink_all_writes_fail_persists_nothing() {
+        let (tx, rx) = mpsc::channel::<WriterMsg>(TEST_CAPACITY);
+        let dropped_count = Arc::new(AtomicU64::new(0));
+        let sink = FaultySink::new(|_| true);
+
+        let handle = tokio::spawn(writer_loop(sink, 0, [0_u8; 32], rx, dropped_count));
+
+        for _ in 0..3 {
+            tx.send(WriterMsg::Event(make_draft())).await.unwrap();
+        }
+        drop(tx);
+
+        let sink = handle.await.unwrap();
+        assert!(
+            sink.events.is_empty(),
+            "no event should be persisted when every write fails"
+        );
     }
 }
