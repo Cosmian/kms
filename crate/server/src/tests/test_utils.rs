@@ -17,7 +17,7 @@ use actix_web::{
 use cosmian_kms_server_database::reexport::cosmian_kmip::{
     kmip_0::kmip_messages::{RequestMessage, ResponseMessage},
     kmip_2_1::{kmip_operations::LocateResponse, kmip_types::UniqueIdentifier},
-    ttlv::{TTLV, from_ttlv, to_ttlv},
+    ttlv::{KmipFlavor, TTLV, from_ttlv, to_ttlv},
 };
 use cosmian_logger::info;
 use serde::{Serialize, de::DeserializeOwned};
@@ -31,7 +31,7 @@ use crate::{
     },
     core::{KMS, audit::AuditFileStore},
     kms_bail,
-    middlewares::AuditMiddleware,
+    middlewares::{AuditMiddleware, ensure_auth_middleware},
     result::KResult,
     routes,
     start_kms_server::handle_google_cse_rsa_keypair,
@@ -456,6 +456,40 @@ pub(crate) async fn test_app_with_audit(
     (test::init_service(app).await, store)
 }
 
+/// Creates a test application that records every KMIP request to an audit file,
+/// with `ensure_auth_middleware` enforcing authentication (`auth_is_configured = true`).
+/// No JWT/API-token/cert middleware is wired in, so every request lacks an
+/// `AuthenticatedUser` and is rejected with 401 — used to test that `AuditMiddleware`
+/// (wrapped outside `ensure_auth_middleware`, mirroring the production order in
+/// `start_kms_server.rs`) still records the failed attempt.
+pub(crate) async fn test_app_with_audit_and_auth(
+    audit_path: &std::path::Path,
+) -> (
+    impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error>,
+    AuditFileStore,
+) {
+    let clap_config = https_clap_config();
+    let server_params =
+        Arc::new(ServerParams::try_from(clap_config).expect("cannot create server params"));
+
+    let kms_server = Arc::new(
+        KMS::instantiate(server_params.clone())
+            .await
+            .expect("cannot instantiate KMS server"),
+    );
+
+    let store = AuditFileStore::start(audit_path, 128).expect("cannot start audit store");
+
+    let app = App::new()
+        .app_data(Data::new(kms_server.clone()))
+        .service(routes::kmip::kmip_2_1_json)
+        .service(routes::kmip::kmip)
+        .wrap(ensure_auth_middleware(kms_server.clone(), true))
+        .wrap(AuditMiddleware::new(Some(store.clone()), vec![]));
+
+    (test::init_service(app).await, store)
+}
+
 pub(crate) async fn post_2_1<B, O, R, S>(app: &S, operation: O) -> KResult<R>
 where
     O: Serialize,
@@ -518,6 +552,38 @@ where
     }
     let body = read_body(res).await;
     let ttlv: TTLV = serde_json::from_slice(&body)?;
+    Ok(from_ttlv(ttlv)?)
+}
+
+/// Post a full `RequestMessage` as binary TTLV (`application/octet-stream`) to `/kmip`
+/// and return the parsed `ResponseMessage`. Exercises `kmip_binary`, the wire format
+/// used by native KMIP clients (HSMs, other vendors' libraries), as opposed to
+/// `post_kmip_json`'s JSON transport.
+pub(crate) async fn post_kmip_binary<B, S>(
+    app: &S,
+    request_message: &RequestMessage,
+    flavor: KmipFlavor,
+) -> KResult<ResponseMessage>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let ttlv = to_ttlv(request_message)?;
+    let request_bytes = ttlv.to_bytes(flavor)?;
+    let req = test::TestRequest::post()
+        .uri("/kmip")
+        .insert_header(("Content-Type", "application/octet-stream"))
+        .set_payload(request_bytes)
+        .to_request();
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or_else(|_| "[N/A".to_owned())
+        );
+    }
+    let body = read_body(res).await;
+    let ttlv = TTLV::from_bytes(&body, flavor)?;
     Ok(from_ttlv(ttlv)?)
 }
 
