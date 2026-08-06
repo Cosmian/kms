@@ -45,7 +45,8 @@ pub(crate) async fn delete_attribute(
     if let Some(attribute) = request.current_attribute {
         // Read-only guard — these attributes are server-managed.
         match &attribute {
-            Attribute::RotateAutomatic(_)
+            Attribute::AlwaysSensitive(_)
+            | Attribute::RotateAutomatic(_)
             | Attribute::RotateGeneration(_)
             | Attribute::RotateDate(_)
             | Attribute::RotateLatest(_) => {
@@ -62,7 +63,6 @@ pub(crate) async fn delete_attribute(
             simple {
                 ActivationDate => activation_date,
                 AlternativeName => alternative_name,
-                AlwaysSensitive => always_sensitive,
                 ApplicationSpecificInformation => application_specific_information,
                 ArchiveDate => archive_date,
                 AttributeIndex => attribute_index,
@@ -124,6 +124,15 @@ pub(crate) async fn delete_attribute(
                 X509CertificateSubject => x_509_certificate_subject,
             }
             custom {
+                Attribute::AlwaysSensitive(_) => {
+                    // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
+                    return Err(KmsError::Kmip21Error(
+                        ErrorReason::Attribute_Read_Only,
+                        "DENIED: AlwaysSensitive is server-managed and cannot be deleted by the \
+                         user"
+                            .to_owned(),
+                    ));
+                }
                 Attribute::CryptographicLength(length) => {
                     if Some(length) == attributes.cryptographic_length {
                         attributes.cryptographic_length = None;
@@ -160,6 +169,15 @@ pub(crate) async fn delete_attribute(
         for attribute_reference in attribute_references {
             match attribute_reference {
                 AttributeReference::Standard(tag) => match tag {
+                    Tag::AlwaysSensitive => {
+                        // Server-managed attribute (KMIP 2.1 §4.3): not deletable by client.
+                        return Err(KmsError::Kmip21Error(
+                            ErrorReason::Attribute_Read_Only,
+                            "DENIED: this attribute is server-managed and cannot be deleted by \
+                             the user"
+                                .to_owned(),
+                        ));
+                    }
                     Tag::ActivationDate => {
                         attributes.activation_date = None;
                     }

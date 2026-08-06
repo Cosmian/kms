@@ -49,7 +49,8 @@ pub(crate) async fn modify_attribute(
 
     // Read-only guard — must be checked before the DB round-trip.
     match &request.new_attribute {
-        Attribute::State(_)
+        Attribute::AlwaysSensitive(_)
+        | Attribute::State(_)
         | Attribute::CertificateLength(_)
         | Attribute::RotateGeneration(_)
         | Attribute::RotateDate(_)
@@ -114,7 +115,6 @@ pub(crate) async fn modify_attribute(
             X509CertificateSubject => x_509_certificate_subject,
             X509CertificateIssuer => x_509_certificate_issuer,
             AlternativeName => alternative_name,
-            AlwaysSensitive => always_sensitive,
             ApplicationSpecificInformation => application_specific_information,
             ArchiveDate => archive_date,
             AttributeIndex => attribute_index,
@@ -157,12 +157,25 @@ pub(crate) async fn modify_attribute(
             RotateLatest => rotate_latest,
             RotateName => rotate_name,
             RotateOffset => rotate_offset,
-            Sensitive => sensitive,
             ShortUniqueIdentifier => short_unique_identifier,
             UsageLimits => usage_limits,
             X509CertificateIdentifier => x_509_certificate_identifier,
         }
         custom {
+            Attribute::AlwaysSensitive(_) => {
+                // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Read_Only,
+                    "DENIED: AlwaysSensitive is server-managed and cannot be modified by the user"
+                        .to_owned(),
+                ));
+            }
+            Attribute::Sensitive(sensitive) => {
+                // Setting Sensitive also (re)computes the server-managed
+                // AlwaysSensitive attribute (KMIP 2.1 §4.3).
+                trace!("ModifyAttribute: Sensitive: {:?}", sensitive);
+                attributes.apply_sensitive(sensitive);
+            }
             Attribute::ActivationDate(activation_date) => {
                 trace!("ModifyAttribute: ActivationDate: {:?}", activation_date);
                 attributes.activation_date = Some(activation_date);

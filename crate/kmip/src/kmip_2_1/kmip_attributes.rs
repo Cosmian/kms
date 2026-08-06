@@ -472,6 +472,35 @@ pub struct Attributes {
 }
 
 impl Attributes {
+    /// Initialize the server-managed `AlwaysSensitive` attribute at object
+    /// creation or registration time (KMIP 2.1 §4.3, Table 34).
+    ///
+    /// The server SHALL create this attribute and set it to `True` if the
+    /// `Sensitive` attribute is `True` at creation, otherwise `False`. It
+    /// SHALL always have a value.
+    pub fn initialize_always_sensitive(&mut self) -> &mut Self {
+        self.always_sensitive = Some(self.sensitive == Some(true));
+        self
+    }
+
+    /// Apply a change to the client-modifiable `Sensitive` attribute and
+    /// recompute the server-managed `AlwaysSensitive` attribute accordingly
+    /// (KMIP 2.1 §4.3).
+    ///
+    /// `AlwaysSensitive` is `True` only if `Sensitive` has *always* been
+    /// `True`; it is permanently set to `False` once `Sensitive` has *ever*
+    /// been set to `False`. Consequently, once `AlwaysSensitive` is `False`
+    /// it can never return to `True`, even if `Sensitive` is set back to
+    /// `True`.
+    pub fn apply_sensitive(&mut self, sensitive: bool) -> &mut Self {
+        // Previous AlwaysSensitive value; if absent, seed it from the incoming
+        // Sensitive value so a first assignment behaves like initialization.
+        let previous_always_sensitive = self.always_sensitive.unwrap_or(sensitive);
+        self.sensitive = Some(sensitive);
+        self.always_sensitive = Some(previous_always_sensitive && sensitive);
+        self
+    }
+
     /// Add a vendor attribute to the list of vendor attributes.
     pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
         if let Some(vas) = &mut self.vendor_attributes {

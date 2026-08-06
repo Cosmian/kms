@@ -669,6 +669,8 @@ Crate path: `crate/server`
 | `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | Emitted when the web UI is enabled but `ui_session_salt` (or `KMS_UI_SESSION_SALT`) is not configured. Sessions will not survive server restarts. Set a stable secret value for production. |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | JWKS cache force-refresh was requested but the cooldown window has not elapsed; the refresh is skipped to prevent DoS via repeated JWKS fetches. |
 | `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
+| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 

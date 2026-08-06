@@ -288,6 +288,10 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 
 `--name <NAME>` The name of the object (standard KMIP Name attribute). The name is stored as an `UninterpretedTextString` by default
 
+`--sensitive <SENSITIVE>` The Sensitive attribute (True/False). When set to True the object value can only be retrieved wrapped. Setting it to False permanently clears the server-managed Always Sensitive attribute (KMIP 2.1 §4.3)
+
+Possible values:  `"true", "false"`
+
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 
 `--attribute-name [-n] <ATTRIBUTE_NAME>` The attribute name
@@ -337,6 +341,10 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 `--child-id <CHILD_ID>` The link to the corresponding child id if any
 
 `--name <NAME>` The name of the object (standard KMIP Name attribute). The name is stored as an `UninterpretedTextString` by default
+
+`--sensitive <SENSITIVE>` The Sensitive attribute (True/False). When set to True the object value can only be retrieved wrapped. Setting it to False permanently clears the server-managed Always Sensitive attribute (KMIP 2.1 §4.3)
+
+Possible values:  `"true", "false"`
 
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 
@@ -390,6 +398,10 @@ Possible values:  `"sign", "verify", "encrypt", "decrypt", "wrap-key", "unwrap-k
 `--child-id <CHILD_ID>` The link to the corresponding child id if any
 
 `--name <NAME>` The name of the object (standard KMIP Name attribute). The name is stored as an `UninterpretedTextString` by default
+
+`--sensitive <SENSITIVE>` The Sensitive attribute (True/False). When set to True the object value can only be retrieved wrapped. Setting it to False permanently clears the server-managed Always Sensitive attribute (KMIP 2.1 §4.3)
+
+Possible values:  `"true", "false"`
 
 `--vendor-identification [-v] <VENDOR_IDENTIFICATION>` The vendor identification
 
