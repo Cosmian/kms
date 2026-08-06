@@ -42,7 +42,13 @@ print_status "Image loaded as: $IMAGE_REF"
 
 cleanup() {
   local rc=$?
-  [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE" "$DS_NAME"
+  if [ $rc -ne 0 ]; then
+    k8s_dump_debug "$NAMESPACE" "$RELEASE"
+    echo "--- CSI provider DaemonSet pod logs (kube-system) ---"
+    kubectl logs -n kube-system -l "app=${DS_NAME}" --tail=100 2>&1 || true
+    echo "--- CSI provider DaemonSet pod description ---"
+    kubectl describe pod -n kube-system -l "app=${DS_NAME}" 2>&1 || true
+  fi
   if [ -n "${PF_PID:-}" ]; then kill "$PF_PID" 2>/dev/null || true; fi
   kubectl delete pod csi-known-pod csi-rotate-pod csi-revoked-pod \
     --ignore-not-found=true 2>/dev/null || true

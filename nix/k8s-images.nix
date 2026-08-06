@@ -84,7 +84,12 @@ let
 
     config = {
       Entrypoint = [ "/bin/cosmian-kms-csi-provider" ];
-      User = "65534:65534"; # nobody
+      # No User directive: the provider runs as root (uid 0).
+      # CSI providers must run as root to bind Unix sockets on the node's
+      # /etc/kubernetes/secrets-store-csi-providers hostPath and make them
+      # discoverable by the Secrets Store CSI Driver. This matches the
+      # industry-standard deployment model used by all major CSI providers
+      # (Vault, AWS SSM, Azure Key Vault).
       Env = [
         "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
         "RUST_LOG=info"

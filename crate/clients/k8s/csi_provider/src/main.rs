@@ -74,13 +74,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let service = CsiProviderService::new(kms_client);
 
-    // Create the socket directory with mode 0700 to prevent TOCTOU races
-    // before binding.
+    // Ensure the socket directory exists.
+    // The directory is typically a Kubernetes hostPath volume managed by the
+    // node (owned by root). Mode 0755 lets the Secrets Store CSI Driver
+    // (running as a different UID) traverse and discover the socket file.
+    // Permission changes are best-effort: the directory may already exist
+    // with node-managed ownership that we cannot change.
     let socket_path = settings.socket_path;
     if let Some(dir) = std::path::Path::new(&socket_path).parent() {
         std::fs::create_dir_all(dir)?;
         #[cfg(unix)]
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        drop(std::fs::set_permissions(
+            dir,
+            std::fs::Permissions::from_mode(0o755),
+        ));
     }
 
     // Remove a stale socket file if one exists from a previous run.
@@ -92,13 +99,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!(%socket_path, "CSI provider listening");
 
-    Server::builder()
-        .add_service(CsiDriverProviderServer::new(service))
-        .serve_with_incoming_shutdown(UnixListenerStream::new(listener), async {
+    // Shutdown channel: the signal handler notifies the gRPC server to drain
+    // and stop accepting new connections.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+    // Spawn a task that waits for SIGTERM or SIGINT and fires the shutdown channel.
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{SignalKind, signal};
+            match signal(SignalKind::terminate()) {
+                Ok(mut sigterm) => {
+                    tokio::select! {
+                        _ = sigterm.recv() => info!("Received SIGTERM, shutting down CSI provider"),
+                        _ = tokio::signal::ctrl_c() => info!("Received SIGINT, shutting down CSI provider"),
+                    }
+                }
+                Err(e) => {
+                    // SIGTERM registration failed (uncommon); fall back to SIGINT only.
+                    tracing::warn!(
+                        "Failed to register SIGTERM handler: {e}; will only respond to SIGINT"
+                    );
+                    if tokio::signal::ctrl_c().await.is_err() {
+                        tracing::warn!("Failed to listen for SIGINT; shutting down anyway");
+                    }
+                    info!("Received SIGINT, shutting down CSI provider");
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
             if tokio::signal::ctrl_c().await.is_err() {
                 tracing::warn!("Failed to listen for SIGINT; shutting down anyway");
             }
             info!("Received SIGINT, shutting down CSI provider");
+        }
+        let _ = shutdown_tx.send(());
+    });
+
+    Server::builder()
+        .add_service(CsiDriverProviderServer::new(service))
+        .serve_with_incoming_shutdown(UnixListenerStream::new(listener), async {
+            let _ = shutdown_rx.await;
         })
         .await?;
 
