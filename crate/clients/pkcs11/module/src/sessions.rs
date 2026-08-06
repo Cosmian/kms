@@ -39,7 +39,7 @@ use crate::{
         mechanism::Mechanism,
         object::{Object, ObjectType},
     },
-    objects_store::OBJECTS_STORE,
+    objects_store::{OBJECTS_STORE, ObjectsStore},
     traits::{DecryptContext, EncryptContext, KeyAlgorithm, SearchOptions, SignContext, backend},
 };
 
@@ -57,6 +57,20 @@ const PREFIX_ORACLE_SECURITY_KM: &str = "ORACLE.SECURITY.KM.ENCRYPTION.";
 ///
 /// From a KMS point of view, it is a `TransparentSymmetricKey` object.
 const PREFIX_ORACLE_TDE_HSM_MK: &str = "ORACLE.TDE.HSM.MK.";
+
+/// Suffix appended by the KMS to a key-pair base UID to derive the *public* key
+/// unique identifier: a key pair is stored as `<base>` (private key) and
+/// `<base>_pk` (public key).
+///
+/// This mirrors `SYSTEM_TAG_PUBLIC_KEY` in
+/// `crate/kmip/src/kmip_2_1/extra/tagging.rs`. The PKCS#11 module cannot depend
+/// on `cosmian_kmip`, so the value is duplicated here.
+///
+/// Standard PKCS#11 clients (e.g. OpenSSH) read a public key's `CKA_ID` and
+/// reuse it to locate the paired *private* key before signing. Because the two
+/// keys carry distinct UIDs, a `CKO_PRIVATE_KEY` search by the public key's
+/// `CKA_ID` must strip this suffix to resolve the private key.
+const PUBLIC_KEY_ID_SUFFIX: &str = "_pk";
 
 // "Valid session handles in Cryptoki always have nonzero values."
 #[cfg(not(target_os = "windows"))]
@@ -281,21 +295,34 @@ impl Session {
                     }
                 } else {
                     let find_ctx = OBJECTS_STORE.read()?;
-                    let (object, handle) = find_ctx.get_using_id(&id).ok_or_else(|| {
-                        ModuleError::BadArguments(format!(
-                            "load_find_context_by_class: id {id} not found in store"
-                        ))
-                    })?;
-                    debug!(
-                        "load_find_context_by_class: search by id: {} -> handle: {} -> object: \
-                         {}:{}",
-                        id,
-                        handle,
-                        object.name(),
-                        object.remote_id()
-                    );
-                    self.clear_find_objects_ctx();
-                    self.add_to_find_objects_ctx(handle);
+                    // Resolve the object requested by CKA_ID, enforcing that the
+                    // returned object's class matches `search_class`.
+                    //
+                    // For `CKO_PRIVATE_KEY`, standard PKCS#11 clients (e.g. OpenSSH)
+                    // pass the *public* key's `CKA_ID` (`<base>_pk`) to locate the
+                    // paired private key. The KMS stores the private key under the
+                    // base UID (`<base>`), so the suffix is stripped before lookup.
+                    let resolved = Self::resolve_object_by_class(&find_ctx, &id, search_class);
+                    if let Some((object, handle)) = resolved {
+                        debug!(
+                            "load_find_context_by_class: search by id: {} -> handle: {} -> \
+                             object: {}:{}",
+                            id,
+                            handle,
+                            object.name(),
+                            object.remote_id()
+                        );
+                        self.clear_find_objects_ctx();
+                        self.add_to_find_objects_ctx(handle);
+                    } else {
+                        // A search that matches no object is valid PKCS#11 behavior:
+                        // `C_FindObjects` simply returns zero objects.
+                        warn!(
+                            "load_find_context_by_class: no {search_class:?} object found for id \
+                             {id}"
+                        );
+                        self.clear_find_objects_ctx();
+                    }
                 }
             }
         }
@@ -310,6 +337,57 @@ impl Session {
     /// Add to the unread index
     fn add_to_find_objects_ctx(&mut self, handle: CK_OBJECT_HANDLE) {
         self.find_objects_ctx.push(handle);
+    }
+
+    /// Map a PKCS#11 object class (`CKO_*`) to the corresponding [`ObjectType`].
+    /// Returns `None` for classes the store does not track by type.
+    const fn class_to_object_type(search_class: CK_OBJECT_CLASS) -> Option<ObjectType> {
+        match search_class {
+            pkcs11_sys::CKO_PRIVATE_KEY => Some(ObjectType::PrivateKey),
+            pkcs11_sys::CKO_PUBLIC_KEY => Some(ObjectType::PublicKey),
+            pkcs11_sys::CKO_SECRET_KEY => Some(ObjectType::SymmetricKey),
+            pkcs11_sys::CKO_CERTIFICATE => Some(ObjectType::Certificate),
+            pkcs11_sys::CKO_DATA => Some(ObjectType::DataObject),
+            _ => None,
+        }
+    }
+
+    /// Resolve an object requested by `CKA_ID`, enforcing that the returned
+    /// object's class matches `search_class`.
+    ///
+    /// Resolution order:
+    /// 1. Exact `id` match whose class equals `search_class`.
+    /// 2. For `CKO_PRIVATE_KEY` only: the caller may have passed the paired
+    ///    *public* key's `CKA_ID` (`<base>_pk`) — as OpenSSH does — so the
+    ///    [`PUBLIC_KEY_ID_SUFFIX`] is stripped and the private key is looked up
+    ///    under the base UID (`<base>`).
+    ///
+    /// Returns `None` when no object of the requested class matches. The class
+    /// check prevents a class-scoped search from ever returning a wrong-class
+    /// object (e.g. a public key for a `CKO_PRIVATE_KEY` search).
+    fn resolve_object_by_class(
+        store: &ObjectsStore,
+        id: &str,
+        search_class: CK_OBJECT_CLASS,
+    ) -> Option<(Arc<Object>, CK_OBJECT_HANDLE)> {
+        let expected_type = Self::class_to_object_type(search_class)?;
+        // 1. Exact id match with the correct class.
+        if let Some((object, handle)) = store.get_using_id(id) {
+            if object.object_type() == expected_type {
+                return Some((object, handle));
+            }
+        }
+        // 2. Private-key search using the paired public key's CKA_ID.
+        if expected_type == ObjectType::PrivateKey {
+            if let Some(base) = id.strip_suffix(PUBLIC_KEY_ID_SUFFIX) {
+                if let Some((object, handle)) = store.get_using_id(base) {
+                    if object.object_type() == ObjectType::PrivateKey {
+                        return Some((object, handle));
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Sign the provided data, or stored payload if data is not provided.

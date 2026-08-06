@@ -9,12 +9,13 @@ use std::{
 use cosmian_logger::log_init;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_C_INITIALIZE_ARGS_PTR, CK_FALSE, CK_FUNCTION_LIST,
-    CK_FUNCTION_LIST_PTR_PTR, CK_INFO, CK_INVALID_HANDLE, CK_MECHANISM_INFO, CK_MECHANISM_TYPE,
-    CK_OBJECT_HANDLE, CK_SESSION_INFO, CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG, CK_VOID_PTR,
-    CKA_CLASS, CKF_SERIAL_SESSION, CKM_DSA, CKO_PRIVATE_KEY, CKR_ARGUMENTS_BAD,
-    CKR_BUFFER_TOO_SMALL, CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED,
-    CKR_FUNCTION_NOT_PARALLEL, CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK,
-    CKR_SESSION_HANDLE_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
+    CK_FUNCTION_LIST_PTR_PTR, CK_INFO, CK_INVALID_HANDLE, CK_MECHANISM, CK_MECHANISM_INFO,
+    CK_MECHANISM_TYPE, CK_OBJECT_CLASS, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CK_SESSION_INFO,
+    CK_SLOT_INFO, CK_TOKEN_INFO, CK_ULONG, CK_VOID_PTR, CKA_CLASS, CKA_ID, CKF_SERIAL_SESSION,
+    CKM_DSA, CKM_ECDSA, CKO_PRIVATE_KEY, CKO_PUBLIC_KEY, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_PARALLEL,
+    CKR_MECHANISM_INVALID, CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_SESSION_HANDLE_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_SLOT_ID_INVALID,
 };
 use serial_test::serial;
 use zeroize::{Zeroize, Zeroizing};
@@ -25,11 +26,12 @@ use crate::{
         mechanism::{AES_IV_SIZE, SUPPORTED_SIGNATURE_MECHANISMS},
         object::Object,
     },
+    objects_store::OBJECTS_STORE,
     pkcs11::{
         C_CloseSession, C_Finalize, C_FindObjects, C_FindObjectsFinal, C_FindObjectsInit,
         C_GetAttributeValue, C_GetFunctionStatus, C_GetInfo, C_GetMechanismInfo,
         C_GetMechanismList, C_GetSessionInfo, C_GetSlotInfo, C_GetSlotList, C_GetTokenInfo,
-        C_Initialize, C_OpenSession, FUNC_LIST, INITIALIZED, SLOT_ID,
+        C_Initialize, C_OpenSession, C_SignInit, FUNC_LIST, INITIALIZED, SLOT_ID,
     },
     traits::{
         Backend, Certificate, DataObject, DecryptContext, EncryptContext, KeyAlgorithm, PrivateKey,
@@ -781,4 +783,269 @@ fn module_test_generate_key_encrypt_decrypt() -> ModuleResult<()> {
     assert_eq!(C_CloseSession(handle), CKR_OK);
     assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
     Ok(())
+}
+
+// ── Regression tests for issue #1076 ──────────────────────────────────────
+// OpenSSH resolves the paired private key from a public key's `CKA_ID`
+// (`<base>_pk`) before `C_SignInit`. The private key is stored under the base
+// UID (`<base>`), so a `CKO_PRIVATE_KEY` search by the public key's id must
+// resolve to the private key — not the public key — otherwise `C_SignInit`
+// fails with `CKR_KEY_HANDLE_INVALID` (0x60 = 96).
+
+/// Minimal in-memory private key used to populate `OBJECTS_STORE` directly,
+/// bypassing the (empty) `TestBackend`.
+struct DummyPrivateKey {
+    remote_id: String,
+}
+
+impl PrivateKey for DummyPrivateKey {
+    fn remote_id(&self) -> &str {
+        &self.remote_id
+    }
+
+    fn sign(&self, _algorithm: &SignatureAlgorithm, _data: &[u8]) -> ModuleResult<Vec<u8>> {
+        Ok(vec![0_u8; 64])
+    }
+
+    fn algorithm(&self) -> KeyAlgorithm {
+        KeyAlgorithm::EccP256
+    }
+
+    fn key_size(&self) -> usize {
+        256
+    }
+
+    fn pkcs8_der_bytes(&self) -> ModuleResult<Zeroizing<Vec<u8>>> {
+        Ok(Zeroizing::new(vec![]))
+    }
+
+    fn rsa_public_exponent(&self) -> ModuleResult<Vec<u8>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+}
+
+/// Minimal in-memory public key used to populate `OBJECTS_STORE` directly.
+struct DummyPublicKey {
+    remote_id: String,
+}
+
+impl PublicKey for DummyPublicKey {
+    fn remote_id(&self) -> &str {
+        &self.remote_id
+    }
+
+    fn fingerprint(&self) -> &[u8] {
+        &[]
+    }
+
+    fn verify(
+        &self,
+        _algorithm: &SignatureAlgorithm,
+        _data: &[u8],
+        _signature: &[u8],
+    ) -> ModuleResult<()> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+
+    fn delete(self: Arc<Self>) {}
+
+    fn algorithm(&self) -> KeyAlgorithm {
+        KeyAlgorithm::EccP256
+    }
+
+    fn rsa_public_key(&self) -> ModuleResult<pkcs1::RsaPublicKey<'_>> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+
+    fn ec_p256_public_key(&self) -> ModuleResult<p256::PublicKey> {
+        Err(ModuleError::FunctionNotSupported)
+    }
+}
+
+/// Insert a private key (`<base>`) and its paired public key (`<base>_pk`)
+/// directly into the global `OBJECTS_STORE`, returning the two handles.
+fn insert_test_key_pair(base: &str) {
+    let sk: Arc<dyn PrivateKey> = Arc::new(DummyPrivateKey {
+        remote_id: base.to_owned(),
+    });
+    let pk: Arc<dyn PublicKey> = Arc::new(DummyPublicKey {
+        remote_id: format!("{base}_pk"),
+    });
+    let mut store = OBJECTS_STORE.write().unwrap();
+    store.upsert(Arc::new(Object::PrivateKey(sk)));
+    store.upsert(Arc::new(Object::PublicKey(pk)));
+}
+
+/// Open a serial session on the test slot.
+fn open_test_session() -> CK_SESSION_HANDLE {
+    let mut handle = CK_INVALID_HANDLE;
+    assert_eq!(
+        unsafe {
+            C_OpenSession(
+                SLOT_ID,
+                CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut handle,
+            )
+        },
+        CKR_OK
+    );
+    handle
+}
+
+/// Run a `C_FindObjectsInit`/`C_FindObjects`/`C_FindObjectsFinal` sequence for
+/// the given class and `CKA_ID`, returning the matched object handles.
+fn find_by_class_and_id(
+    session: CK_SESSION_HANDLE,
+    class: CK_OBJECT_CLASS,
+    id: &[u8],
+) -> Vec<CK_OBJECT_HANDLE> {
+    let mut id = id.to_vec();
+    let mut template = [
+        CK_ATTRIBUTE {
+            type_: CKA_CLASS,
+            pValue: std::ptr::from_ref::<CK_OBJECT_CLASS>(&class) as CK_VOID_PTR,
+            ulValueLen: std::mem::size_of_val(&class) as CK_ULONG,
+        },
+        CK_ATTRIBUTE {
+            type_: CKA_ID,
+            pValue: id.as_mut_ptr().cast::<std::ffi::c_void>(),
+            ulValueLen: id.len() as CK_ULONG,
+        },
+    ];
+    assert_eq!(
+        unsafe { C_FindObjectsInit(session, template.as_mut_ptr(), template.len() as CK_ULONG) },
+        CKR_OK
+    );
+    let mut objects = [CK_OBJECT_HANDLE::default(); 8];
+    let mut count: CK_ULONG = 0;
+    assert_eq!(
+        unsafe {
+            C_FindObjects(
+                session,
+                objects.as_mut_ptr(),
+                objects.len() as CK_ULONG,
+                &raw mut count,
+            )
+        },
+        CKR_OK
+    );
+    assert_eq!(C_FindObjectsFinal(session), CKR_OK);
+    objects[..count as usize].to_vec()
+}
+
+/// Assert that `handle` refers to a private key in the store.
+fn assert_is_private_key(handle: CK_OBJECT_HANDLE) {
+    let store = OBJECTS_STORE.read().unwrap();
+    let object = store.get_using_handle(handle).unwrap();
+    assert!(
+        matches!(object.as_ref(), Object::PrivateKey(_)),
+        "expected handle {handle} to be a private key, got {}",
+        object.name()
+    );
+}
+
+/// Issue #1076: a `CKO_PRIVATE_KEY` search by the *public* key's `CKA_ID`
+/// (`<base>_pk`) must resolve to the private key, and `C_SignInit` must succeed.
+#[test]
+#[serial]
+fn find_private_key_by_public_key_id_then_sign() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    insert_test_key_pair("issue1076");
+    let session = open_test_session();
+
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"issue1076_pk");
+    assert_eq!(handles.len(), 1, "expected exactly one private key handle");
+    assert_is_private_key(handles[0]);
+
+    // C_SignInit must accept the private-key handle (previously CKR_KEY_HANDLE_INVALID).
+    let mut mechanism = CK_MECHANISM {
+        mechanism: CKM_ECDSA,
+        pParameter: ptr::null_mut(),
+        ulParameterLen: 0,
+    };
+    assert_eq!(
+        unsafe { C_SignInit(session, &raw mut mechanism, handles[0]) },
+        CKR_OK
+    );
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Regression: a `CKO_PRIVATE_KEY` search by the private key's own id resolves
+/// to the private key.
+#[test]
+#[serial]
+fn find_private_key_by_own_id() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    insert_test_key_pair("own_id_sk");
+    let session = open_test_session();
+
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"own_id_sk");
+    assert_eq!(handles.len(), 1);
+    assert_is_private_key(handles[0]);
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// Regression: a `CKO_PUBLIC_KEY` search by the public key's own id resolves to
+/// the public key.
+#[test]
+#[serial]
+fn find_public_key_by_own_id() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    insert_test_key_pair("pub_own_id");
+    let session = open_test_session();
+
+    let handles = find_by_class_and_id(session, CKO_PUBLIC_KEY, b"pub_own_id_pk");
+    assert_eq!(handles.len(), 1);
+    let store = OBJECTS_STORE.read().unwrap();
+    let object = store.get_using_handle(handles[0]).unwrap();
+    assert!(matches!(object.as_ref(), Object::PublicKey(_)));
+    drop(store);
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// A class-scoped search never returns a wrong-class object: searching for a
+/// `CKO_PUBLIC_KEY` using the private key's id must return no object.
+#[test]
+#[serial]
+fn find_public_key_by_private_key_id_returns_empty() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    insert_test_key_pair("class_mismatch");
+    let session = open_test_session();
+
+    let handles = find_by_class_and_id(session, CKO_PUBLIC_KEY, b"class_mismatch");
+    assert!(
+        handles.is_empty(),
+        "class-mismatched search must return no object, got {handles:?}"
+    );
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
+}
+
+/// A search for a non-existent id returns no object and no error.
+#[test]
+#[serial]
+fn find_private_key_by_unknown_id_returns_empty() {
+    test_init();
+    assert_eq!(C_Initialize(ptr::null_mut()), CKR_OK);
+    insert_test_key_pair("present");
+    let session = open_test_session();
+
+    let handles = find_by_class_and_id(session, CKO_PRIVATE_KEY, b"does_not_exist");
+    assert!(handles.is_empty());
+
+    assert_eq!(C_CloseSession(session), CKR_OK);
+    assert_eq!(C_Finalize(ptr::null_mut()), CKR_OK);
 }
