@@ -1,0 +1,12 @@
+# Frozen Python dependency for the CEF export interoperability test suite.
+#
+# jc (https://github.com/kellyjonbrazil/jc) is a widely used, actively
+# maintained CLI/library (8k+ GitHub stars, MIT licence) that ships a
+# dedicated CEF parser conforming to the ArcSight CEF spec. It is used here
+# to independently parse `ckms audit export --format cef` output and verify
+# every field round-trips correctly, as a third party ingesting the export
+# would.
+#
+# Pinned to the latest stable release at the time of writing; no known
+# CVEs/advisories against this package. Revisit the pin on a major bump.
+jc==1.25.7
