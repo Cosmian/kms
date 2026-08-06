@@ -342,6 +342,8 @@ jobs:
   # ── Publish Helm chart to GitHub Pages ───────────────────────────────────────
   helm-chart-publish:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    needs:
+      - e2e-images
     name: Package and publish Helm chart
     runs-on: ubuntu-latest
     steps:
@@ -375,9 +377,12 @@ jobs:
         uses: helm/chart-releaser-action@v1.7.0
         env:
           CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           # All charts live under charts/<name>/Chart.yaml.
           charts_dir: charts
-          # Store packaged .tgz files in a temporary directory; they are
-          # uploaded as GitHub Release assets by the action.
-          packages_with_index: false
+          # when packages_with_index: true, it pushes the packaged .tgz directly
+          # into the gh-pages branch instead of creating a GitHub Release per chart version.
+          # The helm repo add / helm install flow still works identically — the index is still
+          # served from GitHub Pages — but zero chart releases appear on the releases page.
+          packages_with_index: true

@@ -79,6 +79,9 @@ ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" .github/copil
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/configuration/monitoring-setup.md
 ${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" documentation/docs/integrations/cloud_providers/microsoft/windows_cng_ksp.md
 
+# Helm chart
+${SED_BINARY} "${SED_IN_PLACE[@]}" "s/$OLD_VERSION/$NEW_VERSION/g" charts/cosmian-kms/Chart.yaml
+
 # Skip all pre-commit hooks when running in CI mode.
 # The workflow handles each concern as a dedicated job:
 #   - Nix hash updates  : the `update-nix-hashes` CI job
