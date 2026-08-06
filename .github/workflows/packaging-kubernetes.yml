@@ -363,11 +363,12 @@ jobs:
           # chart-releaser requires origin/gh-pages to exist before it can push.
           # Create an empty orphan branch on the first run; no-op on subsequent runs.
           if ! git ls-remote --exit-code --heads origin gh-pages; then
+            ORIG_HEAD=$(git rev-parse HEAD)
             git checkout --orphan gh-pages
             git reset --hard
             git commit --allow-empty -m "Initialize GitHub Pages branch"
             git push origin gh-pages
-            git checkout -
+            git checkout "$ORIG_HEAD"
           fi
 
       - name: Run chart-releaser
