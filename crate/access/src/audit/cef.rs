@@ -1,3 +1,5 @@
+// This file is implemented according to the following spec:
+// https://www.microfocus.com/documentation/arcsight/arcsight-smartconnectors-24.2/pdfdoc/cef-implementation-standard/cef-implementation-standard.pdf
 use std::fmt::Write as _;
 
 use time::format_description::well_known::Rfc3339;
