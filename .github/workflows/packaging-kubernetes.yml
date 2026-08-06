@@ -104,8 +104,10 @@ jobs:
             result-k8s-operator-image
             result-k8s-csi-provider-image
 
-  # ── Run each binary E2E scenario on its own fresh Minikube cluster ───────────
-  e2e:
+  # ── E2E: plugin (binary on the Minikube node) ────────────────────────────────
+  # The plugin runs as a systemd service on the control-plane node.
+  # It is tested with prebuilt binaries; Docker images are not involved.
+  e2e-plugin:
     name: ${{ matrix.scenario }} (Minikube)
     needs: build-k8s-bins
     runs-on: ubuntu-24.04
@@ -118,10 +120,6 @@ jobs:
             task: test:k8s:plugin
           - scenario: k8s-plugin-mtls
             task: test:k8s:plugin --mtls
-          - scenario: k8s-csi-provider
-            task: test:k8s:csi-provider --skip-image
-          - scenario: k8s-operator
-            task: test:k8s:operator --skip-image
 
     steps:
       - uses: actions/checkout@v7
@@ -143,8 +141,6 @@ jobs:
         run: |
           chmod +x \
             target/release/kubernetes-kms-plugin \
-            target/release/cosmian-kms-operator \
-            target/release/cosmian-kms-csi-provider \
             target/release/ckms
 
       - name: Start Minikube
@@ -158,22 +154,28 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: mise run ${{ matrix.task }}
 
-  # ── Test Docker images inside Minikube ───────────────────────────────────────
+  # ── E2E: operator + CSI provider (Docker images inside Minikube) ─────────────
+  # Both components are tested exclusively via their published Nix Docker images.
+  # ckms (a local binary) is used only as a test-fixture helper to pre-populate
+  # the KMS; the components under test always run inside the cluster as images.
+  # Smoke tests (--help via a bare Pod) are included in the same matrix.
   e2e-images:
-    name: ${{ matrix.scenario }} Docker image (Minikube)
-    needs: build-k8s-images
+    name: ${{ matrix.scenario }} (Minikube)
+    needs: [build-k8s-bins, build-k8s-images]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
+          - scenario: k8s-operator
+            task: test:k8s:operator
+          - scenario: k8s-csi-provider
+            task: test:k8s:csi-provider
           - scenario: k8s-operator-image
             task: test:k8s:operator-image
-            image_link: result-k8s-operator-image
           - scenario: k8s-csi-provider-image
             task: test:k8s:csi-provider-image
-            image_link: result-k8s-csi-provider-image
 
     steps:
       - uses: actions/checkout@v7
@@ -185,23 +187,20 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Download prebuilt image tarballs
+      - name: Download prebuilt binaries (ckms fixture helper)
+        uses: actions/download-artifact@v8
+        with:
+          name: k8s-e2e-bins
+          path: target/release
+
+      - name: Download Docker image tarballs
         uses: actions/download-artifact@v8
         with:
           name: k8s-docker-images
           path: .
 
-      - name: Restore image symlinks
-        run: |
-          # actions/download-artifact resolves symlinks to the actual file.
-          # Re-create the expected result-* symlinks pointing to the downloaded files.
-          for name in result-k8s-operator-image result-k8s-csi-provider-image; do
-            # The artifact download creates the file under the symlink name directly
-            if [ -f "$name" ] && [ ! -L "$name" ]; then
-              # Already a plain file — nothing to do
-              echo "$name is a plain file (symlink resolved by artifact upload)"
-            fi
-          done
+      - name: Make binaries executable
+        run: chmod +x target/release/ckms
 
       - name: Start Minikube
         uses: medyagh/setup-minikube@v0.0.18
@@ -209,7 +208,9 @@ jobs:
           driver: docker
           kubernetes-version: v1.32.0
 
-      - name: Run ${{ matrix.scenario }} image test
+      - name: Run ${{ matrix.scenario }} E2E
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: mise run ${{ matrix.task }}
 
   # ── Build K8s plugin packages (deb + rpm via Nix) ────────────────────────────
@@ -356,6 +357,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure gh-pages branch exists
+        run: |
+          # chart-releaser requires origin/gh-pages to exist before it can push.
+          # Create an empty orphan branch on the first run; no-op on subsequent runs.
+          if ! git ls-remote --exit-code --heads origin gh-pages; then
+            git checkout --orphan gh-pages
+            git reset --hard
+            git commit --allow-empty -m "Initialize GitHub Pages branch"
+            git push origin gh-pages
+            git checkout -
+          fi
 
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.7.0

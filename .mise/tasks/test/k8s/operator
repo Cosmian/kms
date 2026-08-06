@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-#MISE description="E2E test: KMS Operator — binary inject mode + Docker image (Minikube)"
-#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
-#USAGE   choices "fips" "non-fips"
-#USAGE }
-#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
-#USAGE   choices "static" "dynamic"
-#USAGE }
-#USAGE flag "--skip-image" help="Skip the Docker image test (binary E2E only; used by CI image-only jobs)"
+#MISE description="E2E test: KMS Operator — Docker image inject via Kubernetes Job (Minikube)"
+# The operator is tested exclusively via its published Docker image.
+# A Kubernetes Job runs the image in inject mode (initContainer) and a
+# busybox sidecar reads back the written file to assert the round-trip.
+#
+# Prerequisites: a running Minikube cluster + result-k8s-operator-image (Nix tarball).
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
@@ -15,27 +13,52 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 NAMESPACE="kms-operator-e2e"
 RELEASE="op-kms"
-SKIP_IMAGE="${usage_skip_image:-false}"
+JOB_NAME="kms-operator-inject-test"
+IMAGE_NAME="cosmian-kms-operator"
 
-print_header "KMS Operator E2E"
+print_header "KMS Operator E2E (Docker image)"
 k8s_require_tools
 
+REPO_ROOT="${MISE_CONFIG_ROOT}"
 WORK=$(mktemp -d)
-OP_BIN=$(k8s_locate_bin cosmian_kms_k8s_operator cosmian-kms-operator)
 CKMS_BIN=$(k8s_locate_bin ckms ckms)
+
+# ── Load the published Docker image into Minikube ─────────────────────────────
+# In CI the tarball is downloaded as a workflow artifact.
+# Locally it is built on demand by build:k8s-operator-image.
+OUT_LINK="${REPO_ROOT}/result-k8s-operator-image"
+if [ ! -e "$OUT_LINK" ]; then
+  print_status "Operator image tarball not found — building via Nix..."
+  mise run build:k8s-operator-image
+fi
+IMAGE_TAR=$(readlink -f "$OUT_LINK")
+[ -f "$IMAGE_TAR" ] || print_error "Operator image tarball not found at $IMAGE_TAR"
+
+print_status "Loading operator image into Minikube..."
+minikube image load "$IMAGE_TAR"
+# Also load into the local Docker daemon to parse the image name from the manifest.
+LOADED=$(docker load <"$IMAGE_TAR" 2>&1 | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
+IMAGE_REF="${LOADED:-${IMAGE_NAME}:latest}"
+print_status "Image loaded as: $IMAGE_REF"
 
 cleanup() {
   local rc=$?
   [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE"
   if [ -n "${PF_PID:-}" ]; then kill "$PF_PID" 2>/dev/null || true; fi
+  kubectl delete job "$JOB_NAME" --ignore-not-found=true 2>/dev/null || true
   k8s_teardown "$NAMESPACE" "$RELEASE"
   rm -rf "$WORK"
   return $rc
 }
 trap cleanup EXIT
 
-# ── 1. Deploy KMS and create a known secret ──────────────────────────────────
+# ── 1. Deploy KMS ─────────────────────────────────────────────────────────────
 k8s_deploy_kms "$NAMESPACE" "$RELEASE"
+CLUSTER_IP=$(k8s_kms_cluster_ip "$NAMESPACE" "$RELEASE")
+print_status "KMS ClusterIP: $CLUSTER_IP"
+
+# ── 2. Pre-populate the KMS with a known SecretData ───────────────────────────
+# ckms is a local test-fixture helper; it does NOT run inside the image.
 kubectl port-forward -n "$NAMESPACE" "svc/${RELEASE}-cosmian-kms" 9998:9998 &
 PF_PID=$!
 k8s_wait_kms_http "http://localhost:9998/version" 30
@@ -45,63 +68,65 @@ SECRET_VALUE="operator-injected-$(date +%s)"
 SECRET_UID=$(k8s_create_secret "$CKMS_BIN" "$CKMS_CONF" "$SECRET_VALUE" operator-inject-secret)
 print_status "Created SecretData: $SECRET_UID"
 
-# ── 2. Run the operator in one-shot inject mode ──────────────────────────────
-"$OP_BIN" inject \
-  --server-url http://localhost:9998 \
-  --secret-uids "${SECRET_UID}:injected-secret" \
-  --output-dir "$WORK/injected"
+# Close port-forward — the Job connects via in-cluster ClusterIP directly.
+kill "$PF_PID" 2>/dev/null || true
+unset PF_PID
 
-OUT_FILE="$WORK/injected/injected-secret"
-[ -s "$OUT_FILE" ] || print_error "inject did not write $OUT_FILE"
+# ── 3. Run the operator image as a Kubernetes Job ─────────────────────────────
+# Two containers share an emptyDir volume:
+#   initContainer «inject»  — operator reads from KMS, writes to /output
+#   main container «verify» — busybox cats the file to stdout (captured below)
+print_status "Creating operator inject Job (image=$IMAGE_REF)..."
+kubectl delete job "$JOB_NAME" --ignore-not-found=true 2>/dev/null || true
 
-WRITTEN=$(cat "$OUT_FILE")
+kubectl apply -f - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: inject
+          image: ${IMAGE_REF}
+          imagePullPolicy: Never
+          args:
+            - inject
+            - --server-url
+            - http://${CLUSTER_IP}:9998
+            - --secret-uids
+            - ${SECRET_UID}:injected-secret
+            - --output-dir
+            - /output
+          volumeMounts:
+            - name: output
+              mountPath: /output
+      containers:
+        - name: verify
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command: [sh, -c, "cat /output/injected-secret"]
+          volumeMounts:
+            - name: output
+              mountPath: /output
+      volumes:
+        - name: output
+          emptyDir: {}
+EOF
+
+# ── 4. Assert the injected content matches the KMS value ─────────────────────
+print_status "Waiting for inject Job to complete..."
+kubectl wait --for=condition=complete "job/${JOB_NAME}" --timeout=120s ||
+  print_error "Operator inject Job did not complete (check: kubectl describe job ${JOB_NAME})"
+
+POD=$(kubectl get pods -l "job-name=${JOB_NAME}" \
+  -o jsonpath='{.items[0].metadata.name}')
+WRITTEN=$(kubectl logs "$POD" -c verify)
 [ "$WRITTEN" = "$SECRET_VALUE" ] ||
-  print_error "injected content '$WRITTEN' != expected '$SECRET_VALUE'"
-print_success "operator inject: secret round-trips correctly ($(wc -c <"$OUT_FILE") bytes)"
+  print_error "Injected content '${WRITTEN}' != expected '${SECRET_VALUE}'"
+print_success "Operator inject: secret round-trips correctly via Docker image (uid=$SECRET_UID)"
 
-# ── 3. Docker image test via Minikube ────────────────────────────────────────
-if [ "$SKIP_IMAGE" = "true" ]; then
-  print_status "Skipping Docker image test (--skip-image)"
-elif command -v nix-build >/dev/null 2>&1; then
-  print_header "KMS Operator Docker image test"
-  REPO_ROOT="${MISE_CONFIG_ROOT}"
-  OUT_LINK="${REPO_ROOT}/result-k8s-operator-image"
-  IMAGE_NAME="cosmian-kms-operator"
-  POD_NAME="kms-operator-image-test"
-
-  if [ ! -e "$OUT_LINK" ]; then
-    print_status "Building Docker image via Nix..."
-    bash "${REPO_ROOT}/.mise/tasks/build/k8s-operator-image"
-  fi
-  IMAGE_TAR=$(readlink -f "$OUT_LINK")
-
-  print_status "Loading image into Minikube: $IMAGE_TAR"
-  minikube image load "$IMAGE_TAR"
-
-  LOADED=$(docker load <"$IMAGE_TAR" 2>&1 | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
-  IMAGE_REF="${LOADED:-${IMAGE_NAME}:latest}"
-  print_status "Image loaded as: $IMAGE_REF"
-
-  kubectl delete pod "$POD_NAME" --ignore-not-found=true
-  kubectl run "$POD_NAME" \
-    --image="$IMAGE_REF" \
-    --image-pull-policy=Never \
-    --restart=Never \
-    -- --help
-
-  print_status "Waiting for pod $POD_NAME to complete..."
-  timeout 60 bash -c \
-    "until kubectl get pod \"$POD_NAME\" -o jsonpath='{.status.phase}' 2>/dev/null | grep -qE 'Succeeded|Failed'; do sleep 2; done" ||
-    print_error "Pod $POD_NAME did not complete within 60s"
-
-  EXIT_CODE=$(kubectl get pod "$POD_NAME" \
-    -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')
-  kubectl delete pod "$POD_NAME" --ignore-not-found=true
-  [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "1" ] ||
-    print_error "Pod exited with unexpected code $EXIT_CODE"
-  print_success "Operator Docker image test passed (pod exit code: $EXIT_CODE)"
-else
-  print_status "Skipping Docker image test (nix-build not available)"
-fi
-
-print_success "KMS Operator E2E completed"
+print_success "KMS Operator E2E completed (Docker image)"

@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Run all Kubernetes E2E tests (plugin, operator, CSI provider)"
-#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
-#USAGE   choices "fips" "non-fips"
-#USAGE }
-#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
-#USAGE   choices "static" "dynamic"
-#USAGE }
-#USAGE flag "--skip-images" help="Skip Docker image tests within operator and csi-provider"
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
@@ -15,16 +8,10 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 k8s_require_tools
 
-VARIANT="${usage_variant:-fips}"
-LINK="${usage_link:-static}"
-SKIP_IMAGES="${usage_skip_images:-false}"
-
-print_header "Running all Kubernetes E2E tests (variant=${VARIANT})"
+print_header "Running all Kubernetes E2E tests"
 
 FAILED=()
 
-# Use 'mise run' so that #USAGE flag annotations are parsed correctly
-# (plain 'bash script --flag' bypasses mise's USAGE parsing).
 run_step() {
   local name="$1"
   shift
@@ -37,13 +24,12 @@ run_step() {
   fi
 }
 
-IMAGE_FLAG=()
-[ "$SKIP_IMAGES" = "true" ] && IMAGE_FLAG=(--skip-image)
-
-run_step "k8s:plugin" test:k8s:plugin --variant "$VARIANT" --link "$LINK"
-run_step "k8s:plugin (mtls)" test:k8s:plugin --variant "$VARIANT" --link "$LINK" --mtls
-run_step "k8s:operator" test:k8s:operator --variant "$VARIANT" --link "$LINK" "${IMAGE_FLAG[@]+"${IMAGE_FLAG[@]}"}"
-run_step "k8s:csi-provider" test:k8s:csi-provider --variant "$VARIANT" --link "$LINK" "${IMAGE_FLAG[@]+"${IMAGE_FLAG[@]}"}"
+# plugin runs as a binary on the Minikube node; operator and csi-provider
+# use their published Docker images (loaded into Minikube via Nix).
+run_step "k8s:plugin" test:k8s:plugin
+run_step "k8s:plugin-mtls" test:k8s:plugin --mtls
+run_step "k8s:operator" test:k8s:operator
+run_step "k8s:csi-provider" test:k8s:csi-provider
 
 if [ "${#FAILED[@]}" -gt 0 ]; then
   echo ""

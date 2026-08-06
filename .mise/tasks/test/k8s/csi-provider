@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="E2E test: KMS CSI Provider — secrets store mount + Docker image (Minikube)"
-#USAGE flag "-v --variant <variant>" env="VARIANT" help="FIPS variant" default="fips" {
-#USAGE   choices "fips" "non-fips"
-#USAGE }
-#USAGE flag "-l --link <link>" env="LINK" help="Linkage type" default="static" {
-#USAGE   choices "static" "dynamic"
-#USAGE }
-#USAGE flag "--skip-image" help="Skip the Docker image test (binary E2E only; used by CI image-only jobs)"
+#MISE description="E2E test: KMS CSI Provider — secrets store mount via Docker image DaemonSet (Minikube)"
+# The CSI provider is tested exclusively via its published Docker image, deployed
+# as a Kubernetes DaemonSet in kube-system — matching the production topology.
+#
+# Prerequisites: a running Minikube cluster + result-k8s-csi-provider-image (Nix tarball).
 set -euo pipefail
 # shellcheck source=.mise/lib/common.sh
 source "${MISE_CONFIG_ROOT}/.mise/lib/common.sh"
@@ -15,35 +12,51 @@ source "${MISE_CONFIG_ROOT}/.mise/lib/k8s.sh"
 
 NAMESPACE="kms-csi-e2e"
 RELEASE="csi-kms"
-SKIP_IMAGE="${usage_skip_image:-false}"
 PROVIDER_SOCK_DIR="/etc/kubernetes/secrets-store-csi-providers"
 PROVIDER_SOCK="${PROVIDER_SOCK_DIR}/cosmian-kms.sock"
-CFG_DIR="/etc/cosmian-kms-csi"
+CFG_NAME="cosmian-kms-csi-config"
+DS_NAME="cosmian-kms-csi-provider"
+IMAGE_NAME="cosmian-kms-csi-provider"
 
-print_header "CSI provider E2E"
+print_header "CSI Provider E2E (Docker image)"
 k8s_require_tools
 
+REPO_ROOT="${MISE_CONFIG_ROOT}"
 WORK=$(mktemp -d)
-CSI_BIN=$(k8s_locate_bin cosmian_kms_csi_provider cosmian-kms-csi-provider)
 CKMS_BIN=$(k8s_locate_bin ckms ckms)
+
+# ── Load the published Docker image into Minikube ─────────────────────────────
+OUT_LINK="${REPO_ROOT}/result-k8s-csi-provider-image"
+if [ ! -e "$OUT_LINK" ]; then
+  print_status "CSI provider image tarball not found — building via Nix..."
+  mise run build:k8s-csi-provider-image
+fi
+IMAGE_TAR=$(readlink -f "$OUT_LINK")
+[ -f "$IMAGE_TAR" ] || print_error "CSI provider image tarball not found at $IMAGE_TAR"
+
+print_status "Loading CSI provider image into Minikube..."
+minikube image load "$IMAGE_TAR"
+LOADED=$(docker load <"$IMAGE_TAR" 2>&1 | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
+IMAGE_REF="${LOADED:-${IMAGE_NAME}:latest}"
+print_status "Image loaded as: $IMAGE_REF"
 
 cleanup() {
   local rc=$?
-  [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE" cosmian-kms-csi-provider
+  [ $rc -ne 0 ] && k8s_dump_debug "$NAMESPACE" "$RELEASE" "$DS_NAME"
   if [ -n "${PF_PID:-}" ]; then kill "$PF_PID" 2>/dev/null || true; fi
-  # Pods and SPCs created in the default namespace must be cleaned up separately
-  # since k8s_teardown only removes the test namespace.
   kubectl delete pod csi-known-pod csi-rotate-pod csi-revoked-pod \
     --ignore-not-found=true 2>/dev/null || true
   kubectl delete secretproviderclass cosmian-known cosmian-rotate cosmian-revoked \
     --ignore-not-found=true 2>/dev/null || true
+  kubectl delete daemonset "$DS_NAME" -n kube-system --ignore-not-found=true 2>/dev/null || true
+  kubectl delete configmap "$CFG_NAME" -n kube-system --ignore-not-found=true 2>/dev/null || true
   k8s_teardown "$NAMESPACE" "$RELEASE"
   rm -rf "$WORK"
   return $rc
 }
 trap cleanup EXIT
 
-# ── helper: read a mounted file's bytes from the test pod as hex ──────────────
+# ── helper: read a mounted file's bytes from a test pod as hex ───────────────
 pod_file_hex() {
   local pod="$1" path="$2"
   kubectl exec "$pod" -- sh -c "od -An -tx1 '$path' | tr -d ' \n'"
@@ -65,55 +78,90 @@ helm upgrade --install csi-secrets-store secrets-store-csi-driver/secrets-store-
   --wait --timeout 120s
 print_success "Secrets Store CSI Driver installed"
 
-# ── 2. Create test objects in the KMS ────────────────────────────────────────
+# ── 2. Pre-populate the KMS with test objects ─────────────────────────────────
 kubectl port-forward -n "$NAMESPACE" "svc/${RELEASE}-cosmian-kms" 9998:9998 &
 PF_PID=$!
 k8s_wait_kms_http "http://localhost:9998/version" 30
 CKMS_CONF=$(k8s_ckms_conf "$WORK" "http://localhost:9998")
 
-# (a) SecretData with a KNOWN value → exact content assertion.
 SECRET_VALUE="csi-secret-value-$(date +%s)"
 SECRET_UID=$(k8s_create_secret "$CKMS_BIN" "$CKMS_CONF" "$SECRET_VALUE" csi-known-secret)
 print_status "Created SecretData: $SECRET_UID"
 
-# (b) Two independent keys modelling a KMS rotation. A KMIP re-key deprecates
-# the old object and yields a NEW unique identifier, so a realistic rotation is
-# represented by the SecretProviderClass being re-pointed to the rotated key's
-# new UID (done live in the rotation test below).
 ROTATE_UID_V1=$(k8s_create_kek "$CKMS_BIN" "$CKMS_CONF" csi-rotate-key-v1)
 ROTATE_UID_V2=$(k8s_create_kek "$CKMS_BIN" "$CKMS_CONF" csi-rotate-key-v2)
 print_status "Created rotation keys: v1=$ROTATE_UID_V1 v2=$ROTATE_UID_V2"
 
-# ── 3. Install the CSI provider on the Minikube node ─────────────────────────
-k8s_install_node_bin "$CSI_BIN" /usr/local/bin/cosmian-kms-csi-provider
-minikube ssh -- sudo mkdir -p "$CFG_DIR"
-cat >"$WORK/config.yaml" <<EOF
+REVOKE_VALUE="revoke-me-$(date +%s)"
+REVOKE_UID=$(k8s_create_secret "$CKMS_BIN" "$CKMS_CONF" "$REVOKE_VALUE" csi-revoke-secret)
+k8s_revoke_object "$CKMS_BIN" "$CKMS_CONF" "$REVOKE_UID"
+print_status "Created+revoked: $REVOKE_UID"
+
+kill "$PF_PID" 2>/dev/null || true
+unset PF_PID
+
+# ── 3. Deploy CSI provider as a DaemonSet (Docker image, kube-system ns) ──────
+# The DaemonSet mounts the provider socket directory from the host node (hostPath)
+# so the Secrets Store CSI Driver can discover and call the provider via gRPC.
+# imagePullPolicy: Never forces Minikube to use the locally-loaded Nix image.
+print_status "Creating CSI provider ConfigMap and DaemonSet..."
+kubectl create configmap "$CFG_NAME" -n kube-system \
+  --from-literal=config.yaml="$(
+    cat <<EOF
 cosmian_kms:
   server_url: http://${CLUSTER_IP}:9998
   socket_path: ${PROVIDER_SOCK}
 EOF
-minikube cp "$WORK/config.yaml" /tmp/csi-config.yaml
-minikube ssh -- sudo cp /tmp/csi-config.yaml "$CFG_DIR/config.yaml"
+  )" --dry-run=client -o yaml | kubectl apply -f -
 
-k8s_write_systemd_unit cosmian-kms-csi-provider "$(
-  cat <<UNIT
-[Unit]
-Description=Cosmian KMS Secrets Store CSI Driver Provider
-After=network-online.target
-Wants=network-online.target
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ${DS_NAME}
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: ${DS_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${DS_NAME}
+    spec:
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: provider
+          image: ${IMAGE_REF}
+          imagePullPolicy: Never
+          args:
+            - --config
+            - /etc/cosmian-kms-csi/config.yaml
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cosmian-kms-csi
+            - name: provider-socket-dir
+              mountPath: ${PROVIDER_SOCK_DIR}
+      volumes:
+        - name: config
+          configMap:
+            name: ${CFG_NAME}
+        - name: provider-socket-dir
+          hostPath:
+            path: ${PROVIDER_SOCK_DIR}
+            type: DirectoryOrCreate
+EOF
 
-[Service]
-Type=simple
-ExecStartPre=/bin/mkdir -p ${PROVIDER_SOCK_DIR}
-ExecStart=/usr/local/bin/cosmian-kms-csi-provider --config ${CFG_DIR}/config.yaml
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-)"
+# Wait for DaemonSet to be ready and for the socket to appear on the node
+kubectl rollout status daemonset/"$DS_NAME" -n kube-system --timeout=120s ||
+  print_error "CSI provider DaemonSet did not become ready"
 k8s_wait_node_socket "$PROVIDER_SOCK" 30
+print_success "CSI provider DaemonSet ready, socket available"
 
 # ── helper: apply a SecretProviderClass with a single object ─────────────────
 apply_spc() {
@@ -169,15 +217,10 @@ kubectl wait pod/csi-known-pod --for=condition=Ready --timeout=180s ||
 
 MOUNTED=$(kubectl exec csi-known-pod -- cat /mnt/secrets/known-secret)
 [ "$MOUNTED" = "$SECRET_VALUE" ] ||
-  print_error "mounted content '$MOUNTED' != expected '$SECRET_VALUE'"
+  print_error "mounted content '${MOUNTED}' != expected '${SECRET_VALUE}'"
 print_success "CSI mounted file content matches the exact KMS secret value"
 
 # ── 5. TEST: live rotation — re-point the SPC to the rotated key's new UID ────
-# The Secrets Store CSI Driver rotation reconciler (enableSecretRotation=true,
-# rotationPollInterval=30s) periodically re-invokes the provider. When the SPC
-# is updated to reference the rotated key, the provider returns a different
-# objectVersion (content SHA-256) and the driver updates the file IN PLACE in
-# the already-running pod — matching the issue #862 rotation acceptance.
 apply_spc cosmian-rotate rotate-key "$ROTATE_UID_V1"
 apply_pod csi-rotate-pod cosmian-rotate
 kubectl wait pod/csi-rotate-pod --for=condition=Ready --timeout=180s ||
@@ -188,7 +231,6 @@ BYTES_BEFORE=$(pod_file_hex csi-rotate-pod /mnt/secrets/rotate-key)
 print_status "Rotating: re-pointing SPC to $ROTATE_UID_V2 (poll interval 30s)..."
 apply_spc cosmian-rotate rotate-key "$ROTATE_UID_V2"
 
-# Poll the SAME pod's file until the reconciler writes the rotated content.
 ROTATED=false
 for _ in $(seq 1 30); do
   sleep 10
@@ -203,17 +245,8 @@ done
 print_success "CSI reflects KMS rotation live (in-place file update after SPC re-point)"
 
 # ── 6. TEST: graceful failure when the KMS object is revoked/destroyed ────────
-REVOKE_VALUE="revoke-me-$(date +%s)"
-REVOKE_UID=$(k8s_create_secret "$CKMS_BIN" "$CKMS_CONF" "$REVOKE_VALUE" csi-revoke-secret)
-print_status "Created secret to revoke: $REVOKE_UID"
-k8s_revoke_object "$CKMS_BIN" "$CKMS_CONF" "$REVOKE_UID"
-print_status "Revoked+destroyed $REVOKE_UID; a Mount() must now fail gracefully"
-
 apply_spc cosmian-revoked revoked-secret "$REVOKE_UID"
 apply_pod csi-revoked-pod cosmian-revoked
-
-# The pod must NOT become Ready because Mount() fails; the driver keeps it in
-# ContainerCreating. Assert it stays not-Ready and the error surfaces in events.
 if kubectl wait pod/csi-revoked-pod --for=condition=Ready --timeout=45s 2>/dev/null; then
   print_error "csi-revoked-pod unexpectedly became Ready after the secret was revoked"
 fi
@@ -222,51 +255,4 @@ echo "$EVENTS" | grep -qiE "failed|error|mount" ||
   print_warning "no explicit mount-failure event found (pod correctly stayed not-Ready)"
 print_success "CSI mount fails gracefully for a revoked KMS object (pod stayed not-Ready)"
 
-print_success "CSI provider binary E2E completed"
-
-# ── Docker image test via Minikube ───────────────────────────────────────────
-if [ "$SKIP_IMAGE" = "true" ]; then
-  print_status "Skipping Docker image test (--skip-image)"
-elif command -v nix-build >/dev/null 2>&1; then
-  print_header "KMS CSI Provider Docker image test"
-  REPO_ROOT="${MISE_CONFIG_ROOT}"
-  OUT_LINK="${REPO_ROOT}/result-k8s-csi-provider-image"
-  IMAGE_NAME="cosmian-kms-csi-provider"
-  POD_NAME="kms-csi-provider-image-test"
-
-  if [ ! -e "$OUT_LINK" ]; then
-    print_status "Building Docker image via Nix..."
-    bash "${REPO_ROOT}/.mise/tasks/build/k8s-csi-provider-image"
-  fi
-  IMAGE_TAR=$(readlink -f "$OUT_LINK")
-
-  print_status "Loading image into Minikube: $IMAGE_TAR"
-  minikube image load "$IMAGE_TAR"
-
-  LOADED=$(docker load <"$IMAGE_TAR" 2>&1 | grep -oE 'Loaded image( ID)?: \S+' | awk '{print $NF}' | head -1)
-  IMAGE_REF="${LOADED:-${IMAGE_NAME}:latest}"
-  print_status "Image loaded as: $IMAGE_REF"
-
-  kubectl delete pod "$POD_NAME" --ignore-not-found=true
-  kubectl run "$POD_NAME" \
-    --image="$IMAGE_REF" \
-    --image-pull-policy=Never \
-    --restart=Never \
-    -- --help
-
-  print_status "Waiting for pod $POD_NAME to complete..."
-  timeout 60 bash -c \
-    "until kubectl get pod \"$POD_NAME\" -o jsonpath='{.status.phase}' 2>/dev/null | grep -qE 'Succeeded|Failed'; do sleep 2; done" ||
-    print_error "Pod $POD_NAME did not complete within 60s"
-
-  EXIT_CODE=$(kubectl get pod "$POD_NAME" \
-    -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}')
-  kubectl delete pod "$POD_NAME" --ignore-not-found=true
-  [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "1" ] ||
-    print_error "Pod exited with unexpected code $EXIT_CODE"
-  print_success "CSI Provider Docker image test passed (pod exit code: $EXIT_CODE)"
-else
-  print_status "Skipping Docker image test (nix-build not available)"
-fi
-
-print_success "KMS CSI Provider E2E completed"
+print_success "KMS CSI Provider E2E completed (Docker image)"
