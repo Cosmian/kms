@@ -503,6 +503,25 @@ impl Attributes {
         self
     }
 
+    /// Apply a new `Extractable` value and update `NeverExtractable` accordingly.
+    ///
+    /// `NeverExtractable` is the logical complement of `Extractable`, but with latch
+    /// semantics: once `NeverExtractable` becomes `False` (i.e., the key has been extractable),
+    /// it remains `False` even if `Extractable` is later set back to `False`.
+    ///
+    /// This mirrors the KMIP 2.1 §4.33 / KMIP 1.4 §3.50 specification for the
+    /// Never Extractable attribute.
+    pub fn apply_extractable(&mut self, extractable: bool) -> &mut Self {
+        // Previous NeverExtractable value; if absent, seed it from the complement
+        // of the incoming Extractable value so a first assignment behaves like initialization.
+        let previous_never_extractable = self.never_extractable.unwrap_or(!extractable);
+        self.extractable = Some(extractable);
+        // NeverExtractable latches to False once Extractable has been True.
+        // It can only transition from True to False, never back to True.
+        self.never_extractable = Some(previous_never_extractable && !extractable);
+        self
+    }
+
     /// Add a vendor attribute to the list of vendor attributes.
     pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
         if let Some(vas) = &mut self.vendor_attributes {

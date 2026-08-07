@@ -124,18 +124,7 @@ jobs:
       - name: Build documentation
         run: |
           export PATH="$HOME/.cargo/bin:$PATH"
-          # Retry up to 3 times to handle transient link-check failures (GitHub
-          # rate-limits, momentary 5xx from external servers, etc.).
-          for attempt in 1 2 3; do
-            if cd documentation && mdbook build; then
-              exit 0
-            fi
-            cd ..
-            echo "Documentation build attempt $attempt failed; retrying in 30s..."
-            sleep 30
-          done
-          echo "Documentation build failed after 3 attempts"
-          exit 1
+          cd documentation && mdbook build
 
   linkcheck:
     name: Check documentation links

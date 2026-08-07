@@ -156,7 +156,6 @@ pub(crate) async fn modify_attribute(
             Description => description,
             DestroyDate => destroy_date,
             DigitalSignatureAlgorithm => digital_signature_algorithm,
-            Extractable => extractable,
             Fresh => fresh,
             InitialDate => initial_date,
             KeyFormatType => key_format_type,
@@ -203,6 +202,12 @@ pub(crate) async fn modify_attribute(
                 // AlwaysSensitive attribute (KMIP 2.1 §4.3).
                 trace!("ModifyAttribute: Sensitive: {:?}", sensitive);
                 attributes.apply_sensitive(sensitive);
+            }
+            Attribute::Extractable(extractable) => {
+                // Setting Extractable also (re)computes the server-managed
+                // NeverExtractable attribute (KMIP 2.1 §4.33).
+                trace!("ModifyAttribute: Extractable: {:?}", extractable);
+                attributes.apply_extractable(extractable);
             }
             Attribute::ActivationDate(activation_date) => {
                 trace!("ModifyAttribute: ActivationDate: {:?}", activation_date);
