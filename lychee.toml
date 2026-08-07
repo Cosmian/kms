@@ -86,6 +86,8 @@ exclude = [
   'kubernetes\.io',
   # Google Workspace blog — aggressive 429 rate limiting from CI IPs
   'workspaceupdates\.googleblog\.com',
+  # OVHcloud — blocks automated requests from CI runners
+  'ovhcloud\.com',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',
