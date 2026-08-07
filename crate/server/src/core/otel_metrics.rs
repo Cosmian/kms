@@ -634,13 +634,12 @@ mod tests {
 
     use super::*;
 
-    // ── No-op provider — cheap, used only where value assertions aren't needed ──
-
+    // No-op provider — cheap, used only where value assertions aren't needed
     fn create_test_meter_provider() -> SdkMeterProvider {
         SdkMeterProvider::builder().build()
     }
 
-    // ── Observing setup: real exporter, values assertable after force_flush() ──
+    // Observing setup: real exporter, values assertable after force_flush()
 
     fn setup_observing_metrics() -> (OtelMetrics, SdkMeterProvider, InMemoryMetricExporter) {
         let exporter = InMemoryMetricExporter::default();
@@ -650,8 +649,6 @@ mod tests {
         let metrics = OtelMetrics::new(provider).expect("metrics init");
         (metrics, provider_ref, exporter)
     }
-
-    // ── Value-reading helpers ─────────────────────────────────────────────────
 
     /// Sum of all data-point values for a u64 counter metric in the last exported batch.
     fn last_counter_u64(exporter: &InMemoryMetricExporter, name: &str) -> u64 {
@@ -705,6 +702,33 @@ mod tests {
             }
         }
         0
+    }
+
+    /// Collects every `user` attribute value recorded for a `u64` counter metric
+    /// across all data points in the last exported batch.
+    fn user_labels(exporter: &InMemoryMetricExporter, name: &str) -> Vec<String> {
+        let batches = exporter.get_finished_metrics().unwrap_or_default();
+        let Some(last) = batches.last() else {
+            return vec![];
+        };
+        let mut labels = vec![];
+        for sm in last.scope_metrics() {
+            for metric in sm.metrics() {
+                if metric.name() != name {
+                    continue;
+                }
+                if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
+                    for dp in sum.data_points() {
+                        for kv in dp.attributes() {
+                            if kv.key.as_str() == "user" {
+                                labels.push(kv.value.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        labels
     }
 
     // ── Smoke tests (construction + no-panic; no value assertions needed) ─────
