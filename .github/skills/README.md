@@ -1,4 +1,4 @@
-# Copilot Skills — Cosmian KMS
+# Copilot Skills — Eviden KMS
 
 Team-wide GitHub Copilot skills for the KMS repository.
 

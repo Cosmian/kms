@@ -13,6 +13,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
             VendorAttributeReference,
         },
     },
+    ttlv::Interval,
 };
 use cosmian_logger::{debug, trace};
 use openssl::sha;
@@ -274,6 +275,9 @@ pub(crate) async fn get_attributes(
                 Tag::Description => {
                     attributes.description.clone_into(&mut res.description);
                 }
+                Tag::Comment => {
+                    attributes.comment.clone_into(&mut res.comment);
+                }
                 Tag::AlwaysSensitive => {
                     // If AlwaysSensitive is not explicitly set, default to current Sensitive value
                     // and finally default to false when both are absent.
@@ -444,8 +448,9 @@ pub(crate) async fn get_attributes(
                     attributes.name.clone_into(&mut res.name);
                 }
                 Tag::LeaseTime => {
-                    // Default LeaseTime to 3600 seconds when not set
-                    res.lease_time = attributes.lease_time.or(Some(3600));
+                    // Default LeaseTime to 3600 seconds when not set.
+                    // KMIP types Lease Time as Interval (KMIP 1.4 §3.20 / 2.1 §4.29).
+                    res.lease_time = attributes.lease_time.or(Some(Interval(3600)));
                 }
                 Tag::NeverExtractable => {
                     // Default to false when unspecified for vector compatibility

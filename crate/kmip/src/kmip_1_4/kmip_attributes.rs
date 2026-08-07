@@ -29,7 +29,9 @@ pub use crate::{
         kmip_types::{VendorAttribute, VendorAttributeValue},
     },
 };
-use crate::{kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_types::CustomAttribute};
+use crate::{
+    kmip_0::kmip_types::HashingAlgorithm, kmip_1_4::kmip_types::CustomAttribute, ttlv::Interval,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribute {
@@ -65,7 +67,7 @@ pub enum Attribute {
     KeyValueLocation(KeyValueLocationType),
     KeyValuePresent(bool),
     LastChangeDate(OffsetDateTime),
-    LeaseTime(u32),
+    LeaseTime(Interval),
     Link(Link),
     Name(Name),
     NeverExtractable(bool),
@@ -498,7 +500,7 @@ impl<'de> Deserialize<'de> for Attribute {
                         Ok(Attribute::StorageStatusMask(value))
                     }
                     "Lease Time" => {
-                        let value: u32 = map.next_value()?;
+                        let value: Interval = map.next_value()?;
                         Ok(Attribute::LeaseTime(value))
                     }
                     "Usage Limits" => {
@@ -772,14 +774,8 @@ impl From<Attribute> for kmip_2_1::kmip_attributes::Attribute {
             Attribute::KeyValueLocation(v) => Self::KeyValueLocation(v),
             Attribute::KeyValuePresent(v) => Self::KeyValuePresent(v),
             Attribute::LastChangeDate(v) => Self::LastChangeDate(v),
-            // KMIP 1.4 uses u32 (Interval); KMIP 2.1 uses i32.
-            Attribute::LeaseTime(v) => Self::LeaseTime(i32::try_from(v).unwrap_or_else(|_| {
-                warn!(
-                    "KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}",
-                    i32::MAX
-                );
-                i32::MAX
-            })),
+            // Both KMIP 1.4 (§3.20) and KMIP 2.1 (§4.29) type Lease Time as Interval.
+            Attribute::LeaseTime(v) => Self::LeaseTime(v),
             Attribute::Link(v) => Self::Link(v.into()),
             Attribute::Name(v) => Self::Name(v.into()),
             Attribute::NeverExtractable(v) => Self::NeverExtractable(v),
@@ -860,10 +856,7 @@ impl TryFrom<kmip_2_1::kmip_attributes::Attribute> for Attribute {
             kmip_2_1::kmip_attributes::Attribute::DigitalSignatureAlgorithm(v) => {
                 Ok(Self::DigitalSignatureAlgorithm(v.try_into()?))
             }
-            kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => {
-                // KMIP 2.1 uses i32, KMIP 1.4 uses u32. Convert safely.
-                Ok(Self::LeaseTime(u32::try_from(v).unwrap_or(0)))
-            }
+            kmip_2_1::kmip_attributes::Attribute::LeaseTime(v) => Ok(Self::LeaseTime(v)),
             kmip_2_1::kmip_attributes::Attribute::UsageLimits(v) => Ok(Self::UsageLimits(v.into())),
             kmip_2_1::kmip_attributes::Attribute::State(v) => Ok(Self::State(v)),
             kmip_2_1::kmip_attributes::Attribute::InitialDate(v) => Ok(Self::InitialDate(v)),
@@ -1159,13 +1152,7 @@ impl From<Vec<Attribute>> for kmip_2_1::kmip_attributes::Attributes {
                 }
 
                 Attribute::LeaseTime(v) => {
-                    attributes.lease_time = Some(i32::try_from(v).unwrap_or_else(|_| {
-                        warn!(
-                            "KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}",
-                            i32::MAX
-                        );
-                        i32::MAX
-                    }));
+                    attributes.lease_time = Some(v);
                 }
                 Attribute::UsageLimits(v) => {
                     attributes.usage_limits = Some(v.into());

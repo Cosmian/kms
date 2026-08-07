@@ -23,6 +23,7 @@ use crate::{
         },
     },
     time_utils::time_normalize,
+    ttlv::Interval,
 };
 
 /// The following subsections describe the attributes that are associated with
@@ -247,9 +248,10 @@ pub struct Attributes {
     pub last_change_date: Option<OffsetDateTime>,
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
-    /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
+    /// be retained by the client. Encoded as the TTLV `Interval` primitive
+    /// (KMIP 2.1 §4.29 Table 88), not as `Integer`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub lease_time: Option<i32>,
+    pub lease_time: Option<Interval>,
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -1200,7 +1202,7 @@ pub enum Attribute {
 
     /// The Lease Time attribute is the length of time in seconds that the object MAY
     /// be retained by the client. KMIP Interval type (32-bit signed integer in TTLV).
-    LeaseTime(i32),
+    LeaseTime(Interval),
 
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
@@ -1470,6 +1472,9 @@ impl From<Attributes> for Vec<Attribute> {
         }
         if let Some(nist_key_type) = attributes.nist_key_type {
             vec.push(Attribute::NistKeyType(nist_key_type));
+        }
+        if let Some(never_extractable) = attributes.never_extractable {
+            vec.push(Attribute::NeverExtractable(never_extractable));
         }
         if let Some(object_group) = attributes.object_group {
             vec.push(Attribute::ObjectGroup(object_group));

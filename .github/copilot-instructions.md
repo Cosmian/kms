@@ -1,6 +1,6 @@
-# Cosmian KMS — Copilot Chat Instructions
+# Eviden KMS — Copilot Chat Instructions
 
-Cosmian KMS is a high-performance, source-available **FIPS 140-3** Key Management System
+Eviden KMS is a high-performance, source-available **FIPS 140-3** Key Management System
 written in **Rust**. It implements **KMIP 2.1 and 1.4** over HTTP/TLS (Actix-web) and
 supports AES, RSA, EC, ML-KEM, ML-DSA, SLH-DSA, Covercrypt, and more.
 

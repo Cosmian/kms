@@ -1,6 +1,6 @@
 # Threat Model Analysis Principles
 
-Core analytical principles for identifying, evaluating, and prioritizing threats in the Cosmian KMS.
+Core analytical principles for identifying, evaluating, and prioritizing threats in the Eviden KMS.
 
 ## 1. Verify Before Flagging
 

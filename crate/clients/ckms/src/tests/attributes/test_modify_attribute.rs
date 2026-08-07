@@ -50,11 +50,14 @@ async fn test_modify_attribute() -> CosmianResult<()> {
     // Create a symmetric key
     let key_id = create_symmetric_key(&owner_conf, &[])?;
 
-    // Set cryptographic length (state-independent attribute)
-    set_attribute(&owner_conf, &key_id, &["--cryptographic-length", "128"])?;
+    // Use Name: KMIP 1.4 §3.2 / KMIP 2.1 §4.34 mark it "Modifiable by client: Yes"
+    // and it carries no key-lifecycle constraint. Server-managed attributes such
+    // as Cryptographic Length (KMIP 2.1 §4.15 Table 57, "Modifiable by client:
+    // No") are rejected by ModifyAttribute and cannot be used here.
+    set_attribute(&owner_conf, &key_id, &["--name", "modify-attr-initial"])?;
 
-    // Modify cryptographic length
-    modify_attribute(&owner_conf, &key_id, &["--cryptographic-length", "256"])?;
+    // Modify the name
+    modify_attribute(&owner_conf, &key_id, &["--name", "modify-attr-updated"])?;
 
     Ok(())
 }

@@ -14,6 +14,41 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
+/// Standard attribute tags advertised by `GetAttributeList` for the TL profile, in the
+/// exact order expected by the XML profile test vectors, paired with the minimum KMIP 1.x
+/// *minor* version in which the OASIS KMIP Specification defines them (Section 3
+/// "Attributes"):
+///
+/// - KMIP 1.1: `Fresh` (§3.34)
+/// - KMIP 1.2: `Alternative Name` (§3.40), `Original Creation Date` (§3.43)
+/// - KMIP 1.3: `Random Number Generator` (§3.44)
+/// - KMIP 1.4: `Sensitive` (§3.48), `Always Sensitive` (§3.49), `Extractable` (§3.50),
+///   `Never Extractable` (§3.51)
+///
+/// All remaining tags exist since KMIP 1.0 and are therefore mapped to `0`.
+const TL_PROFILE_ATTRIBUTES: [(Tag, i32); 20] = [
+    (Tag::UniqueIdentifier, 0),
+    (Tag::ObjectType, 0),
+    (Tag::CryptographicAlgorithm, 0),
+    (Tag::CryptographicLength, 0),
+    (Tag::AlternativeName, 2),
+    (Tag::AlwaysSensitive, 4),
+    (Tag::ApplicationSpecificInformation, 0),
+    (Tag::CryptographicUsageMask, 0),
+    (Tag::Digest, 0),
+    (Tag::Extractable, 4),
+    (Tag::Fresh, 1),
+    (Tag::InitialDate, 0),
+    (Tag::LastChangeDate, 0),
+    (Tag::LeaseTime, 0),
+    (Tag::Name, 0),
+    (Tag::NeverExtractable, 4),
+    (Tag::OriginalCreationDate, 2),
+    (Tag::RandomNumberGenerator, 3),
+    (Tag::Sensitive, 4),
+    (Tag::State, 0),
+];
+
 /// Returns the names of all attributes currently set on the object.
 pub(crate) async fn get_attribute_list(
     kms: &KMS,
@@ -29,9 +64,13 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
     user: &str,
     protocol_version: Option<ProtocolVersion>,
 ) -> KResult<GetAttributeListResponse> {
-    let include_fresh = protocol_version
+    // KMIP 1.x clients MUST NOT be told about attributes their protocol version does not
+    // define. KMIP 2.x defines all of them, hence the `i32::MAX` fallback (which also
+    // covers the version-agnostic call site).
+    let kmip1_minor = protocol_version
         .as_ref()
-        .is_some_and(|pv| !(pv.protocol_version_major == 1 && pv.protocol_version_minor == 0));
+        .filter(|pv| pv.protocol_version_major == 1)
+        .map_or(i32::MAX, |pv| pv.protocol_version_minor);
 
     let uid = request
         .unique_identifier
@@ -75,38 +114,13 @@ pub(crate) async fn get_attribute_list_with_protocol_version(
         }
     }
 
-    // 2) Standard Attribute tag references for TL profile in the exact expected order
-    // Note: `Fresh` is inserted only for KMIP >= 1.1 (and 1.4/2.1) while remaining
-    // absent for KMIP 1.0.
-    let mut tl_order: Vec<Tag> = vec![
-        Tag::UniqueIdentifier,
-        Tag::ObjectType,
-        Tag::CryptographicAlgorithm,
-        Tag::CryptographicLength,
-        Tag::AlternativeName,
-        Tag::AlwaysSensitive,
-        Tag::ApplicationSpecificInformation,
-        Tag::CryptographicUsageMask,
-        Tag::Digest,
-        Tag::Extractable,
-        Tag::InitialDate,
-        Tag::LastChangeDate,
-        Tag::LeaseTime,
-        Tag::Name,
-        Tag::NeverExtractable,
-        Tag::OriginalCreationDate,
-        Tag::RandomNumberGenerator,
-        Tag::Sensitive,
-        Tag::State,
-    ];
-
-    if include_fresh {
-        // Keep stable ordering: insert immediately after Extractable.
-        tl_order.insert(10, Tag::Fresh);
-    }
-
-    for tag in tl_order {
-        refs.push(AttributeReference::Standard(tag));
+    // 2) Standard Attribute tag references for the TL profile, in the exact expected
+    //    order, filtered by the minimum KMIP 1.x minor version that defines each of them
+    //    (see `TL_PROFILE_ATTRIBUTES`).
+    for (tag, introduced_in_kmip1_minor) in TL_PROFILE_ATTRIBUTES {
+        if kmip1_minor >= introduced_in_kmip1_minor {
+            refs.push(AttributeReference::Standard(tag));
+        }
     }
 
     let attribute_references = if refs.is_empty() { None } else { Some(refs) };

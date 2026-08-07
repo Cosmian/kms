@@ -1111,12 +1111,23 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
         let cleaned = name.replace(' ', "");
         let aref = Tag::from_str(&cleaned).map_or_else(
             |_| {
-                let (vendor_identification, attribute_name) = match name.split_once('-') {
-                    Some((vendor, rest)) if !vendor.is_empty() && !rest.is_empty() => {
-                        (vendor.to_owned(), rest.to_owned())
-                    }
-                    _ => (String::new(), name.to_owned()),
-                };
+                // Custom attributes must be referenced exactly as `Attribute::CustomAttribute`
+                // stores them (see the `CustomAttribute` -> `VendorAttribute` conversion in
+                // `kmip_1_4::kmip_attributes`): KMIP 1.x `x-`/`y-` names (KMIP 1.4 §3.39) are
+                // held under the synthetic `KMIP1` vendor with the *full* name preserved.
+                // Splitting on the first '-' here would look up `x`/`attribute1` instead of
+                // `KMIP1`/`x-attribute1`, making DeleteAttribute a silent no-op.
+                let (vendor_identification, attribute_name) =
+                    if name.starts_with("x-") || name.starts_with("y-") {
+                        ("KMIP1".to_owned(), name.to_owned())
+                    } else {
+                        match name.split_once("::") {
+                            Some((vendor, rest)) if !vendor.is_empty() && !rest.is_empty() => {
+                                (vendor.to_owned(), rest.to_owned())
+                            }
+                            _ => (String::new(), name.to_owned()),
+                        }
+                    };
                 AttributeReference::Vendor(VendorAttributeReference {
                     vendor_identification,
                     attribute_name,
@@ -1137,14 +1148,18 @@ impl From<DeleteAttribute> for kmip_2_1::kmip_operations::DeleteAttribute {
 #[serde(rename_all = "PascalCase")]
 pub struct DeleteAttributeResponse {
     pub unique_identifier: String,
+    /// The deleted attribute. REQUIRED by KMIP 1.4 §4.16 Table 205; omitting it
+    /// produces a truncated payload that strict clients cannot decode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute: Option<Attribute>,
 }
 
 impl Display for DeleteAttributeResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "DeleteAttributeResponse {{ unique_identifier: {} }}",
-            self.unique_identifier
+            "DeleteAttributeResponse {{ unique_identifier: {}, attribute: {:?} }}",
+            self.unique_identifier, self.attribute
         )
     }
 }
@@ -1157,6 +1172,7 @@ impl TryFrom<kmip_2_1::kmip_operations::DeleteAttributeResponse> for DeleteAttri
     ) -> Result<Self, Self::Error> {
         Ok(Self {
             unique_identifier: value.unique_identifier.to_string(),
+            attribute: value.echoed_attribute.map(TryInto::try_into).transpose()?,
         })
     }
 }

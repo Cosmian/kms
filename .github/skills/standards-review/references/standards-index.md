@@ -1,6 +1,6 @@
 # Standards Index
 
-Curated, verified index of standards applicable to the Cosmian KMS. Every URL is a
+Curated, verified index of standards applicable to the Eviden KMS. Every URL is a
 canonical, stable publication link (final/versioned). Organized by issuing body.
 
 > **Maintenance**: when adding a standard, verify the URL resolves to the actual

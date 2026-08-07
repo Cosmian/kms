@@ -179,7 +179,7 @@ extraContainers: []
 # -- Init containers run before the main KMS container starts.
 initContainers: []
 
-## Cosmian KMS server configuration.
+## Eviden KMS server configuration.
 ## Every field here is translated to a `KMS_*` environment variable consumed
 ## directly by the server binary (see crate/server/src/config/command_line/).
 kms:

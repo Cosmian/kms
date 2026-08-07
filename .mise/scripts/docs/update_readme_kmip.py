@@ -787,6 +787,220 @@ def parse_attributes() -> List[str]:
     return sorted(set(variants))
 
 
+def _normalize_attr_name(name: str) -> str:
+    """Normalize an attribute name for fuzzy comparison (spec ↔ server).
+
+    Lowercases, strips punctuation/extra spaces, and strips a trailing 's' so
+    that e.g. "Protection Storage Mask" and "Protection Storage Masks" match.
+    """
+    name = re.sub(r'\s+', ' ', name).strip().lower()
+    name = re.sub(r'[^a-z0-9 ]', '', name)  # drop . # etc.
+    name = name.rstrip('s')  # mask vs masks, parameter vs parameters …
+    return name
+
+
+def get_attributes_in_spec_version(version: str) -> Set[str]:
+    """Return attribute names defined in the given KMIP version specification.
+
+    Extracts section headings from the attributes chapter (chapter 3 in KMIP
+    1.x; chapter 4 in KMIP 2.x/3.x) using BeautifulSoup.  Falls back to a
+    hardcoded table when BS4 is unavailable or the spec file is missing.
+
+    Names are returned in their canonical spec form (e.g. "Always Sensitive").
+    """
+    spec_file = KMIP_DIR / SPEC_FILES.get(version, '')
+
+    if HAS_BS4 and spec_file.exists():
+        try:
+            content = spec_file.read_text(encoding='utf-8', errors='ignore')
+            soup = BeautifulSoup(content, 'html.parser')
+            major = version.split('.')[0]
+            chapter = '3' if major == '1' else '4'
+            attrs: Set[str] = set()
+            for h in soup.find_all(['h2', 'h3']):
+                # Normalise whitespace first so multi-line headings (e.g.
+                # "Application Specific\nInformation") are collapsed before
+                # the regex runs.
+                raw_text = h.get_text(' ', strip=True)
+                text = re.sub(r'\s+', ' ', raw_text).strip()
+                m = re.match(rf'^{chapter}\.(\d+)\s*(.*)', text)
+                if not m:
+                    continue
+                name = re.sub(r'\s+', ' ', m.group(2)).strip()
+                # Skip empty names, pure-numeric sub-section noise, and
+                # sentence fragments that start with lowercase / digit
+                if not name or re.match(r'^[0-9\.]', name):
+                    continue
+                if not name[0].isupper():
+                    continue
+                attrs.add(name)
+            if attrs:
+                return attrs
+        except Exception as exc:
+            print(f'  Warning: Failed to parse spec {version}: {exc}', file=sys.stderr)
+
+    # ------------------------------------------------------------------
+    # Fallback: hardcoded data derived from reading the specification
+    # ------------------------------------------------------------------
+    # Base set present in KMIP 1.0
+    base: Set[str] = {
+        'Unique Identifier',
+        'Name',
+        'Object Type',
+        'Cryptographic Algorithm',
+        'Cryptographic Length',
+        'Cryptographic Parameters',
+        'Cryptographic Domain Parameters',
+        'Certificate Type',
+        'Certificate Identifier',
+        'Certificate Subject',
+        'Certificate Issuer',
+        'Digest',
+        'Operation Policy Name',
+        'Cryptographic Usage Mask',
+        'Lease Time',
+        'Usage Limits',
+        'State',
+        'Activation Date',
+        'Process Start Date',
+        'Protect Stop Date',
+        'Deactivation Date',
+        'Destroy Date',
+        'Compromise Occurrence Date',
+        'Compromise Date',
+        'Revocation Reason',
+        'Archive Date',
+        'Object Group',
+        'Link',
+        'Application Specific Information',
+        'Contact Information',
+        'Last Change Date',
+        'Custom Attribute',
+    }
+    v11: Set[str] = {
+        'Fresh',
+        'Alternative Name',
+        'Certificate Length',
+        'X.509 Certificate Identifier',
+        'X.509 Certificate Subject',
+        'X.509 Certificate Issuer',
+        'Digital Signature Algorithm',
+        'Initial Date',
+        'Compromise Occurrence Date',
+        'Revocation Reason',
+        'Archive Date',
+        'Destroy Date',
+        'Deactivation Date',
+        'Application Specific Information',
+        'Process Start Date',
+        'Protect Stop Date',
+        'Activation Date',
+        'Random Number Generator',
+    }
+    v12: Set[str] = {
+        'Key Value Location',
+        'Key Value Present',
+        'Original Creation Date',
+    }
+    v13: Set[str] = {'Compromise Occurrence Date', 'Random Number Generator'}
+    v14: Set[str] = {
+        'Always Sensitive',
+        'Never Extractable',
+        'Extractable',
+        'Sensitive',
+        'Digital Signature Algorithm',
+        'Description',
+        'Comment',
+        'PKCS#12 Friendly Name',
+        'X.509 Certificate Identifier',
+    }
+    v20: Set[str] = {
+        'Key Format Type',
+        'Certificate Attributes',
+        'Opaque Data Type',
+        'Short Unique Identifier',
+        'NIST Key Type',
+        'Protection Level',
+        'Protection Period',
+        'Protection Storage Mask',
+        'Quantum Safe',
+        'Vendor Attribute',
+    }
+    v21: Set[str] = {
+        'Rotate Automatic',
+        'Rotate Date',
+        'Rotate Generation',
+        'Rotate Interval',
+        'Rotate Latest',
+        'Rotate Name',
+        'Rotate Offset',
+    }
+
+    major_i, minor_i = (int(x) for x in version.split('.'))
+    result = set(base)
+    if (major_i, minor_i) >= (1, 1):
+        result |= v11
+    if (major_i, minor_i) >= (1, 2):
+        result |= v12
+    if (major_i, minor_i) >= (1, 3):
+        result |= v13
+    if (major_i, minor_i) >= (1, 4):
+        result |= v14
+    if (major_i, minor_i) >= (2, 0):
+        result |= v20
+    if (major_i, minor_i) >= (2, 1):
+        result |= v21
+    return result
+
+
+def get_attribute_version_matrix(
+    attrs: List[str],
+    attrs_support: Dict[str, str],
+    versions: List[str],
+) -> Dict[str, Dict[str, str]]:
+    """Build a per-attribute, per-KMIP-version support matrix.
+
+    Each cell contains one of:
+      ✅  attribute defined in that KMIP version AND implemented by the server
+      ❌  attribute defined in that KMIP version but NOT implemented
+      N/A attribute NOT defined in that KMIP version (spec gap)
+      🔧  Cosmian-specific extension absent from every standard version
+
+    The function normalises names for matching because the KMIP spec may use
+    "NIST Key Type" while the server Rust code produces "Nist Key Type", and
+    "Protection Storage Mask" vs "Protection Storage Masks", etc.
+    """
+    # Build {version: {normalised_name: canonical_spec_name}}
+    spec_by_version: Dict[str, Dict[str, str]] = {}
+    for v in versions:
+        spec_attrs = get_attributes_in_spec_version(v)
+        spec_by_version[v] = {_normalize_attr_name(a): a for a in spec_attrs}
+
+    # Normalised names of ALL spec attributes across all tracked versions
+    all_spec_normalised: Set[str] = {nk for d in spec_by_version.values() for nk in d}
+
+    matrix: Dict[str, Dict[str, str]] = {}
+    for attr in attrs:
+        norm = _normalize_attr_name(attr)
+        implemented = attrs_support.get(attr, '❌') == '✅'
+        # Is this attribute present in at least one KMIP version?
+        in_any_spec = norm in all_spec_normalised
+        row: Dict[str, str] = {}
+        for v in versions:
+            in_spec = norm in spec_by_version[v]
+            if not in_spec:
+                if not in_any_spec:
+                    # Cosmian extension – mark all columns as 🔧
+                    row[v] = '🔧'
+                else:
+                    row[v] = 'N/A'
+            else:
+                row[v] = '✅' if implemented else '❌'
+        matrix[attr] = row
+
+    return matrix
+
+
 def map_operation_support(ops: Set[str]) -> Dict[str, str]:
     """Map operation names to support status (✅ or ❌)."""
     # Complete list of KMIP operations from the spec
@@ -1009,6 +1223,7 @@ def generate_support_markdown(
     profile_compliance: Dict[str, str],
     server_versions: List[Tuple[int, int]],
     field_support: Dict[str, Dict[str, Set[str]]] = None,
+    attrs_version_matrix: Dict[str, Dict[str, str]] = None,
 ) -> str:
     """Generate the complete support.md content with version-aware tables."""
 
@@ -1019,12 +1234,12 @@ def generate_support_markdown(
     # Reverse to show oldest to newest (1.0 to 2.1) in tables
     versions = list(reversed(versions))
 
-    md = f"""# KMIP support by Cosmian KMS
+    md = f"""# KMIP support by Eviden KMS
 
-This page summarizes the KMIP coverage in Cosmian KMS. The support status is
+This page summarizes the KMIP coverage in Eviden KMS. The support status is
 derived from the actual implementation in `crate/server/src/core/operations`.
 
-**Cosmian KMS Server supports KMIP versions:** {version_str}
+**Eviden KMS Server supports KMIP versions:** {version_str}
 
 Legend:
 
@@ -1091,7 +1306,7 @@ The following table shows operation support across all KMIP versions.
     md += """\n### Methodology
 
 - Operations marked ✅ are backed by a Rust implementation file under `crate/server/src/core/operations`.
-- Operations marked ❌ are defined in the KMIP specification but not implemented in Cosmian KMS.
+- Operations marked ❌ are defined in the KMIP specification but not implemented in Eviden KMS.
 - Operations marked N/A do not exist in that particular KMIP version.
 - This documentation is auto-generated by analyzing source code and KMIP specifications.
 
@@ -1510,22 +1725,36 @@ The following table shows transparent key structure support across all KMIP vers
 
 """
 
-    # Attributes table - simple 2-column format (attributes are version-agnostic)
-    md += '| Attribute | Current |\n'
-    md += '| --------- | ------: |\n'
-
-    # For attributes, show implementation status
-    # (most attributes are present in all versions)
-    for attr in sorted(attrs_support.keys()):
-        status = attrs_support[attr]
-        md += f'| {attr:<35} | {status:>7} |\n'
+    # Attributes table: per-KMIP-version matrix when available, simple table otherwise.
+    if attrs_version_matrix:
+        # Header
+        col_hdr = ' | '.join(f'{v:^5}' for v in versions)
+        separator = ' | '.join(':---:' for _ in versions)
+        md += f'| {"Attribute":<40} | {col_hdr} |\n'
+        md += f'| {"-"*40} | {separator} |\n'
+        for attr in sorted(attrs_version_matrix.keys()):
+            row_data = attrs_version_matrix[attr]
+            cells = ' | '.join(f'{row_data.get(v, "N/A"):^5}' for v in versions)
+            md += f'| {attr:<40} | {cells} |\n'
+    else:
+        # Fallback: simple 2-column table (attributes are version-agnostic)
+        md += '| Attribute | Current |\n'
+        md += '| --------- | ------: |\n'
+        for attr in sorted(attrs_support.keys()):
+            status = attrs_support[attr]
+            md += f'| {attr:<35} | {status:>7} |\n'
 
     md += """\nNotes:
 
+- ✅ = attribute defined in that KMIP version **and** implemented by this server.
+- ❌ = attribute defined in that KMIP version but **not yet implemented**.
+- N/A = attribute was **not defined** in that KMIP version (protocol gap, not a server limitation).
+- 🔧 = **Cosmian-specific extension** — attribute is absent from all standard KMIP versions.
 - GetAttributes returns a union of metadata attributes and those embedded in KeyBlock structures.
 - "Vendor Attributes" are available via the Cosmian vendor namespace and are accessible via GetAttributes.
-- A ✅ indicates the attribute is used or updated by at least one KMIP operation implementation in `crate/server/src/core/operations`, including attribute handlers (Add/Delete/Set/Get Attribute).
-- Most attributes are present across all KMIP versions with some additions in newer versions.
+- `AlwaysSensitive`, `NeverExtractable`, `Extractable`, and `Sensitive` were introduced in **KMIP 1.4**
+  and must not appear in responses to KMIP 1.0–1.3 clients (the server enforces this automatically).
+- `Rotate*` attributes were introduced in **KMIP 2.1**.
 """
 
     return md
@@ -1733,6 +1962,13 @@ def main() -> int:
     ops_support = map_operation_support(ops)
     attrs_support = map_attribute_support(attrs)
 
+    # Build per-version attribute matrix (versions in oldest-to-newest order)
+    versions_ordered = list(reversed([f'{maj}.{min}' for maj, min in server_versions]))
+    print('  Building attribute version matrix...')
+    attrs_version_matrix = get_attribute_version_matrix(
+        attrs, attrs_support, versions_ordered
+    )
+
     # Generate markdown
     print('Generating documentation...')
     support_md = generate_support_markdown(
@@ -1743,6 +1979,7 @@ def main() -> int:
         profile_compliance,
         server_versions,
         field_support,
+        attrs_version_matrix,
     )
 
     # Update files

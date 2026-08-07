@@ -7,7 +7,7 @@ Templates for every output file. Copy the skeleton, fill in `[FILL]` placeholder
 ## 0-architecture.md
 
 ```markdown
-# Architecture Overview — Cosmian KMS
+# Architecture Overview — Eviden KMS
 
 **Analysis date**: [FILL: YYYY-MM-DD]
 **Scope**: [FILL: full repo | specific subsystem]
@@ -50,7 +50,7 @@ Templates for every output file. Copy the skeleton, fill in `[FILL]` placeholder
 ## 1-dfd.md (Data Flow Diagram)
 
 ```markdown
-# Data Flow Diagram — Cosmian KMS
+# Data Flow Diagram — Eviden KMS
 
 ## Level 0 — System Context
 
@@ -70,7 +70,7 @@ Templates for every output file. Copy the skeleton, fill in `[FILL]` placeholder
 ## 2-stride-analysis.md
 
 ```markdown
-# STRIDE-A Analysis — Cosmian KMS
+# STRIDE-A Analysis — Eviden KMS
 
 ## Analysis Matrix
 
@@ -98,7 +98,7 @@ For each CRITICAL and HIGH threat, provide a detailed narrative:
 ## 3-findings.md
 
 ```markdown
-# Security Findings — Cosmian KMS
+# Security Findings — Eviden KMS
 
 ## Summary
 
@@ -160,7 +160,7 @@ For each CRITICAL and HIGH threat, provide a detailed narrative:
 ## 0-assessment.md (Executive Summary)
 
 ```markdown
-# Threat Model Assessment — Cosmian KMS
+# Threat Model Assessment — Eviden KMS
 
 **Date**: [FILL]
 **Scope**: [FILL]

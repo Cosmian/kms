@@ -1,6 +1,6 @@
 # cosmian-kms
 
-Helm chart for deploying [Cosmian KMS](https://github.com/Cosmian/kms) — a FIPS 140-3
+Helm chart for deploying [Eviden KMS](https://github.com/Cosmian/kms) — a FIPS 140-3
 compliant Key Management System implementing KMIP 2.1/1.4 — on Kubernetes.
 
 ## Documentation

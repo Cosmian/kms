@@ -1,6 +1,6 @@
 # Threat Model Diagram Conventions
 
-Mermaid DFD conventions for the Cosmian KMS threat model. Follow these rules exactly for every diagram to ensure visual consistency across analyses.
+Mermaid DFD conventions for the Eviden KMS threat model. Follow these rules exactly for every diagram to ensure visual consistency across analyses.
 
 ## Shape Conventions (DFD Level 0/1)
 
