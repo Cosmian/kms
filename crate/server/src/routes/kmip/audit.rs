@@ -473,7 +473,7 @@ mod extraction_tests {
         assert_eq!(contexts[1].operation, "Locate");
     }
 
-    /// `BatchItem` with a direct `UniqueIdentifier` → context has `object_uid`.
+    /// `BatchItem` with a `UniqueIdentifier` under `RequestPayload` → context has `object_uid`.
     #[test]
     fn extract_batch_contexts_includes_uid() {
         use super::extract_batch_audit_contexts;
@@ -483,7 +483,7 @@ mod extraction_tests {
                 "BatchItem",
                 vec![
                     enumv("Operation", "Encrypt"),
-                    text("UniqueIdentifier", "key-abc"),
+                    structure("RequestPayload", vec![text("UniqueIdentifier", "key-abc")]),
                 ],
             )],
         );
