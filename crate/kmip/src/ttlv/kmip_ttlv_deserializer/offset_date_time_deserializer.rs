@@ -18,7 +18,7 @@ pub(super) struct OffsetDateTimeDeserializer {
     dt: OffsetDateTime,
     // index of the element called by the visitor
     // they will be called in this order:
-    // year, ordinal, hour, minute, second, nanosecond, offset_hours, offset_minutes, offset_seconds
+    // year, ordinal, hour, minute, second, nanosecond, `offset_hours`, `offset_minutes`, `offset_seconds`
     index: usize,
 }
 
