@@ -81,38 +81,3 @@ The HSM is responsible for storing the Master keys and securing the Eviden KMS k
 
    Keys created by an earlier KMS version are updated automatically when the server starts,
    so no manual action is required when upgrading.
-
-## Monitoring and lifecycle management
-
-AWS never calls back into the XKS proxy to list, monitor, rotate, revoke, or destroy key
-material — the [XKS proxy API
-spec](https://github.com/aws/aws-kms-xksproxy-api-spec/blob/main/xks_proxy_api_spec.md)
-only defines `GetKeyMetadata`, `Encrypt`, `Decrypt`, and `GetHealthStatus`. Scheduling
-deletion or on-demand rotation of a CMK from the AWS console only changes state on AWS's
-side; it never reaches this KMS. **Lifecycle management of the external key material is
-therefore entirely your operational responsibility.**
-
-**A Crypto Officer must be designated to handle this.** Configure a real, credentialed
-identity (a TLS certificate CN or OIDC subject matching `default_username`) as a Crypto
-Officer (`crypto_officer.users` / `privileged_users`) so that a human operator can, through
-the normal `ckms` CLI or Web UI:
-
-- **List/monitor** XKS keys — `Locate` by the `aws-xks` tag, `GetAttributes`.
-- **Revoke** or **destroy** XKS keys that are no longer needed.
-
-**XKS keys cannot be rotated in place.** The KMS `ReKey` operation always assigns a new
-internal unique identifier, but AWS KMS always calls the XKS proxy back with the *original*
-external key id configured when the CMK was created — it has no mechanism to learn about a
-new one. Attempting `ReKey` (manually or via the auto-rotation scheduler) on an `aws-xks`
-key is therefore rejected with an explicit error. To rotate the cryptographic material
-behind an external key, create a **new** external key (new CMK with a new external key id)
-in AWS KMS, migrate consumers to it, and destroy the old one through this Crypto Officer
-identity once it is no longer in use.
-
-Do this deliberately: an installation with an empty `crypto_officer.users` list has no one
-who can reach these keys this way, and the server logs a startup warning in that case. Never
-attempt to authenticate as the reserved AWS XKS service identity itself — it is intentionally
-unreachable through any normal authentication path (TLS, OIDC, SPIRE, UI session) and is only
-ever used internally to answer SigV4-signed requests from AWS KMS. Granting it a real
-credential would let anyone holding it bypass AWS's SigV4 trust boundary entirely. See
-`crate/server/src/routes/aws_xks/README.md` for the underlying authorization model.

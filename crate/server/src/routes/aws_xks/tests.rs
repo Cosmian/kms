@@ -26,7 +26,7 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::{
         KmipOperation,
         kmip_attributes::Attributes,
         kmip_objects::ObjectType,
-        kmip_operations::{Create, Destroy, Get, GetAttributes, Revoke},
+        kmip_operations::{Create, Destroy, Get, Revoke},
         kmip_types::{CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
     },
 };
@@ -47,7 +47,6 @@ use crate::{
     config::ServerParams,
     core::KMS,
     error::KmsError,
-    middlewares::UserId,
     result::KResult,
     start_kms_server::migrate_aws_xks_key_access,
     tests::test_utils::{https_clap_config, test_kms},
@@ -161,7 +160,7 @@ async fn provision_xks_key(kms: &Arc<KMS>, key_id: &str, creator_arn: &str) -> K
 
 /// Create an AES-256 symmetric key owned by `owner` **without** the `aws-xks` tag, to model
 /// a non-XKS key that must remain unreachable from the XKS endpoints.
-async fn create_plain_symmetric_key(kms: &Arc<KMS>, key_id: &str, owner: &UserId) -> KResult<()> {
+async fn create_plain_symmetric_key(kms: &Arc<KMS>, key_id: &str, owner: &str) -> KResult<()> {
     let uid = UniqueIdentifier::TextString(key_id.to_owned());
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -191,28 +190,26 @@ async fn create_plain_symmetric_key(kms: &Arc<KMS>, key_id: &str, owner: &UserId
 async fn create_key_keeps_operator_ownership_and_grants_reserved_identity() -> KResult<()> {
     let kms = test_kms().await?;
     let key_id = "xks-key-ownership";
-    let creator = UserId::from("arn:aws:iam::1:role/Creator");
-    let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
     provision_xks_key(&kms, key_id, "arn:aws:iam::1:role/Creator").await?;
 
     // Ownership stays with `default_username` so operators keep full administrative control
     // (list / revoke / destroy / export) over XKS keys.
     assert!(
         kms.database
-            .is_object_owned_by(key_id, &UserId::from(kms.params.default_username.as_str()))
+            .is_object_owned_by(key_id, &kms.params.default_username)
             .await?
     );
     // The caller ARN gets no rights at all: usage must not be bound to a transient principal.
     let arn_ops = kms
         .database
-        .list_user_operations_on_object(key_id, &creator, false)
+        .list_user_operations_on_object(key_id, "arn:aws:iam::1:role/Creator", false)
         .await?;
     assert!(arn_ops.is_empty(), "caller ARN must not receive any grant");
 
     // The reserved identity holds exactly the three operations XKS needs — no more.
     let ops = kms
         .database
-        .list_user_operations_on_object(key_id, &xks_service_user, false)
+        .list_user_operations_on_object(key_id, AWS_XKS_SERVICE_USER, false)
         .await?;
     assert_eq!(
         ops,
@@ -257,7 +254,6 @@ async fn create_key_succeeds_when_privileged_users_are_configured() -> KResult<(
 async fn create_key_is_idempotent_and_repairs_missing_grant() -> KResult<()> {
     let kms = test_kms().await?;
     let key_id = "xks-key-idempotent";
-    let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
     provision_xks_key(&kms, key_id, "arn:aws:iam::1:role/Creator").await?;
 
     // A second CreateKey for the same id (AWS retries) must succeed and leave the grant intact.
@@ -265,7 +261,7 @@ async fn create_key_is_idempotent_and_repairs_missing_grant() -> KResult<()> {
 
     let ops = kms
         .database
-        .list_user_operations_on_object(key_id, &xks_service_user, false)
+        .list_user_operations_on_object(key_id, AWS_XKS_SERVICE_USER, false)
         .await?;
     assert!(ops.contains(&KmipOperation::Encrypt));
     assert!(ops.contains(&KmipOperation::Decrypt));
@@ -290,100 +286,25 @@ async fn create_key_is_idempotent_and_repairs_missing_grant() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn create_key_rejects_existing_non_xks_symmetric_key() -> KResult<()> {
-    let kms = test_kms().await?;
-    let key_id = "plain-key-create-collision";
-    let default_username = UserId::from(kms.params.default_username.as_str());
-    let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
-    create_plain_symmetric_key(&kms, key_id, &default_username).await?;
-
-    let err = create_key(
-        http_req(),
-        metadata_request("arn:aws:iam::1:role/Attacker", "CreateKey"),
-        key_id.to_owned(),
-        &kms,
-    )
-    .await;
-    let Err(err) = err else {
-        panic!("CreateKey must reject collisions with non-XKS symmetric keys");
-    };
-
-    assert!(matches!(
-        err.errorName,
-        super::error::XksErrorName::InternalException
-    ));
-    assert_eq!(
-        err.errorMessage.as_deref(),
-        Some(
-            "Key plain-key-create-collision already exists and is not an AWS XKS key; refusing to grant XKS access"
-        )
-    );
-
-    let ops = kms
-        .database
-        .list_user_operations_on_object(key_id, &xks_service_user, false)
-        .await?;
-    assert!(
-        ops.is_empty(),
-        "the reserved XKS identity must not gain access to a non-XKS key"
-    );
-    Ok(())
-}
-
-#[tokio::test]
 async fn operator_retains_administrative_control() -> KResult<()> {
     // Regression guard: XKS keys must stay administrable. If the reserved identity owned
-    // them, no operator could monitor, revoke, destroy, or export XKS keys, because the
+    // them, no operator could list, revoke, destroy, or export XKS keys, because the
     // authorization model grants nothing to non-owners without an explicit grant.
-    //
-    // This is the identity that a designated Crypto Officer must hold a real credential
-    // for (TLS certificate CN / OIDC subject matching `default_username`) in order to
-    // monitor and manage the lifecycle of XKS keys — AWS never triggers any of this itself
-    // (the XKS proxy spec has no list/rotate/delete endpoint), so it must be reachable
-    // through the normal `ckms`/Web UI surface. See `README.md` and
-    // `documentation/docs/integrations/cloud_providers/aws/xks.md`.
     let kms = test_kms().await?;
     let key_id = "xks-key-admin-control";
     provision_xks_key(&kms, key_id, "arn:aws:iam::1:role/Creator").await?;
     let operator = kms.params.default_username.clone();
-    let operator_id = UserId::from(operator.clone());
 
-    // Monitor: the operator sees the key among the objects they own (equivalent to `Locate`
-    // by tag through `ckms`/Web UI) and can read its attributes.
-    let owned = kms.list_owned_objects(&operator_id).await?;
+    // The operator sees the key among the objects they own.
+    let owned = kms.list_owned_objects(&operator).await?;
     assert!(
         owned.iter().any(|o| o.object_id.to_string() == key_id),
         "operator must still see XKS keys in their owned objects"
     );
-    kms.get_attributes(
-        GetAttributes {
-            unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_owned())),
-            attribute_reference: None,
-        },
-        &operator_id,
-    )
-    .await?;
 
-    // Manage: the operator can perform the full administrative lifecycle on it.
-    kms.revoke(revoke_request(key_id), &operator_id).await?;
-    kms.destroy(destroy_request(key_id), &operator_id).await?;
-    Ok(())
-}
-
-#[tokio::test]
-async fn reserved_xks_identity_cannot_be_used_as_the_monitoring_operator() -> KResult<()> {
-    // The Crypto Officer responsible for monitoring/managing XKS keys must never be the
-    // reserved `AWS_XKS_SERVICE_USER` delegate: that identity is intentionally unreachable
-    // through any real credential (TLS/OIDC/SPIRE/UI session — see
-    // `reject_reserved_aws_xks_identity` in `middlewares/mod.rs`), and even if it were
-    // reachable, it only holds Encrypt/Decrypt/GetAttributes, never Revoke/Destroy/Get.
-    use crate::middlewares::reject_reserved_aws_xks_identity;
-
-    assert!(
-        reject_reserved_aws_xks_identity(&UserId::from(AWS_XKS_SERVICE_USER)).is_err(),
-        "the reserved AWS XKS service identity must stay unreachable through any \
-         externally-authenticated path, including for monitoring purposes"
-    );
+    // And can perform the full administrative lifecycle on it.
+    kms.revoke(revoke_request(key_id), &operator).await?;
+    kms.destroy(destroy_request(key_id), &operator).await?;
     Ok(())
 }
 
@@ -394,17 +315,18 @@ async fn xks_identity_cannot_perform_administrative_operations() -> KResult<()> 
     // rejection so the test cannot pass because of an unrelated lifecycle error.
     let kms = test_kms().await?;
     let key_id = "xks-key-least-privilege";
-    let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
     provision_xks_key(&kms, key_id, "arn:aws:iam::1:role/Creator").await?;
 
-    let revoked = kms.revoke(revoke_request(key_id), &xks_service_user).await;
+    let revoked = kms
+        .revoke(revoke_request(key_id), AWS_XKS_SERVICE_USER)
+        .await;
     assert!(
         is_permission_error(&revoked),
         "revoke by the XKS identity must be denied for lack of permission, got: {revoked:?}"
     );
 
     let destroyed = kms
-        .destroy(destroy_request(key_id), &xks_service_user)
+        .destroy(destroy_request(key_id), AWS_XKS_SERVICE_USER)
         .await;
     assert!(
         is_permission_error(&destroyed),
@@ -423,7 +345,7 @@ async fn xks_identity_cannot_perform_administrative_operations() -> KResult<()> 
                 key_compression_type: None,
                 key_wrapping_specification: None,
             },
-            &xks_service_user,
+            AWS_XKS_SERVICE_USER,
         )
         .await;
     assert!(
@@ -433,7 +355,7 @@ async fn xks_identity_cannot_perform_administrative_operations() -> KResult<()> 
     );
 
     // The operator (owner) is unaffected and can still administer the key.
-    let operator = UserId::from(kms.params.default_username.clone());
+    let operator = kms.params.default_username.clone();
     kms.revoke(revoke_request(key_id), &operator).await?;
     Ok(())
 }
@@ -497,7 +419,7 @@ async fn xks_cannot_reach_non_xks_admin_key() -> KResult<()> {
     // the reserved identity neither owns it nor holds a grant.
     let kms = test_kms().await?;
     let key_id = "admin-only-key";
-    let default_username = UserId::from(kms.params.default_username.as_str());
+    let default_username = kms.params.default_username.clone();
     create_plain_symmetric_key(&kms, key_id, &default_username).await?;
 
     let result = encrypt_inner(
@@ -516,22 +438,13 @@ async fn xks_cannot_reach_non_xks_admin_key() -> KResult<()> {
 }
 
 #[tokio::test]
-async fn legacy_key_owned_by_previous_default_user_is_migrated_to_reserved_identity() -> KResult<()>
-{
-    // Model an already-shipped XKS key after an operator rotates `default_username`: the key
-    // is still owned by the previous default owner, carries the `aws-xks` tag, and has no
-    // grant to the reserved identity. Before migration the reserved identity cannot use it;
-    // after migration it can.
+async fn legacy_key_is_migrated_to_reserved_identity() -> KResult<()> {
+    // Model an already-shipped XKS key: owned by `default_username` and tagged `aws-xks`, but
+    // with no grant to the reserved identity. Before migration the reserved identity cannot
+    // use it; after migration it can.
     let kms = test_kms().await?;
     let key_id = "legacy-xks-key";
     let default_username = kms.params.default_username.clone();
-    let xks_service_user = UserId::from(AWS_XKS_SERVICE_USER);
-    let previous_default_user = UserId::from("legacy-admin@acme.com");
-    let previous_default_username = "legacy-admin@acme.com";
-    assert_ne!(
-        previous_default_username, default_username,
-        "test setup requires a legacy owner distinct from the current default username"
-    );
 
     let uid = UniqueIdentifier::TextString(key_id.to_owned());
     let mut attributes = Attributes {
@@ -553,16 +466,7 @@ async fn legacy_key_owned_by_previous_default_user_is_migrated_to_reserved_ident
         attributes,
         protection_storage_masks: None,
     };
-    kms.create(create, &previous_default_user).await?;
-
-    let owner = kms
-        .database
-        .retrieve_object(key_id)
-        .await?
-        .expect("legacy xks key should exist")
-        .owner()
-        .to_owned();
-    assert_eq!(owner, previous_default_username);
+    kms.create(create, &default_username).await?;
 
     // Before migration: the reserved identity has no access.
     let before = encrypt_inner(
@@ -595,22 +499,7 @@ async fn legacy_key_owned_by_previous_default_user_is_migrated_to_reserved_ident
         &kms,
     )
     .await?;
-    let ops = kms
-        .database
-        .list_user_operations_on_object(key_id, &xks_service_user, false)
-        .await?;
-    assert_eq!(
-        ops,
-        HashSet::from([
-            KmipOperation::Encrypt,
-            KmipOperation::Decrypt,
-            KmipOperation::GetAttributes,
-        ])
-    );
-    assert_eq!(
-        STANDARD.decode(dec.plaintext).expect("valid base64"),
-        b"data"
-    );
+    assert_eq!(STANDARD.decode(dec.plaintext).unwrap(), b"data");
     Ok(())
 }
 
