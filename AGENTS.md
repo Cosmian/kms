@@ -115,7 +115,7 @@ crate/
 .mise/              MISE tasks and scripts (single source of truth for all automation)
 cbom/               Cryptographic Bill of Materials (CBOM)
 documentation/docs/kms_clients/  CLI documentation (integrated into main docs)
-documentation/      MkDocs documentation source
+documentation/      mdBook documentation source
 monitoring/         Grafana / Prometheus / OTLP monitoring stack
 nix/                Nix build expressions and expected vendor hashes
 pkg/                deb/rpm service files and configs
@@ -312,9 +312,9 @@ Run **`/docs-writer`** for new or updated documentation pages. Run **`/adr`** fo
 
 Key rules:
 
-- `documentation/docs/` — canonical docs; `documentation/mkdocs.yml` — navigation source of truth.
+- `documentation/docs/` — canonical docs; `documentation/docs/SUMMARY.md` — navigation source of truth.
 - `README.md` — brief summary + links only; no full duplication.
-- Integrations: doc file in `documentation/docs/integrations/`, nav in `mkdocs.yml`, row in README — all three must match.
+- Integrations: doc file in `documentation/docs/integrations/`, nav in `SUMMARY.md`, row in README — all three must match.
 - Technical examples: copy from test `assert_eq!` first; live KMS output second; never invent examples.
 - Algorithm/OID/spec references: verify against rfc-editor.org (IETF), OASIS (KMIP), csrc.nist.gov (FIPS), oidref.com (ASN.1). Do not rely on training-data recall for spec section numbers or OID values.
 

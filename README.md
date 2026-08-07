@@ -1,10 +1,10 @@
 # Cosmian KMS
 
-[![CI](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/main.yml?branch=develop&label=CI&logo=github)](https://github.com/Cosmian/kms/actions/workflows/main.yml) [![Tests](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/pr.yml?branch=develop&label=Packaging&logo=github)](https://github.com/Cosmian/kms/actions/workflows/pr.yml) [![Release](https://img.shields.io/github/v/release/Cosmian/kms)](https://github.com/Cosmian/kms/releases) [![Docs](https://img.shields.io/badge/Docs-cosmian.com-0A84FF?logo=readthedocs&logoColor=white)](https://docs.cosmian.com/key_management_system/) [![Container](https://img.shields.io/badge/ghcr.io%2Fcosmian%2Fkms-Image-2496ED?logo=docker&logoColor=white)](https://github.com/Cosmian/kms/pkgs/container/kms) [![Security](https://img.shields.io/badge/Security-Policy-0A84FF?logo=github&logoColor=white)](SECURITY.md) [![License](https://img.shields.io/badge/License-BSL%201.1-blue)](LICENSE) [![FIPS](https://img.shields.io/badge/FIPS%20140--3-Mode-blue)](./documentation/docs/fips.md)
+[![CI](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/main.yml?branch=develop&label=CI&logo=github)](https://github.com/Cosmian/kms/actions/workflows/main.yml) [![Tests](https://img.shields.io/github/actions/workflow/status/Cosmian/kms/pr.yml?branch=develop&label=Packaging&logo=github)](https://github.com/Cosmian/kms/actions/workflows/nightly.yml) [![Release](https://img.shields.io/github/v/release/Cosmian/kms)](https://github.com/Cosmian/kms/releases) [![Docs](https://img.shields.io/badge/Docs-cosmian.com-0A84FF?logo=readthedocs&logoColor=white)](https://docs.cosmian.com/key_management_system/) [![Container](https://img.shields.io/badge/ghcr.io%2Fcosmian%2Fkms-Image-2496ED?logo=docker&logoColor=white)](https://github.com/Cosmian/kms/pkgs/container/kms) [![Security](https://img.shields.io/badge/Security-Policy-0A84FF?logo=github&logoColor=white)](SECURITY.md) [![License](https://img.shields.io/badge/License-BSL%201.1-blue)](LICENSE) [![FIPS](https://img.shields.io/badge/FIPS%20140--3-Mode-blue)](./documentation/docs/certifications_and_compliance/fips.md)
 
 > **Note**: Cosmian has become part of [Eviden](https://eviden.com/). The Cosmian KMS is now the **Eviden KMS**.
 
-The **Cosmian KMS** is a high-performance, source-available [FIPS 140-3 compliant](./documentation/docs/fips.md) server application written in [Rust](https://www.rust-lang.org/).
+The **Cosmian KMS** is a high-performance, source-available [FIPS 140-3 compliant](./documentation/docs/certifications_and_compliance/fips.md) server application written in [Rust](https://www.rust-lang.org/).
 
 Online [documentation](https://docs.cosmian.com/key_management_system/).
 
@@ -23,7 +23,7 @@ The **Cosmian KMS** presents some unique features, such as:
 - **Other integrations**: [OpenSSH](./documentation/docs/integrations/openssh.md), [S/MIME email encryption](./documentation/docs/integrations/smime.md), [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md), and [SPIRE / SPIFFE Zero-Trust M2M](./documentation/docs/integrations/spire_spiffe.md).
 - **Security and standards**: [FIPS 140-3](./documentation/docs/certifications_and_compliance/fips.md), [KMIP 1.0-2.1 binary and JSON TTLV support](./documentation/docs/kmip_support/introduction/index.md), [state-of-the-art authentication mechanisms](./documentation/docs/configuration/authentication.md), and native compatibility with network appliances such as [FortiGate / FortiOS](./documentation/docs/integrations/fortigate.md).
 - **HSM support**: [Utimaco, SmartCard-HSM/Nitrokey HSM 2, Proteccio, Crypt2pay, and others](./documentation/docs/hsm_support/introduction/index.md), with KMS keys wrapped by HSMs.
-- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_auto_rotation.md).
+- **Operations**: full-featured [CLI and graphical clients](https://docs.cosmian.com/kms_clients/), [high-availability mode](./documentation/docs/installation/high_availability_mode.md), [confidential cloud deployment](./documentation/docs/installation/marketplace_guide.md), [OpenTelemetry integration](./documentation/docs/configuration/logging.md), [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md) for interactive API exploration, and [scheduled key auto-rotation](./documentation/docs/kmip_support/key_rotation/auto_rotation_policy.md).
 
 The **Cosmian KMS** is both a Key Management System and a Public Key Infrastructure. As a KMS, it is designed to manage the lifecycle of keys and provide scalable cryptographic services such as on-the-fly key generation, encryption, and decryption operations.
 
@@ -89,7 +89,7 @@ See the [documentation](https://docs.cosmian.com/key_management_system/) for mor
 
 - Performance: built in Rust for low-latency crypto and high throughput.
 - Trust by design: FIPS 140-3 mode by default; non-FIPS for broader algorithm access when needed.
-- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, rich client tooling, and a built-in [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/kmip_support/openapi.md).
+- Interoperable: full KMIP 1.0–2.1 support, PKCS#11 integrations, rich client tooling, and a built-in [OpenAPI 3.1 spec with Swagger UI](./documentation/docs/integrations/openapi.md).
 - HSM-first: optional HSM key-wrapping and vendor modules (Utimaco, SmartCard-HSM, Proteccio, Crypt2pay…).
 - Cloud-native: official Docker image, simple horizontal scaling, and OpenTelemetry observability.
 - End-to-end: server, CLI, and web UI for a complete developer and operator experience.
@@ -152,7 +152,7 @@ There are three distinct delegation models:
 
 #### Amazon Web Services (AWS)
 
-AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service — S3, EBS, RDS, DynamoDB, Secrets Manager, etc. all route through the same endpoint. Implementing the [XKS Proxy API](https://github.com/aws/aws-kms-xks-proxy) once gives Cosmian KMS live-proxy coverage for all XKS-capable AWS services with no per-service work.
+AWS XKS is a **single proxy API** that AWS KMS calls on behalf of every service — S3, EBS, RDS, DynamoDB, Secrets Manager, etc. all route through the same endpoint. Implementing the [XKS Proxy API](https://docs.aws.amazon.com/kms/latest/developerguide/xks.html) once gives Cosmian KMS live-proxy coverage for all XKS-capable AWS services with no per-service work.
 
 | Delegation model     | Description                                                                                                                                                                                                                                                                                               | Status |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
@@ -578,7 +578,7 @@ flowchart TD
 
 ### 📁 Additional Directories
 
-- **`documentation/`** - Comprehensive project documentation built with MkDocs
+- **`documentation/`** - Comprehensive project documentation built with mdBook
 - **`examples/`** - Code examples and integration samples
 - **`scripts/`** - Build and deployment scripts
 - **`test_data/`** - Test fixtures and sample data
