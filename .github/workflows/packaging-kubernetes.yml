@@ -144,7 +144,7 @@ jobs:
             target/release/ckms
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.18
+        uses: medyagh/setup-minikube@v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0
@@ -203,7 +203,7 @@ jobs:
         run: chmod +x target/release/ckms
 
       - name: Start Minikube
-        uses: medyagh/setup-minikube@v0.0.18
+        uses: medyagh/setup-minikube@v0.0.21
         with:
           driver: docker
           kubernetes-version: v1.32.0
