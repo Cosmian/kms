@@ -129,7 +129,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Download prebuilt binaries
         uses: actions/download-artifact@v8
@@ -185,7 +185,7 @@ jobs:
       - uses: ./.github/actions/install-mise
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Download prebuilt binaries (ckms fixture helper)
         uses: actions/download-artifact@v8
@@ -353,7 +353,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Configure Git
         run: |
