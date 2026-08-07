@@ -627,4 +627,22 @@ fi
 
 print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid multi-tenant drop-in replacement for HashiCorp Vault"
 
+# ── Step 16: KMS PKI capability validation via test:spire-pki ────────────────
+# Delegates to the standalone `mise run test:spire-pki` task.
+# KMS_SKIP_BUILD=1 skips the build step (already done above).
+# The spire-pki task will start its own KMS+auth-verifier instances on the same
+# ports.  First stop the ones running here so spire-pki gets a clean slate
+# (it does its own port cleanup on startup).
+print_header "Step 16: KMS PKI capability validation (mise run test:spire-pki)"
+print_status "Stopping current KMS and auth-verifier to hand off to spire-pki task..."
+[[ -n "${KMS_PID:-}" ]] && kill "${KMS_PID}" 2>/dev/null || true
+[[ -n "${AUTH_PID:-}" ]] && kill "${AUTH_PID}" 2>/dev/null || true
+wait_for_port_closed 9998 30 || true
+wait_for_port_closed 8443 30 || true
+KMS_PID=""
+AUTH_PID=""
+
+KMS_SKIP_BUILD=1 mise run test:spire-pki
+print_success "Step 16: KMS PKI capability validation passed."
+
 print_success "SPIRE integration tests completed successfully!"

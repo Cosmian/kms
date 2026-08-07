@@ -34,6 +34,7 @@ user_agent = "lychee/0.15 (Cosmian KMS docs; https://github.com/Cosmian/kms)"
 exclude = [
   # Local / internal references
   'localhost',
+  'host\.docker\.internal',
   '@',
   'eviden_vm',
   'cbom',
