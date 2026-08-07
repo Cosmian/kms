@@ -9,7 +9,7 @@ use crate::ttlv::TtlvError;
 /// Serde `Deserializer` that feeds a `time::OffsetDateTime` to the `time` crate's tuple visitor.
 ///
 /// The visitor expects `visit_seq` with fields in this order:
-/// year, ordinal, hour, minute, second, nanosecond, offset_hours, offset_minutes, offset_seconds.
+/// year, ordinal, hour, minute, second, nanosecond, `offset_hours`, `offset_minutes`, `offset_seconds`.
 /// See <https://github.com/time-rs/time/blob/main/time/src/serde/visitor.rs#L80>.
 pub(super) struct OffsetDateTimeDeserializer {
     // The tag of the array
