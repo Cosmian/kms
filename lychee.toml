@@ -84,16 +84,11 @@ exclude = [
   'secrets-store-csi-driver\.sigs\.k8s\.io',
   # kubernetes.io — connection failures from CI runners
   'kubernetes\.io',
+  # Google Workspace blog — aggressive 429 rate limiting from CI IPs
+  'workspaceupdates\.googleblog\.com',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',
   'not-possible',
   'wrapped-by-an-hsm-key',
 ]
-
-# ── Per-host rate limiting ─────────────────────────────────────────────────
-# Sites that aggressively rate-limit (429) need slower request rates
-
-[hosts."workspaceupdates.googleblog.com"]
-concurrency = 1
-request_interval = "5s"
