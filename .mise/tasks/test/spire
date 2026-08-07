@@ -627,4 +627,25 @@ fi
 
 print_header "All SPIRE integration tests passed — KMS+auth-verifier is a valid multi-tenant drop-in replacement for HashiCorp Vault"
 
+# ── Step 16: KMS PKI capability validation ───────────────
+# Runs the PKI-specific test cases from the Aembit Capability Validation Test Plan
+# that are KMS-owned (M-01..M-08) using the already-running KMS+auth-verifier.
+# This avoids a double server startup in CI.
+print_header "Step 16: KMS PKI capability validation (M-01..M-08)"
+# shellcheck disable=SC1090
+source "${SPIRE_SECRETS_ENV}"
+VAULT_ADDR="https://localhost:9998" \
+  VAULT_CACERT="${TEST_DATA}/certs/ca.crt" \
+  AUTH_VERIFIER_URL="https://localhost:8443" \
+  ADMIN_USER="admin" \
+  ADMIN_PASS="change_me" \
+  SPIRE_ROLE_ID_A="${SPIRE_ROLE_ID_A}" \
+  SPIRE_SECRET_ID_A="${SPIRE_SECRET_ID_A}" \
+  CKMS_BIN="$(get_ckms_bin)" \
+  CKMS_CONF="${CKMS_CONF}" \
+  KMS_BIN="$(get_kms_bin)" \
+  KMS_CONFIG_FILE="${KMS_CONFIG_FILE}" \
+  bash "${TEST_DATA}/setup/test_mercedes_pki.sh"
+print_success "Step 16: KMS PKI capability validation passed."
+
 print_success "SPIRE integration tests completed successfully!"
