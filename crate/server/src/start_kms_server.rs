@@ -8,6 +8,7 @@
 //! - Setting up routes and middleware
 
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, mpsc},
 };
@@ -23,8 +24,10 @@ use actix_web::{
     middleware::{Condition, DefaultHeaders, from_fn},
     web::{self, Data, JsonConfig, PayloadConfig},
 };
+use cosmian_kms_access::access::Access;
 use cosmian_kms_server_database::reexport::{
     cosmian_kmip::kmip_2_1::{
+        KmipOperation,
         kmip_attributes::Attributes,
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType, PrivateKey, PublicKey},
@@ -64,7 +67,7 @@ use crate::{
     result::{KResult, KResultHelper},
     routes::{
         access,
-        aws_xks::{self},
+        aws_xks::{self, AWS_XKS_SERVICE_USER},
         azure_ekm, cli_archive_download, cli_archive_exists, crl, get_hsm_status, get_server_info,
         get_version,
         google_cse::{self, GoogleCseConfig},
@@ -218,6 +221,83 @@ pub async fn handle_google_cse_rsa_keypair(
     }
 
     info!("RSA Keypair for Google CSE created.");
+
+    Ok(())
+}
+
+/// One-time, idempotent migration that grants the reserved AWS XKS service identity access
+/// to XKS keys created by earlier KMS versions.
+///
+/// Before the fix for issue #1093, XKS keys were created with `default_username` as owner
+/// and their `Encrypt`/`Decrypt` grant bound to the transient caller ARN — so only the
+/// creating principal could use the key. XKS operations now run under the reserved
+/// [`AWS_XKS_SERVICE_USER`] identity, so already-shipped keys (owned by `default_username`
+/// and carrying the `aws-xks` tag) must be granted to that identity. Ownership is
+/// deliberately left untouched: operators keep full administrative control of the keys.
+///
+/// The grant is additive and safe to re-run on every startup: `CreateKey` applies the same
+/// grant for new keys, and re-granting existing permissions is a no-op.
+///
+/// # Errors
+///
+/// Returns a [`KmsError`] if listing tagged objects, checking ownership, or granting access
+/// fails.
+pub(crate) async fn migrate_aws_xks_key_access(kms_server: &Arc<KMS>) -> KResult<()> {
+    let default_username = &kms_server.params.default_username;
+    // Defensive: an operator could have configured `default_username` to the reserved name.
+    // `grant_access` refuses to let an owner grant themselves, and the owner already has
+    // every right, so there is nothing to do.
+    if default_username == AWS_XKS_SERVICE_USER {
+        return Ok(());
+    }
+
+    let required = [
+        KmipOperation::Encrypt,
+        KmipOperation::Decrypt,
+        KmipOperation::GetAttributes,
+    ];
+    let tags = HashSet::from(["aws-xks".to_owned()]);
+    let uids = kms_server.database.list_uids_for_tags(&tags).await?;
+
+    let mut migrated = 0_usize;
+    for uid in uids {
+        // Only keys owned by `default_username` can be granted by it; skip anything else
+        // rather than attempting a grant that would (correctly) be refused.
+        if !kms_server
+            .database
+            .is_object_owned_by(&uid, default_username)
+            .await?
+        {
+            continue;
+        }
+        // Skip keys that already carry the grant so that a steady-state restart performs no
+        // writes and logs nothing.
+        let granted = kms_server
+            .database
+            .list_user_operations_on_object(&uid, AWS_XKS_SERVICE_USER, false)
+            .await?;
+        if required.iter().all(|op| granted.contains(op)) {
+            continue;
+        }
+        kms_server
+            .grant_access(
+                &Access {
+                    unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
+                    user_id: AWS_XKS_SERVICE_USER.to_owned(),
+                    operation_types: required.to_vec(),
+                },
+                default_username,
+            )
+            .await?;
+        migrated += 1;
+    }
+
+    if migrated > 0 {
+        info!(
+            "AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service \
+             identity `{AWS_XKS_SERVICE_USER}`"
+        );
+    }
 
     Ok(())
 }
@@ -977,6 +1057,11 @@ pub async fn prepare_kms_server(
 
     // Should we enable the AWS XKS Service?
     let enable_aws_xks = kms_server.params.aws_xks_params.is_some();
+    if enable_aws_xks {
+        // Grant the reserved XKS service identity usage on XKS keys created by earlier
+        // versions. See `migrate_aws_xks_key_access`.
+        migrate_aws_xks_key_access(&kms_server).await?;
+    }
 
     // Should we enable the Azure EKM API ?
     let enable_azure_ekm = kms_server.params.azure_ekm.azure_ekm_enable;
