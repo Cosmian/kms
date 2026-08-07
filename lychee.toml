@@ -82,6 +82,8 @@ exclude = [
 
   # Kubernetes SIG documentation site — resets connections from automated crawlers
   'secrets-store-csi-driver\.sigs\.k8s\.io',
+  # kubernetes.io — connection failures from CI runners
+  'kubernetes\.io',
 
   # Fragment/anchor patterns that are not real URLs
   'get--export',
