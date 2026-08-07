@@ -341,7 +341,7 @@ jobs:
         run: mise run build:k8s-operator-image --load
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Start Minikube
         uses: medyagh/setup-minikube@v0.0.18
@@ -429,7 +429,7 @@ jobs:
         run: mise run build:k8s-csi-provider-image --load
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Start Minikube
         uses: medyagh/setup-minikube@v0.0.18
