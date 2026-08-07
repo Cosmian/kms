@@ -668,10 +668,11 @@ Crate path: `crate/server`
 | `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | Emitted when the web UI is enabled but `ui_session_salt` (or `KMS_UI_SESSION_SALT`) is not configured. Sessions will not survive server restarts. Set a stable secret value for production. |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | JWKS cache force-refresh was requested but the cooldown window has not elapsed; the refresh is skipped to prevent DoS via repeated JWKS fetches. |
 | `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
+| `info` | `` AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service              identity `{AWS_XKS_SERVICE_USER}` `` | `src/start_kms_server.rs` | `migrated`, `AWS_XKS_SERVICE_USER` | - |
+| `warn` | `SigV4 failure: {sigv4_err}` | `src/routes/aws_xks/sigv4_middleware.rs` | `sigv4_err` | - |
+| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
-| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
-| `warn` | `SigV4 failure: {sigv4_err}` | `src/routes/aws_xks/sigv4_middleware.rs` | `sigv4_err`: SigV4 validation error detail (signature mismatch, expired timestamp, bad credentials, etc.) | Authentication failure — check client SigV4 credentials, clock skew (±5 min), and signed headers. |
 
 ### `cosmian_kms_server_database`
 

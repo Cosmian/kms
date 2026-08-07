@@ -113,6 +113,11 @@ source ./utils/test_config.sh
 # Keep the same principal ARN as the vendored curl-suite.
 aws_principal_arn="arn:aws:iam::123456789012:user/Alice"
 
+# Reserved identity under which the server runs every XKS operation
+# (`AWS_XKS_SERVICE_USER` in crate/server/src/routes/aws_xks/mod.rs). Permissions must be
+# adjusted on this identity — not on the caller ARN, which is audit-only metadata.
+xks_service_user="[aws-xks-service]"
+
 xks_create_key() {
   local key_id="$1"
   local request_id
@@ -151,7 +156,7 @@ EOF
   fi
 }
 
-revoke_op_for_alice() {
+revoke_xks_op() {
   local key_id="$1"
   local op="$2"
 
@@ -165,7 +170,7 @@ revoke_op_for_alice() {
         cat <<EOF
 {
   "unique_identifier": "${key_id}",
-  "user_id": "${aws_principal_arn}",
+  "user_id": "${xks_service_user}",
   "operation_types": ["${op}"]
 }
 EOF
@@ -173,7 +178,7 @@ EOF
   )"
 
   if ! grep -q '"success"' <<<"${response}"; then
-    echo "Failed to revoke ${op} for ${aws_principal_arn} on ${key_id}. Response:" >&2
+    echo "Failed to revoke ${op} for ${xks_service_user} on ${key_id}. Response:" >&2
     echo "${response}" >&2
     return 1
   fi
@@ -185,8 +190,8 @@ xks_create_key "encrypt_only_key"
 xks_create_key "decrypt_only_key"
 
 # Enforce the expected usage restrictions.
-revoke_op_for_alice "encrypt_only_key" "decrypt"
-revoke_op_for_alice "decrypt_only_key" "encrypt"
+revoke_xks_op "encrypt_only_key" "decrypt"
+revoke_xks_op "decrypt_only_key" "encrypt"
 
 echo "Running vendored AWS XKS curl-based test client..."
 
