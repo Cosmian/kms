@@ -20,7 +20,7 @@ By leveraging KMS CLI, users can seamlessly integrate advanced cryptographic fun
     the [Cosmian public packages repository](https://package.cosmian.com/kms/5.25.0/)
     See below for installation instructions.
 
-<!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
+<!-- Warning: this doc is merged in the repository `public_documentation`. -->
 {!kms_clients/installation.md!}
 
 ## Configuration
@@ -41,7 +41,7 @@ then writes the result to `~/.cosmian/ckms.toml`.
 For a full description of all authentication methods and the manual configuration format,
 see the [CLI authentication guide](./authentication.md).
 
-<!-- Warning: this doc is merged with `mkdocs merge` in the repository `public_documentation`. -->
+<!-- Warning: this doc is merged in the repository `public_documentation`. -->
 {!kms_clients/usage.md!}
 
 ## Web UI

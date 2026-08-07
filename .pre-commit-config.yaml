@@ -343,9 +343,8 @@ repos:
       - id: cargo-format # in last du to clippy fixes
       - id: docker-compose-down
 
-  - repo: https://github.com/tcort/markdown-link-check
-    rev: v3.13.7
+  - repo: https://github.com/lycheeverse/lychee
+    rev: v0.15.1
     hooks:
-      - id: markdown-link-check
-        args: [-q, --config, ./.github/.markdown-link-check.json]
-        exclude: .github/copilot-instructions.md
+      - id: lychee
+        args: [--config, lychee.toml, 'documentation/docs/**/*.md']

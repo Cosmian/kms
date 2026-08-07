@@ -226,7 +226,7 @@ across the codebase — automatic key-material zeroing on drop (CWE-316 mitigati
 flowchart LR
     A["Discover\nScan Rust sources\n& Cargo.toml"] --> B["Analyze\nApply risk rules\nMatch KMIP context"]
     B --> C["Prioritize\nSeverity scoring\nMitigation tagging"]
-    C --> D["Report\nCBOM & MkDocs\nJSON + Markdown"]
+    C --> D["Report\nCBOM & mdBook\nJSON + Markdown"]
     D --> E["Monitor\nPre-commit hook\nCI integration"]
     style A fill:#f0f9ff,stroke:#0ea5e9
     style B fill:#fefce8,stroke:#eab308

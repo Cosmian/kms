@@ -126,6 +126,20 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           cd documentation && mdbook build
 
+  linkcheck:
+    name: Check documentation links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml 'documentation/docs/**/*.md'
+          fail: true
+
   public_documentation:
     if: github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.ref_name, 'dependabot/') && github.actor != 'dependabot[bot]'
       || startsWith(github.ref, 'refs/tags/')
