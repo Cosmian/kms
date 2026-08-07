@@ -13,7 +13,6 @@ use cosmian_kms_server_database::reexport::cosmian_kmip::kmip_2_1::{
     kmip_types::CryptographicAlgorithm,
     requests::symmetric_key_create_request,
 };
-use cosmian_logger::log_init;
 use serde_json::{Value, json};
 
 use crate::{result::KResult, tests::test_utils};
@@ -97,8 +96,7 @@ fn extract_tags(body: &Value) -> Vec<String> {
 /// POST adds tags; GET returns them.
 #[tokio::test]
 async fn test_add_tags_happy_path() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = post_tags(&app, &kid, &["jwks", "prod"]).await?;
@@ -115,8 +113,7 @@ async fn test_add_tags_happy_path() -> KResult<()> {
 /// POSTing the same tag twice results in exactly one occurrence (idempotent).
 #[tokio::test]
 async fn test_add_tags_idempotent() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     post_tags(&app, &kid, &["jwks"]).await?;
@@ -130,8 +127,7 @@ async fn test_add_tags_idempotent() -> KResult<()> {
 /// POST "a", "b" → DELETE "a" → GET returns only "b".
 #[tokio::test]
 async fn test_remove_tags_happy_path() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     post_tags(&app, &kid, &["alpha", "beta"]).await?;
@@ -145,8 +141,7 @@ async fn test_remove_tags_happy_path() -> KResult<()> {
 /// DELETE a tag that is not on the key — should succeed with unchanged list.
 #[tokio::test]
 async fn test_remove_nonexistent_tag_is_noop() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     post_tags(&app, &kid, &["keep"]).await?;
@@ -160,8 +155,7 @@ async fn test_remove_nonexistent_tag_is_noop() -> KResult<()> {
 /// Fresh key has no user tags.
 #[tokio::test]
 async fn test_get_tags_empty() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = get_tags(&app, &kid).await?;
@@ -174,8 +168,7 @@ async fn test_get_tags_empty() -> KResult<()> {
 /// in GET responses.
 #[tokio::test]
 async fn test_system_tags_not_exposed() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = get_tags(&app, &kid).await?;
@@ -192,8 +185,7 @@ async fn test_system_tags_not_exposed() -> KResult<()> {
 /// POST with a `_`-prefixed tag must be rejected with 400.
 #[tokio::test]
 async fn test_reject_system_tag_add() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let req = test::TestRequest::post()
@@ -209,8 +201,7 @@ async fn test_reject_system_tag_add() -> KResult<()> {
 /// DELETE with a `_`-prefixed tag must be rejected with 400.
 #[tokio::test]
 async fn test_reject_system_tag_delete() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let req = test::TestRequest::delete()
@@ -226,8 +217,7 @@ async fn test_reject_system_tag_delete() -> KResult<()> {
 /// POST with an empty string tag must be rejected with 400.
 #[tokio::test]
 async fn test_reject_empty_tag() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let req = test::TestRequest::post()
@@ -243,8 +233,7 @@ async fn test_reject_empty_tag() -> KResult<()> {
 /// All three methods with a non-existent KID must return 404.
 #[tokio::test]
 async fn test_unknown_kid_returns_404() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let ghost = "00000000-0000-0000-0000-000000000000";
 
     // GET
@@ -282,8 +271,7 @@ async fn test_unknown_kid_returns_404() -> KResult<()> {
 /// Core JWKS use-case: operator tags a key "jwks"; GET confirms it.
 #[tokio::test]
 async fn test_add_jwks_tag_then_list() -> KResult<()> {
-    log_init(None);
-    let app = test_utils::test_app(None).await;
+    let app = test_utils::setup_app(None).await;
     let kid = create_test_key(&app).await?;
 
     let resp = post_tags(&app, &kid, &["jwks"]).await?;

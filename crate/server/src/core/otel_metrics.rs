@@ -160,7 +160,7 @@ impl OtelMetrics {
     /// # Panics
     ///
     /// May panic if system time is before `UNIX_EPOCH`
-    #[allow(clippy::cast_precision_loss, clippy::as_conversions)]
+    #[allow(clippy::cast_precision_loss, clippy::as_conversions)] // metric values are counters/durations well within f64 precision range
     pub fn new(meter_provider: SdkMeterProvider) -> KResult<Self> {
         let meter = MeterProvider::meter(&meter_provider, "cosmian_kms");
 
@@ -407,7 +407,7 @@ impl OtelMetrics {
     ///
     /// Panics if system time is before `UNIX_EPOCH` (only possible on systems
     /// with a misconfigured clock; safe to treat as unrecoverable).
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::expect_used)] // documented panic: only fails on a misconfigured system clock before UNIX_EPOCH
     pub fn update_active_user(&self, user: &str) {
         let now = i64::try_from(
             std::time::SystemTime::now()

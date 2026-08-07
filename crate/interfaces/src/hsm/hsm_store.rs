@@ -71,10 +71,6 @@ impl HsmStore {
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// ObjectsStore implementation
-// ──────────────────────────────────────────────────────────────────────────────
-
 #[async_trait(?Send)]
 impl ObjectsStore for HsmStore {
     // Only single keys are created using this call,
@@ -569,10 +565,6 @@ impl ObjectsStore for HsmStore {
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// CryptoOracle implementation
-// ──────────────────────────────────────────────────────────────────────────────
-
 #[async_trait]
 impl CryptoOracle for HsmStore {
     async fn encrypt(
@@ -754,10 +746,6 @@ impl CryptoOracle for HsmStore {
         )))
     }
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Private helpers
-// ──────────────────────────────────────────────────────────────────────────────
 
 /// Build a metadata-only `Attributes` struct for a non-extractable (sensitive) HSM key.
 ///
