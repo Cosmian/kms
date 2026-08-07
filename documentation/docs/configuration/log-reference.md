@@ -671,6 +671,7 @@ Crate path: `crate/server`
 | `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
 | `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 | `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
