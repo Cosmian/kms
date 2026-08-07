@@ -8,14 +8,16 @@
 #USAGE }
 
 # Validates the KMS-owned test cases from the Aembit Capability Validation Test Plan:
-#   M-01 / PKI-06  — Self-signed cert prohibition + pathlen:0 enforcement
-#   M-02 / PKI-11  — TLS 1.3 enforcement
-#   M-03 / PKI-12  — Algorithm policy change without redeploy
+#   M-01 / PKI-06  — Self-signed cert prohibition + pathlen:0 + out-of-chain rejection
+#   M-02 / PKI-11  — TLS version enforcement (TLS ≤1.1 rejected; TLS 1.2/1.3 verified)
+#   M-03 / PKI-12  — Algorithm policy change without redeploy (baseline + restricted)
 #   M-04 / PKI-04  — Zero-downtime Intermediate CA rotation
 #   M-05 / PKI-17  — Trust re-establishment
-#   M-06 / OBS-05  — PKI signing latency < 500 ms
+#   M-06 / OBS-05  — PKI signing latency < 500 ms (hard gate)
 #   M-07 / INFO-2  — Independent DPoP signing key lifecycle
 #   M-08 / RES-08  — Legacy + SPIFFE workload coexistence
+#   M-09 / PKI-03  — Client/server certificate parity (clientAuth + serverAuth EKU)
+#   M-10 / WI-05   — Revocation propagation with measured timing window
 #
 # These tests cover the ~30% of the RFI that Aembit does NOT cover.
 # Test cases already covered by the existing `mise run test:spire` task:
@@ -202,7 +204,7 @@ VAULT_ADDR="https://localhost:9998" \
 
 print_header "KMS PKI capability validation complete"
 print_success "All KMS-owned test cases plan passed!"
-print_info "Test IDs covered: PKI-04, PKI-06, PKI-11, PKI-12, PKI-17, OBS-05, INFO-2, RES-08"
-print_info "Test IDs covered by existing tests (see test_data/spire/README_pki_test_coverage.md):"
+print_info "Test IDs covered: PKI-03, PKI-04, PKI-06, PKI-11, PKI-12, PKI-17, OBS-05, INFO-2, RES-08, WI-05"
+print_info "Test IDs covered by existing tests (see test_data/spire/README_test_coverage.md):"
 print_info "  PKI-01, PKI-02, PKI-07, PKI-08, PKI-14, PKI-16 (in mise run test:spire)"
 print_info "  PKI-05 (in cargo test -p cosmian_kms_server -- kmip_policy)"

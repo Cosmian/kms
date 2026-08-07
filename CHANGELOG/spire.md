@@ -1,3 +1,20 @@
+## Testing
+
+- **PKI capability validation tests hardened against Aembit RFI test plan**:
+  - **PKI-06 (M-01)**: added out-of-chain self-signed cert rejection test + mTLS client cert
+    verification; previously only checked pathlen:0 presence.
+  - **PKI-11 (M-02)**: TLS version enforcement now actively rejects TLS ≤1.1 (hard failure),
+    verifies TLS 1.2 (documented migration exception per FR-2.12), and confirms TLS 1.3;
+    previously informational-only with no rejection test.
+  - **PKI-12 (M-03)**: algorithm policy test now includes a baseline phase (P-256 allowed on
+    running KMS) before the restricted policy phase, demonstrating the before/after contrast.
+  - **PKI-03 (M-09)**: new automated test — issues both clientAuth and serverAuth certificates
+    for the same SPIFFE identity, verifies both chain to the same CA (same automated lifecycle).
+  - **OBS-05 (M-06)**: sign-intermediate latency is now a hard gate (500ms threshold); override
+    via `SPIRE_PKI_LATENCY_MS` env var for slow CI environments; previously a soft pass.
+  - **WI-05 (M-10)**: new timed revocation propagation test — revokes a token, polls until
+    rejection, measures the window, and asserts it is within the documented cache TTL (35s).
+
 ## Bug Fixes
 
 - **`ckms vault approle` admin sub-commands now target the auth-verifier directly**:
