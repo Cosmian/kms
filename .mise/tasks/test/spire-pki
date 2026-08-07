@@ -91,20 +91,28 @@ trap cleanup EXIT
 
 # ── Step 1: Build binaries ─────────────────────────────────────────────────────
 print_header "Step 1: Build binaries"
-ensure_nix_shell
 require_cmd cargo
 
-build_features="non-fips"
-build_link="${usage_link:-static}"
+print_status "Building KMS server (non-fips)..."
+kms_build_server "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
 
-print_status "Building KMS server + auth-verifier + ckms (${build_link}, ${build_features})..."
-bash "${REPO_ROOT}/.mise/lib/build_kms.sh" "${build_features}" "${build_link}" 2>&1 | tail -5
-print_success "Binaries built."
+print_status "Building auth-verifier..."
+cargo build --manifest-path "${REPO_ROOT}/authentication/Cargo.toml" \
+  --bin auth_verifier
 
-AUTH_BIN="$(get_auth_verifier_bin 2>/dev/null || echo '')"
+AUTH_BIN="$(
+  cd "${REPO_ROOT}/authentication" &&
+    cargo metadata --no-deps --format-version 1 |
+    python3 -c "import sys,json; m=json.load(sys.stdin); print(m['target_directory'])"
+)/debug/auth_verifier"
 if [[ -z "${AUTH_BIN}" || ! -x "${AUTH_BIN}" ]]; then
-  print_error "auth-verifier binary not found. Run: mise run package:deb first or check build output."
+  print_error "auth-verifier binary not found after build."
 fi
+
+print_status "Building ckms CLI..."
+kms_build_cli "${FEATURES_FLAG[@]+"${FEATURES_FLAG[@]}"}"
+
+print_success "Binaries built."
 
 # ── Step 2: Generate TLS certs if missing ──────────────────────────────────────
 print_header "Step 2: TLS certificates"
@@ -155,7 +163,7 @@ EXTEOF
   --generate-key-pair \
   --algorithm nist-p384 \
   --certificate-id vault_pki_ca_cert \
-  --subject-name "CN=Mercedes PKI Test Root CA,O=Test,C=FR" \
+  --subject-name "CN=Client PKI Test Root CA,O=Test,C=FR" \
   --tag vault_pki_ca \
   --days 3650 \
   --certificate-extensions "${_VAULT_EXT_FILE}" \
@@ -176,7 +184,7 @@ AUTH_VERIFIER_URL="https://localhost:8443" \
 source "${SPIRE_SECRETS_ENV}"
 print_success "AppRoles provisioned."
 
-# ── Step 7: Run Mercedes PKI test scenarios ────────────────────────────────────
+# ── Step 7: Run PKI test scenarios ────────────────────────────────────
 print_header "Step 7: KMS PKI test scenarios (M-01 through M-08)"
 
 VAULT_ADDR="https://localhost:9998" \
@@ -190,11 +198,11 @@ VAULT_ADDR="https://localhost:9998" \
   CKMS_CONF="${CKMS_CONF}" \
   KMS_BIN="$(get_kms_bin)" \
   KMS_CONFIG_FILE="${KMS_CONFIG_FILE}" \
-  bash "${TEST_DATA}/setup/test_mercedes_pki.sh"
+  bash "${TEST_DATA}/setup/test_pki.sh"
 
 print_header "KMS PKI capability validation complete"
-print_success "All KMS-owned test cases from the Aembit Capability Validation Test Plan passed!"
+print_success "All KMS-owned test cases plan passed!"
 print_info "Test IDs covered: PKI-04, PKI-06, PKI-11, PKI-12, PKI-17, OBS-05, INFO-2, RES-08"
-print_info "Test IDs covered by existing tests (see test_data/spire/README_mercedes_test_coverage.md):"
+print_info "Test IDs covered by existing tests (see test_data/spire/README_pki_test_coverage.md):"
 print_info "  PKI-01, PKI-02, PKI-07, PKI-08, PKI-14, PKI-16 (in mise run test:spire)"
 print_info "  PKI-05 (in cargo test -p cosmian_kms_server -- kmip_policy)"

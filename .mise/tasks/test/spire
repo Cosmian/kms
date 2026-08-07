@@ -645,7 +645,7 @@ VAULT_ADDR="https://localhost:9998" \
   CKMS_CONF="${CKMS_CONF}" \
   KMS_BIN="$(get_kms_bin)" \
   KMS_CONFIG_FILE="${KMS_CONFIG_FILE}" \
-  bash "${TEST_DATA}/setup/test_mercedes_pki.sh"
+  bash "${TEST_DATA}/setup/test_pki.sh"
 print_success "Step 16: KMS PKI capability validation passed."
 
 print_success "SPIRE integration tests completed successfully!"
