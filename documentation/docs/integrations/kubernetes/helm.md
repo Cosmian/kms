@@ -137,7 +137,7 @@ helm install my-kms cosmian/cosmian-kms \
 
 ## Configuration
 
-See [`values.yaml`](https://github.com/Cosmian/kms/tree/main/charts/cosmian-kms/values.yaml)
+See [`values.yaml`](https://github.com/Cosmian/kms/blob/develop/charts/cosmian-kms/values.yaml)
 for the full list of configurable parameters. Key settings:
 
 | Key | Description |
