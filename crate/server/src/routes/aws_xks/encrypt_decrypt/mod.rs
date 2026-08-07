@@ -1,7 +1,11 @@
 mod decrypt_;
 mod encrypt_;
 pub(crate) use decrypt_::decrypt;
+#[cfg(test)]
+pub(crate) use decrypt_::{DecryptRequest, decrypt_inner};
 pub(crate) use encrypt_::encrypt;
+#[cfg(test)]
+pub(crate) use encrypt_::{EncryptRequest, EncryptResponse, encrypt_inner};
 use serde::{Deserialize, Serialize};
 
 /// Request Payload Parameters: The HTTP body of the request contains the requestMetadata.

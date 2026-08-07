@@ -28,6 +28,7 @@ use crate::{
     error::KmsError,
     result::KResult,
     routes::aws_xks::{
+        AWS_XKS_SERVICE_USER,
         encrypt_decrypt::{CdivAlgorithm, EncryptionAlgorithm, RequestMetadata},
         error::{XksErrorName, XksErrorReply},
     },
@@ -256,13 +257,17 @@ pub(crate) async fn encrypt(
     }
 }
 
-async fn encrypt_inner(
+pub(crate) async fn encrypt_inner(
     _req_http: HttpRequest,
     request: EncryptRequest,
     key_id_or_tags: String,
     kms: &Arc<KMS>,
 ) -> KResult<EncryptResponse> {
-    let user = request.requestMetadata.awsPrincipalArn;
+    // The request is trusted because it passed SigV4 verification (see `Sigv4MWare`).
+    // The operation runs as the reserved `AWS_XKS_SERVICE_USER`, which holds a least-privilege
+    // grant on every XKS key, so authorization no longer depends on the caller ARN;
+    // `awsPrincipalArn` is retained for audit logging only.
+    let user = AWS_XKS_SERVICE_USER;
 
     let cryptographic_parameters = match request.encryptionAlgorithm {
         EncryptionAlgorithm::AES_GCM => CryptographicParameters {
@@ -293,7 +298,7 @@ async fn encrypt_inner(
                 final_indicator: None,
                 authenticated_encryption_additional_data: aead.clone(),
             },
-            &user,
+            user,
         )
         .await?;
     let ciphertext = response
