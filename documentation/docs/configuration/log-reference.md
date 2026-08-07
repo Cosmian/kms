@@ -722,6 +722,7 @@ Crate path: `crate/server`
 | `debug` | `OCSP cache HIT` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP: all serials served from cache` | `src/routes/ocsp/handler.rs` | - | - |
 | `debug` | `OCSP GET request path exceeds MAX_OCSP_GET_ENCODED_LEN` | `src/routes/ocsp/handler.rs` | - | - |
+| `info` | `` AWS XKS: granted usage on {migrated} pre-existing key(s) to the reserved service              identity `{AWS_XKS_SERVICE_USER}` `` | `src/start_kms_server.rs` | `migrated`, `AWS_XKS_SERVICE_USER` | - |
 
 ### `cosmian_kms_server_database`
 

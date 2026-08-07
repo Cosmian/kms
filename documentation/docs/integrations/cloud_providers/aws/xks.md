@@ -58,6 +58,26 @@ The HSM is responsible for storing the Master keys and securing the Eviden KMS k
    ![Choose the external key](./2_choose_external_key.png)
    ![Review the key and create it](./7_review.png)
 
-5. Enforce the correct permissions for the key on the Eviden KMS.
-Make sure the user used by AWS has the permissions for `Encrypt`, `Decrypt` and `GetAttributes`. For instance, when using DynamoDB, the user should be called something like `dynamodb.amazonaws.com`, for Salesforce, it is the user configured as part of the setup.
-In doubt, or for testing, grant theses permissions to all users (`*`).
+5. Authorize AWS principals to use the key.
+
+   The KMS authenticates every XKS request from AWS KMS using the shared SigV4 credentials
+   configured above (`aws_xks_sigv4_access_key_id` / `aws_xks_sigv4_secret_access_key`).
+   This signature is the trust boundary, in line with AWS's model where the AWS key policy
+   and IAM are the source of truth for which principals may use the key.
+
+   XKS keys are used internally through a dedicated, reserved KMS service identity, so
+   **any** AWS principal whose request is correctly signed can use the key.
+   You do **not** need to create or maintain a per-principal (per-ARN) permission entry on
+   the KMS for each IAM role, and the numerous or dynamic roles common with AWS SSO or
+   Control Tower work without additional configuration.
+
+   The keys remain owned by the KMS `default_username`, so you keep full administrative
+   control over them (listing, revocation, destruction and export) from the CLI and the Web
+   UI. The XKS service identity itself is granted only `Encrypt`, `Decrypt` and
+   `GetAttributes`, so the XKS endpoints can never revoke, destroy or export key material.
+
+   The `awsPrincipalArn` sent by AWS KMS is recorded in the KMS logs for auditing only and
+   is never used as an authorization gate.
+
+   Keys created by an earlier KMS version are updated automatically when the server starts,
+   so no manual action is required when upgrading.
