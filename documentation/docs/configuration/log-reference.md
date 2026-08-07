@@ -669,6 +669,9 @@ Crate path: `crate/server`
 | `warn` | `UI is enabled but ui_session_salt is not set. A random salt will be generated                  per process, which invalidates existing sessions on restart. Set a persistent                  salt for production use.` | `src/start_kms_server.rs` | - | Emitted when the web UI is enabled but `ui_session_salt` (or `KMS_UI_SESSION_SALT`) is not configured. Sessions will not survive server restarts. Set a stable secret value for production. |
 | `trace` | `force_refresh: cooldown active, skipping` | `src/middlewares/jwt/jwks.rs` | - | JWKS cache force-refresh was requested but the cooldown window has not elapsed; the refresh is skipped to prevent DoS via repeated JWKS fetches. |
 | `info` | `Starting Cosmian KMS server version {}` | `src/main.rs` | - | - |
+| `trace` | `ModifyAttribute: Sensitive: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
+| `trace` | `Set Attribute: Sensitive: {:?}` | `src/core/operations/attributes/set.rs` | - | - |
+| `trace` | `ModifyAttribute: Extractable: {:?}` | `src/core/operations/attributes/modify.rs` | - | - |
 
 ### `cosmian_kms_server_database`
 
@@ -785,7 +788,6 @@ Crate path: `crate/kmip`
 | ------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------- | --------------- |
 | `warn`  | `Custom attribute name does not start with 'x-' or 'y-': {}`                                                              | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
 | `warn`  | `Failed to deserialize KMIP 2.1 attribute: {}`                                                                            | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
-| `warn`  | `KMIP 1.4 Lease Time ({v}) exceeds i32::MAX; clamping to {}`                                                              | `src/kmip_1_4/kmip_attributes.rs`                                  | `v`: parsed value                                  | ×2 in this file |
 | `warn`  | `KMIP 2.1 does not support the KMIP 1 attribute {attribute:?}`                                                            | `src/kmip_1_4/kmip_attributes.rs`                                  | `attribute`: KMIP attribute (debug display)        | ×9 in this file |
 | `warn`  | `Unexpected value type for y-unsupported-2_1-attribute: {:?}`                                                             | `src/kmip_1_4/kmip_attributes.rs`                                  | -                                                  | -               |
 | `debug` | `[serialize] writing tag: {}`                                                                                             | `src/ttlv/wire/ttlv_bytes_serializer.rs`                           | -                                                  | -               |

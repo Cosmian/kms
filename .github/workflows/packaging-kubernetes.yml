@@ -1,7 +1,7 @@
 ---
 name: Kubernetes Packaging & E2E
 
-# Covers all Kubernetes-related CI for Cosmian KMS:
+# Covers all Kubernetes-related CI for Eviden KMS:
 #   - K8s E2E tests (KMS Provider Plugin, CSI Driver Provider, Operator) on every
 #     PR/branch push and manual dispatch
 #   - K8s plugin deb/rpm packaging on tags and manual dispatch

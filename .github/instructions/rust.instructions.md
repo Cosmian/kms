@@ -1,6 +1,6 @@
 ---
 name: 'Rust Conventions'
-description: 'Core Rust coding rules for the Cosmian KMS workspace'
+description: 'Core Rust coding rules for the Eviden KMS workspace'
 applyTo: '**/*.rs'
 ---
 

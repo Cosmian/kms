@@ -13,6 +13,7 @@ use tracing::instrument;
 use super::{collapse_adjacently_tagged_structure, normalize_ttlv};
 use crate::ttlv::{
     TtlvError,
+    interval::INTERVAL_NEWTYPE,
     tags::BYTE_LIKE_TAGS,
     ttlv_struct::{KmipEnumerationVariant, TTLV, TTLValue},
 };
@@ -356,7 +357,25 @@ impl<'a> ser::Serializer for &'a mut TtlvSerializer {
     where
         T: ?Sized + Serialize,
     {
-        let _ = name;
+        // `Interval` wraps a `u32` that KMIP types as the `Interval` primitive
+        // (0x0A) rather than `Integer` (0x02). Serialize the inner value first,
+        // then retype the resulting TTLV node.
+        if name == INTERVAL_NEWTYPE {
+            value.serialize(&mut *self)?;
+            let current = self.current_mut()?;
+            let seconds = match current.value {
+                TTLValue::Integer(v) => u32::try_from(v).unwrap_or(0),
+                TTLValue::LongInteger(v) => u32::try_from(v).unwrap_or(0),
+                TTLValue::Interval(v) => v,
+                _ => {
+                    return Err(TtlvError::custom(
+                        "Interval must wrap an integer value".to_owned(),
+                    ));
+                }
+            };
+            current.value = TTLValue::Interval(seconds);
+            return Ok(());
+        }
         value.serialize(self)
     }
 

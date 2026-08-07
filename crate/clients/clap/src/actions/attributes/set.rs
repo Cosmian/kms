@@ -203,6 +203,12 @@ pub struct SetOrDeleteAttributes {
     #[clap(long = "name")]
     pub name: Option<String>,
 
+    /// The Sensitive attribute (True/False). When set to True the object value
+    /// can only be retrieved wrapped. Setting it to False permanently clears the
+    /// server-managed Always Sensitive attribute (KMIP 2.1 §4.3).
+    #[clap(long)]
+    pub sensitive: Option<bool>,
+
     #[clap(flatten)]
     pub vendor_attributes: Option<VendorAttributeCli>,
 }
@@ -275,6 +281,10 @@ impl SetOrDeleteAttributes {
                 name_value: name_value.clone(),
                 name_type: NameType::UninterpretedTextString,
             }));
+        }
+
+        if let Some(sensitive) = self.sensitive {
+            result.push(Attribute::Sensitive(sensitive));
         }
 
         if let Some(vendor_attributes) = &self.vendor_attributes {

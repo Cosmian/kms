@@ -35,7 +35,8 @@ pub(crate) async fn add_attribute(
 
     // Read-only guard — these attributes are server-managed.
     match &request.new_attribute {
-        Attribute::RotateAutomatic(_)
+        Attribute::AlwaysSensitive(_)
+        | Attribute::RotateAutomatic(_)
         | Attribute::RotateGeneration(_)
         | Attribute::RotateDate(_)
         | Attribute::RotateLatest(_) => {
@@ -102,7 +103,6 @@ pub(crate) async fn add_attribute(
             X509CertificateSubject => x_509_certificate_subject,
             X509CertificateIssuer => x_509_certificate_issuer,
             AlternativeName => alternative_name,
-            AlwaysSensitive => always_sensitive,
             ApplicationSpecificInformation => application_specific_information,
             ArchiveDate => archive_date,
             AttributeIndex => attribute_index,
@@ -203,6 +203,14 @@ pub(crate) async fn add_attribute(
                 }
                 attributes.description = Some(description);
             }
+            Attribute::AlwaysSensitive(_) => {
+                // Defensive: rejected earlier by the read-only guard (KMIP 2.1 §4.3).
+                return Err(KmsError::Kmip21Error(
+                    ErrorReason::Attribute_Read_Only,
+                    "DENIED: AlwaysSensitive is server-managed and cannot be added by the user"
+                        .to_owned(),
+                ));
+            }
             Attribute::Sensitive(sensitive) => {
                 trace!("Sensitive: {:?}", sensitive);
                 if attributes.sensitive.is_some() {
@@ -210,7 +218,9 @@ pub(crate) async fn add_attribute(
                         "Sensitive already exists".to_owned(),
                     ));
                 }
-                attributes.sensitive = sensitive.then_some(true);
+                // Setting Sensitive also (re)computes the server-managed
+                // AlwaysSensitive attribute (KMIP 2.1 §4.3).
+                attributes.apply_sensitive(sensitive);
             }
             Attribute::State(_state) => {
                 return Err(KmsError::InvalidRequest(

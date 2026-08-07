@@ -64,6 +64,13 @@ pub(crate) async fn create(kms: &KMS, request: Create, owner: &str) -> KResult<C
         object.setup_with_lifecycle(request.object_type, request.attributes.activation_date)?;
     let mut attributes = attributes;
 
+    // The server SHALL create the AlwaysSensitive attribute at creation time
+    // (KMIP 2.1 §4.3): it is True iff the object is created Sensitive.
+    attributes.initialize_always_sensitive();
+    if let Ok(object_attributes) = object.attributes_mut() {
+        object_attributes.always_sensitive = attributes.always_sensitive;
+    }
+
     // Keyset validation (SQL keys only): if rotate_name is present, the UID must equal it.
     // HSM keys (those with a prefix such as "hsm::") manage keyset membership differently —
     // the UID is an opaque PKCS#11 handle; rotate_name is set independently via SetAttribute.

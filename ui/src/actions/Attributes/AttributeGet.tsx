@@ -88,7 +88,12 @@ const AttributeGetForm: React.FC = () => {
                             label="Attribute Names"
                             help="The attributes or KMIP-tags to retrieve (all attributes will be returned if none specified)"
                         >
-                            <Select mode="multiple" style={{ width: "100%" }} placeholder="Select attribute">
+                            <Select
+                                mode="multiple"
+                                data-testid="attribute-name-select"
+                                style={{ width: "100%" }}
+                                placeholder="Select attribute"
+                            >
                                 {ATTRIBUTE_REGISTRY.map((attribute) => (
                                     <Option key={attribute.value} value={attribute.value}>
                                         {attribute.label}

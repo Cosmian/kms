@@ -1379,6 +1379,13 @@ impl Display for DeleteAttribute {
 pub struct DeleteAttributeResponse {
     /// The Unique Identifier of the object
     pub unique_identifier: UniqueIdentifier,
+    /// Carries the deleted attribute for KMIP 1.x response down-conversion only.
+    /// KMIP 1.4 §4.16 Table 205 requires the deleted `Attribute` in the response
+    /// payload, whereas KMIP 2.1 §6.1.13 Table 203 requires only the Unique
+    /// Identifier. Skipped during serialization so it never appears on the
+    /// KMIP 2.1 wire.
+    #[serde(skip)]
+    pub echoed_attribute: Option<Attribute>,
 }
 
 impl_display!(DeleteAttributeResponse, "DeleteAttributeResponse", { req unique_identifier });

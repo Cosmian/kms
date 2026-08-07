@@ -428,81 +428,86 @@ Note: EC/ECDSA support is present; DH/DSA/ECMQV are not implemented.
 
 #### Attributes
 
-| Attribute | Current |
-| --------- | ------: |
-| Activation Date                     |       ✅ |
-| Alternative Name                    |       ✅ |
-| Always Sensitive                    |       ✅ |
-| Application Specific Information    |       ✅ |
-| Archive Date                        |       ✅ |
-| Attribute Index                     |       ✅ |
-| Certificate Attributes              |       ✅ |
-| Certificate Length                  |       ✅ |
-| Certificate Type                    |       ✅ |
-| Comment                             |       ✅ |
-| Compromise Date                     |       ✅ |
-| Compromise Occurrence Date          |       ✅ |
-| Contact Information                 |       ✅ |
-| Critical                            |       ✅ |
-| Cryptographic Algorithm             |       ✅ |
-| Cryptographic Domain Parameters     |       ✅ |
-| Cryptographic Length                |       ✅ |
-| Cryptographic Parameters            |       ✅ |
-| Cryptographic Usage Mask            |       ✅ |
-| Deactivation Date                   |       ✅ |
-| Description                         |       ✅ |
-| Destroy Date                        |       ✅ |
-| Digest                              |       ✅ |
-| Digital Signature Algorithm         |       ✅ |
-| Extractable                         |       ✅ |
-| Fresh                               |       ✅ |
-| Initial Date                        |       ✅ |
-| Key Format Type                     |       ✅ |
-| Key Value Location                  |       ✅ |
-| Key Value Present                   |       ✅ |
-| Last Change Date                    |       ✅ |
-| Lease Time                          |       ✅ |
-| Link                                |       ✅ |
-| Name                                |       ✅ |
-| Never Extractable                   |       ✅ |
-| Nist Key Type                       |       ✅ |
-| Object Group                        |       ✅ |
-| Object Group Member                 |       ✅ |
-| Object Type                         |       ✅ |
-| Opaque Data Type                    |       ✅ |
-| Original Creation Date              |       ✅ |
-| PKCS#12 Friendly Name               |       ✅ |
-| Process Start Date                  |       ✅ |
-| Protect Stop Date                   |       ✅ |
-| Protection Level                    |       ✅ |
-| Protection Period                   |       ✅ |
-| Protection Storage Masks            |       ✅ |
-| Quantum Safe                        |       ✅ |
-| Random Number Generator             |       ✅ |
-| Revocation Reason                   |       ✅ |
-| Rotate Automatic                    |       ✅ |
-| Rotate Date                         |       ✅ |
-| Rotate Generation                   |       ✅ |
-| Rotate Interval                     |       ✅ |
-| Rotate Latest                       |       ✅ |
-| Rotate Name                         |       ✅ |
-| Rotate Offset                       |       ✅ |
-| Sensitive                           |       ✅ |
-| Short Unique Identifier             |       ✅ |
-| State                               |       ✅ |
-| Unique Identifier                   |       ✅ |
-| Usage Limits                        |       ✅ |
-| Vendor Attribute                    |       ✅ |
-| X.509 Certificate Identifier        |       ✅ |
-| X.509 Certificate Issuer            |       ✅ |
-| X.509 Certificate Subject           |       ✅ |
+| Attribute                                |  1.0  |  1.1  |  1.2  |  1.3  |  1.4  |  2.0  |  2.1  |
+| ---------------------------------------- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Activation Date                          |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Alternative Name                         |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Always Sensitive                         |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Application Specific Information         |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Archive Date                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Attribute Index                          |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |
+| Certificate Attributes                   |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Certificate Length                       |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Certificate Type                         |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Comment                                  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Compromise Date                          |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Compromise Occurrence Date               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Contact Information                      |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Critical                                 |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |
+| Cryptographic Algorithm                  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Domain Parameters          |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Length                     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Parameters                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Cryptographic Usage Mask                 |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Deactivation Date                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Description                              |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Destroy Date                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Digest                                   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Digital Signature Algorithm              |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Extractable                              |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Fresh                                    |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Initial Date                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Key Format Type                          |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Key Value Location                       |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Key Value Present                        |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Last Change Date                         |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Lease Time                               |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Link                                     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Name                                     |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Never Extractable                        |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Nist Key Type                            |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Object Group                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Object Group Member                      |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |   🔧   |
+| Object Type                              |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Opaque Data Type                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Original Creation Date                   |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| PKCS#12 Friendly Name                    |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Process Start Date                       |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Protect Stop Date                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Protection Level                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Protection Period                        |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Protection Storage Masks                 |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Quantum Safe                             |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| Random Number Generator                  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |
+| Revocation Reason                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Rotate Automatic                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Date                              |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Generation                        |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Interval                          |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Latest                            |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Name                              |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Rotate Offset                            |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |
+| Sensitive                                |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |   ✅   |
+| Short Unique Identifier                  |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| State                                    |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Unique Identifier                        |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Usage Limits                             |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| Vendor Attribute                         |  N/A  |  N/A  |  N/A  |  N/A  |  N/A  |   ✅   |   ✅   |
+| X.509 Certificate Identifier             |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| X.509 Certificate Issuer                 |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
+| X.509 Certificate Subject                |  N/A  |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |   ✅   |
 
 Notes:
 
+- ✅ = attribute defined in that KMIP version **and** implemented by this server.
+- ❌ = attribute defined in that KMIP version but **not yet implemented**.
+- N/A = attribute was **not defined** in that KMIP version (protocol gap, not a server limitation).
+- 🔧 = **Cosmian-specific extension** — attribute is absent from all standard KMIP versions.
 - GetAttributes returns a union of metadata attributes and those embedded in KeyBlock structures.
 - "Vendor Attributes" are available via the Cosmian vendor namespace and are accessible via GetAttributes.
-- A ✅ indicates the attribute is used or updated by at least one KMIP operation implementation in `crate/server/src/core/operations`, including attribute handlers (Add/Delete/Set/Get Attribute).
-- Most attributes are present across all KMIP versions with some additions in newer versions.
+- `AlwaysSensitive`, `NeverExtractable`, `Extractable`, and `Sensitive` were introduced in **KMIP 1.4**
+  and must not appear in responses to KMIP 1.0–1.3 clients (the server enforces this automatically).
+- `Rotate*` attributes were introduced in **KMIP 2.1**.
 
 <!-- KMIP_SUPPORT_END -->
 

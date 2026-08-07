@@ -710,37 +710,38 @@ fn shape_kmip1_get_attributes_response(
     {
         return;
     }
-    if let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload {
-        let attrs = &mut gar.attributes;
-        if explicit_request {
-            // Still remove internal tagging attribute if present
-            if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                vas.retain(|va| {
-                    !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
-                });
-                if vas.is_empty() {
-                    attrs.vendor_attributes = None;
-                }
-            }
-        } else {
-            // Drop TL-omitted standard attributes
-            attrs.always_sensitive = None;
-            attrs.extractable = None;
-            attrs.sensitive = None;
-            attrs.never_extractable = None;
-            attrs.short_unique_identifier = None;
-            attrs.key_format_type = None;
+    let Some(Operation::GetAttributesResponse(ref mut gar)) = item.response_payload else {
+        return;
+    };
+    let attrs = &mut gar.attributes;
 
-            // Remove only the internal Cosmian tag attribute; preserve all
-            // user-facing vendor attributes (e.g. KMIP1:__Operation Policy Name__).
-            if let Some(vas) = attrs.vendor_attributes.as_mut() {
-                vas.retain(|va| {
-                    !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
-                });
-                if vas.is_empty() {
-                    attrs.vendor_attributes = None;
-                }
-            }
+    // A KMIP 1.x `GetAttributes` carrying no attribute name returns the TL profile set.
+    // Per the OASIS mandatory test vector `TL-M-3-14.xml`, that set excludes `Sensitive`,
+    // `Always Sensitive`, `Extractable` and `Never Extractable` even for KMIP 1.4 — they
+    // are only returned when explicitly requested (they remain advertised by
+    // `GetAttributeList`, as the same vector shows). `Short Unique Identifier` has no
+    // KMIP 1.x counterpart and `Key Format Type` belongs to the Key Block, not the
+    // attribute list.
+    //
+    // Version gating of attributes that a pre-1.4 client cannot decode is applied later,
+    // for both explicit and default requests, by `strip_kmip1_version_unsupported_attrs`.
+    if !explicit_request {
+        attrs.always_sensitive = None;
+        attrs.extractable = None;
+        attrs.sensitive = None;
+        attrs.never_extractable = None;
+        attrs.short_unique_identifier = None;
+        attrs.key_format_type = None;
+    }
+
+    // The Cosmian-internal tagging vendor attribute is never part of a KMIP response.
+    // All other vendor attributes (e.g. `KMIP1:__Operation Policy Name__`) are preserved.
+    if let Some(vas) = attrs.vendor_attributes.as_mut() {
+        vas.retain(|va| {
+            !(va.vendor_identification == vendor_id && va.attribute_name == VENDOR_ATTR_TAG)
+        });
+        if vas.is_empty() {
+            attrs.vendor_attributes = None;
         }
     }
 }

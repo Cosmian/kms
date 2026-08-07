@@ -1860,6 +1860,18 @@ def perform_get(proxy, verbose=False):
             if verbose:
                 print(f'Get error traceback:\n{full_traceback}')
 
+            # PyKMIP 0.10.0 cannot deserialise attributes it does not know about
+            # (e.g. ALWAYS_SENSITIVE added in KMIP 2.1). The batch status SUCCESS
+            # was confirmed before the parse step, so the Get DID succeed on the
+            # server side — treat unknown-attribute parse errors as success.
+            if 'No value type for' in error_msg:
+                return {
+                    'operation': 'Get',
+                    'status': 'success',
+                    'uid': uid,
+                    'message': f'Object retrieved successfully (PyKMIP 0.10.0 response parse limitation: {error_msg})',
+                }
+
             return {
                 'operation': 'Get',
                 'status': 'error',

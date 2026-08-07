@@ -595,6 +595,21 @@ Covers:
 - Multiple link attributes on one key
 - Non-existent object ID returns response (no crash)
 
+### always-sensitive-flow
+
+```mermaid
+graph LR
+    A[Create Sensitive key] --> B[Get AlwaysSensitive = true]
+    C[Create plain key] --> D[Get AlwaysSensitive = false]
+    E[Open Set/Modify/Delete] --> F[AlwaysSensitive absent from selectors]
+```
+
+Covers the server-managed `AlwaysSensitive` attribute (KMIP 2.1 §4.3):
+
+- Sensitive key reports `AlwaysSensitive = true` via GetAttributes
+- Non-sensitive key reports `AlwaysSensitive = false`
+- `AlwaysSensitive` is read-only: absent from the Set / Modify / Delete attribute selectors
+
 ### vendor-id-flow
 
 ```mermaid
