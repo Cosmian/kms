@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:a307b240-c091-42e5-9c81-eaaa9602d039",
+  "serialNumber": "urn:uuid:10842db5-b22c-4369-a53e-8ad454ec18cb",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-07-19T15:30:28Z",
+    "timestamp": "2026-08-08T08:16:33Z",
     "tools": [
       {
         "type": "application",
@@ -17,7 +17,7 @@
       "type": "application",
       "bom-ref": "kms-server",
       "name": "cosmian-kms",
-      "version": "5.25.0",
+      "version": "5.26.0",
       "description": "Cosmian Key Management System — FIPS 140-3 compliant KMS server",
       "externalReferences": [
         {
@@ -102,8 +102,8 @@
       "type": "library",
       "bom-ref": "lib-sha1",
       "name": "sha1 (RustCrypto)",
-      "version": "0.10.6",
-      "purl": "pkg:cargo/sha1@0.10.6"
+      "version": "0.10.7",
+      "purl": "pkg:cargo/sha1@0.10.7"
     },
     {
       "type": "library",
